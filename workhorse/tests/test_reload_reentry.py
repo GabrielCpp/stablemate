@@ -1,6 +1,6 @@
 """What a live reload does to the driver: unwind, re-import, re-enter — same run.
 
-The transport (`workhorse/reload.py`) and the kill (`runner/process.py`) are tested
+The transport (`workhorse/control.py`) and the kill (`runner/process.py`) are tested
 next to the code they belong to. What is asserted here is the half that decides whether
 a reload is cheap or is indistinguishable from a crash:
 
@@ -13,7 +13,6 @@ a reload is cheap or is indistinguishable from a crash:
   is about to run is already durable, so re-entry replays it having lost nothing.
 - **Re-entry is the *same* run.** Same process, same run dir, same root span — a fresh
   generation would be exactly the "restarting looks like a failure" this replaces.
-- **A request that could not be cleared stops the run instead of reloading forever.**
 
 Run: uv run python tests/test_reload_reentry.py   (or via pytest)
 """
@@ -33,7 +32,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from _fakes import RecordingTelemetry  # noqa: E402
-from workhorse import otel, reload  # noqa: E402
+from workhorse import control, otel, reload  # noqa: E402
 from workhorse.artifacts import ArtifactWriter  # noqa: E402
 from workhorse.config_run import RunConfig  # noqa: E402
 from workhorse.pyflow import run as run_mod  # noqa: E402
@@ -77,18 +76,23 @@ class _Recording:
 
 
 class _Armed:
-    """`reload.arm(run_dir)` with a guaranteed disarm — the watch is process-wide, so a
-    test that left it armed would hand its tmp dir to whatever ran next."""
+    """A scripted channel installed with a guaranteed disarm.
 
-    def __init__(self, run_dir: Path) -> None:
-        self.run_dir = run_dir
+    The installed channel is process-wide — one run per process — so a test that left one
+    armed would hand its requests to whatever ran next. `FakeChannel` rather than a socket
+    because what these tests assert is what the driver *does* with a request, not that a
+    kernel delivered it.
+    """
 
-    def __enter__(self) -> Path:
-        reload.arm(self.run_dir)
-        return self.run_dir
+    def __init__(self, *requests: control.Request) -> None:
+        self.channel = control.FakeChannel(*requests)
+
+    def __enter__(self) -> control.FakeChannel:
+        control.arm(self.channel)
+        return self.channel
 
     def __exit__(self, *exc: Any) -> None:
-        reload.arm(None)
+        control.arm(None)
 
 
 def _raises(exc_type: type[BaseException], fn: Any, *args: Any, **kwargs: Any) -> BaseException:
@@ -168,31 +172,29 @@ def test_a_boundary_request_is_honoured_after_the_checkpoint_and_before_the_body
 
     with tempfile.TemporaryDirectory() as tmp:
         env = _env(tmp)
-        with _Armed(env.run_dir):
-            reload.request(env.run_dir, at_boundary=True)
+        with _Armed(control.Request(at_boundary=True)) as channel:
             exc = _raises(reload.ReloadRequested, drive, Quiet(), env)
 
         assert ran == [], "the state body ran despite an outstanding reload request"
         assert "start" in str(exc), exc
         checkpoint = env.run_dir / ArtifactWriter.CHECKPOINT_FILE
         assert checkpoint.is_file(), "the state was not durable when the reload fired"
-        # Left on disk on purpose: `run_pyflow` consumes it, so an unwind that dies on
-        # the way out still has the request recording why it started.
-        assert reload.pending(env.run_dir) is not None
+        # Acknowledged on the way past, so the operator's CLI reports a message that
+        # landed rather than one that merely went out.
+        assert channel.replies == [{"ok": True, "cut": False}], channel.replies
 
 
-def test_an_unarmed_run_never_notices_a_request_file():
-    """The watch is what scopes a request to a run. An unarmed driver — every other
-    test in `tests/` — must pay a single attribute read and nothing else."""
+def test_an_unarmed_run_never_stops_at_a_boundary():
+    """The installed channel is what scopes a request to a run. An unarmed driver — every
+    other test in `tests/` — must pay a single attribute read and nothing else."""
 
     class Quiet(Workflow):
         def start(self) -> Transition:
             return Done("finished")
 
     with tempfile.TemporaryDirectory() as tmp:
-        env = _env(tmp)
-        reload.request(env.run_dir)
-        assert drive(Quiet(), env) == "finished"
+        control.arm(None)
+        assert drive(Quiet(), _env(tmp)) == "finished"
 
 
 # -------------------------------------------------------------------- the re-entry
@@ -243,46 +245,25 @@ def _invocation(tmp: str, active: Any = None) -> RunInvocation:
     )
 
 
-def test_a_run_arms_the_watch_for_its_own_dir_and_disarms_on_the_way_out():
-    """Armed after telemetry (so a cut turn's `reload_kill` event has a span to land
-    on) and disarmed on every exit path (the watch is process-wide)."""
-    seen: list[Path | None] = []
+def test_a_run_listens_on_its_own_dir_and_stops_listening_on_the_way_out():
+    """Opened after telemetry (so a cut turn's `reload_kill` event has a span to land on)
+    and closed on every exit path, because the installed channel is process-wide and a
+    socket left bound would make the *next* run in that dir look like a second listener."""
+    seen: list[Any] = []
 
     def fake_drive(wf: Any, env: Any, resume: Any = None) -> Any:
-        seen.append(reload.armed())
+        channel = control.armed()
+        seen.append(getattr(channel, "path", None))
         return None
 
     with tempfile.TemporaryDirectory() as tmp:
+        run_dir = Path(tmp) / "runs" / "stub-t"
         with patch.object(run_mod, "drive", fake_drive):
             assert run_pyflow(_invocation(tmp)) == 0
 
-        assert seen == [Path(tmp) / "runs" / "stub-t"], seen
-        assert reload.armed() is None, "the run left the watch armed for the next one"
-
-
-def test_a_request_that_cannot_be_cleared_stops_the_run_rather_than_looping():
-    """The one failure mode a reload must not have. `consume` unlinks before the caller
-    acts precisely so this cannot happen; if the unlink silently failed anyway — a
-    read-only run dir — the honest outcome is a stop naming the file, not a spin."""
-
-    def fake_drive(wf: Any, env: Any, resume: Any = None) -> Any:
-        env.writer.write_state_checkpoint("start", {}, inputs={}, flow="Stub", ctx={})
-        reload.request(env.run_dir)
-        raise reload.ReloadRequested("cut mid-turn")
-
-    # A `consume` that reads the request but leaves it on disk, which is what an
-    # unlink that failed looks like from the caller's side.
-    def stuck_consume(run_dir: Any) -> reload.ReloadRequest | None:
-        return reload.pending(run_dir)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        with (
-            patch.object(run_mod, "drive", fake_drive),
-            patch.object(reload, "consume", stuck_consume),
-        ):
-            assert run_pyflow(_invocation(tmp)) == 1
-
-    assert reload.armed() is None
+        assert seen == [run_dir / control.SOCKET_FILE], seen
+        assert control.armed().fileno() is None, "the run left a channel armed"
+        assert not (run_dir / control.SOCKET_FILE).exists(), "the socket outlived the run"
 
 
 def test_a_core_reload_replaces_the_process_only_after_the_run_is_finalized():
@@ -299,13 +280,12 @@ def test_a_core_reload_replaces_the_process_only_after_the_run_is_finalized():
         nonlocal drives
         drives += 1
         env.writer.write_state_checkpoint("start", {}, inputs={}, flow="Stub", ctx={})
-        reload.request(env.run_dir, core=True)
         raise reload.ReloadRequested("cut mid-turn", core=True)
 
     fake = RecordingTelemetry()
 
     def fake_exec(name: str, run_dir: Path) -> int:
-        at_exec.append((run_dir, list(fake.ended), reload.armed() is not None))
+        at_exec.append((run_dir, list(fake.ended), control.armed().fileno() is not None))
         return reload.RELOAD_EXIT_CODE
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -325,7 +305,7 @@ def test_a_core_reload_replaces_the_process_only_after_the_run_is_finalized():
     assert [(name, attrs.get("core"), attrs.get("state")) for name, _, attrs in fake.events] == [
         ("reload", True, "start")
     ], fake.events
-    assert reload.armed() is None
+    assert control.armed().fileno() is None
 
 
 def test_the_re_exec_argv_is_the_resume_spelling_not_the_original_one():
@@ -382,10 +362,7 @@ class Probe(Workflow):
         here = Path(__file__)
         # The operator's push, standing in for a `git pull`.
         (here.parent / "pushed.py").replace(here)
-        run_dir = reload.armed()
-        assert run_dir is not None
-        (run_dir / "ran-old.txt").write_text(VERSION, encoding="utf-8")
-        reload.request(run_dir)
+        (self.run_dir / "ran-old.txt").write_text(VERSION, encoding="utf-8")
         raise reload.ReloadRequested("the operator cut this turn")
 
     def unused(self) -> Any:
@@ -415,9 +392,7 @@ VERSION = "new"
 
 class Probe(Workflow):
     def start(self) -> Any:
-        run_dir = reload.armed()
-        assert run_dir is not None
-        (run_dir / "ran-new.txt").write_text(VERSION, encoding="utf-8")
+        (self.run_dir / "ran-new.txt").write_text(VERSION, encoding="utf-8")
         return Done(VERSION)
 
 
@@ -458,15 +433,12 @@ from workhorse.pyflow.workflow import Workflow
 
 class Probe(Workflow):
     def start(self) -> Any:
-        run_dir = reload.armed()
-        assert run_dir is not None
         if value.VERSION != "old":
-            (run_dir / "ran-new.txt").write_text(value.VERSION, encoding="utf-8")
+            (self.run_dir / "ran-new.txt").write_text(value.VERSION, encoding="utf-8")
             return Done(value.VERSION)
         # The operator's push — into the library, with this package left untouched.
         Path(value.__file__).write_text(@V2@, encoding="utf-8")
-        (run_dir / "ran-old.txt").write_text(value.VERSION, encoding="utf-8")
-        reload.request(run_dir)
+        (self.run_dir / "ran-old.txt").write_text(value.VERSION, encoding="utf-8")
         raise reload.ReloadRequested("the operator cut this turn")
 
 
@@ -524,8 +496,7 @@ def test_a_reload_re_enters_the_same_run_on_the_code_that_was_pushed():
         # The proof of re-entry: the *second* pass ran, and it ran the pushed class.
         assert (run_dir / "ran-new.txt").read_text(encoding="utf-8") == "new"
         # One request, one reload.
-        assert reload.pending(run_dir) is None
-        assert reload.armed() is None
+        assert control.armed().fileno() is None
         # And one run dir — a restart would have opened a second.
         assert sorted(p.name for p in (Path(tmp) / "runs").iterdir()) == ["probe-probe"]
 
@@ -607,9 +578,8 @@ if __name__ == "__main__":
     test_a_reload_raised_from_a_state_body_closes_that_states_span()
     test_a_reload_deep_in_a_sub_flow_closes_one_scope_per_drive_frame()
     test_a_boundary_request_is_honoured_after_the_checkpoint_and_before_the_body()
-    test_an_unarmed_run_never_notices_a_request_file()
-    test_a_run_arms_the_watch_for_its_own_dir_and_disarms_on_the_way_out()
-    test_a_request_that_cannot_be_cleared_stops_the_run_rather_than_looping()
+    test_an_unarmed_run_never_stops_at_a_boundary()
+    test_a_run_listens_on_its_own_dir_and_stops_listening_on_the_way_out()
     test_a_reload_re_enters_the_same_run_on_the_code_that_was_pushed()
     test_a_reload_picks_up_a_fix_to_a_library_the_workflow_imports()
     test_the_environment_is_kept_while_the_working_tree_is_replaced()

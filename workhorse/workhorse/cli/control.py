@@ -3,15 +3,17 @@
 Today it has one verb. `reload` asks a live run to cut whatever it is doing, pick the
 pushed code up, and re-enter its own checkpoint — the operator's half of
 :mod:`workhorse.reload`. The run is a different process (often in a different container),
-so the whole command is: resolve which run dir is meant, write the request file
-atomically, and report what the run appeared to be doing when it was asked.
+so the whole command is: resolve which run dir is meant, say it on the run's control
+socket, and report what the run appeared to be doing when it was asked.
 
-It is deliberately **not** a wait. A turn that has been streaming for two hours is cut
-within the second, but "cut" is the run's own next select slice, and blocking here to
-watch for it would turn an operator's one-line nudge into a foreground process they now
-have to babysit — the thing they were reloading to stop doing. What this prints is
-therefore evidence, not confirmation: the pid, whether it answers signal 0, and the state
-the last checkpoint named.
+It is deliberately **not** a wait for the *reload*. The run acknowledges the message on
+the same connection, which is quick and worth having — a request nobody was listening for
+used to look identical to one that landed — but the cut itself happens on the run's own
+next select slice. Blocking until then would turn an operator's one-line nudge into a
+foreground process they now have to babysit, which is the thing they were reloading to
+stop doing. So what this prints past the acknowledgement is evidence rather than
+confirmation: the pid, whether it answers signal 0, and the state the last checkpoint
+named.
 """
 from __future__ import annotations
 
@@ -22,7 +24,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from workhorse import reload
+from workhorse import control
 from workhorse.artifacts import ArtifactWriter
 from workhorse.records import PyflowCheckpoint, parse_checkpoint, parse_run_record
 from workhorse.rundir import find_latest_resumable, resolve_run_dir
@@ -71,12 +73,23 @@ def run(args: argparse.Namespace) -> None:
         else (Path.cwd() / ".agents" / "runs").resolve()
     )
     run_dir = _target(args.run, runs_dir, args.registry.name)
-    path = reload.request(run_dir, core=args.core, at_boundary=args.at_boundary)
+    request = control.Request(
+        action=args.action, core=args.core, at_boundary=args.at_boundary
+    )
+    try:
+        reply = control.send(run_dir, request)
+    except (OSError, FileNotFoundError) as exc:
+        # The honest failure, and the one the request file could never report: a channel
+        # exists only while the run does, so nobody listening means nobody will act. Exit
+        # nonzero rather than printing a reassuring line about a message that went nowhere.
+        print(f"error: {exc}", file=sys.stderr)
+        print(f"  run:     {_liveness(run_dir)}", file=sys.stderr)
+        sys.exit(1)
 
     scope = "workhorse and the workflow" if args.core else "the workflow package"
     when = "at the next state boundary" if args.at_boundary else "cutting the current turn"
     print(f"reload requested for {run_dir}: reload {scope}, {when}")
-    print(f"  request: {path}")
+    print(f"  reply:   {reply or 'delivered, no answer'}")
     print(f"  run:     {_liveness(run_dir)}")
     print(f"  at:      {_position(run_dir)}")
 

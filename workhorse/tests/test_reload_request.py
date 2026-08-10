@@ -1,75 +1,95 @@
-"""The reload request file: written atomically, read once, never fatal to read."""
+"""What a control message means to `reload`: which site acts on it, and what is declined.
+
+The transport is asserted in `test_control_channel.py`. What is asserted here is the
+verb's policy, which is where the two sites that can honour a reload differ — the stream
+loop cuts a burning turn, the state boundary catches everything else — and what a run
+does with a message it was not built to understand.
+"""
 
 from __future__ import annotations
 
-import json
+import sys
 from pathlib import Path
 
-from workhorse import reload
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from workhorse import control, reload  # noqa: E402
+from workhorse.control import FakeChannel, Request  # noqa: E402
 
 
-def test_a_written_request_reads_back_with_its_flags(tmp_path: Path) -> None:
-    reload.request(tmp_path, core=True)
-    found = reload.pending(tmp_path)
-    assert found is not None
-    assert found.core is True
-    assert found.at_boundary is False
-    assert found.cuts_the_turn is True
-    assert found.requested_at
+def _armed(*requests: Request) -> FakeChannel:
+    channel = FakeChannel(*requests)
+    control.arm(channel)
+    return channel
 
 
-def test_the_default_request_cuts_the_turn(tmp_path: Path) -> None:
+def test_nothing_asked_for_is_not_a_reload() -> None:
+    try:
+        control.arm(None)
+        assert reload.cut_requested() is None
+        assert reload.boundary_requested() is None
+    finally:
+        control.arm(None)
+
+
+def test_the_default_request_cuts_the_turn() -> None:
     """The default reason for reloading is that the turn is broken, so the default cuts."""
-    reload.request(tmp_path)
-    found = reload.pending(tmp_path)
-    assert found is not None and found.cuts_the_turn is True
-
-    reload.request(tmp_path, at_boundary=True)
-    found = reload.pending(tmp_path)
-    assert found is not None and found.cuts_the_turn is False
-
-
-def test_no_request_is_not_an_error(tmp_path: Path) -> None:
-    assert reload.pending(tmp_path) is None
-    assert reload.pending(None) is None
-    assert reload.consume(tmp_path) is None
+    channel = _armed(Request(action="reload", core=True))
+    try:
+        found = reload.cut_requested()
+        assert found is not None and found.core is True
+        assert channel.replies == [{"ok": True, "cut": True}]
+    finally:
+        control.arm(None)
 
 
-def test_an_unreadable_request_reads_as_no_request(tmp_path: Path) -> None:
-    """The poll runs inside a live agent turn; a malformed file must not end the run."""
-    (tmp_path / reload.REQUEST_FILE).write_text("{not json", encoding="utf-8")
-    assert reload.pending(tmp_path) is None
-    (tmp_path / reload.REQUEST_FILE).write_text("[]", encoding="utf-8")
-    assert reload.pending(tmp_path) is None
+def test_an_at_boundary_request_is_held_for_the_boundary_not_dropped() -> None:
+    """Taking it off the channel consumed it, so declining means remembering it."""
+    channel = _armed(Request(action="reload", at_boundary=True))
+    try:
+        assert reload.cut_requested() is None
+        assert channel.replies == [{"ok": True, "cut": False}]
+        assert channel.pending == []  # it is off the wire...
+        held = reload.boundary_requested()
+        assert held is not None and held.at_boundary is True  # ...and still honoured
+    finally:
+        control.arm(None)
 
 
-def test_consuming_clears_it_so_one_request_is_one_reload(tmp_path: Path) -> None:
-    reload.request(tmp_path, core=True)
-    taken = reload.consume(tmp_path)
-    assert taken is not None and taken.core is True
-    assert reload.pending(tmp_path) is None
-    assert not (tmp_path / reload.REQUEST_FILE).exists()
+def test_one_request_is_one_reload() -> None:
+    _armed(Request(action="reload"))
+    try:
+        assert reload.boundary_requested() is not None
+        assert reload.boundary_requested() is None
+    finally:
+        control.arm(None)
 
 
-def test_a_second_request_overwrites_rather_than_queues(tmp_path: Path) -> None:
-    """Two operators asking for a reload want one reload, with the newest flags."""
-    reload.request(tmp_path, core=True)
-    reload.request(tmp_path, core=False, at_boundary=True)
-    found = reload.pending(tmp_path)
-    assert found is not None and found.core is False and found.at_boundary is True
-    assert list(tmp_path.glob("*.tmp")) == []
+def test_a_verb_this_run_does_not_know_is_declined_not_obeyed() -> None:
+    """A newer CLI talking to an older run must not be able to reload it by accident."""
+    channel = _armed(Request(action="quiesce"), Request(action="quiesce"))
+    try:
+        assert reload.cut_requested() is None
+        assert reload.boundary_requested() is None
+        assert [set(reply) for reply in channel.replies] == [{"error"}, {"error"}]
+    finally:
+        control.arm(None)
 
 
-def test_the_request_file_is_json_an_operator_can_read(tmp_path: Path) -> None:
-    path = reload.request(tmp_path)
-    assert json.loads(path.read_text(encoding="utf-8")).keys() == {
-        "core",
-        "at_boundary",
-        "requested_at",
-    }
+def test_a_run_that_ended_leaves_nothing_armed() -> None:
+    """The installed channel is process-wide; a run that left one armed would hand its
+    socket to whatever ran next in the same process."""
+    _armed(Request(action="reload"))
+    control.arm(None)
+    assert control.armed().fileno() is None
+    assert reload.cut_requested() is None
 
 
 if __name__ == "__main__":
-    import pytest
-
-    raise SystemExit(pytest.main([__file__, "-q"]))
+    test_nothing_asked_for_is_not_a_reload()
+    test_the_default_request_cuts_the_turn()
+    test_an_at_boundary_request_is_held_for_the_boundary_not_dropped()
+    test_one_request_is_one_reload()
+    test_a_verb_this_run_does_not_know_is_declined_not_obeyed()
+    test_a_run_that_ended_leaves_nothing_armed()
+    print("ok")

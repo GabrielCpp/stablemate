@@ -297,6 +297,72 @@ class FakeChannel:
         self.closed = True
 
 
+class _Watch:
+    """The channel this process's run is reachable on, set once when the run starts.
+
+    Process-wide because there is one run per process and the streaming loop is several
+    layers below anything that knows where the run's artifacts live — the same reason
+    `runner/process.py` holds one module-level `ProcessSupervisor`. It is the *installed
+    instance* that is global, never the port: every consumer still takes a
+    `ControlChannel`, which is what keeps `NullChannel` and `FakeChannel` substitutable.
+
+    `held` is a request that was delivered but deliberately not acted on yet — an
+    `--at-boundary` reload arriving mid-turn. Taking it off the socket consumes it, so
+    something has to remember it until the state boundary that honours it.
+    """
+
+    channel: ControlChannel = NULL_CHANNEL
+    held: Request | None = None
+
+
+_watch = _Watch()
+
+
+def arm(channel: ControlChannel | None) -> None:
+    """Make `channel` the one this process answers on. `None` disarms."""
+    _watch.channel = channel or NULL_CHANNEL
+    _watch.held = None
+
+
+def armed() -> ControlChannel:
+    """The installed channel — `NULL_CHANNEL` when no run is attached.
+
+    What the waiting sites deep in the runner pass to `wait_until`. With nothing armed it
+    is an attribute read returning a channel whose `fileno()` is None, so an unarmed
+    process — every unit test that streams a fake agent — pays nothing.
+    """
+    return _watch.channel
+
+
+def take() -> Request | None:
+    """The next request off the channel, or None. A held request is *not* returned here.
+
+    Deliberately blind to `hold`: the site that declined a request and put it back is the
+    streaming loop, which asks again on its very next slice. Handing it back its own
+    declined request would acknowledge the same message once per second for the rest of
+    the turn — and never honour it, since declining is exactly what that site does.
+    """
+    return _watch.channel.take()
+
+
+def outstanding() -> Request | None:
+    """A held request first, then the channel — what a site allowed to act on both asks."""
+    held, _watch.held = _watch.held, None
+    if held is not None:
+        return held
+    return _watch.channel.take()
+
+
+def hold(request: Request) -> None:
+    """Put a delivered request back, for the next site that is allowed to act on it."""
+    _watch.held = request
+
+
+def answer(payload: dict[str, object]) -> None:
+    """Reply on the armed channel to the request just taken."""
+    _watch.channel.reply(payload)
+
+
 def wait_until(
     predicate: Callable[[], bool] | None,
     *,
@@ -442,6 +508,12 @@ __all__ = [
     "NullChannel",
     "Request",
     "SocketChannel",
+    "answer",
+    "arm",
+    "armed",
+    "hold",
+    "outstanding",
     "send",
+    "take",
     "wait_until",
 ]

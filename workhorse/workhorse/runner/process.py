@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from workhorse import otel, reload
+from workhorse import control, otel, reload
 from workhorse.config_run import AgentResilience
 from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.failure import BackendInvocationError
@@ -351,7 +351,7 @@ class ProcessSupervisor:
             on_fire=fired.set,
         )
         timed_out = False
-        reloading: reload.ReloadRequest | None = None
+        reloading: control.Request | None = None
         assert proc.stdout is not None
         try:
             start = self.clock.monotonic()
@@ -372,14 +372,19 @@ class ProcessSupervisor:
                 # Short select slices keep the in-loop wall-clock check live for a cleanly
                 # arriving stream; the watchdog is the backstop for a stream that wedges
                 # mid-line (where readline() below would otherwise block past the deadline).
-                ready, _, _ = select.select([proc.stdout], [], [], min(1.0, timeout - elapsed))
-                # The reload check rides the same short slice, so an operator who pushes a
-                # fix waits ≤1s rather than however many hours this turn had left. The
-                # ordering below is the whole contract: the event is recorded BEFORE the
+                # The control channel waits on the same slice as the stream, so an operator
+                # who pushes a fix waits ≤1s rather than however many hours this turn had
+                # left — and the fd is what makes that a wake-up rather than a poll.
+                watched: list[Any] = [proc.stdout]
+                control_fd = control.armed().fileno()
+                if control_fd is not None:
+                    watched.append(control_fd)
+                ready, _, _ = select.select(watched, [], [], min(1.0, timeout - elapsed))
+                # The ordering below is the whole contract: the event is recorded BEFORE the
                 # kill, exactly as the watchdog does it, so the turn's span closes carrying
                 # the tokens, cost and elapsed time it really accrued and nothing dangles.
-                requested = reload.armed_pending()
-                if requested is not None and requested.cuts_the_turn:
+                requested = reload.cut_requested()
+                if requested is not None:
                     print(
                         f"[{node_id}] ⟳ reload requested — cutting this turn and "
                         "re-entering the state on the pushed code",
@@ -390,7 +395,10 @@ class ProcessSupervisor:
                     )
                     reloading = requested
                     break
-                if not ready:
+                # `ready` can hold the control fd alone — a message that was declined, or
+                # one for a run whose turn is not being cut. Reading the stream then would
+                # block past the deadline, so the stream's own readiness is what gates it.
+                if proc.stdout not in ready:
                     if proc.poll() is not None:
                         break
                     continue

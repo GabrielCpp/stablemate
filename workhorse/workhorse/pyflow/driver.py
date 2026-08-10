@@ -336,9 +336,9 @@ def drive(
         # script node ran, and the `--at-boundary` request the stream loop deliberately
         # ignores. It sits *after* the checkpoint above, so the state about to run is
         # already durable and the re-entry replays it having lost nothing. The request
-        # is left on disk for `run_pyflow` to consume, because consuming it here would
-        # mean the unwind could still fail with nothing recording why it started.
-        boundary = reload.armed_pending()
+        # carries what it asked for on the exception, because the request came off the
+        # channel and there is nothing left on disk for the unwind to re-read.
+        boundary = reload.boundary_requested()
         if boundary is not None:
             env.log.info("[workhorse] reload → requested; re-entering at '%s'", spec.name)
             raise reload.ReloadRequested(

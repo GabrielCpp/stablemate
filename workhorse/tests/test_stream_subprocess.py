@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import time
 
 from _fakes import RecordingTelemetry
-from workhorse import otel, reload
+from workhorse import control, otel, reload
 from workhorse.config_run import AgentResilience
 from workhorse.runner import process
 
@@ -239,12 +240,19 @@ def test_a_reload_request_cuts_the_streaming_turn_within_a_slice(tmp_path):
     The 'agent' here would run for an hour. An operator plants a request while it streams,
     and the turn has to end in about the length of one select slice — the saving is exactly
     the tokens the turn would have burned after that instant.
+
+    A real socket and a real client, so this covers the listening fd joining the stream's
+    own select and not merely the policy sitting above it.
     """
     fake = RecordingTelemetry()
     previous = otel.install(otel.TelemetryHost(active=fake))
-    reload.arm(tmp_path)
+    channel = control.SocketChannel.open(tmp_path)
+    control.arm(channel)
+    sender = threading.Thread(
+        target=lambda: control.send(tmp_path, control.Request(), timeout=20)
+    )
+    sender.start()
     try:
-        reload.request(tmp_path)
         started = time.monotonic()
         raised = None
         try:
@@ -260,7 +268,9 @@ def test_a_reload_request_cuts_the_streaming_turn_within_a_slice(tmp_path):
             raised = exc
         elapsed = time.monotonic() - started
     finally:
-        reload.arm(None)
+        sender.join(timeout=20)
+        control.arm(None)
+        channel.close()
         otel.install(previous)
 
     assert raised is not None, "the stream must report the reload, not a verdict on the turn"
@@ -275,17 +285,25 @@ def test_a_reload_request_cuts_the_streaming_turn_within_a_slice(tmp_path):
 
 
 def test_an_at_boundary_request_does_not_touch_the_streaming_turn(tmp_path):
-    """`--at-boundary` is the case for a turn 95% through work that is not broken."""
+    """`--at-boundary` is the case for a turn 95% through work that is not broken.
+
+    Scripted rather than socketed: the policy is what is under test here, and the stream
+    loop asks the channel on every slice whether or not there was an fd to select on.
+    """
     fake = RecordingTelemetry()
     previous = otel.install(otel.TelemetryHost(active=fake))
-    reload.arm(tmp_path)
+    channel = control.FakeChannel(control.Request(at_boundary=True))
+    control.arm(channel)
     try:
-        reload.request(tmp_path, at_boundary=True)
         timed_out, rc, lines = _run(
             "import sys; sys.stdout.write('a\\n'); sys.stdout.flush()", timeout=30
         )
+        # Declined by the stream loop, acknowledged, and kept for the state boundary —
+        # taking it off a socket consumes it, so declining has to mean remembering it.
+        assert channel.replies == [{"ok": True, "cut": False}]
+        assert reload.boundary_requested() is not None
     finally:
-        reload.arm(None)
+        control.arm(None)
         otel.install(previous)
 
     assert timed_out is False and rc == 0
@@ -293,10 +311,10 @@ def test_an_at_boundary_request_does_not_touch_the_streaming_turn(tmp_path):
     assert [name for name, _, _ in fake.events if name == "reload_kill"] == []
 
 
-def test_an_unarmed_process_never_sees_a_request(tmp_path):
-    """Nothing polls until a run arms it — every other test streams with the feature inert."""
-    reload.request(tmp_path)
-    assert reload.armed() is None
+def test_an_unarmed_process_never_sees_a_request():
+    """Nothing listens until a run arms one — every other test streams with it inert."""
+    control.arm(None)
+    assert control.armed().fileno() is None
     timed_out, rc, _ = _run("import sys; sys.stdout.write('a\\n')", timeout=30)
     assert timed_out is False and rc == 0
 

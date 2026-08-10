@@ -23,7 +23,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from workhorse import logsetup, otel, reload
+from workhorse import control, logsetup, otel, reload
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.manifest import ManifestContext
@@ -187,12 +187,21 @@ def run_pyflow(invocation: RunInvocation) -> int:
     # the invocation, like every other setting.
     otel.install(invocation.telemetry)
     otel.start_run(name, writer.run_id, str(writer.run_dir))
-    # From here on the run answers a reload request. Armed after telemetry rather than
-    # before, so the first thing a cut turn does — record `reload_kill` on its own span —
-    # has somewhere to land. A dry run is left unarmed: it runs no agent turn to cut, and
-    # its stubbed node index would be rebuilt from a registry it never really imported.
+    # From here on the run is reachable. Armed after telemetry rather than before, so the
+    # first thing a cut turn does — record `reload_kill` on its own span — has somewhere
+    # to land. A dry run is left unarmed: it runs no agent turn to cut, and its stubbed
+    # node index would be rebuilt from a registry it never really imported.
+    channel: control.ControlChannel = control.NULL_CHANNEL
     if not dry_run:
-        reload.arm(writer.run_dir)
+        try:
+            channel = control.SocketChannel.open(writer.run_dir)
+        except OSError as exc:
+            # An unreachable run is worse than a run that never started only if you are
+            # the operator; every other way round it is the run that matters. So this is
+            # a warning and the run goes on deaf, exactly as it did before the channel.
+            print(f"[workhorse] WARNING: no control channel for this run: {exc}")
+        else:
+            control.arm(channel)
     #: Set by the `--core` unwind below, and acted on only after the `finally` has
     #: flushed telemetry and disarmed the watch. `os.execv` runs no `finally` and no
     #: `atexit`, so exec'ing from inside the block would drop the run's last spans and
@@ -288,10 +297,13 @@ def run_pyflow(invocation: RunInvocation) -> int:
         # A crash before any branch above finalized leaves the run marked aborted
         # rather than silently open; end_run is idempotent, so the normal paths win.
         otel.end_run("aborted", error="run aborted before finalize")
-        # And the watch is disarmed on every exit path: it is process-wide, so a run
-        # that left it armed would hand its run dir to whatever ran next in the same
-        # process — a second `run_pyflow` in a test, or a supervisor loop.
-        reload.arm(None)
+        # And the channel is closed and disarmed on every exit path: the installed one is
+        # process-wide, so a run that left it armed would hand its socket to whatever ran
+        # next in the same process — a second `run_pyflow` in a test, or a supervisor
+        # loop. Closing also unlinks the socket, which is what makes "nobody is
+        # listening" the honest answer for a run that has ended.
+        control.arm(None)
+        channel.close()
 
     if core_reload:
         return _exec_reload(name, writer.run_dir)
@@ -326,17 +338,12 @@ def _drive_reloadable(
         try:
             return drive(wf, env, resume)
         except reload.ReloadRequested as exc:
-            # Consumed *before* the swap — `reload.consume` is written that way so a
-            # reload onto a tree that does not import cannot become a loop that re-reads
-            # the same request forever.
-            request = reload.consume(writer.run_dir)
-            core = request.core if request is not None else exc.core
-            if reload.pending(writer.run_dir) is not None:
-                raise WorkflowFailed(
-                    f"the reload request in {writer.run_dir} could not be cleared, so "
-                    "honouring it would reload forever. Remove "
-                    f"{reload.REQUEST_FILE} and resume."
-                ) from exc
+            # What was asked for rides the exception, because the request was consumed by
+            # the read that delivered it. That is the property a request file never had:
+            # one request produces exactly one reload without anything having to remember
+            # to clear it, so a reload onto a tree that does not import cannot become a
+            # loop that re-reads the same request forever.
+            core = exc.core
             if core:
                 # `--core` means the engine itself, and no process can swap the modules
                 # its own stack is executing — `drive`, the ladder and `process.py` are
