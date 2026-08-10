@@ -64,7 +64,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, Workflow
+from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
@@ -92,6 +92,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     QaContextRepair,
     QaFlowResult,
     QaLoop,
+    QaPlanFinding,
     QaPlanResult,
     QaPlanReview,
     QaReport,
@@ -130,6 +131,55 @@ def _finding(passed: bool, notes: str) -> str:
     return "" if passed else notes
 
 
+def _plan_finding_problems(review: QaPlanReview) -> list[str]:
+    """Why a plan refusal is not an actionable repair contract. Empty means it is one.
+
+    The same check `docs/flow.py` applies to its reviewer, and for the same reason: a
+    `revise` is a bill for a `power="medium"` re-plan plus a second `power="high"` review,
+    and the flow has no way to spend that usefully on a refusal that names nothing. Free
+    prose was what let `review-qa-plan` refuse repeatedly without ever converging — the
+    author could not tell which demand was new, so it rewrote everything and handed the
+    reviewer fresh defects.
+
+    `id` is an opaque handle, checked for presence only. Its job is to name the same defect
+    across passes, not to match a shape — enforcing the prompt's `R1` convention once turned
+    a pair of correct findings into a killed run over a prefix letter.
+    """
+    if review.disposition != "revise":
+        return []
+    if not review.findings:
+        return ["no findings"]
+    problems: list[str] = []
+    for index, finding in enumerate(review.findings, start=1):
+        missing = [
+            field
+            for field in ("id", "target", "issue", "repair")
+            if not str(getattr(finding, field)).strip()
+        ]
+        if missing:
+            problems.append(f"finding {index} missing {', '.join(missing)}")
+    return problems
+
+
+def _plan_finding_line(finding: QaPlanFinding) -> str:
+    """One structured finding as the line the plan author is briefed with."""
+    issue = finding.issue.rstrip(".")
+    return f"{finding.id} [{finding.scope}] {finding.target}: {issue}. Repair: {finding.repair}"
+
+
+def _plan_review_notes(review: QaPlanReview) -> str:
+    """The repair brief, composed from the findings rather than taken from the prose.
+
+    `notes` is the reviewer's summary and is worth carrying, but it is not the contract —
+    it was being handed to the author *as* the worklist, which meant the author's brief
+    varied with how discursive that pass's reviewer felt. Findings first, summary last.
+    """
+    lines = [_plan_finding_line(finding) for finding in review.findings]
+    if review.notes.strip():
+        lines.append(f"Summary: {review.notes.strip()}")
+    return "\n".join(lines)
+
+
 def _scoped_to_the_plan(review: QaPlanReview) -> tuple[QaPlanReview, int]:
     """Hold a plan review to the authority its own brief already claims, and count the misses.
 
@@ -146,8 +196,9 @@ def _scoped_to_the_plan(review: QaPlanReview) -> tuple[QaPlanReview, int]:
     with nothing left in it is the case the brief says to approve, and letting it stand costs
     a `power="high"` replan turn plus a second full review to arrive back here unchanged.
 
-    A `revise` carrying no findings at all is left alone. It may be a legacy shape or a prose
-    refusal, and nothing here can tell it from a real one — the safe arm is the flow's own.
+    A `revise` carrying no findings at all never reaches here: `_plan_finding_problems` runs
+    first and fails the flow on it, because after that check a refusal without findings is not
+    a legacy shape, it is a reviewer that did not answer.
 
     Returns the review to act on, and how many findings were dropped.
     """
@@ -425,7 +476,9 @@ class Qa(Workflow):
         the one gate whose independence the flow is built around.
 
         What the reviewer returns is then held to the authority contract its own brief states,
-        by `_scoped_to_the_plan` rather than by trusting it — see that function.
+        by `_scoped_to_the_plan` rather than by trusting it — see that function. The findings
+        are also what the author is briefed with: `_plan_review_notes` composes the worklist
+        from them, so a refusal is a list of repairs rather than a paragraph to reinterpret.
         """
         review = self.agent(
             "prompts/review-qa-plan.md",
@@ -441,22 +494,29 @@ class Qa(Workflow):
                 "target_env": self.target_env,
             },
         )
+        problems = _plan_finding_problems(review)
+        if problems:
+            raise WorkflowFailed(
+                "qa-plan reviewer requested revisions with invalid structured findings: "
+                + "; ".join(problems)
+            )
+        # After the structural check, so a malformed refusal fails on its shape rather than
+        # being quietly scoped down to nothing and recorded as an approval.
         review, dropped = _scoped_to_the_plan(review)
         if dropped:
             self.logger.info(
                 "dropped %d QA-plan review finding(s) outside the plan's authority", dropped,
                 extra={"activity": True},
             )
+        notes = _plan_review_notes(review)
         loop = loop.update(
-            plan_review_notes=_finding(review.disposition == "approved", review.notes),
+            plan_review_notes=_finding(review.disposition == "approved", notes),
             plan_review_disposition=review.disposition,
         )
         if review.disposition == "approved":
             return Continue(review, self.stack, loop=loop)
-        if review.notes.strip():
-            loop = loop.update(
-                plan_review_ledger=(*loop.plan_review_ledger, review.notes.strip())
-            )
+        if notes.strip():
+            loop = loop.update(plan_review_ledger=(*loop.plan_review_ledger, notes.strip()))
         return self._guard_plan_review(review, loop)
 
     # ── stack and run ─────────────────────────────────────────────────────────────────

@@ -98,7 +98,10 @@ Return JSON only:
 ```
 
 `disposition` is exactly `approved` or `revise`. A `revise` must carry the findings that
-justify it — `notes` summarizes them, it is not the repair contract.
+justify it — `notes` summarizes them, it is not the repair contract. The author is briefed
+from `findings` alone, so a `revise` with an empty `findings` list, or a finding missing any
+of `id`, `target`, `issue` or `repair`, fails the run outright rather than being reinterpreted
+from your prose. `id` is any stable handle; reuse the same one when you restate a finding.
 
 Every finding names its `scope`, and the flow acts on that field rather than on the prose
 above it:

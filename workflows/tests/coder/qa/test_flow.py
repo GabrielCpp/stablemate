@@ -30,6 +30,7 @@ import pytest
 import yaml
 from workhorse import stack as workhorse_stack
 from workhorse.artifacts import ArtifactWriter
+from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
@@ -340,6 +341,17 @@ class _Suite:
 # --------------------------------------------------------------------------- the agent
 
 
+def _a_plan_finding(nth: int) -> dict[str, str]:
+    """The default in-scope refusal, one per review pass and stably identified."""
+    return {
+        "id": f"R{nth}",
+        "scope": "plan",
+        "target": "scenario `create-document`",
+        "issue": f"review pass {nth}",
+        "repair": "assert the row is present after the dialog closes",
+    }
+
+
 class _Agent:
     """The flow's eleven prompts, scripted on the axes its states branch on.
 
@@ -371,7 +383,9 @@ class _Agent:
         self.repair = repair
         self.review = review
         self.revise_plans = revise_plans
-        self.plan_findings = plan_findings or []
+        # `None` is not `[]`: the default is one well-formed finding per refusal, and an
+        # explicit empty list is a test asking for the shape the flow now rejects.
+        self.plan_findings = plan_findings
         self.disposition = disposition
         self.failure_class = failure_class
         self.objective = objective
@@ -425,7 +439,12 @@ class _Agent:
         # `revise_plans` follows `_Ostler`'s convention: a count of *leading* refusals, for
         # the tests that need the reviewer to relent and let a plan through.
         disposition = "revise" if nth <= self.revise_plans else self.review
-        findings = self.plan_findings if disposition == "revise" else []
+        # A refusal carries a well-formed finding by default, because the real reviewer's
+        # contract now says it must: the flow raises on a `revise` that names nothing. A fake
+        # still free to emit the old prose-only shape would let a test pass over a path
+        # production rejects.
+        default = [_a_plan_finding(nth)] if self.plan_findings is None else self.plan_findings
+        findings = default if disposition == "revise" else []
         return {
             "disposition": disposition,
             "findings": findings,
@@ -785,10 +804,11 @@ def test_each_plan_turn_is_told_everything_the_reviewer_already_refused(
     briefs = [args["prior_plan_reviews"] for args in agent.args_for("plan-qa")]
     assert len(briefs) == 5, briefs
     assert briefs[0] == "", "the first draft has been refused nothing"
-    # Each later turn carries every refusal so far, oldest first and numbered by its pass.
-    assert briefs[1] == "1. (plan-review pass 1) review pass 1", briefs[1]
-    assert briefs[4].splitlines() == [
-        f"{index}. (plan-review pass {index}) review pass {index}" for index in range(1, 5)
+    # Each later turn carries every refusal so far, oldest first and numbered by its pass —
+    # each one the composed finding list, not the pass's prose summary.
+    assert briefs[1].startswith("1. (plan-review pass 1) R1 [plan] scenario "), briefs[1]
+    assert [line.split(")")[0] + ")" for line in briefs[4].splitlines() if line[:1].isdigit()] == [
+        f"{index}. (plan-review pass {index})" for index in range(1, 5)
     ], briefs[4]
 
 
@@ -892,8 +912,20 @@ def test_a_mixed_refusal_keeps_only_what_the_plan_can_fix(
         docs,
         revise_plans=1,
         plan_findings=[
-            {"id": "R1", "scope": "stack", "issue": "the auth emulator is not running"},
-            {"id": "R2", "scope": "plan", "issue": "AC-2's terminal assertion proves nothing"},
+            {
+                "id": "R1",
+                "scope": "stack",
+                "target": "scenario `sign-in`",
+                "issue": "the auth emulator is not running",
+                "repair": "start the emulator before the suite",
+            },
+            {
+                "id": "R2",
+                "scope": "plan",
+                "target": "scenario `create-document` / covers `AC-2`",
+                "issue": "AC-2's terminal assertion proves nothing",
+                "repair": "assert the row is present after the dialog closes",
+            },
         ],
     )
 
@@ -905,6 +937,62 @@ def test_a_mixed_refusal_keeps_only_what_the_plan_can_fix(
     assert "Outside the plan's authority" in brief, brief
     assert "the auth emulator is not running" in brief, brief
     assert okf.runs == 1
+
+
+def test_the_replan_brief_is_composed_from_the_findings_not_the_prose(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """What the author is told to fix is the finding list, rendered the same way every pass.
+
+    `notes` used to *be* the repair contract, so the author's brief varied with how discursive
+    that pass's reviewer felt — and a plan author handed a paragraph rewrites the plan. Each
+    finding now renders to one line naming its id, scope, target and repair; the reviewer's
+    summary survives, demoted to the last line.
+    """
+    ostler()
+    agent = _Agent(docs, revise_plans=1)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    brief = agent.args_for("plan-qa")[1]["plan_review_notes"]
+    assert "R1 [plan] scenario `create-document`: review pass 1. Repair: assert" in brief, brief
+    assert brief.splitlines()[-1] == "Summary: review pass 1", brief
+
+
+@pytest.mark.parametrize(
+    ("findings", "expected"),
+    [
+        pytest.param([], "no findings", id="a refusal that names nothing"),
+        pytest.param(
+            [{"id": "R1", "scope": "plan", "target": "scenario `x`", "issue": "thin"}],
+            "finding 1 missing repair",
+            id="a finding with no repair to make",
+        ),
+    ],
+)
+def test_a_refusal_the_author_cannot_act_on_fails_the_run(
+    findings: list[dict[str, str]],
+    expected: str,
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A `revise` is a bill; one that names nothing actionable is a reviewer that did not answer.
+
+    Sending it on would spend a `power="medium"` replan and a second `power="high"` review to
+    arrive at the same plan, which is the loop this contract exists to close. Failing loudly
+    puts the defect on the reviewer's prompt, where it can be fixed once.
+    """
+    ostler()
+    agent = _Agent(docs, revise_plans=1, plan_findings=findings)
+
+    with pytest.raises(WorkflowFailed, match=expected):
+        drive_flow(Qa(story=STORY), env(), agent)
 
 
 def test_three_review_revisions_leave_one_post_run_repair(
@@ -965,7 +1053,7 @@ def test_a_plan_loop_give_up_leaves_the_reviewers_finding_on_disk(
     # turn was told and did not comply, which is a different triage from four fresh findings.
     assert "Plan review — every refusal, in order" in text, text
     for index in range(1, 5):
-        assert f"**Pass {index}.** review pass {index}" in text, text
+        assert f"**Pass {index}.** R{index} [plan] scenario " in text, text
 
 
 def test_the_give_up_document_is_typed_like_any_other_spec_doc(tmp_path: Path) -> None:
