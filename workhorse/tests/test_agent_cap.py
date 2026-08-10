@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from _fakes import FakeBackend, FakeClock
+from workhorse import control, reload
 from workhorse.config_run import AgentResilience
 from workhorse.runner import caps, failure, ladder
 from workhorse.runner.failure import BackendInvocationError
@@ -424,6 +425,122 @@ def test_short_transient_uses_bounded_backoff_then_fails():
     except BackendInvocationError as e:
         assert "overloaded" in str(e)
     assert calls["n"] == 3, "initial + 2 retries"
+
+
+def _armed(*requests):
+    """Arm a scripted control channel for the duration of one turn."""
+    channel = control.FakeChannel(*requests)
+    control.arm(channel)
+    return channel
+
+
+def test_a_reload_ends_a_cap_wait_instead_of_sleeping_the_window_out():
+    """The wait this whole channel exists for. A weekly cap reopens days out, and an
+    operator who has already pushed the fix should not have to wait for the window."""
+    calls = {"n": 0}
+
+    def capped(prompt, node_id, sid, model, timeout=None, **kwargs):
+        calls["n"] += 1
+        raise BackendInvocationError(CAP_MSG, transient=True)
+
+    channel = _armed(control.Request(action="reload", core=True))
+    clock = FakeClock()
+    try:
+        _turn(capped, node_id="select_gate", clock=clock)
+        raise AssertionError("expected the cap wait to be cut by the reload")
+    except reload.ReloadRequested as exc:
+        assert exc.core is True, "the --core flag has to survive the wait it interrupted"
+    finally:
+        control.arm(None)
+
+    assert calls["n"] == 1, "the node must not be re-run — the reload unwinds it"
+    assert clock.slept == [], "the request arrives before the first tick is slept"
+    assert channel.replies == [{"ok": True, "cut": True}]
+
+
+def test_an_at_boundary_reload_does_not_shorten_the_cap_wait_it_arrives_in():
+    """Being delivered is not being honoured. A request the wait declines must leave the
+    window intact, or `--at-boundary` would cut a six-day cap short by arriving."""
+    calls = {"n": 0}
+
+    def capped(prompt, node_id, sid, model, timeout=None, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise BackendInvocationError(CAP_MSG, transient=True)
+        return "RESULT_OK"
+
+    channel = _armed(control.Request(action="reload", at_boundary=True))
+    clock = FakeClock()
+    try:
+        out = _turn(capped, node_id="select_gate", clock=clock)
+        # Held, not dropped: the state boundary is where an --at-boundary reload lands.
+        held = control.outstanding()
+    finally:
+        control.arm(None)
+
+    assert out == "RESULT_OK"
+    assert 0 < sum(clock.slept) <= 24 * 3600 + RESILIENCE.cap_wait_margin_s + 1
+    assert channel.replies == [{"ok": True, "cut": False}]
+    assert held is not None and held.at_boundary is True
+
+
+def test_an_action_this_run_does_not_know_is_answered_not_obeyed():
+    """A newer CLI talking to an older run must not be able to end its wait."""
+    calls = {"n": 0}
+
+    def capped(prompt, node_id, sid, model, timeout=None, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise BackendInvocationError(CAP_MSG, transient=True)
+        return "RESULT_OK"
+
+    channel = _armed(control.Request(action="teleport"))
+    clock = FakeClock()
+    try:
+        out = _turn(capped, node_id="select_gate", clock=clock)
+    finally:
+        control.arm(None)
+
+    assert out == "RESULT_OK"
+    assert sum(clock.slept) > 0, "an unknown action must not cut the wait short"
+    assert channel.replies and "error" in channel.replies[0]
+
+
+def test_a_reload_ends_a_transient_backoff_too():
+    """The other ticked wait. A backoff at its cap is half an hour of unreachability."""
+    def always_overloaded(prompt, node_id, sid, model, timeout=None, **kwargs):
+        raise BackendInvocationError("overloaded", transient=True)
+
+    _armed(control.Request(action="reload"))
+    clock = FakeClock()
+    try:
+        _turn(always_overloaded, clock=clock, max_invoke_retries=5)
+        raise AssertionError("expected the backoff to be cut by the reload")
+    except reload.ReloadRequested:
+        pass
+    finally:
+        control.arm(None)
+
+    assert clock.slept == []
+
+
+def test_an_unattached_run_sleeps_exactly_as_it_did_before_the_channel():
+    """The regression guard on the default. With nothing armed there is no fd to select
+    on, so a tick is one `clock.sleep` through the injected clock — which is what every
+    other cap assertion in this file depends on."""
+    calls = {"n": 0}
+
+    def capped(prompt, node_id, sid, model, timeout=None, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise BackendInvocationError(KEY_LIMIT_MSG, transient=True)
+        return "OK"
+
+    clock = FakeClock()
+    assert _turn(capped, node_id="resolve_epics", clock=clock) == "OK"
+    ticks = RESILIENCE.cap_default_wait_s / RESILIENCE.cap_tick_s
+    assert len(clock.slept) == int(ticks), clock.slept
+    assert sum(clock.slept) == RESILIENCE.cap_default_wait_s
 
 
 def test_non_transient_fails_immediately():

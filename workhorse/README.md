@@ -433,6 +433,16 @@ What the run then does:
    state wrote on entry — same process, same run dir, same root span, same wall-clock
    budget. Not a new run.
 
+**A run that is asleep is reachable too.** The recovery ladder's waits — a spending-cap
+window, a transient backoff at its 30-minute cap, the pause before a reframe — go through
+the same channel, so a reload ends them at once instead of at the end of a window that can
+be days out. Those are the waits an operator most wants to reach into (the cap is often
+*why* you are switching something), and until the channel existed they were exactly the
+ones nothing polled. A request the wait declines — `--at-boundary`, or an action this run
+does not know — leaves the window intact: it is answered and held, not obeyed, so being
+delivered can never shorten a six-day sleep. Nothing is cut in these cases, since there is
+no turn in flight; the ladder unwinds and the node re-enters on the pushed code.
+
 The checkpoint is written *before* the state runs, so nothing durable is lost. If the
 pushed code renamed or retyped a workflow field the checkpoint still holds, the run stops
 at that checkpoint with pydantic naming the field, which is the honest outcome of an

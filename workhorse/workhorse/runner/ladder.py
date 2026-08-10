@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from workhorse._vendor.stablemate_core.config import resolve_backend_default, resolve_power
-from workhorse import otel, reload
+from workhorse import control, otel, reload
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
 from workhorse.runner.caps import cap_delay_seconds, sleep_with_notice
@@ -349,7 +349,16 @@ class AgentRunner:
                     if budget is not None:
                         budget.consume("reframe", delay)
                     with otel.wait("reframe", node_id):
-                        self.clock.sleep(delay)
+                        interrupted = control.wait_until(
+                            None,
+                            timeout=delay,
+                            clock=self.clock,
+                            channel=control.armed(),
+                            tick=delay,
+                        )
+                    self._reenter_on(
+                        reload.cut_by(interrupted), node_id, "a reframe pause"
+                    )
                     rephrase += 1
                     continue
 
@@ -373,6 +382,22 @@ class AgentRunner:
                     error_kind=error_kind(exc),
                 )
                 raise
+
+    def _reenter_on(self, cut: control.Request | None, node_id: str, where: str) -> None:
+        """Unwind the ladder for a reload that ended one of its waits, or do nothing.
+
+        Every wait in here is a wait *between* turns, so there is nothing to cut and
+        nothing to unwind but the ladder itself — raising is how the node re-enters
+        against the code the operator just pushed. `cut` has already been through
+        `reload.cut_by`, the same policy the streaming loop applies, so a request that
+        is not a reload, or is an `--at-boundary` one, arrives here as None: answered,
+        held where it matters, and not a reason to stop waiting.
+        """
+        if cut is None:
+            return
+        print(f"[{node_id}] ⟳ reload requested during {where}", flush=True)
+        otel.turn_event("reload_wait_cut", node=node_id, wait=where)
+        raise reload.ReloadRequested(f"reload requested during {where}", core=cut.core)
 
     def _invoke_and_parse(
         self,
@@ -531,9 +556,20 @@ class AgentRunner:
                     )
                     budget.consume("cap", delay)
                     with otel.wait("cap", node_id):
-                        sleep_with_notice(
-                            delay, node_id, "cap reset", resilience=resilience, clock=self.clock
+                        interrupted = sleep_with_notice(
+                            delay,
+                            node_id,
+                            "cap reset",
+                            resilience=resilience,
+                            clock=self.clock,
+                            channel=control.armed(),
+                            honour=reload.cut_by,
                         )
+                    # The wait a reload most needs to be able to end. A weekly cap
+                    # reopens days out, and until the channel existed those were days
+                    # in which the run could not be reached at all — the fix was pushed
+                    # and then sat there until the window happened to close.
+                    self._reenter_on(interrupted, node_id, "a cap wait")
                     print(f"[{node_id}] ▶ cap wait elapsed — resuming node", flush=True)
                     continue
                 if short_attempt >= max_invoke_retries:
@@ -557,10 +593,13 @@ class AgentRunner:
                 # wedged turn. The same notice loop the cap wait uses proves liveness.
                 budget.consume("retry", delay)
                 with otel.wait("retry", node_id):
-                    sleep_with_notice(
+                    interrupted = sleep_with_notice(
                         delay,
                         node_id,
                         "transient failure",
                         resilience=resilience,
                         clock=self.clock,
+                        channel=control.armed(),
+                        honour=reload.cut_by,
                     )
+                self._reenter_on(interrupted, node_id, "a retry backoff")

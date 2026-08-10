@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import datetime, timedelta
 
 from workhorse import otel
 from workhorse.config_run import AgentResilience
+from workhorse.control import NULL_CHANNEL, ControlChannel, Request, wait_until
 from workhorse.runner.clock import Clock
 from workhorse.runner.failure import BackendInvocationError
 
@@ -77,17 +79,44 @@ def sleep_with_notice(
     *,
     resilience: AgentResilience,
     clock: Clock,
-) -> None:
+    channel: ControlChannel = NULL_CHANNEL,
+    honour: Callable[[Request], Request | None] = lambda request: request,
+) -> Request | None:
     """Sleep ``total_s`` seconds, printing a 'still paused' line every
     ``resilience.cap_tick_s``
     so a long, legitimate wait can't be mistaken for a hang. Each tick also emits
     the cap-wait heartbeat metric — the external liveness proof that lets a
-    collector tell a legitimate multi-day cap sleep from an actual hang."""
+    collector tell a legitimate multi-day cap sleep from an actual hang.
+
+    Returns the control request that cut the wait short, or None if it ran to term.
+    This is the longest wait in the engine — a weekly cap reopens days out — so it is
+    also the one an operator is most likely to want to reach into: to reload a fix, or
+    to move the run onto a CLI that is not capped. Waiting through the channel makes
+    that a wake-up rather than a message read whenever the window happened to close.
+
+    ``honour`` is how the caller says which requests are its business: it is handed each
+    request that arrives and returns the one to stop for, or None to keep waiting. The
+    default stops for anything, since a caller that passes no policy has none. What it
+    exists for is the request this wait must *not* end on — an `--at-boundary` reload, or
+    an action this run does not know — which would otherwise cut a multi-day cap window
+    short by simply having been delivered.
+
+    The slice handed to ``wait_until`` is the whole tick rather than its default second,
+    which is what keeps an unattached run's sleeping *identical* to what it was: with no
+    channel there is nothing to select on, so a tick is one ``clock.sleep(chunk)``.
+    """
     remaining = total_s
     otel.heartbeat(node_id, remaining)
     while remaining > 0:
         chunk = min(remaining, resilience.cap_tick_s)
-        clock.sleep(chunk)
+        request = wait_until(None, timeout=chunk, clock=clock, channel=channel, tick=chunk)
+        if request is not None:
+            honoured = honour(request)
+            if honoured is not None:
+                return honoured
+            # Declined: re-enter the tick rather than counting it as elapsed. The message
+            # has been answered and, where it matters, held for the state boundary.
+            continue
         remaining -= chunk
         otel.heartbeat(node_id, remaining)
         if remaining > 0:
