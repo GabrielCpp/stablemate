@@ -446,7 +446,10 @@ artifacts section), so it survives even with telemetry off. Each of its lines al
 carries the visit key (`generation`, `seq`), the epoch `ts`, the `backend` whose
 vocabulary the session id is in, and the `head` the tree was on — so a node visited five
 times in a loop yields five addressable rows rather than five rows that only say *this
-node, some session*.
+node, some session*. That same key names the visit's directory under the run's `turns/`,
+where its rendered prompt and its output are kept — `<node-id>/` holds only the latest
+visit, and the prompt that produced lap 2 is otherwise gone by the time lap 5 is the one
+in trouble.
 
 | Variable | Default | Description |
 |----------|---------|-------------|

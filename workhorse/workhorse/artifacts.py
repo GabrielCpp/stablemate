@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from workhorse import gitstate, otel
+from workhorse import gitstate, otel, turnkey
 from workhorse.records import (
     Checkpoint,
     NodeEvent,
@@ -82,6 +82,10 @@ class ArtifactWriter:
     # Unlike checkpoint.json (overwritten every step), this preserves the full
     # node-visit history so spend/output can be attributed to individual nodes.
     EVENTS_FILE = "events.jsonl"
+    # Per-visit copies of what a node was given and what it answered. One directory per
+    # agent-node visit, named by the visit key, so lap 5's prompt still exists when lap 5
+    # turns out to be the one that went wrong.
+    TURNS_DIR = "turns"
 
     def __init__(self, workflow_name: str, runs_dir: Path, run_id: str | None = None) -> None:
         # A fixed run_id (e.g. the program name, used by --auto) gives a single
@@ -90,6 +94,7 @@ class ArtifactWriter:
         if run_id is None:
             run_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4]
         self.run_dir = runs_dir / f"{workflow_name}-{run_id}"
+        self._turns_root = self.run_dir
         _clear_stale_run(self.run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self._started_at = datetime.now(timezone.utc).isoformat()
@@ -119,6 +124,7 @@ class ArtifactWriter:
         creating a new run or clobbering its step artifacts."""
         self = cls.__new__(cls)
         self.run_dir = run_dir
+        self._turns_root = run_dir
         try:
             record = parse_run_record((run_dir / "run.json").read_text())
         # As with the checkpoint below: a missing file and an unparseable one are the two
@@ -164,6 +170,7 @@ class ArtifactWriter:
         """
         self = cls.__new__(cls)
         self.run_dir = run_dir
+        self._turns_root = run_dir
         _clear_stale_run(run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self._started_at = datetime.now(timezone.utc).isoformat()
@@ -190,8 +197,14 @@ class ArtifactWriter:
         lets a flow inside a loop run again each iteration."""
         sub_dir = self.run_dir / node_id / "_flow"
         if resume and (sub_dir / self.CHECKPOINT_FILE).exists():
-            return ArtifactWriter.resume(sub_dir)
-        return ArtifactWriter.at(sub_dir, flow_name, node_id)
+            child = ArtifactWriter.resume(sub_dir)
+        else:
+            child = ArtifactWriter.at(sub_dir, flow_name, node_id)
+        # The visit archive stays at the top of the run, because re-entering this scope
+        # empties it (see :meth:`at`) — a per-story flow would otherwise delete the
+        # previous story's visits, which are the ones being kept for later.
+        child._turns_root = self._turns_root
+        return child
 
     def write_state_checkpoint(
         self,
@@ -358,6 +371,56 @@ class ArtifactWriter:
             return None
         return parse_checkpoint(path.read_text())
 
+    @staticmethod
+    def _write_unlinked(path: Path, text: str) -> None:
+        """Replace ``path``'s contents without writing through any link to it.
+
+        The visit archive hardlinks these files, so a plain ``write_text`` would truncate
+        the previous visit's kept copy through the shared inode — every archived prompt
+        would end up holding the latest visit's text, which is the exact loss the archive
+        exists to prevent.
+        """
+        path.unlink(missing_ok=True)
+        path.write_text(text)
+
+    def visit_dir(self, node_id: str) -> Path | None:
+        """Where this visit of ``node_id`` keeps its own copy, or None when there is no
+        visit to name.
+
+        Guarded on the node because :mod:`workhorse.turnkey` names *agent* visits: a
+        plain call node writing a step while the last agent visit is still the current
+        key would otherwise file its output under that other node's visit.
+        """
+        key = turnkey.current()
+        if key is None or key.node != node_id:
+            return None
+        return self._turns_root / self.TURNS_DIR / key.slug
+
+    def _keep_visit_copy(self, node_id: str, written: list[Path]) -> None:
+        """Copy this visit's artifacts into ``turns/<visit>/``.
+
+        Hardlinked where the filesystem allows, so the second copy of a megabyte of
+        rendered prompt usually costs an inode. The per-node directory these come from
+        keeps its meaning of *latest visit* and its readers — this is additive.
+
+        Best-effort throughout: keeping a record of a node must never be the thing that
+        fails the node.
+        """
+        target = self.visit_dir(node_id)
+        if target is None:
+            return
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+            for src in written:
+                dst = target / src.name
+                dst.unlink(missing_ok=True)
+                try:
+                    os.link(src, dst)
+                except OSError:
+                    shutil.copyfile(src, dst)
+        except OSError:
+            pass
+
     def write_step(
         self,
         node_id: str,
@@ -368,9 +431,13 @@ class ArtifactWriter:
     ) -> None:
         step_dir = self.run_dir / node_id
         step_dir.mkdir(exist_ok=True)
-        (step_dir / "prompt.md").write_text(prompt)
-        (step_dir / "output.json").write_text(json.dumps(output, indent=2))
-        (step_dir / "context_after.json").write_text(json.dumps(context_after, indent=2))
+        self._write_unlinked(step_dir / "prompt.md", prompt)
+        self._write_unlinked(step_dir / "output.json", json.dumps(output, indent=2))
+        self._write_unlinked(step_dir / "context_after.json", json.dumps(context_after, indent=2))
+        self._keep_visit_copy(
+            node_id,
+            [step_dir / "prompt.md", step_dir / "output.json", step_dir / "context_after.json"],
+        )
         self._write_done(node_id, next_node)
 
     def write_branch(
@@ -382,9 +449,11 @@ class ArtifactWriter:
     ) -> None:
         step_dir = self.run_dir / node_id
         step_dir.mkdir(exist_ok=True)
-        (step_dir / "branch.json").write_text(
-            json.dumps({"path": path, "value": value, "next": next_node}, indent=2)
+        self._write_unlinked(
+            step_dir / "branch.json",
+            json.dumps({"path": path, "value": value, "next": next_node}, indent=2),
         )
+        self._keep_visit_copy(node_id, [step_dir / "branch.json"])
         self._write_done(node_id, next_node)
 
     def record_interrupt(self, node_id: str, error: str) -> None:

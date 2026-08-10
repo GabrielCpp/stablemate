@@ -34,6 +34,9 @@ gets its own nested instance of this same layout, rooted under the calling node'
     ├── sessions.jsonl         # append-only node → backend session id map, one line per turn
     ├── resume_generation      # how many times this run dir has been started (telemetry writes it)
     ├── turn_seq               # the run's monotone agent-node visit counter
+    ├── turns/                 # one subdirectory per agent-node VISIT, never overwritten
+    │   └── <gen>-<seq>-<node>/  # that visit's own prompt.md / output.json /
+    │                            # context_after.json / branch.json
     └── <node-id>/             # one subdirectory per node visited
         ├── prompt.md          # what was sent/run for this node
         ├── output.json        # the node's recorded return value
@@ -47,7 +50,8 @@ A `<node-id>` is the node function's registered name for a `self.call`, the prom
 **stem** for a `self.agent`, and the child workflow's class name for a `self.handoff`. A node
 visited more than once (a loop, or a state re-entered after a resume) overwrites its directory's
 contents on each visit — only the latest visit's artifacts survive, except `events.jsonl` and
-`sessions.jsonl`, which accumulate one line per visit.
+`sessions.jsonl`, which accumulate one line per visit, and `turns/`, which keeps a copy of each
+visit (see below).
 
 Because pyflow re-enters a checkpointed state **from the top**, a resumed run re-runs whatever that
 state had already done inside itself, rewriting those node directories. That is the coarse-resume
@@ -227,6 +231,27 @@ write failure is swallowed. Each line:
 
 Every key beyond the first two is optional on read: lines written before they existed still parse,
 and a consumer treats an absent key as *not recorded*, never as a default.
+
+### turns/
+- type: `directory` — required: no — default: absent until the first agent node completes
+
+One subdirectory per agent-node **visit**, named `<generation>-<seq>-<node>` — the same visit key
+`sessions.jsonl` carries, which is what lets a reader assemble one visit's prompt, its output and
+its transcript from three writers that cannot see each other. Each holds that visit's own copy of
+the `prompt.md` / `output.json` / `context_after.json` (or `branch.json`) described below.
+
+This is **additive**: `<node-id>/` keeps its meaning of *latest visit* and all of its readers,
+including resume. The copies are hardlinked where the filesystem allows, so a second copy of a
+megabyte of rendered prompt usually costs an inode; a file rewritten by a later visit is unlinked
+first, so the earlier visit's copy is never truncated through the shared inode.
+
+Only visits the engine opened are filed — a `self.call` node writing a step while some earlier
+agent visit is still current is not filed under that visit's key. Best-effort throughout: a
+`turns/` path that cannot be written costs the copy, never the node.
+
+Named by the visit rather than the node, the directory keeps growing with the run; unlike the
+per-node directories it is bounded only by how many turns the run spends. A long run's `turns/`
+tree is therefore the largest thing in the run dir.
 
 ### `<node-id>/prompt.md`
 - type: `string` (plain text) — required: no — default: absent

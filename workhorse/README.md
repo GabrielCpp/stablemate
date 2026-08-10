@@ -528,7 +528,9 @@ runs/
     ├── run.json                  # start/end time, terminal state, interrupt stamp
     ├── context.json              # final context snapshot
     ├── sessions.jsonl            # one line per agent turn: the node, its visit key, and its CLI session
-    └── <step-id>/
+    ├── turns/                    # one directory per agent-node visit, keyed <gen>-<seq>-<node>,
+    │                             # holding that visit's own copy of the files below
+    └── <step-id>/                # the LATEST visit of this step
         ├── prompt.md             # rendered prompt, written before agent invocation
         ├── output.json           # extracted JSON outputs
         └── context_after.json    # context state after this step
@@ -536,7 +538,10 @@ runs/
 
 Artifacts are written under `--runs-dir` (default `<cwd>/.agents/runs`). Before
 each agent turn, workhorse writes the rendered `prompt.md` and logs only that path
-so failed or interrupted nodes remain inspectable without dumping variables. The
+so failed or interrupted nodes remain inspectable without dumping variables. A
+`<step-id>/` directory is overwritten on every visit, so a node in a loop leaves only
+its last prompt there; `turns/` keeps the earlier ones, which are what a node that
+re-decided the same thing five times has to be diagnosed from. The
 Docker harness redirects artifacts to a persistent volume instead — see
 [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
 
