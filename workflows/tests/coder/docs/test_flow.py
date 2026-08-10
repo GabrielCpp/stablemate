@@ -154,7 +154,9 @@ class _Agent:
 
     `author_status`/`author_nodes` are the claim the gate checks — `nodes_after` is the pass
     from which the author starts naming what it touched, which is how a gate failure and its
-    recovery are separable. `review_status` is the reviewer's verdict, `approve_after` the
+    recovery are separable; `nodes_until` is the pass after which it stops naming any, which
+    is the honest repair lap that found nothing left to edit. `review_status` is the
+    reviewer's verdict, `approve_after` the
     pass it stops asking for revisions on.
 
     `findings_per_pass` varies the reviewer's worklist across passes — the axis a
@@ -169,6 +171,7 @@ class _Agent:
         author_status: str = "documented",
         author_nodes: tuple[str, ...] = ("docs/features/widget.md",),
         nodes_after: int = 1,
+        nodes_until: int | None = None,
         review_status: str = "approved",
         approve_after: int = 1,
         structured_findings: bool = True,
@@ -180,6 +183,7 @@ class _Agent:
         self.author_status = author_status
         self.author_nodes = author_nodes
         self.nodes_after = nodes_after
+        self.nodes_until = nodes_until
         self.review_status = review_status
         self.approve_after = approve_after
         self.structured_findings = structured_findings
@@ -222,9 +226,10 @@ class _Agent:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s in self.AUTHOR_STEMS]
 
     def _document_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        named = nth >= self.nodes_after and (self.nodes_until is None or nth <= self.nodes_until)
         return {
             "status": self.author_status,
-            "nodes": list(self.author_nodes) if nth >= self.nodes_after else [],
+            "nodes": list(self.author_nodes) if named else [],
             "notes": f"documented on pass {nth}",
         }
 
@@ -471,6 +476,32 @@ def test_a_documented_claim_naming_no_nodes_is_sent_back(
     assert agent.counts()["review-story-documentation"] == 1, agent.counts()
     # And the second author pass was told exactly what was wrong with the first.
     assert "did not identify affected OKF nodes" in agent.author_args()[1]["gate_notes"]
+
+
+def test_a_repair_lap_with_nothing_left_to_edit_keeps_the_nodes_already_named(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The nodes accumulate across passes; the last pass does not replace them.
+
+    `repair`'s brief is "edit the nodes these findings cite", so a lap that correctly
+    concludes the finding needs no edit — the symbol was deleted, or is grounded elsewhere
+    already — answers `documented` with an empty node list. Scoring the gate on that one
+    lap read it as an author that had named nothing and failed the story on a check meant
+    for an author that never spoke, discarding every earlier pass's work.
+    """
+    agent = _Agent(nodes_until=1, approve_after=2)
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.authored() == 2, agent.counts()
+    # The second pass named nothing and the gate still passed it, so the reviewer ran twice
+    # rather than the flow reworking on a check the repair could never satisfy.
+    assert agent.counts()["review-story-documentation"] == 2, agent.counts()
+    assert "did not identify affected OKF nodes" not in agent.author_args()[1]["gate_notes"]
 
 
 def test_the_grounding_failure_names_the_symbols_not_the_files(

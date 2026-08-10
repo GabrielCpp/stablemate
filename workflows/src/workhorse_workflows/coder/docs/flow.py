@@ -189,6 +189,7 @@ class Docs(Workflow):
         progress: DocsProgress | None = None,
         obligations: tuple[str, ...] = (),
         delta_refs: tuple[str, ...] = (),
+        authored_nodes: tuple[str, ...] = (),
     ) -> Continue | Done:
         """Write the story into the book — the one agent turn this flow spends per pass.
 
@@ -253,6 +254,7 @@ class Docs(Workflow):
         progress: DocsProgress | None = None,
         obligations: tuple[str, ...] = (),
         delta_refs: tuple[str, ...] = (),
+        authored_nodes: tuple[str, ...] = (),
     ) -> Continue | Done:
         """Edit the nodes the findings cite, and leave every other node alone.
 
@@ -286,6 +288,7 @@ class Docs(Workflow):
             review_notes=review_notes,
             progress=progress,
             delta_refs=delta_refs,
+            authored_nodes=authored_nodes,
         )
 
     def _author_args(
@@ -317,8 +320,19 @@ class Docs(Workflow):
         review_notes: str,
         progress: DocsProgress | None,
         delta_refs: tuple[str, ...],
+        authored_nodes: tuple[str, ...] = (),
     ) -> Continue | Done:
-        """The tail both author turns share: the contract on the answer, then the gate."""
+        """The tail both author turns share: the contract on the answer, then the gate.
+
+        The nodes accumulate across passes rather than being replaced by the last one's.
+        `repair`'s brief is "edit the nodes these findings cite", so a lap that correctly
+        concludes the finding needs no edit — the cited symbol was deleted, or is already
+        grounded elsewhere — honestly returns `documented` with an empty node list. Scoring
+        the gate on that one lap read it as an author that had named nothing and failed the
+        story on a check meant for an author that never spoke. That is what ended a real
+        run: four grounding passes of work discarded on the pass that had nothing left to
+        do.
+        """
         if result.status == "blocked":
             self.logger.info(
                 "documentation author blocked on %s: %s", self.ctx.story_slug, result.notes
@@ -338,6 +352,7 @@ class Docs(Workflow):
             review_notes=review_notes,
             progress=progress,
             delta_refs=delta_refs,
+            authored_nodes=tuple(dict.fromkeys((*authored_nodes, *result.nodes))),
         )
 
     def verify(
@@ -349,6 +364,7 @@ class Docs(Workflow):
         review_rework: int = 0,
         progress: DocsProgress | None = None,
         delta_refs: tuple[str, ...] = (),
+        authored_nodes: tuple[str, ...] = (),
     ) -> Continue:
         """Check the claim against the diff before any reviewer reads a word of it.
 
@@ -395,7 +411,10 @@ class Docs(Workflow):
             build_status,
             validate_status,
             classification.mode,
-            tuple(author.nodes),
+            # Every node any pass named, not only this one's — see `_authored`. The `or`
+            # is for a checkpoint written before this parameter existed, whose resume
+            # arrives here with nothing accumulated.
+            authored_nodes or tuple(author.nodes),
             preexisting=tuple(self.preexisting),
         )
         progress = (progress or DocsProgress()).after_gate(gate)
@@ -410,6 +429,7 @@ class Docs(Workflow):
                 review_notes=review_notes,
                 progress=progress,
                 delta_refs=delta_refs,
+                authored_nodes=authored_nodes,
             )
         if rework >= self.MAX_REWORKS:
             raise WorkflowFailed(
@@ -429,6 +449,7 @@ class Docs(Workflow):
                 failure[2:] for failure in gate.failures if failure.startswith("G:")
             ),
             delta_refs=delta_refs,
+            authored_nodes=authored_nodes,
         )
 
     def review(
@@ -440,6 +461,7 @@ class Docs(Workflow):
         review_rework: int = 0,
         progress: DocsProgress | None = None,
         delta_refs: tuple[str, ...] = (),
+        authored_nodes: tuple[str, ...] = (),
     ) -> Continue | Done:
         """An independent read of what was written, downstream of a gate it cannot bypass.
 
@@ -514,6 +536,7 @@ class Docs(Workflow):
         return self._rework(
             result, rework, review_rework + 1, gate_notes, notes, progress,
             delta_refs=delta_refs,
+            authored_nodes=authored_nodes,
         )
 
     def _rework(
@@ -526,6 +549,7 @@ class Docs(Workflow):
         progress: DocsProgress | None = None,
         obligations: tuple[str, ...] = (),
         delta_refs: tuple[str, ...] = (),
+        authored_nodes: tuple[str, ...] = (),
     ) -> Continue:
         """`guard_documentation`'s other half: send the author back with what it must fix.
 
@@ -557,6 +581,7 @@ class Docs(Workflow):
             progress=progress,
             obligations=obligations,
             delta_refs=delta_refs,
+            authored_nodes=authored_nodes,
         )
 
     def _obligations(self, classification: ContextClassification) -> DocumentationObligations:
