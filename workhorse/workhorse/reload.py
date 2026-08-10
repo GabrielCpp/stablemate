@@ -69,7 +69,17 @@ def cut_requested() -> Request | None:
     `--at-boundary` reload is acknowledged and *held* for the state boundary — taking it
     off the socket consumed it, so declining to act on it means remembering it.
     """
-    request = control.take()
+    return cut_by(control.take())
+
+
+def cut_by(request: Request | None) -> Request | None:
+    """The same policy, for a request some other wait already took off the channel.
+
+    A cap wait sleeps for days and wakes on a message, so it holds the request rather
+    than the channel by the time a decision is due. Splitting the judgement from the
+    taking is what keeps that site and the stream loop deciding identically instead of
+    growing a second, quietly divergent copy of this.
+    """
     if request is None:
         return None
     if request.action != ACTION:
@@ -106,5 +116,6 @@ __all__ = [
     "RELOAD_EXIT_CODE",
     "ReloadRequested",
     "boundary_requested",
+    "cut_by",
     "cut_requested",
 ]
