@@ -168,7 +168,7 @@ standard usage/error path.
   - Parser failures exit with status 2 before the command handler runs.
 
 ### transcript
-- usage: `groom transcript {ls|show|harvest|backfill} [...]`
+- usage: `groom transcript {ls|show|harvest|export|backfill} [...]`
 - parent: [groom](#groom)
 - flags:
   - `ls [--run RUN] [--node NODE] [--session SESSION] [--workflow WORKFLOW] [--limit N] [--json]`
@@ -181,6 +181,13 @@ standard usage/error path.
       path is what a pager or a replay needs.
   - `harvest`
     - Runs the copy pass immediately instead of waiting for the periodic tick.
+  - `export --by-node DIR [--workflow W] [--run RUN] [--node NODE] [--limit N]`
+    - Materializes the archive as `DIR/<workflow>/<node>/<source>__<session_id>.json`
+      plus `DIR/INDEX.json`, one JSON object per session (`task`, `source`,
+      `session_id`, `cwd`, `model`, `time_created`, `n_messages`, `messages[]`).
+      `--by-node` is required and has no default: the export is a view, and where it
+      lands is the caller's decision. `task` is the node from the index join, so
+      classification is exact and no session is unclassified.
   - `backfill [--dry-run]`
     - Archives turns whose transcript never reached the run dir but is still in the
       agent CLI's own session store, joined on the session ids in each known run's
@@ -196,6 +203,10 @@ standard usage/error path.
   - Run dirs that look throwaway (`pytest-of-`, a `tempfile.mkdtemp` name under a
     temp root) are excluded from the inventory and never archived, and a run dir
     this host no longer has is skipped rather than reported as a failure.
+  - `export` streams one session at a time and never holds the corpus — or a single
+    transcript — in memory, and duplicates nothing in the archive. Workflow and node
+    names are sanitized into single path components, so neither can write outside
+    `--by-node`.
 - code: groom/groom/cli.py::transcript_ls
 - detail: [the turn record](../../../groom/README.md#what-the-node-actually-said-groom-transcript)
 - errors:

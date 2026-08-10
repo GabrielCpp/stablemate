@@ -527,6 +527,24 @@ def transcript_backfill(dry_run: bool = False) -> None:
         print(f"  … and {len(planned) - 20} more")
 
 
+def transcript_export(
+    target: str, workflow: str = "", run: str = "", node: str = "", limit: int = 1_000_000,
+) -> None:
+    """Materialize the archive as a by-node dataset under a directory the caller names.
+
+    A view, not a move: nothing leaves the archive, and the export can be thrown away and
+    taken again after the next harvest.
+    """
+    from pathlib import Path
+
+    from groom import export
+
+    result = export.export_by_node(
+        Path(target), workflow=workflow, run=run, node=node, limit=limit
+    )
+    print(f"exported {result['sessions']} session(s) into {result['dir']}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="groom", description="Local dashboard for workhorse operator gates.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -628,6 +646,26 @@ def main(argv: list[str] | None = None) -> None:
         "for the periodic tick."
     )
 
+    ts_export = transcript_verbs.add_parser(
+        "export",
+        help="Write the archive out as <workflow>/<node>/<source>__<session>.json plus "
+        "INDEX.json, for evaluating a prompt against every session that ran that node.",
+    )
+    ts_export.add_argument(
+        "--by-node",
+        dest="by_node",
+        required=True,
+        metavar="DIR",
+        help="Directory to materialize the dataset into. No default: the export is a "
+        "view, and where it lands is the caller's decision.",
+    )
+    ts_export.add_argument("--workflow", default="", help="Limit to one workflow name.")
+    ts_export.add_argument("--run", default="", help="Limit to one run_id.")
+    ts_export.add_argument("--node", default="", help="Limit to one node id.")
+    ts_export.add_argument(
+        "--limit", type=int, default=1_000_000, help="Max sessions exported."
+    )
+
     ts_backfill = transcript_verbs.add_parser(
         "backfill",
         help="Archive turns whose transcript never reached the run dir but is still in "
@@ -683,6 +721,11 @@ def main(argv: list[str] | None = None) -> None:
             transcript_show(session=args.session, as_json=args.as_json)
         elif args.verb == "harvest":
             transcript_harvest()
+        elif args.verb == "export":
+            transcript_export(
+                target=args.by_node, workflow=args.workflow,
+                run=args.run, node=args.node, limit=args.limit,
+            )
         elif args.verb == "backfill":
             transcript_backfill(dry_run=args.dry_run)
     elif args.command == "db-path":

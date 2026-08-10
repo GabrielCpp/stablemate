@@ -367,6 +367,29 @@ groom transcript backfill --dry-run       # what the CLI still holds that the ar
 `show` prints paths rather than the transcript: a record runs to tens of megabytes,
 and what a reader wants from here is somewhere to point a pager or a replay.
 
+**Testing an improved prompt** needs the archive transposed: not one run's laps, but
+every session that ever ran that node, together. `export` materializes that view into a
+directory you name:
+
+```bash
+groom transcript export --by-node DIR            # everything
+groom transcript export --by-node DIR --node plan-qa --workflow coder
+```
+
+```
+DIR/<workflow>/<node>/<source>__<session_id>.json
+DIR/INDEX.json
+```
+
+Each file is one session — `task`, `source`, `session_id`, `cwd`, `model`,
+`time_created`, `n_messages`, `messages[]` — streamed a line at a time, because the
+corpus does not fit in memory and neither does some of its individual sessions. `task`
+is the node, taken from the index join that `sessions.jsonl` made possible, so
+classification is **exact**: there is no heading regex and no unclassified bucket. The
+export is a view and duplicates nothing in the archive — throw it away and take it again
+after the next harvest. There is no default output directory: where a dataset lands is
+the caller's decision, not groom's.
+
 The archive rides its **own clock**. `GROOM_TRANSCRIPT_RETENTION_DAYS` defaults to
 `0`, meaning keep everything, because a transcript is wanted precisely when someone
 comes back to a run long after its spans aged out. `GROOM_HARVEST_EVERY_S` (default
