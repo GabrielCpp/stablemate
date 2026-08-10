@@ -22,8 +22,11 @@ from farrier._vendor.stablemate_core.config import (
     write_stablemate_dir,
 )
 from farrier.frontmatter import (
+    LOCAL_INSTRUCTION_FILES,
     banner_sources,
     frontmatter_metadata,
+    mapping_filename,
+    mapping_prompt_names,
     mapping_skill_names,
     read_yaml,
 )
@@ -192,20 +195,17 @@ def find_agents_config(start: Path) -> Path | None:
     return None
 
 
-#: Filenames farrier generates by aggregating skills into one always-loaded file
-#: (localInstructions). Only these resolve through the repo's live agents.yml.
-_LOCAL_INSTRUCTION_FILES = ("CLAUDE.md", "AGENTS.md", "CODEX.md")
-
-
 def mapped_instruction_sources(generated: Path) -> list[str] | None:
     """Resolve a generated local-instruction file via its repo's agents.yml.
 
     The file's HTML banner is a generation-time snapshot; `agents.yml →
     localInstructions` is the live mapping and may have been edited since. So
     resolution walks up to the repo's agents.yml, finds the mapping targeting
-    this file's directory, and turns its installed skill names into library
-    source paths with the same selection/prefix machinery install uses. When
-    several mappings target the directory the last one wins, mirroring install.
+    this file's directory, and turns its installed skill and prompt names into
+    library source paths with the same selection/prefix machinery install uses.
+    A mapping that names a `filename` only claims that one file, so two mappings
+    may share a directory; among those that do claim it, the last one wins,
+    mirroring install.
 
     Returns library-relative source paths; None when the file is not a local
     instruction file or no agents.yml exists above it (caller may fall back to
@@ -213,7 +213,7 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
     the file is stale, and pointing at its old sources would invite edits that
     the next install silently discards.
     """
-    if generated.name not in _LOCAL_INSTRUCTION_FILES:
+    if generated.name not in LOCAL_INSTRUCTION_FILES:
         return None
     config_path = find_agents_config(generated.parent)
     if config_path is None:
@@ -222,11 +222,16 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
     config = read_yaml(config_path)
     directory = generated.parent
     skill_names: list[str] = []
+    prompt_names: list[str] = []
     for mapping in config.get("localInstructions", []) or []:
+        filename = mapping_filename(mapping)
+        if filename is not None and filename != generated.name:
+            continue
         for rel in mapping.get("paths", []) or []:
             if (repo / rel).resolve() == directory:
                 skill_names = mapping_skill_names(mapping)
-    if not skill_names:
+                prompt_names = mapping_prompt_names(mapping)
+    if not skill_names and not prompt_names:
         raise SystemExit(
             f"error: {generated} is not mapped by {config_path} → "
             "localInstructions — the mapping was removed or moved, so this file "
@@ -235,16 +240,23 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
         )
     repo_config = config.get("repo") or {}
     prefix = repo_prefix(repo)
-    include_skills, _, _, _ = collect_selection(config)
+    include_skills, include_prompts, _, _ = collect_selection(config)
     exclude = config.get("exclude") or {}
     skills = selected_sources(
         load_layered_sources("skill", "library", "skills"),
         include_skills,
         set(exclude.get("skills", []) or []),
     )
-    renderer = Renderer(repo, prefix, repo_config, {}, skills, [])
+    prompts = selected_sources(
+        load_layered_sources("prompt", "library", "prompts"),
+        include_prompts,
+        set(exclude.get("prompts", []) or []),
+    )
+    renderer = Renderer(repo, prefix, repo_config, {}, skills, prompts)
     return [
         library_source_path(renderer.skill_source(name)) for name in skill_names
+    ] + [
+        library_source_path(renderer.prompt_source(name)) for name in prompt_names
     ]
 
 
@@ -276,7 +288,7 @@ def _run_source(args: argparse.Namespace) -> int:
         rel_sources = mapped_instruction_sources(generated)
         if rel_sources is None:
             rel_sources = banner_sources(text)
-            if rel_sources and generated.name in _LOCAL_INSTRUCTION_FILES:
+            if rel_sources and generated.name in LOCAL_INSTRUCTION_FILES:
                 print(
                     f"note: no agents.yml found above {args.file}; resolving from "
                     "the file's banner, which may be stale.",

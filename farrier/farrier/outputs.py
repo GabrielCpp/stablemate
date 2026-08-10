@@ -10,7 +10,11 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from farrier.frontmatter import mapping_skill_names
+from farrier.frontmatter import (
+    mapping_filename,
+    mapping_prompt_names,
+    mapping_skill_names,
+)
 from farrier.launcher import (
     LAUNCHER_AGENTS_MK,
     LAUNCHER_COMPOSE,
@@ -183,6 +187,13 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
 
     for mapping in config.get("localInstructions", []) or []:
         skill_names = mapping_skill_names(mapping)
+        prompt_names = mapping_prompt_names(mapping)
+        if not skill_names and not prompt_names:
+            raise SystemExit(
+                "A localInstructions entry must select at least one source "
+                "(`skill`/`skills` and/or `prompt`/`prompts`)"
+            )
+        filename = mapping_filename(mapping)
         # `includeReadme` controls how a sibling README.md is folded in:
         #   inline (default) — copy the rendered README body into the file
         #   import           — reference it via Claude's `@README.md` directive
@@ -206,16 +217,21 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
                     f"Local instruction path does not exist: {rel} "
                     "(create it first — e.g. `farrier scaffold <id>`)"
                 )
-            if agents.get("codex"):
-                for filename in ["AGENTS.md", "CODEX.md"]:
-                    output_path = directory / filename
-                    outputs[output_path] = renderer.render_local_instruction(
-                        skill_names, "codex", output_path, readme_mode
-                    )
-            if agents.get("claude"):
-                output_path = directory / "CLAUDE.md"
+            # A `filename` names the one file to write, whatever the adapters
+            # are; the target still follows the adapter, since it decides the
+            # banner and whether `@`-imports are available.
+            if filename:
+                targets = {filename: "claude" if agents.get("claude") else "codex"}
+            else:
+                targets = {}
+                if agents.get("codex"):
+                    targets |= {"AGENTS.md": "codex", "CODEX.md": "codex"}
+                if agents.get("claude"):
+                    targets["CLAUDE.md"] = "claude"
+            for name, target in targets.items():
+                output_path = directory / name
                 outputs[output_path] = renderer.render_local_instruction(
-                    skill_names, "claude", output_path, readme_mode
+                    skill_names, target, output_path, readme_mode, prompt_names
                 )
 
     return outputs

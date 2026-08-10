@@ -693,11 +693,21 @@ class Renderer:
         target: str,
         output_path: Path,
         readme_mode: str = "inline",
+        prompt_names: list[str] | None = None,
     ) -> str:
+        """The aggregated always-loaded file for one localInstructions mapping.
+
+        Skills first, in listed order, then prompts — each body stripped of its
+        front matter and joined by a `---` rule. A prompt is included for the
+        repos that want a procedure always in context rather than invoked as a
+        slash command; it is the same library file the command renders from, so
+        neither copy drifts.
+        """
         parts: list[str] = []
         sources: list[Source] = []
-        for skill_name in skill_names:
-            source = self.skill_source(skill_name)
+        selected = [self.skill_source(name) for name in skill_names]
+        selected += [self.prompt_source(name) for name in prompt_names or []]
+        for source in selected:
             sources.append(source)
             _, body = split_front_matter(source.path.read_text(encoding="utf-8"))
             part = self.render_templates(body, target, output_path).strip()

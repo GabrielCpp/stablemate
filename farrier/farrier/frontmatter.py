@@ -81,16 +81,61 @@ def banner_sources(text: str) -> list[str]:
     return out
 
 
+#: Filenames farrier generates by aggregating library sources into one always-loaded
+#: file (localInstructions), and the only names a `filename:` may pick from. The set is
+#: closed because `farrier source` resolves a generated instruction file back through
+#: agents.yml by its name — a name outside it would be unresolvable.
+LOCAL_INSTRUCTION_FILES = ("CLAUDE.md", "AGENTS.md", "CODEX.md")
+
+
 def mapping_skill_names(mapping: dict[str, Any]) -> list[str]:
     """The installed skill names a localInstructions mapping selects.
 
     A mapping names a single skill (`skill: foo`) or several (`skills: [foo,
     bar]`); multiple skills are aggregated into one generated file, separated by
-    a `---` markdown rule, in listed order.
+    a `---` markdown rule, in listed order. Empty when the mapping selects
+    prompts only.
     """
     if mapping.get("skills"):
         return [str(name) for name in mapping["skills"]]
-    return [str(mapping["skill"])]
+    if mapping.get("skill"):
+        return [str(mapping["skill"])]
+    return []
+
+
+def mapping_prompt_names(mapping: dict[str, Any]) -> list[str]:
+    """The installed prompt names a localInstructions mapping selects.
+
+    The prompt analogue of ``mapping_skill_names``: a procedure a repo wants
+    always loaded rather than invoked as a slash command is written once as a
+    library prompt and aggregated here, after the mapping's skills, so the same
+    text is not maintained per repo. Empty when the mapping selects skills only.
+    """
+    if mapping.get("prompts"):
+        return [str(name) for name in mapping["prompts"]]
+    if mapping.get("prompt"):
+        return [str(mapping["prompt"])]
+    return []
+
+
+def mapping_filename(mapping: dict[str, Any]) -> str | None:
+    """The single output filename a localInstructions mapping asks for, if any.
+
+    Without it a mapping writes the per-adapter default set (CLAUDE.md for
+    claude, AGENTS.md + CODEX.md for codex). With it the mapping writes exactly
+    that one file per path — which is how a claude-only repo generates AGENTS.md
+    without turning the codex adapter on.
+    """
+    filename = mapping.get("filename")
+    if filename is None:
+        return None
+    filename = str(filename)
+    if filename not in LOCAL_INSTRUCTION_FILES:
+        raise SystemExit(
+            f"localInstructions.filename must be one of "
+            f"{'/'.join(LOCAL_INSTRUCTION_FILES)} (got {filename!r})"
+        )
+    return filename
 
 
 def _as_text(value: Any) -> str:
