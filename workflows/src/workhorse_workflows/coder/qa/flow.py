@@ -262,6 +262,14 @@ class Qa(Workflow):
     #: See `QaLoop.plan_judgement_rework` for the story that split them.
     MAX_PLAN_REWORKS: ClassVar[int] = 4
     MAX_PLAN_VALIDATION_REWORKS: ClassVar[int] = 3
+    #: And the ceiling on their *product*. The two budgets above are spent independently, so
+    #: nothing stopped a story alternating between them: three schema repairs and four
+    #: judgement repairs is seven laps that every individual guard considers legal, and a
+    #: live story reached thirteen turns of `plan-qa` that way. This bounds the sum, so the
+    #: stacked budgets can no longer multiply. It is deliberately the smaller number: a plan
+    #: still being repaired on the seventh lap is not converging, and the six laps before it
+    #: are the evidence.
+    MAX_TOTAL_PLAN_LAPS: ClassVar[int] = 6
     MAX_SETUP_REWORKS: ClassVar[int] = 2
     MAX_REGRESSION_FIXES: ClassVar[int] = 3
     MAX_TRIAGE_SCOPES: ClassVar[int] = 2
@@ -1163,9 +1171,7 @@ class Qa(Workflow):
         """
         if loop.plan_judgement_rework >= self.MAX_PLAN_REWORKS:
             return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
-        return Continue(
-            result, self.repair_plan, loop=loop.update(plan_rework=loop.plan_rework + 1)
-        )
+        return self._plan_lap(result, loop.update(plan_rework=loop.plan_rework + 1))
 
     def _guard_plan_validation(self, result: object, loop: QaLoop) -> Continue | Done:
         """Spend a schema-validation repair — a budget of its own, not the judgement one.
@@ -1183,21 +1189,33 @@ class Qa(Workflow):
             return self._exhausted(
                 loop, f"{loop.plan_validation_rework} QA-plan schema repair"
             )
-        return Continue(
-            result,
-            self.repair_plan,
-            loop=loop.update(plan_validation_rework=loop.plan_validation_rework + 1),
+        return self._plan_lap(
+            result, loop.update(plan_validation_rework=loop.plan_validation_rework + 1)
         )
 
     def _guard_plan_review(self, result: object, loop: QaLoop) -> Continue | Done:
         """Spend the review component of the QA-plan judgement budget."""
         if loop.plan_judgement_rework >= self.MAX_PLAN_REWORKS:
             return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
-        return Continue(
-            result,
-            self.repair_plan,
-            loop=loop.update(plan_review_rework=loop.plan_review_rework + 1),
+        return self._plan_lap(
+            result, loop.update(plan_review_rework=loop.plan_review_rework + 1)
         )
+
+    def _plan_lap(self, result: object, loop: QaLoop) -> Continue | Done:
+        """Take the lap the guard just paid for, unless the plan has had too many in total.
+
+        The three guards above each bound their own stage, and nothing bounded the sum until
+        this did. `loop` arrives already incremented, so the ceiling is checked against what
+        this lap would make the total — a flow that stops *after* spending its last lap has
+        paid for a turn it will not use.
+        """
+        if loop.plan_rework_total > self.MAX_TOTAL_PLAN_LAPS:
+            self.logger.info(
+                "the QA plan has had %d repair laps across every gate — ending the flow",
+                loop.plan_rework_total - 1,
+            )
+            return self._exhausted(loop, f"{loop.plan_rework_total - 1} total QA-plan lap")
+        return Continue(result, self.repair_plan, loop=loop)
 
     def _guard_setup(self, result: object, loop: QaLoop) -> Continue | Await | Done:
         """`guard_setup`: another repair attempt, or the operator gate."""

@@ -461,8 +461,13 @@ class QaLoop(CoderResult):
         Derived from the durable stage counters so old checkpoints retain what they
         already spent and no duplicated total can drift from its components.
 
-        **This is a telemetry reading, not a budget.** No guard branches on it — see
-        `plan_judgement_rework` for why one shared ceiling was the wrong shape.
+        This is the flow's *outermost* plan ceiling (`Qa.MAX_TOTAL_PLAN_LAPS`), and the only
+        thing that reads it. It does not replace the per-stage budgets and is not a smaller
+        version of them — see `plan_judgement_rework` for why one shared ceiling of four was
+        the wrong shape. What it bounds is their **product**: the stage budgets are checked
+        independently, so a story could legally spend three schema repairs, four judgement
+        repairs and keep alternating between the two, which is how `plan-qa` reached thirteen
+        laps when no single budget permits more than four.
         """
         return self.plan_rework + self.plan_validation_rework + self.plan_review_rework
 

@@ -184,11 +184,15 @@ class _Ostler:
         fail_runs: int = 0,
         context_invalid: int = 0,
         plan_invalid: int = 0,
+        plan_invalid_passes: tuple[int, ...] = (),
         vet_problems: list[str] | None = None,
     ) -> None:
         self.fail_runs = fail_runs
         self.context_invalid = context_invalid
+        #: A count of *leading* schema failures. `plan_invalid_passes` is the other shape:
+        #: which validation passes fail, for interleaving schema and judgement laps.
         self.plan_invalid = plan_invalid
+        self.plan_invalid_passes = plan_invalid_passes
         self.vet_problems = vet_problems or []
         self.runs = 0
         self.contexts = 0
@@ -257,7 +261,10 @@ class _Ostler:
         # The plan turn is supposed to have written this; validating a file that is not
         # there would make every plan-gate test pass for the wrong reason.
         assert Path(plan).is_file(), f"the plan turn wrote no {plan}"
-        if self.plan_validations <= self.plan_invalid:
+        if (
+            self.plan_validations <= self.plan_invalid
+            or self.plan_validations in self.plan_invalid_passes
+        ):
             return 1, {"status": "invalid", "notes": "step 3 names no assertion"}, ""
         return 0, {"status": "passed"}, ""
 
@@ -846,8 +853,12 @@ def test_schema_repairs_cannot_starve_the_semantic_plan_gate(
     The regression: both gates charged one shared ceiling of four, so a story that spent
     three repairs on schema defects reached `review-qa-plan` with a single revision left
     and gave up "after 4 total QA-plan repair" — which reads to a triaging human as a plan
-    nobody could make work, when the plan had been read for coverage exactly once. The
-    reviewer must still get all four judgement repairs after the schema ones.
+    nobody could make work, when the plan had been read for coverage exactly once.
+
+    Three schema repairs now buy the reviewer three critical reads rather than one. It is
+    not four, because `MAX_TOTAL_PLAN_LAPS` stops the run before the judgement budget is
+    spent — deliberately: the two budgets are independent, and a story free to spend both in
+    full could take seven laps on one plan. Which ceiling ended it is in `spent`.
     """
     okf = ostler(plan_invalid=3)
     agent = _Agent(docs, review="revise")
@@ -855,13 +866,12 @@ def test_schema_repairs_cannot_starve_the_semantic_plan_gate(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
-    # Three schema repairs, then five reviewed plans: the reviewer is not short-changed.
     assert agent.counts() == {
         "plan-qa": 1,
-        "repair-qa-plan": 7,
-        "review-qa-plan": 5,
+        "repair-qa-plan": 6,
+        "review-qa-plan": 4,
     }, agent.counts()
-    assert result.spent == "4 QA-plan repair", result.spent
+    assert result.spent == "6 total QA-plan lap", result.spent
     assert okf.runs == 0
 
 
@@ -882,6 +892,31 @@ def test_validation_and_review_spend_separate_plan_budgets(
     assert result.status == "passed", result
     assert okf.runs == 2
     assert okf.plan_validations == 6
+
+
+def test_the_stacked_plan_budgets_cannot_multiply(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Alternating between the two budgets does not buy their product in laps.
+
+    Each guard bounds its own stage and nothing bounded the sum, so a plan that failed
+    validation, then review, then validation again spent a lap that neither ceiling had yet
+    reached — twelve legal laps between them. A live story took thirteen turns of `plan-qa`
+    exactly that way. Here every second lap is a schema failure, so neither stage budget is
+    ever exhausted and only the total ends the run.
+    """
+    okf = ostler(plan_invalid_passes=(2, 4, 6))
+    agent = _Agent(docs, review="revise")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert result.spent == "6 total QA-plan lap", result.spent
+    assert agent.planned() == Qa.MAX_TOTAL_PLAN_LAPS + 1, agent.counts()
+    assert okf.runs == 0
 
 
 def test_a_refusal_only_the_stack_could_fix_does_not_cost_a_replan(
