@@ -408,3 +408,45 @@ def test_a_hunk_inside_a_body_belongs_to_that_declaration():
 def test_extents_are_empty_for_a_language_no_front_end_reads():
     """Distinguishable by the caller from a file that genuinely declares nothing."""
     assert inventory.extents("x.rb", "class Renderer; end\n") == []
+
+
+EXTENTS_TSX = '''\
+export function Panel({ rows }: PanelProps) {
+  const [open, setOpen] = useState(false)
+  const status = rows.length ? "some" : "none"
+  useEffect(() => {
+    const el = document.getElementById("panel")
+    el?.focus()
+  }, [])
+  return <div>{status}</div>
+}
+
+const Badge = ({ tone }: BadgeProps) => <span className={tone} />
+'''
+
+
+def test_a_typescript_local_is_named_for_the_declaration_that_encloses_it():
+    """The extent of a component is not replaced by the extents of its locals.
+
+    Every changed line in a React component body falls inside some `const`, so a flat walk
+    that emitted each `variable_declarator` under its bare name made the component itself
+    unreachable — the mapper's innermost-spanning rule resolved a hunk to `el`, and `Panel`
+    appeared in no obligation at all. Both consumers then asked for something no book can
+    give: a `code:` bullet for a local variable.
+
+    Qualifying is what keeps this framework-agnostic. Nothing here knows what a component or
+    a hook is: `Badge` is top level and stays bare, `el` is named for the nearest *named*
+    owner rather than the anonymous arrow syntactically around it.
+    """
+    found = inventory.extents("x.tsx", EXTENTS_TSX)
+    assert (1, 9, "Panel") in found
+    assert ("Panel.open", "Panel.setOpen", "Panel.status", "Panel.el") == tuple(
+        name for _, _, name in found if name.startswith("Panel.")
+    )
+    assert (11, 11, "Badge") in found
+
+
+def test_a_typescript_method_is_named_for_its_class():
+    """As PHP already spells one, and for the same reason: `render` alone is not addressable."""
+    source = "export class View {\n  render() {\n    return null\n  }\n}\n"
+    assert inventory.extents("x.ts", source) == [(1, 5, "View"), (2, 4, "View.render")]

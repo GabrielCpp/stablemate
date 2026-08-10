@@ -561,18 +561,45 @@ def _go_declarations(root: Node) -> list[tuple[Node, str]]:
     return [(node, name) for node, name in found if name]
 
 
-def _ts_declarations(root: Node) -> list[tuple[Node, str]]:
+def _ts_declarations(node: Node, prefix: str = "") -> list[tuple[Node, str]]:
+    """TypeScript's declarations, each qualified by the declaration that lexically encloses it.
+
+    The flat whole-tree walk this replaces emitted every `variable_declarator` at any depth
+    under its bare name, which made TypeScript the one front end whose extents were function
+    *locals*. Since `extents` attributes a changed hunk to the innermost declaration spanning
+    it, a hunk inside a React component resolved to `el` or `timerRef` — and the component
+    itself never appeared at all, because every changed line fell inside some local's span.
+    Both consumers then asked for the impossible: the docs gate demanded a `code:` bullet
+    naming `el`, and the QA mapper raised an obligation against it.
+
+    Qualifying rather than dropping is what keeps this framework-agnostic. There is no rule
+    here about components or hooks — a module-level `const Foo = () => …` is top level and
+    stays unqualified on its own, and a binding inside a body is named for the body it is in,
+    exactly as `_py_extents` names a nested `def` and `_php_declarations` a method. The
+    grounding join rolls an ancestor forward, so documenting the enclosing unit documents
+    what is lexically inside it.
+
+    Recursion carries the prefix through nodes that declare nothing — `export_statement`,
+    `lexical_declaration`, an anonymous arrow passed to `useEffect` — so a binding is named
+    for its nearest *named* owner rather than its nearest syntactic parent.
+    """
     found: list[tuple[Node, str]] = []
-    for node in syntax.walk(root):
-        if node.type in _TS_MEMBERS:
-            found.append((node, syntax.field_text(node, "name")))
-        elif node.type in _TS_NAMED:
-            found.append((node, syntax.field_text(node, "name")))
-        elif node.type == "variable_declarator":
-            found.extend(
-                (node, name) for name in _ts_pattern_names(node.child_by_field_name("name"))
-            )
-    return [(node, name) for node, name in found if name]
+    for child in node.named_children:
+        names = [f"{prefix}.{name}" if prefix else name for name in _ts_declared_here(child)]
+        found.extend((child, name) for name in names)
+        # A destructuring binding introduces several names and owns none of them; anything
+        # nested below it keeps the prefix it already had.
+        found.extend(_ts_declarations(child, names[0] if len(names) == 1 else prefix))
+    return found
+
+
+def _ts_declared_here(node: Node) -> list[str]:
+    """The names *node* itself declares, unqualified — `[]` for anything that declares none."""
+    if node.type in _TS_MEMBERS or node.type in _TS_NAMED:
+        return [name for name in [syntax.field_text(node, "name")] if name]
+    if node.type == "variable_declarator":
+        return [name for name in _ts_pattern_names(node.child_by_field_name("name")) if name]
+    return []
 
 
 def _php_declarations(node: Node, owner: str) -> list[tuple[Node, str]]:
