@@ -56,9 +56,16 @@ class ReloadRequested(Exception):
     already wrote on entry, in the same process.
     """
 
-    def __init__(self, message: str = "reload requested", *, core: bool = False) -> None:
+    def __init__(
+        self, message: str = "reload requested", *, core: bool = False, cli: str = ""
+    ) -> None:
         super().__init__(message)
         self.core = core
+        #: The agent CLI to come back on, when the operator asked to move the run onto
+        #: another one. Empty means "the one it is already using". It rides the exception
+        #: for the same reason `core` does: the request was consumed by the read that
+        #: delivered it, so nothing on disk can be re-read to recover what it asked for.
+        self.cli = cli
 
 
 def cut_requested() -> Request | None:

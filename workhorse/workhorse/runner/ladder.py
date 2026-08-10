@@ -397,7 +397,9 @@ class AgentRunner:
             return
         print(f"[{node_id}] ⟳ reload requested during {where}", flush=True)
         otel.turn_event("reload_wait_cut", node=node_id, wait=where)
-        raise reload.ReloadRequested(f"reload requested during {where}", core=cut.core)
+        raise reload.ReloadRequested(
+            f"reload requested during {where}", core=cut.core, cli=cut.cli
+        )
 
     def _invoke_and_parse(
         self,

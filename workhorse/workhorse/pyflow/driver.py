@@ -342,7 +342,9 @@ def drive(
         if boundary is not None:
             env.log.info("[workhorse] reload → requested; re-entering at '%s'", spec.name)
             raise reload.ReloadRequested(
-                f"reload requested at the boundary before {spec.name}", core=boundary.core
+                f"reload requested at the boundary before {spec.name}",
+                core=boundary.core,
+                cli=boundary.cli,
             )
         env.log.info("[workhorse] state  → %s", spec.name)
         # Armed for the resumed state only — see `RunEnv.resume_pending`. A state

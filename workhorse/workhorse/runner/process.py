@@ -440,7 +440,7 @@ class ProcessSupervisor:
             # is written to interpret a `(timed_out, returncode)` pair as a verdict on the
             # agent, and there is no value of that pair meaning "nobody judged this turn".
             raise reload.ReloadRequested(
-                f"reload requested during {node_id}", core=reloading.core
+                f"reload requested during {node_id}", core=reloading.core, cli=reloading.cli
             )
         return timed_out, proc.returncode
 

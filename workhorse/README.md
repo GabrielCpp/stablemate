@@ -462,6 +462,21 @@ turns, and the command says which of the two it saw rather than smoothing them t
 ask of the run most worth asking about: a run six days into a cap window is answered from
 inside that window, and the window is not shortened by having been asked.
 
+**Moving a run onto another agent CLI (`control switch-cli`).** When the CLI a run is
+driving is the thing that is broken — a harness wedged mid-turn, a provider outage that
+outlasts the retry ladder — the fix is not new code but a different agent:
+
+```bash
+workhorse-coder control --run <id> switch-cli claude
+```
+
+It travels as a `--core` reload carrying the CLI name, and it is core whether or not
+`--core` was typed: the backend is bound once at the process edge from `--cli` and handed
+to the run, so re-importing the workflow package could not move a live run onto another
+agent however plainly the request asked. What comes back is the same run re-entering the
+same checkpointed state, with `--cli <name>` appended to the resume argv — the one thing a
+resume cannot read off the checkpoint, because it was never in it.
+
 The checkpoint is written *before* the state runs, so nothing durable is lost. If the
 pushed code renamed or retyped a workflow field the checkpoint still holds, the run stops
 at that checkpoint with pydantic naming the field, which is the honest outcome of an

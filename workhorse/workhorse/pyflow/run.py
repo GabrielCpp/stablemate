@@ -76,9 +76,16 @@ class _CoreReloadRequested(Exception):
 
     Private, and deliberately not a `PyflowError`: nothing about the run failed, and the
     only frame allowed to act on it is the one outside the `finally` that finalizes the
-    run. It carries no payload — the checkpoint the state wrote on entry is the whole
-    live state, and the new image reads it from disk like any other resume.
+    run. Its one payload is the agent CLI to come back on, because that is the single
+    thing the checkpoint does *not* hold: the backend is resolved at the process edge
+    from `--cli`, so a run moved onto another one has to say so in the argv it re-execs
+    with. Everything else the new image needs it reads off the checkpoint, as any resume
+    does.
     """
+
+    def __init__(self, cli: str = "") -> None:
+        super().__init__(cli)
+        self.cli = cli
 
 
 def run_pyflow(invocation: RunInvocation) -> int:
@@ -211,10 +218,12 @@ def run_pyflow(invocation: RunInvocation) -> int:
     #: `atexit`, so exec'ing from inside the block would drop the run's last spans and
     #: leave the very dangling scope a reload exists not to produce.
     core_reload = False
+    #: The agent CLI the re-exec'd image is told to use, when a `switch-cli` asked for one.
+    core_reload_cli = ""
     try:
         try:
             _drive_reloadable(wf, env, resume, registry=registry, writer=writer)
-        except _CoreReloadRequested:
+        except _CoreReloadRequested as exc:
             # The engine itself was asked for, so this process image is what gets
             # replaced. Everything a clean stop does happens first — the turn was cut
             # and its span closed with the usage it accrued, the state's scope closed
@@ -223,6 +232,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
             # being replaced from a run that died here.
             agent_process.terminate_active()
             core_reload = True
+            core_reload_cli = exc.cli
             otel.end_run("reload")
         except KeyboardInterrupt:
             agent_process.terminate_active()
@@ -310,7 +320,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
         channel.close()
 
     if core_reload:
-        return _exec_reload(name, writer.run_dir)
+        return _exec_reload(name, writer.run_dir, cli=core_reload_cli)
 
     verdict = "dry-run ok — every node ran its stand-in" if dry_run else "done"
     print(f"[workhorse] {verdict} — artifacts in {writer.run_dir}")
@@ -347,7 +357,10 @@ def _drive_reloadable(
             # one request produces exactly one reload without anything having to remember
             # to clear it, so a reload onto a tree that does not import cannot become a
             # loop that re-reads the same request forever.
-            core = exc.core
+            # A CLI switch implies the engine: the backend is resolved once, at the
+            # process edge, so re-importing the workflow package could not move a run
+            # onto another agent CLI however loudly the request asked.
+            core = exc.core or bool(exc.cli)
             if core:
                 # `--core` means the engine itself, and no process can swap the modules
                 # its own stack is executing — `drive`, the ladder and `process.py` are
@@ -360,12 +373,13 @@ def _drive_reloadable(
                     state=pending_resume.state,
                     flow=pending_resume.flow or "",
                     core=True,
+                    cli=exc.cli,
                 )
                 env.log.info(
                     "[workhorse] reload: --core — re-executing this run from '%s'",
                     pending_resume.state,
                 )
-                raise _CoreReloadRequested from exc
+                raise _CoreReloadRequested(exc.cli) from exc
             registry, replaced = _reimport(registry)
             env.workflow_dir = registry.directory()
             env.nodes = registry.nodes
@@ -398,7 +412,7 @@ def _drive_reloadable(
             )
 
 
-def _exec_reload(name: str, run_dir: Path) -> int:
+def _exec_reload(name: str, run_dir: Path, *, cli: str = "") -> int:
     """Replace this process image with a resume of the same run. Normally never returns.
 
     `os.execv` rather than an exit code the caller restarts on, because exec keeps the
@@ -421,6 +435,11 @@ def _exec_reload(name: str, run_dir: Path) -> int:
     is still resumable by hand.
     """
     argv = [sys.argv[0], "run", "--resume-run", str(run_dir)]
+    if cli:
+        # The one thing that is not in the checkpoint, because the backend is chosen at
+        # this edge rather than held by the run. Passed explicitly rather than left to
+        # the inherited environment, which still names the CLI the run started on.
+        argv += ["--cli", cli]
     executable = shutil.which(argv[0]) or argv[0]
     if executable.endswith(".py"):
         # `python -m workhorse...` / a script run by path: exec the interpreter, since

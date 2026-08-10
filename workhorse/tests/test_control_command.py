@@ -245,5 +245,42 @@ def test_a_run_that_never_answered_reports_from_disk_and_says_which_it_is(capsys
         assert f"pid {os.getpid()} is alive" in out, out
 
 
+def test_a_cli_switch_travels_as_a_core_reload_naming_the_cli(capsys) -> None:
+    """`switch-cli` is not a verb on the wire, on purpose. Every waiting site already
+    knows how to honour a `--core` reload, and honouring a switch is that plus one
+    argument in the argv the new image comes back on — so a verb of its own would need a
+    consumer at each of those sites just to mean the same thing."""
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        run_dir = _run_dir(runs)
+
+        with _listening(run_dir) as listener:
+            _control(runs, "switch-cli", "claude", "--run", "t", "--runs-dir", str(runs))
+
+        assert [(r.action, r.core, r.cli) for r in listener.taken] == [
+            ("reload", True, "claude")
+        ], listener.taken
+        assert "re-enter on claude" in capsys.readouterr().out
+
+
+def test_a_switch_with_no_cli_and_a_reload_with_one_are_both_refused(capsys) -> None:
+    """Both directions, because both are silent otherwise: a switch with nothing to
+    switch to would go out as a plain reload, and a name typed after `reload` would be
+    dropped — which from the operator's side looks exactly like a switch that worked."""
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        _run_dir(runs)
+
+        with pytest.raises(SystemExit) as excinfo:
+            _control(runs, "switch-cli", "--run", "t", "--runs-dir", str(runs))
+        assert excinfo.value.code == 1
+        assert "needs the CLI to switch to" in capsys.readouterr().err
+
+        with pytest.raises(SystemExit) as excinfo:
+            _control(runs, "reload", "claude", "--run", "t", "--runs-dir", str(runs))
+        assert excinfo.value.code == 1
+        assert "takes no CLI name" in capsys.readouterr().err
+
+
 if __name__ == "__main__":
     print("run with pytest: uv run python -m pytest tests/test_control_command.py")

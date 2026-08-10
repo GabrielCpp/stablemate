@@ -1,7 +1,9 @@
 """`control` — say something to a run that is already going, without stopping it.
 
 `reload` asks a live run to cut whatever it is doing, pick the pushed code up, and
-re-enter its own checkpoint — the operator's half of :mod:`workhorse.reload`. `status`
+re-enter its own checkpoint — the operator's half of :mod:`workhorse.reload`. `switch-cli`
+is that same reload carrying the one thing a checkpoint cannot hold: the agent CLI to come
+back on, which is chosen at the process edge from `--cli` rather than by the run. `status`
 asks where it is, and is answered by the run itself: everything in the answer is also on
 disk, but a reply *on that run's socket* is the one thing the disk cannot prove — that
 this process is the one still serving this run dir. The run is a different process (often
@@ -27,22 +29,31 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from workhorse import control
+from workhorse import control, reload
 from workhorse.artifacts import ArtifactWriter
 from workhorse.records import PyflowCheckpoint, parse_checkpoint, parse_run_record
 from workhorse.rundir import find_latest_resumable, resolve_run_dir
 
 NAME = "control"
-HELP = "Signal a run that is already in flight (reload, status)"
+HELP = "Signal a run that is already in flight (reload, status, switch-cli)"
+
+SWITCH_CLI = "switch-cli"
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "action",
-        choices=["reload", "status"],
+        choices=["reload", "status", SWITCH_CLI],
         help="reload: pick up pushed code and re-enter the checkpoint. status: ask the "
         "run where it is, which is also a proof that this process is the one serving "
-        "that run dir.",
+        "that run dir. switch-cli: re-enter the same checkpoint on another agent CLI.",
+    )
+    parser.add_argument(
+        "cli",
+        nargs="?",
+        default=None,
+        metavar="CLI",
+        help="For switch-cli only: the agent CLI to come back on (claude, opencode, …).",
     )
     parser.add_argument(
         "--run",
@@ -78,8 +89,17 @@ def run(args: argparse.Namespace) -> None:
         else (Path.cwd() / ".agents" / "runs").resolve()
     )
     run_dir = _target(args.run, runs_dir, args.registry.name)
+    cli = _switch_target(args.action, args.cli)
     request = control.Request(
-        action=args.action, core=args.core, at_boundary=args.at_boundary
+        # A CLI switch is a reload on the wire, and deliberately not a verb of its own:
+        # honouring it is already what a `--core` reload does — replace the process image
+        # and resume the checkpoint — with one more argument in the argv it comes back on.
+        # A separate verb would need its own consumer at every waiting site to mean the
+        # same thing.
+        action=reload.ACTION if cli else args.action,
+        core=args.core or bool(cli),
+        at_boundary=args.at_boundary,
+        cli=cli,
     )
     try:
         reply = control.send(run_dir, request)
@@ -95,12 +115,34 @@ def run(args: argparse.Namespace) -> None:
         _report(run_dir, reply)
         return
 
-    scope = "workhorse and the workflow" if args.core else "the workflow package"
     when = "at the next state boundary" if args.at_boundary else "cutting the current turn"
-    print(f"reload requested for {run_dir}: reload {scope}, {when}")
+    if cli:
+        print(f"switch requested for {run_dir}: re-enter on {cli}, {when}")
+    else:
+        scope = "workhorse and the workflow" if args.core else "the workflow package"
+        print(f"reload requested for {run_dir}: reload {scope}, {when}")
     print(f"  reply:   {reply or 'delivered, no answer'}")
     print(f"  run:     {_liveness(run_dir)}")
     print(f"  at:      {_position(run_dir)}")
+
+
+def _switch_target(action: str, cli: str | None) -> str:
+    """The CLI named for a `switch-cli`, having rejected the two ways of misspelling it.
+
+    Both directions are errors rather than tolerated: a `switch-cli` with no name has
+    nothing to switch to, and a name handed to `reload` or `status` would be silently
+    dropped — which reads, from the operator's side, exactly like a switch that worked.
+    """
+    if action != SWITCH_CLI:
+        if cli:
+            print(f"error: {action} takes no CLI name (got {cli!r})", file=sys.stderr)
+            sys.exit(1)
+        return ""
+    if not cli:
+        print(f"error: {SWITCH_CLI} needs the CLI to switch to, e.g. "
+              f"`control {SWITCH_CLI} claude`", file=sys.stderr)
+        sys.exit(1)
+    return cli
 
 
 def _report(run_dir: Path, reply: dict[str, object]) -> None:

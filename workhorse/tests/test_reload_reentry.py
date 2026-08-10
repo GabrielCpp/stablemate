@@ -284,7 +284,7 @@ def test_a_core_reload_replaces_the_process_only_after_the_run_is_finalized():
 
     fake = RecordingTelemetry()
 
-    def fake_exec(name: str, run_dir: Path) -> int:
+    def fake_exec(name: str, run_dir: Path, *, cli: str = "") -> int:
         at_exec.append((run_dir, list(fake.ended), control.armed().fileno() is not None))
         return reload.RELOAD_EXIT_CODE
 
@@ -333,6 +333,63 @@ def test_the_re_exec_argv_is_the_resume_spelling_not_the_original_one():
 
     assert rc == reload.RELOAD_EXIT_CODE
     assert calls == [(script, [script, "run", "--resume-run", "/runs/stub-t"])], calls
+
+
+def test_moving_a_run_onto_another_cli_re_execs_naming_it():
+    """The one thing a resume cannot read off the checkpoint. `--cli` is resolved at the
+    process edge (`cli/run.py`) and never stored, so a run told to change agent CLI has to
+    say which one in the argv it comes back on — the inherited environment still names the
+    one it started on. Everything else stays the resume spelling, because everything else
+    *is* in the checkpoint."""
+    calls: list[list[str]] = []
+
+    def fake_execv(path: str, argv: list[str]) -> None:
+        calls.append(list(argv))
+        raise OSError("no such image")
+
+    script = "/nonexistent/bin/workhorse-stub"
+    with (
+        patch.object(run_mod.os, "execv", fake_execv),
+        patch.object(run_mod.sys, "argv", [script, "run", "--cli", "opencode"]),
+    ):
+        run_mod._exec_reload("stub", Path("/runs/stub-t"), cli="claude")
+
+    assert calls == [
+        [script, "run", "--resume-run", "/runs/stub-t", "--cli", "claude"]
+    ], calls
+
+
+def test_a_switch_is_a_core_reload_even_when_nobody_asked_for_one():
+    """A request naming a CLI implies the process image, whatever its `core` flag says.
+    The backend is bound once at the edge and handed to the run, so re-importing the
+    workflow package — all a tier-1 reload does — could not move a live run onto another
+    agent CLI however plainly the request asked for it. Honouring it halfway would be the
+    worst of the three outcomes: an operator told the switch happened, on a run still
+    spending on the CLI they were moving off."""
+    at_exec: list[tuple[Path, str]] = []
+
+    def fake_drive(wf: Any, env: Any, resume: Any = None) -> Any:
+        env.writer.write_state_checkpoint("start", {}, inputs={}, flow="Stub", ctx={})
+        raise reload.ReloadRequested("switch requested", core=False, cli="claude")
+
+    def fake_exec(name: str, run_dir: Path, *, cli: str = "") -> int:
+        at_exec.append((run_dir, cli))
+        return reload.RELOAD_EXIT_CODE
+
+    fake = RecordingTelemetry()
+    with tempfile.TemporaryDirectory() as tmp:
+        with (
+            patch.object(run_mod, "drive", fake_drive),
+            patch.object(run_mod, "_exec_reload", fake_exec),
+        ):
+            assert run_pyflow(_invocation(tmp, fake)) == reload.RELOAD_EXIT_CODE
+        assert at_exec == [(Path(tmp) / "runs" / "stub-t", "claude")], at_exec
+
+    # And the switch is on the record as one, so a run that came back on another CLI can
+    # be told apart later from one that merely reloaded.
+    assert [(attrs.get("core"), attrs.get("cli")) for _, _, attrs in fake.events] == [
+        (True, "claude")
+    ], fake.events
 
 
 # ------------------------------------------------------- the re-import, for real
@@ -580,6 +637,10 @@ if __name__ == "__main__":
     test_a_boundary_request_is_honoured_after_the_checkpoint_and_before_the_body()
     test_an_unarmed_run_never_stops_at_a_boundary()
     test_a_run_listens_on_its_own_dir_and_stops_listening_on_the_way_out()
+    test_a_core_reload_replaces_the_process_only_after_the_run_is_finalized()
+    test_the_re_exec_argv_is_the_resume_spelling_not_the_original_one()
+    test_moving_a_run_onto_another_cli_re_execs_naming_it()
+    test_a_switch_is_a_core_reload_even_when_nobody_asked_for_one()
     test_a_reload_re_enters_the_same_run_on_the_code_that_was_pushed()
     test_a_reload_picks_up_a_fix_to_a_library_the_workflow_imports()
     test_the_environment_is_kept_while_the_working_tree_is_replaced()
