@@ -18,7 +18,7 @@ from conftest import write
 
 
 def _inventory(tmp_path: Path, units: list[dict], **kw) -> Path:
-    """A source inventory in `inventory-source.py`'s shape."""
+    """A source inventory in the `inventory_source` node's shape."""
     path = tmp_path / "inventory.json"
     path.write_text(json.dumps({
         "version": 1, "sourceRoot": kw.get("sourceRoot", "api"), "repoRoot": str(tmp_path),

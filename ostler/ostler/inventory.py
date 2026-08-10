@@ -10,7 +10,7 @@ Three callers need to know what a file declares, and they must agree:
   which unit does this changed hunk belong to.
 
 They used to answer that question in two places — real declaration regexes in the builder's
-`inventory-source.py`, and a *word-presence* test in `doctor`. The two disagreed, and the
+source inventory (the `inventory_source` node), and a *word-presence* test in `doctor`. The two disagreed, and the
 disagreement was invisible in the direction that mattered: a facade module that re-exports a
 name (``from .renderer import Renderer``) still contains the word, so grounding passed on a
 citation whose definition had moved away. A book could cite a symbol its file no longer
