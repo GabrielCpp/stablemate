@@ -48,6 +48,24 @@ Rules:
 - Multiple layers → load each layer's instruction files and split plan sections by layer.
 - Layer unclear → inspect the story and code paths first; if still unclear, stop and ask before planning.
 
+### When the plan is already there
+
+Check the spec directory before you write anything. A story is re-selected by the queue
+until it reaches `QA passed`, so one that was interrupted after planning — or that is coming
+back for documentation or QA — arrives here with `plan.md` (and often `plan-review.md`, a
+review, a settlement) already written. That is the normal resumed case, not an error, and
+you are not being asked to redo it.
+
+- **The existing plan still covers the story's Acceptance Criteria** → leave every artifact
+  exactly as it is and answer `done`, with a summary that says the plan already stands.
+  Do not rewrite it: implementation was built against that plan and review compares against
+  it, so replacing it invalidates work that is already in the tree.
+- **The story has changed since** — a criterion the plan does not cover → amend the plan in
+  place for that delta only, leave the rest, and answer `done`.
+- Either way this is **never** `blocked`. `blocked` means no plan could be produced; a plan
+  that already exists is the opposite of that, and answering it that way sends a story that
+  only needs QA to the operator instead.
+
 ### Story Analysis
 
 1. Read the story description, acceptance criteria, and linked documents. **The story's `## Context`
@@ -389,7 +407,9 @@ After writing the plan artifacts, return this exact JSON object as the LAST thin
 {"status": "done|blocked", "summary": "<one-line summary of the plan, or the blocker>"}
 ```
 
-- `status`: `"done"` when the plan artifacts are written and ready for review, or `"blocked"` if you could not produce a plan.
+- `status`: `"done"` when the plan artifacts are written and ready for review — including when
+  they were already there and you left them standing — or `"blocked"` if you could not produce
+  a plan at all.
 - `summary`: a one-line description of the plan (or the blocker).
 
 The set of services this story changes is **not** part of this reply — the workflow reads it from the `services` array you wrote into `docs/specs/<story-name>/plan-context.json`, which is what drives the implementer's per-service iteration. Get it right there: a frontend-only story lists only its web service, so the implementer never builds a backend one.
