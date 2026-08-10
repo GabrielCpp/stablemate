@@ -96,6 +96,10 @@ DETECTORS: dict[str, tuple[str, str]] = {
         r"\b(?:async|def|class|function|func|fn|interface|enum)\b",
         "ast, for Python. No stdlib parser exists for the other languages — declare it below",
     ),
+    "path-suffix": (
+        r"\\\.\((?:\?:)?[A-Za-z0-9?|]*\|[A-Za-z0-9?|]*\)",
+        "pathlib.Path(...).suffix against a set — an alternation is not where a suffix begins",
+    ),
     "key-line": (
         _ANCHOR + _INDENT + r"[^\n]{0,80}?:" + _GAP + r"?\(",
         "yaml.safe_load for YAML; for a line protocol of our own, the one shared reader",
@@ -183,22 +187,46 @@ def _python_files() -> list[Path]:
     return sorted(paths)
 
 
-def _pattern_text(node: ast.expr) -> str | None:
+def _module_strings(tree: ast.AST) -> dict[str, str]:
+    """Module-level `NAME = "…"` bindings, so an f-string's `{NAME}` can be substituted in.
+
+    A grammar written as a regex is usually written in pieces — a suffix alternation named
+    once, interpolated into the pattern that uses it. Reading only the f-string's constant
+    parts hides exactly the piece that carries the format, which is how a suffix alternation
+    interpolated as `{_EXTS}` sat here unflagged.
+    """
+    return {
+        target.id: node.value.value
+        for node in getattr(tree, "body", ())
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
+        if isinstance(node.value.value, str)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+
+
+def _pattern_text(node: ast.expr, consts: dict[str, str]) -> str | None:
     """The literal text of a pattern argument, or None when it is not literal.
 
-    An f-string counts for its constant parts: `rf"^-\\s*{key}:"` is still an anchored
-    bullet regardless of what `key` interpolates to.
+    An f-string counts for its constant parts, plus any `{NAME}` naming a module-level
+    string: `rf"^-\\s*{key}:"` is still an anchored bullet regardless of what `key` is.
     """
     if isinstance(node, ast.Constant):
         return node.value if isinstance(node.value, str) else None
     if isinstance(node, ast.JoinedStr):
-        parts = [v.value for v in node.values if isinstance(v, ast.Constant)]
-        return "".join(p for p in parts if isinstance(p, str)) or None
+        parts = []
+        for value in node.values:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                parts.append(value.value)
+            elif isinstance(value, ast.FormattedValue) and isinstance(value.value, ast.Name):
+                parts.append(consts.get(value.value.id, ""))
+        return "".join(parts) or None
     return None
 
 
 def _patterns(tree: ast.AST):
     """Every `re.<func>(<literal>, …)` in a module, as `(lineno, pattern text)`."""
+    consts = _module_strings(tree)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not node.args:
             continue
@@ -210,7 +238,7 @@ def _patterns(tree: ast.AST):
             and func.attr in RE_FUNCS
         ):
             continue
-        if (text := _pattern_text(node.args[0])) is not None:
+        if (text := _pattern_text(node.args[0], consts)) is not None:
             yield node.lineno, text
 
 

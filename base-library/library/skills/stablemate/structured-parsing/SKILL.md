@@ -16,7 +16,7 @@ wrong; it returns a confident answer that happens to be false, and the caller ha
 tell. Every defect below shipped, ran for months, and was found by reading the code rather
 than by a failure.
 
-## The four that were real
+## The five that were real
 
 **A URL truncated every workspace config.** `load_jsonc` stripped comments with
 `re.sub(r"//[^\n]*", "", text)`. A regex does not know what a string literal is, so
@@ -47,7 +47,17 @@ reported `missing-code-symbol` with no edit that could clear it. Across three re
 switch to tree-sitter dropped 71 names it had been reporting as declarations and admitted
 2,274 real ones it had missed. Now `ostler.syntax`.
 
-Markdown **tables** were a fifth, quieter case: the parser ran on the bare `commonmark`
+**A test name was truncated at the comma inside it.** `ostler`'s QA context read `verify:`
+bullets with one regex whose symbol group was `[^`,]+`, so a bullet citing a real test —
+`… > exports the live editor through canonical XML, revokes its object URL, and clears the
+named status` — was read as `… > exports the live editor through canonical XML`. That name
+matches nothing, so the grounding gate reported a correct citation as citing a test that
+does not exist, and a story burned four documentation review passes being told to repair
+something that was already right. The comma was inside an inline-code span the whole time;
+the parser knew where the span ended and the regex could not. Now `markdown.all_code_spans`
+plus `str.partition("::")`.
+
+Markdown **tables** were a sixth, quieter case: the parser ran on the bare `commonmark`
 preset, so every table in the library's docs came back as an undifferentiated paragraph and
 any caller wanting a row had no option but to split on `|` itself.
 
@@ -64,6 +74,8 @@ any caller wanting a row had no option but to split on `|` itself.
 | Python source | `ast` | `^(?:async\s+)?(?:def\|class)\s+(\w+)` |
 | Go, TypeScript/TSX, PHP, Twig source | `ostler.syntax.parse(language, text)` — tree-sitter | `^func\s+(\w+)`, `^export\s+(?:class\|const)\s+(\w+)` |
 | Unified diff | `unidiff.PatchSet` | `^@@ -\d+ \+\d+ @@` |
+| A path, and where its suffix begins | `pathlib.Path(p).suffix` against a set | `\.(?:py\|tsx?\|go\|ya?ml)` |
+| A ref with a declared separator (`path::name`) | `str.partition("::")` — the right half is the name, commas and all | `(?P<symbol>[^,]+)` |
 
 `ostler.markdown` is the one markdown parser. `farrier` keeps its own frontmatter module
 because it never needs the section tree and `farrier → ostler` is a dependency edge we do
