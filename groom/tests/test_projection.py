@@ -293,6 +293,24 @@ def test_detail_of_a_finished_run_has_no_gates_but_keeps_its_node():
     assert detail["state"] == "running" and detail["node"] == "write_epic"
 
 
+def test_the_head_names_the_cli_that_ran_the_last_turn():
+    # Which harness is doing the work is not derivable from anything else on the
+    # pane, and the model alone does not answer it — two backends drive the same
+    # slug. Both, or the segment is not worth the width.
+    head = projection.head(_wf(), _tel(backend="claude", model="claude-sonnet-5"))
+    assert head["cli"] == "claude claude-sonnet-5"
+
+
+def test_the_head_omits_the_cli_until_a_turn_has_advertised_one():
+    # A span exports on completion, so a run inside its opening turn has told
+    # nobody which CLI it picked. An empty segment says that; a placeholder would
+    # claim a harness that has not run anything yet.
+    assert projection.head(_wf(), _tel())["cli"] == ""
+    assert projection.head(_wf())["cli"] == ""
+    # A backend with no model still names the harness — the half that is known.
+    assert projection.head(_wf(), _tel(backend="codex"))["cli"] == "codex"
+
+
 def test_exit_hint_only_on_finished_with_a_code():
     # A code set on a run that is still live is leftover, not a verdict.
     ok = projection.head(_wf("a", state=WorkflowState.FINISHED, exit_code=0))

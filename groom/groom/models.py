@@ -100,6 +100,15 @@ class RunTelemetry:
     # here from the live gauges so a dashboard row can show it without waiting for a
     # span to export.
     activity: str = ""
+    # Which agent CLI ran this run's most recent turn, and on which model. Read off
+    # the completed `agent_turn` span rather than configured anywhere: the ladder
+    # picks a backend per turn and can fall through to another one mid-run, so the
+    # only honest answer to "which CLI is this run using" is the last one it used.
+    # Empty until the first turn exports — a span exports on completion, so a run
+    # still inside its opening turn has not advertised a CLI yet, and showing the
+    # configured default there would name a harness that may never run a turn.
+    backend: str = ""
+    model: str = ""
     first_seen_ts: float = 0.0
     last_span_ts: float = 0.0
     # Any workhorse liveness tick (run/turn/cap-wait heartbeat) — proof the run's

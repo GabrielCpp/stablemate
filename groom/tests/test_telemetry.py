@@ -1003,6 +1003,43 @@ def test_pyflow_activity_label_is_consumed_without_legacy_prefix() -> None:
         assert state.RUNS["run-1"].activity == "planning story A"
 
 
+def test_the_hot_cache_follows_the_cli_the_last_turn_actually_used() -> None:
+    """The ladder picks a backend per turn and falls through when one is capped,
+    so "which CLI is this run using" is a property of the last turn, not of the
+    run. A run that quietly moved to another harness is otherwise invisible."""
+    with _TelemetryEnv():
+        alerts.ingest_spans(
+            otlp.parse_traces(
+                _trace_request([{
+                    "name": "agent_turn",
+                    "labels": {"backend": "claude", "model": "claude-sonnet-5"},
+                }])
+            ),
+            now=1000.0,
+        )
+        assert (state.RUNS["run-1"].backend, state.RUNS["run-1"].model) == (
+            "claude", "claude-sonnet-5",
+        )
+
+        alerts.ingest_spans(
+            otlp.parse_traces(
+                _trace_request([{
+                    "name": "agent_turn",
+                    "labels": {"backend": "codex", "model": "gpt-5"},
+                }])
+            ),
+            now=1001.0,
+        )
+        assert (state.RUNS["run-1"].backend, state.RUNS["run-1"].model) == ("codex", "gpt-5")
+
+        # A node span is not a turn and says nothing about the harness. Letting one
+        # through would blank the answer every time a node completed.
+        alerts.ingest_spans(
+            otlp.parse_traces(_trace_request([{"name": "plan", "node": "plan"}])), now=1002.0
+        )
+        assert state.RUNS["run-1"].backend == "codex"
+
+
 def test_turn_heartbeat_suppresses_stall_during_a_long_agent_turn():
     """Regression: a legitimately long agent turn used to page as a STALL.
 

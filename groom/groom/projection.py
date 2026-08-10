@@ -356,6 +356,20 @@ def handle(wf: WorkflowContainer) -> str:
     return wf.container_id[:6]
 
 
+def cli_label(tel: RunTelemetry | None) -> str:
+    """The agent CLI the run's last turn actually used, and the model it drove.
+
+    Both, because neither answers the question alone: two harnesses can drive the
+    same model slug, and one harness can be pointed at several models over a run.
+    Empty when no turn has exported yet — the pane omits the segment rather than
+    printing a placeholder, since "unknown" and "none yet" look the same and only
+    one of them is worth reading.
+    """
+    if tel is None or not tel.backend:
+        return ""
+    return f"{tel.backend} {tel.model}".strip()
+
+
 def head(
     wf: WorkflowContainer, tel: RunTelemetry | None = None, now: float | None = None
 ) -> dict[str, Any]:
@@ -375,6 +389,7 @@ def head(
         "live_label": live_label,
         "node": wf.current_node or (tel.current_node if tel else ""),
         "pid": wf.pid,
+        "cli": cli_label(tel),
         "exit_hint": exit_hint(wf),
         "exit_ok": wf.exit_code == 0,
         "activity": wf.activity or (tel.activity if tel else ""),

@@ -230,6 +230,17 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
         events = {event.get("name") for event in attrs.get("events") or []}
         label = f"{run.workflow or 'run'} {run_id}"
 
+        # Which harness ran the turn, latest wins. The ladder chooses a backend per
+        # turn and falls through to another when one is capped or broken, so this is
+        # a property of the run's last turn rather than of the run — which is exactly
+        # why it is worth showing: a run that quietly moved to a different CLI looks
+        # identical on every other line of the dashboard.
+        if span.get("name") == "agent_turn":
+            if backend := str(attrs.get("backend") or ""):
+                run.backend = backend
+            if model := str(attrs.get("model") or ""):
+                run.model = model
+
         if span.get("name", "").startswith("run:"):
             # The root span only exports when the run ENDS — its arrival is the
             # "run over" signal that retires this run from absence-rule watch. It

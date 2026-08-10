@@ -448,7 +448,8 @@ function StatusBar() {
 // --------------------------------------------------------------------------- //
 function RunHead({ head }) {
   const meta =
-    "#" + head.handle + " · " + head.state + (head.node ? " · node " + head.node : "") + (head.pid ? " · pid " + head.pid : "");
+    "#" + head.handle + " · " + head.state + (head.node ? " · node " + head.node : "") +
+    (head.cli ? " · " + head.cli : "") + (head.pid ? " · pid " + head.pid : "");
   // role="status" because that is what it is: the line that says what this run is
   // doing right now, re-rendered on the server's clock.
   return html`<div class="detail-head" role="status" aria-label="Selected run">
