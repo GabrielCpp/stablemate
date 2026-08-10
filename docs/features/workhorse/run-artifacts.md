@@ -31,7 +31,9 @@ gets its own nested instance of this same layout, rooted under the calling node'
     ├── events.jsonl           # append-only event log (enter/done/terminal/error)
     ├── context.json           # the run's result (written once, at finish)
     ├── .session_id            # current backend session id (plain text; agent turns only)
-    ├── sessions.jsonl         # append-only node → backend session id map
+    ├── sessions.jsonl         # append-only node → backend session id map, one line per turn
+    ├── resume_generation      # how many times this run dir has been started (telemetry writes it)
+    ├── turn_seq               # the run's monotone agent-node visit counter
     └── <node-id>/             # one subdirectory per node visited
         ├── prompt.md          # what was sent/run for this node
         ├── output.json        # the node's recorded return value
@@ -203,9 +205,28 @@ The durable node → backend-session map, appended by [`AgentRunner.run`](concep
 successful turn. `.session_id` only ever holds the *current* node's session, so this manifest is
 what maps a **past** node back to the session transcript carrying its reasoning and tool trace —
 the detail `prompt.md`/`output.json` do not keep. The same mapping is advertised on the agent-turn
-span; this file is the copy that needs no collector. Each line: `node` (type `string`) and
-`session_id` (type `string`). A node can appear more than once (a loop revisit, or a retry inside
-one node), so consumers dedup on read. Best-effort: a write failure is swallowed.
+span; this file is the copy that needs no collector. A node can appear more than once (a loop
+revisit, or a retry inside one node), which is what the visit key below addresses. Best-effort: a
+write failure is swallowed. Each line:
+- `node` — type `string`, required.
+- `session_id` — type `string`, required.
+- `generation` — type `int`, optional — how many times this run directory had been started
+  (`resume_generation`), read, never incremented, by `workhorse.turnkey`.
+- `seq` — type `int`, optional — the run's monotone agent-node **visit** counter (`turn_seq`). With
+  `generation` it names the visit, and it is the same key naming that visit's stored prompt. Both
+  are omitted for a turn taken outside a visit the engine opened — a library caller driving the
+  runner directly — because a wrong number is worse than none.
+- `ts` — type `int`, optional — epoch seconds, so a line can be placed against the run's spans and
+  logs without inferring order from file position. `(generation, ts)` is a total order that survives
+  a checkpoint rewind: a rewind cannot decrease the generation, and this log is append-only, so
+  re-running a node adds rows rather than rewriting one.
+- `backend` — type `string`, optional — which CLI's vocabulary the session id is in. `opencode
+  export <id>` and `~/.claude/projects/` are not interchangeable and the id does not say which.
+- `head` — type `string`, optional — the commit the run's tree was on when the turn was recorded
+  (see [Repo state](#repo-state)), observed rather than assumed.
+
+Every key beyond the first two is optional on read: lines written before they existed still parse,
+and a consumer treats an absent key as *not recorded*, never as a default.
 
 ### `<node-id>/prompt.md`
 - type: `string` (plain text) — required: no — default: absent

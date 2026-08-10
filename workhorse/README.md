@@ -527,7 +527,7 @@ runs/
 └── <workflow-name>-<timestamp>-<id>/
     ├── run.json                  # start/end time, terminal state, interrupt stamp
     ├── context.json              # final context snapshot
-    ├── sessions.jsonl            # {node, session_id} per agent turn — map a node to its CLI session
+    ├── sessions.jsonl            # one line per agent turn: the node, its visit key, and its CLI session
     └── <step-id>/
         ├── prompt.md             # rendered prompt, written before agent invocation
         ├── output.json           # extracted JSON outputs

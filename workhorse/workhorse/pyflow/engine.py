@@ -25,7 +25,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from workhorse import otel
+from workhorse import otel, turnkey
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.context import WorkflowContext
@@ -375,6 +375,14 @@ class Engine:
                 outputs=_outputs_for(returns),
                 next=None,
                 **budget,
+            )
+            # Name this visit before anything writes about it. A node in a loop is
+            # visited many times, and the prompt, the session map and the transcript are
+            # written by three layers that cannot see each other — the key is what lets
+            # a reader put lap 5's three files back together.
+            turnkey.begin(
+                self.env.session_id_path.parent if self.env.session_id_path else None,
+                node_id,
             )
             self.env.log.info("[workhorse] agent  → %s", node_id)
             # Never None: `RunEnv.__post_init__` resolves the field, so the ladder this run

@@ -4,9 +4,11 @@ the one classifier every backend funnels through."""
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
+from typing import Any
 
-from workhorse import otel
+from workhorse import gitstate, otel, turnkey
 
 # A subscription "cap" is a transient failure that recovers on a SCHEDULE — the
 # spending/usage/session window resets at a wall-clock time (e.g. "resets 3:50am",
@@ -224,7 +226,10 @@ def rate_limit_info(event: dict) -> tuple[bool, float | None]:
 
 
 def record_session_map(
-    session_id_path: Path | None, node_id: str, session_id: str | None
+    session_id_path: Path | None,
+    node_id: str,
+    session_id: str | None,
+    backend: str = "",
 ) -> None:
     """Map ``node_id`` to the harness CLI ``session_id`` so the agent's session
     transcript can be recovered after the run — ``opencode export <session_id>``
@@ -243,14 +248,46 @@ def record_session_map(
     A node can appear more than once (loop revisits, compact/reframe within a
     node), so the mapping is node -> sessions; consumers dedup on read. Best-effort
     like the rest of telemetry: a write failure must never fault an unattended run.
+
+    ``node`` alone does not address a *particular* visit, which is what a reader
+    debugging a node that thrashed actually needs. So each line also carries:
+
+    - ``generation`` / ``seq`` — the visit key (:mod:`workhorse.turnkey`), the same one
+      naming that visit's stored prompt and transcript. ``(generation, ts)`` is a total
+      order that survives a checkpoint rewind, because a rewind cannot decrease the
+      generation and the manifest is append-only: re-running a node adds rows, it never
+      rewrites one.
+    - ``ts`` — epoch seconds, so a line can be placed against the run's spans and logs
+      without inferring order from file position.
+    - ``backend`` — which CLI's vocabulary the session id is in; ``opencode export`` and
+      ``~/.claude/projects`` are not interchangeable and the id does not say which.
+    - ``head`` — the commit the tree was on when the turn was recorded, observed, not
+      assumed (:mod:`workhorse.gitstate`).
+
+    Every added key is optional on read: lines written before this still parse, and a
+    consumer must treat an absent key as "not recorded", never as a default.
     """
     if not (session_id_path and session_id):
         return
     otel.turn_session(session_id)
+    row: dict[str, Any] = {"node": node_id, "session_id": session_id}
+    key = turnkey.current()
+    if key is not None and key.node == node_id:
+        # Guarded on the node: a turn taken outside the visit the engine opened (a
+        # library caller driving the runner directly) is better unnumbered than
+        # numbered wrong.
+        row["generation"] = key.generation
+        row["seq"] = key.seq
+    row["ts"] = int(time.time())
+    if backend:
+        row["backend"] = backend
+    head = gitstate.current_head()
+    if head:
+        row["head"] = head
     try:
         manifest = session_id_path.parent / "sessions.jsonl"
         with manifest.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"node": node_id, "session_id": session_id}) + "\n")
+            fh.write(json.dumps(row) + "\n")
     except OSError:
         pass
 
@@ -333,7 +370,7 @@ def classify_turn(
     if is_context_overflow(diagnostics):
         if session_id_path and session_id:
             session_id_path.write_text(session_id)
-            record_session_map(session_id_path, node_id, session_id)
+            record_session_map(session_id_path, node_id, session_id, backend_name)
         raise BackendInvocationError(
             f"Context window exhausted for node '{node_id}'{tail}",
             transient=False,
@@ -353,5 +390,5 @@ def classify_turn(
         )
     if session_id_path and session_id:
         session_id_path.write_text(session_id)
-        record_session_map(session_id_path, node_id, session_id)
+        record_session_map(session_id_path, node_id, session_id, backend_name)
     return result_text

@@ -555,10 +555,14 @@ def test_classify_turn_records_node_to_session_manifest():
     assert sidp.read_text() == "ses_second"
 
     rows = [json.loads(line) for line in manifest.read_text().splitlines()]
-    assert rows == [
-        {"node": "investigate", "session_id": "ses_first"},
-        {"node": "investigate", "session_id": "ses_second"},
+    assert [(r["node"], r["session_id"]) for r in rows] == [
+        ("investigate", "ses_first"),
+        ("investigate", "ses_second"),
     ]
+    # The backend is on the row because the session id does not say which CLI's
+    # vocabulary it is in, and the two are not interchangeable when the transcript is
+    # fetched later.
+    assert [r["backend"] for r in rows] == ["opencode", "opencode"]
 
 
 def test_classify_turn_without_session_writes_no_manifest():

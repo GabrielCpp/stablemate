@@ -442,7 +442,11 @@ agent-turn span additionally carries `session.id` — the backend CLI's session 
 so a node span leads on to that session's full transcript (`opencode export <id>`
 and equivalents), the reasoning/tool trace that `prompt.md`/`output.json` omit. The
 same map is written durably to `sessions.jsonl` in the run dir (see the README's Run
-artifacts section), so it survives even with telemetry off.
+artifacts section), so it survives even with telemetry off. Each of its lines also
+carries the visit key (`generation`, `seq`), the epoch `ts`, the `backend` whose
+vocabulary the session id is in, and the `head` the tree was on — so a node visited five
+times in a loop yields five addressable rows rather than five rows that only say *this
+node, some session*.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
