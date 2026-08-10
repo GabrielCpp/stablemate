@@ -71,6 +71,7 @@ def record_qa_giveup(
     story_slug: str = "",
     spent: str = "",
     plan_review_notes: str = "",
+    plan_review_ledger: tuple[str, ...] = (),
     plan_validation_notes: str = "",
     assessment_notes: str = "",
     audit_notes: str = "",
@@ -106,12 +107,27 @@ def record_qa_giveup(
         logger.info("%s already exists — leaving the QA run's own assessment in place", path)
         return QaGiveupRecord(path=str(path))
 
+    # Every refusal, not only the last one, when the reviewer spoke more than once. Two
+    # refusals that say the same thing are the finding a human most needs: they mean the plan
+    # turn was told and did not comply, which is a different triage from a plan that was
+    # refused once for something new each time. A single refusal is already the section
+    # below, so numbering it as a history would only add ceremony.
+    earlier = [notes for notes in plan_review_ledger if notes.strip()]
+    history = (
+        "\n\n".join(
+            f"**Pass {index}.** {notes.strip()}" for index, notes in enumerate(earlier, start=1)
+        )
+        if len(earlier) > 1
+        else ""
+    )
+
     # The semantic verdict leads, because it is the one that names a defect rather than a
     # schema slip — and on the budget-exhausted path it is usually the only one there is.
     sections = [
         f"## {heading}\n\n{notes.strip()}\n"
         for heading, notes in (
             ("Plan review — the semantic gate", plan_review_notes),
+            ("Plan review — every refusal, in order", history),
             ("Plan validation — `ostler qa validate`", plan_validation_notes),
             ("Run assessment", assessment_notes),
             ("Evidence audit", audit_notes),

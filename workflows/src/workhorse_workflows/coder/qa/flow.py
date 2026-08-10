@@ -338,6 +338,11 @@ class Qa(Workflow):
         the last validation, the last review, the last run assessment, the last audit, the
         last evidence verdict — and then those are cleared, because they describe a plan that
         no longer exists. `validate_qa_plan` immediately writes a fresh one.
+
+        The one thing not cleared is `plan_review_ledger`, handed over beside the latest
+        review as `prior_plan_reviews`. A refusal describes a plan that is gone; the *demand*
+        in it outlives the draft it was written against, and forgetting that is what let a
+        story spend every judgement repair being told the same thing. See the field.
         """
         self.logger.info("planning QA for %s", self.ctx.story_slug, extra={"activity": True})
         self.agent(
@@ -357,6 +362,7 @@ class Qa(Workflow):
                 "context_notes": loop.context_notes,
                 "plan_validation_notes": loop.plan_validation_notes,
                 "plan_review_notes": loop.plan_review_notes,
+                "prior_plan_reviews": loop.prior_plan_review_brief,
                 "run_assessment_notes": loop.assessment_notes,
                 "audit_notes": loop.audit_notes,
                 "evidence_notes": loop.qa.notes,
@@ -377,6 +383,11 @@ class Qa(Workflow):
 
         `review_qa_plan` + `decide_qa_plan_review`. `revise`, and a blank taking the YAML's
         `default:`, spends a plan *review* rework; only `approved` reaches the stack.
+
+        A refusal is also appended to `plan_review_ledger`, which the next plan turn reads
+        and `cleared()` does not blank. The reviewer's own brief is deliberately unchanged:
+        it judges the plan in front of it, and handing it its own past findings would anchor
+        the one gate whose independence the flow is built around.
         """
         review = self.agent(
             "prompts/review-qa-plan.md",
@@ -398,6 +409,10 @@ class Qa(Workflow):
         )
         if review.disposition == "approved":
             return Continue(review, self.stack, loop=loop)
+        if review.notes.strip():
+            loop = loop.update(
+                plan_review_ledger=(*loop.plan_review_ledger, review.notes.strip())
+            )
         return self._guard_plan_review(review, loop)
 
     # ── stack and run ─────────────────────────────────────────────────────────────────
@@ -1085,6 +1100,7 @@ class Qa(Workflow):
             self.ctx.story_slug,
             spent,
             plan_review_notes=loop.plan_review_notes,
+            plan_review_ledger=tuple(loop.plan_review_ledger),
             plan_validation_notes=loop.plan_validation_notes,
             assessment_notes=loop.assessment_notes,
             audit_notes=loop.audit_notes,

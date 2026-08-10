@@ -755,6 +755,36 @@ def test_a_plan_that_parses_but_does_not_test_the_story_is_sent_back(
     assert okf.runs == 0
 
 
+def test_each_plan_turn_is_told_everything_the_reviewer_already_refused(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A refusal outlives the draft it was written against.
+
+    `cleared()` blanks `plan_review_notes` before each plan turn, which is right — it
+    describes a plan that no longer exists. The *demand* inside it does not expire with the
+    draft, and forgetting it is what let a live story spend its whole judgement budget being
+    told the same thing: the reviewer's first and fifth refusal both said the copied URL was
+    never opened in a fresh page, and each plan turn read it as a first-time request.
+    """
+    ostler()
+    agent = _Agent(docs, review="revise")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    briefs = [args["prior_plan_reviews"] for args in agent.args_for("plan-qa")]
+    assert len(briefs) == 5, briefs
+    assert briefs[0] == "", "the first draft has been refused nothing"
+    # Each later turn carries every refusal so far, oldest first and numbered by its pass.
+    assert briefs[1] == "1. (plan-review pass 1) review pass 1", briefs[1]
+    assert briefs[4].splitlines() == [
+        f"{index}. (plan-review pass {index}) review pass {index}" for index in range(1, 5)
+    ], briefs[4]
+
+
 def test_schema_repairs_cannot_starve_the_semantic_plan_gate(
     docs: Path,
     ostler: Callable[..., _Ostler],
@@ -854,6 +884,11 @@ def test_a_plan_loop_give_up_leaves_the_reviewers_finding_on_disk(
     text = giveup.read_text(encoding="utf-8")
     assert "review pass 5" in text, text
     assert "4 QA-plan repair" in text, text
+    # And every earlier refusal beside it: two refusals that say the same thing mean the plan
+    # turn was told and did not comply, which is a different triage from four fresh findings.
+    assert "Plan review — every refusal, in order" in text, text
+    for index in range(1, 5):
+        assert f"**Pass {index}.** review pass {index}" in text, text
 
 
 def test_the_give_up_document_is_typed_like_any_other_spec_doc(tmp_path: Path) -> None:

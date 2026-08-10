@@ -28,6 +28,22 @@ Do not rediscover or substitute another story. If a gate did route back here, re
 plan from its specific diagnostics instead of discarding valid scenarios. Newer semantic,
 assessment, audit, or evidence findings are not superseded by an earlier structurally valid result.
 
+{% if workhorse_var('prior_plan_reviews') %}## Everything The Plan Reviewer Has Already Asked For
+
+These are the reviewer's refusals across every draft of this plan, oldest first. They are not
+history — an entry is still open unless this draft satisfies it.
+
+{{ workhorse_var('prior_plan_reviews') }}
+
+A demand that appears here and is also in the diagnostics above has now been made twice: the
+previous repair did not land, so re-stating the same intent in different words will not close it
+either. Change what the scenario **observes** — the oracle, the artifact it asserts on, the page
+or process it reads from — not how it is described. Before writing, name for yourself which
+scenario now satisfies each numbered item; if any of them cannot be satisfied by an executable
+scenario, say so in `qa-plan.md` rather than leaving it silently unaddressed for a third pass.
+
+{% endif %}
+
 ## Required Inputs
 
 Read all of:

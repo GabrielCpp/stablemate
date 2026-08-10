@@ -358,6 +358,21 @@ class QaLoop(CoderResult):
     assessment_notes: str = ""
     audit_notes: str = ""
 
+    #: Every plan-review refusal this flow has issued, oldest first — one entry per `revise`.
+    #: It deliberately survives `cleared()`, which is the whole point of it existing.
+    #:
+    #: `cleared()` blanks `plan_review_notes` because it describes a plan that no longer
+    #: exists. That is right for the *verdict* and wrong for the *demand*: a finding the plan
+    #: turn was told about and did not fix reaches the next turn looking brand new, so the
+    #: turn re-reads it as a first-time request, rewrites the plan wholesale again, and the
+    #: reviewer refuses it again for the same reason. A live story spent its whole judgement
+    #: budget that way — the reviewer's first and last refusal both said the copied URL was
+    #: never opened in a fresh page — and gave up with no plan ever executed.
+    #:
+    #: Bounded by construction: an entry is only appended where a judgement repair is spent,
+    #: so the ledger cannot outgrow `MAX_PLAN_REWORKS`.
+    plan_review_ledger: tuple[str, ...] = ()
+
     #: The triager's class, which is what the one-shot bonus pass is granted on. Blank until
     #: a triage turn runs — the YAML never declared this var, so an untriaged loop reads it
     #: as unset and earns no bonus.
@@ -477,6 +492,23 @@ class QaLoop(CoderResult):
                 "audit_notes": "",
                 **dict.fromkeys(self.VERDICT_LABELS, ""),
             }
+        )
+
+    @property
+    def prior_plan_review_brief(self) -> str:
+        """The plan-review ledger as the numbered brief both the plan turn and a human read.
+
+        Rendered here rather than in the flow for the reason `block_notes` is: it is one
+        composition of the loop's own fields, and two callers want the same words.
+
+        Oldest first, and numbered by the pass that issued it, because the ordinal is the
+        information the bare text lacks — "this was already asked for two drafts ago" is what
+        tells the plan turn its previous repair did not land.
+        """
+        return "\n".join(
+            f"{index}. (plan-review pass {index}) {notes.strip()}"
+            for index, notes in enumerate(self.plan_review_ledger, start=1)
+            if notes.strip()
         )
 
     @property
