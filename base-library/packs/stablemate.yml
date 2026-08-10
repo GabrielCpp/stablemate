@@ -1,9 +1,10 @@
-description: Stablemate toolchain skills — workhorse workflow authoring, farrier install/setup, ostler doc-graph CLI (incl. the OKF UI profile + modeling playbooks), groom's operator-gate dashboard, the parse-don't-match standard for reading structured formats, the portability tiers a shipped package owes its users, and the commit-as-you-go cadence every change lands under. (The stablemate repo itself additionally selects the UI a11y skills for groom's UI directly in its agents.yml.)
+description: >
+  Stablemate toolchain skills — workhorse workflow authoring, farrier install/setup, ostler doc-graph CLI (incl. the OKF UI profile + modeling playbooks), groom's operator-gate dashboard, the parse-don't-match standard for reading structured formats, and the portability tiers a shipped package owes its users. Plus the two commands every change lands under: `commit` (commit-as-you-go, Conventional Commits, staged by path) and `reload-runs` (push a fix into a workhorse run already in flight). (The stablemate repo itself additionally selects the UI a11y skills for groom's UI directly in its agents.yml.)
 # The `stablemate/` segment is the library namespace and is stripped from the
 # installed name; the skill names themselves no longer repeat it. Each one says
 # which tool it is about — `ostler`, `groom`, `farrier-setup`,
 # `workhorse-scripting` — or says nothing when the rule is generic to any repo
-# (`commit-cadence`, `repo-docs`, `code-review`). The installed name already
+# (`repo-docs`, `code-review`, `commit`). The installed name already
 # carries the consuming repo's prefix, so `stablemate-ostler` named this repo
 # twice, and every other repo got `<repo>-stablemate-ostler` — a name that reads
 # as "about stablemate" when the skill is about ostler.
@@ -19,4 +20,12 @@ skills:
   - stablemate/repo-docs
   - stablemate/structured-parsing
   - stablemate/portability
-  - stablemate/commit-cadence
+
+# The commit cadence and the reload ritual are *procedures*, so they ship as
+# commands rather than as a skill: a skill is loaded when its scope matches, and
+# the moment a change is finished never matched anything. A repo that wants them
+# always in context aggregates them into its root instructions
+# (`localInstructions: prompts:`) instead of maintaining its own copy.
+prompts:
+  - stablemate/commit
+  - stablemate/reload-runs

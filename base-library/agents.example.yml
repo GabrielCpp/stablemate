@@ -111,8 +111,19 @@ exclude:
 #           separated by a `---` markdown rule. Use for a directory governed by
 #           several *small* complementary rule-sets. Provide either `skill`
 #           (one) or `skills` (many), not both.
+# - prompt / prompts: the same, for installed *prompt* names — aggregated after
+#           the skills. Use when a procedure must be always loaded rather than
+#           invoked as a slash command: it stays one library file, rendered both
+#           as `.claude/commands/<name>.md` and into this file, so the text is
+#           not maintained once per consuming repo. An entry needs at least one
+#           skill or prompt; it may carry both.
 # - paths:  list of repo-relative directories to write the local instruction into
 #           ("." is the repo root → an always-loaded root CLAUDE.md)
+# - filename: write exactly this one file (CLAUDE.md / AGENTS.md / CODEX.md)
+#           instead of the per-adapter default set. Without it, the claude
+#           adapter writes CLAUDE.md and the codex adapter writes AGENTS.md +
+#           CODEX.md — so a claude-only repo whose root file is AGENTS.md names
+#           it here rather than turning the codex adapter on to get the name.
 # - includeReadme: how to fold in a sibling README.md (default: inline)
 #           inline — copy the rendered README body into the generated file
 #           import — reference it via Claude's `@README.md` directive (no
