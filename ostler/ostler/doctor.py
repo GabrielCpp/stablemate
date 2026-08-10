@@ -241,6 +241,14 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
             f.append(Finding("error", "orphan-seed",
                              f"active seed '{s.id}' ({s.status or 'no-status'}) is covered by no "
                              f"story", epic.name, s.id))
+        # An unclassified seed is not an error — every seed written before `layers` existed is
+        # one — but it costs the author a design turn it may not need, so it is worth seeing.
+        if s.active and not s.layers:
+            f.append(Finding("warn", "unclassified-seed",
+                             f"seed '{s.id}' has no `layers:` — every story covering it keeps "
+                             f"the mockup turn by default", epic.name, s.id,
+                             suggestion=f"ostler seed add {epic.name} {s.id} --layer "
+                                        f"<{'|'.join(registry.SEED_LAYERS)}>"))
 
 
 def _epic_ref(epic_name: str) -> str:

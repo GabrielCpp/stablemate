@@ -410,6 +410,24 @@ def unblock(graph: Graph, *, story: str = "", epic: str = "",
 # ---------------------------------------------------------------------------
 # seeds (live in epic.md `## Seeds`)
 # ---------------------------------------------------------------------------
+def _tags(value: object) -> list[str]:
+    """A list-valued seed meta argument as normalized tags, from a list or a comma string.
+
+    Callers reach `add_seed` from both the CLI (`--layer` repeated → a list) and Python
+    (a comma-joined string), and the seed block stores one spelling, so normalize here.
+    """
+    parts = value if isinstance(value, (list, tuple)) else [value]
+    tags: list[str] = []
+    for part in parts:
+        # Split inside each part too: `--layer frontend,backend` is the spelling an agent
+        # reaches for even when the flag is repeatable, and it should mean the same thing.
+        for piece in str(part or "").split(","):
+            tag = piece.strip().lower()
+            if tag and tag not in tags:
+                tags.append(tag)
+    return tags
+
+
 def add_seed(graph: Graph, epic_name: str, seed_id: str, status: str = registry.DEFAULT_SEED_STATUS,
              summary: str = "", meta: dict | None = None) -> Result:
     edir = path_mod.epic_dir(graph, epic_name)
@@ -418,6 +436,13 @@ def add_seed(graph: Graph, epic_name: str, seed_id: str, status: str = registry.
         return Result(False, f"no epic '{epic_name}'")
     if status not in registry.SEED_STATUSES:
         return Result(False, f"invalid status '{status}' (one of {', '.join(registry.SEED_STATUSES)})")
+    # `layers` is a closed vocabulary because the author's mockup gate branches on it: an
+    # unrecognized token would read as "not frontend" and silently skip a design turn, which
+    # is exactly the class of failure the gate exists to prevent. Reject it at write time.
+    bad = [t for t in _tags((meta or {}).get("layers")) if t not in registry.SEED_LAYERS]
+    if bad:
+        return Result(False, f"invalid layer{'s' if len(bad) > 1 else ''} "
+                             f"'{', '.join(bad)}' (one of {', '.join(registry.SEED_LAYERS)})")
     doc = markdown.split(epic_md.read_text(encoding="utf-8"))
     sec = doc.find_section(registry.SEEDS_HEADING)
     # Update-or-create: `write-epic.md` documents re-running this as updating the seed rather
@@ -427,8 +452,11 @@ def add_seed(graph: Graph, epic_name: str, seed_id: str, status: str = registry.
     if existed:
         _remove_subsection(doc, registry.SEEDS_HEADING, seed_id)
     block = [f"### {seed_id}", f"- status: {status}"]
-    for key in ("surface", "legacySurface", "backing", "prerequisites", "sourceBullet"):
+    for key in ("surface", "legacySurface", "backing", "prerequisites", "sourceBullet",
+                "layers", "services"):
         val = (meta or {}).get(key)
+        if key in registry.SEED_LIST_META_KEYS:
+            val = ", ".join(_tags(val))
         if val:
             block.append(f"- {key}: {val}")
     block.append("")

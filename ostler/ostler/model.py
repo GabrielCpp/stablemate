@@ -28,6 +28,12 @@ class SeedItem:
     status: str
     summary: str = ""
     raw: dict = field(default_factory=dict)
+    # Which layers of the system this seed touches (`registry.SEED_LAYERS`) and which services
+    # it lands in. Both are arrays: one seed routinely spans a screen and the API behind it.
+    # An empty `layers` means *unclassified*, not "touches nothing" — the author's mockup gate
+    # reads it that way and keeps the design turn rather than skipping it on a missing tag.
+    layers: tuple[str, ...] = ()
+    services: tuple[str, ...] = ()
 
     @property
     def active(self) -> bool:
@@ -330,6 +336,24 @@ def _split_list(value: str) -> list[str]:
             and p.strip().lower() not in registry.EMPTY_TOKENS]
 
 
+def _meta_tags(meta: dict[str, str | list[str]], key: str) -> tuple[str, ...]:
+    """A list-valued seed meta key as normalized tags, from either spelling.
+
+    `- layers: frontend, backend` and a nested bullet list under `- layers:` both reach here —
+    :func:`_meta_from_bullets` yields a string for the first and a list for the second — so
+    flatten either into the same tuple. Tags are lowercased and de-duplicated in order.
+    """
+    value = meta.get(key, "")
+    parts = value if isinstance(value, list) else [value]
+    tags: list[str] = []
+    for part in parts:
+        for tag in _split_list(str(part)):
+            lowered = tag.lower()
+            if lowered not in tags:
+                tags.append(lowered)
+    return tuple(tags)
+
+
 def _parse_seeds(doc: markdown.MarkdownDoc) -> list[SeedItem]:
     section = doc.find_section(registry.SEEDS_HEADING)
     if section is None:
@@ -343,7 +367,10 @@ def _parse_seeds(doc: markdown.MarkdownDoc) -> list[SeedItem]:
         summary = _first_paragraph(sub)
         status = _meta_scalar(meta, "status") or registry.DEFAULT_SEED_STATUS
         raw = {"id": sid, "status": status, "summary": summary, **meta}
-        seeds.append(SeedItem(id=sid, status=status, summary=summary, raw=raw))
+        seeds.append(SeedItem(
+            id=sid, status=status, summary=summary, raw=raw,
+            layers=_meta_tags(meta, "layers"), services=_meta_tags(meta, "services"),
+        ))
     return seeds
 
 

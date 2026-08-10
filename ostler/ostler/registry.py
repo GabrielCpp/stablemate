@@ -20,6 +20,13 @@ SEED_STATUSES = ("backlog", "researched", "covered", "resolved", "dropped", "def
 INACTIVE_SEED_STATUS = {"resolved", "dropped", "deferred"}
 DEFAULT_SEED_STATUS = "backlog"
 
+# Which layer of the system a seed lands in. Closed on purpose: the author workflow decides
+# whether a story needs a mockup by asking whether any covered seed is `frontend`, so a typo
+# here silently skips a design turn. `crud.add_seed` rejects a token outside this tuple.
+# The companion `services` axis is deliberately *not* closed — nothing branches on it yet, so
+# validating it would only add a failure mode.
+SEED_LAYERS = ("frontend", "backend", "infra")
+
 # ---------------------------------------------------------------------------
 # epic.md body grammar (parsed by markdown.py's Section/Bullet tree)
 # ---------------------------------------------------------------------------
@@ -30,7 +37,10 @@ STORIES_HEADING = "Stories"    # `## Stories` → `### <slug>` subsections
 # field. The first paragraph after the bullets is the seed `summary`.
 SEED_META_KEYS = (
     "status", "surface", "legacySurface", "backing", "prerequisites", "sourceBullet",
+    "layers", "services",
 )
+# The two list-valued seed keys, comma-separated on the bullet.
+SEED_LIST_META_KEYS = ("layers", "services")
 # Metadata-bullet keys recognized inside a `### <slug>` story block. `covers`/`depends on` are the
 # graph edges; the rest are plain fields.
 STORY_COVERS_KEY = "covers"        # → seedItems

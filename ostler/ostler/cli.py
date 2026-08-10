@@ -277,6 +277,10 @@ def _build_parser() -> argparse.ArgumentParser:
     sda.add_argument("--backing", default="")
     sda.add_argument("--prerequisites", default="")
     sda.add_argument("--source-bullet", default="", dest="source_bullet")
+    sda.add_argument("--layer", action="append", default=[], dest="layers",
+                     help=f"repeatable; one of {', '.join(registry.SEED_LAYERS)}")
+    sda.add_argument("--service", action="append", default=[], dest="services",
+                     help="repeatable; the service/package this seed lands in")
     sdr = sds.add_parser("remove")
     sdr.add_argument("epic")
     sdr.add_argument("id")
@@ -1128,6 +1132,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
                 "backing": args.backing,
                 "prerequisites": args.prerequisites,
                 "sourceBullet": args.source_bullet,
+                "layers": args.layers,
+                "services": args.services,
             }
             # A handle resolves here too: `seed add` is update-or-create, so naming an existing
             # seed by its handle updates that seed instead of filing a second one under a name

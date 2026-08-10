@@ -320,3 +320,34 @@ def test_story_id_uses_the_repo_prefix(tmp_path: Path):
     crud.add_seed(load(root), "e1", "s1", status="researched")
     res = crud.create_story(load(root), "e1", "01-x", "X", covers=["s1"])
     assert res.entity_id.startswith("TODO-"), res.entity_id
+
+
+# ── seed classification ───────────────────────────────────────────────────────
+# `layers` is what the author workflow's mockup gate branches on, so it round-trips through
+# the epic.md and is validated at write time: a typo'd layer would silently flip the gate,
+# and the run would either design a mockup for a backend seed or skip one for a screen.
+
+def test_seed_layers_and_services_round_trip(repo: Path):
+    assert crud.add_seed(load(repo), "epic-a", "tagged", status="researched",
+                         meta={"layers": ["frontend", "Backend"],
+                               "services": ["api-service"]}).ok
+
+    seed = next(s for s in load(repo).epics[0].seeds if s.id == "tagged")
+    assert seed.layers == ("frontend", "backend")   # normalised, order preserved
+    assert seed.services == ("api-service",)
+    assert "- layers: frontend, backend" in (repo / "docs/epics/epic-a/epic.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_seed_layer_outside_the_vocabulary_is_rejected(repo: Path):
+    res = crud.add_seed(load(repo), "epic-a", "typo", status="researched",
+                        meta={"layers": ["frontned"]})
+    assert not res.ok and "frontned" in res.message
+    assert not any(s.id == "typo" for s in load(repo).epics[0].seeds)
+
+
+def test_an_untagged_seed_carries_no_layers(repo: Path):
+    assert crud.add_seed(load(repo), "epic-a", "plain", status="researched").ok
+    seed = next(s for s in load(repo).epics[0].seeds if s.id == "plain")
+    assert seed.layers == () and seed.services == ()
