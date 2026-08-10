@@ -160,22 +160,22 @@ localInstructions:
   - skill: <installed-skill-name>
     paths:
       - "."
-    includeReadme: import    # inline (default) | import | none
+    includeReadme: false     # true (default) | false
 ```
 
 The `skill` value must be the **installed** name (with prefix), not the
 library source path. Run farrier once without `localInstructions` and check
 `.claude/skills/` to discover the installed names.
 
-Each generated `CLAUDE.md` starts with a `DO NOT EDIT` HTML comment naming
-its library source(s), the regeneration command, and a copy-pasteable
-`farrier source <path>` command that prints this machine's editable source
-paths (one per line for aggregated files). Claude strips block-level HTML
-comments before loading the file into context, but anyone opening the file
-to edit it sees the banner — follow it to the library source instead of
-editing the generated file. (Codex `AGENTS.md`/`CODEX.md` outputs carry no
-banner: Codex does not strip HTML comments, so it would leak into the
-agent's context.)
+The aggregated body is written to `AGENTS.md` — the name every harness reads
+natively — and, when the claude adapter is on, a `CLAUDE.md` beside it holding
+`@AGENTS.md`. The full `DO NOT EDIT` banner rides on that pointer: it names the
+library source(s), the regeneration command, and a copy-pasteable
+`farrier source <path>` command that prints this machine's editable source paths
+(one per line). Claude strips block-level HTML comments before loading, so the
+banner is free exactly where it is read; `AGENTS.md` carries a single-line
+marker instead, since Codex and the rest would pay for every line of it in
+context on every turn. `farrier source` resolves either filename.
 
 ## Running Farrier
 

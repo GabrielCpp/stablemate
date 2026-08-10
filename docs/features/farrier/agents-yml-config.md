@@ -63,8 +63,8 @@ Each enabled name turns on a distinct output set in `Renderer.render`:
   `.github/prompts/<name>.prompt.md`, plus rendering every selected `roots` file into
   `.github/copilot-instructions.md` and `.github/agents/copilot-instructions.md`.
 
-[`localInstructions`](#localinstructions) only renders for `claude` (`CLAUDE.md`) and `codex`
-(`AGENTS.md`/`CODEX.md`) — enabling `copilot` alone produces no local-instruction files.
+[`localInstructions`](#localinstructions) writes `AGENTS.md` for any enabled adapter, plus a
+`CLAUDE.md` pointer when `claude` is on.
 
 ### packs
 - type: `list` of `string` (pack ids, `.yml` omitted) — required: no — default: `[]`
@@ -135,9 +135,11 @@ a Jinja `| default(...)` filter.
 ### localInstructions
 - type: `list` of `mapping` — required: no — default: `[]`
 
-Each entry aggregates one or more already-selected skills' bodies into a local `CLAUDE.md`/
-`AGENTS.md`/`CODEX.md` file written under one or more repo directories, so the assistant
-auto-loads those rules from any ancestor directory without an explicit skill invocation.
+Each entry aggregates one or more already-selected skills' (and prompts') bodies into a local
+`AGENTS.md` written under one or more repo directories, so the assistant auto-loads those rules
+from any ancestor directory without an explicit skill invocation. When `claude` is enabled a
+`CLAUDE.md` is written beside it carrying the provenance banner and `@AGENTS.md` — the body
+itself is never written twice.
 
 - `skill` — type: `string` — required: one of `skill`/`skills` — default: none. Names a single
   already-selected skill.
@@ -148,16 +150,22 @@ auto-loads those rules from any ancestor directory without an explicit skill inv
   omitted/empty) — default: `[]`. Each path must already exist (scaffold it first — e.g.
   `farrier scaffold shared-docs`); otherwise `SystemExit("Local instruction path does not
   exist: <rel> ...")`.
-- `includeReadme` — type: `enum{inline,import,none}` or `bool` — required: no — default: `inline`.
-  Controls how a sibling `README.md` (in the same directory) is folded in when present:
-  `inline` copies its rendered body under a `## Local README` heading; `import` emits Claude's
-  `@README.md` directive instead (falls back to `inline`'s copy-in behavior for non-Claude
-  targets); `none` omits it entirely. `true`/`false` are accepted as aliases for `inline`/`none`.
-  Any other string raises `SystemExit`.
+- `prompt` / `prompts` — type: `string` / `list` of `string` — required: no — default: none. The
+  same, for already-selected *prompts*, aggregated after the skills. A prompt's standalone
+  `$ARGUMENTS` line is dropped on the way in — nothing substitutes it outside a slash-command
+  invocation. An entry must select at least one skill or prompt, or `SystemExit`.
+- `includeReadme` — type: `bool` — required: no — default: `true`. Whether a sibling `README.md`
+  (in the same directory) is folded in when present. The mechanism follows the files being
+  written, not the config: with `claude` as the only enabled adapter the `CLAUDE.md` pointer
+  emits `@README.md` (no duplicated content); with any other adapter enabled the rendered body is
+  copied into `AGENTS.md` under a `## Local README` heading, and the pointer does not import it a
+  second time. The legacy `inline`/`import`/`none` spellings still parse, as `true`/`true`/`false`;
+  any other string raises `SystemExit`.
 
-For each `paths` entry, output is written per **enabled** agent only for `codex` (both
-`AGENTS.md` and `CODEX.md`, identical content) and `claude` (`CLAUDE.md`) — `copilot` has no
-local-instruction output.
+For each `paths` entry, `AGENTS.md` is always written, and `CLAUDE.md` additionally when `claude`
+is enabled. Template helpers inside the aggregated bodies resolve against the shared `.agents/`
+layout unless `claude` is the only enabled adapter, since a link into `.claude/skills/` inside a
+file codex also reads points at a copy codex was never given.
 
 ### workflow
 - type: `mapping` — required: no — default: `{}`

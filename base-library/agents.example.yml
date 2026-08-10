@@ -98,13 +98,18 @@ exclude:
     - misc/*                # don't install miscellaneous prompts
 
 # ─────────────────────────────────────────────────────────────────────────────
-# localInstructions — Write a skill as a local CLAUDE.md (or AGENTS.md / CODEX.md)
-# inside a subdirectory of the repository.
+# localInstructions — Write a skill as a local AGENTS.md inside a subdirectory of
+# the repository.
 #
-# Claude auto-loads a CLAUDE.md found in any ancestor directory of the file
-# being edited, so this injects the right skill rules automatically based on
-# where the agent is working — without the agent needing to load the skill
+# An agent CLI auto-loads the instruction file found in any ancestor directory of
+# the file being edited, so this injects the right skill rules automatically based
+# on where the agent is working — without the agent needing to load the skill
 # explicitly.
+#
+# The aggregated text always goes to AGENTS.md, which every harness reads
+# natively. When the claude adapter is on, a CLAUDE.md is written beside it
+# holding the provenance banner and `@AGENTS.md` — Claude reads its own name, and
+# the body is never maintained (or loaded) twice.
 #
 # - skill:  the installed skill name (with prefix, as it appears in .claude/skills/)
 # - skills: a list of installed skill names — aggregated into one file in order,
@@ -118,18 +123,13 @@ exclude:
 #           not maintained once per consuming repo. An entry needs at least one
 #           skill or prompt; it may carry both.
 # - paths:  list of repo-relative directories to write the local instruction into
-#           ("." is the repo root → an always-loaded root CLAUDE.md)
-# - filename: write exactly this one file (CLAUDE.md / AGENTS.md / CODEX.md)
-#           instead of the per-adapter default set. Without it, the claude
-#           adapter writes CLAUDE.md and the codex adapter writes AGENTS.md +
-#           CODEX.md — so a claude-only repo whose root file is AGENTS.md names
-#           it here rather than turning the codex adapter on to get the name.
-# - includeReadme: how to fold in a sibling README.md (default: inline)
-#           inline — copy the rendered README body into the generated file
-#           import — reference it via Claude's `@README.md` directive (no
-#                    duplicated content; README stays the single source).
-#                    `@` is Claude-only; other targets fall back to inline.
-#           none   — omit the README entirely
+#           ("." is the repo root → an always-loaded root AGENTS.md)
+# - includeReadme: fold in the sibling README.md (default: true). *How* is not
+#           yours to pick: with Claude as the only adapter the CLAUDE.md pointer
+#           references it (`@README.md`, no duplicated content), and as soon as a
+#           harness without an import directive is enabled the body is copied
+#           into AGENTS.md instead. The older inline/import/none spellings still
+#           parse, as true/true/false.
 #
 # Keep always-loaded files (especially the repo root) lean: embed a skill only
 # when its full body must always be in context. For a large, situational skill,
@@ -137,14 +137,14 @@ exclude:
 # loads it on demand instead of paying its token cost every session.
 # ─────────────────────────────────────────────────────────────────────────────
 localInstructions:
-  # Always-loaded repo-root CLAUDE.md generated from the root skill. The root
-  # skill should *link* to repo-global skills (e.g. CLI command-timeout rules)
-  # rather than embedding their full bodies here, and `import` the README so its
-  # content isn't duplicated into the always-loaded root.
+  # Always-loaded repo-root AGENTS.md generated from the root skill (plus the
+  # CLAUDE.md pointer, when the claude adapter is on). The root skill should
+  # *link* to repo-global skills (e.g. CLI command-timeout rules) rather than
+  # embedding their full bodies here.
   - skill: myrepo
     paths:
       - "."
-    includeReadme: import
+    includeReadme: true
 
   # Inject DynamoDB patterns when working on any pkg/db/** file
   - skill: myrepo-db

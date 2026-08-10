@@ -104,7 +104,7 @@ the pruned starting point, and the two are kept consistent by hand.
     launcher scaffolding — `.agents/agents.mk` and `.agents/agents-context*.json` for every
     repo, plus a thin root `Makefile` only when the repo has none
   - run: render each [`localInstructions`](agents-yml-config.md#localinstructions) entry into its
-    target directories' `CLAUDE.md`/`AGENTS.md`/`CODEX.md` (every target directory must already
+    target directories' `AGENTS.md` (plus a `CLAUDE.md` pointer when `claude` is enabled; every target directory must already
     exist — `SystemExit` pointing at `farrier scaffold` otherwise) — together these compute the
     full `{output path: content}` map (`render_expected`) that `--check`/install below act on
   - run (`--check`): for each expected output, record `missing: <repo-relative path>` if
