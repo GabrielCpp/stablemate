@@ -16,6 +16,7 @@ pool, no locks (WAL mode keeps concurrent CLI reads from blocking the server).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -26,6 +27,8 @@ from pathlib import Path
 from typing import Any
 
 from platformdirs import user_data_dir
+
+logger = logging.getLogger(__name__)
 
 # Days of span/metric history to keep; pruned at startup and on a periodic tick.
 RETENTION_DAYS = float(os.environ.get("GROOM_RETENTION_DAYS", "14"))
@@ -201,6 +204,13 @@ def _connection() -> sqlite3.Connection:
         _conn = sqlite3.connect(path, check_same_thread=False)
         _conn.row_factory = sqlite3.Row
         _conn.execute("PRAGMA journal_mode=WAL")
+        # An fsync per commit is the wrong trade for this file. Every OTLP batch is one
+        # commit, so `FULL` costs a disk sync per export of every live run — and what it
+        # buys is durability of the last few commits across a power cut, over a table
+        # that is explicitly not the record of truth (each run's `events.jsonl` is).
+        # `NORMAL` under WAL cannot corrupt the database; it can only lose commits newer
+        # than the last checkpoint, which the next export replaces anyway.
+        _conn.execute("PRAGMA synchronous=NORMAL")
         _conn.executescript(_SCHEMA)
         _migrate(_conn)
     return _conn
@@ -1056,4 +1066,28 @@ def prune(retention_days: float = RETENTION_DAYS, now: float | None = None) -> i
         "DELETE FROM logs WHERE ts < ?", (stamp - LOG_RETENTION_DAYS * 86400,)
     ).rowcount
     conn.commit()
+    checkpoint()
     return removed
+
+
+def checkpoint() -> None:
+    """Fold the write-ahead log back into the database file, and truncate it.
+
+    SQLite checkpoints on its own, but only when a writer finds no reader in the way —
+    and this process writes continuously while the dashboard holds long read queries
+    open, which is the one shape where auto-checkpointing can starve indefinitely. It
+    is not a correctness problem and that is what makes it easy to miss: the WAL simply
+    grows, and a 293 MB database was observed carrying a 376 MB WAL beside it. Called on
+    the prune tick because a checkpoint after a large DELETE is also when it reclaims
+    the most, and it is already off the event loop there.
+
+    `TRUNCATE` rather than `PASSIVE`: passive is what was already happening and not
+    working. A busy checkpoint returns rather than blocking, so a reader mid-query costs
+    this tick and not the next one.
+    """
+    try:
+        _connection().execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except sqlite3.OperationalError as exc:
+        # Never worth failing the prune over: the WAL being large is a disk-space
+        # question, and the rows are already gone.
+        logger.warning("groom: WAL checkpoint declined: %s", exc)

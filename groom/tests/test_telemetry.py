@@ -10,6 +10,7 @@ Run: uv run pytest tests/test_telemetry.py
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import sqlite3
 import tempfile
@@ -1208,6 +1209,74 @@ def test_v1_metrics_receiver_records_heartbeat():
             client.__exit__(None, None, None)
         assert resp.status_code in (200, 201)
         assert state.RUNS["run-1"].last_heartbeat_ts > 0
+
+
+def test_the_receivers_write_off_the_event_loop():
+    """Every export is one SQLite commit, and a commit is a blocking syscall. Run on the
+    event loop it is not this run's cost but the whole fleet's: one collector serves every
+    live run, so a write in flight stalls every other export, every alert evaluation and
+    every dashboard request behind it.
+
+    Asserted by what the store call can see rather than by a timing: inside a
+    `to_thread` worker there is no running loop, so `get_running_loop()` raises — and if
+    the `await asyncio.to_thread(...)` is ever unwrapped back to a direct call, it
+    returns one instead and the test fails."""
+    off_loop: list[str] = []
+
+    def _witness(name):
+        def record(rows):
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                off_loop.append(name)
+            return len(rows)
+        return record
+
+    with _TelemetryEnv(), \
+         patch.object(store, "insert_spans", _witness("spans")), \
+         patch.object(store, "insert_metrics", _witness("metrics")), \
+         patch.object(store, "insert_logs", _witness("logs")), \
+         patch.object(notify, "push"):
+        client = _hermetic_client()
+        try:
+            headers = {"Content-Type": "application/x-protobuf"}
+            client.post("/v1/traces", content=_trace_request([{"name": "plan"}]), headers=headers)
+            client.post(
+                "/v1/metrics",
+                content=_metrics_request("workhorse.run.heartbeat"),
+                headers=headers,
+            )
+            client.post("/v1/logs", content=_logs_request([{"body": "hello"}]), headers=headers)
+        finally:
+            client.__exit__(None, None, None)
+
+    assert sorted(off_loop) == ["logs", "metrics", "spans"]
+
+
+def test_pruning_folds_the_write_ahead_log_back_into_the_database():
+    """WAL mode defers the fold to a checkpoint that only runs when a writer finds no
+    reader in the way — and groom writes continuously while the dashboard holds long
+    reads open, which is the one shape where that can starve. It is not a correctness
+    bug, which is what makes it easy to miss: a 293 MB database was found carrying a
+    376 MB WAL beside it. `prune()` is where the explicit checkpoint rides."""
+    with _TelemetryEnv():
+        store.insert_spans(otlp.parse_traces(_trace_request([{"name": "plan"}])))
+        wal = Path(os.environ["GROOM_DB"] + "-wal")
+        assert wal.exists() and wal.stat().st_size > 0, "expected WAL mode to be on"
+        store.prune()
+        # TRUNCATE, so the log is emptied rather than merely folded in.
+        assert wal.stat().st_size == 0
+
+
+def test_commits_do_not_each_pay_an_fsync():
+    """`synchronous=FULL` would cost a disk sync per OTLP export of every live run, to
+    buy durability of the last commits across a power cut — over a table that is
+    explicitly not the record of truth (each run's `events.jsonl` is). `NORMAL` under
+    WAL cannot corrupt the database; it can only lose commits newer than the last
+    checkpoint, which the next export replaces anyway."""
+    with _TelemetryEnv():
+        # 1 is NORMAL; 2 is FULL, the default this deliberately steps down from.
+        assert store._connection().execute("PRAGMA synchronous").fetchone()[0] == 1
 
 
 def test_v1_traces_rejects_garbage_with_400():

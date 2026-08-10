@@ -635,12 +635,18 @@ async def otlp_traces(request: Request) -> Response:
     """Standard OTLP/HTTP trace receiver — parse → store → eval rules →
     broadcast, mirroring push_blocked's shape. A pushed span carries its own
     identity in the payload, so native (non-Docker) runs appear here without
-    passing the discovery gate."""
+    passing the discovery gate.
+
+    The store call goes to a thread, as every other blocking call in this module does.
+    `sqlite3` releases the GIL around its own work, but the commit is still a blocking
+    syscall — and on the event loop it is one every live run pays for every other run:
+    a single collector serving a fleet serializes every export, every alert evaluation
+    and every dashboard request behind whichever write is in flight."""
     try:
         spans = _real_runs(otlp.parse_traces(await request.body()))
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
-    store.insert_spans(spans)
+    await asyncio.to_thread(store.insert_spans, spans)
     await _dispatch_alerts(alerts.ingest_spans(spans))
     await _project_native_rows(spans)
     # An empty ExportTraceServiceResponse serializes to zero bytes; OTLP/HTTP
@@ -657,7 +663,7 @@ async def otlp_metrics(request: Request) -> Response:
         points = _real_runs(otlp.parse_metrics(await request.body()))
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
-    store.insert_metrics(points)
+    await asyncio.to_thread(store.insert_metrics, points)
     await _dispatch_alerts(alerts.ingest_metrics(points))
     await _project_native_rows(points)
     return Response(content=b"", media_type="application/x-protobuf", status_code=200)
@@ -681,7 +687,7 @@ async def otlp_logs(request: Request) -> Response:
         records = _real_runs(otlp.parse_logs(await request.body()))
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
-    store.insert_logs(records)
+    await asyncio.to_thread(store.insert_logs, records)
     return Response(content=b"", media_type="application/x-protobuf", status_code=200)
 
 
