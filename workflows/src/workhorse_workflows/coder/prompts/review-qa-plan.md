@@ -103,16 +103,16 @@ from `findings` alone, so a `revise` with an empty `findings` list, or a finding
 of `id`, `target`, `issue` or `repair`, fails the run outright rather than being reinterpreted
 from your prose. `id` is any stable handle; reuse the same one when you restate a finding.
 
-Every finding names its `scope`, and the flow acts on that field rather than on the prose
-above it:
+Every finding names its `scope`, and the flow routes on that field rather than on the prose
+above it. The question the scope answers is **where the repair lives**:
 
-- `plan` — the plan author can fix it by editing `qa-plan.yml` / `qa-plan.md`. This is the
-  only scope that is sent back for repair.
-- `stack` — it belongs to `qa-stack.yml` and the workflow's `ensure_stack` step: a service,
+- `plan` — the repair is an edit inside `qa-plan.yml` / `qa-plan.md`. Sent to the plan author.
+- `product-test` — the repair is an assertion, fixture or fix in product code or a committed
+  test the plan only cites. Sent to the fix loop, which edits the code.
+- `stack` — the repair is in `qa-stack.yml` and the workflow's `ensure_stack` step: a service,
   emulator, database, seed or aggregate command that must be up before the plan runs.
-- `product-test` — it belongs to product code or a native test the plan only cites.
 
-`stack` and `product-test` findings are **dropped** before the author sees them, and a
-`revise` whose findings are all outside the plan's authority is recorded as `approved`. That
-is the contract above made mechanical, not a loophole: name the scope honestly, because a
-misfiled finding is now silently discarded rather than argued with.
+A `revise` whose findings are all outside the plan's authority is recorded as `approved` —
+the plan is not what needs revising — and the findings still reach whoever owns them. Name
+the scope by where the repair lands, not by who found it: a real gap filed as `plan` bills a
+replan that cannot close it, and the same gap comes straight back on the next pass.

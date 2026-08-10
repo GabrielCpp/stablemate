@@ -379,7 +379,9 @@ class _Agent:
         failure_class: str = "none",
         objective: str = "yes",
         assessment_class: str = "none",
+        assessment_findings: list[dict[str, str]] | None = None,
         audit: tuple[str, str] = ("stands", "none"),
+        audit_findings: list[dict[str, str]] | None = None,
         triage: tuple[str, str] = ("qa_fix", "code"),
         setup: str = "fixed",
         escalate: bool = False,
@@ -397,7 +399,12 @@ class _Agent:
         self.failure_class = failure_class
         self.objective = objective
         self.assessment_class = assessment_class
+        # Unlike `plan_findings`, these default to *nothing*: the flow's prose fall-through
+        # for a gate that named no findings is the pre-existing behaviour and most of the
+        # suite still exercises it, so a fake that invented findings would hide it.
+        self.assessment_findings = assessment_findings or []
         self.audit = audit
+        self.audit_findings = audit_findings or []
         self.triage = triage
         self.setup = setup
         self.escalate = escalate
@@ -484,6 +491,7 @@ class _Agent:
             "disposition": self.disposition,
             "failure_class": self.assessment_class if failed else self.failure_class,
             "objective_reached": "no" if failed else self.objective,
+            "findings": self.assessment_findings,
             "notes": f"assessment pass {nth}",
         }
 
@@ -492,6 +500,7 @@ class _Agent:
         return {
             "verdict": verdict,
             "refutation_class": refutation,
+            "findings": self.audit_findings,
             "notes": f"audit pass {nth}",
         }
 
@@ -925,7 +934,7 @@ def test_a_refusal_only_the_stack_could_fix_does_not_cost_a_replan(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`_scoped_to_the_plan`: a `revise` the plan author may not act on is overturned.
+    """`_routed`: a `revise` the plan author may not act on is overturned.
 
     `review-qa-plan.md` tells the reviewer the heavyweight stack is `ensure_stack`'s and not
     the plan's, and real reviews refuse plans over it anyway — an emulator that is not
@@ -1539,6 +1548,191 @@ def test_a_spent_rescope_budget_makes_triage_fix_in_place(
     assert result.status == "exhausted", result
     assert result.triage_scope == 2, "the parent's budget is handed back unspent"
     assert agent.counts()["apply-qa-fixes"] == 3, agent.counts()
+
+
+# ------------------------------------------------------------------- routing a gate's findings
+
+
+def _a_product_test_finding(handle: str = "A1") -> dict[str, str]:
+    """The finding that livelocked a live story: a gap only a code edit can close.
+
+    Taken from the run verbatim. An acceptance criterion claimed no network call happens
+    during an export, the only proof was a static read of the exporting function, and the
+    repair is a fetch-spy assertion in a committed browser test — a file the QA plan may cite
+    but not write.
+    """
+    return {
+        "id": handle,
+        "scope": "product-test",
+        "target": "`AC9` / `editor-shell.browser.test.tsx`",
+        "issue": "AC9's no-network clause is proved only by a static read of `exportDraft()`",
+        "repair": "assert zero fetches around the export action",
+    }
+
+
+def test_an_audit_refuting_on_a_product_test_gap_sends_the_fixer_not_the_planner(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The `coder-qafix2` regression: three gates, one missing assertion, nobody who could add it.
+
+    A live story spent 82 minutes here. The audit refuted an `evidence-defect` whose repair
+    was an assertion in a committed test file; `refutation_class` alone sent every refutation
+    to the plan author, who cannot write one. So the author re-planned, disclosed the same
+    gap, and the audit refuted it again — four laps, and a give-up filed as "QA-plan repair",
+    which reads to a triaging human as a plan nobody could write rather than a missing test.
+
+    The finding's scope is what breaks that: the repair goes to the loop that edits code.
+    """
+    ostler()
+    agent = _Agent(
+        docs,
+        audit=("refuted", "evidence-defect"),
+        audit_findings=[_a_product_test_finding()],
+    )
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    # The auditor never relents in this fake, so the flow still ends exhausted — but on the
+    # budget that names the work, and having actually attempted it.
+    assert result.status == "exhausted", result
+    assert result.spent == "3 code rework", result.spent
+    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
+    assert agent.counts()["repair-qa-plan"] == 0, agent.counts()
+    brief = agent.args_for("apply-qa-fixes")[0]["qa_notes"]
+    assert "AC9" in brief and "fetch" in brief, brief
+
+
+def test_an_extend_plan_naming_a_product_test_gap_sends_the_fixer(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The same gap found one gate earlier, by the post-run assessment.
+
+    `extend_plan` reads as a plan instruction and was routed as one unconditionally. It is
+    routinely the opposite: the run exposed an untested claim whose proof belongs in a
+    committed test, and appending scenarios to `qa-plan.yml` cannot supply it.
+    """
+    ostler()
+    agent = _Agent(
+        docs,
+        disposition="extend_plan",
+        assessment_findings=[_a_product_test_finding("S1")],
+    )
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert result.spent == "3 code rework", result.spent
+    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
+    assert agent.counts()["repair-qa-plan"] == 0, agent.counts()
+
+
+def test_a_reviewers_product_test_finding_reaches_the_fixer_instead_of_the_floor(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The cheapest gate finds it first, and used to be the one that threw it away.
+
+    Scoping the plan review to the plan's own authority stopped billing the author for
+    repairs it may not make, but it dropped those findings rather than forwarding them. The
+    same gap then cost a full plan, stack, run and audit to rediscover.
+    """
+    ostler()
+    agent = _Agent(docs, revise_plans=1, plan_findings=[_a_product_test_finding("R1")])
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert result.qa_rework == 1
+    assert agent.counts()["apply-qa-fixes"] == 1, agent.counts()
+    # The refusal cost no plan lap: there was nothing in the plan file to repair.
+    assert agent.counts()["repair-qa-plan"] == 0, agent.counts()
+    assert "AC9" in agent.args_for("apply-qa-fixes")[0]["qa_notes"]
+
+
+def test_a_plan_scoped_audit_finding_still_goes_to_the_plan_author(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Routing is by scope, not by gate: the audit's own plan defects are unaffected."""
+    ostler()
+    agent = _Agent(
+        docs,
+        audit=("refuted", "plan-defect"),
+        audit_findings=[
+            {
+                "id": "A1",
+                "scope": "plan",
+                "target": "scenario `export-draft` / covers `AC9`",
+                "issue": "the terminal assertion does not prove its `covers` claim",
+                "repair": "assert the exported file's contents, not that the dialog closed",
+            }
+        ],
+    )
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert result.spent == "4 QA-plan repair", result.spent
+    assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
+
+
+def test_a_refutation_naming_no_findings_still_takes_the_prose_path(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The fall-through the change must not remove.
+
+    `findings` defaults to empty, so a checkpoint written before the field existed — and an
+    auditor that answers in prose alone — resumes on exactly the behaviour it had. Failing a
+    finding-less refutation the way the plan reviewer's is failed would add a new way to kill
+    a run over an audit's output shape, on the gate that reads a pass which already cleared
+    every other gate.
+    """
+    ostler()
+    agent = _Agent(docs, audit=("refuted", "evidence-defect"))
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert result.spent == "4 QA-plan repair", result.spent
+    assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
+
+
+def test_a_dev_target_reports_a_product_test_finding_rather_than_fixing_it(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The route goes through `_fixable`, so `dev`'s "we do not own this code" still holds.
+
+    Calling `apply_fixes` directly would have been the shorter wiring and would have had a
+    `dev` run editing a repo it is only allowed to file findings against.
+    """
+    ostler()
+    agent = _Agent(
+        docs,
+        audit=("refuted", "evidence-defect"),
+        audit_findings=[_a_product_test_finding()],
+    )
+
+    result = drive_flow(Qa(story=STORY, target_env="dev"), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
+    assert agent.counts()["report-qa-dev"] == 1, agent.counts()
 
 
 # --------------------------------------------------------------------------- target_env=dev

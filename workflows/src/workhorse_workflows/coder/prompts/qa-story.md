@@ -104,11 +104,40 @@ level, with no wrapper object around them. Any other shape fails to parse and th
 
 ```json
 {
-  "disposition": "confirmed",
-  "failure_class": "none",
-  "objective_reached": "yes",
-  "notes": "The asserted precondition, intermediate checkpoints, and terminal objective were observed."
+  "disposition": "extend_plan",
+  "failure_class": "evidence",
+  "objective_reached": "no",
+  "findings": [
+    {
+      "id": "S1",
+      "scope": "product-test",
+      "target": "`AC9` / scenario `export-draft` / `editor-shell.browser.test.tsx`",
+      "issue": "AC9's no-network clause is only argued from a static read of `exportDraft()`.",
+      "repair": "Add a fetch-spy assertion around the export action asserting zero requests."
+    }
+  ],
+  "notes": "Every objective but AC9's no-network clause was observed."
 }
 ```
+
+A `confirmed` disposition returns an empty `findings` list. Any other disposition must carry
+at least one finding, each with `id`, `target`, `issue` and `repair`: `disposition` says the
+run did not carry the story, and the findings say who repairs what. `notes` summarizes them;
+`findings` is what the repair is briefed from. `id` is any stable handle; reuse the same one
+when you restate a finding across passes.
+
+Every finding names its `scope`, and the flow routes on that field rather than on your prose.
+The question the scope answers is **where the repair lives**:
+
+- `plan` — the repair is an edit inside `qa-plan.yml` / `qa-plan.md`. Sent to the plan author.
+- `product-test` — the repair is an assertion, fixture or fix in product code or a committed
+  test the plan only cites. Sent to the fix loop, which edits the code.
+- `stack` — the repair is in `qa-stack.yml` and the workflow's `ensure_stack` step: a service,
+  emulator, database, seed or aggregate command that must be up before the plan runs.
+
+Name the scope by where the repair lands, not by which gate found it. An `extend_plan` whose
+real repair is an assertion in a committed test file is `product-test`, not `plan`: filed as
+`plan` it bills a replan that may not touch that file, and the identical gap comes back on
+the next pass until the story's budget runs out.
 
 This assessment is routing and diagnosis only, never a replacement QA verdict.

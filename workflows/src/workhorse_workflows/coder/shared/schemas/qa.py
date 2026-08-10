@@ -236,16 +236,21 @@ class QaPlanResult(CoderResult):
     notes: str = ""
 
 
-class QaPlanFinding(CoderResult):
-    """One QA-plan review finding, with the authority it falls under named.
+class QaFinding(CoderResult):
+    """One QA finding, from any of the three gates, with the authority it falls under named.
 
     `scope` is closed for the same reason `DocumentationFinding.kind` is, and here the
     closure is load-bearing rather than diagnostic. `review-qa-plan.md` already tells the
     reviewer in prose that the heavyweight shared stack is `ensure_stack`'s and not the
     plan's, and that a finding the author cannot act on inside a plan file spends the repair
     budget for nothing — and the reviewer keeps issuing them anyway. Prose cannot filter
-    prose. A named scope can: the flow drops everything that is not `plan` deterministically,
-    and counts what it dropped, so the failure is measurable instead of anecdotal.
+    prose. A named scope can.
+
+    The scope now decides *routing*, not just filtering: `_route_findings` sends a
+    `product-test` finding to the fix loop, a `plan` finding to the plan author and a `stack`
+    finding to setup. Dropping the first two on the floor is what livelocked a live story for
+    82 minutes — three gates kept rediscovering a missing test assertion and kept billing the
+    one author who could not write it.
     """
 
     id: str = ""
@@ -263,11 +268,11 @@ class QaPlanReview(CoderResult):
 
     `findings` is the repair contract; `notes` is a summary of it. A `revise` whose findings
     are all out of the plan's authority is not a revision the author can spend a pass on —
-    see `QaPlanFinding.scope` and `review_plan`.
+    see `QaFinding.scope` and `review_plan`.
     """
 
     disposition: str = "revise"
-    findings: list[QaPlanFinding] = []
+    findings: list[QaFinding] = []
     notes: str = "Semantic QA plan review produced no valid result."
 
 
@@ -277,11 +282,18 @@ class QaAssessment(CoderResult):
     Four dispositions (`confirmed`, `repair_plan`, `extend_plan`, `repair_setup`) crossed with
     a `failure_class` and an `objective_reached` flag; the flow reads all three in sequence,
     which is what the YAML's four chained branch nodes did.
+
+    `findings` is the finer grain under that classification: the disposition says the plan did
+    not carry the story, and each finding says who repairs what. Without it every non-
+    `confirmed` disposition billed the plan author, including the ones whose repair was an
+    assertion in a committed test file. Empty by default, so a checkpoint written before this
+    field existed resumes on the prose path.
     """
 
     disposition: str = "repair_plan"
     failure_class: str = "plan"
     objective_reached: str = "no"
+    findings: list[QaFinding] = []
     notes: str = "QA run assessment produced no valid result."
 
 
@@ -292,10 +304,16 @@ class QaAudit(CoderResult):
     product contradiction (the story is wrong), a plan defect or an evidence defect. A blank
     reply defaults to `refuted`/`plan-defect`, which spends a plan rework rather than
     shipping an unaudited pass.
+
+    `findings` names who repairs each gap the auditor found. `refutation_class` is the coarse
+    classification and routes the product case on its own; the findings are what keep an
+    evidence defect whose repair is a test assertion from being billed to the plan author,
+    who cannot write it. Empty by default, so an older checkpoint resumes on the prose path.
     """
 
     verdict: str = "refuted"
     refutation_class: str = "plan-defect"
+    findings: list[QaFinding] = []
     notes: str = "Independent QA audit produced no valid result."
 
 

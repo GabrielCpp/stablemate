@@ -39,6 +39,12 @@ Divergences from the YAML, all deliberate:
   pre-run review, and post-run findings retain separate counters for diagnosis, but all draw
   from one four-repair ceiling. The total is derived from those checkpointed counters, so an
   old resume neither resets its allowance nor needs a state migration.
+* **a gate's findings are routed by scope, not all billed to the plan author.** The YAML sent
+  every refusal from `decide_qa_assessment`, `decide_qa_audit` and the plan review to the
+  replan loop, because all three returned prose. All three return structured findings with a
+  closed `scope` now, and `_routed` sends each to the loop that can repair it: `product-test`
+  to the fix loop, `plan` to the replan loop, `stack` to setup. Prose with no findings still
+  takes the YAML's arm, so nothing that worked before stops working.
 * `clear_qa_gate_state` is `QaLoop.cleared()`, called on the way out of the plan turn rather
   than as a node. It blanked five keys and left the two context ones alone; the model does
   the same, and says so.
@@ -61,8 +67,9 @@ Divergences from the YAML, all deliberate:
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, NamedTuple
 
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths
@@ -90,9 +97,9 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     QaAssessment,
     QaAudit,
     QaContextRepair,
+    QaFinding,
     QaFlowResult,
     QaLoop,
-    QaPlanFinding,
     QaPlanResult,
     QaPlanReview,
     QaReport,
@@ -161,59 +168,58 @@ def _plan_finding_problems(review: QaPlanReview) -> list[str]:
     return problems
 
 
-def _plan_finding_line(finding: QaPlanFinding) -> str:
-    """One structured finding as the line the plan author is briefed with."""
+def _finding_line(finding: QaFinding) -> str:
+    """One structured finding as the line whoever repairs it is briefed with."""
     issue = finding.issue.rstrip(".")
     return f"{finding.id} [{finding.scope}] {finding.target}: {issue}. Repair: {finding.repair}"
 
 
-def _plan_review_notes(review: QaPlanReview) -> str:
+def _brief(findings: Sequence[QaFinding], notes: str) -> str:
     """The repair brief, composed from the findings rather than taken from the prose.
 
-    `notes` is the reviewer's summary and is worth carrying, but it is not the contract —
-    it was being handed to the author *as* the worklist, which meant the author's brief
-    varied with how discursive that pass's reviewer felt. Findings first, summary last.
+    `notes` is the gate's summary and is worth carrying, but it is not the contract — it was
+    being handed to the author *as* the worklist, which meant the brief varied with how
+    discursive that pass's reviewer felt. Findings first, summary last.
     """
-    lines = [_plan_finding_line(finding) for finding in review.findings]
-    if review.notes.strip():
-        lines.append(f"Summary: {review.notes.strip()}")
+    lines = [_finding_line(finding) for finding in findings]
+    if notes.strip():
+        lines.append(f"Summary: {notes.strip()}")
     return "\n".join(lines)
 
 
-def _scoped_to_the_plan(review: QaPlanReview) -> tuple[QaPlanReview, int]:
-    """Hold a plan review to the authority its own brief already claims, and count the misses.
+class RoutedFindings(NamedTuple):
+    """One gate's findings split by who has the authority to repair them.
 
-    `review-qa-plan.md` states it twice — the heavyweight shared stack belongs to
-    `ensure_stack`, and a finding the author cannot act on inside a plan file spends the
-    repair budget and returns the same worklist next pass. Reviews observed in real runs
-    refuse plans over exactly that anyway: an emulator that is not running, a stack the plan
-    was forbidden to start. Prose in a brief is not a filter, and free-form `notes` left the
-    flow nothing to filter *with*; a closed `scope` on each finding does.
+    Every gate — the plan reviewer, the post-run assessment, the audit — can find a gap whose
+    repair is not the plan author's to make. Until this split existed only the reviewer's
+    findings were even typed, and its out-of-scope ones were *dropped*: the flow refused to
+    send the author what it may not touch, and then sent the refusal nowhere. Audit and assess
+    were free prose, so every refusal they raised landed on the plan author regardless.
 
-    Two things happen here, and the second is the one that pays. Out-of-scope findings are
-    dropped from the repair contract — the author is not sent to fix what it may not touch.
-    And when *every* finding was out of scope, the refusal itself is overturned: a `revise`
-    with nothing left in it is the case the brief says to approve, and letting it stand costs
-    a `power="high"` replan turn plus a second full review to arrive back here unchanged.
-
-    A `revise` carrying no findings at all never reaches here: `_plan_finding_problems` runs
-    first and fails the flow on it, because after that check a refusal without findings is not
-    a legacy shape, it is a reviewer that did not answer.
-
-    Returns the review to act on, and how many findings were dropped.
+    That is a livelock, not an inefficiency, and a live story spent 82 minutes in it. Three
+    gates each found the same missing assertion in a committed test file, each billed the one
+    author who cannot write one, and each got back a plan that disclosed the gap again.
     """
-    outside = [finding for finding in review.findings if finding.scope != "plan"]
-    if not outside:
-        return review, 0
-    kept = [finding for finding in review.findings if finding.scope == "plan"]
-    ceded = "; ".join(f"{finding.scope}: {finding.issue}".strip() for finding in outside)
-    update: dict[str, object] = {
-        "findings": kept,
-        "notes": f"{review.notes}\n\nOutside the plan's authority, not sent for repair: {ceded}",
-    }
-    if not kept and review.disposition != "approved":
-        update["disposition"] = "approved"
-    return review.model_copy(update=update), len(outside)
+
+    plan: list[QaFinding]
+    product_test: list[QaFinding]
+    stack: list[QaFinding]
+
+
+def _route_findings(findings: Sequence[QaFinding]) -> RoutedFindings:
+    """Partition findings by `scope` — the closed vocabulary is what makes this decidable.
+
+    `review-qa-plan.md` states the boundary twice in prose — the heavyweight shared stack
+    belongs to `ensure_stack`, a repair the author cannot make inside a plan file spends the
+    budget and returns the same worklist next pass — and gates observed in real runs cross it
+    anyway. Prose in a brief is not a filter and free-form `notes` left the flow nothing to
+    filter *with*; a closed `scope` on each finding does.
+    """
+    return RoutedFindings(
+        plan=[finding for finding in findings if finding.scope == "plan"],
+        product_test=[finding for finding in findings if finding.scope == "product-test"],
+        stack=[finding for finding in findings if finding.scope == "stack"],
+    )
 
 
 class Qa(Workflow):
@@ -523,9 +529,15 @@ class Qa(Workflow):
         the one gate whose independence the flow is built around.
 
         What the reviewer returns is then held to the authority contract its own brief states,
-        by `_scoped_to_the_plan` rather than by trusting it — see that function. The findings
-        are also what the author is briefed with: `_plan_review_notes` composes the worklist
-        from them, so a refusal is a list of repairs rather than a paragraph to reinterpret.
+        by `_routed` rather than by trusting it. The findings are also what the author is
+        briefed with: `_brief` composes the worklist from them, so a refusal is a list of
+        repairs rather than a paragraph to reinterpret.
+
+        This is the cheapest of the three gates and the earliest, so a `product-test` finding
+        raised here is the best-case discovery of a gap the plan cannot close — it used to be
+        dropped, and the run rediscovered it forty minutes later from the audit. A refusal
+        left with nothing anyone can act on is overturned to `approved`: letting it stand
+        costs a `power="high"` replan plus a second full review to arrive back here unchanged.
         """
         review = self.agent(
             "prompts/review-qa-plan.md",
@@ -548,22 +560,41 @@ class Qa(Workflow):
                 + "; ".join(problems)
             )
         # After the structural check, so a malformed refusal fails on its shape rather than
-        # being quietly scoped down to nothing and recorded as an approval.
-        review, dropped = _scoped_to_the_plan(review)
-        if dropped:
-            self.logger.info(
-                "dropped %d QA-plan review finding(s) outside the plan's authority", dropped,
-                extra={"activity": True},
+        # being quietly routed elsewhere and recorded as an approval.
+        routed = _route_findings(review.findings)
+        # A refusal the plan cannot act on is not a refusal of the plan.
+        approved = review.disposition == "approved" or not routed.plan
+        # The plan's own worklist is recorded whichever way the flow leaves: a product-test
+        # route comes back through `plan`, and the author reads these notes when it does.
+        notes = _brief(routed.plan, review.notes)
+        outside = [finding for finding in review.findings if finding.scope != "plan"]
+        if routed.plan and outside:
+            # Named rather than silently absent: a finding that vanishes from the brief and
+            # then reappears in the next review with no explanation is how the reviewer and
+            # the author deadlock.
+            ceded = "; ".join(f"{finding.scope}: {finding.issue}".strip() for finding in outside)
+            notes = (
+                f"{notes}\n\nOutside the plan's authority, not sent to the plan author: {ceded}"
             )
-        notes = _plan_review_notes(review)
         loop = loop.update(
-            plan_review_notes=_finding(review.disposition == "approved", notes),
-            plan_review_disposition=review.disposition,
+            plan_review_notes=_finding(approved, notes),
+            plan_review_disposition="approved" if approved else review.disposition,
         )
         if review.disposition == "approved":
             return Continue(review, self.stack, loop=loop)
-        if notes.strip():
+        if routed.plan:
             loop = loop.update(plan_review_ledger=(*loop.plan_review_ledger, notes.strip()))
+        elsewhere = self._routed(review, loop, review.findings, review.notes)
+        if elsewhere is not None:
+            return elsewhere
+        if not routed.plan:
+            # A `revise` naming nothing the plan may touch is the case the reviewer's own
+            # brief says to approve; `_plan_finding_problems` already rejected an empty one.
+            self.logger.info(
+                "the QA-plan refusal names nothing the plan can repair — approving",
+                extra={"activity": True},
+            )
+            return Continue(review, self.stack, loop=loop)
         return self._guard_plan_review(review, loop)
 
     # ── stack and run ─────────────────────────────────────────────────────────────────
@@ -636,7 +667,13 @@ class Qa(Workflow):
         if assessment.disposition == "repair_setup":
             return self._guard_setup(assessment, loop)
         if assessment.disposition != "confirmed":
-            # repair_plan, extend_plan, and a blank taking the YAML's `default:`.
+            # repair_plan, extend_plan, and a blank taking the YAML's `default:`. The
+            # disposition says the plan did not carry the story; the findings say who
+            # repairs what, and `extend_plan` in particular is routinely a missing assertion
+            # in a committed test file, which no replan can add.
+            elsewhere = self._routed(assessment, loop, assessment.findings, assessment.notes)
+            if elsewhere is not None:
+                return elsewhere
             return self._guard_plan(assessment, loop)
 
         if loop.qa.status == "blocked":
@@ -688,9 +725,15 @@ class Qa(Workflow):
         """Try to refute the pass — `decide_qa_audit` and its two follow-on branches.
 
         A verdict that `stands` still has to name `none` as its refutation class; anything
-        else means the auditor found something it could not reconcile, and the plan rework
-        loop is the arm for that. A `refuted` product contradiction is the story failing,
-        which is a backlog item and a fix, not a replan.
+        else means the auditor found something it could not reconcile. A `refuted` product
+        contradiction is the story failing, which is a backlog item and a fix, not a replan.
+
+        Every other refutation used to go to the plan author on the strength of the class
+        alone, and an `evidence-defect` whose repair is a dynamic assertion in a committed
+        test is the case that made that wrong: the author cannot write one, so the plan came
+        back disclosing the same gap and the audit refuted it again. The findings say who
+        repairs each gap; `_routed` sends them there. A refutation naming no findings still
+        takes the prose path to the plan, so this adds no new way to kill a passing run.
         """
         result = self.agent(
             "prompts/audit-qa.md",
@@ -714,10 +757,8 @@ class Qa(Workflow):
             audit_verdict=result.verdict,
             audit_refutation_class=result.refutation_class,
         )
-        if result.verdict == "stands":
-            if result.refutation_class == "none":
-                return Continue(result, self.backlog, loop=loop)
-            return self._guard_plan(result, loop)
+        if result.verdict == "stands" and result.refutation_class == "none":
+            return Continue(result, self.backlog, loop=loop)
         if result.verdict == "refuted" and result.refutation_class == "product-contradiction":
             # `mark-qa-audit-failed.py`.
             failed = QaResult(
@@ -725,6 +766,9 @@ class Qa(Workflow):
                 notes=result.notes or "QA audit found a product contradiction.",
             )
             return Continue(result, self.backlog, loop=loop.with_qa(failed))
+        elsewhere = self._routed(result, loop, result.findings, result.notes)
+        if elsewhere is not None:
+            return elsewhere
         return self._guard_plan(result, loop)
 
     # ── what happens to the verdict ───────────────────────────────────────────────────
@@ -1162,6 +1206,60 @@ class Qa(Workflow):
         return Continue(result, self.build_context, loop=loop)
 
     # ── routers and shared turns, none of them states ─────────────────────────────────
+
+    def _routed(
+        self,
+        result: object,
+        loop: QaLoop,
+        findings: Sequence[QaFinding],
+        notes: str,
+    ) -> Continue | Await | Done | None:
+        """Send a gate's findings to whoever can repair them. `None` — nobody but the plan.
+
+        Precedence is `product-test`, then `plan`, then `stack`, and the first is first
+        because it is the demand a replan *cannot* close. Fixing the test closes it
+        permanently, and `apply_fixes` returns through `build_context` → `plan`, so a plan
+        finding raised alongside it is re-judged against the repaired surface on the next
+        lap rather than lost. A `stack` finding goes to the loop that owns the manifest.
+
+        `None` means the caller's own arm is still the right one: either every finding is
+        the plan author's, or the gate named none at all and only its prose is left. Neither
+        is this router's to decide, because each caller spends a different budget for it.
+
+        Routing goes through `_fixable`, never straight to `apply_fixes`: `_fixable` is what
+        keeps a `dev` run *reporting* findings instead of fixing code it does not own, and
+        what charges `MAX_QA_REWORKS`. A test edit is code work, so that is the correct
+        budget — the judgement budget is not charged at all.
+
+        The brief is written into `qa.notes` with a `model_copy`, not `with_qa`, because
+        `with_qa` would replace `status` too — and on the audit path the run genuinely
+        passed. Both loops read the brief from there: the fixer through `apply_fixes`, the
+        setup fixer through `QaLoop.block_notes`.
+        """
+        routed = _route_findings(findings)
+        if routed.product_test:
+            self.logger.info(
+                "routing %d QA finding(s) to the fix loop — their repair is in the product, "
+                "not the plan", len(routed.product_test),
+                extra={"activity": True},
+            )
+            brief = _brief(routed.product_test, notes)
+            return self._fixable(
+                result, loop.update(qa=loop.qa.model_copy(update={"notes": brief}))
+            )
+        if routed.plan:
+            return None
+        if routed.stack:
+            self.logger.info(
+                "routing %d QA finding(s) to the setup loop — the stack manifest is "
+                "`ensure_stack`'s", len(routed.stack),
+                extra={"activity": True},
+            )
+            brief = _brief(routed.stack, notes)
+            return self._guard_setup(
+                result, loop.update(qa=loop.qa.model_copy(update={"notes": brief}))
+            )
+        return None
 
     def _guard_plan(self, result: object, loop: QaLoop) -> Continue | Done:
         """Spend the post-run component of the QA-plan judgement budget.
