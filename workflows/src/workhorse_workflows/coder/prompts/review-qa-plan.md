@@ -88,6 +88,7 @@ Return JSON only:
     {
       "id": "R1",
       "scope": "plan",
+      "kind": "coverage",
       "target": "scenario `create-document` / covers `AC-2`",
       "issue": "The terminal assertion checks the dialog closed, not that the document exists.",
       "repair": "Assert the new row is present in the document list after the dialog closes."
@@ -116,3 +117,32 @@ A `revise` whose findings are all outside the plan's authority is recorded as `a
 the plan is not what needs revising — and the findings still reach whoever owns them. Name
 the scope by where the repair lands, not by who found it: a real gap filed as `plan` bills a
 replan that cannot close it, and the same gap comes straight back on the next pass.
+
+## `kind` — what breaks if the plan ships as it stands
+
+Every finding also names a `kind`. Decide it by naming the consumer that reads the thing you
+are objecting to, and saying what that consumer does differently once it is fixed:
+
+- `coverage` — an acceptance criterion or OKF obligation has no scenario that would catch it
+  failing, or the scenario's evidence does not prove what it `covers`. **The runner behaves
+  differently.** This is the only kind that refuses a plan.
+- `overclaim` — the plan asserts more than its cited evidence proves: a checkpoint claiming a
+  viewport, a locale or a path the run does not exercise. Nothing goes untested, but the
+  post-run audit reads these claims, so the text must still be corrected.
+- `cosmetic` — counts, wording, ordering, a stale summary line. No gate and no runner reads
+  it.
+
+The mechanical consequence, so you can price your own verdict: **only `coverage` refuses the
+plan.** An `overclaim` or `cosmetic` worklist is handed to the author, repaired once, and
+goes straight to execution without returning to you. Correcting it costs the run about a
+fifth of what another review pass costs, which is why it does not buy one.
+
+This is `{{ workhorse_var('review_pass') }}`; blocking passes remaining:
+`{{ workhorse_var('blocking_passes_left') }}`. At zero, no finding refuses the plan whatever
+its kind — a coverage gap that first appears after two repairs of the same plan is treated as
+a late nit, and the post-run audit is the gate that stands behind it. So name a real coverage
+gap on your first pass or accept that the run will find it the expensive way.
+
+`kind` defaults to `coverage` when omitted, so an unlabelled finding blocks. Label
+deliberately rather than defensively: inflating a nit to `coverage` does not make the plan
+better, it spends the passes that a genuine gap would need.

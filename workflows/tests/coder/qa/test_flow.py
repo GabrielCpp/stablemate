@@ -349,13 +349,31 @@ class _Suite:
 
 
 def _a_plan_finding(nth: int) -> dict[str, str]:
-    """The default in-scope refusal, one per review pass and stably identified."""
+    """The default in-scope refusal, one per review pass and stably identified.
+
+    `kind` is spelled out rather than left to the schema default, because the default is
+    fail-closed and a fake that relied on it would keep passing if the field were ever
+    renamed out from under it.
+    """
     return {
         "id": f"R{nth}",
         "scope": "plan",
+        "kind": "coverage",
         "target": "scenario `create-document`",
         "issue": f"review pass {nth}",
         "repair": "assert the row is present after the dialog closes",
+    }
+
+
+def _a_plan_nit(nth: int, kind: str = "cosmetic") -> dict[str, str]:
+    """A finding inside the plan's authority that nothing downstream would fail over."""
+    return {
+        "id": f"N{nth}",
+        "scope": "plan",
+        "kind": kind,
+        "target": "scenario `create-document`",
+        "issue": "the objective says ten test cases and the file has nine",
+        "repair": "say nine",
     }
 
 
@@ -805,19 +823,116 @@ def test_a_plan_that_parses_but_does_not_test_the_story_is_sent_back(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The semantic plan gate can spend all four judgement repairs."""
+    """The semantic plan gate refuses, and stops being able to after two passes.
+
+    A reviewer that never relents used to spend the whole judgement budget here and end the
+    story with no QA verdict — the outcome its own brief calls strictly worse than QA run
+    against a merely adequate plan. `MAX_BLOCKING_PLAN_REVIEWS` caps the refusals it can
+    make stick; the third worklist is still repaired, once and cheaply, and then the plan
+    goes to the stack. So the gate's job is intact and its failure mode is bounded.
+    """
     okf = ostler()
     agent = _Agent(docs, review="revise")
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
+    assert result.status == "passed", result
     assert agent.counts() == {
         "plan-qa": 1,
-        "repair-qa-plan": 4,
-        "review-qa-plan": 5,
+        "repair-qa-plan": 3,
+        "review-qa-plan": 3,
+        "qa-story": 1,
+        "audit-qa": 1,
     }, agent.counts()
-    assert okf.runs == 0
+    assert okf.runs == 1
+
+
+def test_a_refusal_that_is_only_nits_is_repaired_without_a_second_review(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`kind`: a finding nothing downstream reads costs a cheap edit, not another gate pass.
+
+    The live failure this comes from: a plan was refused four times, once for a real evidence
+    gap and then three times for prose accuracy — a checkpoint naming a viewport the run does
+    not exercise, an objective saying ten test cases where the file has nine. The reviewer
+    said so itself, that neither reflected a missing acceptance-criterion coverage gap. Each
+    was repaired correctly for about a fifth of what re-entering a `power="high"` review cost,
+    and the fourth pass exhausted the judgement budget and ended the story with no QA verdict.
+
+    So the correction is kept and the re-review is not: one repair lap, then the stack.
+    """
+    okf = ostler()
+    agent = _Agent(docs, revise_plans=1, plan_findings=[_a_plan_nit(1), _a_plan_nit(2)])
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["review-qa-plan"] == 1, agent.counts()
+    assert agent.planned() == 2, agent.counts()
+    # And the repair turn was told what to fix: `_finding` blanks a *passing* gate's notes,
+    # and this gate is recorded as passing.
+    brief = agent.plan_args()[1]["plan_review_notes"]
+    assert "N1 [plan/cosmetic]" in brief and "N2 [plan/cosmetic]" in brief, brief
+    assert okf.runs == 1
+
+
+def test_an_overclaim_is_a_nit_and_a_coverage_gap_is_not(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The axis is decided by the consumer, and only `coverage` has one that fails.
+
+    An `overclaim` — a checkpoint asserting more than its cited test proves — is still
+    corrected, because the post-run audit reads plan claims. It just does not buy a pass
+    through the gate. A `coverage` finding beside it does, and the whole worklist rides along:
+    demoting the nit must not mean dropping it.
+    """
+    okf = ostler()
+    agent = _Agent(
+        docs,
+        revise_plans=1,
+        plan_findings=[_a_plan_nit(1, kind="overclaim"), _a_plan_finding(2)],
+    )
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    # Two reviews, not one: the coverage gap was refused and the repair was read again.
+    assert agent.counts()["review-qa-plan"] == 2, agent.counts()
+    brief = agent.plan_args()[1]["plan_review_notes"]
+    assert "N1 [plan/overclaim]" in brief and "R2 [plan/coverage]" in brief, brief
+    assert okf.runs == 1
+
+
+def test_a_polish_lap_that_breaks_the_yaml_still_does_not_earn_a_re_review(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The skip is structural, so the schema loop cannot smuggle the gate pass back in.
+
+    A polish lap returns through `_validated` exactly like any other plan turn, and a plan
+    that no longer parses goes round the schema budget from there. `plan_polish_pending`
+    survives that detour — were the skip a branch on "did we just come from the polish
+    arm", one mistyped field would restore the expensive review pass the demotion exists to
+    drop, and the treadmill would come back only for plans that also had a typo.
+    """
+    okf = ostler(plan_invalid_passes=(2,))
+    agent = _Agent(docs, revise_plans=1, plan_findings=[_a_plan_nit(1)])
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["review-qa-plan"] == 1, agent.counts()
+    # The draft, the polish repair that broke the file, and the schema repair that fixed it.
+    assert agent.planned() == 3, agent.counts()
+    assert okf.runs == 1
 
 
 def test_each_plan_turn_is_told_everything_the_reviewer_already_refused(
@@ -833,22 +948,26 @@ def test_each_plan_turn_is_told_everything_the_reviewer_already_refused(
     draft, and forgetting it is what let a live story spend its whole judgement budget being
     told the same thing: the reviewer's first and fifth refusal both said the copied URL was
     never opened in a fresh page, and each plan turn read it as a first-time request.
+
+    The demoted third refusal is in the ledger too. It no longer blocks, but the repair turn
+    it does buy has to be told what every earlier pass asked for, or the cheap lap spends
+    itself undoing a correction an expensive one already demanded.
     """
     ostler()
     agent = _Agent(docs, review="revise")
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
+    assert result.status == "passed", result
     briefs = [args["prior_plan_reviews"] for args in agent.plan_args()]
-    assert len(briefs) == 5, briefs
+    assert len(briefs) == 4, briefs
     assert briefs[0] == "", "the first draft has been refused nothing"
     # Each later turn carries every refusal so far, oldest first and numbered by its pass —
     # each one the composed finding list, not the pass's prose summary.
-    assert briefs[1].startswith("1. (plan-review pass 1) R1 [plan] scenario "), briefs[1]
-    assert [line.split(")")[0] + ")" for line in briefs[4].splitlines() if line[:1].isdigit()] == [
-        f"{index}. (plan-review pass {index})" for index in range(1, 5)
-    ], briefs[4]
+    assert briefs[1].startswith("1. (plan-review pass 1) R1 [plan/coverage] scenario "), briefs[1]
+    assert [line.split(")")[0] + ")" for line in briefs[3].splitlines() if line[:1].isdigit()] == [
+        f"{index}. (plan-review pass {index})" for index in range(1, 4)
+    ], briefs[3]
 
 
 def test_schema_repairs_cannot_starve_the_semantic_plan_gate(
@@ -864,24 +983,24 @@ def test_schema_repairs_cannot_starve_the_semantic_plan_gate(
     and gave up "after 4 total QA-plan repair" — which reads to a triaging human as a plan
     nobody could make work, when the plan had been read for coverage exactly once.
 
-    Three schema repairs now buy the reviewer three critical reads rather than one. It is
-    not four, because `MAX_TOTAL_PLAN_LAPS` stops the run before the judgement budget is
-    spent — deliberately: the two budgets are independent, and a story free to spend both in
-    full could take seven laps on one plan. Which ceiling ended it is in `spent`.
+    Three schema repairs still buy the reviewer every critical read it is entitled to: two
+    that can refuse and the demoted third, which repairs and goes on. A typo has never been
+    evidence about coverage, and it must not silently buy fewer coverage reads.
     """
     okf = ostler(plan_invalid=3)
     agent = _Agent(docs, review="revise")
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
+    assert result.status == "passed", result
     assert agent.counts() == {
         "plan-qa": 1,
         "repair-qa-plan": 6,
-        "review-qa-plan": 4,
+        "review-qa-plan": 3,
+        "qa-story": 1,
+        "audit-qa": 1,
     }, agent.counts()
-    assert result.spent == "6 total QA-plan lap", result.spent
-    assert okf.runs == 0
+    assert okf.runs == 1
 
 
 def test_validation_and_review_spend_separate_plan_budgets(
@@ -914,18 +1033,22 @@ def test_the_stacked_plan_budgets_cannot_multiply(
     Each guard bounds its own stage and nothing bounded the sum, so a plan that failed
     validation, then review, then validation again spent a lap that neither ceiling had yet
     reached — twelve legal laps between them. A live story took thirteen turns of `plan-qa`
-    exactly that way. Here every second lap is a schema failure, so neither stage budget is
-    ever exhausted and only the total ends the run.
+    exactly that way. Here the laps are spread across all three stages — schema failures, the
+    two refusals the reviewer can still make stick, and a runner the assessment never accepts
+    — so no stage budget is exhausted and only the total ends the run.
     """
-    okf = ostler(plan_invalid_passes=(2, 4, 6))
+    ostler(plan_invalid_passes=(2, 4, 6), fail_runs=99)
     agent = _Agent(docs, review="revise")
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
     assert result.spent == "6 total QA-plan lap", result.spent
-    assert agent.planned() == Qa.MAX_TOTAL_PLAN_LAPS + 1, agent.counts()
-    assert okf.runs == 0
+    # Nine author turns for six charged laps: the draft, plus the two polish repairs a demoted
+    # refusal buys. Those are deliberately free — each replaces a `power="high"` review pass
+    # with a `power="low"` edit, so charging them to the ceiling would price the cheap lap as
+    # if it were the expensive one it exists to avoid.
+    assert agent.planned() == Qa.MAX_TOTAL_PLAN_LAPS + 3, agent.counts()
 
 
 def test_a_refusal_only_the_stack_could_fix_does_not_cost_a_replan(
@@ -1020,8 +1143,10 @@ def test_the_replan_brief_is_composed_from_the_findings_not_the_prose(
 
     `notes` used to *be* the repair contract, so the author's brief varied with how discursive
     that pass's reviewer felt — and a plan author handed a paragraph rewrites the plan. Each
-    finding now renders to one line naming its id, scope, target and repair; the reviewer's
-    summary survives, demoted to the last line.
+    finding now renders to one line naming its id, scope, kind, target and repair; the
+    reviewer's summary survives, demoted to the last line. Both axes are on the line because
+    both decide what happens to the finding, and the give-up record is read from the same
+    rendering — a nit that did not block has to be legible as one.
     """
     ostler()
     agent = _Agent(docs, revise_plans=1)
@@ -1030,7 +1155,9 @@ def test_the_replan_brief_is_composed_from_the_findings_not_the_prose(
 
     assert result.status == "passed", result
     brief = agent.plan_args()[1]["plan_review_notes"]
-    assert "R1 [plan] scenario `create-document`: review pass 1. Repair: assert" in brief, brief
+    assert (
+        "R1 [plan/coverage] scenario `create-document`: review pass 1. Repair: assert" in brief
+    ), brief
     assert brief.splitlines()[-1] == "Summary: review pass 1", brief
 
 
@@ -1098,18 +1225,25 @@ def test_three_review_revisions_leave_one_post_run_repair(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The fourth and final judgement repair can address a post-run finding."""
+    """The judgement budget the reviewer did not spend is still there for a post-run finding.
+
+    The reviewer's third refusal is demoted rather than charged, so two of the four judgement
+    repairs remain when the runner comes back failing — and the story reaches a verdict with
+    one still unspent. That is the whole point of capping the review: the budget exists to
+    buy repairs of a plan that has been *executed*, and the treadmill spent it before the
+    plan had run once.
+    """
     okf = ostler(fail_runs=1)
     agent = _Agent(docs, revise_plans=3)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
-    # Five plan turns: three reviewer repairs and one post-run repair after the initial plan.
+    # Five plan turns: two charged reviewer repairs, the demoted third, and the post-run one.
     assert agent.counts() == {
         "plan-qa": 1,
         "repair-qa-plan": 4,
-        "review-qa-plan": 5,
+        "review-qa-plan": 4,
         "qa-story": 2,
         "audit-qa": 1,
     }, agent.counts()
@@ -1135,8 +1269,13 @@ def test_a_plan_loop_give_up_leaves_the_reviewers_finding_on_disk(
     empty. A live run lost a correct and specific diagnosis that way — three scenarios
     asserting a raw substring against a validation body the API double-JSON-encodes — and the
     only copy of it was a run-dir artifact the next story's QA flow overwrote.
+
+    The reviewer alone can no longer reach this guard — `MAX_BLOCKING_PLAN_REVIEWS` sees to
+    that — so the give-up here is driven the way it now happens in practice: a reviewer that
+    keeps refusing *and* a runner the post-run assessment never accepts. The ledger it leaves
+    behind is the same one, and it is what the human triaging the marker reads.
     """
-    ostler()
+    ostler(fail_runs=99)
     agent = _Agent(docs, review="revise")
 
     result = drive_flow(Qa(story=STORY), env(), agent)
@@ -1145,13 +1284,12 @@ def test_a_plan_loop_give_up_leaves_the_reviewers_finding_on_disk(
     giveup = docs / SPEC_REL / "qa.md"
     assert giveup.is_file(), "the give-up must leave the file its status points at"
     text = giveup.read_text(encoding="utf-8")
-    assert "review pass 5" in text, text
     assert "4 QA-plan repair" in text, text
     # And every earlier refusal beside it: two refusals that say the same thing mean the plan
     # turn was told and did not comply, which is a different triage from four fresh findings.
     assert "Plan review — every refusal, in order" in text, text
-    for index in range(1, 5):
-        assert f"**Pass {index}.** R{index} [plan] scenario " in text, text
+    for index in range(1, 4):
+        assert f"**Pass {index}.** R{index} [plan/coverage] scenario " in text, text
 
 
 def test_the_give_up_document_is_typed_like_any_other_spec_doc(tmp_path: Path) -> None:
@@ -1486,11 +1624,13 @@ def test_each_exhaustion_names_the_budget_it_spent(
     assert result.spent == "3 QA-plan schema repair", result.spent
     assert okf.runs == 0
 
+    # The one budget that can no longer end a flow on its own: a reviewer that never relents
+    # is capped at `MAX_BLOCKING_PLAN_REVIEWS` refusals and the plan then goes to the stack.
+    # Listed here because the absence is the point — no `spent` string names this arm.
     okf = ostler()
     result = drive_flow(Qa(story=STORY), env(), _Agent(docs, review="revise"))
-    assert result.status == "exhausted", result
-    assert result.spent == "4 QA-plan repair", result.spent
-    assert okf.runs == 0
+    assert result.status == "passed", result
+    assert okf.runs == 1
 
     # The post-run budget, reached only through a plan the reviewer approved and the runner
     # executed — five runs, each one an assessment that did not reach the objective.
@@ -1889,3 +2029,38 @@ def test_a_run_killed_mid_audit_resumes_on_the_audit(
     assert result.status == "passed", result
     assert agent.counts() == {"audit-qa": 1}, agent.counts()
     assert okf.runs == 1, "the resumed run must not re-run the QA suite"
+
+
+def test_the_worklist_a_review_pass_is_scored_against_survives_a_resume(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`plan_review_progress`: the budget counters say a story was expensive, not why.
+
+    `plan_review_rework=3` is the same number whether the author was handed the same demand
+    three times and ignored it, or closed each one and was met with a new one. Those want
+    opposite interventions — one is a plan turn that will not comply, the other a reviewer
+    that will not converge — and until this was recorded nothing in the run could tell them
+    apart. The treadmill's own signature is `churned`: the same number outstanding each pass,
+    a different set of them.
+
+    What is asserted here is the *baseline*, not the verdict: `plan_review_progress` is a
+    recorded verdict and blanks with the rest of them on the next plan lap, so by the audit it
+    is gone as designed. `plan_review_ids` deliberately is not one — it is the previous pass's
+    worklist, and forgetting it would make every pass look like the first. Read off the
+    checkpoint because that is the property that matters: a resume must score the next pass
+    against the same baseline the killed run would have.
+    """
+    ostler()
+    run_env = env()
+    run_dir = run_env.writer.run_dir
+
+    with pytest.raises(RuntimeError, match="killed during audit-qa"):
+        drive_flow(Qa(story=STORY), run_env, _Agent(docs, review="revise", explode={"audit-qa"}))
+
+    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    loop = read_resume(checkpoint).params["loop"]
+    assert loop["plan_review_ids"] == ["R3"], loop
+    assert loop["plan_review_progress"] == "", loop

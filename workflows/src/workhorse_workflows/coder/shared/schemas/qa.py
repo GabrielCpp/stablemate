@@ -251,10 +251,38 @@ class QaFinding(CoderResult):
     finding to setup. Dropping the first two on the floor is what livelocked a live story for
     82 minutes — three gates kept rediscovering a missing test assertion and kept billing the
     one author who could not write it.
+
+    `kind` is the second closed axis, and it exists because `scope` alone could not stop the
+    other way this loop fails to terminate. `scope` answers *where the repair lives*; `kind`
+    answers *what breaks if the plan ships as it stands*, which is decidable by naming the
+    consumer that reads the thing:
+
+    `coverage`   an AC or OKF obligation has no cited evidence that would catch it failing.
+                 The runner's behaviour changes. This is the only kind that refuses a plan.
+    `overclaim`  a checkpoint asserts more than its cited test proves. Execution is
+                 unaffected, but `audit-qa` reads the plan's claims, so leaving one in place
+                 seeds a refutation later — it is repaired, just not re-reviewed.
+    `cosmetic`   counts, wording, ordering. No gate and no runner reads it.
+
+    The default is `coverage` so the field is fail-closed: an omitted `kind`, a checkpoint
+    written before this field existed, and the `assess`/`audit` gates that share this model
+    without classifying all keep exactly the behaviour they had.
+
+    The case that motivated it: a live story spent four `power="high"` review passes and
+    then ended with *no QA verdict at all*, because after the first pass found a real
+    evidence defect the next three each raised a fresh prose nit — a viewport claim the run
+    does not exercise, and an objective saying "10 test cases" where the file has 9. The
+    reviewer classified them correctly in its own prose ("neither reflects a missing
+    acceptance-criterion coverage gap") and refused anyway. `review-qa-plan.md` already
+    instructs it to find everything in one pass and approve what it has listed; the
+    instruction is prose, and prose cannot filter prose.
     """
 
     id: str = ""
     scope: Literal["plan", "stack", "product-test"] = "plan"
+    #: See the class docstring. `coverage` is the fail-closed default and the only blocking
+    #: kind; `_route_findings` splits on it and `Qa.review_plan` gates on the split.
+    kind: Literal["coverage", "overclaim", "cosmetic"] = "coverage"
     target: str = ""
     issue: str = ""
     repair: str = ""
@@ -435,10 +463,19 @@ class QaLoop(CoderResult):
     audit_verdict: str = ""  #: stands | refuted
     audit_refutation_class: str = ""  #: none | product-contradiction | plan-defect | evidence-defect
 
+    #: What the last plan-review pass did to the findings the one before it left open — one
+    #: of `kit.telemetry.progress_verdict`'s six words. `plan_review_rework=3` says the gate
+    #: was expensive; `plan_review_rework=3` beside `churned` says each pass closed its own
+    #: worklist and opened a different one, which is the treadmill this flow died of and is
+    #: a prompt defect, not a budget that was too small. `reduced` beside the same counter
+    #: is the opposite reading and wants the opposite intervention.
+    plan_review_progress: str = ""  #: see `kit.telemetry.progress_verdict`
+
     #: Which of the above are worth a span dimension. Each is a closed vocabulary of a
     #: handful of words, so the label cardinality they add is bounded.
     VERDICT_LABELS: ClassVar[tuple[str, ...]] = (
         "plan_review_disposition",
+        "plan_review_progress",
         "assessment_disposition",
         "assessment_failure_class",
         "audit_verdict",
@@ -466,6 +503,23 @@ class QaLoop(CoderResult):
 
     #: Whether the one verification-only bonus pass past `MAX_QA_REWORKS` has been spent.
     bonus_used: bool = False
+
+    #: The plan is being repaired for findings that did not refuse it, so the lap that
+    #: follows goes straight to `stack` instead of back through `review-qa-plan`.
+    #:
+    #: This is what bounds the polish lap: not a counter, but the fact that the only state
+    #: that sets it is the one the flow leaves for `stack`. It survives `cleared()` — which
+    #: names its keys explicitly — deliberately, because a polish repair that trips schema
+    #: validation loops through `_guard_plan_validation` back to `repair_plan`, and that lap
+    #: must still skip the review it was already excused from.
+    plan_polish_pending: bool = False
+
+    #: The finding ids the last *refusing* plan-review pass left open — the baseline
+    #: `plan_review_progress` is computed against. Not a verdict label and so not blanked by
+    #: `cleared()`: comparing this pass to the one before it requires the previous pass's
+    #: ids to outlive the draft they were written against, which is the same reason
+    #: `plan_review_ledger` is exempt. Empty means the gate has not refused yet.
+    plan_review_ids: list[str] = []
 
     #: A post-documentation mutation may have changed the as-built truth. True is the
     #: fail-closed default for checkpoints written before this field existed; `Qa.start`

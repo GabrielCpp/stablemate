@@ -109,7 +109,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     SetupResult,
 )
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
-from workhorse_workflows.kit.telemetry import counter_labels, verdict_labels
+from workhorse_workflows.kit.telemetry import counter_labels, progress_verdict, verdict_labels
 
 UNBOUNDED = float("inf")
 
@@ -169,9 +169,18 @@ def _plan_finding_problems(review: QaPlanReview) -> list[str]:
 
 
 def _finding_line(finding: QaFinding) -> str:
-    """One structured finding as the line whoever repairs it is briefed with."""
+    """One structured finding as the line whoever repairs it is briefed with.
+
+    Both axes are rendered, because both decide what happened to the finding: `scope` says
+    who was billed for it and `kind` says whether it refused the plan. A give-up record
+    listing four findings with no way to tell which of them actually blocked is the artifact
+    a human has to reconstruct the loop from.
+    """
     issue = finding.issue.rstrip(".")
-    return f"{finding.id} [{finding.scope}] {finding.target}: {issue}. Repair: {finding.repair}"
+    return (
+        f"{finding.id} [{finding.scope}/{finding.kind}] {finding.target}: {issue}. "
+        f"Repair: {finding.repair}"
+    )
 
 
 def _brief(findings: Sequence[QaFinding], notes: str) -> str:
@@ -205,6 +214,13 @@ class RoutedFindings(NamedTuple):
     product_test: list[QaFinding]
     stack: list[QaFinding]
 
+    #: `plan`, split again on `kind` — the two halves partition it and their union is it.
+    #: `plan` itself is what everyone downstream still reads: the author repairs both halves
+    #: in one lap, so the brief and the ledger want the whole worklist, not the blocking part
+    #: of it. Only the gate reads the split.
+    plan_blocking: list[QaFinding]
+    plan_polish: list[QaFinding]
+
 
 def _route_findings(findings: Sequence[QaFinding]) -> RoutedFindings:
     """Partition findings by `scope` — the closed vocabulary is what makes this decidable.
@@ -214,11 +230,18 @@ def _route_findings(findings: Sequence[QaFinding]) -> RoutedFindings:
     budget and returns the same worklist next pass — and gates observed in real runs cross it
     anyway. Prose in a brief is not a filter and free-form `notes` left the flow nothing to
     filter *with*; a closed `scope` on each finding does.
+
+    `kind` splits the `plan` half the same way and for the same reason: the prompt says in
+    prose to raise everything in one pass and approve what was listed, and the reviewer
+    refused four times on prose nits anyway. See `QaFinding`.
     """
+    plan = [finding for finding in findings if finding.scope == "plan"]
     return RoutedFindings(
-        plan=[finding for finding in findings if finding.scope == "plan"],
+        plan=plan,
         product_test=[finding for finding in findings if finding.scope == "product-test"],
         stack=[finding for finding in findings if finding.scope == "stack"],
+        plan_blocking=[finding for finding in plan if finding.kind == "coverage"],
+        plan_polish=[finding for finding in plan if finding.kind != "coverage"],
     )
 
 
@@ -276,6 +299,15 @@ class Qa(Workflow):
     #: still being repaired on the seventh lap is not converging, and the six laps before it
     #: are the evidence.
     MAX_TOTAL_PLAN_LAPS: ClassVar[int] = 6
+    #: Not a spend ceiling — a demotion threshold, and the only one of these that changes what
+    #: a finding *means* rather than how many are affordable. Past this many plan-review
+    #: reworks, a `plan` finding no longer blocks whatever `kind` it claims to be: it is
+    #: repaired once and the flow goes to the stack. The reviewer had two independent passes to
+    #: name a coverage gap, and a gap that first appears after two repairs is far likelier a
+    #: fresh nit than a newly created hole — with the `audit` gate still standing downstream
+    #: either way. This is the half of the fix that does not depend on the reviewer labelling
+    #: honestly, which is what makes the loop terminate rather than merely usually terminate.
+    MAX_BLOCKING_PLAN_REVIEWS: ClassVar[int] = 2
     MAX_SETUP_REWORKS: ClassVar[int] = 2
     MAX_REGRESSION_FIXES: ClassVar[int] = 3
     MAX_TRIAGE_SCOPES: ClassVar[int] = 2
@@ -506,7 +538,15 @@ class Qa(Workflow):
         }
 
     def _validated(self, loop: QaLoop) -> Continue | Await | Done:
-        """The tail both plan turns share: clear the brief, stamp, parse, route on the parse."""
+        """The tail both plan turns share: clear the brief, stamp, parse, route on the parse.
+
+        A plan that parses normally goes to `review_plan`. The one exception is the polish
+        lap: `review_plan` already decided this plan was approvable and sent it here only to
+        have prose corrections applied, so re-reading it with a `power="high"` gate buys
+        nothing and is exactly the re-entry that made the nit loop expensive. The flag is
+        cleared as it is spent, so the next plan turn — a post-run finding, an audit
+        refutation — is reviewed normally.
+        """
         loop = loop.cleared()
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         validation = self.call(validate_qa_plan, self.ctx.spec_dir, self.docs_path)
@@ -514,6 +554,14 @@ class Qa(Workflow):
             plan_validation_notes=_finding(validation.status == "passed", validation.notes)
         )
         if validation.status == "passed":
+            if loop.plan_polish_pending:
+                self.logger.info(
+                    "QA-plan polish applied — going to the stack without a second review",
+                    extra={"activity": True},
+                )
+                return Continue(
+                    validation, self.stack, loop=loop.update(plan_polish_pending=False)
+                )
             return Continue(validation, self.review_plan, loop=loop)
         return self._guard_plan_validation(validation, loop)
 
@@ -538,6 +586,17 @@ class Qa(Workflow):
         dropped, and the run rediscovered it forty minutes later from the audit. A refusal
         left with nothing anyone can act on is overturned to `approved`: letting it stand
         costs a `power="high"` replan plus a second full review to arrive back here unchanged.
+
+        A refusal that names only `overclaim` or `cosmetic` findings is overturned the same
+        way, and for the same arithmetic. A live story spent four review passes here: the
+        first found a real evidence gap, and passes two through four raised prose nits the
+        reviewer itself described as reflecting no coverage gap. Each was repaired correctly
+        for about a fifth of what re-entering this gate cost, and the fourth pass exhausted
+        `MAX_PLAN_REWORKS` and ended the story with no QA verdict at all — the outcome the
+        reviewer's own brief calls strictly worse than QA run against a merely adequate plan.
+        So a non-blocking worklist is still repaired, once, and then goes to the stack rather
+        than back through here. `MAX_BLOCKING_PLAN_REVIEWS` is the same rule applied to a
+        reviewer that labels a nit `coverage` to keep its refusal.
         """
         review = self.agent(
             "prompts/review-qa-plan.md",
@@ -551,6 +610,13 @@ class Qa(Workflow):
                 "spec_dir": self.ctx.spec_dir,
                 "docs_path": self.docs_path,
                 "target_env": self.target_env,
+                # The cost of the verdict, never the content of the last one. The reviewer's
+                # amnesia about `plan_review_ledger` is what its independence rests on; how
+                # many refusals the run can still afford is not a finding.
+                "review_pass": loop.plan_review_rework + 1,
+                "blocking_passes_left": max(
+                    0, self.MAX_BLOCKING_PLAN_REVIEWS - loop.plan_review_rework
+                ),
             },
         )
         problems = _plan_finding_problems(review)
@@ -562,8 +628,17 @@ class Qa(Workflow):
         # After the structural check, so a malformed refusal fails on its shape rather than
         # being quietly routed elsewhere and recorded as an approval.
         routed = _route_findings(review.findings)
-        # A refusal the plan cannot act on is not a refusal of the plan.
-        approved = review.disposition == "approved" or not routed.plan
+        # Past the threshold every plan finding is demoted, whatever `kind` it claims. See
+        # `MAX_BLOCKING_PLAN_REVIEWS`.
+        demoted = loop.plan_review_rework >= self.MAX_BLOCKING_PLAN_REVIEWS
+        blocking = [] if demoted else routed.plan_blocking
+        # Demotion moves the whole plan worklist into the polish lane rather than discarding
+        # it: the repair is cheap and the correction is worth keeping, it just no longer buys
+        # another pass through this gate.
+        polish = routed.plan if demoted else routed.plan_polish
+        # A refusal the plan cannot act on — or that names nothing that would let the story
+        # ship untested — is not a refusal of the plan.
+        approved = review.disposition == "approved" or not blocking
         # The plan's own worklist is recorded whichever way the flow leaves: a product-test
         # route comes back through `plan`, and the author reads these notes when it does.
         notes = _brief(routed.plan, review.notes)
@@ -576,9 +651,15 @@ class Qa(Workflow):
             notes = (
                 f"{notes}\n\nOutside the plan's authority, not sent to the plan author: {ceded}"
             )
+        # The baseline the *next* pass is scored against, so a reviewer handing back a fresh
+        # worklist every lap reads as `churned` rather than as four expensive passes that each
+        # looked productive in isolation. Approval closes the lane, findings and verdict alike.
+        ids = [] if review.disposition == "approved" else [finding.id for finding in routed.plan]
         loop = loop.update(
             plan_review_notes=_finding(approved, notes),
             plan_review_disposition="approved" if approved else review.disposition,
+            plan_review_progress=progress_verdict(loop.plan_review_ids or None, ids),
+            plan_review_ids=ids,
         )
         if review.disposition == "approved":
             return Continue(review, self.stack, loop=loop)
@@ -587,6 +668,21 @@ class Qa(Workflow):
         elsewhere = self._routed(review, loop, review.findings, review.notes)
         if elsewhere is not None:
             return elsewhere
+        if not blocking and polish:
+            # The correction is worth keeping; re-entering a `power="high"` gate to be told so
+            # is not. One `power="low"` repair lap, then the stack — no rework is charged and
+            # `plan_polish_pending` makes the skip structural, so this cannot recur. Note the
+            # notes are written unconditionally: `_finding` blanks a passing gate's diagnostics
+            # and the repair turn is briefed from precisely this field.
+            self.logger.info(
+                "the QA-plan refusal is all polish — repairing once, then straight to the stack",
+                extra={"activity": True},
+            )
+            return Continue(
+                review,
+                self.repair_plan,
+                loop=loop.update(plan_review_notes=notes, plan_polish_pending=True),
+            )
         if not routed.plan:
             # A `revise` naming nothing the plan may touch is the case the reviewer's own
             # brief says to approve; `_plan_finding_problems` already rejected an empty one.

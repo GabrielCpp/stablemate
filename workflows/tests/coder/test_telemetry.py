@@ -90,6 +90,29 @@ def test_a_recorded_verdict_reaches_the_labels():
     assert "qa.audit_verdict" not in labels
 
 
+def test_the_plan_review_reports_whether_a_pass_bought_anything():
+    """The budget counters say a story's review was expensive, not why.
+
+    `plan_review_rework=3` reads the same whether the author was handed one demand three
+    times and ignored it, or closed each one and was met with a fresh one. Those want
+    opposite interventions — a plan turn that will not comply, against a reviewer that will
+    not converge. `churned` is the treadmill's own signature: the same number outstanding
+    each pass, a different set of them.
+
+    `plan_review_ids` carries the baseline and so is deliberately *not* a verdict label:
+    blanking it with the notes would make every pass score as `first_pass`.
+    """
+    loop = QaLoop(plan_review_disposition="revise", plan_review_ids=["R1"])
+    ids = ["R2"]
+    loop = loop.update(
+        plan_review_progress=progress_verdict(loop.plan_review_ids or None, ids),
+        plan_review_ids=ids,
+    )
+    labels = _sealed(Qa).state_labels({"loop": loop})
+    assert labels["qa.plan_review_progress"] == "churned"
+    assert loop.cleared().plan_review_ids == ["R2"]
+
+
 def test_verdicts_are_forgotten_with_the_notes_they_summarise():
     """`cleared()` blanks each gate's findings before the plan is re-run. A verdict left
     behind would let a span claim `revise` for a finding already forgotten — the two are
@@ -97,6 +120,7 @@ def test_verdicts_are_forgotten_with_the_notes_they_summarise():
     loop = QaLoop(
         plan_review_disposition="revise",
         plan_review_notes="the plan does not test the story",
+        plan_review_progress="churned",
         audit_verdict="refuted",
         audit_refutation_class="plan-defect",
         # A budget is not a finding: `cleared` must not reset the counters, or the loop
@@ -108,6 +132,7 @@ def test_verdicts_are_forgotten_with_the_notes_they_summarise():
     cleared = loop.cleared()
     assert cleared.plan_review_disposition == ""
     assert cleared.plan_review_notes == ""
+    assert cleared.plan_review_progress == ""
     assert cleared.audit_verdict == "" and cleared.audit_refutation_class == ""
     assert cleared.plan_rework == 2
     assert cleared.plan_rework_total == 3
