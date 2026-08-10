@@ -31,10 +31,35 @@ packs:
 # rather than through the `stablemate` pack because it is generic to any repo,
 # not part of the stablemate toolchain bundle; promote it to a pack once a
 # second repo wants it.
-skills: {}
+#
+# `stablemate/stablemate-repo` is this repo's own root rules. It is selected here
+# rather than in the `stablemate` pack because no other repo wants it — the pack
+# ships the toolchain skills, not stablemate's house rules.
+skills:
+  - stablemate/stablemate-repo
 
 # Direct single-item selection (no pack — see agents/packs/CLAUDE.md): the
 # /update-skill-from-conversation command that folds a session's learnings back
 # into the agent library (skills, commands, root instructions).
 prompts:
   - agent-library/update-skill-from-conversation
+
+# The root AGENTS.md is generated, not hand-written: house rules first, then the
+# two procedures every change lands under. Those two are library prompts, so the
+# text is written once and every repo that wants it always-loaded aggregates the
+# same file instead of maintaining its own copy of the cadence.
+#
+# `filename` is what makes this AGENTS.md rather than CLAUDE.md — the codex
+# adapter is off, and CLAUDE.md stays the one-line `@AGENTS.md` pointer.
+# `includeReadme: none` keeps the root README (an outward-facing overview) out of
+# every session's context.
+localInstructions:
+  - skills:
+      - stablemate-repo
+    prompts:
+      - stablemate-commit
+      - stablemate-reload-runs
+    filename: AGENTS.md
+    paths:
+      - "."
+    includeReadme: none
