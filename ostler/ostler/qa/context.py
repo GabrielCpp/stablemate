@@ -25,16 +25,16 @@ _SYMBOL_RE = re.compile(
     r"|^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*="
 )
 _AC_RE = re.compile(r"^(?:AC\s*)?(\d+)\s*[:.)-]\s*(.+)$", re.IGNORECASE)
-_EXTS = "py|tsx?|jsx?|go|mjs|cjs|ya?ml|dart|java|kts?|rs|sh|bash|sql|rb|php|cs|swift|feature"
-#: A `verify:` ref *inside an inline-code span*, where every character up to the end of the
-#: span belongs to the target. Test names in this tree routinely carry commas — `> exports the
-#: live editor through canonical XML, revokes its object URL, and clears the named status` —
-#: and the span is what says where they stop.
-_VERIFY_SPAN_RE = re.compile(rf"(?P<path>[A-Za-z0-9_./$-]+\.(?:{_EXTS}))(?:::(?P<symbol>.+))?", re.S)
-#: The same ref scanned out of *prose*, for a bullet that cites without backticks. Nothing
-#: marks where the target ends there, so a comma still has to close it — the fallback is
-#: lossier than the span reading, which is exactly why the span reading is tried first.
-_VERIFY_REF_RE = re.compile(rf"(?P<path>[A-Za-z0-9_./$-]+\.(?:{_EXTS}))(?:::(?P<symbol>[^`,]+))?")
+#: The file suffixes a `verify:` bullet may cite. A membership test, not an alternation baked
+#: into a pattern: `Path.suffix` already knows where a suffix begins, and the set is the whole
+#: of what this reader needs to decide.
+_CITABLE_SUFFIXES = frozenset(
+    f".{ext}"
+    for ext in (
+        "py tsx ts jsx js go mjs cjs yaml yml dart java kt kts rs sh bash sql rb php cs swift"
+        " feature"
+    ).split()
+)
 
 #: Bullets the relation fixpoint joins nodes on. A node naming the same consistency group,
 #: persistence store, event or idempotency key as an already-selected node is pulled in.
@@ -758,29 +758,48 @@ def _code_path(value: str) -> str:
     return refs_mod.ref_path(refs_mod.normalize_ref(value))
 
 
+def _as_ref(candidate: str) -> str:
+    """``path`` or ``path::name`` when ``candidate`` opens with a citable file, else ``""``.
+
+    Split, not matched: ``::`` is the separator the grammar declares, and everything after it
+    is the name — commas, parentheses, ``>`` and all. The only test applied to the left half is
+    that it looks like one path with a suffix we cite, which `Path` answers.
+    """
+    path, separator, symbol = candidate.strip().partition("::")
+    path, symbol = path.strip(), symbol.strip()
+    if not path or path.split() != [path] or Path(path).suffix.lower() not in _CITABLE_SUFFIXES:
+        return ""
+    return f"{path}::{symbol}" if separator and symbol else path
+
+
 def _verification_refs(node: dict[str, Any]) -> list[str]:
     """Every test a node's ``verify:`` bullets cite, as ``path`` or ``path::name``.
 
-    Backticked refs are read span by span, because the span boundary is the only thing that
-    says where a test *name* ends — and these names contain commas, dashes and parentheses.
-    Reading the raw bullet with one regex truncated them at the first comma, and the truncated
-    name then matched no test, so the grounding gate told a correctly-cited book its citation
-    did not exist. That is a tool failing to parse the book, which this package treats as the
-    tool's defect, not the book's.
+    Backticked refs are read span by span off the markdown parser, because the span boundary is
+    the only thing that says where a test *name* ends — and these names contain commas, dashes
+    and parentheses. Reading the raw bullet with one regex truncated them at the first comma,
+    and the truncated name then matched no test, so the grounding gate told a correctly-cited
+    book its citation did not exist. That is a tool failing to parse the book, which this
+    package treats as the tool's defect, not the book's.
+
+    A bullet citing *without* backticks has no such boundary, so a comma still has to close a
+    ref there. That reading stays lossy on purpose — it is the reason to write the backticks.
     """
     refs: list[str] = []
     for value in _values(node.get("bullets", {}).get("verify")):
         spans = markdown.all_code_spans(value)
         if spans:
-            # A span is one whole ref, matched anchored: prose in backticks is not a citation.
-            matches = [_VERIFY_SPAN_RE.fullmatch(span.strip()) for span in spans]
-            found = [match for match in matches if match]
+            found = [_as_ref(span) for span in spans]
         else:
-            found = list(_VERIFY_REF_RE.finditer(value))
-        refs.extend(
-            f"{match['path']}::{match['symbol'].strip()}" if match["symbol"] else match["path"]
-            for match in found
-        )
+            # No spans: each comma-separated chunk holds at most one ref, which starts at the
+            # first word naming a citable file and runs to the end of the chunk.
+            found = []
+            for chunk in value.split(","):
+                words = chunk.split()
+                starts = (i for i, w in enumerate(words) if _as_ref(w.partition("::")[0]))
+                index = next(starts, None)
+                found.append("" if index is None else _as_ref(" ".join(words[index:])))
+        refs.extend(ref for ref in found if ref)
     return list(dict.fromkeys(refs))
 
 
