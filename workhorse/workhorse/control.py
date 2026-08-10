@@ -370,8 +370,27 @@ def _delivered(channel: ControlChannel) -> Request | None:
         request = channel.take()
         if request is None or request.action != STATUS:
             return request
-        report = _watch.report
-        channel.reply(report() if report is not None else {"attached": False})
+        channel.reply(_described())
+
+
+def _described() -> dict[str, object]:
+    """What the run says about itself, with the describe callable's failures contained.
+
+    The callable belongs to whoever armed the watch and is invoked from *inside* the
+    streaming loop, which is the deepest, longest-lived frame there is. An exception
+    escaping here would therefore not fail a query — it would end the run, from a verb
+    whose whole premise is that asking changes nothing. Live proof, and the reason for the
+    guard: a describe closure that referenced a name its own module did not yet define
+    took a multi-hour run down the moment it was first asked where it was.
+    """
+    report = _watch.report
+    if report is None:
+        return {"attached": False}
+    try:
+        return report()
+    except Exception as exc:  # noqa: BLE001 - a query may not be able to end the run
+        logger.warning("control: describing this run failed: %s", exc)
+        return {"attached": True, "error": f"{exc.__class__.__name__}: {exc}"}
 
 
 def take() -> Request | None:

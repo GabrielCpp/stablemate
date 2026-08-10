@@ -232,6 +232,26 @@ def test_a_process_with_no_run_attached_says_so_rather_than_going_quiet() -> Non
     assert channel.replies == [{"attached": False}]
 
 
+def test_a_describe_that_raises_answers_the_query_instead_of_ending_the_run():
+    """The describe callable is invoked from inside the streaming loop — the deepest and
+    longest-lived frame in the engine — so an exception escaping it would end a week-long
+    run over a question whose whole premise is that asking changes nothing. It is answered
+    with the failure instead, which is also what makes the failure visible at all: this
+    guard exists because a describe closure referencing an undefined name took a live
+    multi-hour run down the first time anyone asked it where it was."""
+    channel = FakeChannel(control.Request(action=control.STATUS))
+    control.arm(channel)
+    control.report_with(lambda: (_ for _ in ()).throw(NameError("no _status_report")))
+    try:
+        assert control.take() is None
+    finally:
+        control.arm(None)
+
+    assert channel.replies == [
+        {"attached": True, "error": "NameError: no _status_report"}
+    ], channel.replies
+
+
 def test_disarming_forgets_how_the_last_run_described_itself() -> None:
     control.arm(FakeChannel())
     control.report_with(lambda: {"attached": True, "state": "Qa.plan_story"})
@@ -258,5 +278,6 @@ if __name__ == "__main__":
     test_asking_a_run_that_is_not_running_says_so_immediately()
     test_status_is_answered_under_every_wait_and_ends_none_of_them()
     test_a_process_with_no_run_attached_says_so_rather_than_going_quiet()
+    test_a_describe_that_raises_answers_the_query_instead_of_ending_the_run()
     test_disarming_forgets_how_the_last_run_described_itself()
     print("ok")
