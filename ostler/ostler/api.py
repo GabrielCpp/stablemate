@@ -56,7 +56,7 @@ from ostler.qa import (
     validate_context,
     write_context,
 )
-from ostler.model import Graph, load
+from ostler.model import Graph, find_root, load
 
 if TYPE_CHECKING:
     from ostler.edit import EditPlan
@@ -102,6 +102,25 @@ class Ostler:
         """A freshly loaded graph for a mutation to read current state from."""
         self._graph = load(self._root, root_overrides=self._doc_roots)
         return self._graph
+
+    def _doc_root(self, kind: str) -> Path:
+        """One configured doc root, derived the way :func:`load` derives it — without the load.
+
+        A mutation that needs a *directory* and no graph content must not pay for parsing every
+        markdown file in the book to learn it. That parse is tens of seconds on a real repo, and
+        :meth:`create_spec` — the one such mutation — is called once per file by the coder's
+        `stamp_specs` after every writer phase.
+
+        The `root_overrides` half of :func:`load` is repeated here rather than shared because it
+        is three lines and the alternative is a load-shaped helper that takes a config; if a
+        third caller appears, hoist it.
+        """
+        root = find_root(self._root or Path.cwd())
+        configured = self._doc_roots.get(kind)
+        if configured is None:
+            return path_mod.doc_root_in(root, kind)
+        path = Path(configured)
+        return path if path.is_absolute() else root / path
 
     # -- retrieval ----------------------------------------------------------
     def list(self, etype: str, *, epic: str | None = None,
@@ -351,8 +370,12 @@ class Ostler:
         return self._apply(crud.delete_epic(self._fresh(), name))
 
     def create_spec(self, slug: str, doc: str, *, title: str = "") -> Result:
-        """Create or retro-stamp a spec doc (``ostler create spec``). Idempotent."""
-        return self._apply(crud.create_spec(self._fresh(), slug, doc, title))
+        """Create or retro-stamp a spec doc (``ostler create spec``). Idempotent.
+
+        The one mutation that loads no graph: it needs the specs directory and nothing else.
+        See :meth:`_doc_root`.
+        """
+        return self._apply(crud.create_spec(self._doc_root("specs"), slug, doc, title))
 
     def add_seed(self, epic: str, seed_id: str, *, status: str, summary: str = "",
                   meta: dict | None = None) -> Result:

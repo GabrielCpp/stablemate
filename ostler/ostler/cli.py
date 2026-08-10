@@ -1103,7 +1103,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command d
                 args.prefix,
             )
         elif args.what == "spec":
-            res = crud.create_spec(graph, args.slug, args.doc, args.title)
+            res = crud.create_spec(graph.doc_roots["specs"], args.slug, args.doc, args.title)
         else:
             res = crud.create_feature(
                 graph, args.slug, args.title, args.area, args.route, args.prefix

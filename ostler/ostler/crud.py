@@ -500,20 +500,27 @@ def create_feature(graph: Graph, slug: str, title: str, area: str = "",
     return Result(True, f"created feature '{slug}' ({fid})", [path], entity_id=fid)
 
 
-def create_spec(graph: Graph, slug: str, doc: str, title: str = "") -> Result:
+def create_spec(specs_root: Path, slug: str, doc: str, title: str = "") -> Result:
     """Create — or retro-stamp — a coder process artifact at ``docs/specs/<slug>/<doc>``.
 
     Idempotent on purpose: the coder writes these docs as free-form markdown, so this has to be
     callable *after* the write as well as before it. An existing file keeps its body and gains only
     the ``type`` it was missing; an already-typed file is left completely alone. No id is allocated
     — a spec is a process artifact, not a graph node (``registry`` requires only ``type``).
+
+    Takes the specs *root*, not a ``Graph``, and it is the only mutation here that does. It reads
+    no node, resolves no id and consults no other document — the graph was only ever a way to
+    spell one configured directory. Asking for it cost a full parse of every markdown file in the
+    book: twenty-four seconds on a real one, paid once per file by the coder's ``stamp_specs``,
+    which runs after every writer phase. ``ostler.path.specs_root_in`` derives the same directory
+    from config alone.
     """
     name = doc if doc.endswith(".md") else f"{doc}.md"
     if "/" in slug or "/" in doc:
         return Result(False, f"spec slug/doc must be single path segments, got '{slug}/{doc}'")
     if name in registry.RESERVED_FILES:
         return Result(False, f"'{name}' is a reserved file, not a spec Concept")
-    path = graph.doc_roots["specs"] / slug / name
+    path = specs_root / slug / name
     type_value = registry.spec_type_for(name)
     if path.exists():
         mdoc = markdown.split(path.read_text(encoding="utf-8"))
