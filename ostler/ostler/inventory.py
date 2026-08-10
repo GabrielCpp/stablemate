@@ -1,11 +1,13 @@
 """The source symbol front end — one grammar for the join and the grounding check.
 
-Two callers need to know what a file declares, and they must agree:
+Three callers need to know what a file declares, and they must agree:
 
 * **the coverage join** (``ostler coverage``) inventories a tree's units, which the book's
   ``code:`` citations are diffed against;
 * **``doctor``'s ``code:`` grounding**, which asserts a citation names a file that exists and a
-  symbol that file declares.
+  symbol that file declares;
+* **the QA diff mapper** (``ostler qa context``), which asks the same question of a *line*:
+  which unit does this changed hunk belong to.
 
 They used to answer that question in two places — real declaration regexes in the builder's
 `inventory-source.py`, and a *word-presence* test in `doctor`. The two disagreed, and the
@@ -15,13 +17,15 @@ citation whose definition had moved away. A book could cite a symbol its file no
 declared and `doctor` stayed green — the exact drift §4.4 exists to catch. One grammar, defined
 once, is the fix.
 
-**Python is read with the stdlib `ast`**, because a real parse is free there. The regexes it
-replaces could not tell a declaration from the same words inside a docstring or a commented-out
-block, and matched only what a single line spelled — a signature wrapped across lines, or a
-tuple-unpacked module constant, was invisible. For the other five languages there is no stdlib
-parser, and real symbol resolution (tree-sitter/LSP) costs a large dependency the coverage diff
-does not need — so those stay on regex as a declared exemption, and the Python regexes stay only
-as the fallback for a file that does not parse.
+**Every language is parsed.** Python is read with the stdlib `ast`, because a real parse is
+free there; the other five go through `syntax`, which is tree-sitter. The regexes those
+replace were wrong in both directions at once, because a regex matches text and text includes
+comments, strings and unrelated scopes — a commented-out `export function ghost()` entered the
+coverage *denominator*, a name inside a template literal grounded a citation, and the shapes
+the pattern did not spell (`export abstract class`, `export const {a, b} = …`, Go's grouped
+`type (…)`) were invisible, which turns a correct citation into a `missing-code-symbol` no
+edit can clear. `syntax`'s module docstring has the argument for tree-sitter over the target
+repo's own toolchain.
 
 **Two questions, two answers, deliberately.** ``symbols()`` reports the *documented surface* —
 it applies each language's export/visibility filter, because an unexported helper is not a unit
@@ -37,82 +41,59 @@ import ast
 import re
 from pathlib import Path
 
+from ostler import syntax
+from tree_sitter import Node
+
 # The languages the front end can read. A source tree containing NONE of these is an error, not
 # an empty inventory — an unsupported language must never be indistinguishable from a fully
-# documented one.
+# documented one. Narrower than `syntax.LANGUAGES`, which also reads `.js`/`.jsx` for the QA
+# diff mapper: those are attributable, but they are not units a book owes coverage for.
 SOURCE_SUFFIXES = {".go", ".py", ".ts", ".tsx", ".php", ".twig"}
-
-# ── the Python fallback, for a file `ast` cannot parse ────────────────────────────────
-#
-# These are what `_py_*` below used to be. They remain only for the unparseable case: a file
-# mid-edit, or one written for a newer Python than the interpreter reading it. A file that does
-# not parse is not a file we can be *right* about, so approximating beats reporting nothing.
-#
-# The inventory's Python surface: module-level `class`/`def` only, anchored at column 0. The
-# anchor is what keeps a method out of the denominator — widening it would change what
-# "complete" means and make every existing book instantly less complete.
-PY_DECL = re.compile(r"^(?:async\s+)?(?:class|def)\s+([A-Za-z][A-Za-z0-9_]*)", re.MULTILINE)
-# Grounding's Python declarations — a strictly wider set, and deliberately so. A book's notion
-# of a unit is wider than the inventory's: for an application (rather than a library) a private
-# `_run_run` *is* the subcommand handler, a method is a real behavioral unit, and a module
-# constant (`LOG`, `REGISTRY`) is a real thing to document. The inventory may narrow its
-# denominator; grounding may not punish a book for citing outside it.
-PY_ANY_DECL = re.compile(r"^\s*(?:async\s+)?(?:class|def)\s+([A-Za-z_][A-Za-z0-9_]*)",
-                         re.MULTILINE)
-# A module- or class-level binding: `LOG: deque[dict] = deque(...)`, `REGISTRY = {}`. Excludes
-# `==` (a comparison) and augmented assignment, which bind nothing new.
-PY_ASSIGN = re.compile(r"^[ \t]*([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=\n]+)?=(?!=)", re.MULTILINE)
-# Go: three alternatives, in order — a method (with its receiver captured), a plain func, a
-# type. The receiver is captured because a method's unit is qualified by its owner
-# (`(*FirebaseClaimsWriter).SetRoleClaims`): that is the form books cite, and it is strictly
-# more precise than a bare name, which cannot disambiguate two types declaring the same method
-# in one file. Both pointer and value receivers appear in real books. `[(\[]` after the name
-# admits generic declarations (`func Map[T any](…)`).
-GO_DECL = re.compile(
-    r"^func\s+\(\s*(?:[A-Za-z_][A-Za-z0-9_]*\s+)?(\*?)\s*([A-Za-z_][A-Za-z0-9_]*)"
-    r"(?:\[[^\]]*\])?\s*\)\s*([A-Za-z][A-Za-z0-9_]*)\s*[(\[]"
-    r"|^func\s+([A-Za-z][A-Za-z0-9_]*)\s*[(\[]"
-    r"|^type\s+([A-Za-z][A-Za-z0-9_]*)(?:\[[^\]]*\])?\s*[=A-Za-z_*\[(]"
-    r"|^(?:var|const)\s+([A-Za-z][A-Za-z0-9_]*)\b",
-    re.MULTILINE,
-)
-#: A `var (…)` / `const (…)` block, opened and closed in column zero. `type (…)` is left
-#: out on purpose: its entries are struct declarations whose *fields* look exactly like
-#: declarations one level in, and no repo has needed it.
-GO_GROUP = re.compile(r"^(?:var|const)\s*\(\s*?\n(.*?)^\)", re.MULTILINE | re.DOTALL)
-#: One entry in such a block: the name, or the leading name of a `A, B = 1, 2` list. The
-#: negative lookahead rejects a composite-literal key (`ElementPage: {…}`), which is the
-#: shape a value spilling over several lines contributes.
-GO_GROUP_DECL = re.compile(
-    r"^([A-Za-z][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z][A-Za-z0-9_]*)*)\s*(?![:,])"
-)
-TS_DECL = re.compile(
-    r"^export\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?"
-    r"(?:function|class|interface|type|const|let|enum)\s+([A-Za-z_$][A-Za-z0-9_$]*)",
-    re.MULTILINE,
-)
-# The same shapes without the `export` gate — grounding's question, not the inventory's.
-TS_ANY_DECL = re.compile(
-    r"^\s*(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:async\s+)?"
-    r"(?:function|class|interface|type|const|let|enum)\s+([A-Za-z_$][A-Za-z0-9_$]*)",
-    re.MULTILINE,
-)
-# PHP: one pass over class + function declarations *in source order*, so a method can be
-# qualified by the class it sits in (`AddProjectAction.getRenderPath`). Grouped in one regex
-# rather than two passes because the qualification depends on the interleaving.
-PHP_DECL = re.compile(
-    r"^\s*(?:abstract\s+|final\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)"
-    r"|^\s*(?:(public|protected|private)\s+)?(?:static\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)",
-    re.MULTILINE,
-)
-# Twig: a template's named regions. `{% block content %}` / `{%- block content -%}`.
-TWIG_DECL = re.compile(r"\{%-?\s*block\s+([A-Za-z_][A-Za-z0-9_]*)")
 
 # An identifier inside a qualified symbol: `(*Writer).SetRoleClaims` → Writer, SetRoleClaims.
 SYMBOL_PART = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
 
-
 _DEF_NODES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+
+# ── Go ────────────────────────────────────────────────────────────────────────────────
+#
+# The four package-level declaration forms. `type`/`var`/`const` carry their names one level
+# down in a *spec*, and a parenthesized group is the same spec repeated — which is why the
+# grouped form needs no special case here, where the brace-counting scan it replaces existed
+# entirely to fake one.
+_GO_GROUPED = {"type_declaration", "var_declaration", "const_declaration"}
+_GO_SPECS = {"type_spec", "type_alias", "var_spec", "const_spec"}
+
+# ── TypeScript ────────────────────────────────────────────────────────────────────────
+#
+# The declaration shapes that carry a plain `name` field. `abstract_class_declaration` is its
+# own node rather than a modifier on `class_declaration`, and `function_signature` is what
+# `declare function f(): void` parses to — both were simply missing from the regex alternation,
+# so an abstract class was a unit the inventory could never see.
+_TS_NAMED = {
+    "function_declaration",
+    "generator_function_declaration",
+    "function_signature",
+    "class_declaration",
+    "abstract_class_declaration",
+    "interface_declaration",
+    "type_alias_declaration",
+    "enum_declaration",
+}
+#: A binding site inside a class body. Methods and fields are not part of the *inventory's*
+#: surface (a class is the unit there) but a book may cite one, so grounding must see them.
+_TS_MEMBERS = {"method_definition", "public_field_definition"}
+#: `const x = …` and `var x = …`; the names hang off `variable_declarator`, possibly as a
+#: destructuring pattern.
+_TS_BINDINGS = {"lexical_declaration", "variable_declaration"}
+
+# ── PHP ───────────────────────────────────────────────────────────────────────────────
+#
+# Only `class` is a unit for the inventory — interfaces, traits and enums join the grounding
+# set alone, because widening the denominator would make every existing book instantly less
+# complete.
+_PHP_CONTAINERS = {"class_declaration", "interface_declaration", "trait_declaration",
+                   "enum_declaration"}
 
 
 def parse_python(text: str) -> ast.Module | None:
@@ -126,7 +107,7 @@ def parse_python(text: str) -> ast.Module | None:
 def _py_surface(text: str) -> list[str]:
     """The inventory's Python denominator: module-level `class`/`def`, in source order.
 
-    "Module-level" is now a structural fact rather than a column-0 match, which keeps the
+    "Module-level" is a structural fact rather than a column-0 match, which keeps the
     denominator exactly where it was while dropping the two ways the anchor lied: a `def` at
     the left margin of a docstring or a commented-out block counted, and a class body's methods
     did not (correctly) — but neither did a decorated declaration's *own* line matter, so a
@@ -135,7 +116,7 @@ def _py_surface(text: str) -> list[str]:
     """
     module = parse_python(text)
     if module is None:
-        return [m.group(1) for m in PY_DECL.finditer(text) if not m.group(1).startswith("_")]
+        return _py_recovered_surface(text)
     return [
         node.name
         for node in module.body
@@ -155,8 +136,7 @@ def _py_declared(text: str) -> set[str]:
     """
     module = parse_python(text)
     if module is None:
-        return ({m.group(1) for m in PY_ANY_DECL.finditer(text)}
-                | {m.group(1) for m in PY_ASSIGN.finditer(text)})
+        return _py_recovered_declared(text)
     names: set[str] = set()
     for node in ast.walk(module):
         if isinstance(node, _DEF_NODES):
@@ -180,51 +160,69 @@ def _binding_names(target: ast.expr) -> set[str]:
     return set()
 
 
-def _php_symbols(text: str, *, public_only: bool) -> list[str]:
-    """Class names, plus each method qualified by its class (`Class.method`).
+def _py_definition(node: Node) -> Node:
+    """Past a decorator stack to the declaration it decorates."""
+    if node.type == "decorated_definition":
+        return node.child_by_field_name("definition") or node
+    return node
 
-    For the inventory, private/protected methods are not part of the documented surface, and
-    magic methods (`__construct`, …) are DI/framework boilerplate rather than behavior — both
-    are skipped, mirroring the `_`-prefix filter the Python front end applies. For grounding,
-    neither filter applies: the question is only whether the file declares the name.
+
+def _py_recovered_surface(text: str) -> list[str]:
+    """The Python surface of a file `ast` refused — read with tree-sitter's error recovery.
+
+    A file mid-edit is not one we can be *right* about, so approximating beats reporting
+    nothing. This used to be a line regex, which meant an unparseable file was scanned by a
+    grammar that disagreed with the parsed case; the recovered tree is the same grammar with a
+    hole in it, so the two only ever differ about the broken region.
     """
     out: list[str] = []
-    current = ""
-    for m in PHP_DECL.finditer(text):
-        if cls := m.group(1):
-            current = cls
-            out.append(cls)
-            continue
-        visibility, name = m.group(2), m.group(3)
-        if public_only and (visibility in ("private", "protected") or name.startswith("__")):
-            continue
-        out.append(f"{current}.{name}" if current else name)
-        if not public_only:
-            out.append(name)  # grounding matches part-wise, so the bare name must be present
+    for child in syntax.parse("python", text).named_children:
+        node = _py_definition(child)
+        if node.type in {"function_definition", "class_definition"}:
+            name = syntax.field_text(node, "name")
+            if name and not name.startswith("_"):
+                out.append(name)
     return out
 
 
-def _go_group_names(body: str) -> list[tuple[int, str]]:
-    """The names a `var (…)` / `const (…)` block declares, with their offsets into `body`.
+def _py_recovered_declared(text: str) -> set[str]:
+    """Every name a file `ast` refused appears to bind. See `_py_recovered_surface`."""
+    names: set[str] = set()
+    for node in syntax.walk(syntax.parse("python", text)):
+        if node.type in {"function_definition", "class_definition"}:
+            names.add(syntax.field_text(node, "name"))
+        elif node.type in {"assignment", "named_expression"}:
+            names.update(_py_target_names(node.child_by_field_name("left")
+                                          or node.child_by_field_name("name")))
+    return (names | syntax.error_names("python", text)) - {""}
 
-    Brace-depth tracked rather than indentation-matched: a value that spills over several
-    lines (`ElementRules = map[…]{…}` inside a block) indents entries that are
-    syntactically indistinguishable from declarations, and `ElementPage: {…}` is not a
-    package-level name.
-    """
-    found: list[tuple[int, str]] = []
-    depth = 0
-    offset = 0
-    for line in body.splitlines(keepends=True):
-        stripped = line.lstrip()
-        if depth == 0 and stripped:
-            m = GO_GROUP_DECL.match(stripped)
-            if m:
-                start = offset + (len(line) - len(stripped))
-                found.extend((start, n.strip()) for n in m.group(1).split(","))
-        depth += sum(line.count(c) for c in "{[(") - sum(line.count(c) for c in "}])")
-        offset += len(line)
-    return found
+
+def _py_target_names(target: Node | None) -> set[str]:
+    """The names a recovered assignment target binds. `self.x = …` binds none."""
+    if target is None:
+        return set()
+    if target.type == "identifier":
+        return {syntax.text_of(target)}
+    if target.type in {"pattern_list", "tuple_pattern", "list_pattern", "list_splat_pattern"}:
+        return {name for child in target.named_children for name in _py_target_names(child)}
+    return set()
+
+
+def _go_receiver(node: Node) -> tuple[bool, str]:
+    """A method's receiver as (pointer, type name). `func (g *G[T]) M()` → (True, "G")."""
+    receiver = node.child_by_field_name("receiver")
+    declaration = next(
+        (c for c in receiver.named_children if c.type == "parameter_declaration"), None
+    ) if receiver is not None else None
+    kind = declaration.child_by_field_name("type") if declaration is not None else None
+    if kind is None:
+        return False, ""
+    pointer = kind.type == "pointer_type"
+    if pointer:
+        kind = kind.named_children[0] if kind.named_children else None
+    if kind is not None and kind.type == "generic_type":
+        kind = kind.child_by_field_name("type")
+    return pointer, syntax.text_of(kind)
 
 
 def _go_symbols(text: str, *, exported_only: bool) -> list[str]:
@@ -238,33 +236,166 @@ def _go_symbols(text: str, *, exported_only: bool) -> list[str]:
     closed vocabulary actually lives, and it is the direct analog of the TypeScript `const`
     the TS scanner has always resolved — a book documenting both sides of a parity pair
     could ground the TS half and never the Go one, which makes a correct citation an
-    unfixable `missing-code-symbol`. Ordering is by source position across all four shapes,
-    because `symbols` is the inventory's ordered unit list.
+    unfixable `missing-code-symbol`.
+
+    Only `source_file`'s own children are read, which is what keeps a function-local `var` out
+    of a package's symbol set. Ordering is source order, because `symbols` is the inventory's
+    ordered unit list.
     """
-    found: list[tuple[int, str]] = []
-    for m in GO_DECL.finditer(text):
-        star, receiver, method, func, typename, value = m.groups()
-        if method:
+    out: list[str] = []
+
+    def keep(name: str) -> None:
+        if name and not (exported_only and not name[:1].isupper()):
+            out.append(name)
+
+    for node in syntax.parse("go", text).named_children:
+        if node.type == "function_declaration":
+            keep(syntax.field_text(node, "name"))
+        elif node.type == "method_declaration":
+            method = syntax.field_text(node, "name")
             if exported_only and not method[:1].isupper():
                 continue
-            owner = f"(*{receiver})" if star else receiver
-            found.append((m.start(), f"{owner}.{method}"))
+            pointer, owner = _go_receiver(node)
+            out.append(f"(*{owner}).{method}" if pointer else f"{owner}.{method}")
             if not exported_only:
-                found.extend(((m.start(), method), (m.start(), receiver)))
+                out.extend((method, owner))
+        elif node.type in _GO_GROUPED:
+            for spec in syntax.walk(node):
+                if spec.type in _GO_SPECS:
+                    for name in spec.children_by_field_name("name"):
+                        keep(syntax.text_of(name))
+    return [name for name in out if name]
+
+
+def _ts_pattern_names(node: Node | None) -> list[str]:
+    """The names a binding site introduces, destructuring included.
+
+    `const {a, b: c} = x` binds `a` and `c` — the *value* half of a `pair_pattern`, not the
+    key. The regex saw neither, because it read one identifier after the keyword and a `{` is
+    not an identifier.
+    """
+    if node is None:
+        return []
+    if node.type in {"identifier", "shorthand_property_identifier_pattern",
+                     "property_identifier", "type_identifier"}:
+        return [syntax.text_of(node)]
+    if node.type == "pair_pattern":
+        return _ts_pattern_names(node.child_by_field_name("value"))
+    if node.type == "assignment_pattern":
+        return _ts_pattern_names(node.child_by_field_name("left"))
+    if node.type in {"object_pattern", "array_pattern", "rest_pattern"}:
+        return [name for child in node.named_children for name in _ts_pattern_names(child)]
+    return []
+
+
+def _ts_declaration_names(node: Node) -> list[str]:
+    """The names one declaration introduces — the shared half of both TS questions."""
+    if node.type in _TS_NAMED:
+        return [syntax.field_text(node, "name")]
+    if node.type in _TS_BINDINGS:
+        return [
+            name
+            for child in node.named_children
+            if child.type == "variable_declarator"
+            for name in _ts_pattern_names(child.child_by_field_name("name"))
+        ]
+    if node.type == "ambient_declaration":  # `declare function f(): void`
+        return [name for child in node.named_children for name in _ts_declaration_names(child)]
+    return []
+
+
+def _ts_surface(text: str, language: str) -> list[str]:
+    """The inventory's TypeScript denominator: what the module exports, in source order.
+
+    A re-export (`export { Re } from './x'`) is deliberately absent: it declares nothing here,
+    and counting it would put the same unit in two files' denominators.
+    """
+    out: list[str] = []
+    for node in syntax.parse(language, text).named_children:
+        if node.type != "export_statement":
             continue
-        name = func or typename or value
-        if exported_only and not name[:1].isupper():
+        declaration = node.child_by_field_name("declaration")
+        if declaration is not None:
+            out.extend(_ts_declaration_names(declaration))
+    return [name for name in out if name]
+
+
+def _ts_declared(text: str, language: str) -> set[str]:
+    """Every name a TypeScript file binds — the export gate removed, at any depth.
+
+    Depth is kept because Python's answer keeps it: `ast.walk` reaches a nested `def` and a
+    function-local assignment alike, and grounding is the one question that should err wide.
+    What the parse removes is not depth but *unreality* — a declaration inside a comment or a
+    template literal is not a binding, and used to ground a citation.
+    """
+    names: set[str] = set()
+    for node in syntax.walk(syntax.parse(language, text)):
+        if node.type in _TS_MEMBERS:
+            names.add(syntax.field_text(node, "name"))
+        elif node.type == "variable_declarator":
+            names.update(_ts_pattern_names(node.child_by_field_name("name")))
+        else:
+            names.update(_ts_declaration_names(node))
+    return names - {""}
+
+
+def _php_symbols(text: str, *, public_only: bool) -> list[str]:
+    """Class names, plus each method qualified by the class it is declared in (`Class.method`).
+
+    For the inventory, private/protected methods are not part of the documented surface, and
+    magic methods (`__construct`, …) are DI/framework boilerplate rather than behavior — both
+    are skipped, mirroring the `_`-prefix filter the Python front end applies. For grounding,
+    neither filter applies: the question is only whether the file declares the name, and
+    interfaces, traits and enums join it there.
+
+    Qualification follows the *tree* rather than the last class seen above the match, so a
+    plain function declared after a class is no longer attributed to it.
+    """
+    out: list[str] = []
+
+    def visit(node: Node, owner: str) -> None:
+        for child in node.named_children:
+            if child.type in _PHP_CONTAINERS:
+                name = syntax.field_text(child, "name")
+                if name and (child.type == "class_declaration" or not public_only):
+                    out.append(name)
+                visit(child, name)
+            elif child.type == "method_declaration":
+                name = syntax.field_text(child, "name")
+                visibility = next(
+                    (syntax.text_of(m) for m in child.named_children
+                     if m.type == "visibility_modifier"), "")
+                if not name or (public_only and (visibility in {"private", "protected"}
+                                                 or name.startswith("__"))):
+                    continue
+                out.append(f"{owner}.{name}" if owner else name)
+                if not public_only:
+                    out.append(name)  # grounding matches part-wise: the bare name must be there
+            elif child.type == "function_definition":
+                if name := syntax.field_text(child, "name"):
+                    out.append(name)
+                visit(child, owner)
+            else:
+                visit(child, owner)
+
+    visit(syntax.parse("php", text), "")
+    return out
+
+
+def _twig_blocks(text: str) -> list[str]:
+    """A template's named regions: `{% block content %}` → `content`.
+
+    Parsed rather than matched so that a block named inside a `{# … #}` comment — the shape a
+    half-removed region leaves behind — is not a unit the book owes coverage for.
+    """
+    out: list[str] = []
+    for node in syntax.walk(syntax.parse("twig", text)):
+        if node.type != "tag_statement":
             continue
-        found.append((m.start(), name))
-    for block in GO_GROUP.finditer(text):
-        base = block.start(1)
-        found.extend(
-            (base + at, name)
-            for at, name in _go_group_names(block.group(1))
-            if not (exported_only and not name[:1].isupper())
-        )
-    found.sort(key=lambda pair: pair[0])
-    return [name for _, name in found]
+        parts = node.named_children
+        if len(parts) >= 2 and parts[0].type == "tag" and syntax.text_of(parts[0]) == "block":
+            out.append(syntax.text_of(parts[1]))
+    return [name for name in out if name]
 
 
 def symbols(path: str | Path, text: str) -> list[str]:
@@ -279,11 +410,11 @@ def symbols(path: str | Path, text: str) -> list[str]:
     if suffix == ".go":
         return _go_symbols(text, exported_only=True)
     if suffix in {".ts", ".tsx"}:
-        return [m.group(1) for m in TS_DECL.finditer(text)]
+        return _ts_surface(text, syntax.LANGUAGES[suffix])
     if suffix == ".php":
         return _php_symbols(text, public_only=True)
     if suffix == ".twig":
-        return TWIG_DECL.findall(text)
+        return _twig_blocks(text)
     return []
 
 
@@ -298,15 +429,18 @@ def declared_names(path: str | Path, text: str) -> set[str]:
     suffix = Path(path).suffix
     if suffix == ".py":
         return _py_declared(text)
+    if suffix not in SOURCE_SUFFIXES:
+        return set()
+    grammar = syntax.LANGUAGES[suffix]
     if suffix == ".go":
-        return set(_go_symbols(text, exported_only=False))
-    if suffix in {".ts", ".tsx"}:
-        return {m.group(1) for m in TS_ANY_DECL.finditer(text)}
-    if suffix == ".php":
-        return set(_php_symbols(text, public_only=False))
-    if suffix == ".twig":
-        return set(TWIG_DECL.findall(text))
-    return set()
+        names = set(_go_symbols(text, exported_only=False))
+    elif suffix in {".ts", ".tsx"}:
+        names = _ts_declared(text, grammar)
+    elif suffix == ".php":
+        names = set(_php_symbols(text, public_only=False))
+    else:
+        names = set(_twig_blocks(text))
+    return names | syntax.error_names(grammar, text)
 
 
 def declares(path: str | Path, text: str, symbol: str) -> bool:
@@ -325,3 +459,134 @@ def declares(path: str | Path, text: str, symbol: str) -> bool:
     names = declared_names(path, text)
     parts = SYMBOL_PART.findall(symbol)
     return bool(parts) and all(part in names for part in parts)
+
+
+def extents(path: str | Path, text: str,
+            *, language: str | None = None) -> list[tuple[int, int, str]]:
+    """Each declaration as `(first line, last line, qualified name)`, 1-based and inclusive.
+
+    The QA diff mapper's question: a changed hunk belongs to the innermost declaration whose
+    body spans it. A parse is what makes the *extent* real — the line scan this replaces knew
+    only where each declaration started and assumed it ended where the next one began, so a
+    hunk in a trailing comment, or anywhere inside a nested declaration, was attributed to
+    whichever name happened to be above it.
+
+    `language` overrides the suffix mapping, for a file whose name carries no extension.
+    Returns `[]` for a language no front end reads, which the caller distinguishes from a file
+    that genuinely declares nothing.
+    """
+    grammar = language or syntax.language_for(path)
+    if grammar is None or not text:
+        return []
+    if grammar == "python":
+        return _py_extents(text)
+    return [
+        (*syntax.lines_of(node), name)
+        for node, name in _tree_declarations(grammar, text)
+    ]
+
+
+def _py_extents(text: str) -> list[tuple[int, int, str]]:
+    """Python's extents, from `ast` — nested declarations qualified by their owner.
+
+    A file `ast` refuses is the *normal* case here rather than an exotic one: the mapper reads
+    both sides of a diff, and the base side of a half-finished refactor often does not parse.
+    Tree-sitter's recovery answers for it, so a hunk in a broken file still names its unit.
+    """
+    module = parse_python(text)
+    if module is None:
+        return _py_recovered_extents(text)
+    found: list[tuple[int, int, str]] = []
+
+    def visit(node: ast.AST, prefix: str = "") -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, _DEF_NODES):
+                name = f"{prefix}.{child.name}" if prefix else child.name
+                found.append((child.lineno, getattr(child, "end_lineno", child.lineno), name))
+                visit(child, name)
+            else:
+                visit(child, prefix)
+
+    visit(module)
+    return found
+
+
+def _py_recovered_extents(text: str) -> list[tuple[int, int, str]]:
+    """Python's extents from the recovered tree. See `_py_extents`."""
+    found: list[tuple[int, int, str]] = []
+
+    def visit(node: Node, prefix: str) -> None:
+        for child in node.named_children:
+            definition = _py_definition(child)
+            if definition.type in {"function_definition", "class_definition"}:
+                own = syntax.field_text(definition, "name")
+                name = f"{prefix}.{own}" if prefix else own
+                if own:
+                    found.append((*syntax.lines_of(child), name))
+                visit(definition, name if own else prefix)
+            else:
+                visit(child, prefix)
+
+    visit(syntax.parse("python", text), "")
+    return found
+
+
+def _tree_declarations(grammar: str, text: str) -> list[tuple[Node, str]]:
+    """Every declaration node in *text*, with the name the book would cite it by."""
+    root = syntax.parse(grammar, text)
+    if grammar == "go":
+        return _go_declarations(root)
+    if grammar in {"typescript", "tsx"}:
+        return _ts_declarations(root)
+    if grammar == "php":
+        return _php_declarations(root, "")
+    return []
+
+
+def _go_declarations(root: Node) -> list[tuple[Node, str]]:
+    found: list[tuple[Node, str]] = []
+    for node in root.named_children:
+        if node.type == "function_declaration":
+            found.append((node, syntax.field_text(node, "name")))
+        elif node.type == "method_declaration":
+            pointer, owner = _go_receiver(node)
+            method = syntax.field_text(node, "name")
+            found.append((node, f"(*{owner}).{method}" if pointer else f"{owner}.{method}"))
+        elif node.type in _GO_GROUPED:
+            found.extend(
+                (spec, syntax.text_of(name))
+                for spec in syntax.walk(node) if spec.type in _GO_SPECS
+                for name in spec.children_by_field_name("name")
+            )
+    return [(node, name) for node, name in found if name]
+
+
+def _ts_declarations(root: Node) -> list[tuple[Node, str]]:
+    found: list[tuple[Node, str]] = []
+    for node in syntax.walk(root):
+        if node.type in _TS_MEMBERS:
+            found.append((node, syntax.field_text(node, "name")))
+        elif node.type in _TS_NAMED:
+            found.append((node, syntax.field_text(node, "name")))
+        elif node.type == "variable_declarator":
+            found.extend(
+                (node, name) for name in _ts_pattern_names(node.child_by_field_name("name"))
+            )
+    return [(node, name) for node, name in found if name]
+
+
+def _php_declarations(node: Node, owner: str) -> list[tuple[Node, str]]:
+    found: list[tuple[Node, str]] = []
+    for child in node.named_children:
+        if child.type in _PHP_CONTAINERS:
+            name = syntax.field_text(child, "name")
+            found.append((child, name))
+            found.extend(_php_declarations(child, name))
+        elif child.type == "method_declaration":
+            name = syntax.field_text(child, "name")
+            found.append((child, f"{owner}.{name}" if owner else name))
+        elif child.type == "function_definition":
+            found.append((child, syntax.field_text(child, "name")))
+        else:
+            found.extend(_php_declarations(child, owner))
+    return [(item, name) for item, name in found if name]

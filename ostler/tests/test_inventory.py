@@ -143,11 +143,23 @@ def test_an_imported_name_still_does_not_ground():
     assert inventory.declares("m.py", PARSED, "functools") is False
 
 
-def test_a_file_that_does_not_parse_falls_back_to_the_regex():
-    """A file mid-edit is not one we can be right about — approximating beats reporting nothing."""
+def test_a_file_that_does_not_parse_is_recovered_not_abandoned():
+    """A file mid-edit is not one we can be right about — approximating beats reporting nothing.
+
+    `ast` refuses it outright, so the recovered tree answers. The half-typed `def` lands
+    entirely inside an `ERROR` node with no declaration in it, and grounding takes the names
+    that region mentions: the alternative is `doctor` going red because the working tree is
+    mid-keystroke, which is not a fact about the book.
+    """
     broken = "class Renderer:\n    def render(self ->\n"
     assert inventory.symbols("broken.py", broken) == ["Renderer"]
     assert inventory.declares("broken.py", broken, "Renderer.render") is True
+
+
+def test_a_broken_region_grounds_only_what_it_mentions():
+    """Fail-open is scoped to the unreadable region, not widened to the whole file."""
+    broken = "class Renderer:\n    def render(self ->\n"
+    assert inventory.declares("broken.py", broken, "Absent") is False
 
 
 # ── the languages ─────────────────────────────────────────────────────────────────────
@@ -242,6 +254,89 @@ def test_ts_inventory_is_exports_only_but_grounding_is_not():
     assert inventory.declares("x.ts", TS, "missing") is False
 
 
+TS_SHAPES = '''\
+export abstract class Widget {}
+export const { alpha, beta: renamed } = config;
+export const [first] = tuple;
+export default function main() {}
+class Panel {
+  render() {}
+  title = "x";
+}
+export { Reexported } from './elsewhere';
+import { Imported } from './other';
+'''
+
+
+def test_ts_reads_the_shapes_the_pattern_could_not_spell():
+    """`abstract` and a destructuring `const` are ordinary exports, and a regex alternation
+    listing keywords saw neither — so a correct citation to `Widget` reported
+    `missing-code-symbol` with no edit that could clear it."""
+    assert inventory.symbols("x.ts", TS_SHAPES) == [
+        "Widget", "alpha", "renamed", "first", "main"]
+
+
+def test_ts_class_members_ground_but_do_not_widen_the_denominator():
+    for symbol in ("Panel.render", "Panel.title"):
+        assert inventory.declares("x.ts", TS_SHAPES, symbol) is True, symbol
+    assert "render" not in inventory.symbols("x.ts", TS_SHAPES)
+
+
+def test_a_reexported_or_imported_ts_name_does_not_ground():
+    """The facade property, restated for TypeScript: the word is there, the declaration is not."""
+    assert inventory.declares("x.ts", TS_SHAPES, "Reexported") is False
+    assert inventory.declares("x.ts", TS_SHAPES, "Imported") is False
+
+
+TS_UNREAL = '''\
+/*
+export function ghost() {}
+*/
+const template = `
+function phantom() {}
+`;
+'''
+
+
+def test_a_declaration_inside_a_comment_or_a_string_is_not_one():
+    """The regex counted `ghost` as a *unit the book owed coverage for* — a commented-out
+    export made an otherwise complete book incomplete, and `phantom` grounded a citation to
+    a function that exists only inside a template literal."""
+    assert inventory.symbols("x.ts", TS_UNREAL) == []
+    assert inventory.declares("x.ts", TS_UNREAL, "ghost") is False
+    assert inventory.declares("x.ts", TS_UNREAL, "phantom") is False
+
+
+def test_a_go_declaration_inside_a_comment_is_not_one():
+    source = "package p\n\n// func Commented() {}\n\nfunc Real() {}\n"
+    assert inventory.symbols("x.go", source) == ["Real"]
+    assert inventory.declares("x.go", source, "Commented") is False
+
+
+GO_TYPE_GROUP = '''\
+package schema
+
+type (
+	Alpha struct{}
+	Beta  interface{}
+)
+'''
+
+
+def test_go_grouped_types_are_declarations():
+    """A parenthesized `type (…)` group was the one Go shape the scan left out — the entries
+    look exactly like a struct's fields to a line matcher, and nothing but a parse tells them
+    apart."""
+    assert inventory.symbols("schema.go", GO_TYPE_GROUP) == ["Alpha", "Beta"]
+    assert inventory.declares("schema.go", GO_TYPE_GROUP, "Alpha") is True
+
+
+def test_a_go_function_local_value_is_not_a_package_symbol():
+    source = "package p\n\nfunc F() {\n\tlocal := 1\n\tvar other = 2\n}\n"
+    assert inventory.declares("x.go", source, "local") is False
+    assert inventory.declares("x.go", source, "other") is False
+
+
 PHP = '''\
 <?php
 class AddProjectAction
@@ -262,8 +357,54 @@ def test_php_grounds_a_private_method():
     assert inventory.declares("x.php", PHP, "AddProjectAction.helper") is True
 
 
+PHP_AFTER_CLASS = '''\
+<?php
+class Holder
+{
+    public function method() {}
+}
+
+function standalone() {}
+'''
+
+
+def test_a_php_function_after_a_class_is_not_a_method_of_it():
+    """Qualification follows the tree, not the last `class` seen above the match — a flat
+    source-order scan attributed every later function to a class it never sat in."""
+    assert inventory.symbols("x.php", PHP_AFTER_CLASS) == [
+        "Holder", "Holder.method", "standalone"]
+
+
 TWIG = "{% block content %}hi{% endblock %}\n{%- block footer -%}f{%- endblock -%}"
 
 
 def test_twig_blocks_are_the_secondary_unit():
     assert inventory.symbols("x.twig", TWIG) == ["content", "footer"]
+
+
+def test_a_twig_block_inside_a_comment_is_not_a_unit():
+    assert inventory.symbols("x.twig", "{# {% block removed %} #}\n") == []
+
+
+# ── extents: the QA diff mapper's question ────────────────────────────────────────────
+
+EXTENTS_GO = '''\
+package p
+
+func First() {
+	// a comment inside the body
+	x := 1
+	_ = x
+}
+
+func Second() {}
+'''
+
+
+def test_a_hunk_inside_a_body_belongs_to_that_declaration():
+    assert inventory.extents("x.go", EXTENTS_GO) == [(3, 7, "First"), (9, 9, "Second")]
+
+
+def test_extents_are_empty_for_a_language_no_front_end_reads():
+    """Distinguishable by the caller from a file that genuinely declares nothing."""
+    assert inventory.extents("x.rb", "class Renderer; end\n") == []

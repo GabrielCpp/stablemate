@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import json
 import re
 import subprocess
@@ -15,7 +14,7 @@ from unidiff import PatchSet
 from unidiff.errors import UnidiffParseError
 
 from ostler import graph as graph_mod
-from ostler import inventory, markdown, path as path_mod, refs as refs_mod, registry
+from ostler import inventory, markdown, path as path_mod, refs as refs_mod, registry, syntax
 from ostler.model import Graph, _parse_ui_nodes, load
 
 #: The last-resort declaration shape, for a language with no parser and no entry in
@@ -612,57 +611,31 @@ def _patch_set(diff: str) -> PatchSet:
 def _symbols_for_lines(text: str, lines: set[int], path: str = "") -> list[str]:
     """The symbols whose bodies span any of *lines* — the diff's changed units.
 
-    Python is parsed (`ostler.inventory`'s front end), which is what makes a symbol's *extent*
-    real: an `ast` node knows where its body ends, so a hunk landing in the middle of a
-    function is attributed to that function rather than to "the last declaration seen above
-    it", which is all the line scan below can offer. The parse is attempted only for Python —
-    letting every language fall through to `ast.parse` and relying on `SyntaxError` to reject
-    it means a `.js` file that happens to be valid Python (`x = 1`) parses as an empty module
-    and silently reports no changed symbols at all.
+    The extents come from `ostler.inventory`, which parses every language it knows. That is
+    what makes a symbol's *extent* real: a node knows where its body ends, so a hunk landing
+    in the middle of a function is attributed to that function. The line scan this replaced
+    knew only where each declaration *started* and assumed it ran until the next one began, so
+    a nested declaration swallowed its neighbours' hunks and a trailing comment belonged to
+    whatever was above it.
+
+    An extensionless file is read as Python, as it always has been; a language no front end
+    knows still falls back to the one-line scan below, because a wrong attribution there is
+    better than none.
     """
     if not text or not lines:
         return []
     suffix = Path(path).suffix
-    tree = inventory.parse_python(text) if suffix in {".py", ".pyi", ""} else None
-    symbols: list[tuple[int, int, str]] = []
-    if tree is not None:
-        def visit(node: ast.AST, prefix: str = "") -> None:
-            for child in ast.iter_child_nodes(node):
-                if isinstance(child, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                    name = f"{prefix}.{child.name}" if prefix else child.name
-                    symbols.append((child.lineno, getattr(child, "end_lineno", child.lineno), name))
-                    visit(child, name)
-                else:
-                    visit(child, prefix)
-
-        visit(tree)
+    grammar = syntax.language_for(path) or ("python" if suffix == "" else None)
+    if grammar is not None:
+        symbols = inventory.extents(path, text, language=grammar)
     else:
-        current = ""
         text_lines = text.splitlines()
-        declarations: list[tuple[int, str]] = []
-        if suffix == ".go":
-            for match in inventory.GO_DECL.finditer(text):
-                star, receiver, method, func, typename, value = match.groups()
-                if method:
-                    owner = f"(*{receiver})" if star else receiver
-                    name = f"{owner}.{method}"
-                else:
-                    name = func or typename or value
-                declarations.append((text.count("\n", 0, match.start()) + 1, name))
-        elif suffix in {".ts", ".tsx", ".js", ".jsx"}:
-            declarations.extend(
-                (number, match.group(1))
-                for number, line in enumerate(text_lines, start=1)
-                if line and not line[:1].isspace()
-                if (match := inventory.TS_ANY_DECL.match(line))
-            )
-        else:
-            for number, line in enumerate(text_lines, start=1):
-                match = _SYMBOL_RE.match(line)
-                if match:
-                    current = match.group(1) or match.group(2) or ""
-                    declarations.append((number, current))
-        symbols.extend(
+        declarations = [
+            (number, match.group(1) or match.group(2) or "")
+            for number, line in enumerate(text_lines, start=1)
+            if (match := _SYMBOL_RE.match(line))
+        ]
+        symbols = [
             (
                 start,
                 declarations[index + 1][0] - 1
@@ -671,7 +644,7 @@ def _symbols_for_lines(text: str, lines: set[int], path: str = "") -> list[str]:
                 name,
             )
             for index, (start, name) in enumerate(declarations)
-        )
+        ]
     found: set[str] = set()
     for line in lines:
         containing = [item for item in symbols if item[0] <= line <= item[1]]

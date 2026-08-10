@@ -291,6 +291,28 @@ rule this serves, and the parser for every other format, is the
 `structured-parsing` skill in the base library; `make check-parsers` enforces
 it.
 
+### `ostler.syntax` — the same rule, for source code
+
+The code side of the graph gets the same treatment: `ostler.inventory` answers "what does
+this file declare?" for the coverage join, `doctor`'s `code:` citation grounding and the QA
+diff mapper, and all three read a **parse**, never a line match. Python goes through the
+stdlib `ast`; Go, TypeScript/TSX, PHP and Twig go through `ostler.syntax`, which is
+tree-sitter behind a four-function surface (`parse` / `walk` / `text_of` / `lines_of`).
+
+tree-sitter rather than the target language's own toolchain, deliberately: ostler runs in
+agent containers and CI against repos it never builds, and `okf-builder` reads working trees
+mid-edit. A `go build`-shaped parser would need Go installed and the tree compiling, and the
+fallback that absence forces is a second grammar disagreeing with the first — the exact
+failure this module exists to end. tree-sitter is a prebuilt wheel, needs nothing from the
+repo it reads, and recovers from a syntax error instead of refusing the file.
+
+What that buys, concretely: a commented-out `export function` is no longer a unit the book
+owes coverage for, a name inside a template literal no longer grounds a citation, and the
+shapes no pattern spelled — `export abstract class`, `export const {a, b} = …`, Go's grouped
+`type (…)` — are visible, so a correct citation stops failing with no way to fix it. Where a
+file is mid-edit, the region the parser could not read grounds any name it mentions;
+everywhere else stays exact.
+
 ## The coverage model
 
 ```

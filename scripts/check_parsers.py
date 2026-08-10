@@ -110,16 +110,11 @@ DETECTORS: dict[str, tuple[str, str]] = {
 #: and checked for staleness: an entry that no longer matches anything fails too, so a reason
 #: cannot outlive the code it excuses and the list stays readable as a list of real exceptions.
 ALLOWED: dict[tuple[str, str], str] = {
-    ("ostler/ostler/inventory.py", "lang-decl"): (
-        "Go/TypeScript/PHP/Twig declaration scanning. Python goes through `ast` (`_py_symbols`); "
-        "these four have no parser in the stdlib, and pulling a per-language grammar in for a "
-        "symbol *inventory* buys less than it costs. The Python regexes alongside them are the "
-        "fallback for a file `ast` refuses — a file that does not parse is not one we can be "
-        "right about, and a rough answer beats none"
-    ),
     ("ostler/ostler/qa/context.py", "lang-decl"): (
-        "the same fallback on the QA side: `_SYMBOL_RE` is reached only for a non-Python file, "
-        "or a Python one `ast` rejects"
+        "the last-resort line scan for a language *no* grammar reads — `.rb`, `.java`, `.rs`. "
+        "Every language `ostler.syntax` knows is parsed (`inventory.extents`) and never reaches "
+        "this; attributing a changed hunk to the nearest declaration-shaped line above it is "
+        "worse than a parse and better than reporting the diff touched nothing"
     ),
     ("ostler/ostler/qa/context.py", "html-comment"): (
         "`<!--` here is one of five comment syntaxes (`//`, `#`, `/*`, `--`, `<!--`) in the "
