@@ -100,6 +100,19 @@ class DocumentationGate(CoderResult):
     failures: list[str] = []
 
 
+class DocumentationObligations(CoderResult):
+    """`documentation_obligations` — the grounding worklist handed to the author up front.
+
+    `refs` is the same list the grounding gate would report if the author wrote nothing:
+    each changed production reference, spelled the way the inventory spells it, that no
+    node's `code:` bullet owns yet. Advisory — nothing branches on it, and an empty list
+    with a `notes` reason means it could not be computed, never that the book is complete.
+    """
+
+    refs: list[str] = []
+    notes: str = ""
+
+
 class DocumentationFinding(CoderResult):
     """One semantic documentation review finding handed back to the author.
 

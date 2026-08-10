@@ -26,6 +26,7 @@ from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.docs import (
     ContextClassification,
     DocumentationGate,
+    DocumentationObligations,
     OkfDetection,
 )
 from workhorse_workflows.coder.shared.worktree import untouched_since
@@ -69,6 +70,49 @@ def _grounded_paths(packet: dict[str, Any]) -> tuple[set[str], set[str]]:
             elif reason.get("kind") == "file-owner":
                 files.add(ref)
     return exact, files
+
+
+def ungrounded_refs(packet: dict[str, Any], inherited: set[str]) -> list[str]:
+    """The changed production references the book does not directly own yet.
+
+    The gate's arithmetic, lifted out of the gate so the *author* can be handed the same
+    list before it writes anything. Both callers must compute it identically: an author
+    told one set and failed against another is the loop this list exists to end. It is
+    also why nothing here re-derives the packet — one mapper, one join, two readers.
+
+    `inherited` is `untouched_since`'s verdict: paths already dirty at story start whose
+    bytes have not moved, which this story is not charged for.
+    """
+    exactly_grounded, file_grounded = _grounded_paths(packet)
+    ungrounded: list[str] = []
+    for change in packet.get("changedCode", []):
+        if not isinstance(change, dict):
+            continue
+        if change.get("status") == "deleted":
+            # Documenting the absence of something is not documentation — a deletion is
+            # satisfied on its own, with no `code:` bullet required. Mirrors
+            # `ostler.qa.context`'s `mapped = change.status == "deleted"`.
+            continue
+        base_path = str(change.get("basePath", ""))
+        head_path = str(change.get("headPath", ""))
+        candidates = {str(change.get("path", "")), base_path, head_path} - {""}
+        if candidates and candidates <= inherited:
+            # Every name this change goes by was already dirty at story start and has not
+            # moved since — another story's abandoned work, not this one's.
+            continue
+        base_symbols = set(change.get("baseSymbols", []))
+        head_symbols = set(change.get("headSymbols", []))
+        required = {
+            *(f"{base_path}::{symbol}" for symbol in base_symbols if base_path),
+            *(f"{head_path}::{symbol}" for symbol in head_symbols if head_path),
+        }
+        if base_symbols | head_symbols:
+            ungrounded.extend(sorted(required - exactly_grounded))
+        elif candidates.isdisjoint(
+            {ref.partition("::")[0] for ref in exactly_grounded} | file_grounded
+        ):
+            ungrounded.append(str(change.get("path", "<unknown>")))
+    return ungrounded
 
 
 def _affected_doc_nodes(packet: dict[str, Any], author_nodes: list[str]) -> set[str]:
@@ -311,35 +355,7 @@ def verify_story_documentation(
             problems.append(f"cannot read {packet_path}")
             failures.append("S:packet-unreadable")
 
-    exactly_grounded, file_grounded = _grounded_paths(packet)
-    ungrounded: list[str] = []
-    for change in packet.get("changedCode", []):
-        if not isinstance(change, dict):
-            continue
-        if change.get("status") == "deleted":
-            # Documenting the absence of something is not documentation — a deletion is
-            # satisfied on its own, with no `code:` bullet required. Mirrors
-            # `ostler.qa.context`'s `mapped = change.status == "deleted"`.
-            continue
-        base_path = str(change.get("basePath", ""))
-        head_path = str(change.get("headPath", ""))
-        candidates = {str(change.get("path", "")), base_path, head_path} - {""}
-        if candidates and candidates <= inherited:
-            # Every name this change goes by was already dirty at story start and has not
-            # moved since — another story's abandoned work, not this one's.
-            continue
-        base_symbols = set(change.get("baseSymbols", []))
-        head_symbols = set(change.get("headSymbols", []))
-        required = {
-            *(f"{base_path}::{symbol}" for symbol in base_symbols if base_path),
-            *(f"{head_path}::{symbol}" for symbol in head_symbols if head_path),
-        }
-        if base_symbols | head_symbols:
-            ungrounded.extend(sorted(required - exactly_grounded))
-        elif candidates.isdisjoint(
-            {ref.partition("::")[0] for ref in exactly_grounded} | file_grounded
-        ):
-            ungrounded.append(str(change.get("path", "<unknown>")))
+    ungrounded = ungrounded_refs(packet, inherited)
     if ungrounded:
         # The *references*, not the files they live in. This gate checks symbols but used
         # to report paths, which made it a loop the author could not exit: it burned every
@@ -415,8 +431,62 @@ def verify_story_documentation(
     return DocumentationGate(status="passed", notes=notes, changed_code_count=changed)
 
 
+@blueprint.node
+def documentation_obligations(
+    logger: logging.Logger,
+    docs_path: str = "",
+    spec_dir: str = "",
+    context_mode: str = "local",
+    build_status: str = "",
+    repo_dir: str = "",
+    preexisting: tuple[str, ...] = (),
+) -> DocumentationObligations:
+    """The grounding worklist, computed *before* the author turn rather than after it.
+
+    The gate below already derives this list; handing it to the author up front is what
+    stops the author deriving it again by hand. It did: a documentation turn was observed
+    spending 128 shell calls grepping the book for every changed exported symbol — the
+    exact join `ungrounded_refs` computes in one pass over a packet that was already on
+    disk. The agent's version is also worse than redundant, because it guesses the
+    spelling of a reference the inventory owns.
+
+    Advisory only. Nothing branches on it and a mode or packet it cannot read returns an
+    empty list with the reason attached — the gate is still the authority on whether the
+    grounding holds, and a worklist that could not be computed must not read as "nothing
+    to ground".
+
+    `build_status` is context in `notes`, never a bail-out, for the reason the gate reads
+    the packet unconditionally too: `ostler qa context` returns `invalid` precisely when the
+    diff carries changes the book does not map yet, which is the case this worklist exists
+    to serve. Refusing on it would blank the list exactly when it has something to say.
+    """
+    if context_mode != "local":
+        return DocumentationObligations(
+            notes="semantic mode: no diff packet, so no deterministic worklist"
+        )
+    docs_root = Path(find_docs_root(docs_path, repo_dir))
+    spec = Path(spec_dir)
+    packet_path = (spec if spec.is_absolute() else docs_root / spec) / CONTEXT_FILE
+    packet = load_json(packet_path, CONTEXT_FILE, logger)
+    if not packet:
+        return DocumentationObligations(notes=f"cannot read {packet_path}")
+    refs = ungrounded_refs(packet, untouched_since(docs_root.resolve(), tuple(preexisting)))
+    logger.info(
+        "%d changed production reference(s) are not grounded yet", len(refs),
+        extra={"activity": True},
+    )
+    build = f"; context build reported {build_status!r}" if build_status else ""
+    return DocumentationObligations(
+        refs=refs,
+        notes=f"{len(refs)} ungrounded reference(s) from {len(packet.get('changedCode', []))} "
+        f"changed production unit(s){build}",
+    )
+
+
 __all__ = [
     "classify_documentation_context",
     "detect_okf_docs",
+    "documentation_obligations",
+    "ungrounded_refs",
     "verify_story_documentation",
 ]

@@ -27,6 +27,27 @@ the linter rules; obey it. The reference for the type table and bullets is the
 - Previous deterministic gate notes: `{{ workhorse_var('gate_notes') }}`
 - Previous semantic review notes: `{{ workhorse_var('review_notes') }}`
 
+{% if workhorse_var('obligations') %}
+## Grounding worklist — already computed, do not re-derive it
+
+The same deterministic mapper the gate uses has already joined this story's diff against the
+book. These are the changed production references no node's `code:` bullet owns yet, spelled
+the way the source inventory spells them:
+
+{% for ref in workhorse_var('obligations') %}
+- `{{ ref }}`
+{% endfor %}
+
+This list **is** step 3's worklist. Do not reconstruct it by hand — do not grep the book for
+each changed symbol, and do not list a repo's files to work out what changed. That join is
+arithmetic the tooling already did, it is slower and less accurate done with shell commands,
+and a reference you re-spell yourself grounds nothing. Copy each entry verbatim into the
+`code:` bullet of the node that documents that behavior.
+
+An empty list where you expected entries means the mapper had nothing to map, not that you
+should go compute one yourself.
+{% endif %}
+
 {% if workhorse_var('gate_notes') or workhorse_var('review_notes') %}
 ## Repair pass contract
 
@@ -75,8 +96,9 @@ without a product or author decision, return `blocked` and name that item.
    behavior in prose but does not name the file does not own it; that is the "broad surface
    ownership" the gate refuses, and it is the one thing this gate exists to catch.
 
-   If a previous pass's gate notes are above, they list the still-ungrounded references
-   individually. **Copy each one verbatim** — the spelling is the inventory's, not yours,
+   The grounding worklist above is that gate's own arithmetic, run before you: work it
+   directly instead of deriving your own. If a previous pass's gate notes are above, they
+   list the still-ungrounded references individually. **Copy each one verbatim** — the spelling is the inventory's, not yours,
    and a symbol renamed on the way into a bullet grounds nothing. A Go method, for example,
    is `path.go::(*Type).Method`, not `path.go::Type.Method`. Grounding a file the notes
    never mentioned, or half its symbols, spends a rework pass and changes nothing.

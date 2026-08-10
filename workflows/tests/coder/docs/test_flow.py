@@ -352,6 +352,40 @@ def test_sources_inside_the_docs_worktree_take_the_local_route(
     assert gate["status"] == "passed", gate
 
 
+def test_the_author_is_handed_the_grounding_worklist_before_it_writes(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    write: Callable[[Path, str], Path],
+) -> None:
+    """The join the gate does after the author, done once before it instead.
+
+    Without this the first author turn has no gate notes and no worklist, so it derives the
+    same join by hand — a real documentation turn was observed spending 128 shell calls
+    grepping the book for every changed exported symbol. The list is the packet's, computed
+    by the same `ungrounded_refs` the gate calls, so the two cannot disagree; and on a
+    rework pass it is the gate's own `G:` identities minus whatever the pass closed.
+
+    The author here never grounds anything, so every pass fails the gate on the same
+    reference — which is what makes the two lists directly comparable.
+    """
+    write(alongside / "api" / "widget.go", "package api\n\nfunc Widget() {}\n")
+    agent = _Agent()
+    run_env = env()
+
+    with pytest.raises(WorkflowFailed):
+        drive_flow(Docs(story=STORY, epic=EPIC), run_env, agent)
+
+    first = agent.args_for("document-story")[0]
+    assert first["obligations"] == ["api/widget.go::Widget"], first["obligations"]
+    # The rework pass is handed the gate's own `G:` identities, in the same spelling.
+    gate = _output(run_env, verify_story_documentation)
+    grounding = [f for f in gate["failures"] if f.startswith("G:")]
+    assert grounding == ["G:api/widget.go::Widget"], gate
+    assert agent.args_for("document-story")[1]["obligations"] == ["api/widget.go::Widget"]
+
+
 # --------------------------------------------------------------------------- the gate
 
 

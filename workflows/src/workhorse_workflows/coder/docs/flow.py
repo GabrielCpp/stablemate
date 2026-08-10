@@ -49,14 +49,17 @@ from workhorse_workflows.coder.shared.dev import resolve_impl_context
 from workhorse_workflows.coder.shared.docs import (
     classify_documentation_context,
     detect_okf_docs,
+    documentation_obligations,
     verify_story_documentation,
 )
 from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.story import prepare_story, resolve_workspace_dirs
 from workhorse_workflows.coder.shared.schemas.docs import (
+    ContextClassification,
     DocsProgress,
     DocsResult,
     DocumentationFinding,
+    DocumentationObligations,
     DocumentationResult,
     DocumentationReview,
 )
@@ -163,10 +166,14 @@ class Docs(Workflow):
             return Done(DocsResult(status="not_applicable", notes=okf.reason))
         if okf.has_okf != "yes":
             raise WorkflowFailed(f"OKF documentation is unusable here: {okf.reason}")
-        self.call(
+        classification = self.call(
             classify_documentation_context, self.docs_path, tuple(impl.qa_source_roots)
         )
-        return Continue(okf, self.document)
+        # The grounding worklist, before the author turn rather than after it. The gate
+        # computes the same join from the same packet; paying for it once here is what
+        # keeps the author from re-deriving it by hand, which it does badly and at length.
+        obligations = self._obligations(classification)
+        return Continue(okf, self.document, obligations=tuple(obligations.refs))
 
     def document(
         self,
@@ -175,6 +182,7 @@ class Docs(Workflow):
         gate_notes: str = "",
         review_notes: str = "",
         progress: DocsProgress | None = None,
+        obligations: tuple[str, ...] = (),
     ) -> Continue | Done:
         """Write the story into the book — the one agent turn this flow spends per pass.
 
@@ -220,6 +228,7 @@ class Docs(Workflow):
                 "context_notes": classification.notes,
                 "gate_notes": gate_notes,
                 "review_notes": review_notes,
+                "obligations": list(obligations),
             },
         )
         if result.status == "blocked":
@@ -316,8 +325,18 @@ class Docs(Workflow):
                 f"documentation did not converge in {self.MAX_REWORKS + 1} grounding "
                 f"passes ({progress.gate_progress_verdict}): {gate.notes or review_notes}"
             )
+        # The `G:` identities are the still-ungrounded references, in the inventory's own
+        # spelling — the same worklist `start` computed, minus what this pass closed.
         return self._rework(
-            gate, rework + 1, review_rework, gate.notes, review_notes, progress
+            gate,
+            rework + 1,
+            review_rework,
+            gate.notes,
+            review_notes,
+            progress,
+            obligations=tuple(
+                failure[2:] for failure in gate.failures if failure.startswith("G:")
+            ),
         )
 
     def review(
@@ -410,6 +429,7 @@ class Docs(Workflow):
         gate_notes: str,
         review_notes: str,
         progress: DocsProgress | None = None,
+        obligations: tuple[str, ...] = (),
     ) -> Continue:
         """`guard_documentation`'s other half: send the author back with what it must fix.
 
@@ -436,6 +456,44 @@ class Docs(Workflow):
             gate_notes=gate_notes,
             review_notes=review_notes,
             progress=progress,
+            obligations=obligations,
+        )
+
+    def _obligations(self, classification: ContextClassification) -> DocumentationObligations:
+        """Build the diff packet and read the grounding worklist off it, before authoring.
+
+        `local` mode only: `semantic` mode has no worktree to diff, and the node says so
+        rather than returning an empty worklist that would read as "nothing to ground".
+        The packet is rebuilt in `verify` against the tree the author left behind — this
+        one is the *before* picture and is deliberately not reused as the gate's input.
+        """
+        if classification.mode != "local":
+            return self.call(
+                documentation_obligations,
+                self.docs_path,
+                self.ctx.spec_dir,
+                classification.mode,
+                "",
+                preexisting=tuple(self.preexisting),
+            )
+        build = self.call(
+            build_okf_context,
+            self.ctx.spec_dir,
+            self.ctx.story_path,
+            self._features_root,
+            tuple(classification.source_roots),
+            "HEAD",
+            "WORKTREE",
+            self.docs_path,
+            preexisting=tuple(self.preexisting),
+        )
+        return self.call(
+            documentation_obligations,
+            self.docs_path,
+            self.ctx.spec_dir,
+            classification.mode,
+            build.status,
+            preexisting=tuple(self.preexisting),
         )
 
     @property
