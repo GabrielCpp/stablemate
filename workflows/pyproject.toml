@@ -46,7 +46,16 @@ dependencies = [
   # major because that planning-graph API is part of the workflow's runtime contract.
   # The release wheel smoke test installs sibling candidates without workspace sources,
   # which is the only place this cross-package constraint is actually exercised.
-  "ostler>=1,<2",
+  #
+  # The `[qa]` extra is not optional here despite its name. The coder's QA stage does not
+  # shell out to the `ostler` on PATH — `coder/shared/ostler_qa.py` imports the library and
+  # runs the plan in *this* interpreter — so a browser target needs Playwright installed
+  # beside this package, not beside some other copy of ostler. Without it the run blocks on
+  # "target 'web' requires the Playwright Python package", and the repair the setup-fix node
+  # reaches for (`uv tool install --force 'ostler[qa]'`) fixes the PATH tool and changes
+  # nothing here: a real run spent three laps installing it, proving it worked, and getting
+  # the identical blocked bundle back.
+  "ostler[qa]>=1,<2",
   # A unified diff is a format with a grammar, and the coder's hygiene gate reads one to
   # find the lines a branch added. Hand-scanning it means every `startswith("+++ b/")`
   # test is a guess that the line is a header rather than a hunk body that looks like one.
