@@ -184,8 +184,8 @@ least one machine-executed terminal assertion. `mechanism` is provenance
   nothing when the upstream stage dies, which is why the exit code now gates it. Do not end a
   pipeline in `head`/`tail`: SIGPIPE kills the producer and fails the step. Slice in the assertion,
   not in the pipeline.
-- Browser diagnostics (`qa/traces/<scenario>-diagnostics.json`) carry exactly four keys —
-  `consoleErrors` (`error` messages, **text** only — legacy, prefer `console`), `console`
+- Browser diagnostics (`qa/traces/<scenario>-diagnostics.json`) are the whole console and the
+  whole network for that scenario — `consoleErrors` (`error` messages, **text** only — legacy, prefer `console`), `console`
   (every message: `{atMs, type, text, location}` — the `warn` that explains a failure is here and
   not in `consoleErrors`), `pageErrors` (uncaught exceptions — a **different** event from the
   console, invisible in every other key), `requests` (every request issued), `failedRequests`
@@ -197,7 +197,10 @@ least one machine-executed terminal assertion. `mechanism` is provenance
   each other. Status assertions belong on `responses` — e.g.
   `[.responses[] | select(.status >= 500)] | length == 0`. A request in `requests` with no
   `responses` and no `failedRequests` entry was still in flight at the end — the shape of a hung
-  endpoint. There is no response body or headers in that file; assert on those through a `command`
+  endpoint. When a scenario must tolerate an abort the app makes by design, exclude it **by
+  reason**, never by count — `[.failedRequests[] | select(.errorText != "net::ERR_ABORTED")] |
+  length == 0` keeps failing on a refused connection, while "allow one failure per navigation"
+  silently tolerates a real one. There is no response body or headers in that file; assert on those through a `command`
   step with `expect_http`.
 - Background daemons must be declared in `background:` — the executor starts/stops them; the agent must NOT start them manually. `background:` is for **foreground in-QA services** scoped to the run (a dev server pinned to branch source, an event tail). The **heavyweight stack** (docker compose, emulators, the DB + baseline seed) is NOT declared here — it is owned by the workflow's `ensure_stack` step via the repo's `qa-stack.yml` manifest, brought up before the plan runs and left up for reuse. Assume it is already serving; do not bring it up in the plan.
 - Each `background:` daemon takes an optional `ready_check` — what the executor polls before scenario 1, plus a `timeout:` in seconds (default 30). Two forms, and picking the wrong one blocks the whole run: a **string** is fetched and must answer HTTP 200, so use it only when the service really has a `GET` that does; otherwise use a **mapping** `{cmd, assert_contains}`, which is ready when the command exits 0 and its stdout contains the needle. A service whose only route is a `POST` has no 200-answering URL, so it needs the mapping. The command runs in the daemon's own working directory.
