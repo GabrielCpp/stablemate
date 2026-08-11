@@ -1,11 +1,19 @@
 """Alert rules over the telemetry stream — what pages the AFK operator.
 
 Ingest-driven rules fire the moment their evidence arrives (a watchdog-kill
-span event, a give-up node span, the Nth repeat of a churning node); the
-absence-driven rules (STALL, STUCK) are evaluated by a periodic tick,
-since silence by definition never triggers an ingest. All rules dedupe per
-``(run_id, rule)`` via ``RunTelemetry.fired`` — one page per failure mode per
-run, not one per span.
+span event, a give-up node span, the Nth repeat of a churning node, the root
+span that says the run is over); the absence-driven rules (STALL, STUCK) are
+evaluated by a periodic tick, since silence by definition never triggers an
+ingest. All rules dedupe per ``(run_id, rule)`` via ``RunTelemetry.fired`` —
+one page per failure mode per run, not one per span.
+
+ENDED is the one rule that is not about a run behaving badly, and it exists
+because the absence rules structurally cannot cover a run that *stopped*: a
+terminal retires the run from STALL and STUCK, and 30 minutes later evicts it
+from the cache entirely. So the loudest possible fleet event — the run is over,
+nothing is executing, the queue is idle until someone launches the next one —
+was the only one that paged nobody. On a queue an operator is away from, hours
+go by before anyone notices, and they are hours nothing was running.
 
 ``fired`` is also what the dashboard renders as a run's alert badges, so the
 three rules that describe a *current* condition retire themselves when the
@@ -13,8 +21,9 @@ condition lifts: STALL on any signal arriving (see :func:`_note_alive`), STUCK
 when its node closes or the run moves to another, CHURN on forward progress.
 Without that a page is permanent — a laptop that idle-sleeps past the stall
 window marks its run dead for the life of the groom process, however healthily
-it resumes. WATCHDOG and GAVE-UP stay set because they report events that
-happened.
+it resumes. WATCHDOG, GAVE-UP and ENDED stay set because they report events that
+happened — and a resume clears the whole set anyway (see
+:func:`_clear_stale_terminal`), so the next session's ending pages on its own.
 
 STALL and STUCK split what used to be one ambiguous rule. Workhorse now beats
 continuously while its process lives, so silence and slowness are different
@@ -55,7 +64,7 @@ from groom.models import RunTelemetry
 @dataclass
 class Alert:
     run_id: str
-    rule: str  # STALL | STUCK | CHURN | WATCHDOG | GAVE-UP
+    rule: str  # STALL | STUCK | CHURN | WATCHDOG | GAVE-UP | ENDED
     message: str
 
 
@@ -198,6 +207,27 @@ def _note_alive(run: RunTelemetry) -> None:
     run.fired.discard("STALL")
 
 
+#: Terminals that mean the run stopped on purpose, having reached the workflow's own
+#: end. Everything else — ``fail``, ``aborted``, ``interrupted``, or a terminal
+#: workhorse did not stamp at all — stopped for a reason nobody chose.
+_CLEAN_TERMINALS = frozenset({"terminal", "ended"})
+
+
+def _ended_message(run: RunTelemetry, label: str, attrs: dict[str, Any]) -> str:
+    """What the ENDED page says: the verdict first, then the wreckage if there is any."""
+    terminal = run.terminal
+    if terminal in _CLEAN_TERMINALS:
+        return f"{label}: finished ({terminal}) — nothing is running for it now"
+    detail = str(attrs.get("error.class") or "")
+    kind = str(attrs.get("error.kind") or "")
+    because = f" [{'/'.join(part for part in (kind, detail) if part)}]" if detail or kind else ""
+    return (
+        f"{label}: ended '{terminal}'{because} — the run is over and did not get there "
+        f"on its own terms"
+        + (f" (last in '{run.current_node}')" if run.current_node else "")
+    )
+
+
 def _activity(attrs: dict[str, Any]) -> str:
     """Current activity from pyflow, with the retired prefixed spelling as fallback."""
     return str(attrs.get("activity") or attrs.get("wf.activity") or "")
@@ -248,6 +278,7 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
             # run_id clears it again via ``_clear_stale_terminal``.
             run.terminal = str(attrs.get("workhorse.terminal") or "ended")
             run.terminal_ts = float(span.get("end_ts") or now)
+            _fire(run, "ENDED", _ended_message(run, label, attrs), alerts)
             continue
 
         if "watchdog_kill" in events:

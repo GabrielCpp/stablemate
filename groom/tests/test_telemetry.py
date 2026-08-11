@@ -740,6 +740,60 @@ def test_watchdog_and_giveup_fire_once_per_run():
         assert alerts.ingest_spans(spans, now=101.0) == []
 
 
+def test_a_run_that_dies_pages_instead_of_quietly_leaving_the_queue_idle():
+    """The gap ENDED closes: a terminal retires the run from STALL and STUCK, so the
+    one moment when *nothing at all* is executing was the one moment nobody was told.
+    The page names the terminal and the error, because "it stopped" and "it finished"
+    are the same silence otherwise."""
+    with _TelemetryEnv():
+        spans = otlp.parse_traces(
+            _trace_request(
+                [
+                    {
+                        "name": "run:coder",
+                        "terminal": "fail",
+                        "labels": {"error.class": "TimeoutError", "error.kind": "runtime"},
+                    }
+                ]
+            )
+        )
+        fired = alerts.ingest_spans(spans, now=100.0)
+        assert [a.rule for a in fired] == ["ENDED"]
+        assert "fail" in fired[0].message and "TimeoutError" in fired[0].message
+        # Dedupe: a re-delivered root span is the same ending, not a second one.
+        assert alerts.ingest_spans(spans, now=101.0) == []
+        # And the absence rules stay retired — ENDED is what covers this run now.
+        assert alerts.check_time_rules(now=100.0 + 100 * 60) == []
+
+
+def test_a_run_that_finishes_cleanly_says_so_rather_than_reporting_a_failure():
+    with _TelemetryEnv():
+        fired = alerts.ingest_spans(
+            otlp.parse_traces(_trace_request([{"name": "run:coder", "terminal": "terminal"}])),
+            now=100.0,
+        )
+        assert [a.rule for a in fired] == ["ENDED"]
+        assert "finished" in fired[0].message
+
+
+def test_a_resumed_run_pages_again_when_the_new_session_ends():
+    """``run_id`` is the run dir, so a resume reuses it. Without the fired-set clear a
+    long-lived groom would page for a run's first ending and never for any after it."""
+    with _TelemetryEnv():
+        ended = otlp.parse_traces(
+            _trace_request([{"name": "run:coder", "start": 5, "end": 100, "terminal": "fail"}])
+        )
+        assert [a.rule for a in alerts.ingest_spans(ended, now=100.0)] == ["ENDED"]
+        # The resumed session emits — anything stamped after the old root span proves it.
+        alerts.ingest_metrics(
+            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", ts=200.0)), now=200.0
+        )
+        again = otlp.parse_traces(
+            _trace_request([{"name": "run:coder", "start": 150, "end": 300, "terminal": "fail"}])
+        )
+        assert [a.rule for a in alerts.ingest_spans(again, now=300.0)] == ["ENDED"]
+
+
 def test_churn_fires_on_node_repeats_and_resets_on_refuel():
     with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_CHURN_REPEATS": "3"}):
         one_visit = otlp.parse_traces(

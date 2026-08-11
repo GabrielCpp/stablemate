@@ -142,6 +142,7 @@ with `GROOM_NTFY_URL`) and/or `GROOM_WEBHOOK_URL` (JSON `{"title","message"}`):
 | CHURN | the same node span completes again and again under an unchanged `labels()` signature — i.e. on the same unit of work. A visit a live reload cut short (`workhorse.cut`) is an interruption, not a repeat, and does not count | `GROOM_CHURN_REPEATS` (5) |
 | WATCHDOG | a `watchdog_kill` span event arrives | — |
 | GAVE-UP | a give-up node's span arrives | `GROOM_GIVEUP_NODES` (qa_give_up,fix_give_up) |
+| ENDED | the run's root span arrives — the run is over, whatever the verdict, and nothing is executing for it now | — |
 
 Groom deliberately does not alert on total run age: resumptions reuse a run identity and multi-day
 runs are normal. Use workhorse's `WORKHORSE_MAX_RUNTIME_S` when a run needs a hard wall-clock limit.
@@ -149,7 +150,15 @@ runs are normal. Use workhorse's `WORKHORSE_MAX_RUNTIME_S` when a run needs a ha
 The crux: workhorse **heartbeats** for as long as its process lives, so silence
 and slowness are different observations. STALL means the run stopped emitting
 (dead/killed/frozen); STUCK means it is alive and parked. Alerts dedupe per
-`(run, rule)`. Run `groom serve` under nohup/systemd as the always-on collector
+`(run, rule)`.
+
+ENDED covers the case neither absence rule can, because a terminal is precisely
+what retires a run from both of them: the run *finished*. That is the loudest
+event on a queue — nothing is executing until someone launches the next run — and
+until it existed it was the only one that paged nobody. It fires on every ending,
+naming the terminal and the error class, because from outside "it crashed" and
+"it succeeded" are the same silence. A resume reuses the run id and clears the
+fired set, so the next session's ending pages on its own. Run `groom serve` under nohup/systemd as the always-on collector
 (the consuming repo's `make groom-serve` target does exactly that).
 
 ## Where is my run right now?
