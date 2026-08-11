@@ -205,6 +205,31 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
         except Exception as exc:  # noqa: BLE001
             raise DriverBlocked(f"could not launch Playwright {browser_name}: {exc}") from exc
 
+    def _permissions(self) -> list[str]:
+        """The browser permissions every scenario context is opened with.
+
+        A fresh Playwright context grants nothing, and Chromium answers an ungranted
+        permission query by *denying* it rather than prompting — there is no UI to prompt
+        into. So ``navigator.clipboard.writeText()`` rejects with a ``NotAllowedError``
+        on a page served from a secure origin that a human, having clicked "allow" once,
+        would see succeed. An app that catches that rejection and renders its failure
+        branch produces no console error and no failed request, so the run records only
+        the missing success element: a copy journey is unprovable under this driver, and
+        the evidence points at the product instead of at the harness.
+
+        Clipboard access is therefore granted by default. ``permissions:`` on the target
+        replaces the default outright — including with ``[]``, for a plan whose whole
+        point is the denied-permission branch. The default is Chromium-only because the
+        clipboard permission names are: Firefox and WebKit reject them as unknown, which
+        would fail every scenario on those browsers rather than none.
+        """
+        configured = self.target.get("permissions")
+        if configured is not None:
+            return [str(name) for name in configured]
+        if str(self.target.get("browser", "chromium")) != "chromium":
+            return []
+        return ["clipboard-read", "clipboard-write"]
+
     def run(self, scenario: dict[str, Any]) -> ScenarioResult:  # noqa: C901
         scenario_id = str(scenario["id"])
         covers = list(scenario.get("covers", []))
@@ -215,6 +240,9 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
         context_options: dict[str, Any] = {
             "viewport": self.target.get("viewport", {"width": 1440, "height": 900}),
         }
+        permissions = self._permissions()
+        if permissions:
+            context_options["permissions"] = permissions
         if recording.get("required", True) and mode == "viewport":
             video_dir.mkdir(parents=True, exist_ok=True)
             context_options["record_video_dir"] = str(video_dir)

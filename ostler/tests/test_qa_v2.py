@@ -372,6 +372,30 @@ def test_expect_url_contains_matches_a_url_with_a_non_deterministic_suffix(tmp_p
     driver._expect(_Page(), {"expect": "url", "contains": "#configuration"})
 
 
+def test_a_chromium_context_is_granted_the_clipboard_by_default():
+    """A copy journey is only provable if the context can reach the clipboard.
+
+    Chromium denies an ungranted permission instead of prompting, so
+    ``navigator.clipboard.writeText()`` rejects; an app that catches that renders its
+    failure branch with no console error, and the run blames the product for a harness
+    default. Firefox and WebKit reject the clipboard permission names outright, so the
+    default is Chromium's alone.
+    """
+    driver = PlaywrightDriver.__new__(PlaywrightDriver)
+
+    driver.target = {"driver": "playwright", "base_url": "http://127.0.0.1:8099"}
+    assert driver._permissions() == ["clipboard-read", "clipboard-write"]
+
+    driver.target = {"driver": "playwright", "browser": "firefox"}
+    assert driver._permissions() == []
+
+    driver.target = {"driver": "playwright", "permissions": ["geolocation"]}
+    assert driver._permissions() == ["geolocation"]
+
+    driver.target = {"driver": "playwright", "permissions": []}
+    assert driver._permissions() == [], "an explicit empty list denies, it does not fall back"
+
+
 def test_two_browser_targets_share_one_playwright(monkeypatch):
     """A plan with two Playwright targets must not start Playwright twice on one thread.
 

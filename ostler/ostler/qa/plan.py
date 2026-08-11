@@ -186,6 +186,11 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
                     problems.append(f"target '{name}' may disable recording only by repository policy")
         if driver == "playwright" and not target.get("base_url"):
             problems.append(f"target '{name}' requires base_url")
+        permissions = target.get("permissions")
+        if permissions is not None and (
+            not isinstance(permissions, list) or not all(isinstance(entry, str) for entry in permissions)
+        ):
+            problems.append(f"target '{name}'.permissions must be a list of browser permission names")
         if driver == "maestro" and not target.get("app_id"):
             problems.append(f"target '{name}' requires app_id")
 
