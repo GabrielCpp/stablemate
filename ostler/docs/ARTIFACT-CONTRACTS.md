@@ -60,7 +60,7 @@ template-declared kinds): each entry maps `kind → {filename, schema, rules}`.
 | kind | filename | semantic rules beyond the JSON Schema |
 |---|---|---|
 | `plan-context` | `plan-context.json` | `services` non-empty; every `services[].repo` resolves in the workspace; every `services[].plan_file` exists in the spec dir; `implementation_order` entries all match a declared `repo::path`. |
-| `qa-evidence` | `qa-evidence.json` | `criteria` non-empty; every criterion `verdict` ∈ {Pass, Fail}; every Pass criterion's `evidence[]` paths exist on disk; `kind: parity` requires a `checklist`; `kind: data-entry` requires a `persistence` proof; when `runId` present, `qa/run-manifest.json` must exist with the same id and every Pass criterion must cite ≥1 artifact from it. |
+| `qa-evidence` | `qa-evidence.json` | `criteria` non-empty; every criterion `verdict` ∈ {Pass, Fail}; every Pass criterion's `evidence[]` paths exist on disk; `kind: parity` requires a `checklist`; `kind: data-entry` requires a `persistence` proof; when `runId` present, `qa/run-manifest.json` must exist with the same id and every Pass criterion must cite ≥1 artifact from it; and no Pass criterion may be covered by an assertion the run log records as failing. |
 | `backlog-items` | `backlog-items.json` | array of `{id, description}`; ids kebab-case and unique. |
 
 The `qa-evidence` semantic rules are a port of the Acme workflow's

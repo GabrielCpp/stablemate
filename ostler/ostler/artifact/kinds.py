@@ -354,6 +354,17 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
                     if not isinstance(row, dict) or str(row.get("verdict", "")).strip().lower() != "pass":
                         continue
                     item_id = str(row.get("id") or row.get("title") or "?")
+                    # Every check below asks whether the Pass is *supported*. This one asks
+                    # whether it is *contradicted*, which is a different question and the
+                    # only one that catches the failure this gate kept waving through: a
+                    # criterion covered by nine assertions, eight passing, cites one of the
+                    # eight and vets clean while the ninth disproves it in the same log.
+                    disproof = _failing_log_refs(item_id, records)
+                    if disproof:
+                        problems.append(
+                            f"{item_id}: marked Pass but the run log records failing "
+                            f"assertions covering it ({', '.join(disproof)})."
+                        )
                     evidence = row.get("evidence") or []
                     if isinstance(evidence, str):
                         evidence = [evidence]
@@ -418,6 +429,22 @@ def _passing_log_ref(ref: str, item_id: str, records: list[dict[str, Any]]) -> b
         and item_id in record.get("covers", [])
         for record in records
     )
+
+
+def _failing_log_refs(item_id: str, records: list[dict[str, Any]]) -> list[str]:
+    """Every `scenario:assert:action` in the run log that failed while covering `item_id`.
+
+    A missing `result` counts as failing: an assertion record the runner wrote without
+    saying it passed has not established anything, and reading it as silence would put the
+    benefit of the doubt on the side that is asking to be believed.
+    """
+    return [
+        f"{record.get('scenario', '?')}:assert:{record.get('action', '?')}"
+        for record in records
+        if record.get("kind") == "assert"
+        and record.get("result") != "PASS"
+        and item_id in record.get("covers", [])
+    ]
 
 
 # ---------------------------------------------------------------------------

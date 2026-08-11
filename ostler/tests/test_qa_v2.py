@@ -120,6 +120,62 @@ def test_v2_command_run_owns_log_manifest_and_evidence(tmp_path: Path):
     assert _qa_evidence_vet(evidence, spec, tmp_path) == []
 
 
+def test_one_failing_assertion_sinks_the_item_it_covers(tmp_path: Path):
+    """Evidence is a summary of the run log, so it may not disagree with the run log.
+
+    The aggregation used to read the passing assertions alone, which made an item Pass as soon
+    as any one assertion covering it succeeded. A live journey that walked eight steps and
+    failed the ninth therefore published every criterion Pass under an `overall: Fail` — an
+    artifact strictly worse than none, because the QA assessor downstream either routes on the
+    per-item verdicts the same file's `overall` contradicts, or spends a turn every pass
+    rediscovering that it has to read `qa/qa-run.ndjson` instead.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["scenarios"][0]["actions"].append(
+        {
+            "do": "command",
+            "id": "emit-again",
+            "cmd": "printf '{\"value\":\"ok\"}'",
+            "assert_contains": "absent",
+            "out": "qa/steps/emit-again.json",
+        }
+    )
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_run(plan, root=tmp_path)
+
+    assert outcome.status == "failed"
+    evidence = json.loads((spec / "qa-evidence.json").read_text(encoding="utf-8"))
+    assert evidence["overall"] == "Fail"
+    row = evidence["obligations"][0]
+    assert row["verdict"] == "Fail"
+    # The disproof is named, not merely implied by the absence of a Pass: a consumer routing on
+    # this file should not have to re-derive from the log which assertion sank the item.
+    assert row["failing_log_refs"] == ["api-contract:assert:2"]
+    assert row["log_refs"] == ["api-contract:assert:1", "api-contract:assert:2"]
+    assert _qa_evidence_vet(evidence, spec, tmp_path) == []
+
+    # And the gate rejects the same claim made by hand, which is the shape an agent authoring
+    # the file itself produces — every check but this one asks whether a Pass is supported.
+    tampered = json.loads(json.dumps(evidence))
+    tampered["obligations"][0] = {
+        "id": obligation,
+        "verdict": "Pass",
+        "log_refs": ["api-contract:assert:1"],
+        "evidence": evidence["obligations"][0]["evidence"] or ["qa/qa-run.ndjson"],
+    }
+    problems = _qa_evidence_vet(tampered, spec, tmp_path)
+    assert any(
+        "marked Pass but the run log records failing assertions" in problem
+        and "api-contract:assert:2" in problem
+        for problem in problems
+    ), problems
+
+
 def test_v2_validation_rejects_disposable_input_and_unasserted_coverage(tmp_path: Path):
     spec = tmp_path / "docs/specs/story-1"
     (spec / "qa").mkdir(parents=True)

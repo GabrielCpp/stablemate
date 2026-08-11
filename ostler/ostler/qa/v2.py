@@ -200,7 +200,7 @@ def _write_evidence(
     log_path = document.spec_dir / "qa" / "qa-run.ndjson"
     for line in log_path.read_text(encoding="utf-8").splitlines():
         record = json.loads(line)
-        if record.get("kind") == "assert" and record.get("result") == "PASS":
+        if record.get("kind") == "assert":
             log_records.append(record)
     manifest_path = document.spec_dir / "qa" / "run-manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -211,22 +211,45 @@ def _write_evidence(
             artifacts_by_scenario.setdefault(str(scenario), []).append(str(artifact["path"]))
 
     def row(item: Any) -> dict[str, Any]:
+        """One criterion or obligation, judged against *every* assertion covering it.
+
+        A criterion is Pass only when the run log proves it and nothing in the same log
+        disproves it. Reading the passing assertions alone — which this did — makes a
+        criterion Pass as soon as any one of its scenario's steps succeeded, so a live
+        journey that walked eight steps and failed the ninth reported all seven ACs Pass
+        under an `overall: Fail`. Downstream that artifact is worse than absent: the QA
+        assessor either routes on a verdict the run contradicts, or spends a turn every
+        pass rediscovering that it must read `qa-run.ndjson` instead.
+        """
         source = item if isinstance(item, dict) else {"id": str(item)}
         item_id = str(source["id"])
         records = [record for record in log_records if item_id in record.get("covers", [])]
+        failing = [record for record in records if record.get("result") != "PASS"]
         refs: list[str] = []
         evidence: list[str] = []
         for index, record in enumerate(records, start=1):
             scenario = str(record.get("scenario", ""))
             action = record.get("action", index)
             refs.append(f"{scenario}:assert:{action}")
-            evidence.extend(artifacts_by_scenario.get(scenario, []))
-        return {
+            # Only a passing assertion's artifacts are proof. `artifact vet` requires each
+            # Pass row to cite a file from this run's manifest, and a failing scenario's
+            # trace would satisfy that check while proving the opposite.
+            if record.get("result") == "PASS":
+                evidence.extend(artifacts_by_scenario.get(scenario, []))
+        row_data = {
             "id": item_id,
-            "verdict": "Pass" if records else "Fail",
+            "verdict": "Pass" if records and not failing else "Fail",
             "log_refs": refs,
             "evidence": sorted(set(evidence)),
         }
+        if failing:
+            # Named separately from `log_refs` so a consumer can route on the disproof
+            # without re-deriving it from the log the artifact exists to summarize.
+            row_data["failing_log_refs"] = [
+                f"{record.get('scenario', '')}:assert:{record.get('action', '?')}"
+                for record in failing
+            ]
+        return row_data
 
     criteria = []
     for item in document.context.get("acceptanceCriteria", []):
