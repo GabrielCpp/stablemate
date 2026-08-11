@@ -454,17 +454,27 @@ output and slice it in the assertion instead.
 ### Browser diagnostics (`qa/traces/<scenario>-diagnostics.json`)
 
 The Playwright driver writes one diagnostics file per scenario, registered in the manifest
-under kind `browser-diagnostics`. Its shape is exactly two keys, and nothing else:
+under kind `browser-diagnostics`. Its shape is exactly these four keys, and nothing else:
 
 ```json
-{ "consoleErrors": ["<console message text>"], "failedRequests": ["<request url>"] }
+{
+  "consoleErrors": ["<console message text>"],
+  "failedRequests": ["<request url>"],
+  "responses": [{ "url": "<url>", "status": 200, "method": "GET" }],
+  "responseCount": 1
+}
 ```
 
-`consoleErrors` carries message **text** only, `failedRequests` carries **URLs** only. The
-driver attaches no `response` or `requestfinished` listener at all, so there is no status
-code, no response body, no headers and no timing anywhere in this file. A plan that asserts
-on any of those is asserting on a key that never exists — assert against HTTP through a
-`command` step with `expect_http` instead.
+`consoleErrors` carries message **text** only and `failedRequests` carries **URLs** only —
+`requestfailed` fires for a request that never completed (DNS failure, aborted connection)
+and never for a completed response, whatever its status.
+
+`responses` is what carries status: one record per response the page received, in arrival
+order, so a scenario can assert `[.responses[] | select(.status >= 500)] | length == 0` and
+have it mean something. It is capped at the driver's `RESPONSE_LIMIT` (500) records while
+`responseCount` reports the true total — compare the two before reading a long run's list as
+complete. There is still no response **body**, no headers and no timing here; assert on
+those through a `command` step with `expect_http`.
 
 ### Substitution rules
 

@@ -550,6 +550,29 @@ def test_a_chromium_context_is_granted_the_clipboard_by_default():
     assert driver._permissions() == [], "an explicit empty list denies, it does not fall back"
 
 
+def test_a_response_record_carries_the_status_a_5xx_assertion_needs():
+    """``requestfailed`` never fires for a completed 500, so before the ``response``
+    listener existed the diagnostics file had no status in it anywhere. A plan that wrote
+    ``[.responses[]? | select(.status >= 500)] | length == 0`` was reading a key nothing
+    produced, and jq answers a missing field with an empty stream rather than an error —
+    so the assertion passed on every run, including the ones serving 500s.
+    """
+
+    class _Request:
+        method = "POST"
+
+    class _Response:
+        url = "http://127.0.0.1:8099/api/docs"
+        status = 503
+        request = _Request()
+
+    assert PlaywrightDriver._response_record(_Response()) == {
+        "url": "http://127.0.0.1:8099/api/docs",
+        "status": 503,
+        "method": "POST",
+    }
+
+
 def test_two_browser_targets_share_one_playwright(monkeypatch):
     """A plan with two Playwright targets must not start Playwright twice on one thread.
 

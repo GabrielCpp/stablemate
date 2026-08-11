@@ -29,6 +29,12 @@ NAME_FROM_CONTENT = frozenset({
     "tab", "tooltip", "treeitem",
 })
 
+#: How many response records one scenario's diagnostics file carries. A single page load
+#: can issue hundreds of requests, and this file is read whole by an agent, so the list is
+#: capped — but ``responseCount`` always reports the true total, so a truncated file says
+#: how much of itself is missing instead of quietly reading as a complete record.
+RESPONSE_LIMIT = 500
+
 
 @dataclass
 class ScenarioResult:
@@ -257,6 +263,19 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
             return []
         return ["clipboard-read", "clipboard-write"]
 
+    @staticmethod
+    def _response_record(response: Any) -> dict[str, Any]:
+        """One diagnostics line per HTTP response the page received.
+
+        ``requestfailed`` fires only for a request that never completed — DNS failure,
+        an aborted connection — so before this listener existed a completed 500 was
+        invisible to the driver, and a plan that asserted "no response has status 500
+        or higher" was asserting against a key nothing ever wrote. jq reads a missing
+        field as an empty stream rather than an error, so that assertion passed
+        vacuously on every run, which is worse than not being able to write it.
+        """
+        return {"url": response.url, "status": response.status, "method": response.request.method}
+
     def run(self, scenario: dict[str, Any]) -> ScenarioResult:  # noqa: C901
         scenario_id = str(scenario["id"])
         covers = list(scenario.get("covers", []))
@@ -278,8 +297,10 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
         page = context.new_page()
         console_errors: list[str] = []
         failed_requests: list[str] = []
+        responses: list[dict[str, Any]] = []
         page.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
         page.on("requestfailed", lambda request: failed_requests.append(request.url))
+        page.on("response", lambda response: responses.append(self._response_record(response)))
         trace_path = qa_dir / "traces" / f"{scenario_id}.zip"
         trace_path.parent.mkdir(parents=True, exist_ok=True)
         context.tracing.start(screenshots=True, snapshots=True, sources=True)
@@ -386,7 +407,15 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
                     raise RuntimeError("required Playwright viewport recording was not finalized")
             diagnostics = qa_dir / "traces" / f"{scenario_id}-diagnostics.json"
             diagnostics.write_text(
-                json.dumps({"consoleErrors": console_errors, "failedRequests": failed_requests}, indent=2)
+                json.dumps(
+                    {
+                        "consoleErrors": console_errors,
+                        "failedRequests": failed_requests,
+                        "responses": responses[:RESPONSE_LIMIT],
+                        "responseCount": len(responses),
+                    },
+                    indent=2,
+                )
                 + "\n",
                 encoding="utf-8",
             )

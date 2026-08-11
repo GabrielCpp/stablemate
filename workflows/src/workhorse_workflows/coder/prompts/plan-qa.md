@@ -184,10 +184,13 @@ least one machine-executed terminal assertion. `mechanism` is provenance
   nothing when the upstream stage dies, which is why the exit code now gates it. Do not end a
   pipeline in `head`/`tail`: SIGPIPE kills the producer and fails the step. Slice in the assertion,
   not in the pipeline.
-- Browser diagnostics (`qa/traces/<scenario>-diagnostics.json`) carry exactly two keys —
-  `consoleErrors` (message **text**) and `failedRequests` (request **URLs**). There is no status
-  code, response body, header or timing anywhere in that file, so never plan an assertion that
-  reads one from it; assert on HTTP through a `command` step with `expect_http`.
+- Browser diagnostics (`qa/traces/<scenario>-diagnostics.json`) carry exactly four keys —
+  `consoleErrors` (message **text**), `failedRequests` (request **URLs**, network-level failures
+  only, never a completed 5xx), `responses` (one `{url, status, method}` record per response, in
+  arrival order, capped at 500) and `responseCount` (the true total, so a capped list can be told
+  from a complete one). Status assertions belong on `responses` — e.g.
+  `[.responses[] | select(.status >= 500)] | length == 0`. There is still no response body, header
+  or timing in that file, so assert on those through a `command` step with `expect_http`.
 - Background daemons must be declared in `background:` — the executor starts/stops them; the agent must NOT start them manually. `background:` is for **foreground in-QA services** scoped to the run (a dev server pinned to branch source, an event tail). The **heavyweight stack** (docker compose, emulators, the DB + baseline seed) is NOT declared here — it is owned by the workflow's `ensure_stack` step via the repo's `qa-stack.yml` manifest, brought up before the plan runs and left up for reuse. Assume it is already serving; do not bring it up in the plan.
 - Each `background:` daemon takes an optional `ready_check` — what the executor polls before scenario 1, plus a `timeout:` in seconds (default 30). Two forms, and picking the wrong one blocks the whole run: a **string** is fetched and must answer HTTP 200, so use it only when the service really has a `GET` that does; otherwise use a **mapping** `{cmd, assert_contains}`, which is ready when the command exits 0 and its stdout contains the needle. A service whose only route is a `POST` has no 200-answering URL, so it needs the mapping. The command runs in the daemon's own working directory.
 {% raw %}  ```yaml
