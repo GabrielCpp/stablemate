@@ -372,6 +372,31 @@ def test_expect_url_contains_matches_a_url_with_a_non_deterministic_suffix(tmp_p
     driver._expect(_Page(), {"expect": "url", "contains": "#configuration"})
 
 
+def test_an_accessibility_snapshot_uses_an_api_playwright_still_has(tmp_path: Path):
+    """``page.accessibility`` was removed from Playwright, and its absence surfaced as an
+    ordinary scenario failure — so a plan that captured evidence looked like a product defect.
+    The fake stands in for a current Page: it has ``aria_snapshot`` and no ``accessibility``.
+    """
+    class _Body:
+        def aria_snapshot(self) -> str:
+            return '- status: "Copied."'
+
+    class _Page:
+        def locator(self, selector: str) -> _Body:
+            assert selector == "body"
+            return _Body()
+
+        def __getattr__(self, item: str):
+            raise AttributeError(f"'Page' object has no attribute {item!r}")
+
+    driver = PlaywrightDriver.__new__(PlaywrightDriver)
+    driver.session = QaSession(tmp_path)
+    driver.session._data = {"run_id": "qa-run-1", "story": "story-1"}
+
+    path = driver._capture(_Page(), {"capture": "accessibility_snapshot", "name": "copied"}, "s", 1)
+    assert path.read_text(encoding="utf-8") == '- status: "Copied."\n'
+
+
 def test_an_unmatchable_role_name_pair_says_the_name_is_what_missed():
     """"element(s) not found" reads identically for a missing element and an impossible name.
 

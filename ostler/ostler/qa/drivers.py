@@ -535,10 +535,13 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(page.locator("body").inner_text(), encoding="utf-8")
         elif op == "accessibility_snapshot":
-            path = self.session.qa_dir / "traces" / f"{name}-accessibility.json"
+            # ``page.accessibility`` was deprecated and then removed from Playwright; against a
+            # current build this capture raised AttributeError, which surfaces as an ordinary
+            # scenario failure and reads as a defect in whatever the plan had just proved.
+            # ``aria_snapshot`` is the replacement, and it emits YAML rather than a node tree.
+            path = self.session.qa_dir / "traces" / f"{name}-accessibility.yaml"
             path.parent.mkdir(parents=True, exist_ok=True)
-            snapshot = page.accessibility.snapshot()
-            path.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
+            path.write_text(page.locator("body").aria_snapshot() + "\n", encoding="utf-8")
         else:
             raise ValueError(f"capture '{op}' is produced automatically or unsupported")
         return path
