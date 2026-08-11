@@ -772,6 +772,70 @@ def test_a_squash_merged_branch_that_then_diverged_is_still_refused(
         branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo))
 
 
+def test_an_epic_this_run_cut_is_returned_to_rather_than_refused(
+    epic: Callable[..., Path],
+    logger: logging.Logger,
+    git: Callable[..., subprocess.CompletedProcess],
+    write: Callable[[Path, str], Path],
+    tmp_path: Path,
+) -> None:
+    """The multi-epic drain. A run cuts epic A, sets it aside, works epic B, then comes
+    back to A — and used to die on "unmerged work this run did not create", because
+    ownership was inferred from "is it checked out right now", which is only ever true of
+    the epic in hand. The run's own ledger is what tells the two cases apart.
+    """
+    repo = epic()
+    base = _head(repo)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir))
+    write(repo / "src" / "ours.txt", "story one\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "story one")
+    landed = git(repo, "rev-parse", "HEAD").stdout.strip()
+    git(repo, "checkout", "-q", "-b", "feat/another-epic", base)  # moved on to epic B
+
+    result = branch_epic(
+        logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir)
+    )
+
+    assert result.epic_branch == f"feat/{EPIC}"
+    assert _head(repo) == f"feat/{EPIC}"
+    # Returned to, not reset: the stories it already committed are still there.
+    assert git(repo, "rev-parse", "HEAD").stdout.strip() == landed
+    assert (repo / "src" / "ours.txt").exists()
+
+
+def test_a_claim_does_not_outlive_the_run_that_made_it(
+    epic: Callable[..., Path],
+    logger: logging.Logger,
+    git: Callable[..., subprocess.CompletedProcess],
+    write: Callable[[Path, str], Path],
+    tmp_path: Path,
+) -> None:
+    """The ledger must not become a way to walk past the refusal. `begin_run` clears it,
+    so the next run in the same dir sees the same branch as what it now is to *that* run:
+    unmerged work it did not create."""
+    repo = epic()
+    base = _head(repo)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir))
+    write(repo / "src" / "ours.txt", "story one\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "story one")
+    git(repo, "checkout", "-q", base)
+
+    begin_run(logger, run_dir=str(run_dir))
+
+    with pytest.raises(WorkflowFailed, match="not in"):
+        branch_epic(
+            logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir)
+        )
+
+
 # --------------------------------------------------------------------------- story mode
 
 

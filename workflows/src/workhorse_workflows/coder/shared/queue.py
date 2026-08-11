@@ -99,6 +99,9 @@ BLOCKED_FILE = "blocked-epics.txt"
 #: Stories given up for the rest of THIS run, one slug per line, inside the run dir.
 SKIP_FILE = "qa-skip-stories.txt"
 
+#: Epic branches THIS run put itself on, one ref per line, inside the run dir.
+CLAIMED_FILE = "epic-branches.txt"
+
 #: Matches `ostler.select`'s done tokens, which is what makes a story read as done to
 #: `ostler next-story` and to `select_story`'s `dependencies.json` fallback.
 DONE_STATUS = "QA passed"
@@ -123,8 +126,8 @@ def _resolve_trunk(root: Path) -> str:
 def begin_run(logger: logging.Logger, run_dir: str = "") -> RunScope:
     """Drop the skip state a previous run left behind in this run dir.
 
-    `blocked-epics.txt` and `qa-skip-stories.txt` say "set aside for the rest of THIS run",
-    and both live in the run dir — which is fine while a run dir belongs to one run. It does
+    `blocked-epics.txt`, `qa-skip-stories.txt` and `epic-branches.txt` all say "for the rest
+    of THIS run", and all live in the run dir — which is fine while a run dir belongs to one run. It does
     not: workhorse derives the run id from `--params`, so the same command lands in the same
     stable dir every time, and a *fresh* run there inherits the last one's verdicts. The
     contradiction was visible in the log — a run ended with "all 1 queued epic(s) were set
@@ -139,7 +142,7 @@ def begin_run(logger: logging.Logger, run_dir: str = "") -> RunScope:
         return RunScope()
     path = Path(run_dir)
     cleared = []
-    for name in (BLOCKED_FILE, SKIP_FILE):
+    for name in (BLOCKED_FILE, SKIP_FILE, CLAIMED_FILE):
         stale = path / name
         if stale.exists():
             stale.unlink()
@@ -234,20 +237,57 @@ def branch_story(
     return StoryBranch(base_branch=base_branch, story_branch=branch, repos=branched)
 
 
-def _claim_epic_branch(logger: logging.Logger, root: Path, branch: str, base: str) -> None:
+def _claimed_branches(run_dir: str) -> set[str]:
+    """The epic branches this run has already put itself on."""
+    if not run_dir:
+        return set()
+    try:
+        text = (Path(run_dir) / CLAIMED_FILE).read_text(encoding="utf-8")
+    except OSError:
+        return set()
+    return {line.strip() for line in text.splitlines() if line.strip()}
+
+
+def _record_claim(run_dir: str, branch: str) -> None:
+    """Remember that this run owns `branch`, so a later visit recognises it."""
+    if not run_dir or not branch:
+        return
+    path = Path(run_dir)
+    if not path.is_dir():
+        return
+    claimed = _claimed_branches(run_dir)
+    if branch in claimed:
+        return
+    (path / CLAIMED_FILE).write_text(
+        "\n".join(sorted(claimed | {branch})) + "\n", encoding="utf-8"
+    )
+
+
+def _claim_epic_branch(
+    logger: logging.Logger, root: Path, branch: str, base: str, run_dir: str = ""
+) -> None:
     """Put this run on `feat/<epic>`, or refuse and say why.
 
-    There are exactly four states an existing branch of that name can be in, and they
-    want four different answers:
+    There are exactly five states an existing branch of that name can be in, and they
+    want five different answers:
 
     ============================  =========================================
     State                         Action
     ============================  =========================================
     Held by another working tree  Hard error — another run is on it
+    Held by *this* working tree   Continue on it, no reset
+    Claimed earlier by this run   Check it out again, no reset
     Merged into base              Reset to HEAD and reuse
     Unmerged, nobody's            Hard error — real work, a human decides
-    Held by *this* working tree   Continue on it, no reset
     ============================  =========================================
+
+    The "claimed earlier" row is what makes a multi-epic drain survivable. Ownership used
+    to be inferred solely from "is it checked out right now", which is true only of the
+    epic in hand — so the moment the drain set an epic aside, moved to the next one and
+    later came back, its *own* branch read as unmerged work by a stranger and the run died
+    on a hard error. `epic-branches.txt` is the run's memory of what it cut, and it is
+    run-scoped for the same reason the skip ledgers are: a fresh run in the same dir
+    inherits no claim, so the refusal below still protects a genuinely foreign branch.
 
     This replaces renaming the branch aside to `archive/<epic>-<sha>`. That was
     reasonable while a leftover ref landed in a container-local clone that
@@ -267,6 +307,7 @@ def _claim_epic_branch(logger: logging.Logger, root: Path, branch: str, base: st
     if not branch_exists(root, branch):
         if not checkout(root, branch, create=True):
             raise WorkflowFailed(f"failed to create epic branch {branch}")
+        _record_claim(run_dir, branch)
         return
 
     owner = branch_owner(root, branch)
@@ -277,6 +318,13 @@ def _claim_epic_branch(logger: logging.Logger, root: Path, branch: str, base: st
                 f"run is working this epic. Wait for it, or run a different epic."
             )
         logger.info("resuming %s, already checked out here", branch)
+        _record_claim(run_dir, branch)
+        return
+
+    if branch in _claimed_branches(run_dir):
+        logger.info("returning to %s, which this run cut earlier", branch)
+        if not checkout(root, branch):
+            raise WorkflowFailed(f"failed to return to epic branch {branch}")
         return
 
     if branch_merged(root, branch, base):
@@ -311,12 +359,16 @@ def _reconcile_queue(logger: logging.Logger, root: Path, base: str) -> None:
 
 @blueprint.node
 def branch_epic(
-    logger: logging.Logger, epic: str = "", base_branch: str = "", repo_dir: str = ""
+    logger: logging.Logger,
+    epic: str = "",
+    base_branch: str = "",
+    repo_dir: str = "",
+    run_dir: str = "",
 ) -> EpicBranch:
     """Put this run on `feat/<epic>`, cutting it from HEAD when it does not exist yet.
 
     An existing branch of that name is not assumed stale and not assumed ours — see
-    :func:`_claim_epic_branch` for the four states it can be in and why three of them
+    :func:`_claim_epic_branch` for the five states it can be in and why four of them
     have an answer other than "rename it aside".
 
     The queue is reconciled from the base afterwards, so an epic branch cut from a stale
@@ -326,7 +378,7 @@ def branch_epic(
     restore_paths(root, paths.epics_index(root))
 
     if epic:
-        _claim_epic_branch(logger, root, f"feat/{epic}", base_branch)
+        _claim_epic_branch(logger, root, f"feat/{epic}", base_branch, run_dir.strip())
 
     _reconcile_queue(logger, root, base_branch)
     return EpicBranch(working_epic=epic, epic_branch=f"feat/{epic}")
