@@ -367,6 +367,14 @@ groom transcript backfill --dry-run       # what the CLI still holds that the ar
 `show` prints paths rather than the transcript: a record runs to tens of megabytes,
 and what a reader wants from here is somewhere to point a pager or a replay.
 
+**Runs older than the visit key are archivable too.** A `sessions.jsonl` written before
+the engine stamped `generation`/`seq` names only the node and the session — and those
+runs are most of the history anyone comes back to. Their turns get a key reconstructed
+from the map's own order, printed as `legacy-17` so it is never mistaken for a real
+`3-17`: it orders the run's turns and claims nothing more. Those rows predate the
+`backend` field as well, so `backfill` asks each CLI store which of them answers to the
+session id rather than dropping the turn for want of a field nobody wrote.
+
 **Testing an improved prompt** needs the archive transposed: not one run's laps, but
 every session that ever ran that node, together. `export` materializes that view into a
 directory you name:

@@ -446,10 +446,12 @@ def _format_turns(rows: list[dict]) -> str:
         )
     import datetime as _dt
 
+    from groom import turns
+
     lines = [f"{'when':<9} {'visit':<12} {'node':<28} {'src':<14} {'size':>9}  session"]
     for row in rows:
         stamp = _dt.datetime.fromtimestamp(row["ts"]).strftime("%H:%M:%S") if row["ts"] else "-"
-        visit = f"{row['generation']}-{row['seq']}"
+        visit = turns.visit_label(row)
         size = f"{row['bytes'] / 1024:.0f}K" if row["bytes"] else "-"
         lines.append(
             f"{stamp:<9} {visit:<12} {row['node'][:28]:<28} {row['source'][:14]:<14}"
@@ -498,7 +500,7 @@ def transcript_show(session: str, as_json: bool = False) -> None:
         print(_json.dumps(records, indent=2))
         return
     for record in records:
-        print(f"{record['node']}  visit {record['generation']}-{record['seq']}  {record['source']}")
+        print(f"{record['node']}  visit {turns.visit_label(record)}  {record['source']}")
         print(f"  dir: {record['dir']}")
         for name in record["files"]:
             print(f"    {name}")

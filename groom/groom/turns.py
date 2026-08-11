@@ -11,7 +11,9 @@ cross-run index beside its own database, and this is the same tree for bodies:
 holding, for that one visit, the transcript the runner captured, the ``prompt.md`` that
 provoked it and the ``output.json`` it answered with. Run-major so a run can be dropped
 in one ``rm -rf``; keyed by the visit so a node visited five times is five directories
-rather than one overwritten one.
+rather than one overwritten one. A run whose session map predates the visit key gets one
+reconstructed from the map's own order — ``legacy-<ordinal>-<node>`` — because the runs
+worth going back to are mostly older than the key that addresses them.
 
 The archive is **additive and idempotent**. Harvest runs on a tick while runs are live,
 so it sees the same record many times: a record whose bytes have not changed is skipped
@@ -61,6 +63,15 @@ RUN_TURNS = "turns"
 #: What a run's per-turn session map is called.
 SESSION_MAP = "sessions.jsonl"
 
+#: The generation stamped on a record whose row predates the visit key, so a reader can
+#: tell a reconstructed ordinal from a number the run actually counted. Negative because
+#: the engine only ever counts up from zero — ``0`` itself is a real generation, which is
+#: why the marker cannot be a small non-negative sentinel.
+LEGACY_GENERATION = -1
+#: First segment of a reconstructed slug. Non-numeric on purpose: it cannot collide with
+#: a real ``f"{generation:03d}-{seq:05d}-{node}"``.
+LEGACY_PREFIX = "legacy"
+
 
 def transcripts_root() -> Path:
     """Where archived records live — beside ``groom.db``, wherever that is.
@@ -99,17 +110,34 @@ def _session_rows(run_dir: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def _slug(row: dict[str, Any]) -> str | None:
-    """This turn's visit key, or None when the row is too old to have one.
+def _visits(rows: list[dict[str, Any]]) -> list[tuple[dict[str, Any], int, int, str]]:
+    """Each session-map row paired with the visit it addresses: (row, generation, seq, slug).
 
-    A row without a generation and a seq cannot be told apart from the other visits to
-    its node, and archiving it under a name it does not own would put two laps in one
-    directory. Better absent than wrong.
+    A row written before the engine stamped a visit key has neither number, and those
+    runs are most of the history anyone comes back to — so rather than skip them, they
+    get a key reconstructed from the map itself: generation :data:`LEGACY_GENERATION`,
+    and a seq counting the *distinct* ``(node, session)`` pairs in file order. The map is
+    append-only, so that ordinal is stable across re-harvests; deduping the pair rather
+    than counting lines is what keeps a session the runner recorded twice from becoming
+    two half-records of one session, since the CLI's store file is the whole session
+    either way.
+
+    The reconstructed slug carries a non-numeric first segment, so it can never alias a
+    real ``NNN-NNNNN-node`` — a genuine generation of ``0`` is reachable (a run dir with
+    no ``resume_generation`` file reads as one), which rules out borrowing a number as
+    the marker.
     """
-    generation, seq = row.get("generation"), row.get("seq")
-    if not isinstance(generation, int) or not isinstance(seq, int):
-        return None
-    return VisitKey(generation, seq, str(row.get("node", ""))).slug
+    ordinals: dict[tuple[str, str], int] = {}
+    visits: list[tuple[dict[str, Any], int, int, str]] = []
+    for row in rows:
+        node, session_id = str(row.get("node", "")), str(row["session_id"])
+        generation, seq = row.get("generation"), row.get("seq")
+        if isinstance(generation, int) and isinstance(seq, int):
+            visits.append((row, generation, seq, VisitKey(generation, seq, node).slug))
+            continue
+        ordinal = ordinals.setdefault((node, session_id), len(ordinals) + 1)
+        visits.append((row, LEGACY_GENERATION, ordinal, f"{LEGACY_PREFIX}-{ordinal:05d}-{node}"))
+    return visits
 
 
 def _sources(run_dir: Path, slug: str, session_id: str) -> list[tuple[str, Path]]:
@@ -236,16 +264,19 @@ def harvest_run(run_dir: Path, run_id: str = "", workflow: str = "") -> int:
     known = _indexed(run)
     root = transcripts_root()
     archived: list[dict[str, Any]] = []
-    for row in rows:
-        slug = _slug(row)
-        if slug is None:
-            continue
+    copied: set[tuple[Any, Any, str]] = set()
+    for row, generation, seq, slug in _visits(rows):
         session_id = str(row["session_id"])
         sources = _sources(run_dir, slug, session_id)
         if not sources:
             continue
+        key = (generation, seq, session_id)
+        if key in copied:
+            # The map records one session twice — a retry that kept the session. Both
+            # lines address the one record, and copying it again would only overwrite it
+            # with itself and inflate what this tick claims to have archived.
+            continue
         digest, _ = _digest_of(sources)
-        key = (row.get("generation"), row.get("seq"), session_id)
         if known.get(key) == digest:
             continue
         target = root / run / f"{slug}__{session_id}"
@@ -254,6 +285,7 @@ def harvest_run(run_dir: Path, run_id: str = "", workflow: str = "") -> int:
         except OSError:
             logger.debug("turn record not archived: %s", target)
             continue
+        copied.add(key)
         archived.append(
             {
                 "run_id": run,
@@ -261,8 +293,8 @@ def harvest_run(run_dir: Path, run_id: str = "", workflow: str = "") -> int:
                 "flow": str(row.get("flow", "")),
                 "node": str(row.get("node", "")),
                 "session_id": session_id,
-                "generation": row.get("generation"),
-                "seq": row.get("seq"),
+                "generation": generation,
+                "seq": seq,
                 "ts": row.get("ts") or 0.0,
                 "backend": str(row.get("backend", "")),
                 "source": _capture_source(run_dir, slug, session_id),
@@ -329,16 +361,18 @@ def backfill(dry_run: bool = False) -> list[dict[str, Any]]:
         rows = _session_rows(run_dir)
         known = _indexed(run_id)
         archived: list[dict[str, Any]] = []
-        for row in rows:
-            slug = _slug(row)
-            if slug is None:
-                continue
+        for row, generation, seq, slug in _visits(rows):
             session_id = str(row["session_id"])
-            key = (row.get("generation"), row.get("seq"), session_id)
+            key = (generation, seq, session_id)
             if key in known or _sources(run_dir, slug, session_id):
                 continue
             backend = str(row.get("backend", ""))
             files = capture.store_files(backend, session_id)
+            if not files and not backend:
+                # A row from before the map recorded which CLI ran the turn. The store
+                # that holds the session is the one that answers to its id, so ask them
+                # rather than drop a turn for want of a field it was never written with.
+                backend, files = capture.probe_stores(session_id)
             if not files:
                 continue
             sources = [
@@ -346,6 +380,10 @@ def backfill(dry_run: bool = False) -> list[dict[str, Any]]:
                 for path in files
             ]
             digest, size = _digest_of(sources)
+            # Recorded as known straight away, so a session the map names twice is
+            # planned once — what is being copied is the CLI's whole session file, and
+            # both lines point at the same one.
+            known[key] = digest
             target = root / run_id / f"{slug}__{session_id}"
             record = {
                 "run_id": run_id,
@@ -353,8 +391,8 @@ def backfill(dry_run: bool = False) -> list[dict[str, Any]]:
                 "flow": str(row.get("flow", "")),
                 "node": str(row.get("node", "")),
                 "session_id": session_id,
-                "generation": row.get("generation"),
-                "seq": row.get("seq"),
+                "generation": generation,
+                "seq": seq,
                 "ts": row.get("ts") or 0.0,
                 "backend": backend,
                 "source": "store-backfill",
@@ -378,6 +416,19 @@ def backfill(dry_run: bool = False) -> list[dict[str, Any]]:
 
 
 # ------------------------------------------------------------------------- reading
+
+
+def visit_label(row: dict[str, Any]) -> str:
+    """How an index row's visit reads to a human: ``3-17``, or ``legacy-17`` when the key
+    was reconstructed from a session map written before the engine stamped one.
+
+    A reader has to be able to tell the two apart: ``legacy-17`` orders the run's turns
+    and nothing more, where a real ``3-17`` is the seventeenth turn of the third start.
+    """
+    generation, seq = row.get("generation"), row.get("seq")
+    if generation == LEGACY_GENERATION:
+        return f"{LEGACY_PREFIX}-{seq}"
+    return f"{generation}-{seq}"
 
 
 def record_path(row: dict[str, Any]) -> Path:

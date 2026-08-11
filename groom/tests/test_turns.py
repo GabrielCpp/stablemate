@@ -147,15 +147,50 @@ def test_a_tick_that_finds_nothing_new_copies_nothing():
         assert archived.read_text().count("\n") == 2
 
 
-def test_a_turn_with_no_visit_key_is_not_archived():
-    """An old session-map line names its node but not which visit it was. Archiving it
-    under a guessed key would put two laps in one directory."""
+def test_a_row_with_no_visit_key_gets_one_reconstructed_from_the_map():
+    """An old session-map line names its node and its session and nothing else. It is
+    still the only address those turns have, so the archive counts them in file order
+    instead of dropping the entire history that predates the visit key."""
     with _DB(), _workspace() as tmp:
-        run_dir = _run_dir(tmp, [{"node": "plan-qa", "session_id": "s0"}])
-        (run_dir / "transcripts" / "000-00000-plan-qa__s0.jsonl").write_text("{}\n")
+        rows = [
+            {"node": "plan-qa", "session_id": "s0"},
+            {"node": "plan-qa", "session_id": "s0"},  # the same session, recorded twice
+            {"node": "dev", "session_id": "s9"},
+        ]
+        run_dir = _run_dir(tmp, rows)
+        for slug, session in (("legacy-00001-plan-qa", "s0"), ("legacy-00002-dev", "s9")):
+            (run_dir / "transcripts" / f"{slug}__{session}.jsonl").write_text("{}\n")
 
+        assert turns.harvest_run(run_dir, "R1", "coder") == 2
+
+        indexed = store.query_turns(run="R1")
+        assert [(r["generation"], r["seq"]) for r in indexed] == [
+            (turns.LEGACY_GENERATION, 1),
+            (turns.LEGACY_GENERATION, 2),
+        ]
+        assert [turns.visit_label(r) for r in indexed] == ["legacy-1", "legacy-2"]
         assert turns.harvest_run(run_dir, "R1", "coder") == 0
-        assert store.query_turns(run="R1") == []
+
+
+def test_a_reconstructed_key_never_aliases_a_real_one():
+    """`generation` 0 is a real generation — a run dir with no `resume_generation` file
+    reads as one — so a reconstructed key has to be distinguishable by shape, not by
+    borrowing a number the engine also mints."""
+    with _DB(), _workspace() as tmp:
+        real = {
+            "node": "plan-qa", "session_id": "s1", "generation": 0, "seq": 1,
+            "ts": 1000.0, "backend": "acme-cli",
+        }
+        run_dir = _run_dir(tmp, [{"node": "plan-qa", "session_id": "s0"}, real])
+        (run_dir / "transcripts" / "legacy-00001-plan-qa__s0.jsonl").write_text("{}\n")
+        _visit(run_dir, real)
+
+        assert turns.harvest_run(run_dir, "R1", "coder") == 2
+        indexed = store.query_turns(run="R1")
+        assert {r["path"] for r in indexed} == {
+            "R1/legacy-00001-plan-qa__s0",
+            "R1/000-00001-plan-qa__s1",
+        }
 
 
 def test_scratch_runs_are_never_archived():
@@ -212,6 +247,34 @@ def test_backfill_archives_from_the_cli_store():
                 capture._STORES.pop("acme-cli", None)
             else:
                 capture._STORES["acme-cli"] = previous
+
+
+def test_backfill_finds_the_store_for_a_row_that_never_recorded_a_backend():
+    """The rows worth recovering predate the `backend` field as well as the visit key.
+    Which CLI holds the session is answerable — the store that resolves its id — so the
+    backfill asks instead of skipping the turn for a field nobody wrote."""
+    from workhorse.runner import transcript as capture
+
+    with _DB(), _workspace() as tmp:
+        run_dir = _run_dir(tmp, [{"node": "plan-qa", "session_id": "s1"}])
+        _span(run_dir)
+        cli_store = tmp / "cli"
+        cli_store.mkdir()
+        (cli_store / "s1.jsonl").write_text('{"role": "user"}\n', encoding="utf-8")
+        capture._STORES["acme-cli"] = lambda session: [
+            p for p in [cli_store / f"{session}.jsonl"] if p.is_file()
+        ]
+        try:
+            assert [p["session_id"] for p in turns.backfill(dry_run=True)] == ["s1"]
+            turns.backfill()
+            indexed = store.query_turns(run="R1")
+            assert [(r["backend"], r["generation"], r["seq"]) for r in indexed] == [
+                ("acme-cli", turns.LEGACY_GENERATION, 1)
+            ]
+            assert (turns.record_path(indexed[0]) / "transcript.jsonl").is_file()
+            assert turns.backfill(dry_run=True) == []
+        finally:
+            capture._STORES.pop("acme-cli", None)
 
 
 # --------------------------------------------------------------------------- pruning
