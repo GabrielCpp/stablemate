@@ -183,25 +183,47 @@ def _format_costs(rows: list[dict]) -> str:
             "  Cost and tokens are stamped on agent_turn spans, so a run that has not\n"
             "  yet finished a turn — or ran with telemetry off — has nothing to total."
         )
-    header = f"{'node':<28}{'turns':>6}{'/work':>7}{'usd':>9}{'share':>7}{'min':>7}"
+    header = (
+        f"{'node':<28}{'turns':>6}{'/work':>7}{'usd':>9}{'est$':>9}{'share':>7}{'min':>7}"
+    )
     lines = [header, "-" * len(header)]
     for row in rows:
         cost = row["cost_usd"]
+        estimated = row.get("est_cost_usd")
         per = row["turns_per_work_id"]
         lines.append(
             f"{row['node'][:27]:<28}{row['turns']:>6}"
             f"{(f'{per:.2f}' if per else '-'):>7}"
             f"{(f'{cost:.2f}' if cost is not None else '-'):>9}"
+            f"{(f'{estimated:.2f}' if estimated is not None else '-'):>9}"
             f"{row['share'] * 100:>6.1f}%"
             f"{(row['minutes'] or 0):>7.0f}"
         )
     total = sum(row["cost_usd"] or 0.0 for row in rows)
+    estimated_total = sum(row.get("est_cost_usd") or 0.0 for row in rows)
+    est_turns = sum(row.get("est_turns") or 0 for row in rows)
     minutes = sum(row["minutes"] or 0.0 for row in rows)
     turns = sum(row["turns"] for row in rows)
     priced = sum(row["cost_turns"] or 0 for row in rows)
     zeroed = sum(row["zero_cost_turns"] or 0 for row in rows)
     lines.append("-" * len(header))
-    lines.append(f"{'total':<28}{turns:>6}{'':>7}{total:>9.2f}{'':>7}{minutes:>7.0f}")
+    lines.append(
+        f"{'total':<28}{turns:>6}{'':>7}{total:>9.2f}{estimated_total:>9.2f}"
+        f"{'':>7}{minutes:>7.0f}"
+    )
+    # est$ is a second, independent reading of the same turns — tokens at a rate card —
+    # so it is printed beside the bill and never summed with it. Saying how many turns
+    # it covers is what stops it being read as a correction to the total.
+    if est_turns:
+        lines.append("")
+        lines.append(
+            f"note: est$ prices {est_turns} of {turns} turns at groom's rate card"
+            " (`groom prices`); it is an"
+        )
+        lines.append(
+            "      estimate of what the tokens are worth, not a bill, and is never"
+            " added to usd."
+        )
     # Silence here would be a wrong answer, not a missing one. A turn can go unpriced
     # two ways: reporting nothing (a visible gap) or reporting a literal zero while
     # spending tokens (invisible — it sums, so the total looks complete).
@@ -251,6 +273,64 @@ def cost(run: str = "", limit: int = 100, as_json: bool = False) -> None:
         print(_json.dumps(rows, indent=2))
         return
     print(_format_costs(rows))
+
+
+def prices_cmd(
+    reprice: bool = False, run: str = "", all_turns: bool = False, as_json: bool = False
+) -> None:
+    """Show the rate card behind `cost`'s est$ column, or apply it to stored turns.
+
+    Without ``--reprice`` this only prints: the per-million rates in force and where
+    the override file that extends them lives. With it, every agent turn carrying
+    token counts is estimated and the result written to `est_cost_usd` — a column
+    beside the reported cost, never folded into it.
+
+    The models it could not price are listed either way. That list is the point: an
+    estimate whose coverage is invisible is worse than none, and each line in it is a
+    model to add to `prices.toml`.
+    """
+    import json as _json
+
+    from groom import prices, store
+
+    table = prices.table()
+    result = (
+        store.reprice(run=run, missing_only=not all_turns)
+        if reprice
+        else {"unpriced": store.unpriced_models(run=run)}
+    )
+    if as_json:
+        print(_json.dumps({"path": str(prices.prices_path()), **result}, indent=2))
+        return
+
+    lines = [f"rate card ({len(table)} models, $ per million tokens)"]
+    header = f"  {'model':<24}{'in':>8}{'out':>8}{'cache-r':>9}{'cache-w':>9}"
+    lines += [header, "  " + "-" * (len(header) - 2)]
+    for model, price in sorted(table.items()):
+        lines.append(
+            f"  {model[:23]:<24}{price.input:>8.2f}{price.output:>8.2f}"
+            f"{price.cache_read:>9.3f}{price.cache_write:>9.2f}"
+        )
+    lines.append("")
+    lines.append(f"overrides: {prices.prices_path()}")
+    if reprice:
+        lines.append(
+            f"repriced {result['priced']} of {result['considered']} turns"
+            f" — est ${result['est_cost_usd']:.2f}"
+        )
+    unpriced = result["unpriced"]
+    if unpriced:
+        lines.append("")
+        # A model absent from the table is never guessed at from its neighbours, so
+        # these turns simply have no estimate. Naming them is what makes est$'s
+        # coverage a number rather than an impression.
+        lines.append(f"unpriced ({sum(unpriced.values())} turns, no rate for the model):")
+        for model, turns in unpriced.items():
+            lines.append(f"  {model[:40]:<42}{turns:>7} turns")
+        lines.append("")
+        lines.append("Add a rate for any of those to the override file, then rerun with")
+        lines.append("--reprice. Nothing is estimated from a model the table does not name.")
+    print("\n".join(lines))
 
 
 def _format_loops(rows: list[dict]) -> str:
@@ -598,6 +678,24 @@ def main(argv: list[str] | None = None) -> None:
         "--json", action="store_true", dest="as_json", help="Machine-readable output."
     )
 
+    prices_parser = subparsers.add_parser(
+        "prices",
+        help="The rate card behind cost's est$ column, and the command that applies it "
+        "to turns already in the store.",
+    )
+    prices_parser.add_argument(
+        "--reprice", action="store_true",
+        help="Estimate turns in the store and write est_cost_usd (leaves total_cost_usd alone).",
+    )
+    prices_parser.add_argument("--run", default="", help="Limit --reprice to one run_id.")
+    prices_parser.add_argument(
+        "--all", action="store_true", dest="all_turns",
+        help="With --reprice, redo turns that already carry an estimate (after a rate changes).",
+    )
+    prices_parser.add_argument(
+        "--json", action="store_true", dest="as_json", help="Machine-readable output."
+    )
+
     loops_parser = subparsers.add_parser(
         "loops",
         help="Per-node lap distributions: which review→rework loops converge, and what "
@@ -706,6 +804,11 @@ def main(argv: list[str] | None = None) -> None:
         )
     elif args.command == "cost":
         cost(run=args.run, limit=args.limit, as_json=args.as_json)
+    elif args.command == "prices":
+        prices_cmd(
+            reprice=args.reprice, run=args.run,
+            all_turns=args.all_turns, as_json=args.as_json,
+        )
     elif args.command == "loops":
         loops(
             run=args.run, workflow=args.workflow,

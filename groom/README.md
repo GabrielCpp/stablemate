@@ -236,11 +236,11 @@ Where the money and the rework went, per node:
 
 ```console
 $ groom cost --run RUN
-node                         turns  /work      usd  share    min
-----------------------------------------------------------------
-plan-qa                         84   4.67   181.38  21.7%    730
-document-story                  89   4.68   116.54  13.9%    602
-implement-plan                  23   1.21   104.40  12.5%    317
+node                         turns  /work      usd     est$  share    min
+-------------------------------------------------------------------------
+plan-qa                         84   4.67   181.38   142.05  21.7%    730
+document-story                  89   4.68   116.54    97.20  13.9%    602
+implement-plan                  23   1.21   104.40    88.71  12.5%    317
 ```
 
 Only `agent_turn` spans are counted — a node span wraps its turn, so totalling
@@ -279,6 +279,57 @@ one that spent two minutes in twenty.
 Duration is comparable across harnesses but not identical: when the CLI reports a
 turn duration that value is used, and when it does not (codex reports none) the
 engine's own wall clock is stamped instead, which includes process spawn.
+
+### What it would have cost (`groom prices`)
+
+The caveats above leave a real question unanswerable: half the turns in a busy store
+report no money, so *which of these two loops burned more* has no answer from the bill.
+`est$` answers it from the tokens instead — every turn's four token counts at a published
+rate card, in its own column:
+
+```console
+$ groom prices                    # the rates in force, and what they do not cover
+$ groom prices --reprice          # estimate the turns already in the store
+$ groom prices --reprice --all    # …including ones already estimated, after a rate change
+```
+
+**`est$` is never added to `usd`.** They are different claims — what a vendor billed
+versus what a rate card says the tokens are worth — and a column mixing them answers
+nothing. `groom cost` prints them side by side and says how many turns the estimate
+covers.
+
+**An unknown model is not priced.** No family guessing and no averaging of neighbours:
+a model the table does not name yields no estimate and is listed as unpriced, so the
+estimate's coverage is a number rather than an impression. Note that a bare alias like
+`sonnet` is not a model id and stays unpriced deliberately — it names whichever version
+was current at the time, which the store cannot recover.
+
+Groom ships rates for the Anthropic models its own runs use. Everything else goes in
+`~/.config/stablemate/prices.toml` (`$GROOM_PRICES` points elsewhere), where whoever
+pays the bill can keep it current:
+
+```toml
+[models."acme/fast-1"]
+input = 1.25          # $ per million input tokens
+output = 10.0
+cache_read = 0.125    # optional; defaults to 0.1 x input
+cache_write = 2.5     # optional; defaults to 2.0 x input
+```
+
+Then `groom prices --reprice` to apply it. A malformed file is logged and ignored
+rather than raised — a typo in a rate card must not take down the dashboard reading it.
+
+**How accurate.** Cache defaults follow Anthropic's published multipliers, taking the
+one-hour write rate rather than the five-minute one, because a run holding one context
+across a long turn is what this is used to price. Checked against 528 turns in a live
+store that reported a real price: median per-turn estimate 0.99× the billed amount,
+aggregate 0.82× — the tail it misses is turns that mixed both TTLs and turns billed at
+the long-context premium. That is the accuracy on offer, and it is why the column stays
+separate rather than filling the gaps in `usd`.
+
+Turns already in the store carry no estimate until `--reprice` has run over them: unlike
+the promoted token columns, this one is derived here rather than reported by anyone, so
+there is no attribute to fall back to.
 
 ### Which loops converge (`groom loops`)
 
@@ -475,6 +526,11 @@ The fields most queries want dodge this entirely by being real columns on
 `spans`: `duration_ms`, `total_cost_usd`, `input_tokens`, `output_tokens`,
 `cache_read_tokens`, `cache_creation_tokens`, `pid`, `resume_generation`,
 `head_start`, `head_end`.
+
+`est_cost_usd` is the odd one out: derived by groom from the token columns and the
+rate card rather than promoted from anything a producer reported (see `groom prices`
+above), so it has no `attrs_json` to fall back to and a span only carries it once
+`--reprice` has run.
 
 `resume_generation` counts how many times a run directory has been started. A
 resume reuses the `run_id` and opens a fresh root span, so it is what tells a gap

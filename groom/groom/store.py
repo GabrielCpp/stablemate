@@ -28,6 +28,8 @@ from typing import Any
 
 from platformdirs import user_data_dir
 
+from groom import prices
+
 logger = logging.getLogger(__name__)
 
 # Days of span/metric history to keep; pruned at startup and on a periodic tick.
@@ -163,6 +165,7 @@ _ADDED_SPAN_COLUMNS = (
     ("resume_generation", "INTEGER"),
     ("head_start", "TEXT"),
     ("head_end", "TEXT"),
+    ("est_cost_usd", "REAL"),
 )
 
 #: The same, for `logs`. A log record carries the head observed when it was *emitted*
@@ -197,9 +200,23 @@ _PROMOTED_SPAN_COLUMNS = (
 #: two are *resource* attributes, which `otlp.parse_traces` lifts into named fields.
 _PROMOTED_SPAN_FIELDS = ("pid", "resume_generation")
 
+#: Computed here rather than reported by anyone: what this turn's tokens are worth at
+#: the rate card in `groom.prices`. Its own column, never folded into `total_cost_usd` —
+#: what a vendor billed and what a rate card says are different claims, and a sum of the
+#: two is a number no one can act on. NULL when the model has no published rate here,
+#: which is what makes the unpriced share of a report countable.
+_DERIVED_SPAN_COLUMNS = ("est_cost_usd",)
+
+#: Every column `insert_spans` writes past the plain ones, in order.
+_SPAN_VALUE_COLUMNS = (
+    *(column for _key, column, _cast in _PROMOTED_SPAN_COLUMNS),
+    *_PROMOTED_SPAN_FIELDS,
+    *_DERIVED_SPAN_COLUMNS,
+)
+
 
 def _promoted(span: dict[str, Any], attrs: dict[str, Any]) -> tuple[Any, ...]:
-    """The promoted columns' values for one span, in `_PROMOTED_SPAN_COLUMNS` order.
+    """The promoted and derived columns' values for one span, in `_SPAN_VALUE_COLUMNS` order.
 
     A missing or unparseable field yields NULL, never 0. Workhorse's normalizer draws
     the same distinction on purpose (`runner/usage.py`): a harness that does not report
@@ -207,20 +224,37 @@ def _promoted(span: dict[str, Any], attrs: dict[str, Any]) -> tuple[Any, ...]:
     with an unknown understates spend. Coercing to 0 here would throw that away at the
     last step.
     """
-    values: list[Any] = []
-    for key, _column, cast in _PROMOTED_SPAN_COLUMNS:
+    values: dict[str, Any] = {}
+    for key, column, cast in _PROMOTED_SPAN_COLUMNS:
         raw = attrs.get(key)
         try:
-            values.append(None if raw is None or isinstance(raw, bool) else cast(raw))
+            values[column] = None if raw is None or isinstance(raw, bool) else cast(raw)
         except (TypeError, ValueError):
-            values.append(None)
+            values[column] = None
     for field in _PROMOTED_SPAN_FIELDS:
         raw = span.get(field)
         try:
-            values.append(None if raw is None else int(raw))
+            values[field] = None if raw is None else int(raw)
         except (TypeError, ValueError):
-            values.append(None)
-    return tuple(values)
+            values[field] = None
+    values["est_cost_usd"] = _estimated(attrs, values)
+    return tuple(values[column] for column in _SPAN_VALUE_COLUMNS)
+
+
+def _estimated(attrs: dict[str, Any], tokens: dict[str, Any]) -> float | None:
+    """This turn's tokens at the rate card, or NULL when the model is not in it.
+
+    Reads the token counts already cast for the promoted columns rather than the raw
+    attributes, so the estimate and the counts a report shows beside it can never
+    disagree about what the turn used.
+    """
+    return prices.estimate(
+        str(attrs.get("model") or ""),
+        tokens.get("input_tokens"),
+        tokens.get("output_tokens"),
+        tokens.get("cache_read_tokens"),
+        tokens.get("cache_creation_tokens"),
+    )
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -267,12 +301,8 @@ def insert_spans(spans: list[dict[str, Any]]) -> None:
     if not spans:
         return
     conn = _connection()
-    promoted = ", ".join(
-        [column for _key, column, _cast in _PROMOTED_SPAN_COLUMNS] + list(_PROMOTED_SPAN_FIELDS)
-    )
-    placeholders = ", ".join(
-        "?" * (len(_PROMOTED_SPAN_COLUMNS) + len(_PROMOTED_SPAN_FIELDS))
-    )
+    promoted = ", ".join(_SPAN_VALUE_COLUMNS)
+    placeholders = ", ".join("?" * len(_SPAN_VALUE_COLUMNS))
     conn.executemany(
         "INSERT OR REPLACE INTO spans (span_id, trace_id, parent_id, run_id, workflow,"
         " repo, branch, node, name, run_dir, start_ts, end_ts, status, attrs_json,"
@@ -413,6 +443,99 @@ def _promoted_or_attr(column: str, key: str) -> str:
 _cost = _promoted_or_attr("total_cost_usd", "total_cost_usd")
 _duration = _promoted_or_attr("duration_ms", "duration_ms")
 _output = _promoted_or_attr("output_tokens", "usage.output_tokens")
+_input = _promoted_or_attr("input_tokens", "usage.input_tokens")
+_cache_read = _promoted_or_attr("cache_read_tokens", "usage.cache_read_input_tokens")
+_cache_write = _promoted_or_attr(
+    "cache_creation_tokens", "usage.cache_creation_input_tokens"
+)
+
+#: `est_cost_usd` is derived here rather than reported by a harness, so — unlike the
+#: promoted columns — there is no attribute to fall back to for a span that predates
+#: it. History gets an estimate only by being repriced, which is why this is a command
+#: and not a COALESCE.
+_ESTIMABLE = (
+    "name = 'agent_turn' AND ("
+    f"{_input} IS NOT NULL OR {_output} IS NOT NULL"
+    f" OR {_cache_read} IS NOT NULL OR {_cache_write} IS NOT NULL)"
+)
+
+
+def unpriced_models(run: str = "") -> dict[str, int]:
+    """Models with turns the rate card cannot price, and how many turns each has.
+
+    Answers "what would I gain by adding a rate" without writing anything, which is
+    what makes it safe to print from a bare `groom prices`.
+    """
+    clauses = [_ESTIMABLE]
+    params: list[Any] = []
+    if run:
+        clauses.append("run_id = ?")
+        params.append(run)
+    conn = _connection()
+    rows = conn.execute(
+        "SELECT json_extract(attrs_json, '$.model') AS model, COUNT(*) AS turns"  # noqa: S608
+        f" FROM spans WHERE {' AND '.join(clauses)} GROUP BY model",
+        params,
+    ).fetchall()
+    found = Counter[str]()
+    for row in rows:
+        model = str(row["model"] or "")
+        if prices.price_for(model) is None:
+            found[model or "(no model recorded)"] += row["turns"]
+    return dict(found.most_common())
+
+
+def reprice(run: str = "", missing_only: bool = True) -> dict[str, Any]:
+    """Recompute `est_cost_usd` over turns already in the store.
+
+    Two occasions want this and they want opposite defaults, so both are here: after
+    adding a model to `prices.toml` only the rows that never got an estimate need one
+    (`missing_only`, the default), and after *correcting* a rate every row priced at
+    the old one is wrong (`missing_only=False`).
+
+    Returns what was touched and, more usefully, what could not be: `unpriced` maps
+    each model with token counts and no rate to how many of its turns are affected.
+    That list is the answer to "what do I add to the override file", and printing it
+    is the only thing that keeps an estimate's coverage from silently being a subset.
+    """
+    clauses = [_ESTIMABLE]
+    params: list[Any] = []
+    if run:
+        clauses.append("run_id = ?")
+        params.append(run)
+    if missing_only:
+        clauses.append("est_cost_usd IS NULL")
+    conn = _connection()
+    rows = conn.execute(
+        "SELECT span_id, json_extract(attrs_json, '$.model') AS model,"  # noqa: S608
+        f" {_input} AS input_tokens, {_output} AS output_tokens,"
+        f" {_cache_read} AS cache_read_tokens, {_cache_write} AS cache_creation_tokens"
+        f" FROM spans WHERE {' AND '.join(clauses)}",
+        params,
+    ).fetchall()
+    updates: list[tuple[float, str]] = []
+    unpriced: Counter[str] = Counter()
+    for row in rows:
+        model = str(row["model"] or "")
+        estimated = prices.estimate(
+            model,
+            row["input_tokens"],
+            row["output_tokens"],
+            row["cache_read_tokens"],
+            row["cache_creation_tokens"],
+        )
+        if estimated is None:
+            unpriced[model or "(no model recorded)"] += 1
+            continue
+        updates.append((estimated, row["span_id"]))
+    conn.executemany("UPDATE spans SET est_cost_usd = ? WHERE span_id = ?", updates)
+    conn.commit()
+    return {
+        "considered": len(rows),
+        "priced": len(updates),
+        "est_cost_usd": sum(value for value, _span in updates),
+        "unpriced": dict(unpriced.most_common()),
+    }
 
 
 def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
@@ -446,6 +569,12 @@ def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
     So the unit of cost coverage is **harness × provider**, not harness. `backends`
     names who ran each node; the CLI says out loud when either count implies the total
     is partial.
+
+    `est_cost_usd` is the same turns priced at `groom.prices`' rate card, over the
+    `est_turns` of them whose model it knows. It is reported *beside* `cost_usd` and
+    never added to it: one is what a vendor billed and the other is what tokens are
+    worth, and a column mixing them answers nothing. Rows only carry it once
+    :func:`reprice` has run over them.
     """
     clauses, params = ["name = 'agent_turn'"], []
     if run:
@@ -460,6 +589,8 @@ def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
         f" SUM({_cost} = 0 AND COALESCE({_output}, 0) > 0) AS zero_cost_turns,"
         " GROUP_CONCAT(DISTINCT json_extract(attrs_json, '$.backend')) AS backends,"
         f" SUM({_cost}) AS cost_usd,"
+        " SUM(est_cost_usd) AS est_cost_usd,"
+        " SUM(est_cost_usd IS NOT NULL) AS est_turns,"
         f" SUM({_duration}) / 60000.0 AS minutes,"
         f" SUM({_output}) AS output_tokens"
         f" FROM spans WHERE {' AND '.join(clauses)}"
