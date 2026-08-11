@@ -100,6 +100,23 @@ def store_files(backend: str, session_id: str) -> list[Path]:
         return []
 
 
+def probe_stores(session_id: str) -> tuple[str, list[Path]]:
+    """Which CLI's store holds this session, for a caller that does not know: (backend,
+    files), or ``("", [])`` when none of them do.
+
+    A session map written before the backend was recorded still names the session, and
+    the store is where that session's body is. Probing is exact rather than heuristic —
+    a resolver either finds files under that id or it does not, and the ids are opaque
+    per-CLI tokens no two stores mint the same way — so this recovers the backend rather
+    than guessing at it.
+    """
+    for backend in _STORES:
+        files = store_files(backend, session_id)
+        if files:
+            return backend, files
+    return "", []
+
+
 # -------------------------------------------------------------------------- settings
 
 

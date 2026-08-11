@@ -199,6 +199,20 @@ def test_capture_never_faults_the_turn():
         assert transcript.tee_begin("qa-plan") is None
 
 
+def test_a_session_with_no_recorded_backend_is_found_by_probing_the_stores():
+    """A session map written before the backend was recorded still names the session,
+    and whichever store answers to that id is the one that ran it."""
+    _reset()
+    with tempfile.TemporaryDirectory() as tmp:
+        _store(Path(tmp), "sess-9", '{"from":"store"}\n')
+
+        backend, files = transcript.probe_stores("sess-9")
+        assert backend == "acme-cli"
+        assert [p.name for p in files] == ["sess-9.jsonl"]
+        assert transcript.probe_stores("sess-nothing") == ("", [])
+    _reset()
+
+
 def _raise(_session_id: str) -> list[Path]:
     raise OSError("store unreadable")
 
