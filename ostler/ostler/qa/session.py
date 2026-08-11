@@ -871,6 +871,9 @@ def _poll_ready(
         if code not in (None, 0):
             raise _daemon_died(code, described, log_file, ready=ready)
         if ready:
+            settled = _settled(proc)
+            if settled not in (None, 0):
+                raise _daemon_died(settled, described, log_file, ready=True)
             return
         time.sleep(1)
     tail = _log_tail(log_file)
@@ -878,6 +881,32 @@ def _poll_ready(
         f"daemon ready_check timed out after {timeout}s: {described}"
         + (f"\n--- last lines of {log_file}:\n{tail}" if tail else "")
     )
+
+
+#: How long a passing ready_check has to survive the daemon it claims to describe.
+#:
+#: The crash-outranks-ready rule above is a *race*, not a check, and it loses more often
+#: than it wins. Both facts are sampled in the same instant on the first iteration: the
+#: squatter answers 200 immediately, while our own daemon — which will die on `address
+#: already in use` — has not been scheduled long enough to have exited, so `poll()` reads
+#: `None` and the passing check is believed. The whole suite then runs against the
+#: previous run's server. Two seconds is longer than the gap between `Popen` returning and
+#: a bind failure surfacing, and it is spent once per daemon on a run that takes minutes.
+_SETTLE_SECONDS = 2.0
+
+
+def _settled(proc: subprocess.Popen | None) -> int | None:
+    """The daemon's exit code if it dies within the settle window, else `None`.
+
+    `None` means still running, which is the only state in which a ready verdict is worth
+    anything. A daemon that exits during the window was never what answered the check.
+    """
+    if proc is None:
+        return None
+    try:
+        return proc.wait(timeout=_SETTLE_SECONDS)
+    except subprocess.TimeoutExpired:
+        return None
 
 
 def _daemon_died(

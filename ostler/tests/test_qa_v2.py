@@ -807,6 +807,42 @@ def test_a_dead_daemon_whose_check_still_passes_fails_the_run(tmp_path: Path):
     assert "address already in use" in outcome.message, outcome.message
 
 
+def test_a_daemon_that_dies_just_after_a_passing_check_still_fails_the_run(tmp_path: Path):
+    """The rule above was a race, and this is the half of it that was losing.
+
+    Both facts are sampled in the same instant: the orphan answers immediately, and our own
+    daemon — which is going to die on `address already in use` — has not been scheduled long
+    enough to have exited, so `poll()` reads `None`. Ready wins, and the suite runs green
+    against the previous run's server. Exactly the false pass the test above claims to catch,
+    reached by losing the race instead of by the check arriving late.
+
+    The daemon here dies half a second in, which is what a real bind failure behind a
+    shell wrapper looks like. Nothing about the verdict may depend on which of the two won.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    (tmp_path / "ready.txt").write_text("listening", encoding="utf-8")  # the orphan
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["background"] = [
+        {
+            "name": "api-server",
+            "cmd": "sleep 0.5; echo 'bind: address already in use' >&2; exit 1",
+            "ready_check": {"cmd": "cat ready.txt", "assert_contains": "listening"},
+            "timeout": 10,
+        }
+    ]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_run(plan, root=tmp_path)
+
+    assert outcome.status == "invalid", outcome.message
+    assert "exited with code 1" in outcome.message, outcome.message
+    assert "something other than this run's daemon is answering" in outcome.message
+    assert "address already in use" in outcome.message, outcome.message
+
+
 def test_a_launcher_that_forks_and_exits_zero_still_counts_as_ready(tmp_path: Path):
     """Exit 0 is a hand-off, not a death — the other half of the rule above.
 
