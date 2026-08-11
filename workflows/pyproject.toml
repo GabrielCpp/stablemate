@@ -1,6 +1,6 @@
 [project]
 name = "workhorse-workflows"
-version = "0.2.0"
+version = "1.0.0"
 description = "The stablemate agent workflows — hello-world, research, author, coder, okf-builder — as an installable package workhorse discovers by entry point."
 readme = "README.md"
 requires-python = ">=3.12"

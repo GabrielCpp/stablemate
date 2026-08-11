@@ -1,6 +1,6 @@
 [project]
 name = "workhorse-agent"
-version = "1.0.0"
+version = "2.0.0"
 description = "Fail-soft engine for agent workflows written in Python — drives an agent CLI through a checkpointed state machine, unattended for days."
 readme = "README.md"
 requires-python = ">=3.12"

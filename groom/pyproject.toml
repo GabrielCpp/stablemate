@@ -1,6 +1,6 @@
 [project]
 name = "groom"
-version = "0.1.0"
+version = "1.0.0"
 description = "Local push-driven dashboard for workhorse agent-workflow operator gates — tends the horses while they run."
 readme = "README.md"
 requires-python = ">=3.12"
