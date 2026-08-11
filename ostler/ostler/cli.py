@@ -574,6 +574,28 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_context.add_argument("--story-file", type=Path)
     qa_context.add_argument("--json", action="store_true")
 
+    qa_context_show = qas.add_parser(
+        "context-show", help="read a filtered, paged slice of an already-built context packet"
+    )
+    qa_context_show.add_argument("--spec", required=True, type=Path)
+    owed = qa_context_show.add_mutually_exclusive_group()
+    owed.add_argument("--required", action="store_true",
+                      help="only obligations owed live evidence")
+    owed.add_argument("--context-only", action="store_true", dest="context_only",
+                      help="only obligations reached by closure")
+    qa_context_show.add_argument("--node", default="",
+                                 help="substring of the obligation's node path")
+    qa_context_show.add_argument("--kind", default="",
+                                 help="exact obligation kind, e.g. contract, journey, does")
+    qa_context_show.add_argument("--offset", type=int, default=0)
+    qa_context_show.add_argument("--limit", type=int,
+                                 help="how many to print; omit for all that matched")
+    qa_context_show.add_argument("--ids-only", action="store_true", dest="ids_only",
+                                 help="print bare obligation ids, no requirement text")
+    qa_context_show.add_argument("--no-locators", action="store_false", dest="locators",
+                                 help="omit each obligation's locator bullets")
+    qa_context_show.add_argument("--json", action="store_true")
+
     qa_context_validate = qas.add_parser(
         "context-validate", help="validate qa-okf-context.json"
     )
@@ -945,6 +967,37 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         else:
             _out(f"wrote {paths[0]} and {paths[1]}")
         return 0 if not any(f.get("severity") == "error" for f in packet["healthFindings"]) else 1
+
+    if op == "context-show":
+        spec_dir = _resolve_spec(args.spec)
+        context_file = spec_dir / "qa-okf-context.json"
+        try:
+            packet = json.loads(context_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            _out(json.dumps({"status": "invalid", "message": str(exc)}, indent=2)
+                 if args.json else f"error: {exc}")
+            return 1
+        required = True if args.required else (False if args.context_only else None)
+        page, matched = qa_mod.select_obligations(
+            packet,
+            required=required,
+            node=args.node,
+            kind=args.kind,
+            offset=args.offset,
+            limit=args.limit,
+        )
+        if args.json:
+            _out(json.dumps({"obligations": page, "matched": matched,
+                             "total": len(packet.get("obligations", []))}, indent=2))
+            return 0
+        if args.ids_only:
+            _out("\n".join(item["id"] for item in page) or "- (none)")
+        else:
+            _out("\n".join(qa_mod.render_obligations(page, locators=args.locators)))
+        shown = args.offset + len(page)
+        _out(f"\n# showing {args.offset + 1 if page else 0}-{shown} of {matched} matched "
+             f"({len(packet.get('obligations', []))} in packet)")
+        return 0
 
     if op == "context-validate":
         spec_dir = _resolve_spec(args.spec)

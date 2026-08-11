@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -437,6 +437,64 @@ def write_context(packet: dict[str, Any], spec_dir: Path) -> tuple[Path, Path]:
     return json_path, md_path
 
 
+#: The two obligation sections. They are headings rather than a suffix on each line because the
+#: distinction decides whether a planner owes a scenario, and a suffix could not carry it: a
+#: requirement is rendered verbatim, wraps where the book wrapped it, and put the marker on a
+#: continuation line — so `grep '- \`okf:'` and `grep 'context only'` disagreed, and a planning
+#: agent that derived its owed set per-line derived the wrong one. Under a heading the class of an
+#: entry is positional, which no amount of wrapping can move.
+OWED_HEADING = "## Obligations — owed live evidence"
+CONTEXT_HEADING = "## Context — reached by closure, not owed evidence"
+
+
+def render_obligations(
+    obligations: Sequence[dict[str, Any]], *, locators: bool = True
+) -> list[str]:
+    """Render one obligation section, or `- (none)` when it is empty."""
+    if not obligations:
+        return ["- (none)"]
+    lines: list[str] = []
+    for obligation in obligations:
+        lines.append(f"- `{obligation['id']}`: {obligation['requirement']}")
+        if locators:
+            for key, values in sorted(obligation.get("locators", {}).items()):
+                lines.append(f"  - {key}: {'; '.join(values)}")
+    return lines
+
+
+def select_obligations(
+    packet: dict[str, Any],
+    *,
+    required: bool | None = None,
+    node: str = "",
+    kind: str = "",
+    offset: int = 0,
+    limit: int | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    """Filter and page the obligation list, returning `(page, total_matched)`.
+
+    The packet is written once and read many times, and on a large book it is read by an agent
+    that cannot hold it: the closure is deliberately broad, so a story owing 25 obligations
+    ships beside 151 it only needs for context, and the JSON carrying both is a few hundred
+    kilobytes. Reading it whole truncates, and the reader falls back to re-deriving the split by
+    hand. Selecting a slice is the same information at a size a reader can actually take in, so
+    this is a query over the built packet rather than another way to build one — `build_context`
+    walks the diff and the graph and takes the better part of a minute; a filter must not.
+
+    `node` matches as a substring of the obligation's node path, not a glob: the caller is
+    usually typing a surface prefix at a shell, where a `*` needs quoting to survive.
+    """
+    matched = [
+        item
+        for item in packet.get("obligations", [])
+        if (required is None or bool(item.get("required", True)) is required)
+        and (not node or node in str(item.get("node", "")))
+        and (not kind or str(item.get("kind", "")) == kind)
+    ]
+    window = matched[offset:] if limit is None else matched[offset : offset + limit]
+    return window, len(matched)
+
+
 def render_context(packet: dict[str, Any]) -> str:
     lines = [
         "---",
@@ -456,14 +514,13 @@ def render_context(packet: dict[str, Any]) -> str:
         lines.append(f"- `{change['path']}` ({change['status']}): {', '.join(symbols) or 'file scope'}")
     if not packet.get("changedCode"):
         lines.append("- (none)")
-    lines.extend(["", "## Obligations", ""])
-    for obligation in packet.get("obligations", []):
-        suffix = "" if obligation.get("required", True) else "  _(context only — not owed evidence)_"
-        lines.append(f"- `{obligation['id']}`: {obligation['requirement']}{suffix}")
-        for key, values in sorted(obligation.get("locators", {}).items()):
-            lines.append(f"  - {key}: {'; '.join(values)}")
-    if not packet.get("obligations"):
-        lines.append("- (none)")
+    obligations = packet.get("obligations", [])
+    owed = [item for item in obligations if item.get("required", True)]
+    context_only = [item for item in obligations if not item.get("required", True)]
+    lines.extend(["", OWED_HEADING, ""])
+    lines.extend(render_obligations(owed))
+    lines.extend(["", CONTEXT_HEADING, ""])
+    lines.extend(render_obligations(context_only))
     lines.extend(["", "## Health Findings", ""])
     for finding in packet.get("healthFindings", []):
         lines.append(f"- **{finding['kind']}** `{finding.get('path', '')}`: {finding['message']}")

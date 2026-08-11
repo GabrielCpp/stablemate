@@ -15,7 +15,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler.qa.context import build_context, validate_context, write_context
+from ostler.qa.context import CONTEXT_HEADING, build_context, validate_context, write_context
 from ostler.qa.plan import load_plan, validate_v2
 
 
@@ -391,7 +391,8 @@ def test_write_context_moves_the_verification_index_to_a_sidecar(tmp_path: Path)
 
     sidecar = json.loads((spec_dir / "qa-okf-verification-index.json").read_text(encoding="utf-8"))
     assert sidecar == packet["verificationIndex"]
-    assert "context only" in md_path.read_text(encoding="utf-8")
+    # The context-only entries survive the sidecar split, under their own heading.
+    assert CONTEXT_HEADING in md_path.read_text(encoding="utf-8")
 
 
 def _plan_covering(spec: Path, obligation: str) -> Path:

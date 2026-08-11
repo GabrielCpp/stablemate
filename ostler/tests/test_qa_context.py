@@ -5,10 +5,15 @@ import subprocess
 from pathlib import Path
 
 from ostler.qa.context import (
+    CONTEXT_HEADING,
+    OWED_HEADING,
     ChangedUnit,
     _is_generated_unit,
     _verification_refs,
     build_context,
+    render_context,
+    render_obligations,
+    select_obligations,
     validate_context,
 )
 
@@ -777,3 +782,85 @@ def test_a_backticked_verify_ref_keeps_the_commas_inside_its_test_name():
     assert _verification_refs(
         {"bullets": {"verify": "tests/test_items.py::test_save, tests/test_items.py::test_retry"}}
     ) == ["tests/test_items.py::test_save", "tests/test_items.py::test_retry"]
+
+
+def _packet_with_a_wrapped_requirement() -> dict:
+    """A packet whose one context-only entry wraps, which is the case the headings exist for."""
+    return {
+        "obligations": [
+            {
+                "id": "okf:docs/features/api/store.md#put:contract",
+                "kind": "contract",
+                "node": "docs/features/api/store.md",
+                "requirement": "Put",
+                "required": True,
+                "locators": {"role": ["button"]},
+            },
+            {
+                "id": "okf:docs/features/app/cold-start.md:end:1",
+                "kind": "end",
+                "node": "docs/features/app/cold-start.md",
+                "requirement": "the visitor sees the requested content render, not a blank\npage",
+                "required": False,
+            },
+        ]
+    }
+
+
+def test_the_owed_split_survives_a_requirement_that_wraps():
+    """The class of an obligation is a heading, not a suffix on its line.
+
+    A requirement is rendered verbatim and wraps where the book wrapped it, so the old
+    ``_(context only)_`` suffix landed on a continuation line: the count of entry-start lines
+    and the count of marker lines disagreed, and a planner deriving its owed set with a
+    per-line grep derived the wrong one. Under a heading, wrapping cannot move an entry.
+    """
+    rendered = render_context(_packet_with_a_wrapped_requirement())
+    owed, context = rendered.split(CONTEXT_HEADING)
+    assert OWED_HEADING in owed
+    assert "okf:docs/features/api/store.md#put:contract" in owed
+    assert "okf:docs/features/app/cold-start.md:end:1" not in owed
+    assert "okf:docs/features/app/cold-start.md:end:1" in context
+    # The wrapped tail stays in the section its entry started in, and carries no marker of its own.
+    assert "page" in context.split("okf:docs/features/app/cold-start.md:end:1")[1]
+    assert "context only" not in rendered
+
+
+def test_an_empty_section_still_says_so():
+    rendered = render_context({"obligations": []})
+    assert rendered.count("- (none)") >= 2
+
+
+def test_selecting_obligations_filters_and_pages_without_rebuilding():
+    """``build_context`` walks the diff and the graph; reading a slice of the result must not.
+
+    The reader is an agent that cannot hold a packet where 151 of 176 entries are context, so
+    the useful unit is a query over what was already written.
+    """
+    packet = _packet_with_a_wrapped_requirement()
+    owed, matched = select_obligations(packet, required=True)
+    assert [item["id"] for item in owed] == ["okf:docs/features/api/store.md#put:contract"]
+    assert matched == 1
+    _, matched = select_obligations(packet, required=False)
+    assert matched == 1
+    # No `required` filter is every obligation, which is what the whole file already said.
+    _, matched = select_obligations(packet)
+    assert matched == 2
+    # `node` is a substring of the node path, not a glob — a caller types it at a shell.
+    _, matched = select_obligations(packet, node="docs/features/app")
+    assert matched == 1
+    _, matched = select_obligations(packet, kind="contract")
+    assert matched == 1
+    # A page reports the size of the whole match, not of the window, or paging cannot terminate.
+    page, matched = select_obligations(packet, offset=1, limit=5)
+    assert len(page) == 1 and matched == 2
+    page, matched = select_obligations(packet, offset=9)
+    assert page == [] and matched == 2
+
+
+def test_rendering_a_slice_can_drop_the_locator_bullets():
+    packet = _packet_with_a_wrapped_requirement()
+    page, _ = select_obligations(packet, required=True)
+    assert any("role:" in line for line in render_obligations(page))
+    assert not any("role:" in line for line in render_obligations(page, locators=False))
+    assert render_obligations([]) == ["- (none)"]
