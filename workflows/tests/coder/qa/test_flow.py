@@ -749,12 +749,15 @@ def test_the_context_repair_loop_is_bounded_at_three(
 ) -> None:
     """A repairer that claims success on a packet that stays unmappable costs three passes."""
     okf = ostler(context_invalid=9)
-    agent = _Agent(docs, repair="repaired")
+    # `escalate=True` throughout the budget tests: every spent budget now gets one operator
+    # shot before the give-up, and a resolver that declines to answer is what leaves the
+    # boundary these tests are about — the budget's own — the only thing that moved.
+    agent = _Agent(docs, repair="repaired", escalate=True)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
-    assert agent.counts() == {"repair-qa-context": 3}, agent.counts()
+    assert agent.counts() == {"repair-qa-context": 3, "resolve-operator": 1}, agent.counts()
     assert okf.runs == 0, "the plan was never reached, so nothing should have run"
 
 
@@ -827,13 +830,17 @@ def test_a_plan_that_never_parses_spends_only_the_schema_budget(
 ) -> None:
     """Three schema repairs buy four plan turns and never reach the stack."""
     okf = ostler(plan_invalid=9)
-    agent = _Agent(docs)
+    agent = _Agent(docs, escalate=True)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
     # One draft and three repairs: a plan that does not parse is repaired, not re-authored.
-    assert agent.counts() == {"plan-qa": 1, "repair-qa-plan": 3}, agent.counts()
+    assert agent.counts() == {
+        "plan-qa": 1,
+        "repair-qa-plan": 3,
+        "resolve-operator": 1,
+    }, agent.counts()
     assert okf.runs == 0, "an invalid plan must never be executed"
     assert result.spent == "3 QA-plan schema repair", result.spent
 
@@ -1092,7 +1099,7 @@ def test_the_stacked_plan_budgets_cannot_multiply(
     — so no stage budget is exhausted and only the total ends the run.
     """
     ostler(plan_invalid_passes=(2, 4, 6), fail_runs=99)
-    agent = _Agent(docs, review="revise")
+    agent = _Agent(docs, review="revise", escalate=True)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
@@ -1634,7 +1641,7 @@ def test_the_evidence_gate_invalidates_a_pass_it_cannot_verify(
     it only ever gets to see evidence this gate already confirmed.
     """
     ostler(vet_problems=["criterion AC-1 cites an artifact this run did not produce"])
-    agent = _Agent(docs)
+    agent = _Agent(docs, escalate=True)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
@@ -1652,7 +1659,7 @@ def test_an_audit_that_refutes_the_pass_turns_it_into_a_product_failure(
 ) -> None:
     """`mark-qa-audit-failed.py`: a product contradiction is a fix, not a replan."""
     ostler()
-    agent = _Agent(docs, audit=("refuted", "product-contradiction"))
+    agent = _Agent(docs, audit=("refuted", "product-contradiction"), escalate=True)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
@@ -1743,7 +1750,7 @@ def test_a_fix_that_gets_the_run_further_still_earns_its_next_lap(
             for depth in (3, 5, 7, 9)
         ),
     )
-    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"))
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
@@ -1764,7 +1771,7 @@ def test_the_fix_loop_grants_one_bonus_pass_only_for_an_evidence_failure(
     what is missing, so one verification-only pass is cheap and often decisive.
     """
     ostler(fail_runs=99)
-    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "evidence"))
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "evidence"), escalate=True)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
@@ -1780,12 +1787,112 @@ def test_a_code_failure_earns_no_bonus_pass(
 ) -> None:
     """The same run, triaged `code`: three fixes and out."""
     ostler(fail_runs=99)
-    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"))
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
     assert agent.counts()["apply-qa-fixes"] == 3, agent.counts()
+
+
+# ------------------------------------------------------------------ the give-up is a handoff
+
+
+def test_a_spent_budget_asks_the_operator_before_abandoning_the_story(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A give-up is where an operator's one sentence is worth the most, and was where nobody asked.
+
+    Eleven sites in this flow file a story `exhausted`, and until this only two of them had
+    ever reached the gate. Every one of those give-ups is a story a person could plausibly
+    unblock — the port is squatted, the driver is fine, that assertion tests the wrong thing —
+    and the flow's answer was to stamp it and move on.
+    """
+    ostler(fail_runs=99)
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"))
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
+    # The answer is spent as a fix, which is the whole point of asking for it.
+    guided = [a for a in agent.args_for("apply-qa-fixes") if "operator_feedback" in a]
+    assert len(guided) == 1, agent.args_for("apply-qa-fixes")
+    assert "staging bucket" in guided[0]["operator_feedback"]
+    # And the marker still names the budget that ran out, not the gate that followed it: a
+    # human triaging it needs to know the story burned its code reworks.
+    assert result.spent == "3 code rework plus an operator-guided lap", result.spent
+
+
+def test_an_escalating_resolver_gives_up_now_rather_than_halting_the_drain(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """In `auto` mode the gate gets one shot, and declining it is not a reason to stop the fleet.
+
+    The story drain is single-threaded, so a QA gate that parks holds up every remaining epic
+    — which is the stall this whole change is removing, not a fix for it. The flow was already
+    one transition from filing the story as abandoned-but-visible, so it files it.
+    """
+    ostler(fail_runs=99)
+    seen: list[str] = []
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
+    assert seen == [], "auto mode must never park the run on a spent budget"
+    # No guided lap was bought, so the reported budget is the one that actually ran out.
+    assert result.spent == "3 code rework", result.spent
+
+
+def test_the_operator_is_asked_once_per_story_and_not_once_per_budget(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The guided lap can exhaust a second time, and that one is a give-up, not a second ask.
+
+    Without the one-shot flag the pair cycles: `_exhausted` gates, the gate's answer is
+    applied, the flow rejoins the loop that was already out of budget, and exhausts into the
+    same gate again. That is the livelock `apply_resolved` already documents, one loop out.
+    """
+    ostler(context_invalid=9)
+    agent = _Agent(docs, repair="repaired")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
+    # The same budget ends it both times, so the phrase says it once.
+    assert result.spent == "3 OKF-context repair", result.spent
+
+
+def test_a_human_operator_mode_still_waits_on_a_spent_budget(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Somebody who asked to be asked is still asked — the never-park rule is `auto`'s alone."""
+    ostler(context_invalid=9)
+    seen: list[str] = []
+    agent = _Agent(docs, repair="repaired")
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Qa(story=STORY, operator_mode="human"), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert agent.counts()["resolve-operator"] == 0, agent.counts()
+    assert len(seen) == 1, seen
 
 
 def test_each_exhaustion_names_the_budget_it_spent(
@@ -1803,14 +1910,14 @@ def test_each_exhaustion_names_the_budget_it_spent(
     whoever triages the marker looking in the wrong place. Each arm now says its own name.
     """
     ostler(context_invalid=9)
-    result = drive_flow(Qa(story=STORY), env(), _Agent(docs, repair="repaired"))
+    result = drive_flow(Qa(story=STORY), env(), _Agent(docs, repair="repaired", escalate=True))
     assert result.status == "exhausted", result
     assert result.spent == "3 OKF-context repair", result.spent
 
     # The mechanical plan gate names itself, and spends only its own budget — a schema
     # give-up and a coverage give-up ask a human for very different things.
     okf = ostler(plan_invalid=9)
-    result = drive_flow(Qa(story=STORY), env(), _Agent(docs))
+    result = drive_flow(Qa(story=STORY), env(), _Agent(docs, escalate=True))
     assert result.status == "exhausted", result
     assert result.spent == "3 QA-plan schema repair", result.spent
     assert okf.runs == 0
@@ -1826,13 +1933,13 @@ def test_each_exhaustion_names_the_budget_it_spent(
     # The post-run budget, reached only through a plan the reviewer approved and the runner
     # executed — five runs, each one an assessment that did not reach the objective.
     okf = ostler(fail_runs=99)
-    result = drive_flow(Qa(story=STORY), env(), _Agent(docs))
+    result = drive_flow(Qa(story=STORY), env(), _Agent(docs, escalate=True))
     assert result.status == "exhausted", result
     assert result.spent == "4 QA-plan repair", result.spent
     assert okf.runs == 5
 
     ostler(fail_runs=99)
-    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"))
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
     result = drive_flow(Qa(story=STORY), env(), agent)
     assert result.status == "exhausted", result
     assert result.spent == "3 code rework", result.spent
@@ -1840,7 +1947,7 @@ def test_each_exhaustion_names_the_budget_it_spent(
     # A dev target reworks nothing by design, so its count is a truthful zero — which is
     # exactly the number that used to be indistinguishable from "the loop never ran".
     ostler(fail_runs=99)
-    agent = _Agent(docs, assessment_class="product")
+    agent = _Agent(docs, assessment_class="product", escalate=True)
     result = drive_flow(Qa(story=STORY, target_env="dev"), env(), agent)
     assert result.status == "exhausted", result
     assert "dev target" in result.spent, result.spent
@@ -1872,7 +1979,9 @@ def test_a_spent_rescope_budget_makes_triage_fix_in_place(
 ) -> None:
     """`guard_triage` runs *before* the decision, so a spent budget ignores `rescope`."""
     ostler(fail_runs=99)
-    agent = _Agent(docs, assessment_class="product", triage=("rescope", "code"))
+    agent = _Agent(
+        docs, assessment_class="product", triage=("rescope", "code"), escalate=True
+    )
 
     result = drive_flow(Qa(story=STORY, triage_scope_count=2), env(), agent)
 
@@ -1922,6 +2031,7 @@ def test_an_audit_refuting_on_a_product_test_gap_sends_the_fixer_not_the_planner
         docs,
         audit=("refuted", "evidence-defect"),
         audit_findings=[_a_product_test_finding()],
+        escalate=True,
     )
 
     result = drive_flow(Qa(story=STORY), env(), agent)
@@ -1953,6 +2063,7 @@ def test_an_extend_plan_naming_a_product_test_gap_sends_the_fixer(
         docs,
         disposition="extend_plan",
         assessment_findings=[_a_product_test_finding("S1")],
+        escalate=True,
     )
 
     result = drive_flow(Qa(story=STORY), env(), agent)
@@ -2008,6 +2119,7 @@ def test_a_plan_scoped_audit_finding_still_goes_to_the_plan_author(
                 "repair": "assert the exported file's contents, not that the dialog closed",
             }
         ],
+        escalate=True,
     )
 
     result = drive_flow(Qa(story=STORY), env(), agent)
@@ -2032,7 +2144,7 @@ def test_a_refutation_naming_no_findings_still_takes_the_prose_path(
     every other gate.
     """
     ostler()
-    agent = _Agent(docs, audit=("refuted", "evidence-defect"))
+    agent = _Agent(docs, audit=("refuted", "evidence-defect"), escalate=True)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 

@@ -1315,7 +1315,7 @@ class Qa(Workflow):
 
     # ── the operator gate ─────────────────────────────────────────────────────────────
 
-    def resolve_operator(self, loop: QaLoop) -> Continue | Await:
+    def resolve_operator(self, loop: QaLoop) -> Continue | Await | Done:
         """Stand in for the operator on a QA block, or escalate to a human.
 
         `resolve_qa` + the `await_operator_qa` that followed it unconditionally. Split for the
@@ -1342,6 +1342,14 @@ class Qa(Workflow):
         )
         if result.decision == "answered":
             return Continue(result, self.read_operator, loop=loop)
+        if loop.giveup_reason:
+            # The gate was the last thing between this story and a give-up, and the resolver
+            # declined to be it. Parking here instead would stop the *whole* run: the story
+            # drain is single-threaded, so one halted story halts every remaining epic — and
+            # this flow was already about to file the story as abandoned-but-visible. So take
+            # that outcome now and let the queue keep draining.
+            self.logger.info("the QA resolver escalated with nothing to answer — giving up")
+            return self._give_up(loop, loop.giveup_reason)
         # No ask — see `dev.flow.resolve_plan`: the escalating resolver's note is already in
         # this file, and `Await` writes its `questions` over the top of whatever is there.
         return Await(self._context, "", self.read_operator, loop=loop)
@@ -1394,7 +1402,11 @@ class Qa(Workflow):
         )
         if loop.qa_rework >= self.MAX_QA_REWORKS:
             self.logger.info("operator loop is out of QA reworks — ending the flow exhausted")
-            return self._exhausted(loop, f"{loop.qa_rework} operator-guided rework")
+            # `_give_up` and not `_exhausted`: this state is the far end of the operator gate,
+            # so the one consult every give-up is owed has just happened — one turn ago, on
+            # the answer this lap was spent applying. Escalating again is the cycle
+            # `operator_consulted` exists to stop, one loop further out.
+            return self._give_up(loop, f"{loop.qa_rework} operator-guided rework")
         return Continue(result, self.build_context, loop=loop)
 
     # ── routers and shared turns, none of them states ─────────────────────────────────
@@ -1480,7 +1492,7 @@ class Qa(Workflow):
             ),
         )
 
-    def _stalled(self, result: object, loop: QaLoop, lap: str) -> Continue | Await:
+    def _stalled(self, result: object, loop: QaLoop, lap: str) -> Continue | Await | Done:
         """A repair loop that has stopped moving — escalate rather than spend the budget.
 
         The operator gate and not `_exhausted`, and that difference is the point of the
@@ -1497,9 +1509,20 @@ class Qa(Workflow):
             "; ".join(loop.run_failures),
             extra={"activity": True},
         )
-        return self._gate(result, loop)
+        # The reason travels with the gate for the same purpose it does out of `_exhausted`:
+        # in `auto` mode a resolver that escalates ends the story, and the story's marker has
+        # to say what ended it. A stall is not a spent budget, so it says so in those words.
+        return self._gate(
+            result,
+            loop.update(
+                operator_consulted=True,
+                giveup_reason=f"a {lap} that changed nothing",
+            ),
+        )
 
-    def _guard_plan_validation(self, result: object, loop: QaLoop) -> Continue | Done:
+    def _guard_plan_validation(
+        self, result: object, loop: QaLoop
+    ) -> Continue | Await | Done:
         """Spend a schema-validation repair — a budget of its own, not the judgement one.
 
         A `qa-plan.yml` that does not parse is a mechanical defect, and repairing it says
@@ -1519,7 +1542,7 @@ class Qa(Workflow):
             result, loop.update(plan_validation_rework=loop.plan_validation_rework + 1)
         )
 
-    def _guard_plan_review(self, result: object, loop: QaLoop) -> Continue | Done:
+    def _guard_plan_review(self, result: object, loop: QaLoop) -> Continue | Await | Done:
         """Spend the review component of the QA-plan judgement budget."""
         if loop.plan_judgement_rework >= self.MAX_PLAN_REWORKS:
             return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
@@ -1527,7 +1550,7 @@ class Qa(Workflow):
             result, loop.update(plan_review_rework=loop.plan_review_rework + 1)
         )
 
-    def _plan_lap(self, result: object, loop: QaLoop) -> Continue | Done:
+    def _plan_lap(self, result: object, loop: QaLoop) -> Continue | Await | Done:
         """Take the lap the guard just paid for, unless the plan has had too many in total.
 
         The three guards above each bound their own stage, and nothing bounded the sum until
@@ -1553,14 +1576,20 @@ class Qa(Workflow):
         `QaLoop.setup_problems` for the run this comes from.
         """
         if loop.setup_rework >= self.MAX_SETUP_REWORKS:
-            return self._gate(result, loop)
+            return self._exhausted(loop, f"{loop.setup_rework} QA-setup repair")
         if loop.blocked_problems and loop.blocked_problems == loop.setup_problems:
             self.logger.info(
                 "the QA setup fix left the identical blocked bundle (%s) — escalating",
                 "; ".join(loop.blocked_problems),
                 extra={"activity": True},
             )
-            return self._gate(result, loop)
+            return self._gate(
+                result,
+                loop.update(
+                    operator_consulted=True,
+                    giveup_reason="a QA-setup repair that changed nothing",
+                ),
+            )
         return Continue(result, self.setup_fix, loop=loop)
 
     def _guard_qa(self, result: object, loop: QaLoop) -> Continue | Await | Done:
@@ -1593,7 +1622,28 @@ class Qa(Workflow):
             return Await(self._context, loop.block_notes, self.read_operator, loop=loop)
         return Continue(result, self.resolve_operator, loop=loop)
 
-    def _exhausted(self, loop: QaLoop, spent: str = "") -> Done:
+    def _exhausted(self, loop: QaLoop, spent: str = "") -> Continue | Await | Done:
+        """Out of budget — ask the operator once, and only then give up.
+
+        Every deciding site in this flow funnels through here, which is what makes it the
+        right place for the ask. A give-up is the flow saying "I have spent everything I am
+        allowed to spend", and that is exactly when an operator's one sentence — the port is
+        squatted, the driver is fine, this assertion is testing the wrong thing — is worth
+        the most. Until this, it was also the one moment the flow stopped asking: eleven
+        sites filed the story `exhausted` and only two of them had ever reached the gate.
+
+        The reason is parked on the loop rather than reported (see `QaLoop.giveup_reason`),
+        because if the gate does not resolve the block the give-up still has to name the
+        budget that actually ran out — not "the operator gate".
+
+        One shot per story: `apply_resolved` has its own `_exhausted`, so without
+        `operator_consulted` a guided lap that exhausts again would gate again, forever.
+        """
+        if not loop.operator_consulted:
+            return self._gate(loop, loop.update(operator_consulted=True, giveup_reason=spent))
+        return self._give_up(loop, spent or loop.giveup_reason)
+
+    def _give_up(self, loop: QaLoop, spent: str = "") -> Done:
         """`mark_qa_exhausted`: the budget is spent, and the parent decides what that costs.
 
         `spent` names *which* of the four budgets ran out, because the parent stamps it onto
@@ -1607,7 +1657,15 @@ class Qa(Workflow):
         *why*, and they die here otherwise — `QaFlowResult` carries the code-rework verdict
         and the plan gates never write to it. The node persists them beside the story, which
         is where `flag_qa_failure` already looks for the file it points the status at.
+
+        Past the operator gate that is a *pair* of facts, and the first one is the one a
+        human triaging the marker needs: which budget ran out originally. The lap the
+        operator's answer bought is what happened next, not what the story ran out of, so it
+        is reported as the suffix it is rather than as the whole reason.
         """
+        spent = spent or loop.giveup_reason
+        if loop.giveup_reason and spent != loop.giveup_reason:
+            spent = f"{loop.giveup_reason} plus an operator-guided lap"
         self.call(
             record_qa_giveup,
             self.ctx.spec_dir,

@@ -532,6 +532,27 @@ class QaLoop(CoderResult):
     #: three steps further before failing has moved, and has earned its next lap.
     repaired_failures: tuple[str, ...] = ()
 
+    #: The budget line a give-up is about to report — `"4 QA-plan repair"` — parked here
+    #: while the operator gate gets its one shot at the story first.
+    #:
+    #: Every deciding site funnels through `_exhausted`, and a give-up there is the flow
+    #: saying "I have spent everything I am allowed to spend on this". That is exactly the
+    #: moment an operator's one sentence — the port is squatted, the driver is fine — is
+    #: worth the most, and until now it was the moment the flow stopped asking. So the
+    #: reason is parked rather than reported, the gate runs, and the give-up happens after.
+    #:
+    #: It is also the signal `resolve_operator` reads: a resolver that escalates when this
+    #: is set means *give up now*, not *park the run for a human*. In `operator_mode="auto"`
+    #: the story drain is single-threaded, so a parked gate stalls every remaining epic —
+    #: one resolver shot, then the queue keeps moving.
+    giveup_reason: str = ""
+    #: Whether this story has already had its one operator shot.
+    #:
+    #: Without it the gate is re-entrant: `apply_resolved` has its own `_exhausted`, so a
+    #: guided lap that exhausts again would gate again, and the pair would cycle
+    #: context → repair → gate → resolve → apply forever.
+    operator_consulted: bool = False
+
     #: The parent-owned rescope budget, threaded in and crossed back out on a rescope.
     triage_scope: int = 0
 
