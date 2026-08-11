@@ -2,7 +2,7 @@
   "workhorse": "2.0.0",
   "workflows": "1.0.0",
   "farrier": "2.0.0",
-  "ostler": "1.0.0",
+  "ostler": "1.0.1",
   "groom": "1.0.0",
   "saddlebag": "1.0.0"
 }

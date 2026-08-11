@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1](https://github.com/GabrielCpp/stablemate/compare/ostler-v1.0.0...ostler-v1.0.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* **ostler:** capture an aria snapshot with an API playwright still has ([6836da6](https://github.com/GabrielCpp/stablemate/commit/6836da6a0da035670a3912bef358a11372558e36))
+* **ostler:** state the role-name rule even when the element is gone ([d3dedbd](https://github.com/GabrielCpp/stablemate/commit/d3dedbdb07609a8769d88ea9dc6b55b891682d7c))
+
 ## [1.0.0](https://github.com/GabrielCpp/stablemate/compare/ostler-v0.2.0...ostler-v1.0.0) (2026-08-11)
 
 
