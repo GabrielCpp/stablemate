@@ -29,11 +29,13 @@ NAME_FROM_CONTENT = frozenset({
     "tab", "tooltip", "treeitem",
 })
 
-#: How many response records one scenario's diagnostics file carries. A single page load
-#: can issue hundreds of requests, and this file is read whole by an agent, so the list is
-#: capped — but ``responseCount`` always reports the true total, so a truncated file says
-#: how much of itself is missing instead of quietly reading as a complete record.
-RESPONSE_LIMIT = 500
+#: How many records each unbounded diagnostics stream — console, requests, responses —
+#: carries for one scenario. A single page load can issue hundreds of each, and this file
+#: is read whole by an agent, so the lists are capped; the matching ``*Count`` key always
+#: reports the true total, so a truncated file says how much of itself is missing instead
+#: of quietly reading as a complete record. Page errors and failed requests are not capped:
+#: both are rare by construction, and both are the thing being looked for.
+DIAGNOSTICS_LIMIT = 500
 
 
 @dataclass
@@ -264,7 +266,49 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
         return ["clipboard-read", "clipboard-write"]
 
     @staticmethod
-    def _failed_request_record(request: Any) -> dict[str, Any]:
+    def _console_record(at_ms: int, message: Any) -> dict[str, Any]:
+        """One diagnostics record per console message, whatever its level.
+
+        Only ``type == "error"`` was ever kept, which threw away the half of the console
+        that explains an error: the warning that preceded it, the app's own ``info`` trace
+        of the request it was about to make, the React key/hydration warnings that are
+        levelled ``warn`` and are the actual defect. A scenario that fails with an empty
+        ``consoleErrors`` used to leave nothing at all to read.
+        """
+        location = message.location or {}
+        where = str(location.get("url", ""))
+        if where:
+            where = f"{where}:{location.get('lineNumber', 0)}:{location.get('columnNumber', 0)}"
+        return {"atMs": at_ms, "type": message.type, "text": message.text, "location": where}
+
+    @staticmethod
+    def _page_error_record(at_ms: int, error: Any) -> dict[str, Any]:
+        """One record per uncaught exception on the page.
+
+        ``pageerror`` is a different event from ``console``: an exception that nothing
+        catches reaches it, and reaches the console only as a side effect the driver was
+        not guaranteed to see. Nothing recorded it before, so a page that threw during
+        hydration produced diagnostics indistinguishable from a page that ran cleanly.
+        """
+        return {"atMs": at_ms, "name": type(error).__name__, "message": str(error)}
+
+    @staticmethod
+    def _request_record(at_ms: int, request: Any) -> dict[str, Any]:
+        """One record per request issued, whether or not anything ever came back.
+
+        ``responses`` covers what completed and ``failedRequests`` what failed; a request
+        still in flight when the scenario ends is in neither, so a hung endpoint — the
+        exact shape of a timeout — left no trace. Correlate by ``url`` and ``atMs``.
+        """
+        return {
+            "atMs": at_ms,
+            "url": request.url,
+            "method": request.method,
+            "resourceType": request.resource_type,
+        }
+
+    @staticmethod
+    def _failed_request_record(at_ms: int, request: Any) -> dict[str, Any]:
         """One diagnostics record per request that never completed, with *why* it did not.
 
         ``requestfailed`` does not mean the network broke. An app that cancels its own
@@ -279,10 +323,15 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
         The list stays one entry per failure, so an existing ``length`` assertion keeps
         its meaning.
         """
-        return {"url": request.url, "method": request.method, "errorText": request.failure or ""}
+        return {
+            "atMs": at_ms,
+            "url": request.url,
+            "method": request.method,
+            "errorText": request.failure or "",
+        }
 
     @staticmethod
-    def _response_record(response: Any) -> dict[str, Any]:
+    def _response_record(at_ms: int, response: Any) -> dict[str, Any]:
         """One diagnostics line per HTTP response the page received.
 
         ``requestfailed`` fires only for a request that never completed — DNS failure,
@@ -292,7 +341,12 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
         field as an empty stream rather than an error, so that assertion passed
         vacuously on every run, which is worse than not being able to write it.
         """
-        return {"url": response.url, "status": response.status, "method": response.request.method}
+        return {
+            "atMs": at_ms,
+            "url": response.url,
+            "status": response.status,
+            "method": response.request.method,
+        }
 
     def run(self, scenario: dict[str, Any]) -> ScenarioResult:  # noqa: C901
         scenario_id = str(scenario["id"])
@@ -314,11 +368,23 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
         scenario_start_offset = self.session.offset_ms()
         page = context.new_page()
         console_errors: list[str] = []
+        console: list[dict[str, Any]] = []
+        page_errors: list[dict[str, Any]] = []
+        requests: list[dict[str, Any]] = []
         failed_requests: list[dict[str, Any]] = []
         responses: list[dict[str, Any]] = []
         page.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
-        page.on("requestfailed", lambda request: failed_requests.append(self._failed_request_record(request)))
-        page.on("response", lambda response: responses.append(self._response_record(response)))
+        page.on("console", lambda message: console.append(self._console_record(self.session.offset_ms(), message)))
+        page.on("pageerror", lambda error: page_errors.append(self._page_error_record(self.session.offset_ms(), error)))
+        page.on("request", lambda request: requests.append(self._request_record(self.session.offset_ms(), request)))
+        page.on(
+            "requestfailed",
+            lambda request: failed_requests.append(self._failed_request_record(self.session.offset_ms(), request)),
+        )
+        page.on(
+            "response",
+            lambda response: responses.append(self._response_record(self.session.offset_ms(), response)),
+        )
         trace_path = qa_dir / "traces" / f"{scenario_id}.zip"
         trace_path.parent.mkdir(parents=True, exist_ok=True)
         context.tracing.start(screenshots=True, snapshots=True, sources=True)
@@ -428,8 +494,13 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
                 json.dumps(
                     {
                         "consoleErrors": console_errors,
+                        "console": console[:DIAGNOSTICS_LIMIT],
+                        "consoleCount": len(console),
+                        "pageErrors": page_errors,
+                        "requests": requests[:DIAGNOSTICS_LIMIT],
+                        "requestCount": len(requests),
                         "failedRequests": failed_requests,
-                        "responses": responses[:RESPONSE_LIMIT],
+                        "responses": responses[:DIAGNOSTICS_LIMIT],
                         "responseCount": len(responses),
                     },
                     indent=2,

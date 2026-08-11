@@ -185,14 +185,20 @@ least one machine-executed terminal assertion. `mechanism` is provenance
   pipeline in `head`/`tail`: SIGPIPE kills the producer and fails the step. Slice in the assertion,
   not in the pipeline.
 - Browser diagnostics (`qa/traces/<scenario>-diagnostics.json`) carry exactly four keys —
-  `consoleErrors` (message **text**), `failedRequests` (one `{url, method, errorText}` per request
-  that never completed — never a completed 5xx; gate on `errorText`, since an app cancelling its
-  own fetch fires this with `net::ERR_ABORTED` and a bare `length == 0` goes red on healthy
-  behaviour), `responses` (one `{url, status, method}` record per response, in
-  arrival order, capped at 500) and `responseCount` (the true total, so a capped list can be told
-  from a complete one). Status assertions belong on `responses` — e.g.
-  `[.responses[] | select(.status >= 500)] | length == 0`. There is still no response body, header
-  or timing in that file, so assert on those through a `command` step with `expect_http`.
+  `consoleErrors` (`error` messages, **text** only — legacy, prefer `console`), `console`
+  (every message: `{atMs, type, text, location}` — the `warn` that explains a failure is here and
+  not in `consoleErrors`), `pageErrors` (uncaught exceptions — a **different** event from the
+  console, invisible in every other key), `requests` (every request issued), `failedRequests`
+  (requests that never completed, `{url, method, errorText}` — gate on `errorText`, since an app
+  cancelling its own fetch fires this with `net::ERR_ABORTED` and a bare `length == 0` goes red on
+  healthy behaviour), `responses` (`{url, status, method}` per response), and the
+  `consoleCount`/`requestCount`/`responseCount` totals for the three lists capped at 500 records.
+  Every record carries `atMs`, the run-relative offset, so console and network can be read against
+  each other. Status assertions belong on `responses` — e.g.
+  `[.responses[] | select(.status >= 500)] | length == 0`. A request in `requests` with no
+  `responses` and no `failedRequests` entry was still in flight at the end — the shape of a hung
+  endpoint. There is no response body or headers in that file; assert on those through a `command`
+  step with `expect_http`.
 - Background daemons must be declared in `background:` — the executor starts/stops them; the agent must NOT start them manually. `background:` is for **foreground in-QA services** scoped to the run (a dev server pinned to branch source, an event tail). The **heavyweight stack** (docker compose, emulators, the DB + baseline seed) is NOT declared here — it is owned by the workflow's `ensure_stack` step via the repo's `qa-stack.yml` manifest, brought up before the plan runs and left up for reuse. Assume it is already serving; do not bring it up in the plan.
 - Each `background:` daemon takes an optional `ready_check` — what the executor polls before scenario 1, plus a `timeout:` in seconds (default 30). Two forms, and picking the wrong one blocks the whole run: a **string** is fetched and must answer HTTP 200, so use it only when the service really has a `GET` that does; otherwise use a **mapping** `{cmd, assert_contains}`, which is ready when the command exits 0 and its stdout contains the needle. A service whose only route is a `POST` has no 200-answering URL, so it needs the mapping. The command runs in the daemon's own working directory.
 {% raw %}  ```yaml

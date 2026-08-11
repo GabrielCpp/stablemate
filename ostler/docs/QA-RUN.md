@@ -454,18 +454,42 @@ output and slice it in the assertion instead.
 ### Browser diagnostics (`qa/traces/<scenario>-diagnostics.json`)
 
 The Playwright driver writes one diagnostics file per scenario, registered in the manifest
-under kind `browser-diagnostics`. Its shape is exactly these four keys, and nothing else:
+under kind `browser-diagnostics`. It is the whole console and the whole network for that
+scenario — every message at every level, every request, every response, every uncaught
+exception — each stamped with `atMs`, the same run-relative offset the NDJSON records
+carry, so the console and the network can be read against each other and against the step
+that was executing:
 
 ```json
 {
   "consoleErrors": ["<console message text>"],
-  "failedRequests": [{ "url": "<url>", "method": "GET", "errorText": "net::ERR_ABORTED" }],
-  "responses": [{ "url": "<url>", "status": 200, "method": "GET" }],
+  "console": [{ "atMs": 1500, "type": "warning", "text": "<text>", "location": "<url>:12:4" }],
+  "consoleCount": 1,
+  "pageErrors": [{ "atMs": 900, "name": "TypeError", "message": "<message>" }],
+  "requests": [{ "atMs": 200, "url": "<url>", "method": "GET", "resourceType": "fetch" }],
+  "requestCount": 1,
+  "failedRequests": [{ "atMs": 3300, "url": "<url>", "method": "GET", "errorText": "net::ERR_ABORTED" }],
+  "responses": [{ "atMs": 4200, "url": "<url>", "status": 200, "method": "GET" }],
   "responseCount": 1
 }
 ```
 
-`consoleErrors` carries message **text** only. `failedRequests` is one record per request
+`console` is every message, `consoleErrors` only the `error` ones and by **text** alone —
+it predates `console` and is kept because plans assert on it. Prefer `console`: the warning
+that explains a failure (a React hydration or key warning is levelled `warn`) is invisible
+in `consoleErrors`, so a scenario failing with an empty `consoleErrors` looks like it had a
+clean console when it did not.
+
+`pageErrors` is uncaught exceptions, which is a **different event** from the console — an
+exception nothing catches reaches `pageerror`, and the console only as a side effect. A
+page that threw during hydration is invisible in every other key here.
+
+`requests` is every request issued, `responses` every response received, `failedRequests`
+every request that never completed. A request in `requests` with no matching `responses`
+entry and no `failedRequests` entry was still in flight when the scenario ended — which is
+the shape of a hung endpoint, and is in none of the other keys.
+
+`failedRequests` is one record per request
 that never completed — `requestfailed` never fires for a completed response, whatever its
 status. Read `errorText` before gating on it: an app cancelling its own in-flight fetch (a
 React effect cleanup, a StrictMode double-invoke, a superseding navigation) fires
@@ -477,12 +501,15 @@ is expected to make and keep failing on the rest:
 [.failedRequests[] | select(.errorText != "net::ERR_ABORTED")] | length == 0
 ```
 
-`responses` is what carries status: one record per response the page received, in arrival
-order, so a scenario can assert `[.responses[] | select(.status >= 500)] | length == 0` and
-have it mean something. It is capped at the driver's `RESPONSE_LIMIT` (500) records while
-`responseCount` reports the true total — compare the two before reading a long run's list as
-complete. There is still no response **body**, no headers and no timing here; assert on
-those through a `command` step with `expect_http`.
+`responses` is what carries status, so a scenario can assert
+`[.responses[] | select(.status >= 500)] | length == 0` and have it mean something.
+
+`console`, `requests` and `responses` are each capped at the driver's `DIAGNOSTICS_LIMIT`
+(500) records, and the matching `consoleCount` / `requestCount` / `responseCount` reports
+the true total — compare the two before reading a long run's list as complete. `pageErrors`
+and `failedRequests` are uncapped: both are rare by construction and both are the thing
+being looked for. There is no response **body** and no headers here; assert on those
+through a `command` step with `expect_http`.
 
 ### Substitution rules
 

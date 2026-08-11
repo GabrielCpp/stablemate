@@ -9,6 +9,7 @@ import sys
 import time
 import types
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 
@@ -550,6 +551,54 @@ def test_a_chromium_context_is_granted_the_clipboard_by_default():
     assert driver._permissions() == [], "an explicit empty list denies, it does not fall back"
 
 
+def test_every_console_message_is_kept_not_only_the_errors():
+    """A scenario that fails with an empty ``consoleErrors`` used to leave nothing to read,
+    though the warning that explains it — a React hydration or key warning, levelled
+    ``warn`` — was right there on the console and thrown away.
+    """
+    message = SimpleNamespace(
+        type="warning",
+        text="Each child in a list should have a unique key.",
+        location={"url": "http://127.0.0.1:8099/app.js", "lineNumber": 12, "columnNumber": 4},
+    )
+
+    assert PlaywrightDriver._console_record(1500, message) == {
+        "atMs": 1500,
+        "type": "warning",
+        "text": "Each child in a list should have a unique key.",
+        "location": "http://127.0.0.1:8099/app.js:12:4",
+    }
+
+    unplaced = SimpleNamespace(type="log", text="ready", location=None)
+    assert PlaywrightDriver._console_record(0, unplaced)["location"] == "", (
+        "a message with no source location reports no location, not 'None:0:0'"
+    )
+
+
+def test_an_uncaught_exception_is_recorded_at_all():
+    """``pageerror`` is not ``console``: an exception nothing catches reaches it, and the
+    console only as a side effect. Unrecorded, a page that threw during hydration produced
+    diagnostics identical to a page that ran cleanly.
+    """
+    record = PlaywrightDriver._page_error_record(900, ValueError("locale is undefined"))
+
+    assert record == {"atMs": 900, "name": "ValueError", "message": "locale is undefined"}
+
+
+def test_a_request_is_recorded_even_when_nothing_ever_comes_back():
+    """A request still in flight when the scenario ends is in neither ``responses`` nor
+    ``failedRequests`` — which is exactly the shape of a hung endpoint.
+    """
+    request = SimpleNamespace(url="http://127.0.0.1:8099/v1/pages", method="GET", resource_type="fetch")
+
+    assert PlaywrightDriver._request_record(200, request) == {
+        "atMs": 200,
+        "url": "http://127.0.0.1:8099/v1/pages",
+        "method": "GET",
+        "resourceType": "fetch",
+    }
+
+
 def test_a_response_record_carries_the_status_a_5xx_assertion_needs():
     """``requestfailed`` never fires for a completed 500, so before the ``response``
     listener existed the diagnostics file had no status in it anywhere. A plan that wrote
@@ -558,15 +607,14 @@ def test_a_response_record_carries_the_status_a_5xx_assertion_needs():
     so the assertion passed on every run, including the ones serving 500s.
     """
 
-    class _Request:
-        method = "POST"
+    response = SimpleNamespace(
+        url="http://127.0.0.1:8099/api/docs",
+        status=503,
+        request=SimpleNamespace(method="POST"),
+    )
 
-    class _Response:
-        url = "http://127.0.0.1:8099/api/docs"
-        status = 503
-        request = _Request()
-
-    assert PlaywrightDriver._response_record(_Response()) == {
+    assert PlaywrightDriver._response_record(4200, response) == {
+        "atMs": 4200,
         "url": "http://127.0.0.1:8099/api/docs",
         "status": 503,
         "method": "POST",
@@ -580,21 +628,21 @@ def test_a_failed_request_record_says_why_it_failed():
     and the only way back to green is to stop asserting on the field.
     """
 
-    class _Request:
-        url = "http://127.0.0.1:8099/v1/pages/p_copy_links/fr"
-        method = "GET"
-        failure = "net::ERR_ABORTED"
+    request = SimpleNamespace(
+        url="http://127.0.0.1:8099/v1/pages/p_copy_links/fr",
+        method="GET",
+        failure="net::ERR_ABORTED",
+    )
 
-    assert PlaywrightDriver._failed_request_record(_Request()) == {
+    assert PlaywrightDriver._failed_request_record(3300, request) == {
+        "atMs": 3300,
         "url": "http://127.0.0.1:8099/v1/pages/p_copy_links/fr",
         "method": "GET",
         "errorText": "net::ERR_ABORTED",
     }
 
-    class _Unexplained(_Request):
-        failure = None
-
-    assert PlaywrightDriver._failed_request_record(_Unexplained())["errorText"] == "", (
+    unexplained = SimpleNamespace(url=request.url, method="GET", failure=None)
+    assert PlaywrightDriver._failed_request_record(0, unexplained)["errorText"] == "", (
         "a missing failure reason is the empty string, never a null a jq select would skip"
     )
 
