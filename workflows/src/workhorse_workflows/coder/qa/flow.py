@@ -156,6 +156,35 @@ def _blocked_problems(result: QaRunResult) -> tuple[str, ...]:
     return tuple(sorted(str(problem) for problem in problems))
 
 
+def _failure_signature(result: QaRunResult) -> tuple[str, ...]:
+    """What a failing run failed at, as a fingerprint two runs can be compared on.
+
+    One entry per non-passing scenario — its id, its status, and how far it got before it
+    stopped — sorted, because the runner walks the plan's `scenarios` list and two runs of a
+    repaired plan may order them differently while failing identically.
+
+    The assertion counts are in the fingerprint on purpose. Scenario identity alone would
+    call a repair that carried the journey three steps further "no progress" and stop a loop
+    that was converging; the counts are the cheapest available proof that the run moved.
+    Read off the runner payload for the reason `_blocked_problems` is — `notes` is prose.
+
+    Empty for every status but `failed`: a `blocked` or `invalid` run never reached its
+    assertions, so it has no failure to be the same as, and `_guard_setup` owns that loop.
+    """
+    if result.status != "failed":
+        return ()
+    scenarios = result.ostler.get("scenarios")
+    if not isinstance(scenarios, dict):
+        return ()
+    return tuple(
+        sorted(
+            f"{name}:{outcome.get('status')}:{outcome.get('assertions')}/{outcome.get('failures')}"
+            for name, outcome in scenarios.items()
+            if isinstance(outcome, dict) and outcome.get("status") != "passed"
+        )
+    )
+
+
 def _plan_finding_problems(review: QaPlanReview) -> list[str]:
     """Why a plan refusal is not an actionable repair contract. Empty means it is one.
 
@@ -762,13 +791,20 @@ class Qa(Workflow):
         is the only structured account of what the run was missing — everything downstream
         reads `block_notes`, which is prose — and `_guard_setup` compares it against the
         bundle the last setup fixer was handed. See `QaLoop.setup_problems`.
+
+        A `failed` run carries the equivalent for the repair loops: the scenarios it failed
+        and how far each got, which `_repeating` compares against what the last repair was
+        handed. See `QaLoop.repaired_failures`.
         """
         self.logger.info("running the QA plan", extra={"activity": True})
         result = self.call(run_qa_plan, self.ctx.spec_dir, self.docs_path)
         return Continue(
             result,
             self.assess,
-            loop=loop.with_qa(result).update(blocked_problems=_blocked_problems(result)),
+            loop=loop.with_qa(result).update(
+                blocked_problems=_blocked_problems(result),
+                run_failures=_failure_signature(result),
+            ),
         )
 
     def assess(self, loop: QaLoop) -> Continue | Await | Done:
@@ -1417,15 +1453,51 @@ class Qa(Workflow):
             )
         return None
 
-    def _guard_plan(self, result: object, loop: QaLoop) -> Continue | Done:
+    def _repeating(self, loop: QaLoop) -> bool:
+        """Has the last repair left the run failing at exactly what it failed at before?
+
+        The guards below each bound a *count* of laps. This bounds their usefulness: once a
+        repair has been paid for and the suite fails identically — same scenarios, same
+        assertion depth — the next lap buys the same turn and the same re-run for the same
+        answer. See `QaLoop.repaired_failures` for the story it comes from.
+        """
+        return bool(loop.run_failures) and loop.run_failures == loop.repaired_failures
+
+    def _guard_plan(self, result: object, loop: QaLoop) -> Continue | Await | Done:
         """Spend the post-run component of the QA-plan judgement budget.
 
         Like both guards below, this returns to `repair_plan` and not to `plan`: a finding
         against one scenario is not a reason to resample the seven the gate already passed.
         """
+        if self._repeating(loop):
+            return self._stalled(result, loop, "QA-plan repair")
         if loop.plan_judgement_rework >= self.MAX_PLAN_REWORKS:
             return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
-        return self._plan_lap(result, loop.update(plan_rework=loop.plan_rework + 1))
+        return self._plan_lap(
+            result,
+            loop.update(
+                plan_rework=loop.plan_rework + 1, repaired_failures=loop.run_failures
+            ),
+        )
+
+    def _stalled(self, result: object, loop: QaLoop, lap: str) -> Continue | Await:
+        """A repair loop that has stopped moving — escalate rather than spend the budget.
+
+        The operator gate and not `_exhausted`, and that difference is the point of the
+        detector. Exhaustion says "this story was tried the agreed number of times"; a stall
+        says "this is not repairable from where we are repairing it", which is a decision a
+        human or the auto-operator can act on — most often by classifying it as a harness
+        failure rather than a product one. Reaching the same conclusion by burning the budget
+        costs three more agent turns and three more full suite runs to say it less clearly.
+        """
+        self.logger.info(
+            "the last %s left the QA run failing identically (%s) — escalating instead of "
+            "spending another lap",
+            lap,
+            "; ".join(loop.run_failures),
+            extra={"activity": True},
+        )
+        return self._gate(result, loop)
 
     def _guard_plan_validation(self, result: object, loop: QaLoop) -> Continue | Done:
         """Spend a schema-validation repair — a budget of its own, not the judgement one.
@@ -1491,7 +1563,7 @@ class Qa(Workflow):
             return self._gate(result, loop)
         return Continue(result, self.setup_fix, loop=loop)
 
-    def _guard_qa(self, result: object, loop: QaLoop) -> Continue | Done:
+    def _guard_qa(self, result: object, loop: QaLoop) -> Continue | Await | Done:
         """`guard_qa` + `guard_qa_bonus` + `decide_bonus_class` + `grant_qa_bonus`.
 
         Past the budget there is exactly one more pass available, and only for an `evidence`
@@ -1499,6 +1571,9 @@ class Qa(Workflow):
         verification-only attempt is cheap and often decisive. `code`, `environment` and an
         untriaged blank earn nothing.
         """
+        if self._repeating(loop):
+            return self._stalled(result, loop, "code fix")
+        loop = loop.update(repaired_failures=loop.run_failures)
         if loop.qa_rework < self.MAX_QA_REWORKS:
             return Continue(result, self.apply_fixes, loop=loop)
         if loop.bonus_used or loop.failure_class != "evidence":
@@ -1506,7 +1581,7 @@ class Qa(Workflow):
         self.logger.info("granting the one verification-only bonus pass")
         return Continue(result, self.apply_fixes, loop=loop.update(bonus_used=True))
 
-    def _fixable(self, result: object, loop: QaLoop) -> Continue | Done:
+    def _fixable(self, result: object, loop: QaLoop) -> Continue | Await | Done:
         """`decide_qa_fixable`: in a `dev` run the findings are reported, not fixed."""
         if self.target_env == "dev":
             return Continue(result, self.report_dev, loop=loop)

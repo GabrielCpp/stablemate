@@ -187,8 +187,13 @@ class _Ostler:
         plan_invalid_passes: tuple[int, ...] = (),
         vet_problems: list[str] | None = None,
         blocked_problems: list[str] | None = None,
+        scenarios: tuple[dict[str, Any], ...] = (),
     ) -> None:
         self.fail_runs = fail_runs
+        #: The per-scenario payload a real run reports, entry *i* for run *i*, the last one
+        #: repeating. Empty — the default — omits the key entirely, which is every test that
+        #: does not care: the flow's repeat detector reads it and is inert without it.
+        self.scenarios = scenarios
         #: When set, every run comes back `blocked` naming these runtime requirements — the
         #: shape `check_runtime_requirements` produces for a missing Playwright or ffmpeg.
         self.blocked_problems = blocked_problems
@@ -287,10 +292,13 @@ class _Ostler:
             }, ""
         status = "failed" if self.runs <= self.fail_runs else "passed"
         self._write_run(Path(spec_dir), status)
-        return (0 if status == "passed" else 1), {
+        payload: dict[str, Any] = {
             "status": status,
             "notes": f"run {self.runs} reported {status}",
-        }, ""
+        }
+        if self.scenarios:
+            payload["scenarios"] = self.scenarios[min(self.runs, len(self.scenarios)) - 1]
+        return (0 if status == "passed" else 1), payload, ""
 
     def _write_run(self, spec: Path, status: str) -> None:
         """The artifacts `ostler qa run` leaves behind, which the evidence gate reads.
@@ -1677,6 +1685,70 @@ def test_a_product_defect_is_triaged_fixed_and_re_qad(
     assert okf.runs == 2, okf.runs
     # The fixer is handed the assessment's own verdict, not the runner's raw notes.
     assert agent.args_for("apply-qa-fixes")[0]["qa_notes"] == "assessment pass 1"
+
+
+_STUCK = {"copy-link": {"status": "failed", "assertions": 9, "failures": 1}}
+
+
+def test_a_fix_that_leaves_the_run_failing_identically_is_not_repeated(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The `setup_problems` detector, one loop over — and the loop that cost the most.
+
+    The run this comes from: a live scenario that failed under the QA runner's own driver on
+    every attempt and never under a second, independent one. No fix written in the repo could
+    reach it, so repairs two, three and four each bought a `power` agent turn plus a full
+    re-run of the suite to be told the same thing — same scenario, same assertion, same depth
+    — and the story was then filed `exhausted`, which reads as an intractable product defect
+    rather than as a harness that cannot be repaired from here.
+
+    Sameness is the signal. One fix is still attempted, because there is no evidence about a
+    repair until it has run; the second is put to the operator instead of to the budget.
+    """
+    ostler(fail_runs=99, scenarios=(_STUCK,))
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"))
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    # The operator gate runs the same fixer prompt, so count the laps of the *fix loop* —
+    # the ones carrying no operator answer — rather than every invocation of it.
+    unaided = [a for a in agent.args_for("apply-qa-fixes") if "operator_feedback" not in a]
+    assert len(unaided) == 1, agent.args_for("apply-qa-fixes")
+    assert len(unaided) < Qa.MAX_QA_REWORKS
+    # And the failure reached a person instead of the rest of the budget.
+    assert agent.counts()["resolve-operator"] >= 1, agent.counts()
+
+
+def test_a_fix_that_gets_the_run_further_still_earns_its_next_lap(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The other half: the detector must not stop a loop that is converging.
+
+    Scenario identity alone would call every one of these laps "no progress" and cut the
+    budget off after the first. The assertion depth is what says otherwise — each repair
+    carries the journey further before it stops — and it is in the fingerprint for exactly
+    this case.
+    """
+    ostler(
+        fail_runs=99,
+        scenarios=tuple(
+            {"copy-link": {"status": "failed", "assertions": depth, "failures": 1}}
+            for depth in (3, 5, 7, 9)
+        ),
+    )
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"))
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
 
 
 def test_the_fix_loop_grants_one_bonus_pass_only_for_an_evidence_failure(

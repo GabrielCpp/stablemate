@@ -509,6 +509,29 @@ class QaLoop(CoderResult):
     #: is the signal, and it goes to the operator rather than round again.
     setup_problems: tuple[str, ...] = ()
 
+    #: What the *latest* failing QA run failed at, as a sorted fingerprint — one entry per
+    #: non-passing scenario, carrying its status and its assertion/failure counts. Written
+    #: only by `run` (and blanked by it on any other status), so it always describes the run
+    #: the flow is currently reacting to. Empty for a run that passed, blocked, or was
+    #: invalid: none of those is a repairable failure, and the counters below bound them.
+    run_failures: tuple[str, ...] = ()
+    #: The same fingerprint as the last repair lap — a code fix or a plan repair — was
+    #: dispatched against.
+    #:
+    #: `setup_problems` is the same idea one loop over, and for the same reason: a repair
+    #: that ran and left the runner failing at *exactly* the same assertions, the same number
+    #: of steps in, has demonstrated that whatever is wrong is not reachable from where it is
+    #: repairing. No budget catches that — every lap is legal, so the flow only stops once
+    #: `MAX_QA_REWORKS` or `MAX_PLAN_REWORKS` is gone, and each of those laps is a `power`
+    #: agent turn plus a full re-run of the suite. A live story burned repairs two through
+    #: four that way against a failure that reproduced only under the QA runner's own driver
+    #: and never under a second one, which is not a defect any in-repo fix can reach.
+    #:
+    #: So the *sameness* is the signal, and it goes to the operator rather than round again.
+    #: The counts are part of the fingerprint deliberately: a repair that gets the scenario
+    #: three steps further before failing has moved, and has earned its next lap.
+    repaired_failures: tuple[str, ...] = ()
+
     #: The parent-owned rescope budget, threaded in and crossed back out on a rescope.
     triage_scope: int = 0
 
