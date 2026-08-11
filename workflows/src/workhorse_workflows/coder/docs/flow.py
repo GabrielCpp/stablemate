@@ -36,16 +36,22 @@ Divergences from the YAML, all deliberate:
   "invalid": under the YAML they were *unset vars*, which Jinja renders as the empty string,
   and `verify-story-documentation.py` only reads them in `local` mode. Passing `"invalid"`
   would look the same today and be wrong the moment the gate started reading them.
+
+One shape is in neither the YAML nor the port it came from: **`blocked` consults before it
+ends the flow**. A documentation block is a product decision nobody ratified, and on a
+product the author workflow specified there is no human upstream of it — so `_blocked`
+spends one resolver turn in the author's stead and gives the story a repair lap on the
+answer. See `_blocked` for the loop guard and for what `human`/`operator` mode still does.
 """
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Continue, Done, Workflow, WorkflowFailed
+from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import paths
-from workhorse_workflows.coder.shared.dev import resolve_impl_context
+from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
 from workhorse_workflows.coder.shared.docs import (
     classify_documentation_context,
     detect_okf_docs,
@@ -63,8 +69,14 @@ from workhorse_workflows.coder.shared.schemas.docs import (
     DocumentationResult,
     DocumentationReview,
 )
+from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.kit.telemetry import counter_labels, verdict_labels
+
+#: No wall-clock bound on the resolver turn, for the reason `qa` gives at its own gate:
+#: it is standing in for the accountable party, and cutting it off mid-decision buys a
+#: block back.
+UNBOUNDED = float("inf")
 
 
 class Docs(Workflow):
@@ -88,6 +100,10 @@ class Docs(Workflow):
     #: the ones that still match, so an earlier story's abandoned work is not charged to
     #: this one. Empty subtracts nothing, which is the pre-snapshot behaviour.
     preexisting: tuple[str, ...] = ()
+    #: `auto`, `operator` or `human` — who answers a documentation block. `auto` spends one
+    #: resolver turn standing in for the author that wrote this product's specs; the other
+    #: two park on the driver's `Await` and wait for a person. See `_blocked`.
+    operator_mode: str = "auto"
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
     #: fill each one in for any node or sub-flow that declares a parameter of the same
@@ -190,7 +206,8 @@ class Docs(Workflow):
         obligations: tuple[str, ...] = (),
         delta_refs: tuple[str, ...] = (),
         authored_nodes: tuple[str, ...] = (),
-    ) -> Continue | Done:
+        consulted: bool = False,
+    ) -> Continue | Await | Done:
         """Write the story into the book — the one agent turn this flow spends per pass.
 
         `document_story` + `decide_documentation_result`. `not_required` is a real answer and
@@ -243,6 +260,7 @@ class Docs(Workflow):
             review_notes=review_notes,
             progress=progress,
             delta_refs=delta_refs,
+            consulted=consulted,
         )
 
     def repair(
@@ -255,7 +273,8 @@ class Docs(Workflow):
         obligations: tuple[str, ...] = (),
         delta_refs: tuple[str, ...] = (),
         authored_nodes: tuple[str, ...] = (),
-    ) -> Continue | Done:
+        consulted: bool = False,
+    ) -> Continue | Await | Done:
         """Edit the nodes the findings cite, and leave every other node alone.
 
         Every pass after the first used to re-enter `document`, whose brief is "write this
@@ -289,6 +308,7 @@ class Docs(Workflow):
             progress=progress,
             delta_refs=delta_refs,
             authored_nodes=authored_nodes,
+            consulted=consulted,
         )
 
     def _author_args(
@@ -321,7 +341,8 @@ class Docs(Workflow):
         progress: DocsProgress | None,
         delta_refs: tuple[str, ...],
         authored_nodes: tuple[str, ...] = (),
-    ) -> Continue | Done:
+        consulted: bool = False,
+    ) -> Continue | Await | Done:
         """The tail both author turns share: the contract on the answer, then the gate.
 
         The nodes accumulate across passes rather than being replaced by the last one's.
@@ -337,7 +358,15 @@ class Docs(Workflow):
             self.logger.info(
                 "documentation author blocked on %s: %s", self.ctx.story_slug, result.notes
             )
-            return Done(DocsResult(status="blocked", notes=result.notes))
+            return self._blocked(
+                result.notes,
+                consulted=consulted,
+                rework=rework,
+                gate_notes=gate_notes,
+                progress=progress,
+                delta_refs=delta_refs,
+                authored_nodes=authored_nodes,
+            )
         if result.status not in {"documented", "not_required"}:
             raise WorkflowFailed(
                 f"documentation author reported {result.status or 'nothing'}: {result.notes}"
@@ -353,6 +382,7 @@ class Docs(Workflow):
             progress=progress,
             delta_refs=delta_refs,
             authored_nodes=tuple(dict.fromkeys((*authored_nodes, *result.nodes))),
+            consulted=consulted,
         )
 
     def verify(
@@ -365,6 +395,7 @@ class Docs(Workflow):
         progress: DocsProgress | None = None,
         delta_refs: tuple[str, ...] = (),
         authored_nodes: tuple[str, ...] = (),
+        consulted: bool = False,
     ) -> Continue:
         """Check the claim against the diff before any reviewer reads a word of it.
 
@@ -430,6 +461,7 @@ class Docs(Workflow):
                 progress=progress,
                 delta_refs=delta_refs,
                 authored_nodes=authored_nodes,
+                consulted=consulted,
             )
         if rework >= self.MAX_REWORKS:
             raise WorkflowFailed(
@@ -450,6 +482,7 @@ class Docs(Workflow):
             ),
             delta_refs=delta_refs,
             authored_nodes=authored_nodes,
+            consulted=consulted,
         )
 
     def review(
@@ -462,7 +495,8 @@ class Docs(Workflow):
         progress: DocsProgress | None = None,
         delta_refs: tuple[str, ...] = (),
         authored_nodes: tuple[str, ...] = (),
-    ) -> Continue | Done:
+        consulted: bool = False,
+    ) -> Continue | Await | Done:
         """An independent read of what was written, downstream of a gate it cannot bypass.
 
         `review_story_documentation` + `decide_documentation_review`. `blocked` ends the
@@ -504,7 +538,15 @@ class Docs(Workflow):
             self.logger.info(
                 "documentation review blocked on %s: %s", self.ctx.story_slug, result.notes
             )
-            return Done(DocsResult(status="blocked", notes=result.notes))
+            return self._blocked(
+                result.notes,
+                consulted=consulted,
+                rework=rework,
+                gate_notes=gate_notes,
+                progress=progress,
+                delta_refs=delta_refs,
+                authored_nodes=authored_nodes,
+            )
         finding_problems = _review_finding_problems(result)
         if result.status == "revise" and finding_problems:
             raise WorkflowFailed(
@@ -522,21 +564,25 @@ class Docs(Workflow):
                 self.MAX_REVIEW_REWORKS + 1,
                 notes,
             )
-            return Done(
-                DocsResult(
-                    status="blocked",
-                    notes=(
-                        f"documentation review did not converge in "
-                        f"{self.MAX_REVIEW_REWORKS + 1} passes "
-                        f"({progress.review_progress_verdict}): "
-                        f"{notes or gate_notes or 'no notes'}"
-                    ),
-                )
+            return self._blocked(
+                (
+                    f"documentation review did not converge in "
+                    f"{self.MAX_REVIEW_REWORKS + 1} passes "
+                    f"({progress.review_progress_verdict}): "
+                    f"{notes or gate_notes or 'no notes'}"
+                ),
+                consulted=consulted,
+                rework=rework,
+                gate_notes=gate_notes,
+                progress=progress,
+                delta_refs=delta_refs,
+                authored_nodes=authored_nodes,
             )
         return self._rework(
             result, rework, review_rework + 1, gate_notes, notes, progress,
             delta_refs=delta_refs,
             authored_nodes=authored_nodes,
+            consulted=consulted,
         )
 
     def _rework(
@@ -550,6 +596,7 @@ class Docs(Workflow):
         obligations: tuple[str, ...] = (),
         delta_refs: tuple[str, ...] = (),
         authored_nodes: tuple[str, ...] = (),
+        consulted: bool = False,
     ) -> Continue:
         """`guard_documentation`'s other half: send the author back with what it must fix.
 
@@ -582,7 +629,153 @@ class Docs(Workflow):
             obligations=obligations,
             delta_refs=delta_refs,
             authored_nodes=authored_nodes,
+            consulted=consulted,
         )
+
+    # ── the author gate ───────────────────────────────────────────────────────────────
+
+    def _blocked(
+        self,
+        notes: str,
+        *,
+        consulted: bool,
+        rework: int,
+        gate_notes: str,
+        progress: DocsProgress | None,
+        delta_refs: tuple[str, ...],
+        authored_nodes: tuple[str, ...],
+    ) -> Continue | Await | Done:
+        """A block ends the flow — but not before the author it belongs to gets a say.
+
+        The three sites that can refuse a story (the author turn, the reviewer, and a review
+        loop that ran out of passes) all funnel through here, which is what makes it the
+        right place to ask. A documentation block is almost never "the prose is wrong": it is
+        the book and the code disagreeing about something nobody ever ratified — a contract
+        the specs describe two ways, a guarantee the plan required and the implementation
+        did not keep. Answering that is a *product* decision.
+
+        On a product whose specs were themselves written by the author workflow, there is no
+        human upstream of that decision to defer to. Parking the story until a person appears
+        defers it to the only party with *less* context than the flow has, and costs every
+        story behind it in the meantime — six of one epic's eight, on the run that forced
+        this state. So in `auto` the resolver answers in the author's stead, and the story
+        gets one more repair lap on the ratified answer.
+
+        One consult per flow. `consulted` is threaded through every state rather than kept
+        beside the run, because a second block after a guided lap is the loop this guard
+        exists to stop: the review budget is spent by then, so the next review would block
+        again immediately and the pair would cycle forever.
+
+        `human`/`operator` mode still parks — someone asked to be asked.
+        """
+        if consulted:
+            return Done(DocsResult(status="blocked", notes=notes))
+        carried: dict[str, Any] = {
+            "notes": notes,
+            "rework": rework,
+            "gate_notes": gate_notes,
+            "progress": progress,
+            "delta_refs": delta_refs,
+            "authored_nodes": authored_nodes,
+        }
+        if self.operator_mode in {"human", "operator"}:
+            return Await(self._context, notes, self.read_author, **carried)
+        return Continue(None, self.resolve_author, **carried)
+
+    def resolve_author(
+        self,
+        notes: str = "",
+        rework: int = 0,
+        gate_notes: str = "",
+        progress: DocsProgress | None = None,
+        delta_refs: tuple[str, ...] = (),
+        authored_nodes: tuple[str, ...] = (),
+    ) -> Continue | Done:
+        """Stand in for the author who wrote the specs, and ratify what the book contradicts.
+
+        The same resolver `qa` and `dev` reach, on `block_kind="docs"`: it investigates, makes
+        the call, records it in `context.md` and — this is the part specific to a docs block —
+        amends the authored documents so the decision is the product's, not this run's.
+
+        An escalation ends the flow blocked rather than waiting, for the reason
+        `Qa.resolve_operator` gives: the story drain is single-threaded, so a parked story
+        parks every epic behind it. The story is still filed visibly by `flag_docs_block`;
+        it is deferred to a human who is no longer blocking the queue while they think.
+        """
+        self.logger.info("resolving the documentation block", extra={"activity": True})
+        result = self.agent(
+            "prompts/resolve-operator.md",
+            returns=OperatorResolution,
+            # high, and unbounded: the same reasoning `qa` documents — standing in for the
+            # accountable party, with full tool access, on the flow's costliest decision.
+            power="high",
+            timeout=UNBOUNDED,
+            add_dirs=self._dirs(),
+            args={
+                "story_path": self.ctx.story_path,
+                "spec_dir": self.ctx.spec_dir,
+                "block_kind": "docs",
+                "block_notes": notes,
+            },
+        )
+        if result.decision != "answered":
+            self.logger.info("the documentation resolver escalated — blocking the story")
+            return Done(DocsResult(status="blocked", notes=notes))
+        return Continue(
+            result,
+            self.read_author,
+            notes=notes,
+            rework=rework,
+            gate_notes=gate_notes,
+            progress=progress,
+            delta_refs=delta_refs,
+            authored_nodes=authored_nodes,
+        )
+
+    def read_author(
+        self,
+        notes: str = "",
+        rework: int = 0,
+        gate_notes: str = "",
+        progress: DocsProgress | None = None,
+        delta_refs: tuple[str, ...] = (),
+        authored_nodes: tuple[str, ...] = (),
+    ) -> Continue | Done:
+        """Take the ratified decision off `context.md` and spend one repair lap on it.
+
+        An `epic`-scoped answer is not something this flow can act on — it says the epic's
+        premise was wrong, which no edit to one story's documentation reaches — so it comes
+        back as the block's verdict, carrying the answer as the notes `flag_docs_block`
+        stamps onto the story.
+
+        `review_rework` resets. The reviewer's budget was spent arguing about a question
+        that had no ratified answer; now there is one, and re-entering with nothing left to
+        spend would block again on the next pass without the author ever seeing it. The
+        budget is bounded either way, because `consulted` makes this the only reset.
+        """
+        answer = self.call(read_operator_context, self.ctx.story_path)
+        if answer.scope == "epic":
+            self.logger.info("the author scoped the documentation block to the epic")
+            return Done(DocsResult(status="blocked", notes=answer.content or notes))
+        brief = "\n".join(
+            part for part in (f"Ratified by the author: {answer.content}".strip(), notes) if part
+        )
+        return self._rework(
+            answer,
+            rework,
+            0,
+            gate_notes,
+            brief,
+            progress,
+            delta_refs=delta_refs,
+            authored_nodes=authored_nodes,
+            consulted=True,
+        )
+
+    @property
+    def _context(self) -> Path:
+        """The file an `Await` writes its questions into: `<story-folder>/context.md`."""
+        return paths.story_context_path(self.ctx.story_path)
 
     def _obligations(self, classification: ContextClassification) -> DocumentationObligations:
         """Build the diff packet and read the grounding worklist off it, before authoring.

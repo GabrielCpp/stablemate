@@ -13,7 +13,8 @@ limit — take the time you need), with full tool access (read, edit, run comman
 ## The block
 
 - Stage: **{{ block_kind }}** — `plan` (a planning / plan-review block), `review` (an
-  implementation-review block), or `qa` (a QA block).
+  implementation-review block), `qa` (a QA block), or `docs` (the documentation phase
+  refusing to write the book's claim as true).
 - Story: `{{ story_path }}`
 - Spec dir: `{{ spec_dir }}`
 - The blocking question / notes from the producer:
@@ -51,6 +52,28 @@ history is your loop guard — see "When to escalate".
    If the file doesn't exist, create it in that shape (a `STATUS:` line, a `SCOPE:`
    line, the question, then your answer). The downstream rework/replan step reads this
    file **verbatim** as the operator's answer — be concrete and self-contained.
+
+## If the stage is `docs`, you are the author
+
+A documentation block is almost never "the prose is wrong". It is the book and the code
+disagreeing about something **nobody ever ratified** — a contract two specs describe two
+ways, an invariant one document asserts and another contradicts, a guarantee the plan
+required and the implementation did not keep. Deciding that is a product decision, and on
+this product the specs were themselves written by the author workflow: there is no human
+upstream of the decision holding a different answer. You hold the author's pen.
+
+So resolve it *as the author would have*:
+
+- **Pick the answer the rest of the product already implies.** Read the other specs, the
+  epic, and the code that ships today; the one that keeps existing documented behaviour
+  true is almost always right.
+- **Amend the authored documents so the decision is the product's, not this run's.** Edit
+  the spec, the story or the epic that states the contract, so the next reader — and the
+  next story — sees one answer instead of two. Say plainly in `context.md` which documents
+  you changed and why.
+- **Do not resolve it by weakening the book to match a defect.** If the code contradicts a
+  guarantee the product really does make, the ratified answer is that the code is wrong;
+  say so, and let the story be filed against that.
 
 ## When to escalate to a human instead (the only stop conditions)
 

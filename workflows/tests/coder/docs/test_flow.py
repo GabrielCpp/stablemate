@@ -26,10 +26,12 @@ from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import WorkflowFailed
+from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
@@ -163,6 +165,11 @@ class _Agent:
     *progress* verdict is measured on, where every other axis here is measured per pass.
     `explode_after` picks *which* pass dies, so a kill can be staged after a loop has
     already accumulated a baseline rather than only on the first turn.
+
+    The three `resolver_*` knobs script the author's say on a block: whether it decides at
+    all, what it decided, and whether the decision is this story's or the whole epic's. The
+    default is `escalated`, so a test that says nothing about the resolver gets the verdict
+    the block asked for and nothing else.
     """
 
     def __init__(
@@ -179,6 +186,9 @@ class _Agent:
         findings_per_pass: list[list[dict[str, Any]]] | None = None,
         explode: set[str] | None = None,
         explode_after: int = 1,
+        resolver_decision: str = "escalated",
+        resolver_answer: str = "",
+        resolver_scope: str = "story",
     ) -> None:
         self.author_status = author_status
         self.author_nodes = author_nodes
@@ -191,6 +201,9 @@ class _Agent:
         self.findings_per_pass = findings_per_pass
         self.explode = explode or set()
         self.explode_after = explode_after
+        self.resolver_decision = resolver_decision
+        self.resolver_answer = resolver_answer
+        self.resolver_scope = resolver_scope
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
 
@@ -236,6 +249,22 @@ class _Agent:
     def _repair_documentation(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """The repair turn answers in the author's own shape — same schema, same gate."""
         return self._document_story(data, nth)
+
+    def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """The author standing in for itself on a block, `context.md` and all.
+
+        An answering resolver really writes the file, because that is the whole protocol
+        between this turn and `read_operator_context` — a decision the resolver only
+        *reported* would reach the repair lap as an empty brief.
+        """
+        if self.resolver_decision == "answered":
+            context = Path(data["story_path"]).parent / "context.md"
+            context.write_text(
+                f"STATUS: ANSWERED\nSCOPE: {self.resolver_scope}\n\n"
+                f"## Your answers\n\n{self.resolver_answer}\n",
+                encoding="utf-8",
+            )
+        return {"decision": self.resolver_decision, "summary": "resolved the docs block"}
 
     def _review_story_documentation(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if nth >= self.approve_after:
@@ -842,6 +871,9 @@ def test_a_blocked_author_returns_a_verdict_instead_of_failing_the_run(
     killed the whole run, costing eight epics that had nothing to do with it. The verdict
     comes back for the caller to place instead; the reviewer is never reached, because there
     is nothing written to review.
+
+    The author is consulted on the way out — that is `_blocked` — and this resolver
+    escalates, so the verdict is the one the block asked for, unchanged.
     """
     agent = _Agent(author_status="blocked")
 
@@ -849,7 +881,156 @@ def test_a_blocked_author_returns_a_verdict_instead_of_failing_the_run(
 
     assert result.status == "blocked", result
     assert result.notes == "documented on pass 1", result
-    assert agent.counts() == {"document-story": 1}, agent.counts()
+    assert agent.counts() == {"document-story": 1, "resolve-operator": 1}, agent.counts()
+
+
+# --------------------------------------------------------------------- the author's say
+
+
+def _never_waits(path: Path, **kwargs: Any) -> None:
+    """The driver's wait, replaced by the assertion that nothing may reach it."""
+    raise AssertionError(f"the flow parked on {path} in auto mode")
+
+
+class _BlocksOnce(_Agent):
+    """An author that refuses the first draft and writes the book once someone decides.
+
+    The shape every real documentation block has: the refusal is not "I cannot write", it is
+    "two documents answer this differently and I will not pick one".
+    """
+
+    def _document_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        if nth == 1:
+            return {"status": "blocked", "nodes": [], "notes": "the slug contract is ambiguous"}
+        return super()._document_story(data, nth)
+
+
+def test_a_block_is_put_to_the_author_before_it_ends_the_flow(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The specs were authored by a workflow, so the author is who ratifies the contract.
+
+    A documentation block is a product decision nobody made — and on a product whose specs
+    were themselves written by the author workflow there is no human upstream holding the
+    answer. Filing the story as blocked and moving on defers a decision that one turn can
+    make, so the flow spends that turn and the guided repair lap writes the book.
+    """
+    agent = _BlocksOnce(resolver_decision="answered", resolver_answer="One slug per locale.")
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts() == {
+        "document-story": 1,
+        "resolve-operator": 1,
+        "repair-documentation": 1,
+        "review-story-documentation": 1,
+    }, agent.counts()
+    # The repair lap was told what was ratified, and by whom — not just re-asked. The answer
+    # travels verbatim, `STATUS:` line and all, exactly as a human operator would have left it.
+    brief = agent.author_args()[1]["review_notes"]
+    assert brief.startswith("Ratified by the author:"), brief
+    assert "One slug per locale." in brief, brief
+    assert "the slug contract is ambiguous" in brief, brief
+
+
+def test_an_escalating_resolver_blocks_without_parking_the_queue(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """In `auto` mode a resolver that will not decide gives up — it never waits on a person.
+
+    The story drain is single-threaded, so an `Await` here parks every epic queued behind
+    this one. The verdict was already survivable; waiting for a human is not.
+    """
+    agent = _Agent(author_status="blocked")
+
+    with patch.object(pyflow_driver, "wait_for_answer", _never_waits):
+        result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "blocked", result
+
+
+def test_the_author_is_consulted_once_and_a_second_block_stands(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """One consult per flow, or a resolver and an author can argue until the run dies.
+
+    The guided lap is the author's answer being applied. If the book still cannot be written
+    with it in hand, re-asking the same resolver the same question buys another identical
+    answer — that deadlock is what the second block reports.
+    """
+    agent = _Agent(author_status="blocked", resolver_decision="answered", resolver_answer="Pick A.")
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "blocked", result
+    assert agent.counts() == {
+        "document-story": 1,
+        "resolve-operator": 1,
+        "repair-documentation": 1,
+    }, agent.counts()
+
+
+def test_an_epic_scoped_answer_blocks_the_story_with_the_answer_as_the_finding(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`SCOPE: epic` means the decision is bigger than this story, so this story cannot fix it.
+
+    The answer travels out as the verdict's notes rather than being dropped, because the
+    caller places the block on the epic and that text is what a human reads there.
+    """
+    agent = _Agent(
+        author_status="blocked",
+        resolver_decision="answered",
+        resolver_scope="epic",
+        resolver_answer="The whole publishing epic targets an environment that does not exist.",
+    )
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "blocked", result
+    assert "targets an environment that does not exist" in result.notes, result
+    assert agent.counts()["repair-documentation"] == 0, agent.counts()
+
+
+def test_operator_mode_human_still_waits_for_a_person(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Someone who asked to be asked is asked: no resolver turn, the driver's `Await` instead.
+
+    The auto resolver is a stand-in for the accountable party, and in `human` mode the
+    accountable party is present. The recovery path is the same one either way.
+    """
+    seen: list[Path] = []
+    agent = _Agent(author_status="blocked")
+
+    def _answer(path: Path, **kwargs: Any) -> None:
+        seen.append(path)
+        path.write_text(
+            "STATUS: ANSWERED\nSCOPE: story\n\nOne slug per locale.\n", encoding="utf-8"
+        )
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answer):
+        result = drive_flow(Docs(story=STORY, epic=EPIC, operator_mode="human"), env(), agent)
+
+    assert result.status == "blocked", result
+    assert agent.counts()["resolve-operator"] == 0, agent.counts()
+    assert seen == [docs / STORY_REL / "context.md"], seen
 
 
 # --------------------------------------------------------------------------- the reviewer
@@ -1005,6 +1186,7 @@ def test_the_loop_is_bounded_at_four_passes(
         "document-story": 1,
         "repair-documentation": 3,
         "review-story-documentation": 4,
+        "resolve-operator": 1,
     }, agent.counts()
 
 

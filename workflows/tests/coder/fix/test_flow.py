@@ -218,6 +218,15 @@ class _Agent:
             "notes": f"documented on pass {nth}",
         }
 
+    def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """The author's say on a documentation block, which this fake declines to give.
+
+        `docs` puts every block to the author before ending its flow, so this turn is on the
+        blocked path whether the test asked for it or not. Escalating keeps the verdict the
+        reviewer's — the branch this file is actually about.
+        """
+        return {"decision": "escalated", "summary": "no answer to give"}
+
     def _review_story_documentation(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if self.review_blocks:
             return {"status": "blocked", "notes": "this change cannot be described as built"}

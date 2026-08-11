@@ -354,6 +354,7 @@ class Coder(Workflow):
             epic=self._story_epic(epic),
             target_env=self.target_env,
             preexisting=self._preexisting(),
+            operator_mode=self.operator_mode,
         )
         if result.status == "blocked":
             return Continue(result, self.blocked_docs, epic=epic, zero_diff=zero_diff,
@@ -490,6 +491,7 @@ class Coder(Workflow):
             epic=self._story_epic(epic),
             target_env=self.target_env,
             preexisting=self._preexisting(),
+            operator_mode=self.operator_mode,
         )
         self._require_documented(result, "failed story")
         self.call(
@@ -672,6 +674,7 @@ class Coder(Workflow):
             epic=self._story_epic(epic),
             target_env=self.target_env,
             preexisting=self._preexisting(),
+            operator_mode=self.operator_mode,
         )
         if result.status == "blocked":
             return Continue(
