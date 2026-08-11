@@ -400,12 +400,20 @@ def test_an_unmatchable_role_name_pair_says_the_name_is_what_missed():
 
     enriched = str(driver._enrich(_Page(1), action, original))
     assert "element(s) not found" in enriched, "the original failure must survive verbatim"
-    assert "matched 1 element(s)" in enriched
-    assert "the name is what missed" in enriched
+    assert "does not take its accessible name from its text content" in enriched
+    assert "1 element(s) carry that role" in enriched
 
-    same = driver._enrich(_Page(0), action, original)
-    assert same is original, "no element of that role at all is a genuine miss, not a near miss"
+    gone = str(driver._enrich(_Page(0), action, original))
+    assert "does not take its accessible name" in gone, (
+        "the element a plan waits for is usually transient, so it is already gone when the "
+        "timeout expires — a live count of zero must not silence the static role fact"
+    )
 
+    named = {"expect": "visible", "locator": {"role": "button", "name": "Copy link"}}
+    assert driver._enrich(_Page(0), named, original) is original, (
+        "'button' is named from its content, so this locator is well-formed and the plain "
+        "failure is the honest one"
+    )
     bare = {"expect": "visible", "locator": {"role": "status"}}
     assert driver._enrich(_Page(1), bare, original) is original
     css = {"expect": "visible", "locator": {"css": ".copy-feedback"}}

@@ -19,6 +19,16 @@ import yaml
 
 from ostler.qa.session import QaSession, _expand
 
+#: The ARIA roles whose accessible name may be computed from their own text content.
+#: Every other role is named only by ``aria-label``/``aria-labelledby``, so a plan that
+#: addresses one by its visible text addresses nothing. Per the ARIA 1.2 name-from-content
+#: list; see :meth:`PlaywrightDriver._enrich`, which turns a miss here into a readable failure.
+NAME_FROM_CONTENT = frozenset({
+    "button", "cell", "checkbox", "columnheader", "gridcell", "heading", "link", "menuitem",
+    "menuitemcheckbox", "menuitemradio", "option", "radio", "row", "rowheader", "switch",
+    "tab", "tooltip", "treeitem",
+})
+
 
 @dataclass
 class ScenarioResult:
@@ -484,27 +494,33 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
 
         Playwright reports an unmatched locator as "element(s) not found", which reads the same
         whether the app never rendered the element or the plan asked for an accessible name the
-        role cannot carry. Only some roles take their name from their text content — a live
-        region such as ``status`` does not — so ``role: status`` / ``name: Copied.`` matches
-        nothing however the app behaves, and then burns the full timeout proving it. Counting
-        the role alone separates the two, and that count is the whole diagnosis.
+        role cannot carry. Only the roles in :data:`NAME_FROM_CONTENT` take their name from their
+        text, so ``role: status`` / ``name: Copied.`` matches nothing however the app behaves —
+        and then burns the whole timeout proving it.
+
+        That half of the diagnosis is static, and it has to be: the element the plan was waiting
+        for is very often transient, so by the time the timeout expires there is nothing left on
+        the page to count. The live count is therefore only ever an addition to the role fact,
+        never the thing that decides whether to speak.
         """
         target = action.get("locator") or {}
         name = target.get("name")
         if "role" not in target or not name:
             return exc
         role = str(target["role"])
+        if role in NAME_FROM_CONTENT:
+            return exc
         try:
-            bare = page.get_by_role(role).count()
+            bare: int | None = page.get_by_role(role).count()
         except Exception:  # noqa: BLE001 - a diagnostic must never mask the assertion it explains
-            return exc
-        if not bare:
-            return exc
+            bare = None
+        seen = "" if bare is None else f" {bare} element(s) carry that role right now."
         return AssertionError(
-            f"{exc}\n\nostler: role={role!r} with name={name!r} matched nothing, but role={role!r} "
-            f"alone matched {bare} element(s) — the name is what missed, not the element. Check "
-            f"whether {role!r} takes its accessible name from text content (live-region and "
-            f"container roles do not; drop 'name:' and assert the text instead)."
+            f"{exc}\n\nostler: role={role!r} does not take its accessible name from its text "
+            f"content, so name={name!r} can only match an aria-label/aria-labelledby — never the "
+            f"visible text. If {name!r} is the text, this locator matches nothing however the "
+            f"application behaves: drop 'name:' and assert the text instead."
+            f"{seen}"
         )
 
     def _capture(self, page: Any, action: dict[str, Any], scenario: str, index: int) -> Path:
