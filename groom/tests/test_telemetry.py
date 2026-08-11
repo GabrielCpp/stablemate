@@ -1015,7 +1015,132 @@ def test_explicit_wait_suppresses_stuck_and_clears_stale_turn_idle() -> None:
         assert run.wait_elapsed_s == 180 * 60
         assert run.turn_active is False
         assert run.turn_idle_s == 0
+        # STUCK is what an open wait suppresses, and it stays suppressed even though
+        # the node has been open for three hours. WAITING is the *other* rule and is
+        # about the gate itself, so it is the only thing this tick may produce.
+        assert [alert.rule for alert in alerts.check_time_rules(now=now)] == ["WAITING"]
+
+
+def test_an_operator_gate_pages_the_moment_it_opens() -> None:
+    with _TelemetryEnv():
+        fired = alerts.ingest_metrics(
+            otlp.parse_metrics(
+                _metrics_request(
+                    "workhorse.node.active", value=1, node="review_plan", gauge=True
+                )
+            )
+            + otlp.parse_metrics(
+                _metrics_request(
+                    "workhorse.wait.active",
+                    value=1,
+                    node="review_plan",
+                    gauge=True,
+                    attrs={"wait_kind": "operator"},
+                )
+            ),
+            now=1000.0,
+        )
+        assert [alert.rule for alert in fired] == ["BLOCKED"]
+        assert "review_plan" in fired[0].message
+
+
+def test_a_cap_wait_pages_nobody() -> None:
+    """The runner throttling itself is not a question anyone can answer."""
+    with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_WAIT_MIN": "30"}):
+        fired = alerts.ingest_metrics(
+            otlp.parse_metrics(
+                _metrics_request(
+                    "workhorse.wait.active",
+                    value=1,
+                    node="run_qa",
+                    gauge=True,
+                    attrs={"wait_kind": "cap"},
+                )
+            )
+            + otlp.parse_metrics(
+                _metrics_request(
+                    "workhorse.wait.elapsed_s",
+                    value=600 * 60,
+                    node="run_qa",
+                    gauge=True,
+                    attrs={"wait_kind": "cap"},
+                )
+            ),
+            now=1000.0,
+        )
+        assert fired == []
+        assert alerts.check_time_rules(now=1000.0) == []
+
+
+def test_an_unanswered_gate_pages_again_once_it_has_waited_too_long() -> None:
+    with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_WAIT_MIN": "30"}):
+        now = 1000.0
+        alerts.ingest_metrics(
+            otlp.parse_metrics(
+                _metrics_request(
+                    "workhorse.wait.active",
+                    value=1,
+                    node="review_plan",
+                    gauge=True,
+                    attrs={"wait_kind": "operator"},
+                )
+            ),
+            now=now,
+        )
         assert alerts.check_time_rules(now=now) == []
+
+        alerts.ingest_metrics(
+            otlp.parse_metrics(
+                _metrics_request(
+                    "workhorse.wait.elapsed_s",
+                    value=31 * 60,
+                    node="review_plan",
+                    gauge=True,
+                    attrs={"wait_kind": "operator"},
+                )
+            ),
+            now=now,
+        )
+        assert [alert.rule for alert in alerts.check_time_rules(now=now)] == ["WAITING"]
+        # Deduped per (run, rule): the gate stays open, and the tick keeps running.
+        assert alerts.check_time_rules(now=now + 60) == []
+
+
+def test_answering_the_gate_retires_both_pages() -> None:
+    with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_WAIT_MIN": "30"}):
+        now = 1000.0
+        for name, value in (("workhorse.wait.active", 1), ("workhorse.wait.elapsed_s", 31 * 60)):
+            alerts.ingest_metrics(
+                otlp.parse_metrics(
+                    _metrics_request(
+                        name,
+                        value=value,
+                        node="review_plan",
+                        gauge=True,
+                        attrs={"wait_kind": "operator"},
+                    )
+                ),
+                now=now,
+            )
+        alerts.check_time_rules(now=now)
+        assert {"BLOCKED", "WAITING"} <= state.RUNS["run-1"].fired
+
+        alerts.ingest_metrics(
+            otlp.parse_metrics(
+                _metrics_request(
+                    "workhorse.wait.active",
+                    value=0,
+                    node="review_plan",
+                    gauge=True,
+                    attrs={"wait_kind": "operator"},
+                )
+            ),
+            now=now + 60,
+        )
+        # Both rules assert a wait that is open *now*. Left set, the dashboard badges
+        # a run that is executing again as parked for the life of the process — and
+        # the next gate on the same run would page nobody.
+        assert not {"BLOCKED", "WAITING"} & state.RUNS["run-1"].fired
 
 
 def test_streaming_turn_uses_idleness_not_total_node_age_for_stuck() -> None:

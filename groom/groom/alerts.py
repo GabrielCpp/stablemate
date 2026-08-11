@@ -15,10 +15,20 @@ nothing is executing, the queue is idle until someone launches the next one —
 was the only one that paged nobody. On a queue an operator is away from, hours
 go by before anyone notices, and they are hours nothing was running.
 
+BLOCKED and WAITING exist for the same reason ENDED does: a run parked on an
+operator gate is not misbehaving, so no rule described it — and STUCK explicitly
+skips a run with an open wait, since being parked is what the gate is for. The
+result was that the one condition a page can actually *fix* — a human is the
+bottleneck and does not know it — reached only an open browser tab. BLOCKED
+fires the moment the gate opens; WAITING is the reminder for a gate that opened
+while nobody was looking. Only an ``operator`` wait counts: a cap wait is the
+runner throttling itself and no page shortens it.
+
 ``fired`` is also what the dashboard renders as a run's alert badges, so the
-three rules that describe a *current* condition retire themselves when the
-condition lifts: STALL on any signal arriving (see :func:`_note_alive`), STUCK
-when its node closes or the run moves to another, CHURN on forward progress.
+rules that describe a *current* condition retire themselves when the condition
+lifts: STALL on any signal arriving (see :func:`_note_alive`), STUCK when its
+node closes or the run moves to another, CHURN on forward progress, BLOCKED and
+WAITING when the wait closes.
 Without that a page is permanent — a laptop that idle-sleeps past the stall
 window marks its run dead for the life of the groom process, however healthily
 it resumes. WATCHDOG, GAVE-UP and ENDED stay set because they report events that
@@ -64,7 +74,7 @@ from groom.models import RunTelemetry
 @dataclass
 class Alert:
     run_id: str
-    rule: str  # STALL | STUCK | CHURN | WATCHDOG | GAVE-UP | ENDED
+    rule: str  # STALL | STUCK | CHURN | WATCHDOG | GAVE-UP | ENDED | BLOCKED | WAITING
     message: str
 
 
@@ -77,6 +87,13 @@ def _stuck_after_s() -> float:
     # that is merely slow gets force-killed and retried by the runner before
     # groom would page anyone about it.
     return float(os.environ.get("GROOM_STUCK_MIN", "75")) * 60
+
+
+def _wait_after_s() -> float:
+    # Far below the STUCK threshold on purpose: a run parked on an operator gate is
+    # not slow, it is finished until a human types something. Every minute past this
+    # is a minute nobody knew they were the bottleneck.
+    return float(os.environ.get("GROOM_WAIT_MIN", "30")) * 60
 
 
 def _churn_repeats() -> int:
@@ -342,7 +359,12 @@ _LIVENESS_METRICS = frozenset(
 
 
 def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> list[Alert]:
-    """Fold decoded metric points into the hot cache.
+    """Fold decoded metric points into the hot cache, and evaluate BLOCKED.
+
+    This used to return ``[]`` unconditionally — every rule was span- or
+    tick-driven. BLOCKED is neither: an operator gate opens a *wait*, which is a
+    metric, and the gate is worth paging about the instant it opens rather than
+    after a threshold.
 
     Metrics carry the live picture that spans structurally cannot: a span only
     exports when it ends, so a run's CURRENT node — the one that matters when it
@@ -352,6 +374,7 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
     progress and resets the churn counters.
     """
     now = now if now is not None else time.time()
+    alerts: list[Alert] = []
     for point in points:
         run_id = point.get("run_id") or ""
         if not run_id:
@@ -399,9 +422,22 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
             if value >= 1:
                 run.wait_kind = str(attrs.get("wait_kind") or "unknown")
                 run.fired.discard("STUCK")
+                if run.wait_kind == "operator":
+                    _fire(
+                        run,
+                        "BLOCKED",
+                        f"{run.workflow or 'run'} {run_id}: parked on an operator gate"
+                        + (f" in '{run.current_node}'" if run.current_node else "")
+                        + " — it will not move until someone answers it",
+                        alerts,
+                    )
             else:
                 run.wait_kind = ""
                 run.wait_elapsed_s = 0.0
+                # The gate was answered: both pages assert a wait that is open right
+                # now, so leaving them set badges a moving run as parked forever.
+                run.fired.discard("BLOCKED")
+                run.fired.discard("WAITING")
         elif name == "workhorse.wait.elapsed_s":
             if run.wait_kind:
                 run.wait_elapsed_s = value
@@ -419,7 +455,7 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
                 run.turn_idle_s = value
                 if value <= _stuck_after_s():
                     run.fired.discard("STUCK")
-    return []
+    return alerts
 
 
 def check_time_rules(now: float | None = None) -> list[Alert]:
@@ -434,6 +470,9 @@ def check_time_rules(now: float | None = None) -> list[Alert]:
       hits: the run IS beating, but has sat in one node past the threshold. It
       is alive and going nowhere. This is invisible to the trace (the node's
       span will not export until it ends) and used to be misfiled as a STALL.
+    - WAITING — an operator gate still unanswered past ``GROOM_WAIT_MIN``. Not an
+      absence at all, but it needs the tick for the same reason STUCK does: the
+      evidence is a duration that no single ingest ever crosses.
     """
     now = now if now is not None else time.time()
     alerts: list[Alert] = []
@@ -454,6 +493,21 @@ def check_time_rules(now: float | None = None) -> list[Alert]:
                 alerts,
             )
         elif run.wait_kind:
+            # An open wait is never STUCK — the run is parked on purpose. But an
+            # operator gate nobody has answered is the one wait a page can shorten,
+            # and BLOCKED only fires once, when the gate opens. WAITING is the
+            # reminder for the gate that opened while nobody was looking. A cap wait
+            # is exempt outright: it is the runner throttling itself.
+            if run.wait_kind == "operator" and run.wait_elapsed_s > _wait_after_s():
+                _fire(
+                    run,
+                    "WAITING",
+                    f"{label}: still parked on an operator gate"
+                    + (f" in '{run.current_node}'" if run.current_node else "")
+                    + f" after {int(run.wait_elapsed_s / 60)} min — nothing is running "
+                    f"for it, and nothing will until it is answered",
+                    alerts,
+                )
             continue
         elif run.turn_active is True and run.turn_idle_s > _stuck_after_s():
             _fire(

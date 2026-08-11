@@ -143,6 +143,8 @@ with `GROOM_NTFY_URL`) and/or `GROOM_WEBHOOK_URL` (JSON `{"title","message"}`):
 | WATCHDOG | a `watchdog_kill` span event arrives | — |
 | GAVE-UP | a give-up node's span arrives | `GROOM_GIVEUP_NODES` (qa_give_up,fix_give_up) |
 | ENDED | the run's root span arrives — the run is over, whatever the verdict, and nothing is executing for it now | — |
+| BLOCKED | an operator gate opens — the run is parked until someone answers it. A cap wait does not count | — |
+| WAITING | that gate is still unanswered later | `GROOM_WAIT_MIN` (30) |
 
 Groom deliberately does not alert on total run age: resumptions reuse a run identity and multi-day
 runs are normal. Use workhorse's `WORKHORSE_MAX_RUNTIME_S` when a run needs a hard wall-clock limit.
@@ -158,7 +160,13 @@ event on a queue — nothing is executing until someone launches the next run �
 until it existed it was the only one that paged nobody. It fires on every ending,
 naming the terminal and the error class, because from outside "it crashed" and
 "it succeeded" are the same silence. A resume reuses the run id and clears the
-fired set, so the next session's ending pages on its own. Run `groom serve` under nohup/systemd as the always-on collector
+fired set, so the next session's ending pages on its own.
+
+BLOCKED and WAITING cover the mirror image: a run parked on an operator gate is
+behaving correctly, so no rule described it, and STUCK skips an open wait by
+design. Yet it is the only alert whose subject can end it — the human reading the
+page *is* the missing input. Answering the gate closes the wait and retires both.
+Run `groom serve` under nohup/systemd as the always-on collector
 (the consuming repo's `make groom-serve` target does exactly that).
 
 ## Where is my run right now?
