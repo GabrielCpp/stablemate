@@ -57,6 +57,7 @@ from workhorse_workflows.coder.nodes.pr import (
 )
 from workhorse_workflows.coder.shared.queue import (
     BLOCKED_FILE,
+    CLAIMED_FILE,
     SKIP_FILE,
     begin_run,
     branch_epic,
@@ -454,6 +455,25 @@ def test_the_story_and_its_status_stamp_commit_as_conventional_commits(
     ).stdout
     assert f"Epic: {EPIC}" in bodies, bodies
     assert "Story: STORY-1" in bodies, bodies
+
+
+def test_the_graph_records_the_epic_branch_it_cut_in_the_run_dir(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`branch_epic` can only recognise its own branch on a later visit if the graph hands
+    it the run dir — and a node that takes `run_dir` but is never given one is silent, not
+    an error, so the ledger is asserted from the graph rather than from the node."""
+    repo = epic()
+    _Sub(repo).install(monkeypatch)
+    run_env = env()
+
+    drive_flow(Coder(), run_env, _Agent())
+
+    ledger = run_env.writer.run_dir / CLAIMED_FILE
+    assert ledger.read_text(encoding="utf-8").split() == [f"feat/{EPIC}"]
 
 
 def test_a_fresh_run_drops_the_skip_state_a_previous_run_left_in_the_run_dir(

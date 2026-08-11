@@ -247,7 +247,7 @@ class Coder(Workflow):
             self.logger.info("no epic to work: %s", pick.reason)
             return Done(pick)
         base = self.output(init_base).base_branch
-        self.call(branch_epic, pick.epic, base)
+        self.call(branch_epic, pick.epic, base, str(self.run_dir))
         return Continue(pick, self.select_story, epic=pick.epic, zero_diff=zero_diff)
 
     def select_story(self, epic: str = "", zero_diff: int = 0) -> Continue:

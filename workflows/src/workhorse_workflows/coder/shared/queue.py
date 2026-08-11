@@ -362,8 +362,8 @@ def branch_epic(
     logger: logging.Logger,
     epic: str = "",
     base_branch: str = "",
-    repo_dir: str = "",
     run_dir: str = "",
+    repo_dir: str = "",
 ) -> EpicBranch:
     """Put this run on `feat/<epic>`, cutting it from HEAD when it does not exist yet.
 
