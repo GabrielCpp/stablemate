@@ -87,6 +87,23 @@ Return this exact JSON object as the LAST thing in your final response — these
 - `notes` must be a non-empty string summarizing the fixes applied, verification results, and any remaining issues
 - Include this JSON **after your markdown report** in your final response
 
+### `failed` versus `blocked` — the distinction is load-bearing
+
+`blocked` ends this loop and hands the story to an operator. `failed` sends it round again
+for another fix attempt. Picking the wrong one is expensive in both directions, so:
+
+- Report **`failed`** when the defect is real, in scope, and you did not finish it — including
+  when it is hard, when you ran out of ideas, or when your fix did not verify. A stubborn
+  in-scope defect is not a blocker. Deferring one is the exact failure this stage exists to
+  stop, so do not reach for `blocked` to get out of difficult work.
+- Report **`blocked`** only when no further attempt in this repository could succeed, because
+  what is missing is external to it: a credential or deployment you cannot perform, a product
+  decision present in neither the story nor the plan, or work that lives in another repo.
+- A `blocked` report must name that specific dependency and state what you attempted before
+  concluding it. "Blocked on the staging API key — the two auth scenarios fail without it; I
+  fixed the three unrelated failures and re-ran the plan to confirm those are the only ones
+  left" is actionable. "Blocked, cannot fix" is not, and will come straight back to you.
+
 Example final response (after markdown report):
 ```json
 {"status": "passed", "notes": "Fixed issue X by modifying Y. Verified with test Z. All prior failures now resolved."}

@@ -1152,23 +1152,27 @@ class Qa(Workflow):
 
     # ── the fix loop ──────────────────────────────────────────────────────────────────
 
-    def apply_fixes(self, loop: QaLoop) -> Continue:
+    def apply_fixes(self, loop: QaLoop) -> Continue | Await:
         """Fix what QA found, spend a rework, and re-derive the context before re-planning.
 
         `apply_qa_fixes` + `incr_qa`. This is the loop that has to actually converge within
         the budget, which is why it runs at high power.
+
+        `blocked` goes to the operator instead of round the loop again. The prompt already
+        asks for it — a credential the fixer cannot hold, a product decision that is in
+        neither the story nor the plan, work in a repo outside this one — and this node used
+        to discard the status and re-enter `build_context` anyway. Nothing downstream can
+        supply what the fixer said was missing, so every remaining rework re-asks a question
+        already answered, at high power, until the budget runs out and the story is filed as
+        exhausted rather than as blocked on the one thing it is actually blocked on.
         """
         self.logger.info("applying QA fixes", extra={"activity": True})
         result = self._apply_fixes(qa_notes=loop.qa.notes, operator_feedback=None, power="high")
-        return Continue(
-            result,
-            self.build_context,
-            loop=loop.update(
-                qa=result,
-                qa_rework=loop.qa_rework + 1,
-                docs_recheck_required=True,
-            ),
-        )
+        loop = loop.update(qa=result, qa_rework=loop.qa_rework + 1, docs_recheck_required=True)
+        if result.status == "blocked":
+            self.logger.info("QA fixer reported blocked; escalating: %s", result.notes)
+            return self._gate(result, loop)
+        return Continue(result, self.build_context, loop=loop)
 
     # ── the setup-repair loop ─────────────────────────────────────────────────────────
 

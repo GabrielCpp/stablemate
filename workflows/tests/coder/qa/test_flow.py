@@ -402,6 +402,7 @@ class _Agent:
         audit_findings: list[dict[str, str]] | None = None,
         triage: tuple[str, str] = ("qa_fix", "code"),
         setup: str = "fixed",
+        qa_fix: str = "fixed",
         escalate: bool = False,
         scope: str = "story",
         explode: set[str] | None = None,
@@ -425,6 +426,7 @@ class _Agent:
         self.audit_findings = audit_findings or []
         self.triage = triage
         self.setup = setup
+        self.qa_fix = qa_fix
         self.escalate = escalate
         self.scope = scope
         self.explode = explode or set()
@@ -527,7 +529,7 @@ class _Agent:
         return {"triage_action": action, "qa_failure_class": failure_class}
 
     def _apply_qa_fixes(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        return {"status": "fixed", "notes": f"fix pass {nth}"}
+        return {"status": self.qa_fix, "notes": f"fix pass {nth}"}
 
     def _fix_regression(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"notes": f"regression fix pass {nth}"}
@@ -1462,6 +1464,43 @@ def test_a_packet_that_stays_unmappable_bounds_the_operator_gate(
     assert result.qa_rework == Qa.MAX_QA_REWORKS, result
     assert agent.counts()["resolve-operator"] == Qa.MAX_QA_REWORKS, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
+
+
+def test_a_fixer_that_reports_blocked_reaches_the_operator(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`blocked` is the fixer saying nothing it does in this repo can help — so stop asking it.
+
+    The prompt has always asked for this status on a credential it cannot hold, a product
+    decision in neither the story nor the plan, or work in another repo. The node discarded
+    it and re-entered `build_context` regardless, so the answer to "I am blocked on X" was
+    the same question again, at high power, until the budget ran out — and the story was then
+    filed as `exhausted`, which reads as "we tried and failed" rather than as blocked on X.
+
+    Here the first `blocked` reaches the operator gate instead, so the block is put to
+    somebody who can answer it — and the flow spends half the full QA laps getting there.
+    Without this, the same script consults nobody and re-plans and re-runs the entire QA
+    suite four times over (`plan-qa`/`qa-story` × 4) before filing the story exhausted.
+    """
+    ostler(fail_runs=99)
+    seen: list[str] = []
+    agent = _Agent(docs, assessment_class="product", qa_fix="blocked", escalate=True)
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Qa(story=STORY), env(), agent)
+
+    counts = agent.counts()
+    # The block is asked of the operator on the first fix, not swallowed.
+    assert counts["resolve-operator"] == 2, counts
+    assert seen == [ESCALATION_NOTE, ESCALATION_NOTE], seen
+    # And each lap that would have re-planned and re-run the whole suite is one the gate
+    # took instead: two full QA laps rather than the baseline four.
+    assert counts["qa-story"] == 2, counts
+    assert counts["plan-qa"] + counts["repair-qa-plan"] == 2, counts
+    assert result.status == "exhausted", result
 
 
 def test_an_escalating_resolver_hands_the_block_to_a_person(
