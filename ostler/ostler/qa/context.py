@@ -235,12 +235,25 @@ def build_context(
     # so one edited line makes all of them file-owned — and none of that is evidence the
     # change touched any particular one. Which of those citations are shared is a property
     # of the whole change set, so it is known here and not inside the loop above.
+    #
+    # A `code:` citation of an exact *symbol* stops localizing for the same reason once
+    # several nodes cite that one symbol. A container — a toolbar component owning a dozen
+    # documented controls, a page component owning every panel on it — is the honest anchor
+    # for each of them, so editing it to render one new control marks all twelve changed.
+    # A story that added a publish button was charged with proving undo, redo, the heading
+    # toggles and the list toggles, which is a plan the change cannot justify and no
+    # planner can write. A node the diff also reached by a symbol only *it* cites keeps its
+    # own reason and stays required, which is what leaves the story's real work owed.
     file_owners: dict[str, set[str]] = {}
+    symbol_owners: dict[str, set[str]] = {}
     for node_id, reasons in direct_reasons.items():
         for reason in reasons:
             if reason["kind"] == "file-owner":
                 file_owners.setdefault(reason["ref"], set()).add(node_id)
+            elif reason["kind"] == "changed-code":
+                symbol_owners.setdefault(reason["ref"], set()).add(node_id)
     shared_files = {ref for ref, owners in file_owners.items() if len(owners) > 1}
+    shared_symbols = {ref for ref, owners in symbol_owners.items() if len(owners) > 1}
 
     # Containment and graph links broaden impact without lexical inference.
     impacted = set(direct_reasons)
@@ -363,7 +376,9 @@ def build_context(
             nodes_by_id[node_id],
             direct_reasons.get(node_id, []),
             journey=False,
-            required=_is_required(node_id, direct_reasons, grounded, shared_files),
+            required=_is_required(
+                node_id, direct_reasons, grounded, shared_files, shared_symbols
+            ),
         )
     ] + [
         obligation
@@ -372,7 +387,9 @@ def build_context(
             nodes_by_id[node_id],
             direct_reasons.get(node_id, []),
             journey=True,
-            required=_is_required(node_id, direct_reasons, grounded, shared_files),
+            required=_is_required(
+                node_id, direct_reasons, grounded, shared_files, shared_symbols
+            ),
         )
     ]
     obligations.sort(key=lambda item: item["id"])
@@ -1004,6 +1021,7 @@ def _is_required(
     direct_reasons: dict[str, list[dict[str, str]]],
     grounded: set[str],
     shared_files: frozenset[str] | set[str] = frozenset(),
+    shared_symbols: frozenset[str] | set[str] = frozenset(),
 ) -> bool:
     """Whether this node's obligations are owed live evidence, or are only context.
 
@@ -1023,11 +1041,18 @@ def _is_required(
     proof for every component documented against it, which is a plan the change cannot
     justify and the planner cannot write. Those nodes stay in the packet as context; a node
     the diff also reached by an exact symbol keeps its own reason and stays required.
+
+    A `changed-code` reason is demoted on the same test and for the same reason. An exact
+    symbol localizes better than a bare file but not perfectly: a container cited by a
+    dozen nodes — the toolbar that owns every control documented against it — marks all of
+    them changed when one new control is added to it. What survives is the node reached by
+    a symbol only it cites, which is the story's own work.
     """
     kinds = {
         reason.get("kind", "")
         for reason in direct_reasons.get(node_id, [])
         if not (reason.get("kind") == "file-owner" and reason.get("ref") in shared_files)
+        and not (reason.get("kind") == "changed-code" and reason.get("ref") in shared_symbols)
     }
     return node_id in grounded and bool(kinds - _CLOSURE_REASON_KINDS)
 

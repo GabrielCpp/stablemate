@@ -166,6 +166,77 @@ def test_a_file_owned_by_one_node_still_owes_live_evidence(tmp_path: Path):
     assert obligation["evidenceRequired"] == "live"
 
 
+def _shared_container_book(tmp_path: Path) -> Path:
+    """Three controls documented against one toolbar component, one of them brand new.
+
+    Every control cites the container symbol, because the container is where it is rendered
+    and the honest anchor for it. Only the new control also cites a symbol of its own.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/demo/screen.md").write_text(
+        "---\ntype: screen\ntitle: Demo Screen\n---\n# Demo Screen\n\n"
+        "- route: /demo\n"
+        "- code:\n\n"
+        "## Undo\n\n"
+        "- role: button\n"
+        "- name: Undo\n"
+        "- code: app/toolbar.ts::Toolbar\n"
+        "- verify: tests/toolbar.test.ts::undoes\n\n"
+        "## Redo\n\n"
+        "- role: button\n"
+        "- name: Redo\n"
+        "- code: app/toolbar.ts::Toolbar\n"
+        "- verify: tests/toolbar.test.ts::redoes\n\n"
+        "## Publish\n\n"
+        "- role: button\n"
+        "- name: Publish\n"
+        "- code: app/toolbar.ts::Toolbar\n"
+        "- code: app/toolbar.ts::PublishButton\n"
+        "- verify: tests/toolbar.test.ts::publishes\n",
+        encoding="utf-8",
+    )
+    toolbar = tmp_path / "app/toolbar.ts"
+    toolbar.write_text("export function Toolbar() { return 'undo redo' }\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    toolbar.write_text(
+        "export function PublishButton() { return 'publish' }\n"
+        "export function Toolbar() { return 'undo redo publish' }\n",
+        encoding="utf-8",
+    )
+    return toolbar
+
+
+def test_a_symbol_cited_by_many_nodes_is_context_not_live_evidence(tmp_path: Path):
+    """Adding one control to a toolbar does not owe live proof of every control on it.
+
+    An exact symbol localizes better than a bare file but not perfectly: a container cited
+    by a dozen nodes marks all of them changed when one new control is rendered inside it.
+    On a real run a story that added a publish button was charged with proving undo, redo
+    and four heading and list toggles it never touched — 70 of the plan's obligations, all
+    held by the one toolbar symbol — and the planner burned its whole validation budget
+    writing scenarios the change could not justify.
+    """
+    _shared_container_book(tmp_path)
+
+    packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
+    assert validate_context(packet) == []
+    by_id = {item["id"]: item for item in packet["obligations"]}
+
+    for node in ("undo", "redo"):
+        obligation = by_id[f"okf:docs/features/demo/screen.md#{node}:contract"]
+        assert obligation["required"] is False, f"{node} is owed live evidence"
+        assert obligation["evidenceRequired"] == "context"
+
+    published = by_id["okf:docs/features/demo/screen.md#publish:contract"]
+    assert published["required"] is True
+    assert published["evidenceRequired"] == "live"
+
+
 def _event_book(tmp_path: Path) -> Path:
     """A changed producer, and an untouched consumer the relation fixpoint walks to.
 
