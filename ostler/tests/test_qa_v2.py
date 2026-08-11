@@ -372,6 +372,46 @@ def test_expect_url_contains_matches_a_url_with_a_non_deterministic_suffix(tmp_p
     driver._expect(_Page(), {"expect": "url", "contains": "#configuration"})
 
 
+def test_an_unmatchable_role_name_pair_says_the_name_is_what_missed():
+    """"element(s) not found" reads identically for a missing element and an impossible name.
+
+    A role that does not take its accessible name from its text content — ``status``, a live
+    region — can never match a ``name:`` drawn from that text, so the assertion burns its whole
+    timeout proving something about the plan, and every reader blames the product. Counting the
+    role on its own is what separates the two.
+    """
+    class _Locator:
+        def __init__(self, count: int) -> None:
+            self._count = count
+
+        def count(self) -> int:
+            return self._count
+
+    class _Page:
+        def __init__(self, present: int) -> None:
+            self.present = present
+
+        def get_by_role(self, role: str, name: str | None = None) -> _Locator:
+            return _Locator(self.present)
+
+    driver = PlaywrightDriver.__new__(PlaywrightDriver)
+    action = {"expect": "visible", "locator": {"role": "status", "name": "Copied."}}
+    original = AssertionError("Locator expected to be visible\nError: element(s) not found")
+
+    enriched = str(driver._enrich(_Page(1), action, original))
+    assert "element(s) not found" in enriched, "the original failure must survive verbatim"
+    assert "matched 1 element(s)" in enriched
+    assert "the name is what missed" in enriched
+
+    same = driver._enrich(_Page(0), action, original)
+    assert same is original, "no element of that role at all is a genuine miss, not a near miss"
+
+    bare = {"expect": "visible", "locator": {"role": "status"}}
+    assert driver._enrich(_Page(1), bare, original) is original
+    css = {"expect": "visible", "locator": {"css": ".copy-feedback"}}
+    assert driver._enrich(_Page(1), css, original) is original
+
+
 def test_a_chromium_context_is_granted_the_clipboard_by_default():
     """A copy journey is only provable if the context can reach the clipboard.
 

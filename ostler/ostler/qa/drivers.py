@@ -474,7 +474,38 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
             "value": lambda: expect(locator).to_have_value(value, timeout=timeout),
             "count": lambda: expect(locator).to_have_count(int(value), timeout=timeout),
         }
-        calls[op]()
+        try:
+            calls[op]()
+        except AssertionError as exc:
+            raise self._enrich(page, action, exc) from None
+
+    def _enrich(self, page: Any, action: dict[str, Any], exc: AssertionError) -> AssertionError:
+        """Say *which half* of a ``role``+``name`` locator missed.
+
+        Playwright reports an unmatched locator as "element(s) not found", which reads the same
+        whether the app never rendered the element or the plan asked for an accessible name the
+        role cannot carry. Only some roles take their name from their text content — a live
+        region such as ``status`` does not — so ``role: status`` / ``name: Copied.`` matches
+        nothing however the app behaves, and then burns the full timeout proving it. Counting
+        the role alone separates the two, and that count is the whole diagnosis.
+        """
+        target = action.get("locator") or {}
+        name = target.get("name")
+        if "role" not in target or not name:
+            return exc
+        role = str(target["role"])
+        try:
+            bare = page.get_by_role(role).count()
+        except Exception:  # noqa: BLE001 - a diagnostic must never mask the assertion it explains
+            return exc
+        if not bare:
+            return exc
+        return AssertionError(
+            f"{exc}\n\nostler: role={role!r} with name={name!r} matched nothing, but role={role!r} "
+            f"alone matched {bare} element(s) — the name is what missed, not the element. Check "
+            f"whether {role!r} takes its accessible name from text content (live-region and "
+            f"container roles do not; drop 'name:' and assert the text instead)."
+        )
 
     def _capture(self, page: Any, action: dict[str, Any], scenario: str, index: int) -> Path:
         op = action["capture"]
