@@ -1,6 +1,6 @@
 [project]
 name = "saddlebag"
-version = "0.1.0"
+version = "1.0.0"
 description = "Runtime credential pool for agent workflows — scan, select, lease and release test identities without touching a secret."
 readme = "README.md"
 requires-python = ">=3.12"
