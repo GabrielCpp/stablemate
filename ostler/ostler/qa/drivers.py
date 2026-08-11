@@ -37,6 +37,14 @@ NAME_FROM_CONTENT = frozenset({
 #: both are rare by construction, and both are the thing being looked for.
 DIAGNOSTICS_LIMIT = 500
 
+#: The shape of ``qa/traces/<scenario>-diagnostics.json``, stamped into every file the driver
+#: writes. A trace is left on disk by the run that produced it, so an agent repairing a plan
+#: routinely reads one written by an older driver — and the shapes differ (``failedRequests``
+#: was once a list of bare url strings). Without this key the mismatch surfaces only as a jq
+#: runtime crash, which reads as "the assertion is wrong" and gets repaired toward the shape
+#: the *stale* file has. A plan can assert on it, and a reader can tell at a glance.
+DIAGNOSTICS_SCHEMA = "browser-diagnostics/1"
+
 
 @dataclass
 class ScenarioResult:
@@ -493,6 +501,7 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
             diagnostics.write_text(
                 json.dumps(
                     {
+                        "schema": DIAGNOSTICS_SCHEMA,
                         "consoleErrors": console_errors,
                         "console": console[:DIAGNOSTICS_LIMIT],
                         "consoleCount": len(console),

@@ -185,7 +185,9 @@ least one machine-executed terminal assertion. `mechanism` is provenance
   pipeline in `head`/`tail`: SIGPIPE kills the producer and fails the step. Slice in the assertion,
   not in the pipeline.
 - Browser diagnostics (`qa/traces/<scenario>-diagnostics.json`) are the whole console and the
-  whole network for that scenario — `consoleErrors` (`error` messages, **text** only — legacy, prefer `console`), `console`
+  whole network for that scenario. `schema` names the file's shape (`browser-diagnostics/1`) —
+  read it before trusting a trace left by an earlier run, since an older driver's shape differs
+  and the mismatch surfaces only as a jq crash. The rest: `consoleErrors` (`error` messages, **text** only — legacy, prefer `console`), `console`
   (every message: `{atMs, type, text, location}` — the `warn` that explains a failure is here and
   not in `consoleErrors`), `pageErrors` (uncaught exceptions — a **different** event from the
   console, invisible in every other key), `requests` (every request issued), `failedRequests`

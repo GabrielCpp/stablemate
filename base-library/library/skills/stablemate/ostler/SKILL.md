@@ -198,6 +198,7 @@ read against each other:
 
 | Key | Holds | Why it exists separately |
 | --- | --- | --- |
+| `schema` | `"browser-diagnostics/1"` | a trace left by an older driver has a different shape; without this the mismatch is only a jq crash, and the plan gets repaired toward the stale shape |
 | `console` / `consoleCount` | every message, with `type`, `text` and `url:line:col` | the `warn`-level hydration or key warning that explains a failure is not an error |
 | `consoleErrors` | error-level text only | legacy, predates `console`; kept because plans assert on it — prefer `console` |
 | `pageErrors` | uncaught exceptions (`name`, `message`) | `pageerror` is a *different event* from the console; a throw during hydration is in no other key |

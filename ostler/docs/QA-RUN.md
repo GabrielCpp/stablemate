@@ -462,6 +462,7 @@ that was executing:
 
 ```json
 {
+  "schema": "browser-diagnostics/1",
   "consoleErrors": ["<console message text>"],
   "console": [{ "atMs": 1500, "type": "warning", "text": "<text>", "location": "<url>:12:4" }],
   "consoleCount": 1,
@@ -473,6 +474,13 @@ that was executing:
   "responseCount": 1
 }
 ```
+
+`schema` names the shape of the file. A trace stays on disk after the run that wrote it, so a
+plan repaired later is often verified against one an older driver produced — and the shapes
+differ (`failedRequests` was once a list of bare url strings). Without the key that mismatch
+appears only as a jq runtime crash, which reads as "the assertion is wrong" and gets repaired
+toward the stale shape. Read it, or assert `.schema == "browser-diagnostics/1"` outright, before
+trusting a trace to prove anything about the plan.
 
 `console` is every message, `consoleErrors` only the `error` ones and by **text** alone —
 it predates `console` and is kept because plans assert on it. Prefer `console`: the warning
