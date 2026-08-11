@@ -276,7 +276,11 @@ def cost(run: str = "", limit: int = 100, as_json: bool = False) -> None:
 
 
 def prices_cmd(
-    reprice: bool = False, run: str = "", all_turns: bool = False, as_json: bool = False
+    reprice: bool = False,
+    run: str = "",
+    all_turns: bool = False,
+    as_json: bool = False,
+    resolve: bool = False,
 ) -> None:
     """Show the rate card behind `cost`'s est$ column, or apply it to stored turns.
 
@@ -285,20 +289,27 @@ def prices_cmd(
     token counts is estimated and the result written to `est_cost_usd` — a column
     beside the reported cost, never folded into it.
 
+    ``--resolve`` handles the other half of the gap: turns the card cannot price
+    because the harness recorded an alias (`sonnet`) rather than a model id. It reads
+    the concrete id out of each turn's own session store and prices with that.
+
     The models it could not price are listed either way. That list is the point: an
     estimate whose coverage is invisible is worse than none, and each line in it is a
     model to add to `prices.toml`.
     """
     import json as _json
 
-    from groom import prices, store
+    from groom import prices, store, turns
 
     table = prices.table()
+    resolution = turns.resolve_models(run=run) if resolve else {}
     result = (
         store.reprice(run=run, missing_only=not all_turns)
         if reprice
         else {"unpriced": store.unpriced_models(run=run)}
     )
+    if resolution:
+        result = {**result, "resolved": resolution}
     if as_json:
         print(_json.dumps({"path": str(prices.prices_path()), **result}, indent=2))
         return
@@ -313,6 +324,14 @@ def prices_cmd(
         )
     lines.append("")
     lines.append(f"overrides: {prices.prices_path()}")
+    if resolution:
+        lines.append(
+            f"resolved {resolution['priced']} of {resolution['considered']} unpriceable"
+            f" turns against {resolution['sessions_read']} session stores"
+            f" — est ${resolution['est_cost_usd']:.2f}"
+        )
+        for mapping, count in resolution["resolved"].items():
+            lines.append(f"  {mapping[:48]:<50}{count:>7} turns")
     if reprice:
         lines.append(
             f"repriced {result['priced']} of {result['considered']} turns"
@@ -693,6 +712,11 @@ def main(argv: list[str] | None = None) -> None:
         help="With --reprice, redo turns that already carry an estimate (after a rate changes).",
     )
     prices_parser.add_argument(
+        "--resolve", action="store_true",
+        help="Price turns whose model is an alias by reading the concrete id from their "
+        "session store.",
+    )
+    prices_parser.add_argument(
         "--json", action="store_true", dest="as_json", help="Machine-readable output."
     )
 
@@ -806,8 +830,8 @@ def main(argv: list[str] | None = None) -> None:
         cost(run=args.run, limit=args.limit, as_json=args.as_json)
     elif args.command == "prices":
         prices_cmd(
-            reprice=args.reprice, run=args.run,
-            all_turns=args.all_turns, as_json=args.as_json,
+            reprice=args.reprice, run=args.run, all_turns=args.all_turns,
+            as_json=args.as_json, resolve=args.resolve,
         )
     elif args.command == "loops":
         loops(

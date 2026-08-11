@@ -11,12 +11,13 @@ Run: uv run pytest tests/test_prices.py
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
-from groom import prices, store
+from groom import prices, store, turns
 
 
 @contextlib.contextmanager
@@ -43,8 +44,17 @@ def _env(overrides: str = "") -> Iterator[Path]:
                     os.environ[key] = value
 
 
-def _turn(span_id: str, model: str, tokens: dict[str, int], cost: float | None = None) -> dict:
+def _turn(
+    span_id: str,
+    model: str,
+    tokens: dict[str, int],
+    cost: float | None = None,
+    session: str = "",
+) -> dict:
     attrs: dict[str, object] = {"model": model, "workhorse.node": "plan-qa"}
+    if session:
+        attrs["session.id"] = session
+        attrs["backend"] = "acme-cli"
     attrs.update({f"usage.{key}": value for key, value in tokens.items()})
     if cost is not None:
         attrs["total_cost_usd"] = cost
@@ -68,6 +78,13 @@ def _est(span_id: str) -> float | None:
         "SELECT est_cost_usd FROM spans WHERE span_id = ?", (span_id,)
     ).fetchone()
     return row["est_cost_usd"]
+
+
+def _priced_model(span_id: str) -> str | None:
+    row = store._connection().execute(
+        "SELECT priced_model FROM spans WHERE span_id = ?", (span_id,)
+    ).fetchone()
+    return row["priced_model"]
 
 
 # ------------------------------------------------------------------------ the table
@@ -198,6 +215,101 @@ def test_node_costs_reports_the_estimate_beside_the_bill_and_never_folded_in():
         # est$ from reading as a total.
         assert row["est_turns"] == 1
         assert row["turns"] == 2
+
+
+# ------------------------------------------------------- resolving an alias to a model
+@contextlib.contextmanager
+def _cli_store(sessions: dict[str, list[str]]) -> Iterator[None]:
+    """A fake CLI whose store answers a session id with a transcript naming models."""
+    from workhorse.runner import transcript as capture
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        for session, models in sessions.items():
+            lines = [json.dumps({"message": {"model": model}}) for model in models]
+            (root / f"{session}.jsonl").write_text("\n".join(lines), encoding="utf-8")
+        previous = capture._STORES.get("acme-cli")
+        capture._STORES["acme-cli"] = lambda session: [
+            path for path in [root / f"{session}.jsonl"] if path.is_file()
+        ]
+        try:
+            yield
+        finally:
+            if previous is None:
+                capture._STORES.pop("acme-cli", None)
+            else:
+                capture._STORES["acme-cli"] = previous
+
+
+def test_an_alias_is_priced_by_the_model_its_session_store_names():
+    with _env(), _cli_store({"s1": ["claude-sonnet-5"]}):
+        store.insert_spans([_turn("i" * 16, "sonnet", _TOKENS, session="s1")])
+        # The span records what the CLI was invoked with, which no rate card can name.
+        assert _est("i" * 16) is None
+
+        result = turns.resolve_models()
+        assert result["priced"] == 1 and result["sessions_read"] == 1
+        assert result["resolved"] == {"sonnet -> claude-sonnet-5": 1}
+        assert _est("i" * 16) == 24.30
+        # And the estimate says which rate produced it, so it can be checked later.
+        assert _priced_model("i" * 16) == "claude-sonnet-5"
+        assert store.unpriced_models() == {}
+
+
+def test_an_alias_a_session_leaves_ambiguous_is_not_priced():
+    with _env(), _cli_store({"s1": ["claude-opus-5", "claude-sonnet-5"]}):
+        store.insert_spans([
+            _turn("j" * 16, "opus", _TOKENS, session="s1"),
+            _turn("k" * 16, "claude", _TOKENS, session="s1"),
+        ])
+        result = turns.resolve_models()
+        # A session may run more than one model, so the alias has to name the candidate:
+        # `opus` resolves, `claude` matches both and a coin flip between two rates is a
+        # number that reads as evidence and is not.
+        assert result["resolved"] == {"opus -> claude-opus-5": 1}
+        assert _est("j" * 16) == 40.50
+        assert _est("k" * 16) is None
+        assert result["unresolved"] == {"claude": 1}
+
+
+def test_a_session_naming_only_models_with_no_rate_stays_unresolved():
+    with _env(), _cli_store({"s1": ["acme/fast-1"]}):
+        store.insert_spans([_turn("l1" + "m" * 14, "fast", _TOKENS, session="s1")])
+        result = turns.resolve_models()
+        # Resolution recovers a *name*; it never invents a rate for one. This turn still
+        # needs a line in prices.toml, and saying so is the whole output.
+        assert result["priced"] == 0 and result["unresolved"] == {"fast": 1}
+        assert _est("l1" + "m" * 14) is None
+
+
+def test_resolution_reads_no_session_for_a_turn_that_records_none():
+    with _env(), _cli_store({"s1": ["claude-sonnet-5"]}):
+        store.insert_spans([_turn("n" * 16, "sonnet", _TOKENS)])
+        result = turns.resolve_models()
+        assert result["sessions_read"] == 0 and result["unresolved"] == {"sonnet": 1}
+
+
+def test_a_dry_run_resolution_writes_nothing():
+    with _env(), _cli_store({"s1": ["claude-sonnet-5"]}):
+        store.insert_spans([_turn("o" * 16, "sonnet", _TOKENS, session="s1")])
+        assert turns.resolve_models(dry_run=True)["priced"] == 1
+        assert _est("o" * 16) is None
+
+
+def test_repricing_a_resolved_turn_uses_the_model_not_the_alias():
+    with _env() as path, _cli_store({"s1": ["claude-haiku-4-5"]}):
+        store.insert_spans([_turn("p" * 16, "haiku", _TOKENS, session="s1")])
+        turns.resolve_models()
+        first = _est("p" * 16)
+        assert first is not None
+
+        path.write_text('[models."claude-haiku-4-5"]\ninput = 2.0\noutput = 10.0\n')
+        prices.reset()
+        result = store.reprice(missing_only=False)
+        # Falling back to the alias here would drop the estimate the resolution earned
+        # and report the turn as unpriceable all over again.
+        assert result["priced"] == 1 and result["unpriced"] == {}
+        assert _est("p" * 16) != first
 
 
 if __name__ == "__main__":

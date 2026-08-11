@@ -291,6 +291,7 @@ rate card, in its own column:
 $ groom prices                    # the rates in force, and what they do not cover
 $ groom prices --reprice          # estimate the turns already in the store
 $ groom prices --reprice --all    # …including ones already estimated, after a rate change
+$ groom prices --resolve          # price alias turns from the model their session names
 ```
 
 **`est$` is never added to `usd`.** They are different claims — what a vendor billed
@@ -300,9 +301,18 @@ covers.
 
 **An unknown model is not priced.** No family guessing and no averaging of neighbours:
 a model the table does not name yields no estimate and is listed as unpriced, so the
-estimate's coverage is a number rather than an impression. Note that a bare alias like
-`sonnet` is not a model id and stays unpriced deliberately — it names whichever version
-was current at the time, which the store cannot recover.
+estimate's coverage is a number rather than an impression.
+
+**An alias is recovered, not guessed** (`--resolve`). A CLI invoked as `--model sonnet`
+stamps that alias on every turn, and no rate card can name it. But the session store the
+turn ran in records what the provider actually *ran*, per assistant message, so the id is
+recoverable rather than lost: `--resolve` reads it from there, prices the tokens with it,
+and stamps `priced_model` so every estimate says which rate produced it. Two conditions
+keep that a recovery — the concrete id has to contain the alias (a session that ran both
+opus and sonnet resolves each to its own model), and exactly one candidate has to match.
+An ambiguous session is left unpriced; a coin flip between two rates reads as evidence
+and is not. Resolution recovers a name and never invents a rate: a session naming only
+models the card does not cover stays unpriced and stays listed.
 
 Groom ships rates for the Anthropic models its own runs use. Everything else goes in
 `~/.config/stablemate/prices.toml` (`$GROOM_PRICES` points elsewhere), where whoever
@@ -530,7 +540,9 @@ The fields most queries want dodge this entirely by being real columns on
 `est_cost_usd` is the odd one out: derived by groom from the token columns and the
 rate card rather than promoted from anything a producer reported (see `groom prices`
 above), so it has no `attrs_json` to fall back to and a span only carries it once
-`--reprice` has run.
+`--reprice` has run. `priced_model` is derived the same way and names the rate that
+produced the estimate — usually the model the turn reported, and for a resolved alias the
+concrete id its session store named.
 
 `resume_generation` counts how many times a run directory has been started. A
 resume reuses the `run_id` and opens a fresh root span, so it is what tells a gap

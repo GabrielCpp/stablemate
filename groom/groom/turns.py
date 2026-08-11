@@ -36,13 +36,14 @@ import logging
 import os
 import shutil
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from workhorse.runner import transcript as capture
 from workhorse.turnkey import VisitKey
 
-from groom import store
+from groom import prices, store
 
 logger = logging.getLogger(__name__)
 
@@ -413,6 +414,118 @@ def backfill(dry_run: bool = False) -> list[dict[str, Any]]:
         if archived:
             store.insert_turns(archived)
     return planned
+
+
+# ---------------------------------------------------------------- model resolution
+
+
+#: Attribute paths a CLI's session record may carry the model under. Both spellings are
+#: read because the record's shape is the CLI's business, not ours.
+_MODEL_KEYS = (("message", "model"), ("model",))
+
+
+def session_models(session_id: str, backend: str = "") -> list[str]:
+    """Every model id this session's own store names, first seen first.
+
+    The turn span says what the *harness was asked for* — which for a CLI invoked as
+    `--model sonnet` is an alias no rate card can name. The session store says what the
+    provider actually ran, per assistant message. That is the difference between
+    recovering a model and guessing one.
+    """
+    files = capture.store_files(backend, session_id) if backend else []
+    if not files:
+        _backend, files = capture.probe_stores(session_id)
+    found: dict[str, None] = {}
+    for path in files:
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            for keys in _MODEL_KEYS:
+                value: Any = record
+                for key in keys:
+                    value = value.get(key) if isinstance(value, dict) else None
+                if isinstance(value, str) and value:
+                    found[value] = None
+    return list(found)
+
+
+def _resolved(alias: str, candidates: list[str]) -> str:
+    """The one model in `candidates` that `alias` names and the rate card prices, else "".
+
+    Two conditions, both load-bearing. The candidate has to *contain* the alias, so a
+    session that ran both opus and sonnet resolves each alias to its own model rather
+    than to whichever appeared first. And exactly one has to match — an ambiguous
+    session is left unpriced, because a coin flip between two rates is the kind of
+    number that reads as evidence and is not.
+    """
+    token = alias.strip().lower()
+    matched = {
+        candidate
+        for candidate in candidates
+        if token and token in candidate.lower() and prices.price_for(candidate) is not None
+    }
+    return matched.pop() if len(matched) == 1 else ""
+
+
+def resolve_models(run: str = "", dry_run: bool = False) -> dict[str, Any]:
+    """Price the turns whose recorded model is an alias, using their session stores.
+
+    A turn the card cannot price is not always a missing rate — often the rate is there
+    and the *name* is not, because the harness recorded what it was invoked with. This
+    reads the concrete id out of the session the turn ran in and prices the tokens with
+    it, stamping `priced_model` so the estimate says which rate produced it.
+
+    Returns what it resolved and what it could not: `unresolved` maps each model still
+    without a rate to its turn count, which is the list that genuinely needs a
+    `prices.toml` entry.
+    """
+    rows = store.unpriceable_turns(run)
+    seen: dict[str, list[str]] = {}
+    updates: list[tuple[float, str, str]] = []
+    resolved: Counter[str] = Counter()
+    unresolved: Counter[str] = Counter()
+    for row in rows:
+        alias, session_id = str(row["model"] or ""), str(row["session_id"] or "")
+        if not session_id:
+            unresolved[alias or "(no model recorded)"] += 1
+            continue
+        if session_id not in seen:
+            seen[session_id] = session_models(session_id, str(row["backend"] or ""))
+        model = _resolved(alias, seen[session_id])
+        estimated = (
+            prices.estimate(
+                model,
+                row["input_tokens"],
+                row["output_tokens"],
+                row["cache_read_tokens"],
+                row["cache_creation_tokens"],
+            )
+            if model
+            else None
+        )
+        if model and estimated is not None:
+            resolved[f"{alias} -> {model}"] += 1
+            updates.append((estimated, model, str(row["span_id"])))
+        else:
+            unresolved[alias or "(no model recorded)"] += 1
+    if not dry_run:
+        store.apply_estimates(updates)
+    return {
+        "considered": len(rows),
+        "sessions_read": len(seen),
+        "priced": len(updates),
+        "est_cost_usd": sum(value for value, _model, _span in updates),
+        "resolved": dict(resolved.most_common()),
+        "unresolved": dict(unresolved.most_common()),
+    }
 
 
 # ------------------------------------------------------------------------- reading

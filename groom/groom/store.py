@@ -166,6 +166,7 @@ _ADDED_SPAN_COLUMNS = (
     ("head_start", "TEXT"),
     ("head_end", "TEXT"),
     ("est_cost_usd", "REAL"),
+    ("priced_model", "TEXT"),
 )
 
 #: The same, for `logs`. A log record carries the head observed when it was *emitted*
@@ -205,7 +206,12 @@ _PROMOTED_SPAN_FIELDS = ("pid", "resume_generation")
 #: what a vendor billed and what a rate card says are different claims, and a sum of the
 #: two is a number no one can act on. NULL when the model has no published rate here,
 #: which is what makes the unpriced share of a report countable.
-_DERIVED_SPAN_COLUMNS = ("est_cost_usd",)
+#:
+#: `priced_model` is the other half of that claim: *which* rate produced the estimate.
+#: It is usually the model the turn reported, but not always — a turn whose harness
+#: recorded an alias (`sonnet`) is priced by the concrete id its session store names, and
+#: an estimate whose provenance is invisible is one nobody can check or correct.
+_DERIVED_SPAN_COLUMNS = ("est_cost_usd", "priced_model")
 
 #: Every column `insert_spans` writes past the plain ones, in order.
 _SPAN_VALUE_COLUMNS = (
@@ -237,11 +243,13 @@ def _promoted(span: dict[str, Any], attrs: dict[str, Any]) -> tuple[Any, ...]:
             values[field] = None if raw is None else int(raw)
         except (TypeError, ValueError):
             values[field] = None
-    values["est_cost_usd"] = _estimated(attrs, values)
+    model = str(attrs.get("model") or "")
+    values["est_cost_usd"] = _estimated(model, values)
+    values["priced_model"] = model if values["est_cost_usd"] is not None else None
     return tuple(values[column] for column in _SPAN_VALUE_COLUMNS)
 
 
-def _estimated(attrs: dict[str, Any], tokens: dict[str, Any]) -> float | None:
+def _estimated(model: str, tokens: dict[str, Any]) -> float | None:
     """This turn's tokens at the rate card, or NULL when the model is not in it.
 
     Reads the token counts already cast for the promoted columns rather than the raw
@@ -249,7 +257,7 @@ def _estimated(attrs: dict[str, Any], tokens: dict[str, Any]) -> float | None:
     disagree about what the turn used.
     """
     return prices.estimate(
-        str(attrs.get("model") or ""),
+        model,
         tokens.get("input_tokens"),
         tokens.get("output_tokens"),
         tokens.get("cache_read_tokens"),
@@ -473,8 +481,10 @@ def unpriced_models(run: str = "") -> dict[str, int]:
         params.append(run)
     conn = _connection()
     rows = conn.execute(
-        "SELECT json_extract(attrs_json, '$.model') AS model, COUNT(*) AS turns"  # noqa: S608
-        f" FROM spans WHERE {' AND '.join(clauses)} GROUP BY model",
+        # By the rate that priced it where there is one, so a turn whose alias was
+        # resolved against its session store stops reading as a gap in the card.
+        "SELECT COALESCE(priced_model, json_extract(attrs_json, '$.model')) AS model,"  # noqa: S608
+        f" COUNT(*) AS turns FROM spans WHERE {' AND '.join(clauses)} GROUP BY model",
         params,
     ).fetchall()
     found = Counter[str]()
@@ -505,37 +515,76 @@ def reprice(run: str = "", missing_only: bool = True) -> dict[str, Any]:
         params.append(run)
     if missing_only:
         clauses.append("est_cost_usd IS NULL")
-    conn = _connection()
-    rows = conn.execute(
-        "SELECT span_id, json_extract(attrs_json, '$.model') AS model,"  # noqa: S608
-        f" {_input} AS input_tokens, {_output} AS output_tokens,"
-        f" {_cache_read} AS cache_read_tokens, {_cache_write} AS cache_creation_tokens"
-        f" FROM spans WHERE {' AND '.join(clauses)}",
-        params,
-    ).fetchall()
-    updates: list[tuple[float, str]] = []
+    rows = _estimable_turns(clauses, params)
+    updates: list[tuple[float, str, str]] = []
     unpriced: Counter[str] = Counter()
     for row in rows:
-        model = str(row["model"] or "")
-        estimated = prices.estimate(
-            model,
-            row["input_tokens"],
-            row["output_tokens"],
-            row["cache_read_tokens"],
-            row["cache_creation_tokens"],
-        )
+        # `priced_model` first: a turn whose alias was resolved against its session store
+        # must reprice at the concrete model's rate, not fall back to the alias the
+        # harness reported and lose the estimate it already has.
+        model = str(row["priced_model"] or row["model"] or "")
+        estimated = _estimated(model, dict(row))
         if estimated is None:
             unpriced[model or "(no model recorded)"] += 1
             continue
-        updates.append((estimated, row["span_id"]))
-    conn.executemany("UPDATE spans SET est_cost_usd = ? WHERE span_id = ?", updates)
-    conn.commit()
+        updates.append((estimated, model, row["span_id"]))
+    apply_estimates(updates)
     return {
         "considered": len(rows),
         "priced": len(updates),
-        "est_cost_usd": sum(value for value, _span in updates),
+        "est_cost_usd": sum(value for value, _model, _span in updates),
         "unpriced": dict(unpriced.most_common()),
     }
+
+
+def _estimable_turns(clauses: list[str], params: list[Any]) -> list[sqlite3.Row]:
+    """Turns matching `clauses`, with everything pricing one needs already coalesced."""
+    return (
+        _connection()
+        .execute(
+            "SELECT span_id, priced_model,"  # noqa: S608
+            " json_extract(attrs_json, '$.model') AS model,"
+            " json_extract(attrs_json, '$.backend') AS backend,"
+            " json_extract(attrs_json, '$.\"session.id\"') AS session_id,"
+            f" {_input} AS input_tokens, {_output} AS output_tokens,"
+            f" {_cache_read} AS cache_read_tokens, {_cache_write} AS cache_creation_tokens"
+            f" FROM spans WHERE {' AND '.join(clauses)}",
+            params,
+        )
+        .fetchall()
+    )
+
+
+def unpriceable_turns(run: str = "") -> list[dict[str, Any]]:
+    """Turns with tokens, no estimate, and a model no rate covers.
+
+    The input to any recovery that goes looking outside the span for what the model
+    really was — the turn's own attributes have already been shown not to answer.
+    """
+    clauses = [_ESTIMABLE, "est_cost_usd IS NULL"]
+    params: list[Any] = []
+    if run:
+        clauses.append("run_id = ?")
+        params.append(run)
+    return [
+        dict(row)
+        for row in _estimable_turns(clauses, params)
+        if prices.price_for(str(row["model"] or "")) is None
+    ]
+
+
+def apply_estimates(updates: list[tuple[float, str, str]]) -> int:
+    """Write `(est_cost_usd, priced_model, span_id)` triples; rows touched.
+
+    The model is written with the estimate and never separately: a stored estimate whose
+    rate cannot be named is one no later pass can recompute or disprove.
+    """
+    conn = _connection()
+    conn.executemany(
+        "UPDATE spans SET est_cost_usd = ?, priced_model = ? WHERE span_id = ?", updates
+    )
+    conn.commit()
+    return len(updates)
 
 
 def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
