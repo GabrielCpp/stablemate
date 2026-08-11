@@ -830,8 +830,9 @@ def test_a_plan_that_parses_but_does_not_test_the_story_is_sent_back(
     A reviewer that never relents used to spend the whole judgement budget here and end the
     story with no QA verdict — the outcome its own brief calls strictly worse than QA run
     against a merely adequate plan. `MAX_BLOCKING_PLAN_REVIEWS` caps the refusals it can
-    make stick; the third worklist is still repaired, once and cheaply, and then the plan
-    goes to the stack. So the gate's job is intact and its failure mode is bounded.
+    make stick, and once they are spent the gate is not entered again: a third pass could
+    raise nothing that would change where the plan goes, so the plan goes to the stack
+    without paying for it. The gate's job is intact and its failure mode is bounded.
     """
     okf = ostler()
     agent = _Agent(docs, review="revise")
@@ -841,12 +842,44 @@ def test_a_plan_that_parses_but_does_not_test_the_story_is_sent_back(
     assert result.status == "passed", result
     assert agent.counts() == {
         "plan-qa": 1,
-        "repair-qa-plan": 3,
-        "review-qa-plan": 3,
+        "repair-qa-plan": 2,
+        "review-qa-plan": 2,
         "qa-story": 1,
         "audit-qa": 1,
     }, agent.counts()
     assert okf.runs == 1
+
+
+def test_the_plan_review_is_not_entered_once_its_refusals_stop_blocking(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The cap is on entering the gate, not on the verdict it returns.
+
+    Demoting the findings of a pass that has already been paid for leaves the expensive half
+    in place: `review-qa-plan` runs at `power="high"`, and past the threshold every finding it
+    can raise is demoted to polish whatever `kind` it claims — so the plan goes to the stack on
+    that lap no matter what comes back, and the demoted worklist then buys a mandatory
+    `repair-qa-plan` turn producing an edit nothing downstream gates on. A live story paid for
+    eight review passes and five repairs that way. Both halves are dropped by declining to
+    enter the node at all.
+
+    Asserted against the constant rather than a literal: the number of blocking passes is a
+    tuning decision, but "no pass beyond them" is the invariant.
+    """
+    ostler()
+    agent = _Agent(docs, review="revise")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    counts = agent.counts()
+    assert counts["review-qa-plan"] == Qa.MAX_BLOCKING_PLAN_REVIEWS, counts
+    # And no plan turn beyond the ones those refusals charged: the demoted polish lap the
+    # skipped pass would have demanded is gone with it.
+    assert agent.planned() == Qa.MAX_BLOCKING_PLAN_REVIEWS + 1, counts
 
 
 def test_a_refusal_that_is_only_nits_is_repaired_without_a_second_review(
@@ -962,14 +995,14 @@ def test_each_plan_turn_is_told_everything_the_reviewer_already_refused(
 
     assert result.status == "passed", result
     briefs = [args["prior_plan_reviews"] for args in agent.plan_args()]
-    assert len(briefs) == 4, briefs
+    assert len(briefs) == 3, briefs
     assert briefs[0] == "", "the first draft has been refused nothing"
     # Each later turn carries every refusal so far, oldest first and numbered by its pass —
     # each one the composed finding list, not the pass's prose summary.
     assert briefs[1].startswith("1. (plan-review pass 1) R1 [plan/coverage] scenario "), briefs[1]
-    assert [line.split(")")[0] + ")" for line in briefs[3].splitlines() if line[:1].isdigit()] == [
-        f"{index}. (plan-review pass {index})" for index in range(1, 4)
-    ], briefs[3]
+    assert [line.split(")")[0] + ")" for line in briefs[2].splitlines() if line[:1].isdigit()] == [
+        f"{index}. (plan-review pass {index})" for index in range(1, 3)
+    ], briefs[2]
 
 
 def test_schema_repairs_cannot_starve_the_semantic_plan_gate(
@@ -985,9 +1018,9 @@ def test_schema_repairs_cannot_starve_the_semantic_plan_gate(
     and gave up "after 4 total QA-plan repair" — which reads to a triaging human as a plan
     nobody could make work, when the plan had been read for coverage exactly once.
 
-    Three schema repairs still buy the reviewer every critical read it is entitled to: two
-    that can refuse and the demoted third, which repairs and goes on. A typo has never been
-    evidence about coverage, and it must not silently buy fewer coverage reads.
+    Three schema repairs still buy the reviewer every critical read it is entitled to: both
+    passes that can refuse. A typo has never been evidence about coverage, and it must not
+    silently buy fewer coverage reads.
     """
     okf = ostler(plan_invalid=3)
     agent = _Agent(docs, review="revise")
@@ -997,8 +1030,8 @@ def test_schema_repairs_cannot_starve_the_semantic_plan_gate(
     assert result.status == "passed", result
     assert agent.counts() == {
         "plan-qa": 1,
-        "repair-qa-plan": 6,
-        "review-qa-plan": 3,
+        "repair-qa-plan": 5,
+        "review-qa-plan": 2,
         "qa-story": 1,
         "audit-qa": 1,
     }, agent.counts()
@@ -1046,11 +1079,11 @@ def test_the_stacked_plan_budgets_cannot_multiply(
 
     assert result.status == "exhausted", result
     assert result.spent == "6 total QA-plan lap", result.spent
-    # Nine author turns for six charged laps: the draft, plus the two polish repairs a demoted
-    # refusal buys. Those are deliberately free — each replaces a `power="high"` review pass
-    # with a `power="low"` edit, so charging them to the ceiling would price the cheap lap as
-    # if it were the expensive one it exists to avoid.
-    assert agent.planned() == Qa.MAX_TOTAL_PLAN_LAPS + 3, agent.counts()
+    # Seven author turns for six charged laps: the draft, plus the one polish repair the
+    # reviewer's last refusal buys. That one is deliberately free — it replaces a
+    # `power="high"` review pass with a `power="low"` edit, so charging it to the ceiling
+    # would price the cheap lap as if it were the expensive one it exists to avoid.
+    assert agent.planned() == Qa.MAX_TOTAL_PLAN_LAPS + 1, agent.counts()
 
 
 def test_a_refusal_only_the_stack_could_fix_does_not_cost_a_replan(
@@ -1229,11 +1262,12 @@ def test_three_review_revisions_leave_one_post_run_repair(
 ) -> None:
     """The judgement budget the reviewer did not spend is still there for a post-run finding.
 
-    The reviewer's third refusal is demoted rather than charged, so two of the four judgement
-    repairs remain when the runner comes back failing — and the story reaches a verdict with
-    one still unspent. That is the whole point of capping the review: the budget exists to
-    buy repairs of a plan that has been *executed*, and the treadmill spent it before the
-    plan had run once.
+    The reviewer's third refusal is never asked for, so two of the four judgement repairs
+    remain when the runner comes back failing — and the story reaches a verdict with one
+    still unspent. That is the whole point of capping the review: the budget exists to buy
+    repairs of a plan that has been *executed*, and the treadmill spent it before the plan
+    had run once. The post-run repair is not reviewed either: the cap is on the gate, not on
+    the refusal that reached it, so nothing re-enters it once it is spent.
     """
     okf = ostler(fail_runs=1)
     agent = _Agent(docs, revise_plans=3)
@@ -1241,11 +1275,11 @@ def test_three_review_revisions_leave_one_post_run_repair(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
-    # Five plan turns: two charged reviewer repairs, the demoted third, and the post-run one.
+    # Four plan turns: the draft, the two charged reviewer repairs, and the post-run one.
     assert agent.counts() == {
         "plan-qa": 1,
-        "repair-qa-plan": 4,
-        "review-qa-plan": 4,
+        "repair-qa-plan": 3,
+        "review-qa-plan": 2,
         "qa-story": 2,
         "audit-qa": 1,
     }, agent.counts()
@@ -1288,10 +1322,12 @@ def test_a_plan_loop_give_up_leaves_the_reviewers_finding_on_disk(
     text = giveup.read_text(encoding="utf-8")
     assert "4 QA-plan repair" in text, text
     # And every earlier refusal beside it: two refusals that say the same thing mean the plan
-    # turn was told and did not comply, which is a different triage from four fresh findings.
+    # turn was told and did not comply, which is a different triage from two fresh findings.
     assert "Plan review — every refusal, in order" in text, text
-    for index in range(1, 4):
+    for index in range(1, 3):
         assert f"**Pass {index}.** R{index} [plan/coverage] scenario " in text, text
+    # Two is all there are: the gate is not entered once its refusals stop being blocking.
+    assert "**Pass 3.**" not in text, text
 
 
 def test_the_give_up_document_is_typed_like_any_other_spec_doc(tmp_path: Path) -> None:
@@ -2078,8 +2114,8 @@ def test_the_worklist_a_review_pass_is_scored_against_survives_a_resume(
 ) -> None:
     """`plan_review_progress`: the budget counters say a story was expensive, not why.
 
-    `plan_review_rework=3` is the same number whether the author was handed the same demand
-    three times and ignored it, or closed each one and was met with a new one. Those want
+    `plan_review_rework=2` is the same number whether the author was handed the same demand
+    twice and ignored it, or closed each one and was met with a new one. Those want
     opposite interventions — one is a plan turn that will not comply, the other a reviewer
     that will not converge — and until this was recorded nothing in the run could tell them
     apart. The treadmill's own signature is `churned`: the same number outstanding each pass,
@@ -2101,5 +2137,5 @@ def test_the_worklist_a_review_pass_is_scored_against_survives_a_resume(
 
     checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     loop = read_resume(checkpoint).params["loop"]
-    assert loop["plan_review_ids"] == ["R3"], loop
+    assert loop["plan_review_ids"] == ["R2"], loop
     assert loop["plan_review_progress"] == "", loop

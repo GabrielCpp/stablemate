@@ -299,14 +299,15 @@ class Qa(Workflow):
     #: still being repaired on the seventh lap is not converging, and the six laps before it
     #: are the evidence.
     MAX_TOTAL_PLAN_LAPS: ClassVar[int] = 6
-    #: Not a spend ceiling — a demotion threshold, and the only one of these that changes what
-    #: a finding *means* rather than how many are affordable. Past this many plan-review
-    #: reworks, a `plan` finding no longer blocks whatever `kind` it claims to be: it is
-    #: repaired once and the flow goes to the stack. The reviewer had two independent passes to
-    #: name a coverage gap, and a gap that first appears after two repairs is far likelier a
-    #: fresh nit than a newly created hole — with the `audit` gate still standing downstream
-    #: either way. This is the half of the fix that does not depend on the reviewer labelling
-    #: honestly, which is what makes the loop terminate rather than merely usually terminate.
+    #: Not a spend ceiling — a review *ceiling*, and the only one of these that changes what a
+    #: finding *means* rather than how many are affordable. Past this many plan-review reworks
+    #: no `plan` finding could block whatever `kind` it claimed to be, so `_validated` stops
+    #: entering `review_plan` and the flow goes straight to the stack. The reviewer had two
+    #: independent passes to name a coverage gap, and a gap that first appears after two
+    #: repairs is far likelier a fresh nit than a newly created hole — with the `audit` gate
+    #: still standing downstream either way. This is the half of the fix that does not depend
+    #: on the reviewer labelling honestly, which is what makes the loop terminate rather than
+    #: merely usually terminate.
     MAX_BLOCKING_PLAN_REVIEWS: ClassVar[int] = 2
     MAX_SETUP_REWORKS: ClassVar[int] = 2
     MAX_REGRESSION_FIXES: ClassVar[int] = 3
@@ -546,6 +547,15 @@ class Qa(Workflow):
         nothing and is exactly the re-entry that made the nit loop expensive. The flag is
         cleared as it is spent, so the next plan turn — a post-run finding, an audit
         refutation — is reviewed normally.
+
+        A reviewer that has spent `MAX_BLOCKING_PLAN_REVIEWS` is skipped for the same
+        arithmetic. Past the threshold every finding it can raise is demoted to polish
+        whatever `kind` it claims, so the plan reaches `stack` on this lap no matter what
+        comes back — and the demoted worklist then forces a mandatory `repair_plan` turn to
+        produce an edit nothing downstream gates on. Entering a `power="high"` gate whose
+        verdict cannot change the route is the expense, not the reviewer's judgement; the
+        demotion branch in the result handler still covers the lap that *reaches* the
+        threshold, which is the last one whose findings are worth repairing.
         """
         loop = loop.cleared()
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
@@ -562,6 +572,13 @@ class Qa(Workflow):
                 return Continue(
                     validation, self.stack, loop=loop.update(plan_polish_pending=False)
                 )
+            if loop.plan_review_rework >= self.MAX_BLOCKING_PLAN_REVIEWS:
+                self.logger.info(
+                    "QA-plan reviewer has spent its blocking budget — going to the stack "
+                    "without another review",
+                    extra={"activity": True},
+                )
+                return Continue(validation, self.stack, loop=loop)
             return Continue(validation, self.review_plan, loop=loop)
         return self._guard_plan_validation(validation, loop)
 
@@ -596,7 +613,10 @@ class Qa(Workflow):
         reviewer's own brief calls strictly worse than QA run against a merely adequate plan.
         So a non-blocking worklist is still repaired, once, and then goes to the stack rather
         than back through here. `MAX_BLOCKING_PLAN_REVIEWS` is the same rule applied to a
-        reviewer that labels a nit `coverage` to keep its refusal.
+        reviewer that labels a nit `coverage` to keep its refusal — but it is enforced by
+        `_validated` declining to enter this node at all, because a gate whose every finding
+        would be demoted cannot change where the plan goes next, and this is the most
+        expensive node in the plan lane.
         """
         review = self.agent(
             "prompts/review-qa-plan.md",
@@ -628,14 +648,8 @@ class Qa(Workflow):
         # After the structural check, so a malformed refusal fails on its shape rather than
         # being quietly routed elsewhere and recorded as an approval.
         routed = _route_findings(review.findings)
-        # Past the threshold every plan finding is demoted, whatever `kind` it claims. See
-        # `MAX_BLOCKING_PLAN_REVIEWS`.
-        demoted = loop.plan_review_rework >= self.MAX_BLOCKING_PLAN_REVIEWS
-        blocking = [] if demoted else routed.plan_blocking
-        # Demotion moves the whole plan worklist into the polish lane rather than discarding
-        # it: the repair is cheap and the correction is worth keeping, it just no longer buys
-        # another pass through this gate.
-        polish = routed.plan if demoted else routed.plan_polish
+        blocking = routed.plan_blocking
+        polish = routed.plan_polish
         # A refusal the plan cannot act on — or that names nothing that would let the story
         # ship untested — is not a refusal of the plan.
         approved = review.disposition == "approved" or not blocking
