@@ -49,8 +49,20 @@ scenario, say so in `qa-plan.md` rather than leaving it silently unaddressed for
 Read all of:
 
 - the story and its acceptance criteria;
-- `<spec_dir>/qa-okf-context.json` as the machine-readable impact authority;
-- `<spec_dir>/qa-okf-context.md` as its human rendering;
+- the OKF impact packet, through `ostler qa context-show` rather than by reading it whole —
+  the closure is deliberately broad, so on a large book the packet runs to hundreds of
+  kilobytes and a plain read of it truncates. Start with what you owe:
+
+  ```bash
+  ostler qa context-show --spec <spec_dir> --required
+  ostler qa context-show --spec <spec_dir> --required --ids-only   # just the ids, for `covers`
+  ostler qa context-show --spec <spec_dir> --context-only --node <surface>  # the rest, in slices
+  ```
+
+  `--node` matches a substring of the node path, `--kind` an exact obligation kind, and
+  `--offset`/`--limit` page a long section. `--json` emits the same slice as records. The
+  built files — `<spec_dir>/qa-okf-context.json`, the machine-readable impact authority, and
+  `<spec_dir>/qa-okf-context.md`, its rendering — remain beside the spec for a targeted look;
 - `plan-context.json`, implementation plans, review results, and applicable QA skills;
 - `docs/qa/lessons.md`, when present; and
 - static inputs under `<spec_dir>/qa-inputs/`, when present.
@@ -250,7 +262,8 @@ plan; do not start them here.
 
 Each AC and required OKF obligation must resolve in `covers` and have an executable
 assertion. A source check, unit test, build, or narrative is not behavioral evidence.
-An obligation marked `"required": false` (rendered `_(context only — not owed evidence)_`)
+An obligation marked `"required": false` — the ones `--context-only` selects, rendered under
+`## Context — reached by closure, not owed evidence` —
 names something this story neither built nor touched — an endpoint with no implementation
 behind it, a screen no change reached. Read it for context; do not write a scenario against
 it, and do not invent a route to reach it.
