@@ -191,6 +191,26 @@ workflow adapters must route that as `invalid`, not crash. Plan validation repor
 recreation of `qa/`, service/driver cleanup, `qa-run.ndjson`, `run-manifest.json`, and
 evidence. `qa-plan.yml` and static `qa-inputs/` remain outside disposable `qa/`.
 
+A browser scenario also leaves `qa/traces/<scenario>-diagnostics.json` (manifest kind
+`browser-diagnostics`) — the whole console and the whole network for that scenario, every
+record stamped with `atMs`, the run-relative offset `qa-run.ndjson` also carries, so the two
+read against each other:
+
+| Key | Holds | Why it exists separately |
+| --- | --- | --- |
+| `console` / `consoleCount` | every message, with `type`, `text` and `url:line:col` | the `warn`-level hydration or key warning that explains a failure is not an error |
+| `consoleErrors` | error-level text only | legacy, predates `console`; kept because plans assert on it — prefer `console` |
+| `pageErrors` | uncaught exceptions (`name`, `message`) | `pageerror` is a *different event* from the console; a throw during hydration is in no other key |
+| `requests` / `requestCount` | every request issued | a request in here with no response and no failure was still in flight — a hung endpoint is in no other key |
+| `responses` / `responseCount` | every response, with `status` | the only place a status appears; `[.responses[] \| select(.status >= 500)] \| length == 0` is how a 5xx is caught |
+| `failedRequests` | requests that never completed, with `errorText` | `requestfailed` never fires for a completed 5xx; gate on `select(.errorText != "net::ERR_ABORTED")` or an app cancelling its own fetch goes red |
+
+`console`, `requests` and `responses` are capped at 500 records and the `*Count` key reports
+the true total — compare them before reading a list as complete. `pageErrors` and
+`failedRequests` are uncapped. No response body and no headers are here; assert on those
+through a `command` step with `expect_http`. Full reference: stablemate's
+`ostler/docs/QA-RUN.md`.
+
 **Schema-checked workflow artifacts** (a workflow's plan/review/qa docs under `docs/specs/<slug>/`)
 ```bash
 ostler artifact scaffold <kind> --spec DIR [--force]   # write the kind's skeleton into the spec dir
