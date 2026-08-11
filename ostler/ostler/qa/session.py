@@ -592,8 +592,19 @@ def _run_command(
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
 ) -> tuple[bytes, bytes, int]:
+    # `pipefail`, because a QA step is an oracle and a pipeline's exit status is only its
+    # *last* stage. `jq '.responses[]?' out.json | wc -l` exits 0 and prints `0` when jq
+    # never parsed the file at all, so an `assert_count: 0` on that step passes having
+    # observed nothing — the assertion agrees with a broken command and with a working one
+    # that found nothing, and the run reports a green step either way. With pipefail the
+    # upstream failure reaches the driver, which already fails a step on a non-zero exit.
+    #
+    # The cost is the SIGPIPE case: a pipeline ending in `head` kills its producer, and
+    # that now fails the step. No plan template or fixture in this tree ends a pipeline
+    # that way, and a QA command that discards most of its own output is not the shape we
+    # want assertions built on, so the trade is taken deliberately.
     result = subprocess.run(
-        cmd,
+        f"set -o pipefail\n{cmd}",
         shell=True,  # noqa: S603 — agent-authored command, explicit user intent
         executable="/bin/bash",
         capture_output=True,

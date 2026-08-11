@@ -94,6 +94,23 @@ class CommandDriver(QaDriver):
             )
             if record["exit_code"] != 0:
                 failures += 1
+                # Recorded as an assertion, not just counted. `qa-evidence.json` is built by
+                # aggregating the log's `assert` records over what each one covers, so a
+                # failure with no record is invisible to it: a step whose command died but
+                # whose `assert_contains` still matched the truncated output published the
+                # obligation as Pass under an `overall: Fail`. The exit code is the most
+                # basic claim the step makes, so it belongs in the log as one.
+                self.session.run_assert(
+                    f"{scenario_id}-{index}-exit",
+                    "command exited 0",
+                    "field_equal",
+                    {"a": str(record["exit_code"]), "b": "0"},
+                    root=self.root,
+                    scenario=scenario_id,
+                    driver="command",
+                    action=index,
+                    covers=covers,
+                )
             for check, expected in _command_assertions(action):
                 assertions += 1
                 expected = self.session.expand(str(expected), self.variables)

@@ -120,6 +120,31 @@ def test_v2_command_run_owns_log_manifest_and_evidence(tmp_path: Path):
     assert _qa_evidence_vet(evidence, spec, tmp_path) == []
 
 
+def test_a_failing_upstream_pipeline_stage_fails_the_step(tmp_path: Path):
+    """An assertion that cannot tell a broken command from a true negative is not an oracle.
+
+    A pipeline's exit status is its last stage, so `jq <missing-file> | wc -l` exits 0 and
+    prints `0` whether jq read an empty result or never ran at all — and `assert_contains: "0"`
+    on that step passes having observed nothing. `set -o pipefail` is what lets the driver's
+    non-zero-exit path see the upstream failure.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    action = data["scenarios"][0]["actions"][0]
+    action["cmd"] = "cat ./absent-upstream.json | wc -l"
+    action["assert_contains"] = "0"
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_run(plan, root=tmp_path)
+
+    assert outcome.status == "failed"
+    evidence = json.loads((spec / "qa-evidence.json").read_text(encoding="utf-8"))
+    assert evidence["obligations"][0]["verdict"] == "Fail"
+
+
 def test_one_failing_assertion_sinks_the_item_it_covers(tmp_path: Path):
     """Evidence is a summary of the run log, so it may not disagree with the run log.
 

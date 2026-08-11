@@ -441,6 +441,31 @@ That still fails, because the plan cannot prove what it claims, but the assertio
 differently: one is a plan omission, the other looks like the service answering wrongly, and
 mistaking the first for the second sends a QA loop off repairing working code.
 
+Every `cmd` runs under `bash` with **`set -o pipefail`**, so a pipeline fails when *any*
+stage fails rather than only its last. This is what stops an assertion passing vacuously:
+`jq '.responses[]?' out.json | wc -l` exits 0 and prints `0` when `jq` never parsed the
+file at all, and an `assert_count: 0` on that step then agrees with a broken command
+exactly as it agrees with a working one that found nothing. A step's exit code is recorded
+as an assertion in its own right (`command exited 0`), so a step that dies cannot report
+the obligations it covers as Pass. The one thing to avoid is ending a pipeline in `head` or
+`tail`, which kills the producer with SIGPIPE and now fails the step — capture the full
+output and slice it in the assertion instead.
+
+### Browser diagnostics (`qa/traces/<scenario>-diagnostics.json`)
+
+The Playwright driver writes one diagnostics file per scenario, registered in the manifest
+under kind `browser-diagnostics`. Its shape is exactly two keys, and nothing else:
+
+```json
+{ "consoleErrors": ["<console message text>"], "failedRequests": ["<request url>"] }
+```
+
+`consoleErrors` carries message **text** only, `failedRequests` carries **URLs** only. The
+driver attaches no `response` or `requestfinished` listener at all, so there is no status
+code, no response body, no headers and no timing anywhere in this file. A plan that asserts
+on any of those is asserting on a key that never exists — assert against HTTP through a
+`command` step with `expect_http` instead.
+
 ### Substitution rules
 
 - `{{key}}` in any `cmd` or assertion string is replaced with the value captured from a
