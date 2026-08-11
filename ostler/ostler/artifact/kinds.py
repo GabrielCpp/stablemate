@@ -167,6 +167,27 @@ def _run_log_tally(spec_dir: Path) -> tuple[int, int]:
     return (passed, failed)
 
 
+def _latest_session_run_id(spec_dir: Path) -> str:
+    """The runId the newest ``session_start`` in the run log opened with; "" if there is none.
+
+    Deliberately tolerant of a malformed log: a line that will not parse is `_strict_ndjson`'s
+    to report, and this helper exists to answer one question — which execution do the files in
+    `qa/` belong to. No log, no answer, and no problem raised from here.
+    """
+    log_path = spec_dir / "qa" / "qa-run.ndjson"
+    if not log_path.is_file():
+        return ""
+    run_id = ""
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(record, dict) and record.get("kind") == "session_start":
+            run_id = str(record.get("run_id", "")).strip()
+    return run_id
+
+
 def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noqa: C901
     if not isinstance(data, dict):
         return ["qa-evidence.json must be a JSON object."]
@@ -297,6 +318,23 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
     run_id = str(data.get("runId", "")).strip()
     if overall == "pass" and not run_id:
         problems.append("overall Pass requires a non-empty runner-produced runId.")
+
+    # …and *every* verdict, pass or not, has to describe the run that is on disk. The two
+    # bindings below this one only fire once `runId` is non-empty and only reach the
+    # manifest, so a `qa-evidence.json` left behind by an earlier execution vetted clean on
+    # the strength of being self-consistent: `overall: Fail` beside seven `Pass` criteria,
+    # written by a version of the aggregator since fixed, sat beside a fresh run log for
+    # hours. Downstream that costs a full turn every pass — the assessor cannot route on a
+    # verdict the log contradicts, so it re-derives the whole thing from `qa-run.ndjson`.
+    # The log's own `session_start` is the authority: the runner rewrites `qa/` per run, so
+    # the newest one names the only execution these files may describe.
+    started = _latest_session_run_id(spec_dir)
+    if started and started != run_id:
+        problems.append(
+            f"qa-evidence runId '{run_id or '(missing)'}' is not the run on disk — "
+            f"qa/qa-run.ndjson opened with runId '{started}'. This file is left over from an "
+            f"earlier execution; re-run the plan rather than reading it."
+        )
     if run_id:
         manifest_path = spec_dir / "qa" / "run-manifest.json"
         if not manifest_path.is_file():

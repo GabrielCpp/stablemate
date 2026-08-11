@@ -218,6 +218,38 @@ def test_qa_evidence_runid_manifest_coherence(tmp_path: Path):
     assert any("exact path" in p for p in problems)
 
 
+def test_qa_evidence_left_over_from_an_earlier_run_is_rejected(tmp_path: Path):
+    """A verdict has to describe the run that is on disk, whatever the verdict is.
+
+    The two bindings above only fire once `runId` is non-empty, and only reach the manifest.
+    So a `qa-evidence.json` an earlier execution left behind vetted clean on the strength of
+    being internally consistent — the observed one paired `overall: Fail` with seven `Pass`
+    criteria, written by a version of the aggregator since fixed, and sat beside a fresh run
+    log for hours. Downstream that costs a turn every pass: the assessor cannot route on a
+    verdict its own log contradicts, so it re-derives the lot from `qa-run.ndjson`.
+
+    The log's `session_start` is the authority — the runner rewrites `qa/` per run — and a
+    blank `runId` must not be a way out of the check.
+    """
+    spec = _spec(tmp_path)
+    (spec / "qa" / "qa-run.ndjson").write_text(
+        json.dumps({"kind": "session_start", "run_id": "qa-run-2"}) + "\n",
+        encoding="utf-8",
+    )
+
+    stale = {"overall": "Fail", "runId": "qa-run-1",
+             "criteria": [{"id": "AC1", "kind": "behavioral", "verdict": "Fail"}]}
+    problems = _qa_evidence_vet(stale, spec, tmp_path)
+    assert any("not the run on disk" in p and "qa-run-2" in p for p in problems), problems
+
+    stale.pop("runId")
+    problems = _qa_evidence_vet(stale, spec, tmp_path)
+    assert any("(missing)" in p for p in problems), problems
+
+    stale["runId"] = "qa-run-2"
+    assert not [p for p in _qa_evidence_vet(stale, spec, tmp_path) if "run on disk" in p]
+
+
 # ---------------------------------------------------------------------------
 # backlog-items
 # ---------------------------------------------------------------------------
