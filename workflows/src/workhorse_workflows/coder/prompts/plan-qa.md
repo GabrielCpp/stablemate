@@ -185,8 +185,10 @@ least one machine-executed terminal assertion. `mechanism` is provenance
   pipeline in `head`/`tail`: SIGPIPE kills the producer and fails the step. Slice in the assertion,
   not in the pipeline.
 - Browser diagnostics (`qa/traces/<scenario>-diagnostics.json`) carry exactly four keys —
-  `consoleErrors` (message **text**), `failedRequests` (request **URLs**, network-level failures
-  only, never a completed 5xx), `responses` (one `{url, status, method}` record per response, in
+  `consoleErrors` (message **text**), `failedRequests` (one `{url, method, errorText}` per request
+  that never completed — never a completed 5xx; gate on `errorText`, since an app cancelling its
+  own fetch fires this with `net::ERR_ABORTED` and a bare `length == 0` goes red on healthy
+  behaviour), `responses` (one `{url, status, method}` record per response, in
   arrival order, capped at 500) and `responseCount` (the true total, so a capped list can be told
   from a complete one). Status assertions belong on `responses` — e.g.
   `[.responses[] | select(.status >= 500)] | length == 0`. There is still no response body, header

@@ -459,15 +459,23 @@ under kind `browser-diagnostics`. Its shape is exactly these four keys, and noth
 ```json
 {
   "consoleErrors": ["<console message text>"],
-  "failedRequests": ["<request url>"],
+  "failedRequests": [{ "url": "<url>", "method": "GET", "errorText": "net::ERR_ABORTED" }],
   "responses": [{ "url": "<url>", "status": 200, "method": "GET" }],
   "responseCount": 1
 }
 ```
 
-`consoleErrors` carries message **text** only and `failedRequests` carries **URLs** only —
-`requestfailed` fires for a request that never completed (DNS failure, aborted connection)
-and never for a completed response, whatever its status.
+`consoleErrors` carries message **text** only. `failedRequests` is one record per request
+that never completed — `requestfailed` never fires for a completed response, whatever its
+status. Read `errorText` before gating on it: an app cancelling its own in-flight fetch (a
+React effect cleanup, a StrictMode double-invoke, a superseding navigation) fires
+`requestfailed` with `net::ERR_ABORTED` exactly as a refused connection does, so a bare
+`.failedRequests | length == 0` goes red on healthy behaviour. Exclude the aborts the app
+is expected to make and keep failing on the rest:
+
+```
+[.failedRequests[] | select(.errorText != "net::ERR_ABORTED")] | length == 0
+```
 
 `responses` is what carries status: one record per response the page received, in arrival
 order, so a scenario can assert `[.responses[] | select(.status >= 500)] | length == 0` and

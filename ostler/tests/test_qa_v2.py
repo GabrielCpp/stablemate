@@ -573,6 +573,32 @@ def test_a_response_record_carries_the_status_a_5xx_assertion_needs():
     }
 
 
+def test_a_failed_request_record_says_why_it_failed():
+    """``requestfailed`` fires for an app cancelling its own fetch just as it does for a
+    refused connection. With only the URL recorded the two are the same entry, so a plan
+    that gates on ``.failedRequests | length == 0`` goes red on a benign StrictMode abort
+    and the only way back to green is to stop asserting on the field.
+    """
+
+    class _Request:
+        url = "http://127.0.0.1:8099/v1/pages/p_copy_links/fr"
+        method = "GET"
+        failure = "net::ERR_ABORTED"
+
+    assert PlaywrightDriver._failed_request_record(_Request()) == {
+        "url": "http://127.0.0.1:8099/v1/pages/p_copy_links/fr",
+        "method": "GET",
+        "errorText": "net::ERR_ABORTED",
+    }
+
+    class _Unexplained(_Request):
+        failure = None
+
+    assert PlaywrightDriver._failed_request_record(_Unexplained())["errorText"] == "", (
+        "a missing failure reason is the empty string, never a null a jq select would skip"
+    )
+
+
 def test_two_browser_targets_share_one_playwright(monkeypatch):
     """A plan with two Playwright targets must not start Playwright twice on one thread.
 

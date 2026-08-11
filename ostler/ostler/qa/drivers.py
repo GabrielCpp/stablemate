@@ -264,6 +264,24 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
         return ["clipboard-read", "clipboard-write"]
 
     @staticmethod
+    def _failed_request_record(request: Any) -> dict[str, Any]:
+        """One diagnostics record per request that never completed, with *why* it did not.
+
+        ``requestfailed`` does not mean the network broke. An app that cancels its own
+        in-flight fetch — a React effect cleanup aborting on unmount, a double-invoked
+        effect under StrictMode, a navigation superseding a load — fires it too, with
+        ``net::ERR_ABORTED``. Recording the URL alone made those indistinguishable from
+        ``net::ERR_CONNECTION_REFUSED``, so a plan gating on ``.failedRequests | length ==
+        0`` goes permanently red on a benign self-cancel and the only way to stay green is
+        to stop asserting on the field at all. ``errorText`` is what lets a plan exclude
+        the aborts it expects and still fail on a connection that genuinely died.
+
+        The list stays one entry per failure, so an existing ``length`` assertion keeps
+        its meaning.
+        """
+        return {"url": request.url, "method": request.method, "errorText": request.failure or ""}
+
+    @staticmethod
     def _response_record(response: Any) -> dict[str, Any]:
         """One diagnostics line per HTTP response the page received.
 
@@ -296,10 +314,10 @@ class PlaywrightDriver(QaDriver):  # noqa: C901
         scenario_start_offset = self.session.offset_ms()
         page = context.new_page()
         console_errors: list[str] = []
-        failed_requests: list[str] = []
+        failed_requests: list[dict[str, Any]] = []
         responses: list[dict[str, Any]] = []
         page.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
-        page.on("requestfailed", lambda request: failed_requests.append(request.url))
+        page.on("requestfailed", lambda request: failed_requests.append(self._failed_request_record(request)))
         page.on("response", lambda response: responses.append(self._response_record(response)))
         trace_path = qa_dir / "traces" / f"{scenario_id}.zip"
         trace_path.parent.mkdir(parents=True, exist_ok=True)
