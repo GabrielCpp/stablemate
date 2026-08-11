@@ -67,6 +67,7 @@ Divergences from the YAML, all deliberate:
 """
 from __future__ import annotations
 
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, ClassVar, NamedTuple
@@ -104,6 +105,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     QaPlanReview,
     QaReport,
     QaResult,
+    QaRunResult,
     QaTriage,
     RegressionFix,
     SetupResult,
@@ -136,6 +138,22 @@ def _finding(passed: bool, notes: str) -> str:
     site and only the rule — a pass is not a finding — lives here.
     """
     return "" if passed else notes
+
+
+def _blocked_problems(result: QaRunResult) -> tuple[str, ...]:
+    """The runtime requirements a `blocked` run named, sorted; empty for every other status.
+
+    Read off the runner payload rather than parsed back out of `notes`, and sorted because
+    the runner builds the list by walking the plan's `targets` mapping — two runs of the same
+    plan naming the same two missing requirements in a different order are the same bundle,
+    and the comparison in `_guard_setup` is about sameness.
+    """
+    if result.status != "blocked":
+        return ()
+    problems = result.ostler.get("problems")
+    if not isinstance(problems, list):
+        return ()
+    return tuple(sorted(str(problem) for problem in problems))
 
 
 def _plan_finding_problems(review: QaPlanReview) -> list[str]:
@@ -723,8 +741,14 @@ class Qa(Workflow):
             # fixer and the operator gate are both briefed with — is composed from it. A
             # stack that never came up leaves `qa` blank otherwise, and the fixer is sent
             # to repair a stack without being told what about it broke.
+            # `blocked_problems` is cleared with it: a manifest that would not come up is not
+            # the runner naming a missing requirement, and leaving the last run's bundle in
+            # place would let the repeat detector gate on a failure it does not describe.
             return self._guard_setup(
-                status, loop.with_qa(QaResult(status="blocked", notes=status.notes))
+                status,
+                loop.with_qa(QaResult(status="blocked", notes=status.notes)).update(
+                    blocked_problems=()
+                ),
             )
         return Continue(status, self.run, loop=loop)
 
@@ -733,10 +757,19 @@ class Qa(Workflow):
 
         `run_qa_plan`. Alone, so a kill during the assessment re-enters at the assessment
         rather than re-running a QA suite that may have taken half an hour.
+
+        A `blocked` run also carries the runner's `problems` list onto the loop, sorted. It
+        is the only structured account of what the run was missing — everything downstream
+        reads `block_notes`, which is prose — and `_guard_setup` compares it against the
+        bundle the last setup fixer was handed. See `QaLoop.setup_problems`.
         """
         self.logger.info("running the QA plan", extra={"activity": True})
         result = self.call(run_qa_plan, self.ctx.spec_dir, self.docs_path)
-        return Continue(result, self.assess, loop=loop.with_qa(result))
+        return Continue(
+            result,
+            self.assess,
+            loop=loop.with_qa(result).update(blocked_problems=_blocked_problems(result)),
+        )
 
     def assess(self, loop: QaLoop) -> Continue | Await | Done:
         """Read the runner's verdict for what it means — four chained decisions, one state.
@@ -1225,11 +1258,20 @@ class Qa(Workflow):
                 "stack_manifest": self.qa_stack_manifest,
                 "qa_run_plan": impl.qa_run_plan,
                 "qa_stack": impl.qa_stack,
+                # The interpreter the QA runner's pre-flight actually checks: `shared/ostler_qa`
+                # imports the runner as a library, so a requirement like "requires the Playwright
+                # Python package" is a statement about *this* process. A fixer told only to
+                # install the package repairs whichever copy `pip`/`uv tool` happens to reach,
+                # reports `ready`, and the next run comes back blocked on the same bundle.
+                "runtime_python": sys.executable,
             },
         )
         loop = loop.update(
             setup_rework=loop.setup_rework + 1,
             docs_recheck_required=True,
+            # What this turn was asked to repair, for the next `_guard_setup` to compare the
+            # next blocked run against.
+            setup_problems=loop.blocked_problems,
         )
         if result.status == "unfixable":
             return self._gate(result, loop)
@@ -1430,8 +1472,22 @@ class Qa(Workflow):
         return Continue(result, self.repair_plan, loop=loop)
 
     def _guard_setup(self, result: object, loop: QaLoop) -> Continue | Await | Done:
-        """`guard_setup`: another repair attempt, or the operator gate."""
+        """`guard_setup`: another repair attempt, or the operator gate.
+
+        The budget is not the only thing that ends this loop. A fixer that ran and left the
+        runner naming *exactly* the requirements it named before has proved the repair it can
+        make does not reach the thing that is broken, and asking it again costs another
+        `power="high"` turn under a 2400s timeout to reproduce that. See
+        `QaLoop.setup_problems` for the run this comes from.
+        """
         if loop.setup_rework >= self.MAX_SETUP_REWORKS:
+            return self._gate(result, loop)
+        if loop.blocked_problems and loop.blocked_problems == loop.setup_problems:
+            self.logger.info(
+                "the QA setup fix left the identical blocked bundle (%s) — escalating",
+                "; ".join(loop.blocked_problems),
+                extra={"activity": True},
+            )
             return self._gate(result, loop)
         return Continue(result, self.setup_fix, loop=loop)
 

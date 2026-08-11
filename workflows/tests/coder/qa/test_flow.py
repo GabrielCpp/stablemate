@@ -186,8 +186,12 @@ class _Ostler:
         plan_invalid: int = 0,
         plan_invalid_passes: tuple[int, ...] = (),
         vet_problems: list[str] | None = None,
+        blocked_problems: list[str] | None = None,
     ) -> None:
         self.fail_runs = fail_runs
+        #: When set, every run comes back `blocked` naming these runtime requirements — the
+        #: shape `check_runtime_requirements` produces for a missing Playwright or ffmpeg.
+        self.blocked_problems = blocked_problems
         self.context_invalid = context_invalid
         #: A count of *leading* schema failures. `plan_invalid_passes` is the other shape:
         #: which validation passes fail, for interleaving schema and judgement laps.
@@ -274,6 +278,13 @@ class _Ostler:
         self, plan: str, spec_dir: str, *, docs_root: Path | None = None
     ) -> tuple[int, dict[str, Any], str]:
         self.runs += 1
+        if self.blocked_problems is not None:
+            # A blocked run writes nothing: it never executed a scenario.
+            return 1, {
+                "status": "blocked",
+                "problems": list(self.blocked_problems),
+                "notes": "QA run blocked",
+            }, ""
         status = "failed" if self.runs <= self.fail_runs else "passed"
         self._write_run(Path(spec_dir), status)
         return (0 if status == "passed" else 1), {
@@ -1473,6 +1484,39 @@ def test_a_stack_nobody_can_repair_gives_up_instead_of_spinning(
     assert agent.counts()["setup-fix"] == 2, agent.counts()
     # One resolver turn per lap of the gate, and the laps are what is now bounded.
     assert agent.counts()["resolve-operator"] == Qa.MAX_QA_REWORKS, agent.counts()
+
+
+def test_a_setup_fix_that_changes_nothing_is_not_asked_a_second_time(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    monkeypatch: pytest.MonkeyPatch,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """An identical blocked bundle is an operator question, not another repair attempt.
+
+    The run this comes from: the runner reported the Playwright package missing, the fixer
+    installed it, proved the install worked, reported `ready` — and the next run named the
+    same requirement, because the copy it repaired was not the interpreter the QA stage
+    imports ostler into. Nothing in the loop could tell that apart from a repair that had not
+    been tried yet, so it spent the whole setup budget on `power="high"` turns under a 2400s
+    timeout to be told the same thing twice.
+
+    The sameness is the signal. One fix is still attempted — the fixer has to run before
+    there is any evidence about it — and the second is spent on a person instead.
+    """
+    ostler(blocked_problems=["target 'web' requires the Playwright Python package"])
+    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
+    agent = _Agent(docs, setup="fixed")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    counts = agent.counts()
+    assert counts["setup-fix"] == 1, counts
+    assert counts["setup-fix"] < Qa.MAX_SETUP_REWORKS, counts
+    # And the block reached a person on every lap instead.
+    assert counts["resolve-operator"] == Qa.MAX_QA_REWORKS, counts
 
 
 def test_a_packet_that_stays_unmappable_bounds_the_operator_gate(

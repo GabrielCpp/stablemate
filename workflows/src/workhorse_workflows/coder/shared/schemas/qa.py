@@ -493,6 +493,22 @@ class QaLoop(CoderResult):
     setup_rework: int = 0
     regression_fix: int = 0
 
+    #: The runtime requirements the *latest* blocked QA run named, sorted — the runner's own
+    #: `problems` list, which is a machine-readable statement of what was missing rather than
+    #: the prose the fixer is briefed with. Written only by `run` (and blanked by it on any
+    #: other status), so it always describes the run the flow is currently reacting to.
+    blocked_problems: tuple[str, ...] = ()
+
+    #: The same list as the last `setup_fix` turn was asked to repair. The pair is a
+    #: repeat detector: a fixer that ran and left the runner naming exactly what it named
+    #: before has demonstrated it cannot fix this from inside the run, and a live story spent
+    #: three `power="high"` 40-minute laps installing Playwright, proving the install worked,
+    #: and getting the identical bundle back — because the copy it repaired was not the
+    #: interpreter the QA stage imports ostler into. Neither budget catches that: every lap
+    #: is legal, and the flow only stops once `MAX_SETUP_REWORKS` is gone. So the *sameness*
+    #: is the signal, and it goes to the operator rather than round again.
+    setup_problems: tuple[str, ...] = ()
+
     #: The parent-owned rescope budget, threaded in and crossed back out on a rescope.
     triage_scope: int = 0
 

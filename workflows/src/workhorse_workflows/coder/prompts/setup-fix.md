@@ -85,11 +85,37 @@ Make the manifest correct and give it everything its steps need, e.g.:
   **Playwright browsers** (`npx playwright install`), Maestro, or other QA tools the runbook names.
   Installing an absent QA tool is setup, never a "blocked" condition. (These belong as `prepare` steps
   when the stack needs them every run; run one-off host installs directly.)
+
 - **Fix broken local config**: a wrong/missing local env file (`.env.local`, backend URL, emulator
   host/port), a stale generated client, a port collision, an un-run migration a bring-up step needs.
   Regenerate generated artifacts the stack needs.
 - **Seed the baseline** as idempotent `seed` steps in the manifest — including the **test user** in the
   Auth emulator for sign-in — so the stack comes up with something to observe, deterministically.
+
+### When the block names a *runner* requirement, repair the copy the runner actually uses
+
+A block phrased as `target '<name>' requires the Playwright Python package` (or naming ffmpeg,
+ffprobe, maestro, adb) comes from the QA runner's own pre-flight, `check_runtime_requirements`. It
+runs **inside the Python interpreter executing this workflow** — the QA stage imports the runner as a
+library, it does not shell out to an `ostler` binary — so that is the environment to repair:
+
+- **The interpreter is `{{ workhorse_var('runtime_python') }}`.** Check it the way the pre-flight
+  does: `{{ workhorse_var('runtime_python') }} -c "import playwright.sync_api"`. If that fails, the
+  run stays blocked no matter what any other Python on this machine has installed.
+- **`uv tool install --force 'ostler[qa]'` repairs a *different* copy** — and so does `pip install`
+  under a bare `python`, or anything run inside the project's own venv. Every one of those can
+  succeed while the block comes back word-for-word identical. That is what makes this failure
+  expensive: the install genuinely worked, just not where the runner looks.
+- The `ffmpeg` / `ffprobe` / `maestro` / `adb` requirements are `PATH` lookups from that same
+  process, so they must be on the `PATH` this workflow runs with — not only inside a container or a
+  login shell profile.
+- **Prove it the way the pre-flight will**: re-run the `import` (or `which`) check above after
+  installing, and paste its output into your report. A package manager saying "installed
+  successfully" is not the check that failed.
+
+A repeat is not retried. If the next run comes back blocked on exactly the requirements you were
+asked to fix here, the workflow stops and asks an operator instead of giving you another turn — so
+verifying against the interpreter above is the whole job, not a formality.
 
 A **foreground in-QA service** that must stay live only for the QA run (e.g. a dev server pinned to
 branch source) belongs in the QA plan's `background:` block, where ostler owns it for the run — not in
