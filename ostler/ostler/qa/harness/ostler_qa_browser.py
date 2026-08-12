@@ -16,6 +16,7 @@ cannot see the page from ostler, and a recording policy cannot see the run from 
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -144,6 +145,39 @@ class Browser:
         if str(self.target.browser or "chromium") != "chromium":
             return []
         return ["clipboard-read", "clipboard-write"]
+
+    # -- what a scenario may assert on ----------------------------------------------------
+    #
+    # The diagnostics *file* is written by `close`, after the scenario has already returned
+    # its verdict, so it can only be read by the post-run audit. A plan is nonetheless held
+    # to "an unexpected 5xx or console error cannot pass unnoticed", and that demand needs an
+    # expression the scenario itself can assert on — otherwise it arrives as a review finding
+    # no author can act on. These four are that expression: the same records the file gets,
+    # readable while the page is still open.
+
+    def console_errors(self) -> list[dict[str, Any]]:
+        """Console messages at `error` level so far."""
+        return [entry for entry in self._console if entry.get("type") == "error"]
+
+    def page_errors(self) -> list[dict[str, Any]]:
+        """Uncaught exceptions — a different event from the console, invisible in it."""
+        return list(self._page_errors)
+
+    def failed_requests(
+        self, *, ignore: Sequence[str] = ("net::ERR_ABORTED",)
+    ) -> list[dict[str, Any]]:
+        """Requests that never completed, minus the ones an app aborts by design.
+
+        Excluding by *reason* rather than by count is the difference between tolerating a
+        navigation the app cancelled and tolerating a refused connection: `len(...) <= 1`
+        goes green on the second one too.
+        """
+        ignored = set(ignore)
+        return [entry for entry in self._failed_requests if entry.get("errorText") not in ignored]
+
+    def responses(self, *, status_at_least: int = 0) -> list[dict[str, Any]]:
+        """Every response seen, optionally only those at or above a status."""
+        return [entry for entry in self._responses if entry.get("status", 0) >= status_at_least]
 
     # -- diagnostics ---------------------------------------------------------------------
 

@@ -528,6 +528,11 @@ class Qa:
         #: for it says so — a scenario declared against the wrong target is a mistake worth
         #: an `AttributeError` on the line that made it.
         self.page: Any = None
+        #: The live console/network record for a `playwright` target: `console_errors()`,
+        #: `page_errors()`, `failed_requests()`, `responses()`. The diagnostics *file* is
+        #: written after the scenario returns, so this is the only way a scenario can fail
+        #: itself on a 5xx or an uncaught exception it provoked.
+        self.diagnostics: Any = None
         self.maestro = Maestro(self)
 
     # -- assertions --------------------------------------------------------------------
@@ -940,6 +945,7 @@ def _open_browser(qa: Qa) -> Any:
         emit=qa._recorder.emit,  # noqa: SLF001 - one module, split across two files
     )
     qa.page = browser.open()
+    qa.diagnostics = browser
     return browser
 
 
