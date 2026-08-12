@@ -557,21 +557,20 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
 #: scenario that covers it proves whichever clause the planner happened to read.
 MAX_NORMATIVE_PROSE = 700
 
-#: `` `code` `` — measured as nothing. A bullet is long because it *says* a lot, and a cited
-#: symbol, route or flag says one thing however many characters it spells.
-_CODE_SPAN_RE = re.compile(r"`[^`]*`")
-#: `[text](href)` — the href is addressing, not prose, so only the text counts.
-_MD_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
-
 
 def _prose(value: str) -> str:
     """A bullet's prose: link text without its href, no code spans, parentheticals kept.
+
+    A bullet is long because it *says* a lot, so `` `code` `` and an href are measured as
+    nothing — a cited symbol, route or flag says one thing however many characters it
+    spells, and an href is addressing. `markdown.prose_text` reads that off the parser's
+    inline tokens.
 
     Parentheticals stay deliberately. An aside is where a second requirement hides — "(and
     the audit row records the previous value)" is a whole obligation nobody will write a
     scenario for — so discounting them would exempt the very shape this rule is looking for.
     """
-    return _MD_LINK_RE.sub(r"\1", _CODE_SPAN_RE.sub("", value)).strip()
+    return markdown.prose_text(value)
 
 
 def _bullet_values(value) -> list[str]:

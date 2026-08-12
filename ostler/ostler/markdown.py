@@ -153,6 +153,27 @@ def all_code_spans(text: str) -> list[str]:
     ]
 
 
+def prose_text(text: str) -> str:
+    """A value's prose: link *text* without its href, code spans measured as nothing.
+
+    For the checks that ask how much a bullet **says** rather than how many characters it
+    spells — an href is addressing and a cited symbol says one thing however long it is.
+    Read off the inline tokens rather than substituted out with a pair of regexes, because
+    a backtick regex cannot tell ``` ``a `b` c`` ``` from two spans, and a
+    ``[text](href)`` regex stops the href at the first ``)`` — so a link to
+    ``foo(bar).md`` left half an href behind and counted it as prose.
+    """
+    out: list[str] = []
+    for child in _MD.parseInline(_normalize(text))[0].children or ():
+        if child.type == "code_inline":
+            continue
+        if child.type in ("softbreak", "hardbreak"):
+            out.append("\n")
+        elif child.type == "text":
+            out.append(child.content)
+    return "".join(out).strip()
+
+
 def code_line_spans(text: str) -> list[tuple[int, int]]:
     """0-indexed ``[start, end)`` line spans of every code block — fenced or indented.
 
