@@ -47,6 +47,10 @@ def harness_env(base: dict[str, str] | None = None) -> dict[str, str]:
     env = dict(base or {})
     existing = env.get("PYTHONPATH")
     env["PYTHONPATH"] = f"{HARNESS_DIR}:{existing}" if existing else str(HARNESS_DIR)
+    # A plan module lives in the spec directory, which is documentation under version
+    # control — so importing it writes a `__pycache__/` next to `plan.md` that nothing
+    # cleans up and the next `git add` sweeps in.
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
     return env
 
 

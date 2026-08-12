@@ -92,6 +92,22 @@ def test_spec_dir_is_the_module_directory(tmp_path: Path) -> None:
     assert resolve_spec_dir(_plan(spec), None, tmp_path) == spec.resolve()
 
 
+def test_importing_a_plan_leaves_no_bytecode_beside_the_documentation(tmp_path: Path) -> None:
+    """A spec directory is documentation under version control, not a package directory.
+
+    The plan module lives beside `plan.md` and `review.md`, so importing it wrote a
+    `__pycache__/` into the docs tree — once per validate, once per describe, once per
+    scenario. Nothing cleans it up, and the next `git add docs/specs/<story>` sweeps it in.
+    """
+    spec = _spec(tmp_path)
+    module = _plan(spec)
+    (tmp_path / "out.json").write_text(json.dumps({"item": {"id": "abc"}}), encoding="utf-8")
+
+    assert cmd_validate(module, spec, root=tmp_path).ok
+    assert cmd_run(module, spec, root=tmp_path).ok
+    assert not (spec / "__pycache__").exists(), "bytecode was written into the spec directory"
+
+
 def test_load_stamps_the_module_and_interpreter_on_every_target(tmp_path: Path) -> None:
     # The driver is handed one target dict and nothing else, so resolving either of these
     # a second time at run time is how a validated plan and an executed plan come apart.
