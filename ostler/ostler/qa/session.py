@@ -253,6 +253,15 @@ class QaSession:
         return self._data.get("env", {})
 
     @property
+    def secret_values(self) -> dict[str, str]:
+        """The secrets this run injects, for a driver that has its own output to redact.
+
+        A driver that captures a subprocess's stdout writes bytes this class never sees,
+        so it has to do the redacting the ledger path does automatically.
+        """
+        return dict(self._secret_values)
+
+    @property
     def started_wall(self) -> float:
         """When this session began, as a POSIX timestamp; 0.0 for a session written before
         the field existed, which reads as "everything on disk is mine" — the old behaviour."""
@@ -1040,7 +1049,24 @@ def _execute_check(
         return _check_http_status(params, captures)
     if check_type == "no_duplicate":
         return _check_no_duplicate(params, captures)
+    if check_type == "scenario_check":
+        return _check_scenario_verdict(params)
     return False, {"error": f"unknown check type '{check_type}'"}
+
+
+def _check_scenario_verdict(params: dict) -> tuple[bool, dict]:
+    """Record a verdict a `qa.check` in the scenario process already reached.
+
+    The other checks in this table exist because a shell step could only hand back bytes,
+    so ostler had to do the comparing. A Python scenario compares in Python, over parsed
+    objects, on the line that produced them — re-deciding it here from stringified
+    operands could only ever disagree with the truth, and `_expand` would mangle any
+    value that happens to contain `{{`.
+    """
+    return bool(params.get("passed")), {
+        "value": params.get("actual"),
+        "expected": params.get("expected"),
+    }
 
 
 def _check_cloudwatch(params: dict, env: dict[str, str]) -> tuple[bool, dict]:

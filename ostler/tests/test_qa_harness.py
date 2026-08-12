@@ -97,7 +97,7 @@ def test_describe_emits_the_declaration_set(tmp_path: Path) -> None:
     assert described["targets"]["api"] == {"driver": "python", "interpreter": ".venv/bin/python"}
     assert described["targets"]["web"]["driver"] == "playwright"
     assert described["targets"]["web"]["base_url"] == "http://localhost:5173"
-    assert described["background"][0]["ready_url"] == "http://localhost:8090/healthz"
+    assert described["background"][0]["ready_check"] == "http://localhost:8090/healthz"
 
 
 def test_describe_names_the_secret_without_reading_it(tmp_path: Path) -> None:

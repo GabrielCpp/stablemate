@@ -17,7 +17,13 @@ from urllib.parse import urljoin
 
 import yaml
 
-from ostler.qa.session import QaSession, _expand
+from ostler.qa.harness_host import (
+    DEFAULT_SCENARIO_TIMEOUT,
+    default_interpreter,
+    harness_argv,
+    harness_env,
+)
+from ostler.qa.session import QaSession, _expand, _redact_bytes
 
 #: The ARIA roles whose accessible name may be computed from their own text content.
 #: Every other role is named only by ``aria-label``/``aria-labelledby``, so a plan that
@@ -171,6 +177,222 @@ class CommandDriver(QaDriver):
             assertions=assertions,
             failures=failures,
         )
+
+
+#: Where the zero-install harness lives. It goes on the subprocess's ``PYTHONPATH`` rather
+#: than being installed: the interpreter is the *project's* venv, and requiring ostler in it
+#: would make every repo under test depend on its own test tool.
+class PythonDriver(QaDriver):
+    """Run one scenario as a Python function in a subprocess, and record what it claims.
+
+    The subprocess boundary is what lets the scenario run under the project's own
+    interpreter — with the project's HTTP client, its fixtures, its Playwright — while
+    ostler keeps the ledger. It talks back over a dedicated pipe rather than stdout, so a
+    `print` in a scenario stays debugging output instead of corrupting the protocol.
+
+    Every assertion arrives already decided. That is the point of the format: the scenario
+    compared parsed objects on the line that produced them, where a missing key raises
+    instead of matching empty.
+    """
+
+    def start(self) -> None:
+        interpreter = self.interpreter()
+        if not interpreter.exists():
+            # Blocked, not failed: an interpreter that is not there says nothing about the
+            # product, and a run that reports it as a product failure sends the workflow to
+            # repair a plan that is fine.
+            raise DriverBlocked(
+                f"target '{self.target_id}' names interpreter '{interpreter}', which does not "
+                "exist — create the project venv, or drop `interpreter=` to use ostler's own"
+            )
+
+    def interpreter(self) -> Path:
+        declared = self.target.get("interpreter")
+        if not declared:
+            return default_interpreter(self.root)
+        path = Path(str(declared))
+        return path if path.is_absolute() else (self.root / path)
+
+    def module_path(self) -> Path:
+        module = Path(str(self.target["module"]))
+        return module if module.is_absolute() else (self.root / module)
+
+    def run(self, scenario: dict[str, Any]) -> ScenarioResult:
+        scenario_id = str(scenario["id"])
+        covers = list(scenario.get("covers", []))
+        timeout = float(scenario.get("timeout") or DEFAULT_SCENARIO_TIMEOUT)
+        records, output, exit_code, timed_out = self._execute(scenario_id, timeout)
+        self._write_output(scenario_id, output)
+        return self._grade(
+            scenario_id, covers, records, output, exit_code, timed_out=timed_out
+        )
+
+    # -- the subprocess ----------------------------------------------------------------
+
+    def _execute(
+        self, scenario_id: str, timeout: float
+    ) -> tuple[list[dict[str, Any]], str, int, bool]:
+        context = {
+            "root": str(self.root),
+            "spec_dir": str(self.session.spec_dir),
+            # Already resolved against --out-dir. Handing the scenario the absolute path is
+            # the deletion of a whole defect class: the same relative `qa/steps/x` used to
+            # mean the spec dir to ostler and the repo root to the shell it ran, and one run
+            # lost 38 of 66 assertions to the disagreement.
+            "qa_dir": str(self.session.qa_dir),
+        }
+        read_fd, write_fd = os.pipe()
+        env = harness_env(self.session.command_env())
+        env["OSTLER_QA_RECORD_FD"] = str(write_fd)
+        process = subprocess.Popen(  # noqa: S603 — agent-authored plan, explicit user intent
+            harness_argv(
+                self.interpreter(),
+                "run",
+                str(self.module_path()),
+                scenario_id,
+                json.dumps(context),
+            ),
+            cwd=self.root,
+            env=env,
+            pass_fds=(write_fd,),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        os.close(write_fd)
+        records: list[dict[str, Any]] = []
+        # Drained on a thread. Both the record pipe and the merged stdout pipe are bounded,
+        # so a scenario that fills one while the driver reads only the other deadlocks —
+        # and it would do it exactly on the verbose scenarios, the ones already in trouble.
+        reader = threading.Thread(target=_drain, args=(read_fd, records), daemon=True)
+        reader.start()
+        timed_out = False
+        try:
+            output_raw, _ = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _kill_group(process)
+            output_raw, _ = process.communicate()
+            timed_out = True
+        reader.join(timeout=5)
+        safe = _redact_bytes(output_raw or b"", self.session.secret_values.values())
+        return records, safe.decode("utf-8", errors="replace"), process.returncode, timed_out
+
+    def _write_output(self, scenario_id: str, output: str) -> None:
+        """Keep the scenario's own stdout — this is where a traceback lands."""
+        path = self.session.qa_dir / "steps" / f"{scenario_id}-stdout.txt"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(output, encoding="utf-8")
+        self.session.register_artifact(
+            path, kind="command-output", scenario=scenario_id, target=self.target_id
+        )
+
+    # -- the ledger --------------------------------------------------------------------
+
+    def _grade(
+        self,
+        scenario_id: str,
+        covers: list[str],
+        records: list[dict[str, Any]],
+        output: str,
+        exit_code: int,
+        *,
+        timed_out: bool,
+    ) -> ScenarioResult:
+        assertions = failures = 0
+        action = 0
+        terminal: dict[str, Any] | None = None
+        for record in records:
+            kind = record.get("type")
+            if kind == "assert":
+                action += 1
+                assertions += 1
+                passed, _ = self.session.run_assert(
+                    str(record.get("id") or f"{scenario_id}-{action}"),
+                    str(record.get("label", "")),
+                    "scenario_check",
+                    {
+                        "passed": bool(record.get("passed")),
+                        "actual": record.get("actual"),
+                        "expected": record.get("expected"),
+                    },
+                    root=self.root,
+                    scenario=scenario_id,
+                    driver="python",
+                    action=action,
+                    covers=list(record.get("covers") or covers),
+                )
+                if not passed:
+                    failures += 1
+            elif kind == "step_end":
+                self.session.append(
+                    {
+                        "kind": "step",
+                        "id": str(record.get("id", "")),
+                        "label": str(record.get("label", "")),
+                        "cmd": "",
+                        "exit_code": 1 if record.get("failed") else 0,
+                        "driver": "python",
+                        "scenario": scenario_id,
+                    }
+                )
+            elif kind == "capture":
+                self.session.set_capture(str(record["key"]), str(record["value"]))
+            elif kind == "artifact":
+                self.session.register_artifact(
+                    Path(str(record["path"])),
+                    kind=str(record.get("kind", "evidence")),
+                    scenario=scenario_id,
+                    target=self.target_id,
+                )
+            elif kind == "scenario":
+                terminal = record
+
+        message = ""
+        if timed_out:
+            message = f"scenario '{scenario_id}' exceeded its timeout and was killed"
+        elif terminal is None:
+            # No terminal record means the scenario process died before the harness could
+            # grade it — an ImportError, a segfault, a `sys.exit` in the body. The stdout
+            # tail is the only account of it, so it goes in the message rather than being
+            # left for someone to find in the artifact.
+            message = (
+                f"scenario '{scenario_id}' produced no result (exit {exit_code}): "
+                + output.strip()[-500:]
+            )
+        elif terminal.get("error"):
+            message = str(terminal["error"]).strip()[-2000:]
+
+        status = "passed"
+        if timed_out or terminal is None or failures or (terminal or {}).get("status") != "passed":
+            status = "failed"
+            failures = max(failures, 1)
+        return ScenarioResult(
+            status=status, assertions=assertions, failures=failures, message=message
+        )
+
+
+def _drain(read_fd: int, records: list[dict[str, Any]]) -> None:
+    """Read the record stream to EOF, keeping whatever parsed.
+
+    A malformed line is dropped rather than raised on: the pipe is also how a scenario
+    reports its own failure, and losing every record because the last write was cut short
+    by a kill would throw away the account of what did happen.
+    """
+    with os.fdopen(read_fd, "r", encoding="utf-8") as stream:
+        for line in stream:
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+
+
+def _kill_group(process: subprocess.Popen[bytes]) -> None:
+    """SIGKILL the whole process group: a scenario's own children outlive it otherwise."""
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        process.kill()
 
 
 class SharedPlaywright:
@@ -1095,7 +1317,12 @@ def create_driver(
     root: Path,
     variables: dict[str, str],
 ) -> QaDriver:
-    classes = {"command": CommandDriver, "playwright": PlaywrightDriver, "maestro": MaestroDriver}
+    classes = {
+        "command": CommandDriver,
+        "python": PythonDriver,
+        "playwright": PlaywrightDriver,
+        "maestro": MaestroDriver,
+    }
     return classes[target["driver"]](session, target_id, target, root=root, variables=variables)
 
 

@@ -245,15 +245,22 @@ def background(
     cmd: str,
     ready_url: str | None = None,
     ready_cmd: str | None = None,
+    ready_contains: str = "",
     cwd: str | None = None,
     timeout: float = 30.0,
 ) -> None:
-    """Declare a daemon the runner starts before the first scenario and stops after the last."""
+    """Declare a daemon the runner starts before the first scenario and stops after the last.
+
+    Readiness is `ostler`'s to poll, not the scenario's — it is what a scenario is entitled
+    to assume, and a scenario that has to wait for its own stack turns a startup failure
+    into a product failure. Give it a URL that must answer 200, or a command whose stdout
+    must contain `ready_contains`.
+    """
     entry: dict[str, Any] = {"name": name, "cmd": cmd, "timeout": timeout}
     if ready_url:
-        entry["ready_url"] = ready_url
-    if ready_cmd:
-        entry["ready_cmd"] = ready_cmd
+        entry["ready_check"] = ready_url
+    elif ready_cmd:
+        entry["ready_check"] = {"cmd": ready_cmd, "assert_contains": ready_contains}
     if cwd:
         entry["cwd"] = cwd
     REGISTRY.background.append(entry)
@@ -694,6 +701,10 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         status = "failed"
     except BaseException:  # noqa: BLE001 - the traceback is the scenario's verdict
         status, error = "errored", traceback.format_exc()
+        # Also to stdout, which ostler keeps as an artifact. The record carries the same
+        # text, but a person debugging a red scenario opens the output file — and finding it
+        # empty is what sends them to re-run the scenario by hand to see the exception.
+        print(error, file=sys.stdout)
     if qa.failures:
         status = "failed" if status == "passed" else status
     # A scenario that claims coverage and recorded nothing has proved nothing. Reporting it
