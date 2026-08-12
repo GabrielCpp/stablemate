@@ -416,6 +416,18 @@ class DisplayRecorder:
         self.started = 0.0
         self.start_offset = 0
 
+    def argv(self) -> list[str]:
+        return [
+            "ffmpeg", "-y", "-f", "x11grab", "-video_size", f"{self.width}x{self.height}",
+            "-framerate", str(self.fps), "-i", f"{self.display}.0", "-c:v", "libx264",
+            "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+            # `moov` last is the mp4 default, and it is the atom a player needs *first*, so
+            # the evidence would not play in a browser at all — a reviewer cannot tell that
+            # from a recording that never happened.
+            "-movflags", "+faststart",
+            str(self.path),
+        ]
+
     def start(self) -> dict[str, str]:
         if shutil.which("ffmpeg") is None:
             raise DriverBlocked("ffmpeg is required for browser-window recording")
@@ -433,11 +445,7 @@ class DisplayRecorder:
         env["DISPLAY"] = self.display
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._ffmpeg = subprocess.Popen(
-            [
-                "ffmpeg", "-y", "-f", "x11grab", "-video_size", f"{self.width}x{self.height}",
-                "-framerate", str(self.fps), "-i", f"{self.display}.0", "-c:v", "libx264",
-                "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(self.path),
-            ],
+            self.argv(),
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
