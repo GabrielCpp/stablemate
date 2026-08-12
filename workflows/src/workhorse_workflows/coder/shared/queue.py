@@ -65,7 +65,9 @@ from workhorse_workflows.kit import (
     find_open_pr,
     get_affected_repos,
     GitError,
+    is_ancestor,
     local_branch_exists,
+    merge_ref,
     resolve_github_token,
     resolve_repo,
     resolve_workspace,
@@ -276,7 +278,7 @@ def _claim_epic_branch(
     ============================  =========================================
     Held by another working tree  Hard error — another run is on it
     Held by *this* working tree   Continue on it, no reset
-    Claimed earlier by this run   Check it out again, no reset
+    Claimed earlier by this run   Check it out again, merge `base` in, no reset
     Merged into base              Reset to HEAD and reuse
     Unmerged, nobody's            Hard error — real work, a human decides
     ============================  =========================================
@@ -325,6 +327,7 @@ def _claim_epic_branch(
         logger.info("returning to %s, which this run cut earlier", branch)
         if not checkout(root, branch):
             raise WorkflowFailed(f"failed to return to epic branch {branch}")
+        _catch_up_with_base(logger, root, branch, base)
         return
 
     if branch_merged(root, branch, base):
@@ -340,12 +343,81 @@ def _claim_epic_branch(
     )
 
 
+def _base_ref(root: Path, base: str) -> str:
+    """`base` as it resolves in this repo — the local branch, else `origin/<base>`, else "".
+
+    Mirrors :func:`branch_merged`'s resolution, for the same reason: a container may hold
+    only the remote-tracking ref.
+    """
+    if not base:
+        return ""
+    for ref in (base, f"origin/{base}") if "/" not in base else (base,):
+        if branch_exists(root, ref):
+            return ref
+    return ""
+
+
+def _catch_up_with_base(logger: logging.Logger, root: Path, branch: str, base: str) -> None:
+    """Bring `base` into an epic branch this run cut before `base` moved on without it.
+
+    A multi-epic drain cuts `feat/<epic>` from whatever HEAD was at the time, sets the
+    epic aside, finishes and **merges** other epics into `base`, then comes back. The
+    branch it comes back to is now behind by every epic that landed meanwhile — so it
+    carries a stale copy of their story files, their specs and the epic queue itself.
+
+    That staleness is not cosmetic, and it is not confined to this branch. Three things
+    go wrong, in escalating order:
+
+    * The reviewers read it as truth. A story that reached `QA passed` on `base` still
+      says `QA give-up … needs manual review` here, so `code-review` files a finding
+      against work that is finished and merged, and `apply-review` spends a lap
+      "fixing" it.
+    * :func:`_reconcile_queue` patches the queue file back — as an *uncommitted* edit,
+      which is exactly the shape a reviewer reads as an unexplained local change. It was
+      observed being reverted with `git checkout --`, which restored the stale queue.
+    * Whatever survives to the squash merge lands on `base`: a finished epic back in the
+      work queue, and a passed story's status reverted to its give-up string. The next
+      `select_epic` then re-selects an epic that is already merged and redoes it.
+
+    Merging `base` in fixes all three at the source, and is a no-op in the ordinary case
+    where nothing landed while the epic was aside. A conflict means two epics genuinely
+    edited the same lines, which is not something a run should resolve unattended — the
+    merge is aborted (see :func:`merge_ref`) and this refuses, in keeping with this
+    module's stance everywhere else that ownership is ambiguous.
+    """
+    ref = _base_ref(root, base)
+    if not ref or is_ancestor(root, ref, branch):
+        return
+    if not merge_ref(root, ref):
+        raise WorkflowFailed(
+            f"{ref} does not merge cleanly into {branch}, which this run cut before {ref} "
+            f"moved. Two epics edited the same lines — resolve it by hand, then start the "
+            f"epic again."
+        )
+    logger.info("merged %s into %s, which had been set aside while %s moved", ref, branch, ref)
+
+
 def _reconcile_queue(logger: logging.Logger, root: Path, base: str) -> None:
     """Restore the epic queue from `base`, when `base` has an authoritative copy of it.
 
     Guarded twice — the base's copy must be non-empty and must look like a real queue —
     because the failure this protects against is a git hiccup silently wiping the queue,
     which reads downstream as "every epic is merged".
+
+    **It commits what it writes.** Left uncommitted, the restored queue is a bare working
+    tree edit with nothing explaining it, and the reviewers a few nodes later read exactly
+    that: `code-review` filed it as a finding ("removes an epic from the work queue"), and
+    `apply-review` resolved the finding with `git checkout --`, putting the stale queue
+    back and spending a lap doing it. A queue reconcile is the run's own bookkeeping, so
+    it is recorded like the run's other bookkeeping rather than left looking like
+    somebody's unfinished edit. The usual case writes identical content and
+    `commit_paths` finds nothing staged, so no commit is made.
+
+    "Identical" needs the trailing newline put back. `git show` drops it, so writing back
+    what it returns left the queue file one byte dirty on *every* epic — a diff with no
+    change in it, which the first story of each epic then swept into its own commit. That
+    stray byte was also enough to make a story that built nothing look like a story that
+    built something, hiding it from the zero-diff churn guard.
     """
     if not base or not branch_exists(root, base):
         return
@@ -353,8 +425,14 @@ def _reconcile_queue(logger: logging.Logger, root: Path, base: str) -> None:
     content = show_file(root, base, queue_rel)
     if content is None or not content.strip() or not _has_queue_bullet(content):
         return
+    if not content.endswith("\n"):
+        content += "\n"
     (root / queue_rel).write_text(content, encoding="utf-8")
-    logger.info("reconciled index.md to %s", base)
+    reconcile = commits.message(
+        "chore", commits.scope(root.name), f"reconcile the epic queue to {base}"
+    )
+    if commit_paths(root, reconcile, queue_rel):
+        logger.info("reconciled index.md to %s", base)
 
 
 @blueprint.node

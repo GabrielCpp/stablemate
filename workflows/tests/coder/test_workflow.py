@@ -45,6 +45,7 @@ from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
+from workhorse_workflows.kit import is_ancestor
 from workhorse_workflows.coder import workflow as coder_workflow
 from workhorse_workflows.coder.shared.backlog import prune_fix_item, select_fix_item
 from workhorse_workflows.coder.shared.ci import poll_pr_checks
@@ -827,6 +828,74 @@ def test_an_epic_this_run_cut_is_returned_to_rather_than_refused(
     assert (repo / "src" / "ours.txt").exists()
 
 
+def test_returning_to_a_set_aside_epic_brings_in_what_landed_meanwhile(
+    epic: Callable[..., Path],
+    logger: logging.Logger,
+    git: Callable[..., subprocess.CompletedProcess],
+    write: Callable[[Path, str], Path],
+    tmp_path: Path,
+) -> None:
+    """The other half of the multi-epic drain, and the one that used to ship corruption.
+
+    Epic A is cut, set aside, and epic B is finished and merged into base while A waits.
+    The branch A comes back to is now behind by all of B — it carries B's story files as
+    they were *before* B finished, including statuses B has since moved to `QA passed`.
+    Every reviewer on A then reads those stale files as truth, and whatever survives to
+    A's own squash merge puts them back on base.
+
+    Returning must therefore mean "return and catch up", not "return".
+    """
+    repo = epic()
+    base = _head(repo)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir))
+    git(repo, "checkout", "-q", base)
+    write(repo / "src" / "epic-b.txt", "finished elsewhere\n")  # epic B lands on base
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "epic B")
+    landed = git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir))
+
+    assert _head(repo) == f"feat/{EPIC}"
+    assert (repo / "src" / "epic-b.txt").exists()
+    assert is_ancestor(repo, landed, f"feat/{EPIC}")
+
+
+def test_a_set_aside_epic_that_conflicts_with_base_is_refused_not_half_merged(
+    epic: Callable[..., Path],
+    logger: logging.Logger,
+    git: Callable[..., subprocess.CompletedProcess],
+    write: Callable[[Path, str], Path],
+    tmp_path: Path,
+) -> None:
+    """Two epics that edited the same lines are a human's call, not a run's — and the
+    refusal must leave a clean tree, not a conflicted one the next node would commit."""
+    repo = epic()
+    base = _head(repo)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir))
+    write(repo / "src" / "contested.txt", "epic A's line\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "story one")
+    git(repo, "checkout", "-q", base)
+    write(repo / "src" / "contested.txt", "epic B's line\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "epic B")
+
+    with pytest.raises(WorkflowFailed, match="does not merge cleanly"):
+        branch_epic(
+            logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir)
+        )
+
+    assert not git(repo, "status", "--porcelain").stdout.strip()
+    assert not (repo / ".git" / "MERGE_HEAD").exists()
+
+
 def test_a_claim_does_not_outlive_the_run_that_made_it(
     epic: Callable[..., Path],
     logger: logging.Logger,
@@ -974,13 +1043,14 @@ def test_three_stories_in_a_row_that_commit_nothing_stop_the_run(
     it is a loop that is not making progress, and the run stops rather than walking the rest
     of the epic producing nothing.
 
-    Four stories, not three, and the reason is behavior worth pinning: `branch_epic`
-    reconciles the epic queue from the base branch by writing back what `git show` returns,
-    and `git show` drops the file's trailing newline. So cutting the epic branch always
-    leaves `docs/epics/index.md` one byte dirty, and the *first* story of any epic commits
-    that byte whatever else it did. The YAML does exactly the same — its `branch-epic.py`
-    is the same three lines — so the port keeps it and the test counts from the second
-    story.
+    Three stories, and it used to be four. `branch_epic` reconciles the epic queue from
+    the base by writing back what `git show` returns, and `git show` drops the file's
+    trailing newline — so cutting an epic branch always left `docs/epics/index.md` one
+    byte dirty, and the *first* story of every epic swept that byte into its own commit.
+    A story that built nothing therefore looked to this guard like a story that built
+    something, and the run walked one extra story before stopping. The reconcile now
+    restores the newline and commits itself when it does change something, so the first
+    story is measured on its own work like every other.
     """
     repo = epic(count=4)
     sub = _Sub(repo, changes=False).install(monkeypatch)
@@ -988,8 +1058,8 @@ def test_three_stories_in_a_row_that_commit_nothing_stop_the_run(
     with pytest.raises(WorkflowFailed, match="in a row committed no changes"):
         drive_flow(Coder(), env(), _Agent())
 
-    # Four stories were built before the guard tripped, not one and not the whole epic.
-    assert sub.calls.count("Dev") == 4, sub.calls
+    # Three stories were built before the guard tripped, not one and not the whole epic.
+    assert sub.calls.count("Dev") == 3, sub.calls
     assert _dirty(repo) == "", _dirty(repo)
 
 

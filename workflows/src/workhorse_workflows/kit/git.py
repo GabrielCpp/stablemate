@@ -282,6 +282,30 @@ def merge_base(path: str | Path, *refs: str) -> str | None:
     return out or None
 
 
+def merge_ref(path: str | Path, ref: str) -> bool:
+    """Merge ``ref`` into the current branch. True on success, False on conflict.
+
+    A conflicted merge is **aborted** before returning, so the caller never inherits a
+    half-merged worktree — the tree is exactly as it was, and a caller that treats False
+    as "I could not do this, say so" is safe. Reporting the failure rather than raising
+    keeps this on the same fail-soft footing as the rest of the module; the caller owns
+    the decision about whether an unmergeable divergence should stop the run.
+
+    ``--no-edit`` because there is no terminal to answer an editor prompt in, and
+    ``--no-ff`` is deliberately *not* passed: a fast-forward is the common case here and
+    an empty merge commit for it is noise in the history a human reads later.
+    """
+    try:
+        open_repo(path).git.merge(ref, "--no-edit")
+        return True
+    except GitError:
+        try:
+            open_repo(path).git.merge("--abort")
+        except GitError:
+            pass  # nothing to abort: the merge failed before it touched the tree
+        return False
+
+
 def is_ancestor(path: str | Path, ancestor: str, descendant: str) -> bool:
     """True if ``ancestor`` is reachable from ``descendant`` (``git merge-base --is-ancestor``).
 
