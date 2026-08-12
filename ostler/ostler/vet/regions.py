@@ -8,10 +8,24 @@ from __future__ import annotations
 from pydantic import BaseModel, TypeAdapter
 
 from ostler.qa.harness_host import load_harness_module
-from ostler.vet.cdp import ScannedElement
 from ostler.vet.geometry import BBox
 
 _merge_rects = load_harness_module("ostler_qa_scan").merge_rects
+
+
+class ScannedElement(BaseModel):
+    """One element as the scan reports it — the input side of a merge.
+
+    It lives here rather than beside the CDP connection that produces it because a scan also
+    arrives from a QA scenario that ran the same JS itself, and the live-browser module
+    imports the QA harness host. Keeping the model next to the merge that consumes it is what
+    keeps `ostler.vet` importable from inside `ostler.qa` rather than in a circle with it.
+    """
+
+    selector: str
+    bbox: BBox
+    role: str = ""
+    tag: str = ""
 
 
 class RegionBox(BaseModel):

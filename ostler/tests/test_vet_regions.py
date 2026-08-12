@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ostler.vet.cdp import ScannedElement
+from ostler.vet.regions import ScannedElement
 from ostler.vet.geometry import BBox
 from ostler.vet.regions import RegionList, merge
 

@@ -11,19 +11,10 @@ QA scenario records the state it rendered itself.
 
 from __future__ import annotations
 
-from pydantic import BaseModel
-
 from ostler.qa.harness_host import load_harness_module
-from ostler.vet.geometry import BBox
+from ostler.vet.regions import ScannedElement
 
 _WALK_JS = load_harness_module("ostler_qa_scan").SCAN_JS
-
-
-class ScannedElement(BaseModel):
-    selector: str
-    bbox: BBox
-    role: str = ""
-    tag: str = ""
 
 
 def connect_and_scan(cdp_url: str) -> list[ScannedElement]:
