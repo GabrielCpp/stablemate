@@ -1,5 +1,5 @@
 description: >
-  Stablemate toolchain skills — workhorse workflow authoring, farrier install/setup, ostler doc-graph CLI (incl. the OKF UI profile + modeling playbooks), groom's operator-gate dashboard plus the telemetry/transcript store behind it, the parse-don't-match standard for reading structured formats, the portability tiers a shipped package owes its users, and the writing doctrine every document an agent reads is held to. Plus the two commands every change lands under: `commit` (commit-as-you-go, Conventional Commits, staged by path) and `reload-runs` (push a fix into a workhorse run already in flight). (The stablemate repo itself additionally selects the UI a11y skills for groom's UI directly in its agents.yml.)
+  Stablemate toolchain skills — workhorse workflow authoring, farrier install/setup, ostler doc-graph CLI (incl. the OKF UI profile + modeling playbooks), groom's operator-gate dashboard plus the telemetry/transcript store behind it, the parse-don't-match standard for reading structured formats, the portability tiers a shipped package owes its users, and the writing doctrine every document an agent reads is held to. Plus the diagnosis discipline a hard bug is held to (a loop that goes red before any hypothesis) and the three commands: `commit` (commit-as-you-go, Conventional Commits, staged by path), `reload-runs` (push a fix into a workhorse run already in flight) and `grill` (interview a design until its frontier is empty). (The stablemate repo itself additionally selects the UI a11y skills for groom's UI directly in its agents.yml.)
 # The `stablemate/` segment is the library namespace and is stripped from the
 # installed name; the skill names themselves no longer repeat it. Each one says
 # which tool it is about — `ostler`, `groom`, `farrier-setup`,
@@ -20,6 +20,7 @@ skills:
   - stablemate/okf-modeling
   - stablemate/repo-docs
   - stablemate/agent-writing
+  - stablemate/diagnosing-bugs
   - stablemate/structured-parsing
   - stablemate/portability
 
@@ -31,3 +32,4 @@ skills:
 prompts:
   - stablemate/commit
   - stablemate/reload-runs
+  - stablemate/grill
