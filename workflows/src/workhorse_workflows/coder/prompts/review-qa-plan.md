@@ -146,3 +146,20 @@ gap on your first pass or accept that the run will find it the expensive way.
 `kind` defaults to `coverage` when omitted, so an unlabelled finding blocks. Label
 deliberately rather than defensively: inflating a nit to `coverage` does not make the plan
 better, it spends the passes that a genuine gap would need.
+
+## The set-diff is already done — do not redo it
+
+`ostler qa validate` has already passed on this plan, and it is not a schema check. It diffs
+every `required: true` obligation and every `ac:N` against the union of the scenarios'
+`covers:`, and it refuses a plan that leaves one uncovered. It also refuses a scenario whose
+`covers:` rides on nothing but a runner's exit banner (`VITEST_EXIT:0` and its kin) or on a
+whole `test_file:` with no `test_name:`. So an id you cannot find in any `covers:` list does
+not exist in the plan you are reading — re-deriving that mapping by hand spends a large part
+of your pass to reproduce a verdict that already ran.
+
+What the validator cannot decide is whether an assertion that *is* substantive actually
+exercises the behaviour its `covers:` names: a component rendered with a hard-coded literal
+where the obligation is that the value is *computed*; a checkpoint that reads the fixture back
+rather than the surface; a journey deep-linked past the navigation the flow documents. That
+judgment is the whole of your `coverage` worklist. Cite the scenario, name what its evidence
+proves, and name what the obligation requires instead.

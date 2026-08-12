@@ -22,6 +22,8 @@ are checked against the real ones rather than restated and trusted.
 """
 from __future__ import annotations
 
+import ast
+import inspect
 import re
 from pathlib import Path
 
@@ -29,6 +31,9 @@ import yaml
 
 import workhorse_workflows
 from ostler.qa.plan import CAPTURES, EXPECTATIONS
+from ostler.qa.session import QA_DIRNAME
+from workhorse_workflows.coder.qa.flow import Qa
+from workhorse_workflows.coder.qa.nodes.qa import QA_SCRATCH_DIRNAME
 
 PROMPT = Path(workhorse_workflows.__file__).parent / "coder" / "prompts" / "plan-qa.md"
 
@@ -95,6 +100,55 @@ def test_the_prose_names_only_predicates_ostler_actually_accepts():
         assert named, f"the {key}: clause lists no predicates"
         unknown = named - real[key]
         assert not unknown, f"plan-qa.md offers {key}: {sorted(unknown)}, which ostler rejects"
+
+
+#: The two prompts `Qa._plan_args` renders. Both are fed from that one dict, so a name
+#: either of them reads has to be a key in it.
+PLAN_PROMPTS = (PROMPT, PROMPT.parent / "repair-qa-plan.md")
+
+#: `{{ workhorse_var('x') }}` for the scalars, and the bare `{% if x %}` / `{% for … in x %}`
+#: form the structured arguments use — `qa_stack`, `shared_packages`.
+_SCALAR_ARG = re.compile(r"workhorse_var\(\s*'([a-z_]+)'\s*\)")
+_STRUCTURED_ARG = re.compile(r"{%-?\s*(?:if|for\s+\w+\s+in)\s+([a-z_]+)(?![a-z_(])")
+
+
+def _plan_arg_keys() -> set[str]:
+    """The literal keys of the dict `_plan_args` returns, read from its source.
+
+    Read statically rather than by calling it: the method needs a live flow with a resolved
+    `ImplContext` behind it, and what this test is guarding is the much smaller claim that a
+    name a prompt interpolates is a name the flow passes."""
+    tree = ast.parse(inspect.getsource(Qa._plan_args).lstrip())
+    returns = [n for n in ast.walk(tree) if isinstance(n, ast.Return)]
+    assert len(returns) == 1, "_plan_args no longer ends in a single return"
+    literal = returns[0].value
+    assert isinstance(literal, ast.Dict), "_plan_args no longer returns a dict literal"
+    return {k.value for k in literal.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+
+
+def test_the_plan_prompts_only_interpolate_arguments_the_flow_passes():
+    """A misspelled name renders as empty and says nothing — Jinja has no undefined error
+    here — so the prompt silently loses the brief it was supposed to carry. That is how
+    `plan-context.json` reached one prompt for months while `plan-qa.md` described it in
+    prose."""
+    keys = _plan_arg_keys()
+    #: Jinja's own names and the loop variables the templates bind themselves.
+    local = {"raw", "endraw", "repo", "f", "p", "r"}
+    for prompt in PLAN_PROMPTS:
+        text = prompt.read_text()
+        named = set(_SCALAR_ARG.findall(text)) | set(_STRUCTURED_ARG.findall(text))
+        unknown = named - keys - local
+        assert not unknown, f"{prompt.name} reads {sorted(unknown)}, which _plan_args omits"
+
+
+def test_the_dry_run_scratch_directory_is_not_the_evidence_directory():
+    """The whole separation: a scenario tuned until it passed must not be able to write into
+    the ledger `verify_qa_evidence` reads."""
+    assert QA_SCRATCH_DIRNAME != QA_DIRNAME
+    for prompt in PLAN_PROMPTS:
+        text = prompt.read_text()
+        assert "--out-dir" in text, f"{prompt.name} does not teach the dry run"
+        assert "qa_scratch_dir" in text, f"{prompt.name} hard-codes the dry-run directory"
 
 
 if __name__ == "__main__":

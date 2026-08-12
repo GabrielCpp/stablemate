@@ -306,6 +306,7 @@ def resolve_impl_context(
         impl_instruction_paths=impl_instruction_paths,
         qa_run_plan=qa_run_plan,
         qa_stack=plan_ctx.get("qa_stack") or {},
+        shared_packages=[str(item) for item in plan_ctx.get("shared_packages") or []],
         dispatch_list=dispatch,
         affected_repos=affected_repos,
         affected_repo_paths=affected_repo_paths,

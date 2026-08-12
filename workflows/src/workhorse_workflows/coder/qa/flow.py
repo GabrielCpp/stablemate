@@ -81,6 +81,7 @@ from workhorse_workflows.coder.qa.nodes.evidence import verify_qa_evidence
 from workhorse_workflows.coder.qa.nodes.hygiene import check_sentinel_ids, flush_root_screenshots
 from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
 from workhorse_workflows.coder.qa.nodes.qa import (
+    QA_SCRATCH_DIRNAME,
     clear_qa_evidence,
     ensure_stack,
     record_qa_giveup,
@@ -572,13 +573,30 @@ class Qa(Workflow):
         return self._validated(loop)
 
     def _plan_args(self, loop: QaLoop) -> dict[str, object]:
-        """Every diagnostic the loop collected, for whichever plan turn is about to run."""
+        """Every diagnostic the loop collected, for whichever plan turn is about to run.
+
+        Plus what the *dev* lane already resolved about the surface. `plan-context.json`
+        carries the stack profile, the fixture files and a prose description of what the
+        running surface renders, all of it vetted by `ostler artifact vet plan-context` — and
+        until now it reached exactly one QA prompt, `setup-fix.md`, which runs only after a
+        run is already blocked. The planner was left re-deriving a fixture path that was
+        sitting in a file two directories up, and getting it wrong is how a scenario comes
+        back `blocked` on data that exists.
+
+        `qa_scratch_dir` is the other half of the dry run: it is deliberately *not* under
+        `qa_dir`, because `clear_qa_evidence` wipes that and `verify_qa_evidence` reads it. A
+        scenario tuned until it passed must not be able to leave its own admissible evidence.
+        """
+        impl = self.output(resolve_impl_context)
         return {
             "story_path": self.ctx.story_path,
             "spec_dir": self.ctx.spec_dir,
             "qa_dir": self.ctx.qa_dir,
+            "qa_scratch_dir": QA_SCRATCH_DIRNAME,
             "docs_path": self.docs_path,
             "target_env": self.target_env,
+            "qa_stack": impl.qa_stack,
+            "shared_packages": impl.shared_packages,
             "context_status": loop.context_status,
             "context_notes": loop.context_notes,
             "plan_validation_notes": loop.plan_validation_notes,

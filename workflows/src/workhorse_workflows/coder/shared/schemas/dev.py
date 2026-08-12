@@ -162,12 +162,16 @@ class ImplContext(CoderResult):
     Deterministic and side-effect-free, and deliberately degrading: a missing or garbled
     plan-context yields empty lists rather than a failure, so the implementer falls back to
     reading the plan text. `qa_stack` is copied verbatim from the plan and stays untyped —
-    it is the fixture/data description a QA turn is handed as prose.
+    it is the fixture/data description a QA turn is handed as prose. `shared_packages` is
+    the same: the plan's list of files more than one service reads, which the QA planner
+    needs because a fixture the dev lane already resolved is exactly what it should assert
+    against rather than re-derive.
     """
 
     impl_instruction_paths: list[str] = []
     qa_run_plan: list[QaRunEntry] = []
     qa_stack: dict[str, Any] = {}
+    shared_packages: list[str] = []
     dispatch_list: list[DispatchEntry] = []
     affected_repos: list[str] = []
     affected_repo_paths: list[str] = []

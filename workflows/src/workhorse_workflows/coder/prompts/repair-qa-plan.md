@@ -5,7 +5,8 @@ agent: agent
 # Repair The Cited Parts Of An Existing QA Plan
 
 A QA plan for this story already exists and a gate sent it back. Apply the repairs the
-diagnostics name. **Do not re-author the plan.** Do not execute QA.
+diagnostics name. **Do not re-author the plan.** Do not execute the scored QA run — the
+per-scenario dry run described below is the one execution this turn owns.
 
 ## Inputs
 
@@ -13,6 +14,13 @@ diagnostics name. **Do not re-author the plan.** Do not execute QA.
 - Spec directory: `{{ workhorse_var('spec_dir') }}`
 - Target environment: `{{ workhorse_var('target_env') }}`
 - Context status: `{{ workhorse_var('context_status') }}`
+{% if qa_stack %}- The stack that is **already up** for you{% if qa_stack.profile %}, profile `{{ qa_stack.profile }}`{% endif %}:
+{% if qa_stack.fixtures %}  - fixtures already loaded — assert against **these**, do not re-derive a path:
+{% for f in qa_stack.fixtures %}    - `{{ f }}`
+{% endfor %}{% endif %}{% if qa_stack.capable_of_rendering %}  - what it can render: {{ qa_stack.capable_of_rendering }}
+{% endif %}{% endif %}{% if shared_packages %}- Shared files this story's services both read, resolved by the implementation plan:
+{% for p in shared_packages %}  - `{{ p }}`
+{% endfor %}{% endif %}
 {% if workhorse_var('context_notes') %}- Context diagnostics: `{{ workhorse_var('context_notes') }}`
 {% endif %}{% if workhorse_var('plan_validation_notes') %}- Plan validation diagnostics: `{{ workhorse_var('plan_validation_notes') }}`
 {% endif %}{% if workhorse_var('plan_review_notes') %}- Semantic plan-review findings: `{{ workhorse_var('plan_review_notes') }}`
@@ -111,10 +119,40 @@ The rules the repairs most often trip over:
 Keep `qa-plan.md` in step with what you changed: the AC/obligation-to-scenario map has to
 still describe the YAML. Do not rewrite sections whose scenarios you did not touch.
 
-Do not validate the plan yourself — not `ostler qa validate`, not `ostler qa run`, and not by
-importing `ostler.qa` from Python. A workflow node validates it the moment you return and
-hands you its diagnostics if it fails, so a self-check can only repeat a verdict that is one
-call away.
+## Coverage Has To Be Earned
+
+`ostler qa validate` now grades what a scenario's `covers:` is worth. A scenario whose only
+assertion is a runner's exit banner — `assert_contains: "VITEST_EXIT:0"`, `GOTEST_EXIT:0`, any
+bare `EXIT:0` — no longer counts as covering anything: it proves the suite is green and is
+indistinguishable from a suite that skipped every case. A `test_file:` reference needs a
+`test_name:` naming the case the coverage rides on. When a finding cites a scenario like that,
+the repair is a real oracle — something the command prints about the behaviour, or an `expect:`
+on the surface — not a reworded objective.
+
+## Dry-Run The Scenarios You Repaired
+
+The stack is already up. Before returning, execute each scenario you changed on its own:
+
+```bash
+ostler qa run <spec_dir>/qa-plan.yml --spec <spec_dir> \
+  --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}
+```
+
+`--out-dir` keeps the artifacts out of `{{ workhorse_var('qa_dir') }}`, the scored ledger the
+evidence gate reads — a scenario tuned until it passed must not be able to leave its own proof.
+Fix what does not resolve and run it again. One call settles what no amount of re-reading does:
+a locator matching zero elements, a straight `'` where the fixture has `’`, a credential that
+disagrees with the seed script. Each of those otherwise costs another full workflow lap.
+
+You may repair **runner tooling** to make the dry run executable — the ostler venv and its
+dependencies, harness wiring, fixture plumbing, a missing browser binary — and say so in
+`notes`. You may **not** touch product code: a scenario that fails because the product is wrong
+is the finding this whole loop exists to surface.
+
+Do not validate the *plan* itself by any other route — not `ostler qa validate`, not a
+whole-plan `ostler qa run`, and not by importing `ostler.qa` from Python. A workflow node
+validates it the moment you return and hands you its diagnostics if it fails, so a self-check
+can only repeat a verdict that is one call away.
 
 ## Output
 

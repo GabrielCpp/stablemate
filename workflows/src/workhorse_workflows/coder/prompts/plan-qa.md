@@ -13,6 +13,13 @@ QA. Ostler is the only primary executor for command, browser, and mobile scenari
 - Spec directory: `{{ workhorse_var('spec_dir') }}`
 - Target environment: `{{ workhorse_var('target_env') }}`
 - Context status: `{{ workhorse_var('context_status') }}`
+{% if qa_stack %}- The stack that is **already up** for you{% if qa_stack.profile %}, profile `{{ qa_stack.profile }}`{% endif %}:
+{% if qa_stack.fixtures %}  - fixtures already loaded — assert against **these**, do not re-derive a path:
+{% for f in qa_stack.fixtures %}    - `{{ f }}`
+{% endfor %}{% endif %}{% if qa_stack.capable_of_rendering %}  - what it can render: {{ qa_stack.capable_of_rendering }}
+{% endif %}{% endif %}{% if shared_packages %}- Shared files this story's services both read, resolved by the implementation plan:
+{% for p in shared_packages %}  - `{{ p }}`
+{% endfor %}{% endif %}
 {% if workhorse_var('context_notes') %}- Context diagnostics: `{{ workhorse_var('context_notes') }}`
 {% endif %}{% if workhorse_var('plan_validation_notes') %}- Previous plan validation diagnostics: `{{ workhorse_var('plan_validation_notes') }}`
 {% endif %}{% if workhorse_var('plan_review_notes') %}- Previous semantic plan-review diagnostics: `{{ workhorse_var('plan_review_notes') }}`
@@ -338,12 +345,49 @@ Use the OKF graph as a cross-layer test specification, not as a list of titles:
 A green test suite alone never decides a pass. The observable behavior and runner-owned evidence
 are the oracle. Do not put verdicts in the plan or write under `qa/`.
 
-Do not validate the plan yourself, by any route: not `ostler qa validate`, not `ostler qa run`,
-and not by importing `ostler.qa` from Python. A workflow script node validates it the moment you
-return and hands you its diagnostics if it fails, so a self-check can only repeat a verdict that
-is one call away. The Python route is named explicitly because forbidding the two commands alone
-left it open, and a run took it: four Bash turns rediscovering `load_plan`'s signature, inside a
-turn that spent ten minutes and a quarter of the run's whole wall-clock budget arriving where the
+## Coverage Has To Be Earned
+
+`covers:` is a claim that this scenario *proves* those ids. `ostler qa validate` now grades it,
+and rejects a scenario whose only assertion is a runner's exit banner — `assert_contains:
+"VITEST_EXIT:0"`, `GOTEST_EXIT:0`, any bare `EXIT:0`. Re-running an already-committed test file
+and asserting that the process exited zero proves the suite is green; it proves nothing about
+the behaviour the obligation names, and it is indistinguishable from a suite that skipped every
+case. Assert something the command **prints about the behaviour itself** — the value, the count,
+the status — or drive the surface and `expect:` on it.
+
+The same applies to pointing a scenario at a whole committed test file. `test_file:` without
+`test_name:` claims coverage on the file happening to pass; name the case that proves it, so the
+coverage rides on a named test.
+
+## Dry-Run Every Scenario You Write
+
+The stack is up **before** this turn, precisely so you can find out whether what you wrote
+resolves. After authoring a scenario, execute it on its own:
+
+```bash
+ostler qa run <spec_dir>/qa-plan.yml --spec <spec_dir> \
+  --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}
+```
+
+`--out-dir` keeps the artifacts out of `{{ workhorse_var('qa_dir') }}`, which is the scored
+ledger the evidence gate reads — a scenario tuned until it passed must not be able to leave its
+own proof. Fix what does not resolve and run it again. This is what one call answers and no
+amount of re-reading does: a locator that matches zero elements, a straight `'` where the
+fixture has `’`, a password constant that disagrees with the seed script, a captured JSONPath
+against a command that prints plain text. Each of those otherwise costs a full workflow lap.
+
+You may repair **runner tooling** to make a dry run executable: the ostler venv and its
+dependencies, harness wiring, fixture plumbing, a missing browser binary. Say what you repaired
+in `notes`. You may **not** touch product code — a scenario that fails because the product is
+wrong is the finding, and the fix loop owns it. Write the scenario so it fails honestly and say
+so in `qa-plan.md`.
+
+Do not validate the *plan* yourself, by any other route: not `ostler qa validate`, not a whole-plan
+`ostler qa run`, and not by importing `ostler.qa` from Python. A workflow script node validates it
+the moment you return and hands you its diagnostics if it fails, so a self-check can only repeat a
+verdict that is one call away. The Python route is named explicitly because forbidding the commands
+alone left it open, and a run took it: four Bash turns rediscovering `load_plan`'s signature, inside
+a turn that spent ten minutes and a quarter of the run's whole wall-clock budget arriving where the
 node arrived immediately afterwards.
 
 ## Output

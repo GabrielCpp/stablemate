@@ -39,6 +39,12 @@ from workhorse_workflows.coder.shared.schemas.qa import (
 #: a runner that answered something unrecognized has not established a verdict.
 RUN_STATUSES = frozenset({"passed", "failed", "blocked", "invalid"})
 
+#: Where a plan turn's dry runs land — `ostler qa run --scenario … --out-dir`. Spec-relative
+#: and deliberately *not* `qa/`: that directory is the scored ledger the evidence gate reads,
+#: and a scenario tuned until it passed would otherwise be able to leave its own proof. It is
+#: cleared with the evidence for the same reason, so no dry run outlives the pass that made it.
+QA_SCRATCH_DIRNAME = "qa-dry-run"
+
 
 @blueprint.node
 def clear_qa_evidence(logger: logging.Logger, spec_dir: str = "") -> QaCleared:
@@ -47,16 +53,21 @@ def clear_qa_evidence(logger: logging.Logger, spec_dir: str = "") -> QaCleared:
     Deliberately does not recreate `qa/`: the ostler runner owns that directory, its log,
     its manifest and its evidence, and a node that pre-created it would be authoring an
     empty shell the evidence gate then has to tell apart from a real run.
+
+    `QA_SCRATCH_DIRNAME` goes with it. A dry run is authoring exhaust — it exists to tell the
+    planner whether a locator resolves — and leaving it in the spec directory would both ship
+    it in the story's commit and offer the audit a second, unscored ledger to read.
     """
     if not spec_dir:
         logger.warning("no spec_dir given — nothing to clear")
         return QaCleared()
     root = Path(spec_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
-    qa_dir = root / "qa"
-    if qa_dir.exists():
-        shutil.rmtree(qa_dir)
-        logger.info("removed stale qa dir %s", qa_dir)
+    for name in ("qa", QA_SCRATCH_DIRNAME):
+        stale = root / name
+        if stale.exists():
+            shutil.rmtree(stale)
+            logger.info("removed stale qa dir %s", stale)
     evidence = root / "qa-evidence.json"
     if evidence.exists():
         evidence.unlink()
