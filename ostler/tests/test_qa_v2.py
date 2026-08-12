@@ -221,6 +221,88 @@ def test_v2_validation_rejects_disposable_input_and_unasserted_coverage(tmp_path
     assert any("no machine assertion" in problem for problem in outcome.data["problems"])
 
 
+def test_v2_validation_rejects_coverage_carried_by_an_exit_banner(tmp_path: Path):
+    """A scenario that re-runs a committed test and asserts its exit banner covers nothing.
+
+    The mechanical set-diff below — every required obligation against the union of the
+    scenarios' `covers:` — is satisfied by any scenario carrying any assertion, so
+    `assert_contains: "VITEST_EXIT:0"` bought full credit for whatever that scenario claimed.
+    A live run spent 27 of its plan-review findings saying so by hand, one story at a time.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["scenarios"][0]["actions"][0]["assert_contains"] = "VITEST_EXIT:0"
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_validate(plan, root=tmp_path)
+
+    assert outcome.status == "invalid"
+    problems = outcome.data["problems"]
+    # Actionable: the scenario, the offending action and the sentinel are all named, because a
+    # planner repairing this from "not covered" alone re-derives the wrong fix.
+    assert any(
+        "proves only that a process exited" in problem
+        and "api-contract" in problem
+        and "action 1" in problem
+        and "VITEST_EXIT:0" in problem
+        for problem in problems
+    ), problems
+    # And the coverage credit is withdrawn, so the set-diff reports the hole too.
+    assert any("is not covered by an asserted scenario" in problem for problem in problems)
+
+
+def test_v2_validation_accepts_an_exit_code_named_inside_real_output(tmp_path: Path):
+    """The pattern is anchored to the whole value, so content that mentions an exit still counts.
+
+    Grading assertions is only worth doing if it does not also reject the honest ones; a rule
+    that fired on any string containing `exit` would push planners into paraphrase.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["scenarios"][0]["actions"][0]["assert_contains"] = "exit code 0 for tab reference-api"
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    assert cmd_validate(plan, root=tmp_path).status == "passed"
+
+
+def test_v2_validation_makes_a_native_test_name_the_case_it_relies_on(tmp_path: Path):
+    """`test_file:` skips the assertion check entirely, so a whole-file reference proved nothing.
+
+    Pointing at a committed spec file and claiming coverage of an obligation asserts only that
+    the file as a whole still passes — which it did before the story started. `test_name` is
+    already the key the Playwright driver turns into `--grep`, so the fix costs no new vocabulary.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    native = tmp_path / "e2e/item.spec.ts"
+    native.parent.mkdir(parents=True)
+    native.write_text("test('emits an item', () => {})\n", encoding="utf-8")
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["targets"]["api"] = {"driver": "playwright", "base_url": "http://127.0.0.1:5173"}
+    scenario = data["scenarios"][0]
+    scenario.pop("actions")
+    scenario["test_file"] = "e2e/item.spec.ts"
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_validate(plan, root=tmp_path)
+
+    assert outcome.status == "invalid"
+    assert any("set test_name to the case that proves it" in problem for problem in outcome.data["problems"])
+
+    scenario["test_name"] = "emits an item"
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    assert cmd_validate(plan, root=tmp_path).status == "passed"
+
+
 def test_v2_validation_rejects_a_bare_evidence_path_inside_a_command(tmp_path: Path):
     """`qa/steps/x` means the evidence dir under `out:` and a missing dir inside a `cmd`.
 

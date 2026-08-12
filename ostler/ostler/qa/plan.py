@@ -249,12 +249,21 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
             native = _contained_path(document.root, scenario[native_key])
             if native is None or not native.is_file():
                 problems.append(f"scenario '{scenario_id}' {native_key} does not exist")
-            asserted_coverage.update(covers)
+            if covers and native_key == "test_file" and not scenario.get("test_name"):
+                problems.append(
+                    f"scenario '{scenario_id}' points at the whole of {scenario[native_key]} and claims "
+                    f"coverage of {sorted(covers)} — set test_name to the case that proves it, so the "
+                    "coverage rides on a named test rather than on the file happening to pass"
+                )
+            else:
+                asserted_coverage.update(covers)
             continue
         if not isinstance(actions, list) or not actions:
             problems.append(f"scenario '{scenario_id}' requires non-empty actions")
             continue
         has_assertion = False
+        has_substantive_assertion = False
+        hollow: list[str] = []
         driver = target.get("driver")
         for action_index, action in enumerate(actions):
             prefix = f"scenario '{scenario_id}' action {action_index + 1}"
@@ -278,7 +287,7 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
                 )
                 continue
             if kind == "expect":
-                has_assertion = True
+                has_assertion = has_substantive_assertion = True
                 if operation not in EXPECTATIONS:
                     problems.append(f"{prefix} has unsupported expectation {operation!r}")
                 if operation == "url":
@@ -303,6 +312,11 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
                     problems.append(f"{prefix} action {operation!r} is not supported by command driver")
                 if operation == "command" and any(key in action for key in ASSERT_KEYS):
                     has_assertion = True
+                    sentinel = _exit_sentinel(action)
+                    if sentinel is None:
+                        has_substantive_assertion = True
+                    else:
+                        hollow.append(f"{prefix} asserts only {sentinel}")
                 if operation == "command":
                     problems.extend(_evidence_paths_in_command(action.get("cmd"), prefix))
             locator = action.get("locator")
@@ -334,7 +348,13 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
             problems.extend(_validate_book_locators(str(scenario_id), covers, actions, documented))
         if covers and not has_assertion:
             problems.append(f"scenario '{scenario_id}' lists coverage but has no machine assertion")
-        if has_assertion:
+        elif covers and not has_substantive_assertion:
+            problems.append(
+                f"scenario '{scenario_id}' claims coverage of {sorted(covers)} but every assertion it "
+                f"makes proves only that a process exited ({'; '.join(hollow)}) — assert something the "
+                "command prints about the behaviour itself, or drive the surface and expect: on it"
+            )
+        if has_substantive_assertion:
             asserted_coverage.update(covers)
 
     for obligation in document.context.get("obligations", []):
@@ -355,6 +375,35 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
         if criterion_id and criterion_id not in asserted_coverage:
             problems.append(f"required acceptance criterion '{criterion_id}' is not covered by an asserted scenario")
     return problems
+
+
+#: An `assert_contains` value that proves only that the runner process reached its end. The
+#: spelling these plans reach for is `VITEST_EXIT:0` — a wrapper echoes the banner, the scenario
+#: re-runs an already-committed test file, and its `covers:` is satisfied without anything the
+#: story changed being exercised. Anchored to the whole value: `assert_contains: "exit code 0 for
+#: tab 3"` names real output and is not a sentinel.
+_EXIT_SENTINEL = re.compile(
+    r"^[A-Z0-9_]*(?:EXIT(?:[_-]?CODE)?|RETURN[_-]?CODE)\s*[:=]?\s*0?$",
+    re.IGNORECASE,
+)
+
+
+def _exit_sentinel(action: Any) -> str | None:
+    """Name the exit sentinel a command action asserts when that is all it asserts, else `None`.
+
+    Deliberately narrow. `expect_http` reads the status the endpoint actually returned and
+    `assert_count` counts what the command actually printed, so both are claims about behaviour;
+    only a value that *is* the runner's exit banner says nothing. A scenario asserting
+    `assert_contains: "exit code 0 for tab 3"` names real output and is not caught, because the
+    pattern is anchored to the whole value.
+    """
+    if any(key in action for key in ("assert_count", "expect_http", "cloudwatch_confirm")):
+        return None
+    needle = action.get("assert_contains")
+    if needle is None:
+        return None
+    text = str(needle).strip()
+    return text if _EXIT_SENTINEL.match(text) else None
 
 
 #: A bare `qa/steps/…` or `qa/asserts/…` inside a command. Anchored to a shell token boundary so
