@@ -54,6 +54,16 @@ implementation of an abstraction via a plain `refs:` link (see the profile §7.1
 context it applies* (fresh start vs resume, which mode, its default), with inline links to the
 `concept`/`format`/command it touches. `- flags: --a, --b, --c` with no explanation is a smell.
 
+**One provable claim per normative bullet.** A normative bullet — `does:`, `when:`, `returns:`,
+`raises:`, `status:`, `error:`, `auth:`, `persistence:`, `emits:`, `consumes:`, `concurrency:`,
+`idempotency:`, `required:`, `default:`, `semantics:`, a flow's `start:`/`end:` — is minted as **one
+obligation** and proved by **one QA scenario**. So a bullet that carries a paragraph is several
+requirements wearing one id, and the scenario covering it proves whichever clause the planner
+happened to read; the rest is documented, claimed as covered, and never tested. Split on the seams
+that are really separate: the success effect, each error case, what is persisted, what is emitted.
+Repeat the key — a repeated `- does:` is a list of obligations, which is exactly what you want.
+`doctor` errors past 700 characters of prose.
+
 **No orphans — everything reachable from the surface root.** Every node links outward to what it
 relates to, and the `screen`/`cli`/`server` index links its key concepts/formats in its *own*
 body so `ostler trace <root>` walks to every node. Don't bury a structural pointer (a flag that
@@ -101,7 +111,10 @@ touches prose. Scaffold output is already canonical.
 
 Unlike the draft profile's original "warns, never blocks" stance, UI conformance is a **hard
 `doctor` gate**: every rule is `error`-severity, carries a `path:line` location, and has a
-mechanical fix, so a workflow node can gate on `ostler doctor` and always converge.
+mechanical fix, so a workflow node can gate on `ostler doctor` and always converge. The one
+exception is `overlong-normative-bullet`, whose remedy is a judgement about the *source*: only
+the code can say which clauses are separate requirements, and cutting the bullet on punctuation
+invents obligations nobody can prove.
 
 | Code | Means | Remedy |
 |---|---|---|
@@ -109,6 +122,7 @@ mechanical fix, so a workflow node can gate on `ostler doctor` and always conver
 | `bad-heading-type` | `## interactions` (wrong casing of a known heading) | `ostler fmt` |
 | `missing-required-section` | a surface lacks a required `## Heading` (e.g. `cli` without `## Commands`) | `ostler scaffold` / add the heading |
 | `missing-required-bullet` | a node lacks a required **key** (e.g. `interaction` without `on:`/`does:`) | `ostler scaffold` stubs it (key presence, not value) |
+| `overlong-normative-bullet` | one obligation-minting bullet runs past 700 characters of prose | split it into one bullet per provable claim |
 | `unresolved-relation` | a `parent:`/`extends:`/`detail:`/`on:` link doesn't resolve | fix the link target |
 | `dangling-link` | a plain link's target **file** is missing | fix the path or create the target |
 | `missing-anchor` | file exists but `#anchor` heading isn't there | fix the anchor |

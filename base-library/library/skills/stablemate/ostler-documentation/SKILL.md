@@ -90,6 +90,17 @@ The default: **scaffold → author → fmt → doctor.** Never hand-write the fi
    - verify: `groom/tests/test_render.py::test_changes_groups_diffs_per_repo`
    ```
 
+   **One provable claim per normative bullet.** Each value of `does:`, `when:`, `returns:`,
+   `raises:`, `status:`, `error:`, `auth:`, `persistence:`, `emits:`, `consumes:`,
+   `concurrency:`, `idempotency:`, `required:`, `default:` or `semantics:` becomes **one QA
+   obligation**, proved by **one scenario**. Merging your delta into a sentence that already
+   holds three requirements produces a bullet where the scenario proves whichever clause the
+   planner read and the rest ships claimed-as-covered — which is how a story passes QA over
+   behavior nobody tested. Split on the real seams (the success effect, each error case, what
+   is persisted, what is emitted) by repeating the key. `doctor` errors past 700 characters of
+   prose, and the split is yours to make: only you know which clauses are separate
+   requirements.
+
 4. **Canonicalize, then gate:**
    ```bash
    ostler fmt docs/features/<service>/…    # frontmatter/bullet/heading shape — never touches prose

@@ -36,6 +36,13 @@ Three rules govern the content (profile §2, §8):
   for a field — one per attribute, never crammed into one line. Then
   `ostler graph --path 'concept:X / method:foo'` walks straight to it. Reserve prose for the summary,
   not the spec.
+- **One provable claim per normative bullet.** A bullet QA mints an obligation from — `does:`,
+  `when:`, `returns:`, `raises:`, `status:`, `error:`, `auth:`, `persistence:`, `emits:`,
+  `consumes:`, `concurrency:`, `idempotency:`, `required:`, `default:`, `semantics:` — is proved
+  by exactly one scenario. A bullet holding a paragraph is several requirements sharing one id,
+  and the scenario proves whichever clause the planner read; the rest ships claimed-as-covered
+  and untested. Split on real seams — the success effect, each error case, what is persisted,
+  what is emitted — by repeating the key. `doctor` errors past 700 characters of prose.
 - **Spec, not implementation** — document *what* the code does; the *how* (patterns, idioms,
   libraries, structure) is owned by the stack skills, never the book. `code:` anchors the impl; the
   prose never prescribes a technique.
