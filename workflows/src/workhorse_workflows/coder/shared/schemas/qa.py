@@ -60,7 +60,7 @@ class QaRunResult(QaResult):
 
 
 class QaPlanValidation(CoderResult):
-    """`ostler qa validate` — is the authored `qa-plan.yml` a plan the runner can execute?
+    """`ostler qa validate` — is the authored `qa_plan.py` a plan the runner can execute?
 
     Two states only, and `invalid` is the default for the same reason `OkfContextResult`
     uses it: the script computed the verdict from a returncode rather than reading it off
@@ -225,7 +225,7 @@ class QaContextRepair(CoderResult):
 
 
 class QaPlanResult(CoderResult):
-    """`plan-qa.md` — the authored `qa-plan.yml`, as the author reports it.
+    """`plan-qa.md` — the authored `qa_plan.py`, as the author reports it.
 
     Nothing branches on it: the plan is judged by `validate_qa_plan` reading the file, not by
     the author's word for it. Kept because the YAML declared the key and the run record is
@@ -635,7 +635,7 @@ class QaLoop(CoderResult):
     def plan_judgement_rework(self) -> int:
         """Repairs spent on the two gates that exercise *judgement* about the plan.
 
-        `validate_qa_plan` is a schema check: `ostler qa validate` parses `qa-plan.yml`
+        `validate_qa_plan` is a schema check: `ostler qa validate` imports `qa_plan.py`
         and says whether it is well-formed. Failing it means the plan turn mistyped a
         field — cheap to fix, deterministic, and worth nothing as evidence about whether
         the plan tests the story. `review-qa-plan` and the post-run plan gates are the

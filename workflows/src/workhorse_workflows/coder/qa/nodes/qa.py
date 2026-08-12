@@ -27,6 +27,7 @@ from workhorse import stack
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import ostler_qa
 from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.shared.ostler_qa import QA_PLAN_FILE
 from workhorse_workflows.coder.shared.schemas.qa import (
     QaCleared,
     QaGiveupRecord,
@@ -258,13 +259,14 @@ def ensure_stack(
 def validate_qa_plan(
     logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
 ) -> QaPlanValidation:
-    """`ostler qa validate` on `<spec_dir>/qa-plan.yml` — is this plan executable?
+    """`ostler qa validate` on `<spec_dir>/qa_plan.py` — is this plan executable?
 
     The deterministic half of the plan gate; `review-qa-plan.md` is the semantic half. Both
     have to pass before the stack comes up, so a plan that cannot run is caught before
-    anything expensive starts.
+    anything expensive starts. Validating a Python plan imports it, so a plan that does not
+    import fails here rather than an hour later as a driver failure.
     """
-    plan = str(Path(spec_dir) / "qa-plan.yml")
+    plan = str(Path(spec_dir) / QA_PLAN_FILE)
     docs_root = find_docs_root(docs_path, repo_dir)
     returncode, payload, stderr = ostler_qa.qa_validate(plan, spec_dir, docs_root=docs_root)
     cli_status = str(payload.get("status", "invalid")).lower()
@@ -286,7 +288,7 @@ def run_qa_plan(
     is *supposed* to give, and both exit non-zero. The status comes off the payload, and
     only an unrecognized one becomes `invalid`.
     """
-    plan = str(Path(spec_dir) / "qa-plan.yml")
+    plan = str(Path(spec_dir) / QA_PLAN_FILE)
     docs_root = find_docs_root(docs_path, repo_dir)
     _returncode, payload, stderr = ostler_qa.qa_run(plan, spec_dir, docs_root=docs_root)
     status = str(payload.get("status", "invalid")).lower()

@@ -335,7 +335,7 @@ class Qa(Workflow):
     MAX_CONTEXT_REWORKS: ClassVar[int] = 3
     #: The two QA-plan budgets are deliberately separate. `MAX_PLAN_REWORKS` bounds the
     #: gates that judge the plan (`review-qa-plan` and the post-run assessment);
-    #: `MAX_PLAN_VALIDATION_REWORKS` bounds repairs of a `qa-plan.yml` that does not parse.
+    #: `MAX_PLAN_VALIDATION_REWORKS` bounds repairs of a `qa_plan.py` that does not import.
     #: See `QaLoop.plan_judgement_rework` for the story that split them.
     MAX_PLAN_REWORKS: ClassVar[int] = 4
     MAX_PLAN_VALIDATION_REWORKS: ClassVar[int] = 3
@@ -1583,7 +1583,7 @@ class Qa(Workflow):
     ) -> Continue | Await | Done:
         """Spend a schema-validation repair — a budget of its own, not the judgement one.
 
-        A `qa-plan.yml` that does not parse is a mechanical defect, and repairing it says
+        A `qa_plan.py` that does not import is a mechanical defect, and repairing it says
         nothing about whether the plan tests the story. Charging it to the same ceiling as
         the reviewer let a run of schema typos exhaust the story before any gate had read
         the plan for coverage; `QaLoop.plan_judgement_rework` records the case.

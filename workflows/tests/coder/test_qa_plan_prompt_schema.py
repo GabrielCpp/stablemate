@@ -1,24 +1,15 @@
-"""The `plan-qa` prompt's YAML example must satisfy the validator that judges its output.
+"""The `plan-qa` prompt's python example must be a plan the harness would actually accept.
 
-`plan-qa` writes a `qa-plan.yml`, and `validate_qa_plan` runs `ostler qa validate` over it; an
-`invalid` verdict routes the flow back to `plan` for another agent turn. So a schema rule the
-prompt does not state is not a documentation gap — it is a guaranteed extra rework cycle on
-*every* story, paid in wall-clock against the run's budget.
+`plan-qa` writes a `qa_plan.py`, and `validate_qa_plan` runs `ostler qa validate` over it; an
+`invalid` verdict routes the flow back to `plan` for another agent turn. So a rule the prompt
+does not state is not a documentation gap — it is a guaranteed extra rework cycle on *every*
+story, paid in wall-clock against the run's budget. That was measured under the YAML format: a
+live benchmark run spent one full re-plan (156s) on two schema rules the example silently
+taught wrong.
 
-A live benchmark run spent one full re-plan (156s) on exactly two such rules, both of which the
-example silently taught wrong:
-
-  - `duplicate action id 'exercise'` (×5), `'assert-status'` (×5), `'gen-name'` (×2). Action ids
-    are unique across the **whole plan** — `ostler/ostler/qa/plan.py` builds one `action_ids` set
-    outside the scenario loop. The example's action was called `exercise`, so six scenarios
-    written by analogy produced six `exercise`es. The example id is now prefixed with its
-    scenario id so that copying it stays valid.
-  - `action N must declare exactly one of do, expect, capture` (×9). The example only ever shows
-    `do:`, and nothing said the three keys are alternatives rather than composable parts.
-
-Both bullets name vocabulary — the `expect:` predicates and `capture:` kinds — that lives in
-ostler, not here. Prose that lists another package's constants goes stale silently, so the sets
-are checked against the real ones rather than restated and trusted.
+The example is what the agent pattern-matches on, so it is checked rather than read. Every
+name it imports and every `qa.…` attribute it calls lives in ostler's harness, not here, and
+prose that restates another package's surface goes stale with no signal at all.
 """
 from __future__ import annotations
 
@@ -27,79 +18,108 @@ import inspect
 import re
 from pathlib import Path
 
-import yaml
-
 import workhorse_workflows
-from ostler.qa.plan import CAPTURES, EXPECTATIONS
+from ostler.qa.harness import ostler_qa as harness
 from ostler.qa.session import QA_DIRNAME
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes.qa import QA_SCRATCH_DIRNAME
 
 PROMPT = Path(workhorse_workflows.__file__).parent / "coder" / "prompts" / "plan-qa.md"
 
-#: The fenced ```yaml block holding the plan skeleton the agent copies.
-_YAML_BLOCK = re.compile(r"```yaml\n(.*?)```", re.DOTALL)
+#: The fenced ```python block holding the plan skeleton the agent copies.
+_PYTHON_BLOCK = re.compile(r"```python\n(.*?)```", re.DOTALL)
 
 
-def _example_plan() -> dict:
-    """The first ```yaml block in the prompt — the schema skeleton itself."""
-    blocks = _YAML_BLOCK.findall(PROMPT.read_text())
-    assert blocks, "plan-qa.md no longer carries a ```yaml example"
-    return yaml.safe_load(blocks[0])
+def _example_source() -> str:
+    """The first ```python block in the prompt — the plan skeleton itself."""
+    blocks = _PYTHON_BLOCK.findall(PROMPT.read_text())
+    assert blocks, "plan-qa.md no longer carries a ```python example"
+    return blocks[0]
 
 
-def _actions(plan: dict) -> list[tuple[str, dict]]:
-    return [
-        (scenario.get("id", "?"), action)
-        for scenario in plan.get("scenarios", [])
-        for action in scenario.get("actions", []) or []
-    ]
+def _example_tree() -> ast.Module:
+    return ast.parse(_example_source())
 
 
-def test_the_example_declares_exactly_one_of_do_expect_capture_per_action():
-    """The rule the live run broke nine times. Checked on the example because the example is
-    what the agent pattern-matches on — a prompt whose own YAML violated this would keep
-    teaching the mistake no matter what the prose said."""
-    for scenario_id, action in _actions(_example_plan()):
-        keys = [key for key in ("do", "expect", "capture") if key in action]
-        assert len(keys) == 1, f"scenario {scenario_id!r} action declares {keys}"
+def test_the_example_is_valid_python():
+    """An example that does not parse teaches a plan that does not import, and an unimportable
+    plan now fails validation outright rather than an hour later as a driver failure."""
+    _example_tree()
 
 
-def test_example_action_ids_are_unique_and_scenario_prefixed():
-    """Plan-global uniqueness is only survivable under copy-paste if the example's id carries
-    its scenario id — an unqualified `exercise` becomes a duplicate the moment a second
-    scenario is written the same way, which is precisely what happened."""
-    seen: set[str] = set()
-    for scenario_id, action in _actions(_example_plan()):
-        action_id = action.get("id")
-        assert action_id, f"scenario {scenario_id!r} has an action with no id"
-        assert action_id not in seen, f"duplicate action id {action_id!r} in the example"
-        seen.add(action_id)
-        assert str(action_id).startswith(scenario_id), (
-            f"action id {action_id!r} is not prefixed with its scenario id {scenario_id!r}; "
-            "an agent copying it into a second scenario would emit a duplicate"
+def test_the_example_imports_only_names_the_harness_exports():
+    """`ostler_qa` is ostler's, not this package's. A name the example imports that the harness
+    does not define sends every agent copying it into an ImportError at validation."""
+    imported = {
+        alias.name
+        for node in ast.walk(_example_tree())
+        if isinstance(node, ast.ImportFrom) and node.module == "ostler_qa"
+        for alias in node.names
+    }
+    assert imported, "the example no longer imports from ostler_qa"
+    unknown = imported - set(harness.__all__)
+    assert not unknown, f"plan-qa.md imports {sorted(unknown)}, which ostler_qa does not export"
+
+
+def _qa_attributes() -> set[str]:
+    """Everything a scenario may reach through `qa`: the class's own methods and properties,
+    plus the instance attributes `__init__` binds — `qa.http` and `qa.diagnostics` exist only
+    as assignments, so `dir(Qa)` alone would call them invented."""
+    tree = ast.parse(inspect.getsource(harness.Qa).lstrip())
+    bound = {
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.ctx, ast.Store)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "self"
+    }
+    return bound | set(dir(harness.Qa))
+
+
+def test_the_example_only_calls_qa_attributes_that_exist():
+    """Every affordance the example demonstrates is an attribute of the `Qa` the harness hands
+    the scenario. Naming one it does not have is the same failure as an invented CLI flag — the
+    thing this prompt spends a paragraph forbidding."""
+    used = {
+        node.value.attr if isinstance(node.value, ast.Attribute) else node.attr
+        for node in ast.walk(_example_tree())
+        if isinstance(node, ast.Attribute)
+        and (
+            (isinstance(node.value, ast.Name) and node.value.id == "qa")
+            or (
+                isinstance(node.value, ast.Attribute)
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id == "qa"
+            )
         )
+    }
+    assert used, "the example no longer touches `qa`"
+    unknown = used - _qa_attributes()
+    assert not unknown, f"plan-qa.md calls qa.{sorted(unknown)}, which the harness does not have"
 
 
-#: The two prose clauses that enumerate ostler's vocabularies, e.g.
-#: ``` `expect:` takes a UI predicate (`visible`, `hidden`, …) ```.
-_VOCAB_CLAUSE = re.compile(r"`(expect|capture):` takes [^(]*\(([^)]*)\)", re.DOTALL)
+def test_the_example_scenario_would_survive_the_substantiveness_gate():
+    """`ostler qa validate` refuses a scenario that claims coverage and calls no `qa.check`,
+    counted from the source by `count_checks`. The example claims coverage, so the count it
+    produces has to be non-zero — otherwise the prompt ships a skeleton the validator rejects."""
+    counts = harness.count_checks(_example_source())
+    assert counts, "the example declares no scenario `count_checks` can see"
+    for scenario_id, count in counts.items():
+        assert count > 0, f"example scenario {scenario_id!r} records no assertion"
 
 
-def test_the_prose_names_only_predicates_ostler_actually_accepts():
-    """The `expect:`/`capture:` bullet enumerates vocabularies that live in ostler, not here.
-    Naming one ostler rejects would send the agent confidently into a validation error — the
-    failure mode this whole file exists to prevent — and prose restating another package's
-    constants goes stale with no signal at all."""
-    clauses = _VOCAB_CLAUSE.findall(PROMPT.read_text())
-    assert len(clauses) == 2, f"expected an expect: and a capture: clause, found {clauses}"
-
-    real = {"expect": EXPECTATIONS, "capture": CAPTURES}
-    for key, listed in clauses:
-        named = set(re.findall(r"`([a-z_]+)`", listed))
-        assert named, f"the {key}: clause lists no predicates"
-        unknown = named - real[key]
-        assert not unknown, f"plan-qa.md offers {key}: {sorted(unknown)}, which ostler rejects"
+def test_the_prose_names_only_mechanisms_and_drivers_ostler_accepts():
+    """`mechanism` and `driver` are ostler's vocabularies. The prompt enumerates both, and
+    naming one ostler rejects sends the agent confidently into a validation error."""
+    text = PROMPT.read_text()
+    for label, vocabulary in (("mechanism", harness.MECHANISMS), ("driver", harness.DRIVERS)):
+        clause = re.search(rf"`{label}` is \w+ \(([^)]*)\)", text)
+        assert clause, f"plan-qa.md no longer enumerates the {label} vocabulary"
+        named = set(re.findall(r"`([a-z_]+)`", clause.group(1)))
+        assert named, f"the {label} clause lists nothing"
+        unknown = named - set(vocabulary)
+        assert not unknown, f"plan-qa.md offers {label} {sorted(unknown)}, which ostler rejects"
 
 
 #: The two prompts `Qa._plan_args` renders. Both are fed from that one dict, so a name

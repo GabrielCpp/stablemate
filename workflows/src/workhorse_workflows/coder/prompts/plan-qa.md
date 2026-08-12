@@ -84,185 +84,151 @@ similar.
 
 Write both files directly under the spec directory:
 
-1. `qa-plan.yml`, mandatory for every surface and every run.
+1. `qa_plan.py`, mandatory for every surface and every run.
 2. `qa-plan.md`, the reviewable rationale and AC/obligation-to-scenario map. Create it through
    `ostler` first — `timeout 30 ostler create spec <story-name> qa-plan.md`, where `<story-name>`
    is the folder name of the spec directory — which stamps its `type: spec.qa-plan` frontmatter.
    Write the structure below **underneath that `---` block, leaving it in place** — a doc with no
    `type:` is an `okf-missing-type` error against the graph.
 
-There is no UI/mobile escape from YAML. Playwright and Maestro are drivers selected by
-the YAML plan, not agent-operated alternatives. Command/API verification uses the same
+There is no UI/mobile escape from the plan module. Playwright and Maestro are drivers a
+target selects, not agent-operated alternatives. Command/API verification uses the same
 plan. Inputs required before execution belong in `qa-inputs/`; nothing required to start
 a run may live under disposable `qa/`.
 
-## YAML Contract
+## Python Contract
 
-Use the current universal plan schema:
+A plan is a **Python module**, and each scenario is a function ostler executes under the
+project's own interpreter. This is why the format changed: a wrong key raises on the line
+that read it, a wrong type raises, and the traceback names both. The `jq` filter that read
+a missing field as an empty stream — and passed — has no equivalent here.
 
-```yaml
-version: 2
-run_id: <stable story run id>
-story: <story slug>
+```python
+import json
 
-inputs: {}
+from ostler_qa import Qa, background, plan, scenario, secret, target
 
-targets:
-  api:
-    driver: command
-  web:
-    driver: playwright
-    base_url: http://localhost:3000
-    browser: chromium
-    recording:
-      required: true
-      mode: window
-  mobile:
-    driver: maestro
-    app_id: com.example.app
-    device: android
-    recording:
-      required: true
-      mode: device
+plan(run_id="qa-04-publish", story="04-publish")
 
-scenarios:
-  - id: observable-behavior
-    objective: Call the health endpoint and observe the ready response
-    preconditions:
-      - the service health check reports ready
-    checkpoints:
-      - the request reaches the running service
-      - the response is successful and contains the expected state
-    forbid:
-      - unexpected 5xx responses
-    target: api
-    mechanism: live
-    covers:
-      - ac:1
-      - okf:required-obligation-id
-    actions:
-      - do: command
-        id: observable-behavior-exercise
-        cmd: curl -s http://localhost:8080/health
-        assert_contains: ok
-        out: qa/steps/observable-behavior-exercise.json
+api = target("api", interpreter=".venv/bin/python", base_url="http://localhost:8090")
+web = target("web", driver="playwright", base_url="http://localhost:3000", browser="chromium",
+             recording={"required": True, "mode": "window"})
+mobile = target("mobile", driver="maestro", app_id="com.example.app",
+                recording={"required": True, "mode": "device"})
+
+background("api-server", cmd="cd api && go run ./cmd/server", timeout=60,
+           ready_cmd="curl -sf http://localhost:8090/healthz", ready_contains="ok")
+ADMIN = secret("ADMIN_TOKEN", from_env="QA_ADMIN_TOKEN")
+
+
+@scenario(
+    target=api,
+    mechanism="live",
+    covers=["ac:1", "okf:docs/features/demo/http/api.md#publish:does:1"],
+    preconditions=["the service health check reports ready"],
+    checkpoints=["the publish request is accepted", "the stored object carries the token uid"],
+    forbid=["the author field is taken from the request body"],
+)
+def publish_records_the_real_author(qa: Qa) -> None:
+    """Publish ignores a spoofed author and persists the verbatim message."""
+    uid = qa.http.post("/v1/session", json_body={"token": qa.secret("ADMIN_TOKEN")}).json()["uid"]
+    qa.http.post("/v1/publish", json_body={"author": "attacker", "message": "hello"})
+    stored = qa.http.get("/v1/objects/live/page").json()
+    qa.check("author is the token uid, not the request body",
+             stored["metadata"]["author"] == uid,
+             actual=stored["metadata"]["author"], expected=uid)
+    qa.check("message is verbatim", stored["metadata"]["message"] == "hello")
+    json.dump(stored, qa.artifact("steps/publish-stored.json", kind="json").open("w"))
 ```
 
-Only define targets the story needs. Every scenario has a target, mechanism, unique id,
-explicit objective, asserted causal preconditions, observable checkpoints, `covers`, and at
-least one machine-executed terminal assertion. `mechanism` is provenance
-(`live`, `synthetic`, or `fixture`); `driver` is execution (`command`, `playwright`, or
-`maestro`). Never use a driver name as a mechanism.
+Only declare targets the story needs. Every scenario has a target, a mechanism, an explicit
+objective (its **docstring**), asserted causal preconditions, observable checkpoints,
+`covers`, and at least one `qa.check`. `mechanism` is provenance (`live`, `synthetic`, or
+`fixture`); `driver` is execution (`python`, `playwright`, or `maestro`). Never use a driver
+name as a mechanism. A scenario's id is its function name with underscores turned into
+dashes, so the function name is the id — no separate uniqueness bookkeeping to get wrong.
 
-- `mechanism` is **required** on every scenario — missing mechanism is a hard validation error.
-- An action `id` must be unique across the **whole plan**, not just within its scenario. The
-  example's `observable-behavior-exercise` is prefixed with its scenario id for exactly this
-  reason: writing six scenarios by copying the example verbatim yields six actions called
-  `exercise`, and every one after the first is a validation error. Namespace every action id to
-  its scenario — the scenario id, or a short unambiguous abbreviation of it (`create-group-success`
-  → `cgs-create`, `cgs-assert-shape`).
-- An action declares **exactly one** of `do`, `expect`, or `capture` — that key names what the
-  action *is*, so a second one is a hard validation error rather than a richer step. Asserting on
-  a `do: command` is not a separate key: it is the `assert_contains` / `assert_count` /
-  `expect_http` / `cloudwatch_confirm` field on the command action itself, as the example shows.
-  `expect:` takes a UI predicate (`visible`, `hidden`, `enabled`, `disabled`, `selected`,
-  `checked`, …) and belongs to the playwright/maestro drivers; `capture:` takes an artifact kind
-  (`screenshot`, `trace`, `body_text`, `accessibility_snapshot`, `view_hierarchy`). Splitting a
-  step into exercise-then-assert means **two actions**, each with its own id.
-- **Never write a stub/placeholder `cmd`** (e.g. `echo 'REPLACE THIS COMMAND: ...'`) for a step you
-  can't fully resolve at planning time. If no `plan-context.json` or pre-resolved fixture exists,
-  write the **real** discovery command using the tooling the layer's `qa_skill` names so the step
-  is executable by `ostler qa run` unattended. A `cmd` that is prose describing what someone else
-  should type is not something `ostler qa validate` can catch, and it forces the executor into
-  exactly the manual-fallback bypass this file format exists to prevent — every step must be
-  something ostler itself can run.
-- **Do not invent CLI flags, REST routes, or output shapes.** Every `cmd` must use flags/endpoints
-  that actually exist (check the tool's `--help`, source, or the layer's `qa_skill` — do not guess
-  by analogy with a similar-looking tool), and `capture:`/`assert_count` must match the command's
-  **real** output shape (e.g. don't JSONPath-capture from a command that prints plain text).
-- Use `{% raw %}{{key}}{% endraw %}` to reference values captured by prior steps (not shell variables).
-- Use `{% raw %}{{env.NAME}}{% endraw %}` for env-block values.
-- Payload files referenced in a step command must be written to `qa/payloads/` **before** the plan runs — include a `fixture` step or note them as pre-existing files.
-- `assert_count: 1` is the no-duplicate check — use it on queries where exactly one result is expected.
+### What the module may do
+
+- **Module level is declarations only.** `ostler qa validate` imports the module to read the
+  plan without running it, so a request, a subprocess or a file write at module scope turns
+  every validation into a run. Put all of it inside scenario functions.
+- **Do not defend against a wrong key.** `payload["items"][0]["id"]` is the correct spelling;
+  `payload.get("items", [])` converts a broken response into a scenario that passes over
+  nothing. Let it raise — the traceback is the finding, and it names the line.
+- Everything a scenario needs is on `qa`, already resolved. `qa.dir` is **the** evidence
+  directory (this run's, including a dry run's `--out-dir`), `qa.root` the repo root,
+  `qa.spec_dir` the spec directory. Never rebuild any of them from a literal path.
+- Ordinary Python is available: `subprocess.run` for a CLI, the project's own client library,
+  a helper module beside the plan in the spec directory. Prefer `qa.http` for HTTP — it is
+  bound to the target's `base_url` and raises `HttpError` on any status outside
+  `expect_status=`, which is the `curl -fsS` behaviour every shell plan had to remember.
+- A value used by two scenarios is generated **inside one scenario** and asserted there.
+  Module-level randomness or `time.time()` is a module-level side effect; a helper function
+  the scenario calls is not.
+
+### The `qa` object
+
+| call | what it does |
+| --- | --- |
+| `qa.check(label, condition, actual=…, expected=…, covers=…)` | record one claim; returns the verdict, never raises |
+| `qa.require(label, condition, …)` | record one claim and stop the scenario if it fails |
+| `with qa.step("label"):` | group a phase under a named step in the ledger |
+| `qa.capture(key, value)` / `qa.get(key)` | publish a value into the ledger and read it back |
+| `qa.artifact(path, kind="…")` | register a file as evidence; a relative path resolves inside `qa.dir` |
+| `qa.secret("NAME")` | a declared secret's value, redacted from the ledger |
+| `qa.http.get/post/put/patch/delete(path, json_body=…, headers=…, expect_status=…)` | HTTP against the target's `base_url` |
+| `qa.goto(url)`, `qa.by_role/by_label/by_test_id/by_text/by_css`, `qa.screenshot(name)`, `qa.page` | the browser, for a `playwright` target |
+| `qa.diagnostics.console_errors/page_errors/failed_requests/responses()` | the live console and network record for that page |
+| `qa.maestro.flow([...])` / `qa.maestro.run(flow)` | build and run a Maestro flow; the result is yours to assert on |
+
+`qa.check` is the one piece of ceremony that is not optional: `qa-evidence.json` is built by
+aggregating assert records over what each one `covers`, so a bare `assert` proves nothing to
+the gate. A scenario that claims coverage and records no assertion fails — at validation, from
+a static count of the `qa.check`/`qa.require` calls in its body, and again at runtime.
+
+- **Do not invent CLI flags, REST routes, or output shapes.** Check the tool's `--help`, its
+  source, or the layer's `qa_skill` — do not guess by analogy with a similar-looking tool.
 - **Defeat the test runner's result cache.** A build-cached runner replays a previous PASS
   without executing anything, and prints it in the same words a real run does — `go test`'s
-  `ok ... (cached)`, gradle's `UP-TO-DATE`, a `--only-changed` watcher's skip. A
-  `grep -qF "--- PASS"` assertion cannot tell the replay from the run, so the scenario goes
-  green while the code under test is never touched; worse, the cache key does not track
-  environment variables, so a step that reads one (an emulator host, a base URL) replays a
-  result recorded against a *different* service. Pass the flag that forces execution —
-  `go test -count=1`, `gradle --rerun-tasks`, `cargo test --no-fail-fast` with a clean
-  target when it applies — on every test invocation a scenario's evidence depends on.
-- Every `cmd` runs under `set -o pipefail`, so a pipeline fails when **any** stage fails, and the
-  step's exit code is itself a recorded assertion. Write pipelines that can therefore only pass by
-  observing something: an assertion whose expected value is what a *broken* command also prints —
-  `... | wc -l` with `assert_count: 0`, `... | grep -c` with `assert_contains: "0"` — proves
-  nothing when the upstream stage dies, which is why the exit code now gates it. Do not end a
-  pipeline in `head`/`tail`: SIGPIPE kills the producer and fails the step. Slice in the assertion,
-  not in the pipeline.
-- Browser diagnostics (`qa/traces/<scenario>-diagnostics.json`) are the whole console and the
-  whole network for that scenario. `schema` names the file's shape (`browser-diagnostics/1`) —
-  read it before trusting a trace left by an earlier run, since an older driver's shape differs
-  and the mismatch surfaces only as a jq crash. The rest: `consoleErrors` (`error` messages, **text** only — legacy, prefer `console`), `console`
-  (every message: `{atMs, type, text, location}` — the `warn` that explains a failure is here and
-  not in `consoleErrors`), `pageErrors` (uncaught exceptions — a **different** event from the
-  console, invisible in every other key), `requests` (every request issued), `failedRequests`
-  (requests that never completed, `{url, method, errorText}` — gate on `errorText`, since an app
-  cancelling its own fetch fires this with `net::ERR_ABORTED` and a bare `length == 0` goes red on
-  healthy behaviour), `responses` (`{url, status, method}` per response), and the
-  `consoleCount`/`requestCount`/`responseCount` totals for the three lists capped at 500 records.
-  Every record carries `atMs`, the run-relative offset, so console and network can be read against
-  each other. Status assertions belong on `responses` — e.g.
-  `[.responses[] | select(.status >= 500)] | length == 0`. A request in `requests` with no
-  `responses` and no `failedRequests` entry was still in flight at the end — the shape of a hung
-  endpoint. When a scenario must tolerate an abort the app makes by design, exclude it **by
-  reason**, never by count — `[.failedRequests[] | select(.errorText != "net::ERR_ABORTED")] |
-  length == 0` keeps failing on a refused connection, while "allow one failure per navigation"
-  silently tolerates a real one. There is no response body or headers in that file; assert on those through a `command`
-  step with `expect_http`.
-- Background daemons must be declared in `background:` — the executor starts/stops them; the agent must NOT start them manually. `background:` is for **foreground in-QA services** scoped to the run (a dev server pinned to branch source, an event tail). The **heavyweight stack** (docker compose, emulators, the DB + baseline seed) is NOT declared here — it is owned by the workflow's `ensure_stack` step via the repo's `qa-stack.yml` manifest, brought up before the plan runs and left up for reuse. Assume it is already serving; do not bring it up in the plan.
-- Each `background:` daemon takes an optional `ready_check` — what the executor polls before scenario 1, plus a `timeout:` in seconds (default 30). Two forms, and picking the wrong one blocks the whole run: a **string** is fetched and must answer HTTP 200, so use it only when the service really has a `GET` that does; otherwise use a **mapping** `{cmd, assert_contains}`, which is ready when the command exits 0 and its stdout contains the needle. A service whose only route is a `POST` has no 200-answering URL, so it needs the mapping. The command runs in the daemon's own working directory.
-{% raw %}  ```yaml
-  background:
-    - name: api-server
-      cmd: cd api && go run ./cmd/server
-      timeout: 60
-      ready_check:
-        cmd: >
-          curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/links
-          -H 'Content-Type: application/json' -d '{"longUrl":"https://example.com/probe"}'
-        assert_contains: "201"
-  ```{% endraw %}
-- The `qa_dir` path for evidence files is `{{ workhorse_var('qa_dir') }}` — use `qa/steps/` and
-  `qa/asserts/` as sub-directories. **`out:` and `capture:` paths are the only ones resolved for
-  you**; ostler resolves them against the spec directory and creates their parents. A step's `cmd`
-  runs with its working directory at the **repo root**, so the identical string means a different
-  place inside a command: `out: qa/steps/x.txt` lands in this run's ledger directory,
-  while `curl -o qa/steps/x.txt` inside a `cmd` targets `<repo>/qa/steps/`, which does not exist —
-  the redirect fails, the command dies with empty stdout, and every assertion downstream of it
-  fails against an implementation that is correct. Chain state between actions with `capture:` +
-  `{% raw %}{{key}}{% endraw %}`, not with hand-written temp files. If a command genuinely must
-  write a file itself, give it **`$QA_DIR/steps/…`**. ostler sets `QA_DIR` for every `cmd` and
-  every `background:` daemon, pointing at whichever ledger directory *this* run was given.
-  Do not spell that directory out by hand: a pinned
-  `{{ workhorse_var('qa_dir') }}/steps/…` resolves to the scored ledger even when the run was
-  pointed somewhere else, so a dry run writes into the evidence the scored run is judged on.
-  `ostler qa validate` rejects the pinned spelling.
-- **Never put time/entropy expressions (`$(date +%s)`, `$RANDOM`, `$(uuidgen)`) directly in a `live` or `synthetic` step's `cmd`.** These re-evaluate on every execution. A login step and a logout step with different `$(date +%s)` values create two independent sessions — the logout never closes the session the login opened, and the subsequent lookup finds nothing. Generate the value once in a `fixture` step, capture it, then reference `{% raw %}{{key}}{% endraw %}` in all steps that need it:
-{% raw %}  ```yaml
-  - id: gen-device-id
-    mechanism: fixture
-    cmd: printf '{"device_id":"qa-prefix-%s"}' "$(date +%s)"
-    capture:
-      device_id: $.device_id
-  - id: login
-    mechanism: live
-    cmd: curl -H "Device: {{device_id}}" ...
-  - id: logout
-    mechanism: live
-    cmd: curl -H "Device: {{device_id}}" ...   # same ID — closes the right session
-  ```{% endraw %}
-  `ostler qa validate` enforces this and will reject a plan that puts `$(date` in a non-fixture step.
+  `ok ... (cached)`, gradle's `UP-TO-DATE`, a `--only-changed` watcher's skip. Asserting on
+  `"--- PASS" in output` cannot tell the replay from the run, so the scenario goes green while
+  the code under test is never touched; worse, the cache key does not track environment
+  variables, so a step that reads one (an emulator host, a base URL) replays a result recorded
+  against a *different* service. Pass the flag that forces execution — `go test -count=1`,
+  `gradle --rerun-tasks` — on every test invocation a scenario's evidence depends on.
+- When a scenario shells out, assert on **what the command printed about the behaviour** —
+  the value, the count, the status — not on `returncode == 0`. A process exiting zero is the
+  same evidence a suite that skipped every case produces.
+- Browser diagnostics: `qa.diagnostics` is the live console and network record, and it is the
+  only way a scenario can fail *itself* on what the page did. `console_errors()` is the
+  `error`-level messages; `page_errors()` is uncaught exceptions, a **different** event that
+  appears in nothing else; `responses(status_at_least=500)` is the server-error gate;
+  `failed_requests()` is requests that never completed, already excluding the
+  `net::ERR_ABORTED` an app fires when it cancels its own fetch — exclude by *reason* like
+  that, never by count, since "allow one failure" tolerates a refused connection too. The
+  same records are written to `qa/traces/<scenario>-diagnostics.json` when the scenario ends
+  (`schema: browser-diagnostics/1`), for the post-run audit; every record carries `atMs`, the
+  run-relative offset, so console and network can be read against each other.
+- Background daemons are declared with `background(...)` — the runner starts and stops them,
+  and the scenario must not. It is for **foreground in-QA services** scoped to the run (a dev
+  server pinned to branch source, an event tail). The **heavyweight stack** (docker compose,
+  emulators, the DB + baseline seed) is NOT declared here — it is owned by the workflow's
+  `ensure_stack` step via the repo's `qa-stack.yml` manifest, brought up before the plan runs
+  and left up for reuse. Assume it is already serving.
+- Readiness is the runner's to poll, not the scenario's: give `background` either
+  `ready_url=` (fetched, must answer HTTP 200 — only when the service really has a `GET` that
+  does) or `ready_cmd=` with `ready_contains=` (ready when the command exits 0 and its stdout
+  contains the needle). A service whose only route is a `POST` has no 200-answering URL and
+  needs the second form. `timeout=` is in seconds, default 30.
+- Files a scenario writes go under `qa.dir` — `qa.artifact("steps/x.json", kind="json")`
+  creates the parents and registers it as evidence in one call. Do not spell
+  `{{ workhorse_var('qa_dir') }}` out by hand: a pinned path writes into the scored ledger
+  even when the run was pointed somewhere else, so a dry run leaves its own proof where the
+  evidence gate reads it.
+- Declare a static fixture with `input_file("name", "qa-inputs/thing.json")`; validation
+  checks it exists and lives outside disposable `qa/`.
+
 **Every Playwright locator and every URL comes from the book, not from the running page and
 not from your memory of it.** `ostler qa validate` enforces this statically and will reject
 the plan — it is a gate, not a preference. The packet carries what you need on the
@@ -270,7 +236,7 @@ obligation itself:
 
 - A `locators` object on an obligation holds that node's own `selector`, `role`, `name`,
   `keyboard`, `route`, `entry` and `params` bullets. Address the element by `role` + `name`
-  (`get_by_role("alert", name=…)`); use `selector` only when the node states one; fall back
+  (`qa.by_role("alert", name=…)`); use `qa.by_css` only when the node states a `selector`; fall back
   to a text locator only when the node documents neither, and say so in the scenario.
 - A node's documented `role` is the *intended* semantic, not a guarantee of what the target
   engine's accessibility tree actually computes for that markup. Native disclosure elements
@@ -280,22 +246,22 @@ obligation itself:
   `<summary>`/`<details>` pair, use its `selector` (or a CSS locator scoped to a stable class
   or `:has-text(...)`) instead of `role`+`name`, and say so in the scenario — don't spend a
   repair cycle rediscovering this at review time.
-- Playwright's `expect: visible` is strict-mode: it throws (not "false") when a locator
-  resolves to more than one element, even if every match is legitimately present and
-  visible. Before asserting `visible` on a locator, check whether the book or the fixture
-  implies more than one match is possible; if so, scope the locator narrower (a parent
-  container, `:first-child`/`:nth-child`) or assert `count` at the expected number instead
-  of a bare `visible`.
+- Playwright locators are strict-mode: `.is_visible()` **throws** (it does not return
+  `False`) when the locator resolves to more than one element, even if every match is
+  legitimately present and visible — so the scenario dies with a strict-mode violation, not
+  a failed check. Before asserting visibility, check whether the book or the fixture implies
+  more than one match is possible; if so, scope the locator narrower (a parent container,
+  `:first-child`/`:nth-child`) or assert `.count()` at the expected number instead.
 - A text locator invented by reading the implementation — or guessed from a rendered string —
   is a defect, not a shortcut. It is the thing that breaks on the next copy edit, and it is
   why a plan that "passed" proves nothing about the accessible name the book requires.
 - Navigate to the `route` the screen documents, entering by its `entry` path and supplying
   its `params`. Never compose a URL the book does not state.
 
-Use runner-supported common actions for Maestro. Advanced cases may point to committed
-native Playwright tests or Maestro flows, but Ostler still owns invocation, timeout,
-cleanup, artifacts, recordings, and verdicts. Declare services/background processes in the
-plan; do not start them here.
+Build Maestro flows with `qa.maestro.flow([...])` and run them with `qa.maestro.run(...)`.
+Advanced cases may point to committed native Playwright tests or Maestro flows, but Ostler
+still owns invocation, timeout, cleanup, artifacts, recordings, and verdicts. Declare
+services/background processes with `background(...)`; do not start them here.
 
 Each AC and required OKF obligation must resolve in `covers` and have an executable
 assertion. A source check, unit test, build, or narrative is not behavioral evidence.
@@ -352,17 +318,19 @@ are the oracle. Do not put verdicts in the plan or write under `qa/`.
 
 ## Coverage Has To Be Earned
 
-`covers:` is a claim that this scenario *proves* those ids. `ostler qa validate` now grades it,
-and rejects a scenario whose only assertion is a runner's exit banner — `assert_contains:
-"VITEST_EXIT:0"`, `GOTEST_EXIT:0`, any bare `EXIT:0`. Re-running an already-committed test file
-and asserting that the process exited zero proves the suite is green; it proves nothing about
-the behaviour the obligation names, and it is indistinguishable from a suite that skipped every
-case. Assert something the command **prints about the behaviour itself** — the value, the count,
-the status — or drive the surface and `expect:` on it.
+`covers=` is a claim that this scenario *proves* those ids, and validation grades it: a
+scenario that claims coverage and whose body contains no `qa.check`/`qa.require` call is
+rejected before anything runs. Beyond that count, the claim still has to be earned. A
+scenario whose only assertion is a runner's exit banner — `result.returncode == 0`,
+`"VITEST_EXIT:0" in out`, any bare `EXIT:0` — proves the suite is green; it proves nothing
+about the behaviour the obligation names, and it is indistinguishable from a suite that
+skipped every case. Assert something the command **prints about the behaviour itself** — the
+value, the count, the status — or drive the surface and assert on what it shows.
 
-The same applies to pointing a scenario at a whole committed test file. `test_file:` without
-`test_name:` claims coverage on the file happening to pass; name the case that proves it, so the
-coverage rides on a named test.
+The same applies to pointing a scenario at a whole committed test file. Running the file and
+asserting it passed claims coverage on the file happening to be green; name the case that
+proves it (`-run TestPublishAuthor`, `-k test_publish_author`) so the coverage rides on a
+named test.
 
 ## Dry-Run Every Scenario You Write
 
@@ -370,7 +338,7 @@ The stack is up **before** this turn, precisely so you can find out whether what
 resolves. After authoring a scenario, execute it on its own:
 
 ```bash
-ostler qa run <spec_dir>/qa-plan.yml --spec <spec_dir> \
+ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> \
   --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}
 ```
 
@@ -378,8 +346,9 @@ ostler qa run <spec_dir>/qa-plan.yml --spec <spec_dir> \
 ledger the evidence gate reads — a scenario tuned until it passed must not be able to leave its
 own proof. Fix what does not resolve and run it again. This is what one call answers and no
 amount of re-reading does: a locator that matches zero elements, a straight `'` where the
-fixture has `’`, a password constant that disagrees with the seed script, a captured JSONPath
-against a command that prints plain text. Each of those otherwise costs a full workflow lap.
+fixture has `’`, a password constant that disagrees with the seed script, a key that is not in
+the response the service actually returns. Each of those otherwise costs a full workflow lap —
+and each now arrives as a traceback naming the line, not as a scenario that quietly passed.
 
 You may repair **runner tooling** to make a dry run executable: the ostler venv and its
 dependencies, harness wiring, fixture plumbing, a missing browser binary. Say what you repaired
@@ -402,6 +371,6 @@ Return JSON only:
 ```json
 {
   "status": "done",
-  "notes": "Wrote qa-plan.yml and qa-plan.md with complete AC and OKF coverage."
+  "notes": "Wrote qa_plan.py and qa-plan.md with complete AC and OKF coverage."
 }
 ```

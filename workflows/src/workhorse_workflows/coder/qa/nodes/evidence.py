@@ -35,6 +35,7 @@ from typing import Any
 from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.coder.shared import ostler_qa
 from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.shared.ostler_qa import QA_PLAN_FILE
 from workhorse_workflows.coder.shared.schemas.qa import QaResult
 
 #: The runner-written proof, relative to the story's spec dir.
@@ -98,13 +99,13 @@ def _artifact_problems(spec_dir: Path, data: dict) -> tuple[list[str], dict, dic
     rather than raising a second time on the same file.
     """
     problems: list[str] = []
-    plan_path = spec_dir / "qa-plan.yml"
+    plan_path = spec_dir / QA_PLAN_FILE
     context_path = spec_dir / "qa-okf-context.json"
     log_path = spec_dir / "qa" / "qa-run.ndjson"
     manifest_path = spec_dir / "qa" / "run-manifest.json"
 
     if not plan_path.is_file() or not plan_path.read_text(encoding="utf-8").strip():
-        problems.append("qa-plan.yml is missing or empty.")
+        problems.append(f"{QA_PLAN_FILE} is missing or empty.")
 
     context: dict = {}
     if not context_path.is_file():

@@ -19,7 +19,7 @@ plan, request exploration, or author replacement evidence.
 Read all of:
 
 - `qa-okf-context.json`;
-- `qa-plan.yml`;
+- `qa_plan.py`;
 - `qa/qa-run.ndjson`;
 - `qa/run-manifest.json`;
 - `qa-evidence.json`;
@@ -88,7 +88,7 @@ restate a finding across passes. A pass that stands cleanly returns an empty lis
 Every finding names its `scope`, and the flow routes on that field rather than on your prose.
 The question the scope answers is **where the repair lives**:
 
-- `plan` — the repair is an edit inside `qa-plan.yml` / `qa-plan.md`. Sent to the plan author.
+- `plan` — the repair is an edit inside `qa_plan.py` / `qa-plan.md`. Sent to the plan author.
 - `product-test` — the repair is an assertion, fixture or fix in product code or a committed
   test the plan only cites. Sent to the fix loop, which edits the code.
 - `stack` — the repair is in `qa-stack.yml` and the workflow's `ensure_stack` step: a service,

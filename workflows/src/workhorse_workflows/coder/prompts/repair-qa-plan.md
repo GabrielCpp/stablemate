@@ -49,9 +49,9 @@ page or process it reads from — not how it is described.
 ## The rule
 
 **Every scenario the findings do not cite stays byte-identical.** Read
-`<spec_dir>/qa-plan.yml` and `<spec_dir>/qa-plan.md` — and `<spec_dir>/qa.md` when a finding
-cites it — change only the scenarios, actions and sections the diagnostics name, and leave
-everything else exactly as it is — including formatting, ordering and ids.
+`<spec_dir>/qa_plan.py` and `<spec_dir>/qa-plan.md` — and `<spec_dir>/qa.md` when a finding
+cites it — change only the scenario functions and sections the diagnostics name, and leave
+everything else exactly as it is — including formatting, ordering and function names.
 
 This is not a stylistic preference. Regenerating the whole plan resamples the scenarios the
 reviewer already accepted, which hands the next review a fresh set of defects to find; the
@@ -94,50 +94,52 @@ standing on purpose, say that in `notes` and say why — do not report the findi
 
 ## Staying inside the contract
 
-The plan already validated against, or is being repaired toward, the universal plan schema.
-The rules the repairs most often trip over:
+The plan is a Python module and its scenarios are functions. The rules the repairs most often
+trip over:
 
-- Every scenario keeps its `target`, `mechanism`, unique `id`, explicit `objective`, asserted
-  causal preconditions, observable checkpoints, `covers`, and at least one machine-executed
-  terminal assertion. `mechanism` is provenance (`live`, `synthetic`, `fixture`); `driver` is
-  execution. Never use a driver name as a mechanism.
-- An action `id` is unique across the **whole plan**. A new action gets an id namespaced to
-  its scenario.
-- An action declares **exactly one** of `do`, `expect`, or `capture`. Splitting a step into
-  exercise-then-assert means two actions, each with its own id.
+- Every scenario keeps its `target`, `mechanism`, explicit objective (its **docstring**),
+  asserted causal preconditions, observable checkpoints, `covers`, and at least one
+  `qa.check`/`qa.require`. `mechanism` is provenance (`live`, `synthetic`, `fixture`);
+  `driver` is execution. Never use a driver name as a mechanism.
+- A scenario's id is its function name with underscores turned into dashes. Renaming a
+  function renames the scenario the findings cite — don't, unless a finding asks.
+- **Module level is declarations only.** A request, a subprocess or a file write at module
+  scope turns every `ostler qa validate` into a run, because validation imports the module.
+- **Do not defend against a wrong key.** If a repair makes you reach for `.get(…, [])` or a
+  `try/except` around a lookup, you are hiding the defect the traceback would have named.
+  Let it raise.
 - Every Playwright locator and every URL comes from the book — the obligation's `locators`
-  (`role` + `name`, or its stated `selector`) and its documented `route`/`entry`/`params` —
-  never from the running page or from memory. `ostler qa validate` enforces this.
-- No stub or placeholder `cmd`, no invented CLI flags or REST routes, and no time/entropy
-  expression (`$(date +%s)`, `$RANDOM`, `$(uuidgen)`) outside a `fixture` step: generate it
-  once, `capture:` it, and reference `{% raw %}{{key}}{% endraw %}`.
-- `out:` and `capture:` paths resolve against the spec directory; a `cmd` runs at the repo
-  root. A command that writes a file itself needs **`$QA_DIR/steps/…`**, which ostler sets to
-  whichever ledger directory this run was given. Spelling that directory out by hand —
-  `{{ workhorse_var('qa_dir') }}/steps/…` — pins it to the scored ledger even during a dry
-  run, so the rehearsal writes into the evidence the scored run is judged on. `ostler qa
-  validate` rejects the pinned spelling.
-- The heavyweight stack is not the plan's to start. Only per-run `background:` daemons are.
+  (`role` + `name` via `qa.by_role`, or its stated `selector` via `qa.by_css`) and its
+  documented `route`/`entry`/`params` — never from the running page or from memory.
+  `ostler qa validate` enforces this.
+- No invented CLI flags, REST routes or output shapes. A value two scenarios share is
+  generated inside one of them, not at module scope.
+- Files a scenario writes go through `qa.artifact("steps/…")`, which resolves inside
+  `qa.dir` — this run's ledger, including a dry run's `--out-dir`. Spelling that directory
+  out by hand pins it to the scored ledger even during a dry run, so the rehearsal writes
+  into the evidence the scored run is judged on.
+- The heavyweight stack is not the plan's to start. Only per-run `background(...)` daemons are.
 
 Keep `qa-plan.md` in step with what you changed: the AC/obligation-to-scenario map has to
-still describe the YAML. Do not rewrite sections whose scenarios you did not touch.
+still describe the module. Do not rewrite sections whose scenarios you did not touch.
 
 ## Coverage Has To Be Earned
 
-`ostler qa validate` now grades what a scenario's `covers:` is worth. A scenario whose only
-assertion is a runner's exit banner — `assert_contains: "VITEST_EXIT:0"`, `GOTEST_EXIT:0`, any
-bare `EXIT:0` — no longer counts as covering anything: it proves the suite is green and is
-indistinguishable from a suite that skipped every case. A `test_file:` reference needs a
-`test_name:` naming the case the coverage rides on. When a finding cites a scenario like that,
-the repair is a real oracle — something the command prints about the behaviour, or an `expect:`
-on the surface — not a reworded objective.
+`ostler qa validate` grades what a scenario's `covers` is worth: it refuses one that claims
+coverage while its body calls no `qa.check`/`qa.require` at all. Past that count, an assertion
+on a runner's exit banner — `result.returncode == 0`, `"VITEST_EXIT:0" in out`, any bare
+`EXIT:0` — proves the suite is green and is indistinguishable from a suite that skipped every
+case. A cited test file needs the case named (`-run TestX`, `-k test_x`) so the coverage rides
+on a named test. When a finding cites a scenario like that, the repair is a real oracle —
+something the command prints about the behaviour, or an assertion on the surface — not a
+reworded objective.
 
 ## Dry-Run The Scenarios You Repaired
 
 The stack is already up. Before returning, execute each scenario you changed on its own:
 
 ```bash
-ostler qa run <spec_dir>/qa-plan.yml --spec <spec_dir> \
+ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> \
   --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}
 ```
 

@@ -25,6 +25,11 @@ from typing import Any
 
 from ostler import Ostler
 
+#: The plan file, relative to the story's spec dir. A Python module, not YAML: a scenario is
+#: a function `ostler` executes under the project's own interpreter, so a wrong key raises
+#: where a `jq` filter over a missing field used to pass vacuously.
+QA_PLAN_FILE = "qa_plan.py"
+
 
 def okf(docs_root: Path | None = None) -> Ostler:
     """An `Ostler` rooted at `docs_root`, or one that discovers its own root."""

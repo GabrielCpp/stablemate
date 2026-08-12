@@ -112,11 +112,17 @@ WEB_SERVICE: dict[str, Any] = {
     "skills": [],
 }
 
-QA_PLAN = """version: 1
-steps:
-  - id: s1
-    run: check the thing exists
-"""
+QA_PLAN = '''from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-story", story="the-story")
+api = target("api")
+
+
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def the_thing_exists(qa: Qa) -> None:
+    """The thing exists."""
+    qa.check("it exists", True)
+'''
 
 
 # --------------------------------------------------------------------------- fixtures
@@ -410,7 +416,7 @@ def _a_plan_nit(nth: int, kind: str = "cosmetic") -> dict[str, str]:
 class _Agent:
     """The flow's eleven prompts, scripted on the axes its states branch on.
 
-    Each handler writes what its prompt claims to write — the plan turn writes `qa-plan.yml`,
+    Each handler writes what its prompt claims to write — the plan turn writes `qa_plan.py`,
     the resolver writes the operator's answer into `context.md` — because a handler that only
     returned a status would be testing the state machine against a fiction.
     """
@@ -516,7 +522,7 @@ class _Agent:
         }
 
     def _plan_qa(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        (Path(data["spec_dir"]) / "qa-plan.yml").write_text(QA_PLAN, encoding="utf-8")
+        (Path(data["spec_dir"]) / "qa_plan.py").write_text(QA_PLAN, encoding="utf-8")
         return {"status": "planned", "notes": f"plan pass {nth}"}
 
     def _repair_qa_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -1061,7 +1067,7 @@ def test_schema_repairs_cannot_starve_the_semantic_plan_gate(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A run of `qa-plan.yml` typos leaves the reviewer its full budget.
+    """A run of `qa_plan.py` typos leaves the reviewer its full budget.
 
     The regression: both gates charged one shared ceiling of four, so a story that spent
     three repairs on schema defects reached `review-qa-plan` with a single revision left
@@ -2186,7 +2192,7 @@ def test_an_extend_plan_naming_a_product_test_gap_sends_the_fixer(
 
     `extend_plan` reads as a plan instruction and was routed as one unconditionally. It is
     routinely the opposite: the run exposed an untested claim whose proof belongs in a
-    committed test, and appending scenarios to `qa-plan.yml` cannot supply it.
+    committed test, and appending scenarios to `qa_plan.py` cannot supply it.
     """
     ostler()
     agent = _Agent(

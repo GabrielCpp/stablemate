@@ -4,10 +4,16 @@ agent: agent
 
 # Independently Review A QA Plan
 
-Review the proposed QA plan before execution. Deterministic validation has already proved that
-the YAML is structurally valid and names every known acceptance criterion and OKF obligation.
-Your job is semantic: decide whether its actions and assertions can actually reach and observe
-the behavior each `covers` claim promises.
+Review the proposed QA plan before execution. The plan is a Python module, `qa_plan.py`, whose
+scenarios are functions the runner executes. Deterministic validation has already proved that
+the module **imports**, that its declarations are well-formed, and that it names every known
+acceptance criterion and OKF obligation. Your job is semantic: decide whether its code and
+assertions can actually reach and observe the behavior each `covers` claim promises.
+
+Because it is code, a defect a runtime would catch is not yours to hunt: a misspelled key, a
+wrong type, a response shape that does not exist all raise on the line that read them and fail
+the scenario loudly. Do not review for defensive handling of those — a plan is *supposed* to
+let them raise, and a `.get(…, [])` that swallows one is itself a finding.
 
 ## Inputs
 
@@ -15,7 +21,7 @@ the behavior each `covers` claim promises.
 - Spec directory: `{{ workhorse_var('spec_dir') }}`
 - Target environment: `{{ workhorse_var('target_env') }}`
 
-Read the story, `qa-okf-context.json`, `qa-plan.yml`, `qa-plan.md`, review artifacts, and
+Read the story, `qa-okf-context.json`, `qa_plan.py`, `qa-plan.md`, review artifacts, and
 `docs/qa/lessons.md` under the docs root (`docs_path` when non-empty) when present. Read applicable
 QA skills and inspect cited native tests or flows when the plan delegates execution to them.
 
@@ -31,8 +37,8 @@ wrong, never for a responsibility it was forbidden to take:
   authoring time, correctly. "This scenario needs the auth emulator and the emulator is not
   running" is therefore not a defect, and a revision demanding the plan establish it asks for
   something the author is explicitly told not to write.
-- Only `background:` daemons — per-run services pinned to the working tree — are the plan's to
-  declare, and those you may review normally.
+- Only `background(...)` daemons — per-run services pinned to the working tree — are the plan's
+  to declare, and those you may review normally.
 - The plan may not edit product code or tests. A scenario that delegates to a cited native test
   is reviewed on whether that test proves the claim; if the test itself is inadequate, say so as
   a coverage finding against the scenario, not as an instruction to go write it here.
@@ -81,9 +87,14 @@ For every scenario, independently verify — against the acceptance criteria and
 - expected error, retry, persistence, role, locale, keyboard, accessibility, and isolation paths
   are exercised **where `qa-okf-context.json` lists them as obligations** — a path OKF does not
   oblige for this story is not a gap;
-- unexpected 5xx responses, crashes, and browser console errors cannot pass unnoticed;
+- unexpected 5xx responses, crashes, and browser console errors cannot pass unnoticed — for a
+  browser scenario that means an assertion over `qa.diagnostics` (`console_errors()`,
+  `page_errors()`, `failed_requests()`, `responses(status_at_least=500)`), since the
+  diagnostics *file* is written after the scenario has already returned its verdict and so can
+  only be read by the post-run audit;
 - producer-consumer and pooled/shared-state obligations use an integration-strength oracle;
-- each `verify:` reference has an appropriate level and actually runs in the declared environment;
+- each cited native test or flow has an appropriate level and actually runs in the declared
+  environment;
 - runner-owned artifacts will demonstrate the claimed result.
 
 Do not execute the plan, drive the product, edit either plan file, or author evidence. This is an
@@ -120,7 +131,7 @@ from your prose. `id` is any stable handle; reuse the same one when you restate 
 Every finding names its `scope`, and the flow routes on that field rather than on the prose
 above it. The question the scope answers is **where the repair lives**:
 
-- `plan` — the repair is an edit inside `qa-plan.yml` / `qa-plan.md`. Sent to the plan author.
+- `plan` — the repair is an edit inside `qa_plan.py` / `qa-plan.md`. Sent to the plan author.
 - `product-test` — the repair is an assertion, fixture or fix in product code or a committed
   test the plan only cites. Sent to the fix loop, which edits the code.
 - `stack` — the repair is in `qa-stack.yml` and the workflow's `ensure_stack` step: a service,
@@ -162,17 +173,22 @@ better, it spends the passes that a genuine gap would need.
 
 ## The set-diff is already done — do not redo it
 
-`ostler qa validate` has already passed on this plan, and it is not a schema check. It diffs
-every `required: true` obligation and every `ac:N` against the union of the scenarios'
-`covers:`, and it refuses a plan that leaves one uncovered. It also refuses a scenario whose
-`covers:` rides on nothing but a runner's exit banner (`VITEST_EXIT:0` and its kin) or on a
-whole `test_file:` with no `test_name:`. So an id you cannot find in any `covers:` list does
-not exist in the plan you are reading — re-deriving that mapping by hand spends a large part
-of your pass to reproduce a verdict that already ran.
+`ostler qa validate` has already passed on this plan, and it is not a schema check. It imports
+the module — so a plan that does not import never reaches you — then diffs every
+`required: true` obligation and every `ac:N` against the union of the scenarios' `covers`, and
+refuses a plan that leaves one uncovered. It also statically walks each scenario body and
+refuses one that claims coverage while calling no `qa.check`/`qa.require`, and checks every
+browser locator against the book. So an id you cannot find in any `covers` list does not exist
+in the plan you are reading — re-deriving that mapping by hand spends a large part of your pass
+to reproduce a verdict that already ran.
 
 What the validator cannot decide is whether an assertion that *is* substantive actually
-exercises the behaviour its `covers:` names: a component rendered with a hard-coded literal
+exercises the behaviour its `covers` names: a component rendered with a hard-coded literal
 where the obligation is that the value is *computed*; a checkpoint that reads the fixture back
-rather than the surface; a journey deep-linked past the navigation the flow documents. That
-judgment is the whole of your `coverage` worklist. Cite the scenario, name what its evidence
-proves, and name what the obligation requires instead.
+rather than the surface; a journey deep-linked past the navigation the flow documents; a
+`qa.check` on a process exit code where the obligation is about what the process produced.
+That judgment is the whole of your `coverage` worklist. Cite the scenario, name what its
+evidence proves, and name what the obligation requires instead.
+
+Your question is *does this scenario prove the obligation* — not *is this code secretly
+vacuous*. The second question was the shell format's, and the format that raised it is gone.
