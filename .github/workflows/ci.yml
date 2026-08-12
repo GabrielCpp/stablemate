@@ -1,8 +1,9 @@
-# The gate on every change, as opposed to `release.yml`, which is the gate on every
-# upload. They run the same command (`make test`) on purpose: a rule that only holds at
-# release time is a rule the branch spends weeks violating, and the release PR is the
-# worst possible place to discover it — the fix has to land, re-trigger release-please
-# and re-open the PR before anything can ship.
+# The gate on a proposed change — a pull request, or a run you ask for — as opposed to
+# `release.yml`, which is the gate on every upload. The gate on every *commit* is local:
+# `make test` before the push, which is why all three run the same command. A rule that
+# only holds at release time is a rule the branch spends weeks violating, and the release
+# PR is the worst possible place to discover it — the fix has to land, re-trigger
+# release-please and re-open the PR before anything can ship.
 #
 # `make test` already chains lint (ruff + ty) and the repo's own guards — check-public,
 # check-no-env, check-parsers, check-portability — so this file deliberately adds no
@@ -12,18 +13,21 @@
 name: ci
 
 on:
-  push:
-    branches: [main]
+  # Deliberately NOT `push` — the work here lands as a run of small commits straight onto
+  # main, several per hour, and a full suite per commit spends a month of Actions minutes
+  # on a tree nobody is reviewing yet. The verdict that matters is the one on a change
+  # someone is about to merge, and the one you ask for.
   pull_request:
-  # So a contributor can re-run a red job after a flake without pushing an empty commit.
+  # Also how you re-run a red job after a flake, without pushing an empty commit, and how
+  # main gets checked on demand: `gh workflow run ci --ref main`.
   workflow_dispatch:
 
-# A force-push or a quick follow-up commit makes the in-flight run answer a tree nobody
-# is looking at any more. Cancel it — except on main, where every commit's verdict is
-# worth having on the record, since that is the history `git bisect` reads.
+# A force-push or a quick follow-up commit makes the in-flight run answer a tree nobody is
+# looking at any more. Cancel it — one verdict per branch at a time, which is also what
+# keeps a burst of pushes to a PR from queueing a suite each.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -75,8 +79,10 @@ jobs:
   # package ships and at what version, so a mislabelled commit is a defect that silently
   # withholds a release — and it is unfixable after the merge without a rewrite.
   #
-  # PR-only: on a push to main the commits already exist and the check could only
-  # complain about history.
+  # PR-only: it reads `base..head` of a pull request, so there is nothing for it to check
+  # on a `workflow_dispatch` — and on main the commits already exist, where the check could
+  # only complain about history. The `commit-msg` hook is what catches those, before they
+  # are written.
   commit-messages:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
