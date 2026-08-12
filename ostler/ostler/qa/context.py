@@ -98,6 +98,18 @@ _QA_REQUIREMENT_KEYS = {
 }
 
 
+def _sort_key(obligation_id: str) -> list[tuple[int, int | str]]:
+    """Order obligation ids so `…:raises:10` follows `…:raises:2`.
+
+    The trailing `:{index}` a value-level obligation carries is a number, and sorting the
+    id as one string puts the tenth case between the first and the second. That is only
+    cosmetic until a bullet packs enough cases to reach ten — then the packet a planner
+    reads presents them out of order, and a reviewer citing "the third case" means a
+    different obligation than the planner counted.
+    """
+    return [(1, int(part)) if part.isdigit() else (0, part) for part in obligation_id.split(":")]
+
+
 @dataclass(frozen=True)
 class ChangedUnit:
     path: str
@@ -392,7 +404,7 @@ def build_context(
             ),
         )
     ]
-    obligations.sort(key=lambda item: item["id"])
+    obligations.sort(key=lambda item: _sort_key(str(item["id"])))
     return {
         "version": 1,
         "available": bool(nodes_by_id),

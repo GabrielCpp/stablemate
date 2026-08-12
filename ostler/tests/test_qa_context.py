@@ -9,6 +9,7 @@ from ostler.qa.context import (
     OWED_HEADING,
     ChangedUnit,
     _is_generated_unit,
+    _sort_key,
     _verification_refs,
     build_context,
     render_context,
@@ -348,6 +349,24 @@ title: Items
         "tests/test_items.py"
     }
     assert len(packet["verificationRefs"]) == 2
+
+
+def test_the_tenth_case_of_a_bullet_sorts_after_the_second():
+    """Sorting obligation ids as plain strings puts `:10` between `:1` and `:2`.
+
+    Harmless until a bullet enumerates ten cases, and then wrong in the one place it
+    matters: the packet the planner reads and the packet a reviewer cites back number
+    the same requirement differently.
+    """
+    node = "okf:docs/features/acme/concepts/store.md#put"
+    ids = [f"{node}:raises:{index}" for index in (10, 2, 1, 11)] + [f"{node}:contract"]
+    assert sorted(ids, key=_sort_key) == [
+        f"{node}:contract",
+        f"{node}:raises:1",
+        f"{node}:raises:2",
+        f"{node}:raises:10",
+        f"{node}:raises:11",
+    ]
 
 
 def test_context_indexes_verification_for_unimpacted_nodes(tmp_path: Path):
