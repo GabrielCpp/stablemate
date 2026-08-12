@@ -28,11 +28,23 @@ def load_harness_module(name: str) -> ModuleType:
     which is what keeps a scan run under QA identical to a scan run under `vet`.
     """
     source = HARNESS_DIR / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"ostler_harness_{name}", source)
+    key = f"ostler_harness_{name}"
+    cached = sys.modules.get(key)
+    if cached is not None:
+        return cached
+    spec = importlib.util.spec_from_file_location(key, source)
     if spec is None or spec.loader is None:  # pragma: no cover - a corrupt installation
         raise ImportError(f"harness module {name!r} is not installed at {source}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Registered *before* execution, and kept: a module body that reads its own
+    # `sys.modules` entry — `@dataclass` does, to resolve annotations — raises
+    # `AttributeError` on `None` otherwise, and every caller wants the same object anyway.
+    sys.modules[key] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        del sys.modules[key]
+        raise
     return module
 
 #: How long one scenario may run before the driver kills its process group. A scenario can
