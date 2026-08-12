@@ -492,6 +492,12 @@ class QaLoop(CoderResult):
     qa_rework: int = 0
     setup_rework: int = 0
     regression_fix: int = 0
+    #: How many times the audit has refuted a pass with findings only the plan author can
+    #: close. Not a spend counter like the rest — nothing is charged to it and no repair is
+    #: skipped because of it. It exists because the audit is the *last* gate, so a fresh
+    #: plan finding it raises on its third pass has nothing downstream to catch what it
+    #: waives; see `Qa.MAX_BLOCKING_AUDITS`.
+    audit_rework: int = 0
 
     #: The runtime requirements the *latest* blocked QA run named, sorted — the runner's own
     #: `problems` list, which is a machine-readable statement of what was missing rather than

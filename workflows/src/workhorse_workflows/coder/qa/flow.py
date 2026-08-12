@@ -357,6 +357,19 @@ class Qa(Workflow):
     #: on the reviewer labelling honestly, which is what makes the loop terminate rather than
     #: merely usually terminate.
     MAX_BLOCKING_PLAN_REVIEWS: ClassVar[int] = 2
+    #: The same ceiling for the gate at the *other* end, and for the same reason the comment
+    #: above gives itself away with: the plan reviewer may stop blocking because "the `audit`
+    #: gate still stands downstream either way". Nothing stands downstream of the audit. So a
+    #: plan-scoped refutation it raises can only be closed by another plan repair, and the
+    #: auditor samples the riskiest evidence rather than enumerating everything — which means
+    #: each repair is judged against a bar that moves. A live story died of exactly that: three
+    #: audits, three *different* genuine gaps, each closed, the fourth lap out of budget and
+    #: filed `give_up` on a plan whose runner had passed every time. Past this many
+    #: plan-scoped refutations the audit stops blocking: its findings still get written and
+    #: filed as backlog work, and the story lands on the verdict its evidence supports.
+    #: Product contradictions and findings whose repair is a test or the stack are unaffected
+    #: — those route to loops with ceilings of their own.
+    MAX_BLOCKING_AUDITS: ClassVar[int] = 2
     MAX_SETUP_REWORKS: ClassVar[int] = 2
     MAX_REGRESSION_FIXES: ClassVar[int] = 3
     MAX_TRIAGE_SCOPES: ClassVar[int] = 2
@@ -375,8 +388,9 @@ class Qa(Workflow):
     #: that would otherwise read the wait as effort.
     INFRA_NODES: ClassVar[frozenset[Any]] = frozenset({ensure_stack})
 
-    #: The budgets worth grouping a query by. All eight of `QaLoop`'s counters, because
-    #: this flow's whole shape is which of them ran out first.
+    #: The budgets worth grouping a query by. Every one of `QaLoop`'s counters, because
+    #: this flow's whole shape is which of them ran out first — `audit_rework` included,
+    #: which is not a spend counter but answers the same question about the last gate.
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = (
         "context_rework",
         "plan_rework",
@@ -388,6 +402,7 @@ class Qa(Workflow):
         "setup_rework",
         "regression_fix",
         "triage_scope",
+        "audit_rework",
     )
 
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
@@ -992,9 +1007,18 @@ class Qa(Workflow):
                 notes=result.notes or "QA audit found a product contradiction.",
             )
             return Continue(result, self.backlog, loop=loop.with_qa(failed))
+        loop = loop.update(audit_rework=loop.audit_rework + 1)
         elsewhere = self._routed(result, loop, result.findings, result.notes)
         if elsewhere is not None:
             return elsewhere
+        if loop.audit_rework > self.MAX_BLOCKING_AUDITS:
+            self.logger.info(
+                "the audit has refuted this pass %d times with plan-only findings — filing "
+                "this one as backlog work rather than spending another plan repair",
+                loop.audit_rework,
+                extra={"activity": True},
+            )
+            return Continue(result, self.backlog, loop=loop)
         return self._guard_plan(result, loop)
 
     # ── what happens to the verdict ───────────────────────────────────────────────────

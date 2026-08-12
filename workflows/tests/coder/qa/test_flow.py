@@ -2260,8 +2260,8 @@ def test_a_plan_scoped_audit_finding_still_goes_to_the_plan_author(
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
-    assert result.spent == "4 QA-plan repair", result.spent
+    assert result.status == "passed", result
+    assert agent.counts()["repair-qa-plan"] == Qa.MAX_BLOCKING_AUDITS, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
 
 
@@ -2284,9 +2284,55 @@ def test_a_refutation_naming_no_findings_still_takes_the_prose_path(
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
-    assert result.spent == "4 QA-plan repair", result.spent
+    assert result.status == "passed", result
+    assert agent.counts()["repair-qa-plan"] == Qa.MAX_BLOCKING_AUDITS, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
+
+
+def test_an_audit_refuting_on_plan_scope_forever_stops_blocking(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The other half of the `coder-qafix2` regression: the gate with nothing downstream.
+
+    Story `04-publish-metadata` died here. The runner passed every lap; the audit refuted
+    three times with three *different* genuine plan gaps, each closed by a repair and each
+    replaced by a fresh one from a fresh sample — because the auditor samples the riskiest
+    evidence rather than enumerating it, so the bar moves under every repair. Four laps
+    later the plan budget was gone and the story filed `give_up` on a plan whose runner had
+    never failed.
+
+    The plan reviewer has had a blocking ceiling for exactly this, justified by "the `audit`
+    gate still stands downstream either way". Nothing stands downstream of the audit, so it
+    needs its own: past `MAX_BLOCKING_AUDITS` plan-scoped refutations its findings are filed
+    as backlog work and the story lands on the verdict its evidence supports.
+    """
+    ostler()
+    agent = _Agent(
+        docs,
+        audit=("refuted", "plan-defect"),
+        audit_findings=[
+            {
+                "id": "A1",
+                "scope": "plan",
+                "target": "scenario `publish-draft` / covers `AC3`",
+                "issue": "the assertion does not prove the claim it covers",
+                "repair": "assert the published record, not that the request returned 200",
+            }
+        ],
+        escalate=True,
+    )
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert result.spent == "", result.spent
+    # The ceiling is on *blocking*, not on running: the audit still ran the lap it stopped
+    # blocking on, and its findings still reached the filer.
+    assert agent.counts()["audit-qa"] == Qa.MAX_BLOCKING_AUDITS + 1, agent.counts()
+    assert agent.counts()["repair-qa-plan"] == Qa.MAX_BLOCKING_AUDITS, agent.counts()
 
 
 def test_a_dev_target_reports_a_product_test_finding_rather_than_fixing_it(
