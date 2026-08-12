@@ -11,13 +11,17 @@ as `ostler.*`, because the interpreter that runs a scenario is the project's, no
 from __future__ import annotations
 
 import importlib.util
+import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-_SOURCE = (
-    Path(__file__).resolve().parents[1] / "ostler/qa/harness/ostler_qa_browser.py"
-)
+_HARNESS = Path(__file__).resolve().parents[1] / "ostler/qa/harness"
+# The harness reaches its siblings the way the subprocess does — by directory, not by package.
+sys.path.insert(0, str(_HARNESS))
+
+_SOURCE = _HARNESS / "ostler_qa_browser.py"
 _spec = importlib.util.spec_from_file_location("ostler_qa_browser_under_test", _SOURCE)
 assert _spec is not None and _spec.loader is not None
 ostler_qa_browser = importlib.util.module_from_spec(_spec)
@@ -170,3 +174,80 @@ def test_a_failed_request_record_says_why_it_failed(tmp_path: Path) -> None:
     assert unexplained._failed_requests[0]["errorText"] == "", (
         "a missing failure reason is the empty string, never a null a jq select would skip"
     )
+
+
+def _element(selector: str, role: str, x: float, y: float, w: float, h: float) -> dict:
+    return {
+        "selector": selector,
+        "tag": "div",
+        "role": role,
+        "bbox": {"x": x, "y": y, "width": w, "height": h},
+    }
+
+
+def _page(elements: list[dict], *, viewport=(1440, 900), document=(1440, 4000)) -> Any:
+    """A page that answers the two scans, told apart by which one is being asked for."""
+    frame = {
+        "viewport": {"width": viewport[0], "height": viewport[1]},
+        "document": {"width": document[0], "height": document[1]},
+    }
+    return SimpleNamespace(
+        evaluate=lambda js: frame if "innerWidth" in js else elements,
+        screenshot=lambda **_: None,
+    )
+
+
+def test_a_screenshot_is_measured_not_only_photographed(tmp_path: Path) -> None:
+    """The defect this exists for: a page whose content is a narrow column against the right
+    margin, under a scenario that passes.
+
+    Every assertion a browser plan makes addresses the accessibility tree, and the article
+    below is in that tree at full standing — `by_role("article")` finds it whether it is laid
+    out across the page or crushed into 250px of the 1440 available. So the run's own evidence
+    could not distinguish this page from a correct one, and the only record that could was a
+    PNG nothing downstream reads.
+    """
+    browser = _browser(tmp_path)
+    browser.page = _page(
+        [
+            _element("header.site", "banner", 0, 0, 1440, 64),
+            _element("article.prose", "article", 1180, 88, 250, 3800),
+            _element("li:nth(9)", "listitem", 1180, 200, 250, 24),
+        ]
+    )
+
+    measured = browser.write_layout(tmp_path / "screenshots/scenario-target.layout.json")
+
+    assert measured["schema"] == "browser-layout/1"
+    article = next(region for region in measured["regions"] if region["role"] == "article")
+    assert article["viewportWidthShare"] == 0.174, article
+    assert article["startsRightOf"] == 0.819, "the content is pinned against the right margin"
+    assert [region["role"] for region in measured["regions"]] == ["banner", "article"], (
+        "a layout summary listing every listitem is as unreadable as the screenshot"
+    )
+    assert measured["regionCount"] == 3, "the elided regions are still counted"
+
+    written = json.loads(
+        (tmp_path / "screenshots/scenario-target.layout.json").read_text(encoding="utf-8")
+    )
+    assert written == measured
+
+
+def test_a_document_wider_than_its_window_is_flagged_without_a_threshold(tmp_path: Path) -> None:
+    """Two pathologies need no judgement call, so they are stated in the file rather than left
+    for the reader to derive: a document laid out wider than the viewport, and a region that
+    begins past the right edge. Everything else is a share, and the threshold that makes a
+    share *wrong* belongs to the audit prompt, not to the measurement."""
+    browser = _browser(tmp_path)
+    browser.page = _page(
+        [_element("main", "main", 0, 0, 2200, 900)], viewport=(1440, 900), document=(2200, 900)
+    )
+    assert browser.layout()["flags"] == ["horizontal-overflow"]
+
+    offscreen = _browser(tmp_path)
+    offscreen.page = _page([_element("aside", "complementary", 1500, 0, 300, 900)])
+    assert offscreen.layout()["flags"] == ["region-starts-off-screen"]
+
+    healthy = _browser(tmp_path)
+    healthy.page = _page([_element("main", "main", 0, 64, 1400, 3900)])
+    assert healthy.layout()["flags"] == []

@@ -20,12 +20,17 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from ostler_qa_scan import FRAME_JS, SCAN_JS, merge_rects, summarize
 from playwright.sync_api import sync_playwright
 
 #: Stamped into every diagnostics file so a
 #: plan reading one written by an older driver can tell, instead of asserting against a
 #: shape that has since changed and reading the mismatch as a product defect.
 DIAGNOSTICS_SCHEMA = "browser-diagnostics/1"
+
+#: Stamped into every layout file, for the same reason: it is read by the audit, and an
+#: audit that cannot tell a shape change from a product change reports the first as the second.
+LAYOUT_SCHEMA = "browser-layout/1"
 
 #: How many console/request/response records are kept in the file. The counts are kept in
 #: full alongside them, so an assertion on volume survives the truncation.
@@ -179,6 +184,27 @@ class Browser:
         """Every response seen, optionally only those at or above a status."""
         return [entry for entry in self._responses if entry.get("status", 0) >= status_at_least]
 
+    def layout(self) -> dict[str, Any]:
+        """Where the page put its content, as numbers rather than pixels.
+
+        The scan is `ostler vet`'s, run against the page this scenario is driving. It exists
+        because a screenshot is evidence only a human can read: every assertion a browser plan
+        makes addresses the accessibility tree, and an element is in that tree whether it is
+        laid out across the page or crushed into a 200px column against the right margin. A
+        scenario that proves the right link is on the page therefore passes over a page no
+        user could use, and nothing downstream could see the difference.
+        """
+        frame = self.page.evaluate(FRAME_JS)
+        return summarize(frame, merge_rects(self.page.evaluate(SCAN_JS)))
+
+    def write_layout(self, path: Path) -> dict[str, Any]:
+        """Record the current layout as JSON and register it as evidence."""
+        measured = {"schema": LAYOUT_SCHEMA, **self.layout()}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(measured, indent=2) + "\n", encoding="utf-8")
+        self.emit({"type": "artifact", "path": str(path), "kind": "layout"})
+        return measured
+
     # -- diagnostics ---------------------------------------------------------------------
 
     def _listen(self, page: Any) -> None:
@@ -302,6 +328,10 @@ class Browser:
         except Exception as exc:  # noqa: BLE001 - a page that died cannot be photographed
             return [f"failure screenshot could not be taken: {exc}"]
         self.emit({"type": "artifact", "path": str(path), "kind": "failure-screenshot"})
+        try:
+            self.write_layout(path.with_suffix(".layout.json"))
+        except Exception as exc:  # noqa: BLE001 - the image is the evidence; this explains it
+            return [f"failure layout could not be measured: {exc}"]
         return []
 
     def _register_videos(self) -> list[str]:

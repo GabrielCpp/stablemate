@@ -8,13 +8,32 @@ executes one, so the two can never disagree about which interpreter a plan is re
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 HARNESS_DIR = Path(__file__).resolve().parent / "harness"
+
+
+def load_harness_module(name: str) -> ModuleType:
+    """Import a harness module into *ostler's* interpreter, by path.
+
+    The harness is not a package — it is a directory ostler puts on the subprocess's
+    `PYTHONPATH`, so `import ostler.qa.harness.x` is not a thing. Loading by path is how the
+    ostler side reads a definition the harness owns without either one importing the other,
+    which is what keeps a scan run under QA identical to a scan run under `vet`.
+    """
+    source = HARNESS_DIR / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"ostler_harness_{name}", source)
+    if spec is None or spec.loader is None:  # pragma: no cover - a corrupt installation
+        raise ImportError(f"harness module {name!r} is not installed at {source}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 #: How long one scenario may run before the driver kills its process group. A scenario can
 #: raise this for itself with ``@scenario(timeout=…)``.

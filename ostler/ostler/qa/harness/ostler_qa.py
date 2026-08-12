@@ -666,11 +666,19 @@ class Qa:
         return self.browser_page.goto(self.http.url_for(url), **kwargs)
 
     def screenshot(self, name: str = "") -> Path:
-        """Photograph the page and register it as evidence."""
+        """Photograph the page, measure where it put its content, and register both.
+
+        The `.layout.json` beside the image is the half a machine can read: `ostler vet`'s
+        DOM scan of the same instant, every structural region's box against the viewport. A
+        screenshot alone can only be judged by a person looking at it, and nothing in the run
+        looks at it — which is how a page that renders as a narrow column against one margin
+        passes a scenario that proves every element it names is present.
+        """
         path = self.dir / "screenshots" / f"{self.scenario_id}-{name or 'screenshot'}.png"
         path.parent.mkdir(parents=True, exist_ok=True)
         self.browser_page.screenshot(path=str(path), full_page=True)
         self._recorder.emit({"type": "artifact", "path": str(path), "kind": "screenshot"})
+        self.diagnostics.write_layout(path.with_suffix(".layout.json"))
         return path
 
     @property
