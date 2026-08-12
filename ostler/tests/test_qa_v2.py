@@ -221,6 +221,51 @@ def test_v2_validation_rejects_disposable_input_and_unasserted_coverage(tmp_path
     assert any("no machine assertion" in problem for problem in outcome.data["problems"])
 
 
+def test_v2_dry_run_executes_one_scenario_and_leaves_no_evidence(tmp_path: Path):
+    """A planner checking its own work must not thereby produce the run's verdict.
+
+    `clear_qa_evidence` wipes `<spec>/qa/` and the evidence gate reads it, so a dry run that
+    wrote there would let a plan tuned until it passed become its own admissible proof — and
+    would destroy a scored run's ledger on the way. The subset and the redirect are one
+    feature: dry run for authoring, scored run for the record.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["scenarios"].append(
+        {
+            "id": "second",
+            "target": "api",
+            "mechanism": "live",
+            "actions": [{"do": "command", "id": "boom", "cmd": "exit 7"}],
+        }
+    )
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    scored = spec / "qa"
+    scored.mkdir()
+    (scored / "keep.txt").write_text("a scored run's ledger", encoding="utf-8")
+
+    outcome = cmd_run(plan, root=tmp_path, only=["api-contract"], out_dir="qa-dry")
+
+    assert outcome.status == "passed"
+    # The failing scenario was not selected, so it neither ran nor sank the verdict.
+    assert set(outcome.data["scenarios"]) == {"api-contract"}
+    assert (spec / "qa-dry/qa-run.ndjson").is_file()
+    assert not (spec / "qa-evidence.json").exists()
+    # `out: qa/steps/emit.json` follows the redirect rather than meaning the literal name,
+    # so the scored directory is untouched.
+    assert (spec / "qa-dry/steps/emit.json").is_file()
+    assert (scored / "keep.txt").read_text(encoding="utf-8") == "a scored run's ledger"
+    assert not (scored / "qa-run.ndjson").exists()
+
+    # A name it cannot run is a stated error, not a silently empty run reported as passing.
+    missing = cmd_run(plan, root=tmp_path, only=["typo"], out_dir="qa-dry")
+    assert missing.status == "invalid"
+    assert "typo" in missing.message
+
+
 def test_v2_validation_rejects_coverage_carried_by_an_exit_banner(tmp_path: Path):
     """A scenario that re-runs a committed test and asserts its exit banner covers nothing.
 

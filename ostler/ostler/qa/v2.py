@@ -10,7 +10,7 @@ from typing import Any
 
 from ostler.qa.drivers import DriverBlocked, QaDriver, ScenarioResult, create_driver
 from ostler.qa.plan import PlanDocument, check_runtime_requirements
-from ostler.qa.session import QaSession
+from ostler.qa.session import QA_DIRNAME, QaSession
 
 
 def run_plan(
@@ -18,8 +18,18 @@ def run_plan(
     *,
     root: Path,
     stop_on_fail: bool = False,
+    only: list[str] | None = None,
+    qa_dirname: str = QA_DIRNAME,
 ) -> tuple[str, str, dict[str, Any]]:
-    """Execute a validated plan and return ``(status, message, summary)``."""
+    """Execute a validated plan and return ``(status, message, summary)``.
+
+    ``only`` runs just the named scenarios — the rest of the plan is skipped, and so are the
+    targets none of them use. ``qa_dirname`` puts the ledger somewhere other than ``qa/``.
+    Together they are the dry run a planner uses to find out whether a scenario it just wrote
+    actually resolves, without paying for the whole plan and without leaving anything the
+    evidence gate would later read as a result: outside ``qa/`` no ``qa-evidence.json`` is
+    written at all, so a plan tuned until it passed cannot become its own proof.
+    """
     runtime_problems = check_runtime_requirements(document)
     if runtime_problems:
         message = "QA run blocked:\n" + "\n".join(f"  - {item}" for item in runtime_problems)
@@ -27,11 +37,22 @@ def run_plan(
 
     plan = document.data
     spec_dir = document.spec_dir
-    qa_dir = spec_dir / "qa"
+    scored = qa_dirname == QA_DIRNAME
+    selected = list(plan["scenarios"])
+    if only is not None:
+        known = {str(scenario["id"]) for scenario in selected}
+        unknown = [name for name in only if name not in known]
+        if unknown:
+            message = f"unknown scenario(s): {', '.join(sorted(unknown))}"
+            return "invalid", message, {"status": "invalid", "problems": [message]}
+        selected = [scenario for scenario in selected if str(scenario["id"]) in set(only)]
+    wanted_targets = {str(scenario["target"]) for scenario in selected}
+    qa_dir = spec_dir / qa_dirname
     if qa_dir.exists():
         shutil.rmtree(qa_dir)
     qa_dir.mkdir(parents=True)
-    (spec_dir / "qa-evidence.json").unlink(missing_ok=True)
+    if scored:
+        (spec_dir / "qa-evidence.json").unlink(missing_ok=True)
 
     secret_values = {
         name: os.environ[declaration["from_env"]]
@@ -47,6 +68,7 @@ def run_plan(
         document.story,
         {key: str(value) for key, value in plan.get("env", {}).items()},
         secret_values=secret_values,
+        qa_dirname=qa_dirname,
     )
     session.write_session_start()
     drivers: dict[str, QaDriver] = {}
@@ -72,6 +94,8 @@ def run_plan(
                 cwd=root,
             )
         for target_id, target in plan["targets"].items():
+            if target_id not in wanted_targets:
+                continue
             driver = create_driver(
                 session,
                 target_id,
@@ -88,7 +112,7 @@ def run_plan(
                     "driver": target["driver"],
                 }
             )
-        for scenario in plan["scenarios"]:
+        for scenario in selected:
             scenario_id = str(scenario["id"])
             target_id = str(scenario["target"])
             session.append(
@@ -157,8 +181,9 @@ def run_plan(
                     "problems": cleanup_errors,
                 }
             )
-        evidence = _write_evidence(document, results, status)
-        session.register_artifact(evidence, kind="qa-evidence")
+        if scored:
+            evidence = _write_evidence(document, results, status)
+            session.register_artifact(evidence, kind="qa-evidence")
         summary = session.close(status=status)
         session.finalize_log_artifact()
 
@@ -166,8 +191,8 @@ def run_plan(
         {
             "status": status,
             "runId": document.run_id,
-            "qa_run_log": "qa/qa-run.ndjson",
-            "manifest": "qa/run-manifest.json",
+            "qa_run_log": f"{qa_dirname}/qa-run.ndjson",
+            "manifest": f"{qa_dirname}/run-manifest.json",
             "scenarios": {
                 name: {
                     "status": result.status,

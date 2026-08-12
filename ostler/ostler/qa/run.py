@@ -365,12 +365,17 @@ def cmd_run(
     spec_dir: Path | None = None,
     *,
     stop_on_fail: bool = False,
+    only: list[str] | None = None,
+    out_dir: str = "qa",
     root: Path,
 ) -> QaOutcome:
     """Execute a qa-plan.yml in batch mode.
 
     The plan is validated first, then executed: start → steps+asserts → stop.
     Returns PASS/FAIL verdict.
+
+    ``only`` and ``out_dir`` are the version-2 dry run: a subset of the scenarios, written
+    somewhere other than ``qa/`` and producing no ``qa-evidence.json``.
     """
     # Validate first
     resolved_plan = plan_file if plan_file.is_absolute() else root / plan_file
@@ -397,12 +402,21 @@ def cmd_run(
             document,
             root=root,
             stop_on_fail=stop_on_fail,
+            only=only,
+            qa_dirname=out_dir,
         )
         return QaOutcome(
             ok=status == "passed",
             message=message,
             data=data,
             status=status,
+        )
+
+    if only is not None or out_dir != "qa":
+        return QaOutcome(
+            ok=False,
+            message="--scenario and --out-dir require a version-2 plan",
+            status="invalid",
         )
 
     # Resolve spec_dir from plan or argument

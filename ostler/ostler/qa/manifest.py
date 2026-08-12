@@ -9,9 +9,9 @@ from typing import Any
 
 
 class RunManifest:
-    def __init__(self, spec_dir: Path, run_id: str) -> None:
+    def __init__(self, spec_dir: Path, run_id: str, qa_dirname: str = "qa") -> None:
         self.spec_dir = spec_dir.resolve()
-        self.path = self.spec_dir / "qa" / "run-manifest.json"
+        self.path = self.spec_dir / qa_dirname / "run-manifest.json"
         self.data: dict[str, Any] = {
             "version": 1,
             "runId": run_id,

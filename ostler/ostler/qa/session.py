@@ -24,6 +24,7 @@ from typing import Any
 
 from ostler.qa.manifest import RunManifest
 
+QA_DIRNAME = "qa"
 SESSION_FILE = "qa-session.json"
 RUN_LOG = "qa-run.ndjson"
 
@@ -54,9 +55,14 @@ def _spec_dir_from(spec_arg: str | None, root: Path) -> Path:
 class QaSession:
     """Thin wrapper around the on-disk session + log files."""
 
-    def __init__(self, spec_dir: Path) -> None:
+    def __init__(self, spec_dir: Path, qa_dirname: str = QA_DIRNAME) -> None:
         self.spec_dir = spec_dir
-        self.qa_dir = spec_dir / "qa"
+        #: Which directory under the spec the ledger, captures and artifacts land in. Always
+        #: `qa/` for a scored run — `clear_qa_evidence` wipes it and the evidence gate reads
+        #: it. A dry run names something else so that a plan tuned until it passed cannot
+        #: become its own admissible evidence.
+        self.qa_dirname = qa_dirname
+        self.qa_dir = spec_dir / qa_dirname
         self._session_path = self.qa_dir / SESSION_FILE
         self._log_path = self.qa_dir / RUN_LOG
         self._data: dict[str, Any] = {}
@@ -66,15 +72,15 @@ class QaSession:
     # -- load / save ---------------------------------------------------------
 
     @classmethod
-    def open(cls, spec_dir: Path) -> "QaSession":
+    def open(cls, spec_dir: Path, qa_dirname: str = QA_DIRNAME) -> "QaSession":
         """Load an existing session; raise if none exists."""
-        s = cls(spec_dir)
+        s = cls(spec_dir, qa_dirname)
         if not s._session_path.is_file():
             raise FileNotFoundError(
                 f"No open QA session at {s._session_path}. Run `ostler qa start` first."
             )
         s._data = json.loads(s._session_path.read_text(encoding="utf-8"))
-        s._manifest = RunManifest(spec_dir, str(s._data["run_id"]))
+        s._manifest = RunManifest(spec_dir, str(s._data["run_id"]), qa_dirname)
         if s._manifest.path.is_file():
             try:
                 s._manifest.data = json.loads(s._manifest.path.read_text(encoding="utf-8"))
@@ -91,9 +97,10 @@ class QaSession:
         env: dict[str, str],
         *,
         secret_values: dict[str, str] | None = None,
+        qa_dirname: str = QA_DIRNAME,
     ) -> "QaSession":
         """Create a fresh session file; raise if one is already open."""
-        s = cls(spec_dir)
+        s = cls(spec_dir, qa_dirname)
         if s._session_path.is_file():
             raise FileExistsError(
                 f"A QA session is already open at {s._session_path}. "
@@ -126,7 +133,7 @@ class QaSession:
             "started_monotonic": time.monotonic(),
         }
         s._secret_values = secret_values or {}
-        s._manifest = RunManifest(spec_dir, run_id)
+        s._manifest = RunManifest(spec_dir, run_id, qa_dirname)
         s._manifest.write()
         s._save()
         return s
@@ -211,7 +218,7 @@ class QaSession:
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if self._manifest is None:
-            self._manifest = RunManifest(self.spec_dir, self.run_id)
+            self._manifest = RunManifest(self.spec_dir, self.run_id, self.qa_dirname)
         entry = self._manifest.register(
             path,
             kind=kind,
@@ -225,7 +232,7 @@ class QaSession:
     def finalize_log_artifact(self) -> None:
         """Hash the closed ledger without appending after its terminal record."""
         if self._manifest is None:
-            self._manifest = RunManifest(self.spec_dir, self.run_id)
+            self._manifest = RunManifest(self.spec_dir, self.run_id, self.qa_dirname)
         self._manifest.register(self._log_path, kind="run-ledger")
 
     # -- public accessors ----------------------------------------------------
@@ -406,7 +413,7 @@ class QaSession:
         # output and can only have come from this command. The command redirected its stdout
         # there, which makes that file the step's stdout: read it back and treat it as such,
         # rather than overwrite it with the emptiness the redirect left behind.
-        resolved_out: Path | None = _resolve_out(out_path, self.spec_dir) if out_path else None
+        resolved_out: Path | None = _resolve_out(out_path, self.spec_dir, self.qa_dir) if out_path else None
         out_kept: bool = False
         if resolved_out is not None:
             resolved_out.parent.mkdir(parents=True, exist_ok=True)
@@ -705,8 +712,17 @@ def _jq_extract(data: Any, path: str) -> str | None:
     return str(cur) if cur is not None else None
 
 
-def _resolve_out(out_path: str, spec_dir: Path) -> Path:
+def _resolve_out(out_path: str, spec_dir: Path, qa_dir: Path) -> Path:
+    """Resolve an action's `out:` against the spec, sending `qa/…` to *this* run's ledger dir.
+
+    Validation requires every `out:` to sit under `qa/`, so a plan's paths are written that
+    way and mean "the evidence directory" rather than that literal name. A dry run redirected
+    elsewhere must honour the meaning, or its steps write into the scored run's directory
+    while everything else it produces stays out.
+    """
     p = Path(out_path)
+    if not p.is_absolute() and p.parts and p.parts[0] == QA_DIRNAME:
+        p = Path(qa_dir.name, *p.parts[1:])
     resolved = (p if p.is_absolute() else spec_dir / p).resolve()
     try:
         resolved.relative_to(spec_dir.resolve())

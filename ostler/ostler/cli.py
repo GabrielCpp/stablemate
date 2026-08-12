@@ -554,6 +554,22 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_run.add_argument("plan_file", type=Path)
     qa_run.add_argument("--spec", default=None, type=Path)
     qa_run.add_argument("--stop-on-fail", action="store_true", dest="stop_on_fail")
+    qa_run.add_argument(
+        "--scenario",
+        action="append",
+        default=None,
+        dest="scenarios",
+        metavar="ID",
+        help="run only this scenario (repeatable); background daemons still start",
+    )
+    qa_run.add_argument(
+        "--out-dir",
+        default="qa",
+        dest="out_dir",
+        metavar="NAME",
+        help="spec-relative directory for the ledger; anything but 'qa' is a dry run "
+             "and writes no qa-evidence.json",
+    )
     qa_run.add_argument("--json", action="store_true")
 
     qa_context = qas.add_parser(
@@ -928,7 +944,12 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         if spec_dir is not None and not spec_dir.is_absolute():
             spec_dir = root / spec_dir
         result = qa_mod.cmd_run(
-            args.plan_file, spec_dir, stop_on_fail=args.stop_on_fail, root=root
+            args.plan_file,
+            spec_dir,
+            stop_on_fail=args.stop_on_fail,
+            only=args.scenarios,
+            out_dir=args.out_dir,
+            root=root,
         )
         if getattr(args, "json", False):
             _out(json.dumps(result.data, indent=2))
