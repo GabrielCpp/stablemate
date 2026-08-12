@@ -577,7 +577,11 @@ def _uncoverable(cover: str, context: dict[str, Any], known: set[str]) -> str:
     So the two are separated, and the obligations this change *does* carry are named. They
     are bounded — a diff wide enough to have hundreds is one where the list is the answer.
     """
-    node = cover.split(":", 1)[1].rsplit(":", 1)[0] if cover.startswith("okf:") else ""
+    # `okf:<node>:<key>` for a node-level obligation, `okf:<node>:<key>:<index>` for one
+    # value of an enumerated bullet. A node id carries no `:`, so splitting from the left
+    # names the node in both shapes — `rsplit` on the whole id does not, and left every
+    # value-level id falling through to the worse "unknown ID" wording below.
+    node = cover.split(":", 2)[1] if cover.startswith("okf:") else ""
     documented = {
         *(str(item) for item in context.get("contracts", [])),
         *(str(item) for item in context.get("journeyNodes", [])),

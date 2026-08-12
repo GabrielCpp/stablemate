@@ -467,6 +467,7 @@ def test_v2_separates_a_documented_node_from_a_genuinely_unknown_id(tmp_path: Pa
     data["scenarios"][0]["covers"] = [
         obligation,
         "okf:docs/features/demo/api.md#tooling:contract",   # documented, but not owed here
+        "okf:docs/features/demo/api.md#tooling:raises:2",   # ditto, one value of a bullet
         "okf:docs/features/demo/invented.md:contract",      # not in the book at all
     ]
     plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
@@ -474,12 +475,18 @@ def test_v2_separates_a_documented_node_from_a_genuinely_unknown_id(tmp_path: Pa
     document, load_problems = load_plan(plan, spec, tmp_path)
     assert not load_problems and document is not None
     problems = validate_v2(document)
-    documented = next(p for p in problems if "#tooling" in p)
+    documented = next(p for p in problems if "#tooling:contract" in p)
+    valued = next(p for p in problems if "#tooling:raises:2" in p)
     unknown = next(p for p in problems if "invented.md" in p)
 
     # The documented-but-untouched one says so, and does not call the node unknown.
     assert "not an obligation of this change" in documented
     assert "unknown ID" not in documented
+    # …and so does one naming a single value of an enumerated bullet. Its trailing index
+    # is not part of the node id, and reading it as one sent every such cover to the
+    # "unknown ID" branch — the exact wrong turn this message exists to prevent.
+    assert "not an obligation of this change" in valued
+    assert "unknown ID" not in valued
     # Both name what the plan *could* cover — the list neither message used to carry.
     assert obligation in documented
     assert obligation in unknown
