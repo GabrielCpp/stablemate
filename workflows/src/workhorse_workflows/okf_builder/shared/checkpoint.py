@@ -44,6 +44,9 @@ GROUNDED_CODES = frozenset({
     # does not have.
     "ambiguous-locator",
     "unnamed-interactive",
+    # Splitting one overlong bullet into several needs the source to say which clauses are
+    # actually separate requirements; cutting it on punctuation invents obligations.
+    "overlong-normative-bullet",
 })
 
 #: How many findings one repair item may carry. A doc's findings overwhelmingly share a
