@@ -277,7 +277,7 @@ def detect_webapp(
 
     # 3) Walk worklist stays build scratch; screenshots live IN the book — they are
     #    committed evidence the docs' `screenshot:` bullets reference.
-    paths.build_dir(root).mkdir(parents=True, exist_ok=True)
+    paths.ensure_build_dir(root)
     wl = paths.walk_worklist_path(root, service)
     if not wl.exists():
         wl.write_text(json.dumps({"items": []}, indent=2))

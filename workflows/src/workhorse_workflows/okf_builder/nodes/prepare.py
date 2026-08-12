@@ -107,7 +107,7 @@ def prepare(
             prepare_error=f"source root {source} is not a directory",
         )
     features = paths.features_root(root, service)
-    paths.build_dir(root).mkdir(parents=True, exist_ok=True)
+    paths.ensure_build_dir(root)
     wl = paths.worklist_path(root, service)
     data, reset = _load_worklist(wl, service, features)
     if reset:

@@ -38,6 +38,7 @@ What the port could get wrong, and what is therefore under test here:
 from __future__ import annotations
 
 import json
+import subprocess
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import replace
@@ -214,6 +215,31 @@ def test_a_complete_book_drains_converges_and_skips_the_walk(
     # a no-op that booted nothing.
     assert result.is_webapp is False, result
     assert result.entry_url == "", result
+
+
+def test_the_build_scratch_ignores_itself_so_a_commit_all_cannot_eat_it(
+    booked: Path, tmp_path: Path
+) -> None:
+    """`.agents/okf-build/` carries its own `.gitignore`, from the first run onward.
+
+    The scratch lives inside the docs repo and the shared browser parks a whole Chrome
+    profile in it — tens of thousands of files. A coder run in the same checkout commits
+    with `commit_all` (`git add -A`), so an unignored scratch is swept into a story commit
+    and then lives in every clone's history, where only a rewrite removes it. That is not
+    hypothetical; it is why this test exists.
+    """
+    _drive(_env(tmp_path), _Agent(booked))
+
+    assert (booked / paths.BUILD_DIRNAME / ".gitignore").read_text() == "*\n"
+
+    # The property, not the file: git offers nothing here to `add -A`.
+    profile = booked / paths.BUILD_DIRNAME / "walkthrough/browser-profile/Default"
+    profile.mkdir(parents=True)
+    (profile / "Preferences").write_text("{}")
+    status = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=booked, capture_output=True, text=True, check=True
+    ).stdout
+    assert paths.BUILD_DIRNAME not in status, status
 
 
 def test_an_investigation_opens_the_items_it_reveals(booked: Path, tmp_path: Path) -> None:

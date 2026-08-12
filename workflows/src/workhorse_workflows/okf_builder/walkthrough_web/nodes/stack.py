@@ -113,7 +113,9 @@ def boot_browser(logger: logging.Logger, cdp_url: str = "", repo_root: str = "."
                        ", ".join(BROWSER_CANDIDATES))
         return BrowserBoot(cdp_url=cdp_url)
 
-    scratch = paths.walkthrough_scratch(Path(repo_root or "."))
+    root = Path(repo_root or ".")
+    paths.ensure_build_dir(root)  # before the profile lands, or `git add -A` eats it
+    scratch = paths.walkthrough_scratch(root)
     scratch.mkdir(parents=True, exist_ok=True)
     log = open(scratch / "browser.log", "ab")  # noqa: SIM115 (child keeps it open)
     cmd = [

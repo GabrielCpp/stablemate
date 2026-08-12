@@ -68,6 +68,25 @@ def build_dir(root: Path) -> Path:
     return root / BUILD_DIRNAME
 
 
+def ensure_build_dir(root: Path) -> Path:
+    """Create the build directory and make it ignore itself. Returns it.
+
+    The self-ignore is load-bearing, not tidiness. This scratch lives *inside* the docs
+    repo, and the shared browser parks a full Chrome profile under `walkthrough/` — tens
+    of thousands of files. A coder run in the same checkout commits with `commit_all`
+    (`git add -A`), so anything here that the repo does not ignore gets swept into a
+    story commit and is then in every clone's history forever, where only a rewrite
+    removes it. Writing the `.gitignore` here means a repo is protected the first time
+    okf-builder runs in it, rather than after someone notices.
+    """
+    build = build_dir(root)
+    build.mkdir(parents=True, exist_ok=True)
+    marker = build / ".gitignore"
+    if not marker.exists():
+        marker.write_text("*\n", encoding="utf-8")
+    return build
+
+
 def worklist_path(root: Path, service: str) -> Path:
     """The drain loop's memory. `all` when no service is named, matching the book."""
     return build_dir(root) / f"{service or 'all'}.worklist.json"
