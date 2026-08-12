@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ostler.qa.harness_host import load_harness_module
 from ostler.vet.geometry import BBox
+from ostler.vet.regions import RegionBox
 
 #: The same rounding the layout digest beside every screenshot reports, so a component is never
 #: on one side of its band in the evidence and the other side in the verdict.
@@ -79,6 +80,83 @@ class Placement(BaseModel):
                     f"{key} is {measured * 100:g}% of the viewport, documented as {band.text()}"
                 )
         return out
+
+
+class VettedComponent(BaseModel):
+    """One documented component of a screen, as the check needs it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    node_id: str
+    selector: str
+    placement: Placement | None = None
+
+
+class ComponentVerdict(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    node_id: str
+    selector: str
+    status: str  # matched | misplaced | missing
+    detail: list[str] = []
+    bbox: BBox | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.status == "matched"
+
+    def sentence(self) -> str:
+        """What the ledger records — the assertion label a reader sees, alone."""
+        if self.status == "missing":
+            return f"{self.node_id} (`{self.selector}`) rendered nowhere on this screen"
+        if self.status == "misplaced":
+            return f"{self.node_id} (`{self.selector}`) is placed wrong: " + "; ".join(self.detail)
+        return f"{self.node_id} (`{self.selector}`) is where the book places it"
+
+
+def _matches(selector: str, scanned: str) -> bool:
+    """Whether a scanned element's selector is the documented one.
+
+    The scan mints `tag.class:nth(i)` for an element with no id, and the index is a position
+    in one render — the book cannot know it and must not have to. So the documented selector
+    matches the scanned one whole, or up to that suffix.
+    """
+    return scanned == selector or scanned.startswith(f"{selector}:nth(")
+
+
+def check(
+    components: list[VettedComponent], regions: list[RegionBox], viewport: Viewport
+) -> list[ComponentVerdict]:
+    """Register a screenshot's regions against what the book says that screen contains.
+
+    Matching is by **selector**, not by IoU as `vet/register.py` does, and the difference is
+    the whole point. The manifest path measures the expected bboxes off the very render under
+    test, so it can only answer *which documented components appeared* — a census where
+    agreement is guaranteed by construction. Here the book names the element and the render
+    supplies the geometry, so the two can genuinely disagree.
+
+    Regions no component claims are not judged: a real screen renders chrome the book does
+    not model, and failing on that would make the check unauthorable.
+    """
+    verdicts: list[ComponentVerdict] = []
+    for component in components:
+        region = next(
+            (r for r in regions if any(_matches(component.selector, s) for s in r.selectors)),
+            None,
+        )
+        if region is None:
+            verdicts.append(ComponentVerdict(
+                node_id=component.node_id, selector=component.selector, status="missing"))
+            continue
+        said = component.placement.disagreements(region.bbox, viewport) if component.placement else []
+        verdicts.append(ComponentVerdict(
+            node_id=component.node_id,
+            selector=component.selector,
+            status="misplaced" if said else "matched",
+            detail=said,
+            bbox=region.bbox,
+        ))
+    return verdicts
 
 
 def parse_placement(text: str) -> Placement | str:

@@ -10,7 +10,10 @@ no band at all, because it reads as coverage.
 from __future__ import annotations
 
 from ostler.vet.geometry import BBox
-from ostler.vet.placement import Placement, Viewport, parse_placement
+from ostler.vet.placement import (
+    Placement, VettedComponent, Viewport, check, parse_placement,
+)
+from ostler.vet.regions import RegionBox
 
 VIEWPORT = Viewport(width=1440, height=900)
 
@@ -83,3 +86,71 @@ def test_the_share_is_the_one_the_evidence_beside_the_screenshot_reports() -> No
     assert _bands("width 69.4-69.4%").disagreements(box, VIEWPORT) == [], (
         "1000/1440 rounds to 0.694 in the digest and must round the same way here"
     )
+
+
+def _region(role: str | None, selectors: list[str], box: tuple[float, float, float, float]) -> RegionBox:
+    x, y, w, h = box
+    return RegionBox(bbox=BBox(x=x, y=y, width=w, height=h), role=role, selectors=selectors)
+
+
+def _component(node_id: str, selector: str, placement: str | None = None) -> VettedComponent:
+    return VettedComponent(
+        node_id=node_id, selector=selector,
+        placement=_bands(placement) if placement else None,
+    )
+
+
+def test_the_screen_the_book_documents_is_registered_against_the_one_that_rendered() -> None:
+    """The verdict `vet`'s IoU path cannot reach: there, the expected bboxes were measured off
+    the very render under test, so agreement is guaranteed by construction. Here the book names
+    the element and the render supplies the geometry, so the two can disagree."""
+    regions = [
+        _region("banner", ["header.site"], (0, 0, 1440, 64)),
+        _region("article", ["article.prose:nth(41)"], (1180, 88, 250, 760)),
+        _region(None, ["div.decoration:nth(7)"], (0, 0, 8, 8)),
+    ]
+    verdicts = check(
+        [
+            _component("screens/ref.md#header", "header.site", "width 90-100%, x 0-10%"),
+            _component("screens/ref.md#body", "article.prose", "width 60-100%, x 0-20%"),
+            _component("screens/ref.md#toc", "nav.toc", "width 10-25%"),
+        ],
+        regions,
+        VIEWPORT,
+    )
+
+    assert [(v.node_id.split("#")[1], v.status) for v in verdicts] == [
+        ("header", "matched"), ("body", "misplaced"), ("toc", "missing"),
+    ]
+    assert verdicts[1].detail == [
+        "width is 17.4% of the viewport, documented as 60-100%",
+        "x is 81.9% of the viewport, documented as 0-20%",
+    ]
+    assert verdicts[1].bbox == BBox(x=1180, y=88, width=250, height=760)
+    assert verdicts[2].sentence().endswith("rendered nowhere on this screen")
+
+
+def test_a_region_no_component_claims_is_counted_not_judged() -> None:
+    """A real screen renders chrome the book does not model. Failing on it would make the
+    check unauthorable, which is how a check stops being authored at all."""
+    verdicts = check(
+        [_component("s.md#main", "#root", "width 90-100%")],
+        [
+            _region("main", ["#root"], (0, 0, 1440, 900)),
+            _region("contentinfo", ["footer.vendor-widget"], (0, 860, 1440, 40)),
+        ],
+        VIEWPORT,
+    )
+    assert [v.status for v in verdicts] == ["matched"]
+
+
+def test_a_component_with_no_placement_is_still_checked_for_being_there() -> None:
+    """`placement:` is only demanded of the roles that carry a page, so most components
+    arrive without one. Presence is what remains provable about them."""
+    present, absent = check(
+        [_component("s.md#save", "#save"), _component("s.md#undo", "#undo")],
+        [_region("button", ["#save"], (1300, 20, 100, 32))],
+        VIEWPORT,
+    )
+    assert (present.status, absent.status) == ("matched", "missing")
+    assert present.detail == []
