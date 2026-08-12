@@ -2497,3 +2497,34 @@ def test_the_worklist_a_review_pass_is_scored_against_survives_a_resume(
     loop = read_resume(checkpoint).params["loop"]
     assert loop["plan_review_ids"] == ["R2"], loop
     assert loop["plan_review_progress"] == "", loop
+
+
+def test_the_lane_runs_standalone_with_no_plan_context(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """QA against someone else's checkout: no dev lane ran, so there is no `plan-context.json`.
+
+    The file is the *dev* lane's output. A QA run pointed at a branch this workflow did not
+    implement — a review of an outside contribution, a standalone verification pass — has
+    never had one, and the plan-context brief added to `plan-qa.md` must therefore be
+    strictly additive. `resolve_impl_context` degrades to empty lists by design and the
+    prompt's blocks are `{% if %}`-guarded, but every other test in this file writes the file
+    from the `docs` fixture, so nothing pinned the degraded path until here.
+    """
+    (docs / SPEC_REL / "plan-context.json").unlink()
+    ostler()
+    write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
+    monkeypatch.setattr(
+        workhorse_stack, "ensure_stack", lambda *a, **k: {"ready": "yes", "entry_url": "http://x"}
+    )
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.planned() == 1, agent.counts()
