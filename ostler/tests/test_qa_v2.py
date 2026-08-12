@@ -355,8 +355,8 @@ def test_v2_validation_rejects_a_bare_evidence_path_inside_a_command(tmp_path: P
     where `qa/steps/` does not exist. A plan that chains actions through hand-written temp files
     therefore has every redirect fail, every command exit with empty stdout, and every downstream
     assertion fail — against an implementation that is correct. A real run lost 38 of 66
-    assertions that way and routed the story to rework. The absolute spelling still passes, so
-    the rule rejects the ambiguity rather than the directory.
+    assertions that way and routed the story to rework. `$QA_DIR/steps/` still passes, so the
+    rule rejects the ambiguity rather than the directory.
     """
     spec = tmp_path / "docs/specs/story-1"
     spec.mkdir(parents=True)
@@ -372,14 +372,49 @@ def test_v2_validation_rejects_a_bare_evidence_path_inside_a_command(tmp_path: P
     assert outcome.status == "invalid"
     assert any("bare 'qa/steps/'" in problem for problem in outcome.data["problems"])
 
-    # The same command written absolutely addresses the same file and is the documented fix, so
-    # it must survive — otherwise the rule bans the evidence directory instead of the ambiguity.
+    # `$QA_DIR/steps/` addresses the same file, follows `--out-dir`, and is the documented fix,
+    # so it must survive — otherwise the rule bans the evidence directory instead of the
+    # ambiguity.
+    action["cmd"] = 'printf \'{"value":"ok"}\' > $QA_DIR/steps/body.json && cat $QA_DIR/steps/body.json'
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    exported = cmd_validate(plan, root=tmp_path)
+    assert exported.status == "passed", exported.data
+
+
+def test_v2_validation_rejects_a_pinned_evidence_path_inside_a_command(tmp_path: Path):
+    """The spelling that resolves, and is wrong anyway.
+
+    `<spec>/qa/steps/x` was the documented fix for the bare path above, and it does address the
+    right file — for a scored run. It names the scored ledger *whichever* directory the run was
+    pointed at, so `--out-dir` cannot redirect it, and a plan dry-run during authoring writes
+    into the very directory the evidence gate later reads. Observed live: ten dry runs of a
+    six-scenario plan left ~30 artifacts in `qa/steps/` before the scored run had started.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    action = data["scenarios"][0]["actions"][0]
     body = f"{spec}/qa/steps/body.json"
     action["cmd"] = f"printf '{{\"value\":\"ok\"}}' > {body} && cat {body}"
     plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
 
-    absolute = cmd_validate(plan, root=tmp_path)
-    assert absolute.status == "passed", absolute.data
+    outcome = cmd_validate(plan, root=tmp_path)
+
+    assert outcome.status == "invalid"
+    assert any("hard-codes a path" in problem for problem in outcome.data["problems"])
+    assert any("$QA_DIR" in problem for problem in outcome.data["problems"])
+
+    # The repo-relative spelling of the same mistake — what an agent writes when it knows a cmd
+    # runs at the repo root — is the same defect and must be caught too.
+    rel = "docs/specs/story-1/qa/steps/body.json"
+    action["cmd"] = f"printf '{{\"value\":\"ok\"}}' > {rel} && cat {rel}"
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    relative = cmd_validate(plan, root=tmp_path)
+    assert relative.status == "invalid", relative.data
 
 
 def test_v2_secret_is_runtime_only_and_redacted(tmp_path: Path, monkeypatch):
@@ -1138,6 +1173,10 @@ def test_a_step_that_writes_into_qa_steps_itself_finds_the_directory_there(tmp_p
     So the step here is deliberately a plain shell redirect rather than an `out:` — `out:` was
     never broken, and asserting on it would test the wrong half. It bites only the first run
     against a fresh spec dir, which is exactly the run least likely to be doubted.
+
+    The redirect names `$QA_DIR/steps/`, the one spelling that follows `--out-dir`; a literal
+    path is what the validator now rejects. Which directory it is does not change the claim —
+    whichever ledger a run was given, its `steps/` has to be there before the first command.
     """
     spec = tmp_path / "docs/specs/story-1"
     spec.mkdir(parents=True)
@@ -1150,7 +1189,7 @@ def test_a_step_that_writes_into_qa_steps_itself_finds_the_directory_there(tmp_p
         {
             "do": "command",
             "id": "create-fixture",
-            "cmd": f"printf '{{\"code\":\"abc\"}}' > {fixture}",
+            "cmd": 'printf \'{"code":"abc"}\' > "$QA_DIR/steps/create-fixture.json"',
         },
     )
     plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
@@ -1174,8 +1213,9 @@ def test_an_out_sidecar_never_blanks_a_file_the_command_wrote_itself(tmp_path: P
     that passed was the one whose oracle read a `-D` header dump instead.
 
     Naming both is redundant, and a validator could say so — but the harm here is that ostler
-    destroys output it did not produce, so the guard belongs at the write. `qa/` is wiped at
-    session start, so a non-empty file at that path is always this run's own evidence.
+    destroys output it did not produce, so the guard belongs at the write. Adoption is limited
+    to a file *this session* wrote — see `test_an_out_sidecar_does_not_adopt_a_file_from_an
+    _earlier_run` for the half that keeps a rehearsal's output out of the scored ledger.
     """
     spec = tmp_path / "docs/specs/story-1"
     spec.mkdir(parents=True)
@@ -1187,13 +1227,13 @@ def test_an_out_sidecar_never_blanks_a_file_the_command_wrote_itself(tmp_path: P
         {
             "do": "command",
             "id": "probe",
-            "cmd": f"printf '404' > {status}",
+            "cmd": 'printf \'404\' > "$QA_DIR/steps/status.txt"',
             "out": "qa/steps/status.txt",
         },
         {
             "do": "command",
             "id": "assert-404",
-            "cmd": f"printf 'status=%s' \"$(cat {status})\"",
+            "cmd": 'printf \'status=%s\' "$(cat "$QA_DIR/steps/status.txt")"',
             "assert_contains": "status=404",
         },
     ]
@@ -1211,6 +1251,80 @@ def test_an_out_sidecar_never_blanks_a_file_the_command_wrote_itself(tmp_path: P
     # The ledger says why the sidecar holds bytes ostler did not capture.
     assert probe["stdout_file_written_by_cmd"] is True
     assert probe["stdout_file"] == str(status)
+
+
+def test_an_out_sidecar_does_not_adopt_a_file_from_an_earlier_run(tmp_path: Path):
+    """The other half of the guard above: adoption is only ever of *this* session's output.
+
+    `qa/` is wiped once per QA lane — before the plan is even written — not at session start,
+    so a file a dry run left behind is still sitting there when the scored run opens. Adopting
+    it would let a step that produced nothing inherit the output of a rehearsal that was tuned
+    until it passed, and report it to the evidence gate as proof.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    stale = spec / "qa/steps/status.txt"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("404", encoding="utf-8")
+    # Older than any session that could open after it.
+    os.utime(stale, (0, 0))
+    data["scenarios"][0]["actions"] = [
+        # Writes nothing at all — the whole point is that the leftover must not stand in for it.
+        {"do": "command", "id": "probe", "cmd": "true", "out": "qa/steps/status.txt"},
+        {
+            "do": "command",
+            "id": "assert-404",
+            "cmd": 'printf \'status=%s\' "$(cat "$QA_DIR/steps/status.txt")"',
+            "assert_contains": "status=404",
+        },
+    ]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    cmd_run(plan, root=tmp_path)
+
+    records = [
+        json.loads(line)
+        for line in (spec / "qa/qa-run.ndjson").read_text(encoding="utf-8").splitlines()
+    ]
+    probe = next(row for row in records if row.get("id") == "probe")
+    assert not probe.get("stdout_file_written_by_cmd"), "adopted a file from before the session"
+    assert stale.read_text(encoding="utf-8") == "", "the stale bytes were left standing as evidence"
+
+
+def test_qa_dir_is_exported_to_commands_and_follows_out_dir(tmp_path: Path):
+    """`$QA_DIR` is the only spelling of the ledger directory that survives `--out-dir`.
+
+    A `cmd` runs at the repo root, so a step that redirects its own output has to name the
+    directory somehow. Every literal spelling — `<spec>/qa/steps/…`, or the `qa_dir` the prompt
+    interpolates — names the *scored* ledger whichever directory the run was pointed at, so a
+    dry run writes into the evidence the scored run is later judged on. Observed live: ten dry
+    runs of a six-scenario plan left ~30 artifacts in `qa/steps/` and produced an empty
+    `qa-dry-run/`.
+    """
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    obligation = _context(spec)
+    plan = _plan(spec, obligation)
+    data = yaml.safe_load(plan.read_text(encoding="utf-8"))
+    data["scenarios"][0]["actions"] = [
+        {
+            "do": "command",
+            "id": "probe",
+            "cmd": 'mkdir -p "$QA_DIR/steps" && printf \'ok\' > "$QA_DIR/steps/body.txt" '
+            '&& printf "at=%s" "$QA_DIR"',
+            "assert_contains": "at=",
+        },
+    ]
+    plan.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    outcome = cmd_run(plan, root=tmp_path, out_dir="qa-dry-run")
+
+    assert outcome.status == "passed", outcome.message
+    assert (spec / "qa-dry-run/steps/body.txt").read_text(encoding="utf-8") == "ok"
+    assert not (spec / "qa/steps").exists(), "a dry run reached the scored ledger"
 
 
 def test_expect_http_reads_a_status_the_command_redirected_to_its_own_out_file(tmp_path: Path):
@@ -1237,7 +1351,7 @@ def test_expect_http_reads_a_status_the_command_redirected_to_its_own_out_file(t
             "do": "command",
             "id": "request",
             # What `curl -s -w '\n%{http_code}' … > file` leaves behind: body, then the code.
-            "cmd": f"printf 'served\\n302' > {body}",
+            "cmd": 'printf \'served\\n302\' > "$QA_DIR/steps/response.txt"',
             "out": "qa/steps/response.txt",
             "expect_http": 302,
             "assert_contains": "served",
@@ -1285,7 +1399,7 @@ def test_expect_http_reads_the_status_line_of_a_curl_header_dump(tmp_path: Path)
             "do": "command",
             "id": "create",
             # What `curl -s -o body.json -D headers.txt -L …` leaves in the dump.
-            "cmd": f"printf '{dump}' > {headers}",
+            "cmd": f"printf '{dump}' > \"$QA_DIR/steps/create-headers.txt\"",
             "out": "qa/steps/create-headers.txt",
             "expect_http": 201,
         },
@@ -1351,13 +1465,12 @@ def test_an_uncapturable_status_says_so_instead_of_reporting_None(tmp_path: Path
     obligation = _context(spec)
     plan = _plan(spec, obligation)
     data = yaml.safe_load(plan.read_text(encoding="utf-8"))
-    headers = spec / "qa/steps/headers.txt"
     data["scenarios"][0]["actions"] = [
         {
             "do": "command",
             "id": "probe",
             # Body to /dev/null, head to a file this step does not declare as its `out:`.
-            "cmd": f"printf 'HTTP/1.1 404 Not Found\\n' > {headers}",
+            "cmd": 'printf \'HTTP/1.1 404 Not Found\\n\' > "$QA_DIR/steps/headers.txt"',
             "expect_http": 200,
         },
     ]

@@ -131,6 +131,9 @@ class QaSession:
             "pass_count": 0,
             "fail_count": 0,
             "started_monotonic": time.monotonic(),
+            #: Wall-clock, unlike the monotonic one beside it, because the only thing that
+            #: reads it compares against a file's mtime — see `_adoptable`.
+            "started_wall": time.time(),
         }
         s._secret_values = secret_values or {}
         s._manifest = RunManifest(spec_dir, run_id, qa_dirname)
@@ -250,6 +253,24 @@ class QaSession:
         return self._data.get("env", {})
 
     @property
+    def started_wall(self) -> float:
+        """When this session began, as a POSIX timestamp; 0.0 for a session written before
+        the field existed, which reads as "everything on disk is mine" — the old behaviour."""
+        return float(self._data.get("started_wall") or 0.0)
+
+    def command_env(self) -> dict[str, str]:
+        """The environment a plan's `cmd` and `background:` daemons run under.
+
+        `QA_DIR` is the whole point: a step that redirects its own output has to name the
+        ledger directory, and the only spelling that survives `--out-dir` is one resolved at
+        run time. A plan that hard-codes `<spec>/qa/steps/…` instead writes into the scored
+        ledger no matter which directory the run was pointed at, so a dry run leaves artifacts
+        the scored run is later judged on. `ostler qa validate` rejects that spelling; this is
+        what it rejects it in favour of.
+        """
+        return {**os.environ, "QA_DIR": str(self.qa_dir), **self._secret_values}
+
+    @property
     def captures(self) -> dict[str, str]:
         return self._data.get("captures", {})
 
@@ -299,6 +320,7 @@ class QaSession:
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
                 cwd=cwd or self.spec_dir,
+                env=self.command_env(),
             )
         pid = proc.pid
         self._data.setdefault("daemons", []).append(
@@ -392,7 +414,7 @@ class QaSession:
                 expanded_cmd,
                 timeout=timeout,
                 cwd=cwd or self.spec_dir,
-                env={**os.environ, **self._secret_values},
+                env=self.command_env(),
             )
             timed_out = False
         except subprocess.TimeoutExpired as exc:
@@ -409,15 +431,22 @@ class QaSession:
         # 200. One run reported three acceptance criteria broken while its own ledger recorded
         # the correct 404/201/302 for every request.
         #
-        # `qa/` is wiped at session start, so a non-empty file at that path is this run's own
-        # output and can only have come from this command. The command redirected its stdout
-        # there, which makes that file the step's stdout: read it back and treat it as such,
-        # rather than overwrite it with the emptiness the redirect left behind.
+        # A non-empty file at that path is this run's own output: the command redirected its
+        # stdout there, which makes that file the step's stdout. Read it back and treat it as
+        # such, rather than overwrite it with the emptiness the redirect left behind.
+        #
+        # "This run's own" is the load-bearing half, and it is not free. `qa/` is wiped once
+        # per QA lane, before the plan is even written — not at session start — so a plan
+        # being dry-run during authoring leaves files behind that are still sitting there when
+        # the scored run opens. Adopting one of those would let a step that produced nothing
+        # inherit the output of the rehearsal that was tuned until it passed, and report it as
+        # evidence. `_adoptable` is what keeps the sentence above true: only a file this
+        # session wrote counts.
         resolved_out: Path | None = _resolve_out(out_path, self.spec_dir, self.qa_dir) if out_path else None
         out_kept: bool = False
         if resolved_out is not None:
             resolved_out.parent.mkdir(parents=True, exist_ok=True)
-            if not stdout_raw and resolved_out.is_file() and resolved_out.stat().st_size:
+            if not stdout_raw and _adoptable(resolved_out, self.started_wall):
                 stdout_raw = resolved_out.read_bytes()
                 out_kept = True
 
@@ -710,6 +739,21 @@ def _jq_extract(data: Any, path: str) -> str | None:
         if cur is None:
             return None
     return str(cur) if cur is not None else None
+
+
+def _adoptable(out_file: Path, started_wall: float) -> bool:
+    """Whether a step may treat an already-present `out:` file as its own stdout.
+
+    Only when this session wrote it. The mtime comparison is the whole check: a file left by
+    an earlier dry run of the same plan is older than the scored session that is now reading
+    it, and adopting it would launder a rehearsal's output into the scored ledger.
+
+    A one-second grace absorbs coarse filesystem timestamp granularity, which can stamp a file
+    written immediately after `create()` as marginally older than the session itself.
+    """
+    if not out_file.is_file() or not out_file.stat().st_size:
+        return False
+    return out_file.stat().st_mtime >= started_wall - 1.0
 
 
 def _resolve_out(out_path: str, spec_dir: Path, qa_dir: Path) -> Path:

@@ -413,6 +413,12 @@ _BARE_EVIDENCE_PATH = re.compile(
     r"""(?:^|[\s;&|<>()"'`=])(?:\./)?qa/(?:steps|asserts)/""", re.MULTILINE
 )
 
+#: The *other* wrong spelling: a path with the ledger dir pinned into it by name —
+#: `/repo/docs/specs/01-thing/qa/steps/x` or `docs/specs/01-thing/qa/steps/x`. It resolves,
+#: which is why it survived review, but it resolves to the same place regardless of
+#: `--out-dir`. `$QA_DIR/steps/x` carries no `qa/` segment and so never matches this.
+_PINNED_EVIDENCE_PATH = re.compile(r"""[\w${}.-][\w${}./-]*/qa/(?:steps|asserts)/""")
+
 
 def _evidence_paths_in_command(cmd: Any, prefix: str) -> list[str]:
     """Reject a command that reaches for the evidence directory by a bare relative path.
@@ -429,11 +435,20 @@ def _evidence_paths_in_command(cmd: Any, prefix: str) -> list[str]:
     (absolute path, or `capture:` + `{{key}}` instead of a hand-rolled temp file), while the
     runtime symptom is an empty file with no explanation attached.
     """
-    if not isinstance(cmd, str) or not _BARE_EVIDENCE_PATH.search(cmd):
+    if not isinstance(cmd, str):
+        return []
+    if _PINNED_EVIDENCE_PATH.search(cmd):
+        return [
+            f"{prefix} command hard-codes a path ending in 'qa/steps/' or 'qa/asserts/'; that "
+            f"names the scored ledger whichever directory the run was pointed at, so a dry run "
+            f"writes into the evidence the scored run is judged on. Use $QA_DIR/steps/… , which "
+            f"ostler sets to this run's own ledger directory"
+        ]
+    if not _BARE_EVIDENCE_PATH.search(cmd):
         return []
     return [
         f"{prefix} command uses a bare 'qa/steps/' or 'qa/asserts/' path; a cmd runs from the "
-        f"repo root, so use the absolute qa_dir path or chain values with capture:/{{{{key}}}}"
+        f"repo root, so use $QA_DIR/steps/… or chain values with capture:/{{{{key}}}}"
     ]
 
 
