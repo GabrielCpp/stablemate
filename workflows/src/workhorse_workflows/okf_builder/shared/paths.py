@@ -25,9 +25,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from ostler import path as okf_path
+from workhorse.scratch import scratch_dir
 from workhorse_workflows.kit import find_docs_root
 
-#: The build's scratch directory under the docs repo: worklists, walkthrough logs.
+#: The build's run state under the docs repo: worklists and the source inventory.
+#: Machine scratch is NOT here — see :func:`walkthrough_scratch`.
 BUILD_DIRNAME = ".agents/okf-build"
 
 
@@ -71,13 +73,14 @@ def build_dir(root: Path) -> Path:
 def ensure_build_dir(root: Path) -> Path:
     """Create the build directory and make it ignore itself. Returns it.
 
-    The self-ignore is load-bearing, not tidiness. This scratch lives *inside* the docs
-    repo, and the shared browser parks a full Chrome profile under `walkthrough/` — tens
-    of thousands of files. A coder run in the same checkout commits with `commit_all`
-    (`git add -A`), so anything here that the repo does not ignore gets swept into a
-    story commit and is then in every clone's history forever, where only a rewrite
-    removes it. Writing the `.gitignore` here means a repo is protected the first time
-    okf-builder runs in it, rather than after someone notices.
+    The self-ignore is load-bearing, not tidiness. What is left here after the browser
+    profile moved to the cache is still run state, not documents — worklists, the source
+    inventory — and it still lives *inside* the docs repo. A coder run in the same
+    checkout commits with `commit_all` (`git add -A`), so anything here that the repo
+    does not ignore gets swept into a story commit and is then in every clone's history
+    forever, where only a rewrite removes it. Writing the `.gitignore` here means a repo
+    is protected the first time okf-builder runs in it, rather than after someone
+    notices.
     """
     build = build_dir(root)
     build.mkdir(parents=True, exist_ok=True)
@@ -98,8 +101,15 @@ def walk_worklist_path(root: Path, service: str) -> Path:
 
 
 def walkthrough_scratch(root: Path) -> Path:
-    """Where the shared browser keeps its profile and its log."""
-    return build_dir(root) / "walkthrough"
+    """Where the shared browser keeps its profile and its log — outside the repo entirely.
+
+    A Chrome profile is tens of thousands of files that no resume needs and no reader
+    wants: pure machine state, which is the stablemate cache's definition. Keeping it in
+    the docs repo meant every process sharing that checkout had to be trusted not to
+    commit it, and `commit_all`'s `git add -A` is not that. Out here the question does not
+    arise — there is nothing in the repo to ignore, and deleting the cache is free.
+    """
+    return scratch_dir("okf-walkthrough", root)
 
 
 def source_inventory_path(worklist: str | Path) -> Path:

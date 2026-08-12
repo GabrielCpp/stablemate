@@ -48,6 +48,7 @@ from unittest.mock import patch
 
 import pytest
 from _fakes import StubRunner
+from workhorse._vendor.stablemate_core.base_cache import cache_root
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import WorkflowFailed
@@ -222,24 +223,48 @@ def test_the_build_scratch_ignores_itself_so_a_commit_all_cannot_eat_it(
 ) -> None:
     """`.agents/okf-build/` carries its own `.gitignore`, from the first run onward.
 
-    The scratch lives inside the docs repo and the shared browser parks a whole Chrome
-    profile in it — tens of thousands of files. A coder run in the same checkout commits
-    with `commit_all` (`git add -A`), so an unignored scratch is swept into a story commit
-    and then lives in every clone's history, where only a rewrite removes it. That is not
-    hypothetical; it is why this test exists.
+    What is left in it is run state — worklists, the source inventory — and it lives inside
+    the docs repo. A coder run in the same checkout commits with `commit_all` (`git add
+    -A`), so an unignored scratch is swept into a story commit and then lives in every
+    clone's history, where only a rewrite removes it. That is not hypothetical; it is why
+    this test exists.
     """
     _drive(_env(tmp_path), _Agent(booked))
 
     assert (booked / paths.BUILD_DIRNAME / ".gitignore").read_text() == "*\n"
 
     # The property, not the file: git offers nothing here to `add -A`.
-    profile = booked / paths.BUILD_DIRNAME / "walkthrough/browser-profile/Default"
-    profile.mkdir(parents=True)
-    (profile / "Preferences").write_text("{}")
+    stray = booked / paths.BUILD_DIRNAME / "acme.worklist.json.source.json"
+    stray.write_text("{}")
     status = subprocess.run(
         ["git", "status", "--porcelain"], cwd=booked, capture_output=True, text=True, check=True
     ).stdout
     assert paths.BUILD_DIRNAME not in status, status
+
+
+def test_the_browser_profile_is_not_in_the_repo_at_all(
+    booked: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The stronger guarantee: the profile is machine scratch, so it is in the cache.
+
+    An ignore rule only protects a repo that has it — and it still leaves tens of thousands
+    of Chrome files inside a checkout that other processes crawl, diff and archive. The
+    profile is state no resume needs, which is precisely what the stablemate cache is for,
+    so the question "will something commit it" stops being askable.
+    """
+    # Sandboxed, so the suite never writes into the developer's real cache — and so the
+    # `$STABLEMATE_CACHE_DIR` override the resolver documents is exercised rather than
+    # assumed.
+    monkeypatch.setenv("STABLEMATE_CACHE_DIR", str(tmp_path / "cache"))
+    scratch = paths.walkthrough_scratch(booked)
+
+    assert not scratch.is_relative_to(booked), scratch
+    assert scratch.is_relative_to(cache_root()), scratch
+    # Two checkouts of the same repo must not share one profile: same basename, and a
+    # browser answers CDP for whichever bound the port first.
+    twin = booked.parent / "twin" / booked.name
+    twin.mkdir(parents=True)
+    assert paths.walkthrough_scratch(twin) != scratch
 
 
 def test_an_investigation_opens_the_items_it_reveals(booked: Path, tmp_path: Path) -> None:
