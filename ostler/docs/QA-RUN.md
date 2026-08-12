@@ -2,11 +2,10 @@
 
 Status: **implemented** (2026-07-14).
 
-This document describes the original version-1 command runner. The universal
-version-2 design — OKF impact packet, Playwright and Maestro adapters, recording
-contract, and coder-workflow integration — lives in an internal plan that
-supersedes this one where the contracts differ, especially the placement of
-`qa-plan.yml` and static inputs outside disposable `qa/`.
+This is the CLI surface, the ledger format and the plan format, as they stand. The
+plan is a Python module (`qa_plan.py`); the YAML format this runner started with is
+retired and `ostler qa validate` rejects it by name. Static inputs live outside the
+disposable `qa/` directory.
 
 ## Why this exists
 
@@ -271,185 +270,106 @@ ostler qa replay [--spec <spec-dir>]
     valid shell script a human can run in a fresh terminal to reproduce the run.
     Does not re-execute anything.
 
-ostler qa run <plan-file> [--spec <spec-dir>]
-    Batch mode. Read a qa-plan.yml file and execute it as if the agent had called
-    start / step / assert / stop in sequence. The plan file is written by the
-    agent before any live commands are issued; ostler executes it, writes the run
-    log, and prints the final PASS/FAIL verdict. This is the preferred invocation
-    mode — the agent authors a plan, a human can review it before execution, and
-    ostler owns all execution. See "Run plan YAML format" below.
+ostler qa run <plan-file> [--spec <spec-dir>] [--scenario <id>] [--out-dir <name>]
+    Batch mode. Read a qa_plan.py module and execute its scenarios, opening the
+    session, starting the declared daemons and writing the ledger around them. The
+    plan is written by the agent before any live commands are issued; ostler owns
+    all execution. This is the preferred invocation mode — a human can review the
+    plan before it runs. See "Run plan format" below.
+    --scenario runs a subset, --out-dir redirects the whole ledger; together they
+    are the dry run an author uses while writing the plan, and the redirect is
+    what keeps a rehearsal out of the evidence the scored run is judged on.
 ```
 
 ---
 
-## Version-1 run plan YAML format (`qa-plan.yml`)
+## Run plan format (`qa_plan.py`)
 
-The plan file is written to `<spec_dir>/qa-plan.yml` before `ostler qa run` is
-called. Static inputs live under `<spec_dir>/qa-inputs/`. Nothing required to
-start a run may live under `qa/`, because the runner deletes that complete
-directory after validation and before execution. A human can inspect and abort
-the plan before Ostler executes it.
+The plan is a **Python module** at `<spec_dir>/qa_plan.py`. It is not a script: importing
+it must only *declare* — a `plan()` call, some targets, and one decorated function per
+scenario — because `ostler qa validate` imports it to read those declarations without
+running anything. A module that issues a request at import time turns every validation
+into a run.
 
-Assertions are **inline** on the step that produces the evidence. This keeps the proof
-co-located with the action: you read one step block and see both what was called and how
-it was confirmed, without cross-referencing a separate `asserts:` section.
+Static inputs live under `<spec_dir>/qa-inputs/`. Nothing required to start a run may live
+under `qa/`, because the runner deletes that whole directory after validation and before
+execution.
 
-```yaml
-# qa-plan.yml — agent writes this; human reviews before ostler executes
+```python
+# qa_plan.py — the agent writes this; a human reviews it before ostler executes it
 
-run_id: ACME-4352
-story: ACME-4352
-env:
-  aws_profile: dev-case-management
-  region: us-east-2
-  tenant: valley-view
+from ostler_qa import Qa, background, input_file, plan, scenario, secret, target
 
-# Daemons ostler starts before step 1 and kills on stop.
-# ready_check: what ostler polls before advancing to the first step. Two forms —
-#   a string, polled for HTTP 200, and
-#   a {cmd, assert_contains} mapping, ready when the command exits 0 and its stdout
-#   carries the needle. The mapping is the only option for a service with no GET that
-#   answers 200 (an API whose sole route is a POST, say); it runs in the daemon's own
-#   cwd, and takes the same `assert_contains` a step does.
-# timeout: seconds to keep polling before the run is blocked (default 30). A daemon that
-#   *exits* before its check passes does not wait this out: ostler reports the exit code and
-#   the tail of `qa/daemon-<name>.log` straight away, because "timed out" describes a slow
-#   service and says nothing about one that never started (a taken port, a build error).
-background:
-  - name: eventbridge-tail
-    cmd: go run ./tools/eventbridge-tail --event-bus api-service-dev --port 7890
-    ready_check: http://localhost:7890/events
-  - name: api-server
-    cmd: cd api && go run ./cmd/server
-    ready_check:
-      cmd: >
-        curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/links
-        -H 'Content-Type: application/json' -d '{"longUrl":"https://example.com/probe"}'
-      assert_contains: "201"
+plan(run_id="ACME-4352", story="04-publish-metadata")
 
-steps:
-  - id: preflight
-    label: Confirm deployed image contains the fix
-    mechanism: live
-    cmd: >
-      AWS_PROFILE={{env.aws_profile}} aws lambda get-function
-      --function-name dynamo-stream --query 'Code.ImageUri' --output text
-    assert_contains: acb91d11 # ostler checks stdout; agent does not supply this verdict
+api = target("api", base_url="http://localhost:8080")
+web = target("web", driver="playwright", base_url="http://localhost:5173")
 
-  - id: login
-    label: Create session via mobile-gateway
-    mechanism: live # required on every step: live | synthetic | fixture
-    cmd: >
-      curl -s -w "\n%{http_code}"
-      -X POST https://mobile-gateway.example.com/auth/login
-      -H "Content-Type: application/json" -d @qa-inputs/login-payload.json
-    expect_http: 200
-    capture: # JSONPath applied to step stdout
-      session_id: $.session_id
-      app_installation_id: $.app_installation_id
-    out: qa/steps/login-response.json # ostler writes captured stdout here as sidecar
+# Started before the first scenario, killed at stop. `ready_url` is polled for HTTP 200;
+# `ready_cmd` + `ready_contains` is ready when the command exits 0 and its stdout carries
+# the needle — the only option for a service with no GET that answers 200 (an API whose
+# sole route is a POST). The check runs in the daemon's own cwd, which is the repo root.
+# `timeout` (default 30s) bounds the poll. A daemon that *exits* before its check passes
+# does not wait that out: ostler reports the exit code and the tail of
+# `qa/daemon-<name>.log` straight away, because "timed out" describes a slow service and
+# says nothing about one that never started (a taken port, a build error).
+background("api-server", cmd="cd api && go run ./cmd/server",
+           ready_cmd="curl -s -o /dev/null -w '%{http_code}' -X POST "
+                     "http://localhost:8080/links -d '{\"longUrl\":\"https://example.com\"}'",
+           ready_contains="201", timeout=60)
 
-  - id: explicit_logout
-    label: Call POST /auth/logout
-    mechanism: live
-    cmd: >
-      curl -s -w "\n%{http_code}"
-      -X POST https://mobile-gateway.example.com/auth/logout
-      -H "Authorization: Bearer ..."
-    expect_http: 200
+ADMIN_TOKEN = secret("admin_token", from_env="QA_ADMIN_TOKEN")
+PAYLOAD = input_file("payload", "qa-inputs/login-payload.json")
 
-  - id: wait_logout_event
-    label: Confirm AppLogoutNotification published for explicit logout
-    mechanism: live
-    cmd: >
-      curl -s
-      'http://localhost:7890/events?detail_type=AppLogoutNotification+V1&n=5'
-    assert_contains: "{{session_id}}" # {{key}} expands from prior capture
 
-  - id: seed_ttl_item
-    label: Seed DynamoDB sessions table with TTL-expiring item
-    mechanism: fixture
-    cmd: >
-      AWS_PROFILE={{env.aws_profile}} aws dynamodb put-item
-      --region {{env.region}} --table-name sessions
-      --item file://qa-inputs/ttl-session-item.json
-
-  - id: ttl_invoke
-    label: Invoke dynamo-stream handler with synthetic TTL REMOVE event
-    mechanism: synthetic
-    cmd: >
-      AWS_PROFILE={{env.aws_profile}} aws lambda invoke
-      --function-name dynamo-stream
-      --payload file://qa-inputs/ttl-invoke-payload.json /dev/stdout
-    out: qa/steps/ttl-invoke-response.json
-    expect_http: 200
-    cloudwatch_confirm: # ostler runs filter-log-events; PASS if ≥ 1 match
-      log_group: /aws/lambda/dynamo-stream
-      filter: qa-synth-ttl-1
-
-  - id: wait_ttl_event
-    label: Confirm AppLogoutNotification published for TTL scenario (no duplicate)
-    mechanism: synthetic
-    cmd: >
-      curl -s
-      'http://localhost:7890/events?detail_type=AppLogoutNotification+V1&causation_id=qa-synth-ttl-1&n=5'
-    assert_contains: qa-synth-ttl-1
-    assert_count: 1 # exactly 1 — the no_duplicate check
-
-  - id: modify_invoke
-    label: Invoke dynamo-stream handler with synthetic MODIFY overwrite event
-    mechanism: synthetic
-    cmd: >
-      AWS_PROFILE={{env.aws_profile}} aws lambda invoke
-      --function-name dynamo-stream
-      --payload file://qa-inputs/modify-overwrite-invoke-payload.json /dev/stdout
-    out: qa/steps/modify-invoke-response.json
-    expect_http: 200
-    cloudwatch_confirm:
-      log_group: /aws/lambda/dynamo-stream
-      filter: qa-synth-modify-1
-
-  - id: wait_modify_event
-    label: Confirm AppLogoutNotification published for MODIFY scenario (no duplicate)
-    mechanism: synthetic
-    cmd: >
-      curl -s
-      'http://localhost:7890/events?detail_type=AppLogoutNotification+V1&causation_id=qa-synth-modify-1&n=5'
-    assert_contains: qa-synth-modify-1
-    assert_count: 1
+@scenario(target=api, mechanism="live", covers=[
+    "ac:1",
+    "okf:docs/features/links/http/links.md#create:does:1",
+])
+def create_records_the_real_author(qa: Qa) -> None:
+    """Creating a link ignores a spoofed author and persists the token's own UID."""
+    uid = qa.http.post("/auth", json={"token": qa.secret("admin_token")}).json()["localId"]
+    created = qa.http.post("/links", json={"longUrl": "https://example.com/a",
+                                           "author": "attacker"})
+    qa.check("the request was accepted", created.status == 201,
+             actual=created.status, expected=201)
+    stored = qa.http.get(f"/links/{created.json()['id']}").json()
+    qa.check("author is the token UID, not the request body",
+             stored["author"] == uid, actual=stored["author"], expected=uid)
 ```
 
-### Inline assertion keys
+### What a scenario is given
 
-All inline assertions are executed by ostler. The agent writes the check specification;
-ostler runs it and records PASS/FAIL in the log.
+`Qa` is the whole surface. Every affordance the shell format got by accident is an
+explicit attribute here, and the two that used to cost the most are the first two:
 
-| Key                  | Type   | What ostler checks                                                                                           |
-| -------------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
-| `assert_contains`    | string | step stdout contains the literal string                                                                      |
-| `expect_http`        | int    | recorded HTTP status equals value — curl `-w '%{http_code}'` trailing line, else a `-D` dump's status line   |
-| `assert_count`       | int    | stdout parsed as JSON array has exactly this many elements                                                   |
-| `cloudwatch_confirm` | object | `aws logs filter-log-events` with `filter` over the last hour returns ≥ 1 match (or `min_matches:` override) |
+| Attribute                          | What it is                                                              |
+| ---------------------------------- | ----------------------------------------------------------------------- |
+| `qa.dir`                           | the evidence directory, already resolved against `--out-dir` — one spelling, a `Path` |
+| `qa.root`, `qa.spec_dir`           | the repo root and the story's spec directory                            |
+| `qa.http`                          | a session bound to the target's `base_url`; `.get/.post/.put/.patch/.delete`, each returning a `Response` with `.status`, `.text()`, `.json()` |
+| `qa.check(label, condition, …)`    | record one claim; returns the verdict, never raises                     |
+| `qa.require(label, condition, …)`  | record one claim and stop the scenario when it does not hold            |
+| `qa.step(label)`                   | a context manager grouping a phase's work under one step record         |
+| `qa.capture(key, value)` / `qa.get` | publish a value into the ledger so a later report can name it          |
+| `qa.artifact(path, kind=…)`        | register a file as evidence; a relative path resolves inside `qa.dir`   |
+| `qa.secret(name)`                  | the runtime value of a declared secret — redacted everywhere it is written |
+| `qa.page`, `qa.diagnostics`, `qa.by_role(…)`, `qa.goto(…)`, `qa.screenshot()` | the browser, for a `playwright` target |
+| `qa.maestro.run(flow)`             | a Maestro flow, for a `maestro` target                                  |
 
-A step with any inline assertion that fails causes `ostler qa run` to continue (recording
-FAIL) but report a non-zero exit code at the end. Use `--stop-on-fail` to halt immediately.
+`covers=` on the decorator is the machine-checkable link to the obligations
+`qa-okf-context.json` lists, and it is what `qa-evidence.json` is aggregated over. A
+single `qa.check` may narrow it with its own `covers=`.
 
-`expect_http` on a step that sends its stdout elsewhere — `-o /dev/null`, a `-D` aimed at a
-path the step does not declare as its `out:`, a shell `>` — has nothing to compare against.
-That still fails, because the plan cannot prove what it claims, but the assertion record says
-`no HTTP status captured` rather than reporting a status of `None`. The two read very
-differently: one is a plan omission, the other looks like the service answering wrongly, and
-mistaking the first for the second sends a QA loop off repairing working code.
+**Do not defend against a wrong key — let it raise.** A missing field is a `KeyError` on
+the line that read it, with a traceback in `qa/steps/<scenario>-stdout.txt`. This is the
+whole reason the format changed: `jq` answered a missing field with an empty stream, so
+`[.responses[] | select(.status >= 500)] | length == 0` passed on every run including the
+ones serving 500s, and four separate reviews found that defect by reading.
 
-Every `cmd` runs under `bash` with **`set -o pipefail`**, so a pipeline fails when *any*
-stage fails rather than only its last. This is what stops an assertion passing vacuously:
-`jq '.responses[]?' out.json | wc -l` exits 0 and prints `0` when `jq` never parsed the
-file at all, and an `assert_count: 0` on that step then agrees with a broken command
-exactly as it agrees with a working one that found nothing. A step's exit code is recorded
-as an assertion in its own right (`command exited 0`), so a step that dies cannot report
-the obligations it covers as Pass. The one thing to avoid is ending a pipeline in `head` or
-`tail`, which kills the producer with SIGPIPE and now fails the step — capture the full
-output and slice it in the assertion instead.
+A scenario that raises fails, and its obligations are not credited. A scenario that
+records no assertion at all fails validation before it ever runs — `covers` with nothing
+proving it is the defect the old `_exit_sentinel` regex was guessing at.
 
 ### Browser diagnostics (`qa/traces/<scenario>-diagnostics.json`)
 
@@ -478,9 +398,10 @@ that was executing:
 `schema` names the shape of the file. A trace stays on disk after the run that wrote it, so a
 plan repaired later is often verified against one an older driver produced — and the shapes
 differ (`failedRequests` was once a list of bare url strings). Without the key that mismatch
-appears only as a jq runtime crash, which reads as "the assertion is wrong" and gets repaired
-toward the stale shape. Read it, or assert `.schema == "browser-diagnostics/1"` outright, before
-trusting a trace to prove anything about the plan.
+surfaces only as a `TypeError` deep in whatever read it, which reads as "the assertion is
+wrong" and gets repaired toward the stale shape. Check
+`data["schema"] == "browser-diagnostics/1"` before trusting a trace on disk to prove
+anything about the plan.
 
 `console` is every message, `consoleErrors` only the `error` ones and by **text** alone —
 it predates `console` and is kept because plans assert on it. Prefer `console`: the warning
@@ -501,47 +422,51 @@ the shape of a hung endpoint, and is in none of the other keys.
 that never completed — `requestfailed` never fires for a completed response, whatever its
 status. Read `errorText` before gating on it: an app cancelling its own in-flight fetch (a
 React effect cleanup, a StrictMode double-invoke, a superseding navigation) fires
-`requestfailed` with `net::ERR_ABORTED` exactly as a refused connection does, so a bare
-`.failedRequests | length == 0` goes red on healthy behaviour. Exclude the aborts the app
-is expected to make and keep failing on the rest:
+`requestfailed` with `net::ERR_ABORTED` exactly as a refused connection does, so gating on
+the bare list goes red on healthy behaviour. Exclude the aborts the app is expected to make
+and keep failing on the rest — `failed_requests` takes the exclusion for you:
 
+```python
+qa.check("no request failed unexpectedly",
+         qa.diagnostics.failed_requests(ignore=["net::ERR_ABORTED"]) == [])
+qa.check("nothing served a 5xx", qa.diagnostics.responses(status_at_least=500) == [])
 ```
-[.failedRequests[] | select(.errorText != "net::ERR_ABORTED")] | length == 0
-```
 
-`responses` is what carries status, so a scenario can assert
-`[.responses[] | select(.status >= 500)] | length == 0` and have it mean something.
+Assert through `qa.diagnostics` rather than by reading the file: the diagnostics file is
+written *after* the scenario returns, so a scenario that reads it is reading the previous
+run's copy — and a scenario cannot fail itself on a 5xx it provoked any other way.
 
-`console`, `requests` and `responses` are each capped at the driver's `DIAGNOSTICS_LIMIT`
+`console`, `requests` and `responses` are each capped at the harness's `DIAGNOSTICS_LIMIT`
 (500) records, and the matching `consoleCount` / `requestCount` / `responseCount` reports
 the true total — compare the two before reading a long run's list as complete. `pageErrors`
 and `failedRequests` are uncapped: both are rare by construction and both are the thing
-being looked for. There is no response **body** and no headers here; assert on those
-through a `command` step with `expect_http`.
-
-### Substitution rules
-
-- `{{key}}` in any `cmd` or assertion string is replaced with the value captured from a
-  prior step's `capture` map. Captures are resolved in plan order; forward references
-  are rejected at validation time.
-- `{{env.<name>}}` expands from the top-level `env` block.
-- `{{run_id}}`, `{{story}}` expand from top-level metadata.
+being looked for. There is no response **body** and no headers here; a scenario that needs
+those should issue the request itself through `qa.http`.
 
 ### Validation (`ostler qa validate <plan-file>`)
 
-Before executing, ostler validates:
+`ostler qa run` always validates before executing; `ostler qa validate` runs validation
+alone, which is what an author calls while writing the plan. Validation imports the module
+under the target's interpreter and reads the declarations back, so it catches:
 
-- Every step has a `mechanism` of `live`, `synthetic`, or `fixture` — missing mechanism
-  is a hard error.
-- All `{{key}}` substitutions in a step resolve to a `capture` key defined in a previous
-  step.
-- All `background` daemon names cited in `assert_contains` on a `cmd` that queries a
-  daemon port match a declared daemon.
-- All `out:` paths are under the spec directory (no path traversal).
-- `run_id` and `story` are non-empty strings.
-
-`ostler qa run` always validates before executing. `ostler qa validate` runs validation
-alone, so the agent or human can check the plan before committing.
+- a plan that **cannot be imported at all** — a syntax error, a missing dependency, a typo
+  in a project import. This is the check the YAML format could never offer: a broken plan
+  used to surface an hour into a run, as a driver failure against a story that was fine.
+- a scenario that `covers` an obligation but **records no assertion**, found by an `ast`
+  walk of its body for `qa.check` / `qa.require` calls.
+- an obligation this change owes that **no asserted scenario covers**, and a `covers` ID
+  that is not an obligation of this change — the message distinguishes an ID documented in
+  the book but not owed here from one the book does not know at all, and names what the
+  plan *could* cover either way.
+- a browser scenario addressing the page by text or CSS where the book documents a role,
+  or navigating to a route the book does not document.
+- a `recording` a target tried to waive itself; only `ostler.yml`'s
+  `qa.recordingExemptTargets` may do that.
+- an input file under the disposable `qa/` directory, which is deleted before the run
+  starts, and any path escaping the spec directory.
+- a background daemon whose `ready_check` is neither an http(s) URL nor a runnable
+  `{cmd, assert_contains}` mapping, and duplicate daemon names.
+- a `qa-plan.yml`, rejected with the name of the module that replaces it.
 
 ---
 

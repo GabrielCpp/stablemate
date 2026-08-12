@@ -99,7 +99,6 @@ def test_load_stamps_the_module_and_interpreter_on_every_target(tmp_path: Path) 
     module = _plan(spec)
     document, problems = load_plan(module, spec, tmp_path)
     assert not problems and document is not None
-    assert document.kind == "python"
     assert document.data["version"] == 3
     assert document.data["targets"]["api"]["module"] == str(module.resolve())
     assert Path(document.data["targets"]["api"]["interpreter"]).exists()

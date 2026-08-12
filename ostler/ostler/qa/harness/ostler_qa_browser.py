@@ -22,7 +22,7 @@ from typing import Any
 
 from playwright.sync_api import sync_playwright
 
-#: Mirrors `ostler.qa.drivers.DIAGNOSTICS_SCHEMA`. Stamped into every diagnostics file so a
+#: Stamped into every diagnostics file so a
 #: plan reading one written by an older driver can tell, instead of asserting against a
 #: shape that has since changed and reading the mismatch as a product defect.
 DIAGNOSTICS_SCHEMA = "browser-diagnostics/1"

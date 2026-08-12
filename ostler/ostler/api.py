@@ -490,14 +490,14 @@ class Ostler:
         return validate_context(packet)
 
     def qa_validate(self, plan_file: str | Path, *, spec: str | Path | None = None) -> QaOutcome:
-        """Validate a ``qa-plan.yml`` without executing it (``ostler qa validate``)."""
+        """Validate a ``qa_plan.py`` without executing it (``ostler qa validate``)."""
 
         return cmd_validate(Path(plan_file),
                             self._resolve(spec) if spec else None, root=self.root)
 
     def qa_run(self, plan_file: str | Path, *, spec: str | Path | None = None,
                stop_on_fail: bool = False) -> QaOutcome:
-        """Execute a ``qa-plan.yml`` in batch mode (``ostler qa run``)."""
+        """Execute a ``qa_plan.py`` in batch mode (``ostler qa run``)."""
 
         return cmd_run(Path(plan_file), self._resolve(spec) if spec else None,
                        stop_on_fail=stop_on_fail, root=self.root)

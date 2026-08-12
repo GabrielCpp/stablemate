@@ -16,51 +16,20 @@ import yaml
 from ostler.qa.harness_host import default_interpreter, describe
 from ostler.untyped import is_mapping
 
+#: What a `qa-plan.yml` gets told now. The YAML plan's content was a shell heredoc, and every
+#: silent-failure mode it had — a `jq` path reading a missing field as an empty stream, an
+#: evidence path meaning two directories depending on which key it sat under, an assertion
+#: proving only that a process exited — had to be caught by a regex standing in for a runtime.
+#: A `qa_plan.py` gets that runtime: a wrong key raises, and the traceback names the line.
+#: The landed `qa-plan.yml` files stay where they are as archived evidence; they do not re-run.
+RETIRED_YAML = (
+    "the YAML QA plan is retired — write the plan as `qa_plan.py` in the same spec directory "
+    "(one `@scenario`-decorated function per scenario) and delete the .yml"
+)
+
 MECHANISMS = {"live", "synthetic", "fixture"}
 DRIVERS = {"command", "python", "playwright", "maestro"}
-ASSERT_KEYS = {
-    "assert_contains",
-    "assert_count",
-    "expect_http",
-    "cloudwatch_confirm",
-}
-EXPECTATIONS = {
-    "visible",
-    "hidden",
-    "enabled",
-    "disabled",
-    "selected",
-    "checked",
-    "text",
-    "value",
-    "count",
-    "url",
-}
-COMMON_ACTIONS = {
-    "goto",
-    "launch",
-    "reload",
-    "back",
-    "click",
-    "tap",
-    "fill",
-    "select",
-    "press",
-    "clear",
-    "wait_for",
-    "wait_for_response",
-    "wait_for_idle",
-    "command",
-}
-CAPTURES = {
-    "screenshot",
-    "trace",
-    "body_text",
-    "accessibility_snapshot",
-    "view_hierarchy",
-}
 LOCATOR_KEYS = {"role", "name", "label", "test_id", "text", "css", "id"}
-_TOKEN_RE = re.compile(r"\{\{([^}]+)\}\}")
 
 
 @dataclass
@@ -70,10 +39,6 @@ class PlanDocument:
     root: Path
     data: dict[str, Any]
     context: dict[str, Any]
-    #: ``"python"`` for a `qa_plan.py` read through the harness's describe pass,
-    #: ``"yaml"`` for the retiring v2 document. `data` holds the same shape either way —
-    #: that is what lets one validator serve both, and what makes the YAML half deletable.
-    kind: str = "yaml"
 
     @property
     def run_id(self) -> str:
@@ -88,19 +53,9 @@ def resolve_spec_dir(plan_file: Path, spec_dir: Path | None, root: Path) -> Path
     plan_file = plan_file if plan_file.is_absolute() else root / plan_file
     if spec_dir is not None:
         return (spec_dir if spec_dir.is_absolute() else root / spec_dir).resolve()
-    if plan_file.suffix == ".py":
-        # A python plan carries no `spec_dir` escape hatch. Learning one would mean importing
-        # the module before knowing where its evidence goes, and the key only ever existed to
-        # let a generated YAML file sit somewhere other than the spec it describes.
-        return plan_file.parent.resolve()
-    try:
-        raw = yaml.safe_load(plan_file.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError):
-        raw = {}
-    configured = raw.get("spec_dir") if isinstance(raw, dict) else None
-    if configured:
-        candidate = Path(str(configured))
-        return (candidate if candidate.is_absolute() else root / candidate).resolve()
+    # A plan carries no `spec_dir` escape hatch. Learning one would mean importing the module
+    # before knowing where its evidence goes, and the key only ever existed to let a generated
+    # YAML file sit somewhere other than the spec it describes.
     return plan_file.parent.resolve()
 
 
@@ -110,12 +65,9 @@ def load_plan(plan_file: Path, spec_dir: Path, root: Path) -> tuple[PlanDocument
         return None, [f"plan file not found: {resolved_plan}"]
     root, spec_dir = root.resolve(), spec_dir.resolve()
     resolved_plan = resolved_plan.resolve()
-    if resolved_plan.suffix == ".py":
-        data, problems = _describe_python_plan(resolved_plan, root)
-        kind = "python"
-    else:
-        data, problems = _parse_yaml_plan(resolved_plan)
-        kind = "yaml"
+    if resolved_plan.suffix != ".py":
+        return None, [RETIRED_YAML]
+    data, problems = _describe_python_plan(resolved_plan, root)
     if data is None:
         return None, problems
     context_path = spec_dir / "qa-okf-context.json"
@@ -127,17 +79,7 @@ def load_plan(plan_file: Path, spec_dir: Path, root: Path) -> tuple[PlanDocument
                 context = loaded
         except json.JSONDecodeError as exc:
             return None, [f"qa-okf-context.json is invalid JSON: {exc}"]
-    return PlanDocument(resolved_plan, spec_dir, root, data, context, kind), problems
-
-
-def _parse_yaml_plan(plan_file: Path) -> tuple[dict[str, Any] | None, list[str]]:
-    try:
-        data = yaml.safe_load(plan_file.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        return None, [f"YAML parse error: {exc}"]
-    if not isinstance(data, dict):
-        return None, ["plan must be a YAML mapping"]
-    return data, []
+    return PlanDocument(resolved_plan, spec_dir, root, data, context), problems
 
 
 def _describe_python_plan(plan_file: Path, root: Path) -> tuple[dict[str, Any] | None, list[str]]:
@@ -164,7 +106,7 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
     plan, spec_dir = document.data, document.spec_dir
     problems: list[str] = []
     if not document.context:
-        problems.append("qa-okf-context.json is required for a version-2 plan")
+        problems.append("qa-okf-context.json is required")
     elif document.context.get("version") != 1:
         problems.append("qa-okf-context.json version must be 1")
     for finding in document.context.get("healthFindings", []):
@@ -173,9 +115,8 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
                 f"OKF health finding blocks execution: {finding.get('kind', 'unknown')} "
                 f"{finding.get('path', '')}".rstrip()
             )
-    expected_version = 3 if document.kind == "python" else 2
-    if plan.get("version") != expected_version:
-        problems.append(f"'version' must be {expected_version}")
+    if plan.get("version") != 3:
+        problems.append("'version' must be 3")
     for field in ("run_id", "story"):
         if not isinstance(plan.get(field), str) or not plan[field].strip():
             problems.append(f"'{field}' is required and must be non-empty")
@@ -242,12 +183,7 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
 
     problems.extend(_validate_background(plan.get("background", [])))
 
-    if document.kind == "python":
-        scenario_problems, asserted_coverage = _validate_python_scenarios(document, targets)
-    else:
-        scenario_problems, asserted_coverage = _validate_yaml_scenarios(
-            document, targets, inputs, secrets
-        )
+    scenario_problems, asserted_coverage = _validate_python_scenarios(document, targets)
     problems.extend(scenario_problems)
 
     for obligation in document.context.get("obligations", []):
@@ -350,253 +286,6 @@ def _validate_python_scenarios(
                 )
             )
     return problems, asserted_coverage
-
-
-def _validate_yaml_scenarios(  # noqa: C901
-    document: PlanDocument,
-    targets: dict[str, Any],
-    inputs: dict[str, Any],
-    secrets: dict[str, Any],
-) -> tuple[list[str], set[str]]:
-    """The v2 shell-action vocabulary, policed by hand because YAML cannot police itself.
-
-    Retiring: every rule below compensates for something a language gives for free, and the
-    whole function goes when the last YAML plan does.
-    """
-    plan, spec_dir = document.data, document.spec_dir
-    problems: list[str] = []
-
-    scenarios = plan.get("scenarios")
-    if not isinstance(scenarios, list) or not scenarios:
-        problems.append("'scenarios' must be a non-empty list")
-        scenarios = []
-    scenario_ids: set[str] = set()
-    action_ids: set[str] = set()
-    asserted_coverage: set[str] = set()
-    all_coverage = _known_coverage(document.context)
-    documented = _documented_locators(document)
-    for index, scenario in enumerate(scenarios):
-        label = f"scenarios[{index}]"
-        if not isinstance(scenario, dict):
-            problems.append(f"{label} must be a mapping")
-            continue
-        scenario_id = scenario.get("id")
-        if not isinstance(scenario_id, str) or not scenario_id:
-            problems.append(f"{label}.id is required")
-            scenario_id = label
-        elif scenario_id in scenario_ids:
-            problems.append(f"duplicate scenario id '{scenario_id}'")
-        scenario_ids.add(str(scenario_id))
-        target_name = scenario.get("target")
-        target = targets.get(target_name)
-        if target is None:
-            problems.append(f"scenario '{scenario_id}' references unknown target {target_name!r}")
-            continue
-        mechanism = scenario.get("mechanism")
-        if mechanism not in MECHANISMS:
-            problems.append(f"scenario '{scenario_id}' mechanism must be one of {sorted(MECHANISMS)}")
-        covers = scenario.get("covers", [])
-        if not isinstance(covers, list) or not all(isinstance(item, str) for item in covers):
-            problems.append(f"scenario '{scenario_id}'.covers must be a list of IDs")
-            covers = []
-        for cover in covers:
-            if cover not in all_coverage:
-                problems.append(
-                    f"scenario '{scenario_id}' "
-                    f"{_uncoverable(cover, document.context, all_coverage)}"
-                )
-
-        escape_hatches = int("test_file" in scenario) + int("maestro_flow" in scenario)
-        actions = scenario.get("actions")
-        if escape_hatches:
-            if escape_hatches > 1 or actions is not None:
-                problems.append(f"scenario '{scenario_id}' must choose actions or one native test")
-            native_key = "test_file" if "test_file" in scenario else "maestro_flow"
-            native = _contained_path(document.root, scenario[native_key])
-            if native is None or not native.is_file():
-                problems.append(f"scenario '{scenario_id}' {native_key} does not exist")
-            if covers and native_key == "test_file" and not scenario.get("test_name"):
-                problems.append(
-                    f"scenario '{scenario_id}' points at the whole of {scenario[native_key]} and claims "
-                    f"coverage of {sorted(covers)} — set test_name to the case that proves it, so the "
-                    "coverage rides on a named test rather than on the file happening to pass"
-                )
-            else:
-                asserted_coverage.update(covers)
-            continue
-        if not isinstance(actions, list) or not actions:
-            problems.append(f"scenario '{scenario_id}' requires non-empty actions")
-            continue
-        has_assertion = False
-        has_substantive_assertion = False
-        hollow: list[str] = []
-        driver = target.get("driver")
-        for action_index, action in enumerate(actions):
-            prefix = f"scenario '{scenario_id}' action {action_index + 1}"
-            if not is_mapping(action):
-                problems.append(f"{prefix} must be a mapping")
-                continue
-            action_id = action.get("id")
-            if action_id:
-                if action_id in action_ids:
-                    problems.append(f"duplicate action id '{action_id}'")
-                action_ids.add(str(action_id))
-            keys = [key for key in ("do", "expect", "capture") if key in action]
-            if len(keys) != 1:
-                problems.append(f"{prefix} must declare exactly one of do, expect, capture")
-                continue
-            kind, operation = keys[0], action[keys[0]]
-            if not isinstance(operation, str):
-                problems.append(
-                    f"{prefix} {kind} must name a single operation, not {type(operation).__name__} "
-                    f"{operation!r} — write '{kind}: <operation>' with its arguments as sibling keys"
-                )
-                continue
-            if kind == "expect":
-                has_assertion = has_substantive_assertion = True
-                if operation not in EXPECTATIONS:
-                    problems.append(f"{prefix} has unsupported expectation {operation!r}")
-                if operation == "url":
-                    has_value, has_contains = "value" in action, "contains" in action
-                    if has_value == has_contains:
-                        problems.append(
-                            f"{prefix} expect: url must set exactly one of value (exact match) "
-                            "or contains (substring match)"
-                        )
-                elif "contains" in action:
-                    problems.append(
-                        f"{prefix} contains is only supported by expect: url — use value for {operation!r}"
-                    )
-            elif kind == "capture" and operation not in CAPTURES:
-                problems.append(f"{prefix} has unsupported capture {operation!r}")
-            elif kind == "do":
-                if operation not in COMMON_ACTIONS:
-                    problems.append(f"{prefix} has unsupported action {operation!r}")
-                if operation == "command" and driver != "command":
-                    problems.append(f"{prefix} command action requires command driver")
-                if operation != "command" and driver == "command":
-                    problems.append(f"{prefix} action {operation!r} is not supported by command driver")
-                if operation == "command" and any(key in action for key in ASSERT_KEYS):
-                    has_assertion = True
-                    sentinel = _exit_sentinel(action)
-                    if sentinel is None:
-                        has_substantive_assertion = True
-                    else:
-                        hollow.append(f"{prefix} asserts only {sentinel}")
-                if operation == "command":
-                    problems.extend(_evidence_paths_in_command(action.get("cmd"), prefix))
-            locator = action.get("locator")
-            if locator is not None:
-                problems.extend(_validate_locator(locator, prefix, driver))
-            if driver == "playwright" and (
-                (kind == "do" and operation not in _PLAYWRIGHT_ACTIONS)
-                or (kind == "capture" and operation not in _PLAYWRIGHT_CAPTURES)
-            ):
-                problems.append(f"{prefix} operation {operation!r} is not supported by Playwright")
-            if driver == "maestro" and (
-                (kind == "do" and operation not in _MAESTRO_ACTIONS)
-                or (kind == "expect" and operation not in _MAESTRO_EXPECTATIONS)
-                or (kind == "capture" and operation not in _MAESTRO_CAPTURES)
-            ):
-                problems.append(f"{prefix} operation {operation!r} is not supported by Maestro")
-            timeout = action.get("timeout") or action.get("timeout_seconds")
-            if timeout is not None and (not isinstance(timeout, (int, float)) or timeout <= 0):
-                problems.append(f"{prefix} timeout must be positive")
-            out = action.get("out")
-            if out:
-                output = _contained_path(spec_dir, out)
-                if output is None:
-                    problems.append(f"{prefix} output escapes spec directory")
-                elif not output.is_relative_to(spec_dir / "qa"):
-                    problems.append(f"{prefix} output must be under qa/")
-            problems.extend(_validate_tokens(action, prefix, inputs, secrets))
-        if driver == "playwright":
-            problems.extend(_validate_book_locators(str(scenario_id), covers, actions, documented))
-        if covers and not has_assertion:
-            problems.append(f"scenario '{scenario_id}' lists coverage but has no machine assertion")
-        elif covers and not has_substantive_assertion:
-            problems.append(
-                f"scenario '{scenario_id}' claims coverage of {sorted(covers)} but every assertion it "
-                f"makes proves only that a process exited ({'; '.join(hollow)}) — assert something the "
-                "command prints about the behaviour itself, or drive the surface and expect: on it"
-            )
-        if has_substantive_assertion:
-            asserted_coverage.update(covers)
-    return problems, asserted_coverage
-
-#: An `assert_contains` value that proves only that the runner process reached its end. The
-#: spelling these plans reach for is `VITEST_EXIT:0` — a wrapper echoes the banner, the scenario
-#: re-runs an already-committed test file, and its `covers:` is satisfied without anything the
-#: story changed being exercised. Anchored to the whole value: `assert_contains: "exit code 0 for
-#: tab 3"` names real output and is not a sentinel.
-_EXIT_SENTINEL = re.compile(
-    r"^[A-Z0-9_]*(?:EXIT(?:[_-]?CODE)?|RETURN[_-]?CODE)\s*[:=]?\s*0?$",
-    re.IGNORECASE,
-)
-
-
-def _exit_sentinel(action: Any) -> str | None:
-    """Name the exit sentinel a command action asserts when that is all it asserts, else `None`.
-
-    Deliberately narrow. `expect_http` reads the status the endpoint actually returned and
-    `assert_count` counts what the command actually printed, so both are claims about behaviour;
-    only a value that *is* the runner's exit banner says nothing. A scenario asserting
-    `assert_contains: "exit code 0 for tab 3"` names real output and is not caught, because the
-    pattern is anchored to the whole value.
-    """
-    if any(key in action for key in ("assert_count", "expect_http", "cloudwatch_confirm")):
-        return None
-    needle = action.get("assert_contains")
-    if needle is None:
-        return None
-    text = str(needle).strip()
-    return text if _EXIT_SENTINEL.match(text) else None
-
-
-#: A bare `qa/steps/…` or `qa/asserts/…` inside a command. Anchored to a shell token boundary so
-#: `/abs/qa/steps/x` — the absolute spelling that works — is not the tail of a match, while both
-#: `qa/steps/x` and `./qa/steps/x` are.
-_BARE_EVIDENCE_PATH = re.compile(
-    r"""(?:^|[\s;&|<>()"'`=])(?:\./)?qa/(?:steps|asserts)/""", re.MULTILINE
-)
-
-#: The *other* wrong spelling: a path with the ledger dir pinned into it by name —
-#: `/repo/docs/specs/01-thing/qa/steps/x` or `docs/specs/01-thing/qa/steps/x`. It resolves,
-#: which is why it survived review, but it resolves to the same place regardless of
-#: `--out-dir`. `$QA_DIR/steps/x` carries no `qa/` segment and so never matches this.
-_PINNED_EVIDENCE_PATH = re.compile(r"""[\w${}.-][\w${}./-]*/qa/(?:steps|asserts)/""")
-
-
-def _evidence_paths_in_command(cmd: Any, prefix: str) -> list[str]:
-    """Reject a command that reaches for the evidence directory by a bare relative path.
-
-    `out:` and `capture:` are resolved against the spec directory, so `out: qa/steps/x.txt`
-    lands in the evidence dir and ostler creates its parent. A step's `cmd`, though, runs with
-    its cwd at the **repo root** — where `qa/steps/` does not exist. The identical string
-    therefore means two different places depending on which key it sits under, and the failure
-    is silent in the worst way: the redirect fails, the command dies with empty stdout, and
-    every assertion chained off it fails against an implementation that is correct. One run
-    lost 38 of 66 assertions to this and reported working code as broken.
-
-    Caught here rather than at run time because the diagnostic can name the action and the fix
-    (absolute path, or `capture:` + `{{key}}` instead of a hand-rolled temp file), while the
-    runtime symptom is an empty file with no explanation attached.
-    """
-    if not isinstance(cmd, str):
-        return []
-    if _PINNED_EVIDENCE_PATH.search(cmd):
-        return [
-            f"{prefix} command hard-codes a path ending in 'qa/steps/' or 'qa/asserts/'; that "
-            f"names the scored ledger whichever directory the run was pointed at, so a dry run "
-            f"writes into the evidence the scored run is judged on. Use $QA_DIR/steps/… , which "
-            f"ostler sets to this run's own ledger directory"
-        ]
-    if not _BARE_EVIDENCE_PATH.search(cmd):
-        return []
-    return [
-        f"{prefix} command uses a bare 'qa/steps/' or 'qa/asserts/' path; a cmd runs from the "
-        f"repo root, so use $QA_DIR/steps/… or chain values with capture:/{{{{key}}}}"
-    ]
 
 
 def _validate_background(background: Any) -> list[str]:
@@ -865,52 +554,6 @@ def _validate_book_locators(
                 f"documented by the covered OKF node(s): {sorted(routes)}"
             )
     return problems
-
-
-def _validate_locator(locator: Any, label: str, driver: str) -> list[str]:
-    if not is_mapping(locator) or not locator:
-        return [f"{label} locator must be a non-empty mapping"]
-    unknown = set(locator) - LOCATOR_KEYS
-    if unknown:
-        return [f"{label} locator has unknown keys: {sorted(unknown)}"]
-    if driver == "playwright":
-        strategies = sum(key in locator for key in ("role", "label", "test_id", "text", "css"))
-        if strategies != 1:
-            return [f"{label} Playwright locator must select exactly one strategy"]
-        if "name" in locator and "role" not in locator:
-            return [f"{label} locator.name is valid only with locator.role"]
-    elif driver == "maestro" and sum(key in locator for key in ("id", "text")) != 1:
-        return [f"{label} Maestro locator must contain exactly one of id or text"]
-    return []
-
-
-def _validate_tokens(
-    action: dict[str, Any],
-    label: str,
-    inputs: dict[str, Any],
-    secrets: dict[str, Any],
-) -> list[str]:
-    problems: list[str] = []
-    raw = json.dumps(action)
-    for match in _TOKEN_RE.finditer(raw):
-        token = match.group(1).strip()
-        if token.startswith("input.") and token[6:] not in inputs:
-            problems.append(f"{label} references undefined input '{token[6:]}'")
-        elif token.startswith("secret.") and token[7:] not in secrets:
-            problems.append(f"{label} references undefined secret '{token[7:]}'")
-    return problems
-
-
-_PLAYWRIGHT_ACTIONS = {
-    "goto", "reload", "back", "click", "tap", "fill", "select", "press", "clear",
-    "wait_for", "wait_for_response", "wait_for_idle",
-}
-_PLAYWRIGHT_CAPTURES = {"screenshot", "body_text", "accessibility_snapshot"}
-_MAESTRO_ACTIONS = {
-    "launch", "reload", "back", "click", "tap", "fill", "clear", "wait_for", "wait_for_idle",
-}
-_MAESTRO_EXPECTATIONS = {"visible", "hidden", "text", "value"}
-_MAESTRO_CAPTURES = {"screenshot"}
 
 
 def _recording_exemptions(root: Path) -> set[str]:

@@ -13,7 +13,6 @@ import json
 import subprocess
 from pathlib import Path
 
-import yaml
 
 from ostler.qa.context import CONTEXT_HEADING, build_context, validate_context, write_context
 from ostler.qa.plan import load_plan, validate_v2
@@ -396,31 +395,17 @@ def test_write_context_moves_the_verification_index_to_a_sidecar(tmp_path: Path)
 
 
 def _plan_covering(spec: Path, obligation: str) -> Path:
-    plan = {
-        "version": 2,
-        "run_id": "qa-run-1",
-        "story": "story-1",
-        "targets": {"api": {"driver": "command"}},
-        "scenarios": [
-            {
-                "id": "api-contract",
-                "target": "api",
-                "mechanism": "live",
-                "covers": [obligation],
-                "actions": [
-                    {
-                        "do": "command",
-                        "id": "emit",
-                        "cmd": "printf '{\"value\":\"ok\"}'",
-                        "assert_contains": "ok",
-                        "out": "qa/steps/emit.json",
-                    }
-                ],
-            }
-        ],
-    }
-    path = spec / "qa-plan.yml"
-    path.write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
+    path = spec / "qa_plan.py"
+    path.write_text(
+        "from ostler_qa import Qa, plan, scenario, target\n\n"
+        'plan(run_id="qa-run-1", story="story-1")\n\n'
+        'api = target("api")\n\n\n'
+        f'@scenario(target=api, mechanism="live", covers=[{obligation!r}])\n'
+        "def api_contract(qa: Qa) -> None:\n"
+        '    """The item is emitted."""\n'
+        '    qa.check("the value is ok", True, actual="ok", expected="ok")\n',
+        encoding="utf-8",
+    )
     return path
 
 
@@ -525,27 +510,39 @@ def _gui_context(spec: Path, *, role: str = "alert", route: str = "/demo") -> No
     )
 
 
-def _gui_plan(spec: Path, *, locator: dict, url: str = "/demo") -> Path:
-    plan = {
-        "version": 2,
-        "run_id": "qa-run-1",
-        "story": "story-1",
-        "targets": {"web": {"driver": "playwright", "base_url": "http://127.0.0.1:8000"}},
-        "scenarios": [
-            {
-                "id": "widget-visible",
-                "target": "web",
-                "mechanism": "live",
-                "covers": [_GUI],
-                "actions": [
-                    {"do": "goto", "id": "open", "url": url},
-                    {"expect": "visible", "id": "shown", "locator": locator},
-                ],
-            }
-        ],
-    }
-    path = spec / "qa-plan.yml"
-    path.write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
+def _locator(spec: dict) -> str:
+    """The Python spelling of a locator the book can be held to."""
+    if "role" in spec:
+        return f'qa.by_role({spec["role"]!r}, name={spec.get("name")!r})'
+    if "text" in spec:
+        return f'qa.by_text({spec["text"]!r})'
+    return f'qa.by_css({spec["css"]!r})'
+
+
+def _gui_plan(
+    spec: Path,
+    *,
+    locator: dict,
+    url: str = "/demo",
+    covers: tuple[str, ...] = (),
+    also: dict | None = None,
+) -> Path:
+    path = spec / "qa_plan.py"
+    body = f"    {_locator(locator)}\n"
+    if also is not None:
+        body += f"    {_locator(also)}\n"
+    path.write_text(
+        "from ostler_qa import Qa, plan, scenario, target\n\n"
+        'plan(run_id="qa-run-1", story="story-1")\n\n'
+        'web = target("web", driver="playwright", base_url="http://127.0.0.1:8000")\n\n\n'
+        f"@scenario(target=web, mechanism=\"live\", covers={[_GUI, *covers]!r})\n"
+        "def widget_visible(qa: Qa) -> None:\n"
+        '    """The widget is on the page."""\n'
+        f"    qa.goto({url!r})\n"
+        f"{body}"
+        '    qa.check("the widget is shown", True)\n',
+        encoding="utf-8",
+    )
     return path
 
 
@@ -616,11 +613,12 @@ def test_text_is_allowed_when_a_covered_node_has_no_documented_address(tmp_path:
         {**packet["obligations"][0], "id": "okf:docs/features/demo/screen.md:contract", "locators": {}}
     )
     (spec / "qa-okf-context.json").write_text(json.dumps(packet), encoding="utf-8")
-    plan = _gui_plan(spec, locator={"role": "alert", "name": "the failure message"})
-    document = yaml.safe_load(plan.read_text())
-    document["scenarios"][0]["covers"].append("okf:docs/features/demo/screen.md:contract")
-    document["scenarios"][0]["actions"].append({"expect": "visible", "id": "also", "locator": {"text": "Demo"}})
-    plan.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    plan = _gui_plan(
+        spec,
+        locator={"role": "alert", "name": "the failure message"},
+        covers=("okf:docs/features/demo/screen.md:contract",),
+        also={"text": "Demo"},
+    )
 
     assert not [item for item in _problems(tmp_path, plan, spec) if "text locator" in item]
 

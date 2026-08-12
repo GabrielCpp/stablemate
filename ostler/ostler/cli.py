@@ -544,13 +544,13 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_replay.add_argument("--spec", required=True, type=Path)
 
     qa_validate = qas.add_parser(
-        "validate", help="validate a qa-plan.yml without executing"
+        "validate", help="validate a qa_plan.py without executing"
     )
     qa_validate.add_argument("plan_file", type=Path)
     qa_validate.add_argument("--spec", default=None, type=Path)
     qa_validate.add_argument("--json", action="store_true")
 
-    qa_run = qas.add_parser("run", help="execute a qa-plan.yml in batch mode")
+    qa_run = qas.add_parser("run", help="execute a qa_plan.py in batch mode")
     qa_run.add_argument("plan_file", type=Path)
     qa_run.add_argument("--spec", default=None, type=Path)
     qa_run.add_argument("--stop-on-fail", action="store_true", dest="stop_on_fail")
