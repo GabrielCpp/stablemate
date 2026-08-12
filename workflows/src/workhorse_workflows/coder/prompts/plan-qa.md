@@ -237,12 +237,17 @@ least one machine-executed terminal assertion. `mechanism` is provenance
   `qa/asserts/` as sub-directories. **`out:` and `capture:` paths are the only ones resolved for
   you**; ostler resolves them against the spec directory and creates their parents. A step's `cmd`
   runs with its working directory at the **repo root**, so the identical string means a different
-  place inside a command: `out: qa/steps/x.txt` lands in `{{ workhorse_var('qa_dir') }}/steps/`,
+  place inside a command: `out: qa/steps/x.txt` lands in this run's ledger directory,
   while `curl -o qa/steps/x.txt` inside a `cmd` targets `<repo>/qa/steps/`, which does not exist —
   the redirect fails, the command dies with empty stdout, and every assertion downstream of it
   fails against an implementation that is correct. Chain state between actions with `capture:` +
   `{% raw %}{{key}}{% endraw %}`, not with hand-written temp files. If a command genuinely must
-  write a file itself, give it the **absolute** `{{ workhorse_var('qa_dir') }}/steps/…` path.
+  write a file itself, give it **`$QA_DIR/steps/…`**. ostler sets `QA_DIR` for every `cmd` and
+  every `background:` daemon, pointing at whichever ledger directory *this* run was given.
+  Do not spell that directory out by hand: a pinned
+  `{{ workhorse_var('qa_dir') }}/steps/…` resolves to the scored ledger even when the run was
+  pointed somewhere else, so a dry run writes into the evidence the scored run is judged on.
+  `ostler qa validate` rejects the pinned spelling.
 - **Never put time/entropy expressions (`$(date +%s)`, `$RANDOM`, `$(uuidgen)`) directly in a `live` or `synthetic` step's `cmd`.** These re-evaluate on every execution. A login step and a logout step with different `$(date +%s)` values create two independent sessions — the logout never closes the session the login opened, and the subsequent lookup finds nothing. Generate the value once in a `fixture` step, capture it, then reference `{% raw %}{{key}}{% endraw %}` in all steps that need it:
 {% raw %}  ```yaml
   - id: gen-device-id

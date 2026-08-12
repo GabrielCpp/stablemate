@@ -112,8 +112,11 @@ The rules the repairs most often trip over:
   expression (`$(date +%s)`, `$RANDOM`, `$(uuidgen)`) outside a `fixture` step: generate it
   once, `capture:` it, and reference `{% raw %}{{key}}{% endraw %}`.
 - `out:` and `capture:` paths resolve against the spec directory; a `cmd` runs at the repo
-  root. A command that writes a file itself needs the absolute
-  `{{ workhorse_var('qa_dir') }}/steps/…` path.
+  root. A command that writes a file itself needs **`$QA_DIR/steps/…`**, which ostler sets to
+  whichever ledger directory this run was given. Spelling that directory out by hand —
+  `{{ workhorse_var('qa_dir') }}/steps/…` — pins it to the scored ledger even during a dry
+  run, so the rehearsal writes into the evidence the scored run is judged on. `ostler qa
+  validate` rejects the pinned spelling.
 - The heavyweight stack is not the plan's to start. Only per-run `background:` daemons are.
 
 Keep `qa-plan.md` in step with what you changed: the AC/obligation-to-scenario map has to
