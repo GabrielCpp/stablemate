@@ -77,6 +77,12 @@ DRIVERS = ("python", "playwright", "maestro")
 #: every assertion was true, and an opt-out would have been taken by exactly that plan.
 UI_DRIVERS = ("playwright", "maestro")
 
+#: Stamped into the layout digest a *device* screenshot writes, so a reader can tell which
+#: source measured it: a phone has no laid-out document to overflow, and reporting the
+#: browser's schema over a view hierarchy would invite an audit to look for a flag that
+#: cannot appear there.
+DEVICE_LAYOUT_SCHEMA = "device-layout/1"
+
 DEFAULT_HTTP_TIMEOUT = 30.0
 
 #: When this process started, so a diagnostics timestamp can be placed on the *run's* clock
@@ -689,6 +695,31 @@ class Qa:
         self.diagnostics.measure(path)
         return path
 
+    def device_screenshot(self, name: str = "", *, source: str = "maestro") -> Path:
+        """The same thing for a phone: photograph the screen, and measure what is on it.
+
+        A device has no DOM, so the regions come from its view hierarchy —
+        `maestro hierarchy` by default, `uiautomator` where Maestro does not reach on
+        Android. Both are translated into the element shape the DOM scan produces, so the
+        `.layout.json` and `.regions.json` written here are the same documents a browser
+        writes and are read by the same audit and the same `placement:` check.
+        """
+        hierarchy = _harness_module("ostler_qa_hierarchy")
+        path = self.dir / "screenshots" / f"{self.scenario_id}-{name or 'screenshot'}.png"
+        hierarchy.screenshot(path)
+        self._recorder.emit({"type": "artifact", "path": str(path), "kind": "screenshot"})
+        frame, elements = hierarchy.scan(source=source)
+        scan = _harness_module("ostler_qa_scan")
+        regions = scan.merge_rects(elements)
+        measured = {"schema": DEVICE_LAYOUT_SCHEMA, **scan.summarize(frame, regions)}
+        for artifact, payload, kind in (
+            (path.with_suffix(".layout.json"), measured, "layout"),
+            (path.with_suffix(".regions.json"), regions, "regions"),
+        ):
+            artifact.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            self._recorder.emit({"type": "artifact", "path": str(artifact), "kind": kind})
+        return path
+
     def vet(self, screen: str, name: str = "") -> Path:
         """Photograph a screen and hand ostler the screen it is supposed to be.
 
@@ -700,17 +731,19 @@ class Qa:
         The resolving happens on the ostler side: the harness runs under the project's
         interpreter, has never seen the book, and cannot import ostler to look.
         """
-        if self.target.driver != "playwright":
+        state = name or "vet"
+        if self.target.driver == "playwright":
+            path = self.screenshot(state)
+        elif self.target.driver == "maestro":
+            path = self.device_screenshot(state)
+        else:
             # Said here rather than left to `browser_page`, whose advice — declare the target
-            # with driver='playwright' — is exactly wrong for a phone. The registration itself
-            # is platform-agnostic; what a device still lacks is a source of regions.
+            # with driver='playwright' — is exactly wrong for a scenario that drives no UI.
             raise RuntimeError(
                 f"scenario {self.scenario_id!r} vets '{screen}' on a '{self.target.driver}' "
-                "target, and only a browser target can scan its regions yet — vetting a "
-                "device screen needs the view-hierarchy source (maestro/uiautomator/idb)"
+                "target, which renders nothing to vet — declare the target with "
+                "driver='playwright' for a browser or driver='maestro' for a device"
             )
-        state = name or "vet"
-        path = self.screenshot(state)
         self.vets += 1
         self._recorder.emit({
             "type": "vet",
@@ -994,6 +1027,21 @@ def _load(module_path: Path) -> None:
 # --------------------------------------------------------------------------------------
 # run
 # --------------------------------------------------------------------------------------
+
+
+def _harness_module(name: str) -> Any:
+    """Import a sibling harness module by name.
+
+    Not a module-scope `import ostler_qa_hierarchy`, because this file is also loaded from
+    the *ostler* side by path (`harness_host.load_harness_module`) with the harness
+    directory nowhere on `sys.path` — a top-level sibling import would make loading this
+    module for its constants raise `ModuleNotFoundError`. Inside a scenario the directory is
+    already on `PYTHONPATH`; the insert is what makes the two callers agree.
+    """
+    import importlib
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    return importlib.import_module(name)
 
 
 def _open_browser(qa: Qa) -> Any:
