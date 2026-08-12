@@ -72,7 +72,11 @@ Resolve the observable failures documented in `qa.md` without adding new story s
 4. Run targeted verification after each fix.
 5. Run final verification for touched layers.
 6. Append QA fix notes to `qa.md`.
-7. Update the story implementation status.
+7. Update the story implementation status — to what your fixes actually leave true, and never
+   to a passing verdict. QA reruns after you and the ledger writes the verdict, so a
+   hand-written `QA passed` (or an edit to `qa-evidence.json`) only forges the one artifact
+   the rerun exists to produce. If you believe the story is done, say so in the JSON below
+   and let the rerun agree with you.
 
 ## Structured Output Requirement
 

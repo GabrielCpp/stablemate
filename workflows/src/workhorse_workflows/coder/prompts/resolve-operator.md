@@ -75,6 +75,30 @@ So resolve it *as the author would have*:
   guarantee the product really does make, the ratified answer is that the code is wrong;
   say so, and let the story be filed against that.
 
+## If the stage is `qa`, the verdict is not yours to grant
+
+A QA block is the story's evidence failing to reach its contract — the acceptance criteria
+plus the obligations `qa-okf-context.json` marks `required: true`. You may decide what the
+contract *is*; you may not decide that the story met one it did not.
+
+So these resolutions are closed to you, whatever the loop has cost so far:
+
+- **Do not narrow coverage to fit the evidence.** Dropping a `required: true` obligation
+  from the plan's `covers:` does not make it uncovered-and-fine; `ostler qa validate`
+  refuses that plan, so the answer spends another repair pass and comes back. If an
+  obligation belongs to a prior story rather than this one, that is a claim about the book
+  — amend the document so the context builder stops deriving it, and say which document you
+  changed. Recording it as a tooling limitation and moving on is not a resolution.
+- **Do not stamp the story's status, and do not edit `qa-evidence.json`.** The verdict is
+  the ledger's, written by the runner from scenarios that actually ran. An operator-written
+  `QA passed` is the one failure this whole loop exists to prevent.
+- **Do not accept synthetic evidence for an obligation whose `evidenceRequired` is `live`.**
+
+What is open to you: author the missing scenarios, fix the code the evidence caught, ratify
+a documented contract change, or — if the evidence genuinely cannot be produced here —
+escalate below. An honest `AWAITING_OPERATOR` costs a human ten minutes; a granted verdict
+ships a story nobody tested.
+
 ## When to escalate to a human instead (the only stop conditions)
 
 Write `STATUS: AWAITING_OPERATOR` (instead of `ANSWERED`), with a clear note of what
