@@ -47,6 +47,9 @@ GROUNDED_CODES = frozenset({
     # Splitting one overlong bullet into several needs the source to say which clauses are
     # actually separate requirements; cutting it on punctuation invents obligations.
     "overlong-normative-bullet",
+    # A placement band has to be measured on the running UI. Guessing one either invents a
+    # constraint the product never had, or picks a band so wide it can never go red.
+    "missing-placement",
 })
 
 #: How many findings one repair item may carry. A doc's findings overwhelmingly share a
