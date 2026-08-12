@@ -720,7 +720,7 @@ class Qa:
             self._recorder.emit({"type": "artifact", "path": str(artifact), "kind": kind})
         return path
 
-    def vet(self, screen: str, name: str = "") -> Path:
+    def vet(self, screen: str, name: str = "", components: list[str] | None = None) -> Path:
         """Photograph a screen and hand ostler the screen it is supposed to be.
 
         `screenshot` records geometry nobody has an opinion about. This one names the
@@ -730,6 +730,11 @@ class Qa:
 
         The resolving happens on the ostler side: the harness runs under the project's
         interpreter, has never seen the book, and cannot import ostler to look.
+
+        `components` narrows the registration to the anchors it names, for a photograph
+        taken mid-journey that establishes part of a screen rather than the whole of it.
+        Omit it and the whole screen is answered for, which is the honest default; a name
+        the screen does not document fails the scenario rather than narrowing to nothing.
         """
         state = name or "vet"
         if self.target.driver == "playwright":
@@ -751,6 +756,7 @@ class Qa:
             "state": state,
             "screenshot": str(path),
             "regions": str(path.with_suffix(".regions.json")),
+            "components": components or [],
         })
         return path
 

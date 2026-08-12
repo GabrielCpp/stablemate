@@ -445,6 +445,18 @@ class PythonDriver(QaDriver):
                 f"scenario '{scenario_id}' vetted '{screen}' but produced no scan beside "
                 f"{shot.name} — the page was gone by the time it was measured"
             ]
+        requested = record.get("components", [])
+        if requested:
+            components = [
+                component
+                for component in components
+                if component.node_id.rsplit("#", 1)[-1] in requested
+            ]
+            missing = sorted(set(requested) - {component.node_id.rsplit("#", 1)[-1] for component in components})
+            if missing:
+                return [], [
+                    f"scenario '{scenario_id}' vetted '{screen}' with undocumented component(s): {missing}"
+                ]
         frame = json.loads(layout_path.read_text(encoding="utf-8"))["viewport"]
         viewport = placement.Viewport(width=frame["width"], height=frame["height"])
         regions = RegionList.validate_json(regions_path.read_bytes())

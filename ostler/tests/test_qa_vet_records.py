@@ -59,7 +59,7 @@ def _driver(repo: Path) -> PythonDriver:
     )
 
 
-def _records(shot: Path, screen: str = SCREEN) -> list[dict]:
+def _records(shot: Path, screen: str = SCREEN, components: list[str] | None = None) -> list[dict]:
     return [
         {
             "type": "vet",
@@ -67,6 +67,7 @@ def _records(shot: Path, screen: str = SCREEN) -> list[dict]:
             "state": "loaded",
             "screenshot": str(shot),
             "regions": str(shot.with_suffix(".regions.json")),
+            "components": components or [],
         },
         {"type": "scenario", "id": "s-1", "status": "passed", "assertions": 0, "failures": 0},
     ]
@@ -146,6 +147,41 @@ def test_a_vet_of_a_screen_the_book_does_not_document_fails_the_scenario(repo: P
 
     assert result.status == "failed"
     assert "does not document" in result.message
+    assert _asserts(driver) == []
+
+
+def test_a_scoped_vet_registers_only_the_components_it_names(repo: Path) -> None:
+    """A photograph taken mid-journey establishes some of a screen, not all of it. Naming
+    the components the scenario put on screen is how it says which ones it is answering
+    for — the rest are somebody else's scenario, not a silent pass."""
+    _book(repo)
+    shot = _shot(
+        repo,
+        [
+            _region("article", "article.prose", (0, 88, 1400, 760)),
+            _region("navigation", "nav.toc", (0, 88, 1400, 760)),  # far wider than 10-25%
+        ],
+    )
+    driver = _driver(repo)
+
+    result = driver._grade("s-1", [], _records(shot, components=["body"]), "", 0, timed_out=False)
+
+    assert result.status == "passed"
+    assert (result.assertions, result.failures) == (1, 0)
+    assert [r["label"].split(" ")[0].rsplit("#", 1)[-1] for r in _asserts(driver)] == ["body"]
+
+
+def test_a_scoped_vet_naming_a_component_the_book_does_not_have_fails(repo: Path) -> None:
+    """Scoping narrows what a photograph answers for, so a typo in the list would narrow it
+    to nothing and report a pass. The name has to exist on the screen it names."""
+    _book(repo)
+    shot = _shot(repo, [_region("article", "article.prose", (0, 88, 1400, 760))])
+    driver = _driver(repo)
+
+    result = driver._grade("s-1", [], _records(shot, components=["ghost"]), "", 0, timed_out=False)
+
+    assert result.status == "failed"
+    assert "undocumented component" in result.message
     assert _asserts(driver) == []
 
 
