@@ -194,15 +194,31 @@ class Browser:
         scenario that proves the right link is on the page therefore passes over a page no
         user could use, and nothing downstream could see the difference.
         """
-        frame = self.page.evaluate(FRAME_JS)
-        return summarize(frame, merge_rects(self.page.evaluate(SCAN_JS)))
+        frame, regions = self._scan()
+        return summarize(frame, regions)
 
-    def write_layout(self, path: Path) -> dict[str, Any]:
-        """Record the current layout as JSON and register it as evidence."""
-        measured = {"schema": LAYOUT_SCHEMA, **self.layout()}
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(measured, indent=2) + "\n", encoding="utf-8")
-        self.emit({"type": "artifact", "path": str(path), "kind": "layout"})
+    def _scan(self) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        return self.page.evaluate(FRAME_JS), merge_rects(self.page.evaluate(SCAN_JS))
+
+    def measure(self, screenshot: Path) -> dict[str, Any]:
+        """Write the two machine-readable records of what a screenshot photographed.
+
+        `<name>.layout.json` is the digest a reader (or the independent audit) holds at once:
+        the window, the laid-out document, and each structural region as a share of the
+        window. `<name>.regions.json` is the same scan undigested, in the shape `ostler vet
+        --regions` replays — every merged region, structural or not. One scan, two readers:
+        the audit needs a page it can judge, and `vet` needs the whole census to register a
+        documented component against.
+        """
+        frame, regions = self._scan()
+        measured = {"schema": LAYOUT_SCHEMA, **summarize(frame, regions)}
+        screenshot.parent.mkdir(parents=True, exist_ok=True)
+        for path, payload, kind in (
+            (screenshot.with_suffix(".layout.json"), measured, "layout"),
+            (screenshot.with_suffix(".regions.json"), regions, "regions"),
+        ):
+            path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            self.emit({"type": "artifact", "path": str(path), "kind": kind})
         return measured
 
     # -- diagnostics ---------------------------------------------------------------------
@@ -329,7 +345,7 @@ class Browser:
             return [f"failure screenshot could not be taken: {exc}"]
         self.emit({"type": "artifact", "path": str(path), "kind": "failure-screenshot"})
         try:
-            self.write_layout(path.with_suffix(".layout.json"))
+            self.measure(path)
         except Exception as exc:  # noqa: BLE001 - the image is the evidence; this explains it
             return [f"failure layout could not be measured: {exc}"]
         return []

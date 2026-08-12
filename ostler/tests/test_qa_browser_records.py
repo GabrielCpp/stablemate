@@ -216,7 +216,7 @@ def test_a_screenshot_is_measured_not_only_photographed(tmp_path: Path) -> None:
         ]
     )
 
-    measured = browser.write_layout(tmp_path / "screenshots/scenario-target.layout.json")
+    measured = browser.measure(tmp_path / "screenshots/scenario-target.png")
 
     assert measured["schema"] == "browser-layout/1"
     article = next(region for region in measured["regions"] if region["role"] == "article")
@@ -231,6 +231,15 @@ def test_a_screenshot_is_measured_not_only_photographed(tmp_path: Path) -> None:
         (tmp_path / "screenshots/scenario-target.layout.json").read_text(encoding="utf-8")
     )
     assert written == measured
+
+    # The undigested census beside it is what `ostler vet --regions` replays, so it keeps the
+    # regions the digest elides — a documented component is registered against this file.
+    regions = json.loads(
+        (tmp_path / "screenshots/scenario-target.regions.json").read_text(encoding="utf-8")
+    )
+    assert [region["role"] for region in regions] == ["banner", "article", "listitem"]
+    assert regions[1]["selectors"] == ["article.prose"]
+    assert regions[1]["bbox"] == {"x": 1180, "y": 88, "width": 250, "height": 3800}
 
 
 def test_a_document_wider_than_its_window_is_flagged_without_a_threshold(tmp_path: Path) -> None:

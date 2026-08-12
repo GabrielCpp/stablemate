@@ -678,7 +678,7 @@ class Qa:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.browser_page.screenshot(path=str(path), full_page=True)
         self._recorder.emit({"type": "artifact", "path": str(path), "kind": "screenshot"})
-        self.diagnostics.write_layout(path.with_suffix(".layout.json"))
+        self.diagnostics.measure(path)
         return path
 
     @property
