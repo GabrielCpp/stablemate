@@ -5,7 +5,7 @@ Reached from the main graph as the `qa_phase` flow node, and standalone as
 `workhorse-coder run qa`. It is the densest graph in the four workflows, and it is one
 control plane rather than a pipeline::
 
-    context ⇄ repair → plan ⇄ review → stack ⇄ setup-fix → run → assess
+    context ⇄ repair → stack ⇄ setup-fix → plan ⇄ review → run → assess
       → evidence → audit → backlog → (triage | feedback → regression ⇄ fix) → sentinels
 
 Ninety-one nodes become twenty-five states. Twenty-nine of the ninety-one are `type: branch`
@@ -349,7 +349,7 @@ class Qa(Workflow):
     #: Not a spend ceiling — a review *ceiling*, and the only one of these that changes what a
     #: finding *means* rather than how many are affordable. Past this many plan-review reworks
     #: no `plan` finding could block whatever `kind` it claimed to be, so `_validated` stops
-    #: entering `review_plan` and the flow goes straight to the stack. The reviewer had two
+    #: entering `review_plan` and the flow goes straight to the runner. The reviewer had two
     #: independent passes to name a coverage gap, and a gap that first appears after two
     #: repairs is far likelier a fresh nit than a newly created hole — with the `audit` gate
     #: still standing downstream either way. This is the half of the fix that does not depend
@@ -472,7 +472,11 @@ class Qa(Workflow):
             context_notes=_finding(result.status == "passed", result.notes),
         )
         if result.status == "passed":
-            return Continue(result, self.plan, loop=loop)
+            # To the stack, not to the plan: the planner authors against a surface it can
+            # reach. `plan_authored` is cleared on the way, because this is the join point —
+            # a state routing back here changed what the diff obligates, and the plan that
+            # answered the old obligations must not be the one that runs.
+            return Continue(result, self.stack, loop=loop.update(plan_authored=False))
         if loop.context_rework >= self.MAX_CONTEXT_REWORKS:
             return self._exhausted(loop, f"{loop.context_rework} OKF-context repair")
         return Continue(result, self.repair_context, loop=loop)
@@ -597,7 +601,7 @@ class Qa(Workflow):
 
         A reviewer that has spent `MAX_BLOCKING_PLAN_REVIEWS` is skipped for the same
         arithmetic. Past the threshold every finding it can raise is demoted to polish
-        whatever `kind` it claims, so the plan reaches `stack` on this lap no matter what
+        whatever `kind` it claims, so the plan reaches the runner on this lap no matter what
         comes back — and the demoted worklist then forces a mandatory `repair_plan` turn to
         produce an edit nothing downstream gates on. Entering a `power="high"` gate whose
         verdict cannot change the route is the expense, not the reviewer's judgement; the
@@ -613,19 +617,21 @@ class Qa(Workflow):
         if validation.status == "passed":
             if loop.plan_polish_pending:
                 self.logger.info(
-                    "QA-plan polish applied — going to the stack without a second review",
+                    "QA-plan polish applied — going to the runner without a second review",
                     extra={"activity": True},
                 )
                 return Continue(
-                    validation, self.stack, loop=loop.update(plan_polish_pending=False)
+                    validation,
+                    self.run,
+                    loop=loop.update(plan_polish_pending=False, plan_authored=True),
                 )
             if loop.plan_review_rework >= self.MAX_BLOCKING_PLAN_REVIEWS:
                 self.logger.info(
-                    "QA-plan reviewer has spent its blocking budget — going to the stack "
+                    "QA-plan reviewer has spent its blocking budget — going to the runner "
                     "without another review",
                     extra={"activity": True},
                 )
-                return Continue(validation, self.stack, loop=loop)
+                return Continue(validation, self.run, loop=loop.update(plan_authored=True))
             return Continue(validation, self.review_plan, loop=loop)
         return self._guard_plan_validation(validation, loop)
 
@@ -633,7 +639,7 @@ class Qa(Workflow):
         """An independent read of a plan that already parses — does it test the story?
 
         `review_qa_plan` + `decide_qa_plan_review`. `revise`, and a blank taking the YAML's
-        `default:`, spends a plan *review* rework; only `approved` reaches the stack.
+        `default:`, spends a plan *review* rework; only `approved` reaches the runner.
 
         A refusal is also appended to `plan_review_ledger`, which the next plan turn reads
         and `cleared()` does not blank. The reviewer's own brief is deliberately unchanged:
@@ -658,7 +664,7 @@ class Qa(Workflow):
         for about a fifth of what re-entering this gate cost, and the fourth pass exhausted
         `MAX_PLAN_REWORKS` and ended the story with no QA verdict at all — the outcome the
         reviewer's own brief calls strictly worse than QA run against a merely adequate plan.
-        So a non-blocking worklist is still repaired, once, and then goes to the stack rather
+        So a non-blocking worklist is still repaired, once, and then goes to the runner rather
         than back through here. `MAX_BLOCKING_PLAN_REVIEWS` is the same rule applied to a
         reviewer that labels a nit `coverage` to keep its refusal — but it is enforced by
         `_validated` declining to enter this node at all, because a gate whose every finding
@@ -723,20 +729,26 @@ class Qa(Workflow):
             plan_review_ids=ids,
         )
         if review.disposition == "approved":
-            return Continue(review, self.stack, loop=loop)
+            return Continue(review, self.run, loop=loop.update(plan_authored=True))
         if routed.plan:
             loop = loop.update(plan_review_ledger=(*loop.plan_review_ledger, notes.strip()))
-        elsewhere = self._routed(review, loop, review.findings, review.notes)
+        # `plan_authored` rides along: a refusal routed *away* from the plan is the flow
+        # deciding the plan is not what needs repairing, so the setup loop's return through
+        # `stack` must reach the runner rather than buy a replan the reviewer never asked for.
+        # (The product-test arm rejoins at `build_context`, which clears it again.)
+        elsewhere = self._routed(
+            review, loop.update(plan_authored=True), review.findings, review.notes
+        )
         if elsewhere is not None:
             return elsewhere
         if not blocking and polish:
             # The correction is worth keeping; re-entering a `power="high"` gate to be told so
-            # is not. One `power="low"` repair lap, then the stack — no rework is charged and
+            # is not. One `power="low"` repair lap, then the runner — no rework is charged and
             # `plan_polish_pending` makes the skip structural, so this cannot recur. Note the
             # notes are written unconditionally: `_finding` blanks a passing gate's diagnostics
             # and the repair turn is briefed from precisely this field.
             self.logger.info(
-                "the QA-plan refusal is all polish — repairing once, then straight to the stack",
+                "the QA-plan refusal is all polish — repairing once, then straight to the runner",
                 extra={"activity": True},
             )
             return Continue(
@@ -751,7 +763,7 @@ class Qa(Workflow):
                 "the QA-plan refusal names nothing the plan can repair — approving",
                 extra={"activity": True},
             )
-            return Continue(review, self.stack, loop=loop)
+            return Continue(review, self.run, loop=loop.update(plan_authored=True))
         return self._guard_plan_review(review, loop)
 
     # ── stack and run ─────────────────────────────────────────────────────────────────
@@ -762,6 +774,21 @@ class Qa(Workflow):
         `ensure_stack` + `decide_stack_ready`. `skip` — no manifest authored — is not a
         failure and routes exactly where `yes` does, because a story with no stack to stand
         up runs its QA the same way it always did.
+
+        This sits *before* the plan lane rather than after it, which is the point: with the
+        surface already up, the authoring turn can execute a scenario it has just written
+        (`ostler qa run --scenario … --out-dir …`) and find out whether its locators, fixtures
+        and credentials actually resolve. A live run spent whole laps discovering by workflow
+        round-trip what one dry run answers — a straight apostrophe where the fixture uses
+        U+2019, a password constant that disagreed with the seed script. Nothing about the
+        plan changes what the stack does, so nothing is lost by standing it up first.
+
+        `plan_authored` is why the same node serves both entries. `setup_fix` rejoins here,
+        and it can be reached from the *runner* as well as from a stack that would not come
+        up — so a fixer that repaired a broken emulator mid-run must return to the run, not to
+        a second authoring turn. `build_context` clears the flag, because a state routing back
+        to the join point changed what the diff obligates and the plan answering the old
+        obligations must not be the one that runs.
         """
         status = self.call(ensure_stack, self.qa_stack_manifest, self.docs_path)
         if status.ready == "no":
@@ -779,6 +806,8 @@ class Qa(Workflow):
                     blocked_problems=()
                 ),
             )
+        if not loop.plan_authored:
+            return Continue(status, self.plan, loop=loop)
         return Continue(status, self.run, loop=loop)
 
     def run(self, loop: QaLoop) -> Continue:

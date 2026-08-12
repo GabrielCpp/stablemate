@@ -584,6 +584,24 @@ class QaLoop(CoderResult):
     #: must still skip the review it was already excused from.
     plan_polish_pending: bool = False
 
+    #: Whether a plan has been authored and approved on this pass, which is what tells `stack`
+    #: where to go next.
+    #:
+    #: The stack is stood up *before* the plan is written, so the planner authors against a
+    #: surface it can actually reach — a locator that does not resolve, a fixture password that
+    #: disagrees with the seed script, a curly apostrophe in an accessible name are all things
+    #: one dry run finds and no amount of reading finds. But `stack` is also the setup-fix
+    #: loop's re-entry point, and a fixer that repaired a broken emulator must return to the
+    #: run, not to a second authoring turn. So the same node reads this flag rather than the
+    #: flow needing two of it.
+    #:
+    #: `build_context` clears it, because it is the loop's join point: every state that routes
+    #: back there does so having changed what the diff obligates, and a plan written against
+    #: the old obligations is exactly what must not be run. False is therefore also the right
+    #: value for a checkpoint written before this field existed — it costs a resumed run one
+    #: authoring turn and cannot skip one.
+    plan_authored: bool = False
+
     #: The finding ids the last *refusing* plan-review pass left open — the baseline
     #: `plan_review_progress` is computed against. Not a verdict label and so not blanked by
     #: `cleared()`: comparing this pass to the one before it requires the previous pass's

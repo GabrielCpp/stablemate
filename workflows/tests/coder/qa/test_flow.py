@@ -187,9 +187,14 @@ class _Ostler:
         plan_invalid_passes: tuple[int, ...] = (),
         vet_problems: list[str] | None = None,
         blocked_problems: list[str] | None = None,
+        block_runs: int = 0,
         scenarios: tuple[dict[str, Any], ...] = (),
     ) -> None:
         self.fail_runs = fail_runs
+        #: A count of *leading* runs that come back `blocked` and then recover — the shape a
+        #: real environment fault takes when the setup fixer actually repairs it.
+        #: `blocked_problems` is the other shape: blocked for good.
+        self.block_runs = block_runs
         #: The per-scenario payload a real run reports, entry *i* for run *i*, the last one
         #: repeating. Empty — the default — omits the key entirely, which is every test that
         #: does not care: the flow's repeat detector reads it and is inert without it.
@@ -283,6 +288,12 @@ class _Ostler:
         self, plan: str, spec_dir: str, *, docs_root: Path | None = None
     ) -> tuple[int, dict[str, Any], str]:
         self.runs += 1
+        if self.runs <= self.block_runs:
+            return 1, {
+                "status": "blocked",
+                "problems": ["target 'web' requires the Playwright Python package"],
+                "notes": "QA run blocked",
+            }, ""
         if self.blocked_problems is not None:
             # A blocked run writes nothing: it never executed a scenario.
             return 1, {
@@ -1417,6 +1428,76 @@ def test_a_give_up_never_overwrites_a_real_qa_assessment(tmp_path: Path) -> None
 
 
 # --------------------------------------------------------------------------- the stack
+
+
+def test_the_stack_is_standing_before_the_plan_is_written(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The reorder, stated as the thing the planner can rely on.
+
+    A plan is written against locators, fixture data and credentials that either resolve or
+    do not, and the only way to find out is to drive the surface. With the stack behind the
+    plan lane the planner could not, so a curly apostrophe in an accessible name or a
+    password constant that disagreed with the seed script cost a full workflow lap to
+    discover. Standing the stack up first is what makes the dry run in `plan-qa.md`
+    executable at all, so the ordering is the contract, not an optimisation.
+    """
+    ostler()
+    write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
+    agent = _Agent(docs)
+    #: How many agent turns had been taken when the stack came up. Zero is the assertion.
+    turns_before: list[int] = []
+
+    def _up(*a: Any, **k: Any) -> dict[str, Any]:
+        turns_before.append(len(agent.calls))
+        return {"ready": "yes", "entry_url": "http://x"}
+
+    monkeypatch.setattr(workhorse_stack, "ensure_stack", _up)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert turns_before == [0], (turns_before, agent.calls)
+    assert agent.calls[0] == "plan-qa", agent.calls
+    # And standing first does not cost a second visit: the approval arms go to the runner.
+    assert agent.planned() == 1, agent.counts()
+
+
+def test_a_setup_repair_mid_run_returns_to_the_runner_not_to_a_second_plan(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`plan_authored`: `stack` is two entries, and only one of them authors.
+
+    The setup loop rejoins at `stack`, and it is reachable from the *runner* — a blocked run
+    naming a missing Playwright package — as well as from a stack that would not come up.
+    Without the flag, repairing an environment fault would buy a `power="high"` replan of a
+    plan the runner never objected to, once per fault. The flag is cleared only at
+    `build_context`, which is where the diff's obligations can actually have changed.
+    """
+    okf = ostler(block_runs=1)
+    write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
+    monkeypatch.setattr(
+        workhorse_stack, "ensure_stack", lambda *a, **k: {"ready": "yes", "entry_url": "http://x"}
+    )
+    agent = _Agent(docs, setup="fixed")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["setup-fix"] == 1, agent.counts()
+    assert okf.runs == 2, "the repaired run was never retried"
+    # The whole point: one authoring turn, not one per environment fault.
+    assert agent.planned() == 1, agent.counts()
 
 
 def test_a_stack_that_will_not_come_up_is_repaired_and_retried(
