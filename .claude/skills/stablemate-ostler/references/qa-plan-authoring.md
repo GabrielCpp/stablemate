@@ -114,12 +114,14 @@ against `--out-dir`. Under the old format the same relative string meant the spe
 one place and the repo root in another, and one run lost 38 of 66 assertions to it. There is one
 spelling now, and it is a `Path`.
 
-`qa.screenshot(name)` writes two files, not one: the image, and a `.layout.json` beside it
-carrying `ostler vet`'s DOM scan of the same instant — the viewport, the laid-out document, and
-every structural region's box against it. That second file is the only layout evidence anything
-downstream can read, and the independent audit refutes a pass from it. A browser assertion
-cannot stand in for it: `by_role` finds an element in the accessibility tree whether the page
-lays it out across the window or crushes it into a column against one margin.
+`qa.screenshot(name)` writes three files, not one: the image, a `.layout.json` beside it, and a
+`.regions.json`. Both JSON files come from one `ostler vet` DOM scan of the same instant — the
+layout digest is the viewport, the laid-out document and every *structural* region's box as a
+share of it, and the regions file is that scan undigested, in the shape `ostler vet --regions`
+replays to register the screen's documented components. They are the only layout evidence
+anything downstream can read, and the independent audit refutes a pass from them. A browser
+assertion cannot stand in for it: `by_role` finds an element in the accessibility tree whether
+the page lays it out across the window or crushes it into a column against one margin.
 
 `qa.http` is loud on purpose: any status ≥ 400 raises `HttpError` carrying the body unless the
 call named it in `expect_status=`. That is the `curl -fsS` behaviour every shell scenario had to
