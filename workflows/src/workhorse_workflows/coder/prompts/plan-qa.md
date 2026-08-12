@@ -177,6 +177,15 @@ least one machine-executed terminal assertion. `mechanism` is provenance
 - Use `{% raw %}{{env.NAME}}{% endraw %}` for env-block values.
 - Payload files referenced in a step command must be written to `qa/payloads/` **before** the plan runs — include a `fixture` step or note them as pre-existing files.
 - `assert_count: 1` is the no-duplicate check — use it on queries where exactly one result is expected.
+- **Defeat the test runner's result cache.** A build-cached runner replays a previous PASS
+  without executing anything, and prints it in the same words a real run does — `go test`'s
+  `ok ... (cached)`, gradle's `UP-TO-DATE`, a `--only-changed` watcher's skip. A
+  `grep -qF "--- PASS"` assertion cannot tell the replay from the run, so the scenario goes
+  green while the code under test is never touched; worse, the cache key does not track
+  environment variables, so a step that reads one (an emulator host, a base URL) replays a
+  result recorded against a *different* service. Pass the flag that forces execution —
+  `go test -count=1`, `gradle --rerun-tasks`, `cargo test --no-fail-fast` with a clean
+  target when it applies — on every test invocation a scenario's evidence depends on.
 - Every `cmd` runs under `set -o pipefail`, so a pipeline fails when **any** stage fails, and the
   step's exit code is itself a recorded assertion. Write pipelines that can therefore only pass by
   observing something: an assertion whose expected value is what a *broken* command also prints —
