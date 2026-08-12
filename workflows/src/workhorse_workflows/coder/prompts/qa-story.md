@@ -47,6 +47,11 @@ was effective:
   ruled out?
 - Does the cited evidence belong to this run and demonstrate the objective?
 
+Before reporting any artifact as absent, list the path and cite that listing in the finding. A
+run whose artifacts are on disk and a run that produced none read alike from the ledger alone, so
+an absence asserted without a listing costs a repair lap that cannot converge — it asks the
+planner to produce files that are already there.
+
 For a failed run, distinguish a trustworthy product failure from a broken selector, wait,
 fixture, assertion, or journey design. For a passed run, `objective_reached` is `yes` only when the
 full chain and terminal proof are present. A structurally valid plan that never exercised its
