@@ -124,6 +124,15 @@ without a product or author decision, return `blocked` and name that item.
    Never weaken an invariant, journey completion condition, persistence rule, event
    contract, or concurrency requirement merely to match the implementation. Such drift
    is a product/author decision, not a grounding edit.
+   **One provable claim per normative bullet.** Each value of `does:`, `when:`, `returns:`,
+   `raises:`, `status:`, `error:`, `auth:`, `persistence:`, `emits:`, `consumes:`,
+   `concurrency:`, `idempotency:`, `required:`, `default:` or `semantics:` becomes one QA
+   obligation, proved by one scenario. Merging this story's delta into a sentence that already
+   holds three requirements makes a bullet where the scenario proves whichever clause the
+   planner read and the rest ships claimed-as-covered — the story passes QA over behavior
+   nobody tested. Split on the real seams (the success effect, each error case, what is
+   persisted, what is emitted) by repeating the key; `doctor` errors past 700 characters of
+   prose in one bullet.
    Prefer narrow, evidence-backed prose over broad claims: write "click controls reorder tabs"
    instead of "keyboard reordering works" unless a keyboard test proves it; write "new nested
    insertion is blocked" instead of "containers can never nest" when loaded legacy nested

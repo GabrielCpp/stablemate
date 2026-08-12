@@ -61,6 +61,13 @@ changelog of this story. In particular, for the surfaces this story touched:
   journey plan alone is not OKF documentation;
 - structured bullets contain the full behavioral contract, including states, fields,
   preconditions, effects, errors, accessibility, and boundaries where applicable;
+- each normative bullet carries **one provable claim**. Every value of `does:`, `when:`,
+  `returns:`, `raises:`, `status:`, `error:`, `auth:`, `persistence:`, `emits:`, `consumes:`,
+  `concurrency:`, `idempotency:`, `required:`, `default:` or `semantics:` becomes one QA
+  obligation proved by one scenario, so a bullet holding three requirements ships two of them
+  claimed-as-covered and never tested. Flag a bullet whose success effect, error cases,
+  persistence and emissions are fused into one sentence, and name the seams to split it on;
+  the repair is repeating the key, not rewording;
 - `code:` and `verify:` cite real implementation and tests without using broad or invented refs,
   and every ref names something that currently exists — `ostler doctor` rejects a `code:`
   target that isn't there, with no exception. A symbol or file this story deleted needs no
@@ -96,7 +103,8 @@ D2 [overclaim] docs/features/acme/flows/widget.md: cited test clicks controls, s
 ```
 
 Each finding must name the file/anchor, classify the defect (`node-type`, `missing-node`,
-`flow-coverage`, `overclaim`, `grounding`, `verify-overclaim`, or `author-decision`), and state
+`flow-coverage`, `overclaim`, `bullet-granularity`, `grounding`, `verify-overclaim`, or
+`author-decision`), and state
 the smallest acceptable repair. Do not return a broad prose paragraph that the author must
 reinterpret.
 

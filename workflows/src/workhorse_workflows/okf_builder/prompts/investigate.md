@@ -47,6 +47,16 @@ Document to the **spec-complete bar** (enough to regenerate behavior-equivalent 
 coding patterns), **merge** into any node that already exists (the book, not a changelog), and set
 `code:`/`verify:` to the real `path::symbol`. Then emit the deeper items you discovered.
 
+**One provable claim per normative bullet.** Every value of `does:`, `when:`, `returns:`,
+`raises:`, `status:`, `error:`, `auth:`, `persistence:`, `emits:`, `consumes:`, `concurrency:`,
+`idempotency:`, `required:`, `default:` and `semantics:` is minted as **one QA obligation** and
+proved by **one scenario**. A bullet that carries a paragraph is several requirements wearing one
+id: the scenario covering it proves whichever clause the planner read, and the rest is documented,
+claimed as covered, and never tested. You are reading the source right now, so you are the one who
+can tell which clauses are genuinely separate — split there (the success effect, each error case,
+what is persisted, what is emitted) by repeating the key. `doctor` errors past 700 characters of
+prose in one bullet.
+
 **Dedup with `ostler graph` before you create anything.** Ask the tree, don't guess: `ostler graph
 --bullet 'code=<path::symbol>' --ids` (is this symbol already grounded?) or `ostler graph --path
 '<type>:<parent> / <type>:<name>'` (does this nested node already exist?). If it does, **enrich that

@@ -126,6 +126,7 @@ class DocumentationFinding(CoderResult):
         "missing-node",
         "flow-coverage",
         "overclaim",
+        "bullet-granularity",
         "grounding",
         "verify-overclaim",
         "author-decision",
