@@ -335,7 +335,7 @@ def story_dependency_strays(doc: markdown.MarkdownDoc) -> list[str]:
 def _meta_from_bullets(section: markdown.Section) -> dict[str, str | list[str]]:
     """Parse the leading `- key: value` metadata bullets of a section into an ordered dict.
 
-    Keys are lowercased; the first ``:`` separates key and value (so ``depends on: a, b`` keeps the
+    Keys are lowercased; the first ``:`` separates key and value (so ``blocked by: a, b`` keeps the
     spaced key). Bullets without a ``:`` are ignored.
     """
     meta: dict[str, str | list[str]] = {}

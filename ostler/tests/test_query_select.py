@@ -249,7 +249,8 @@ def test_declared_order_wins_over_the_slugs_numeric_prefix(tmp_path: Path):
     Real epics are written this way: the author appends each story as it decides on it, so
     `## Stories` ends up listing `01, 03, 04, 02, …` while the prefixes track milestones. A
     coder run then builds `01` and picks `03`, which reads as *skipping* `02` and cost a
-    session's diagnosis. It is correct: `02` states its sequence with `depends on:`, which is
+    session's diagnosis. It is correct: `02` states its sequence in its own `## Dependencies`,
+    which is
     honoured, and having no unmet dependency is exactly what makes `03` parallel to it. Sorting
     on the prefix instead would invent an ordering contract ostler does not offer — it never
     mints the slug — and would serialise work the author declared independent.

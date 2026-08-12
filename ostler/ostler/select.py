@@ -210,7 +210,8 @@ def next_story_report(graph: Graph, epic_name: str,
                     them in, which is the order they were created in. A slug's numeric prefix
                     is *not* an ordering contract — ostler never mints it and never sorts on
                     it — so an epic that declares `03` before `02` builds `03` first, and that
-                    is correct: `depends on:` is where sequence is stated, and a story with no
+                    is correct: a story's own `## Dependencies` section is where sequence is
+                    stated, and a story with no
                     unmet dependency is by definition parallel to the ones around it. (Reading
                     the prefix as the queue is what made a run look like it *skipped* a story.)
     ``done``        every story in the epic is done. The only state that means "prune it".

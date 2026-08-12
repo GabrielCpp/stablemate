@@ -72,7 +72,7 @@ def run(graph: Graph, token: str) -> tuple[list[str], bool]:
         out.append(f"  status: {story.status or '—'}")
         out.append(f"  file:   {story.story_md if story.story_md else '(missing)'}")
         if story.dependencies:
-            out.append(f"  depends on: {', '.join(story.dependencies)}")
+            out.append(f"  blocked by: {', '.join(story.dependencies)}")
         for sid in story.seed_items:
             seed = next((s for s in epic.seeds if s.id == sid), None)
             label = seed.summary if seed else "(unknown seed)"
