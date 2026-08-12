@@ -9,9 +9,14 @@ no band at all, because it reads as coverage.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
+from ostler.model import Graph, UINode
 from ostler.vet.geometry import BBox
 from ostler.vet.placement import (
-    Placement, VettedComponent, Viewport, check, parse_placement,
+    Placement, VettedComponent, Viewport, check, parse_placement, screen_components,
 )
 from ostler.vet.regions import RegionBox
 
@@ -22,6 +27,17 @@ def _bands(text: str) -> Placement:
     parsed = parse_placement(text)
     assert isinstance(parsed, Placement), parsed
     return parsed
+
+
+def _conditional(node_id: str, selector: str) -> VettedComponent:
+    return VettedComponent(node_id=node_id, selector=selector, conditional=True)
+
+
+def _graph_with_component(meta: dict[str, str]) -> Graph:
+    node = UINode(
+        type="component", kind="section", id="s.md#c", path=Path("s.md"), anchor="c", meta=meta,
+    )
+    return Graph(root=Path("."), org_name="acme", profile="full", doc_roots={}, ui_nodes=[node])
 
 
 def test_a_placement_is_bands_of_the_viewport_and_nothing_else() -> None:
@@ -154,3 +170,47 @@ def test_a_component_with_no_placement_is_still_checked_for_being_there() -> Non
     )
     assert (present.status, absent.status) == ("matched", "missing")
     assert present.detail == []
+
+
+def test_a_component_the_book_says_comes_and_goes_is_not_missing_when_it_is_gone() -> None:
+    """One photograph cannot be every state a screen has.
+
+    A screen documents its error banner and its empty-list placeholder next to its steady
+    state, and a scenario exercising the successful render contains neither. Failing the vet
+    on their absence makes a passing screen unvettable and pushes the author to delete the
+    documentation of the states — so a component the book already says comes and goes is
+    judged on where it sits when it is there, and nothing when it is not.
+    """
+    verdicts = check(
+        [
+            _conditional("s.md#error", "#error"),
+            _component("s.md#list", "#list"),
+        ],
+        [],
+        VIEWPORT,
+    )
+
+    assert [(v.node_id, v.status) for v in verdicts] == [("s.md#list", "missing")]
+
+
+@pytest.mark.parametrize(
+    ("bullets", "conditional"),
+    [
+        ({"states": "`full` (default on load), `loading`, `empty`"}, True),
+        ({"exclusive-with": "the publish action itself — publishing is a separate story"}, True),
+        # Both keys are written on every component that carries them, so an author who filled
+        # the stub in with the negative said the component is always up — not that nobody looked.
+        ({"states": "none — content is fixed regardless of which fixture is active"}, False),
+        ({"exclusive-with": "n/a"}, False),
+        ({}, False),
+    ],
+)
+def test_only_a_stated_condition_excuses_a_component_from_being_there(
+    bullets: dict[str, str], conditional: bool
+) -> None:
+    """`- states: none` and `- exclusive-with: n/a` are the documented ways to say *no
+    condition*, and they are the whole difference between a component that may be absent and
+    one whose absence is a defect."""
+    graph = _graph_with_component({"selector": "#c", **bullets})
+
+    assert screen_components(graph)["s.md"][0].conditional is conditional

@@ -21,7 +21,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict
 
-from ostler.model import Graph
+from ostler.model import Graph, UINode
 from ostler.qa.harness_host import load_harness_module
 from ostler.vet.geometry import BBox
 from ostler.vet.regions import RegionBox
@@ -94,6 +94,10 @@ class VettedComponent(BaseModel):
     node_id: str
     selector: str
     placement: Placement | None = None
+    #: The book gives a reason this one may legitimately not be in the render — a `states:`
+    #: bullet, or an `exclusive-with:` sibling it can never co-render with. Presence is then
+    #: unprovable from one photograph, and the scenario's own assertions are what establish it.
+    conditional: bool = False
 
 
 class ComponentVerdict(BaseModel):
@@ -151,6 +155,13 @@ def check(
             None,
         )
         if region is None:
+            if component.conditional:
+                # A screen documents its conditional components alongside its steady state —
+                # an error banner, the empty-list placeholder, the half of an `exclusive-with`
+                # pair that is not showing. Demanding all of them in one photograph asks a
+                # single render to be every state the screen has, which no render is. The
+                # book already says these come and go; absence is not the disagreement.
+                continue
             verdicts.append(ComponentVerdict(
                 node_id=component.node_id, selector=component.selector,
                 status="missing", expected=expected))
@@ -169,6 +180,27 @@ def check(
             bbox=region.bbox,
         ))
     return verdicts
+
+
+#: The two ways a `states:` or `exclusive-with:` bullet says *there is nothing conditional here*.
+#: Both keys are written on every component that has them at all, so their absence is not the
+#: signal — an author who filled the stub in with the negative meant the component is always up.
+_NO_CONDITION = ("none", "n/a", "na", "-")
+
+
+def _declares_coming_and_going(node: UINode) -> bool:
+    """Whether the book gives this component a reason to be absent from a given render.
+
+    `states:` enumerates the forms it takes and `exclusive-with:` names what it never
+    co-renders with; either one means one photograph cannot be expected to contain it. The
+    values are prose — `exclusive-with:` in particular is usually a sentence, not a link — so
+    this reads presence, not structure, and only the explicit negatives count as "no".
+    """
+    for key in ("states", "exclusive-with"):
+        value = str(node.meta.get(key, "")).strip()
+        if value and value.split("—")[0].split(",")[0].strip().strip("`").lower() not in _NO_CONDITION:
+            return True
+    return False
 
 
 def screen_components(graph: Graph) -> dict[str, list[VettedComponent]]:
@@ -191,6 +223,7 @@ def screen_components(graph: Graph) -> dict[str, list[VettedComponent]]:
             node_id=node.id,
             selector=selector,
             placement=parsed if isinstance(parsed, Placement) else None,
+            conditional=_declares_coming_and_going(node),
         ))
     return table
 
