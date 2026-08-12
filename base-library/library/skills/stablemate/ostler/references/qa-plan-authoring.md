@@ -98,12 +98,20 @@ working tree.
 | `qa.dir`, `qa.root`, `qa.spec_dir`, `qa.scenario_id`, `qa.covers` | the paths and identity, already resolved |
 | `qa.goto`, `qa.by_role/by_label/by_test_id/by_text/by_css`, `qa.screenshot`, `qa.page` | the browser |
 | `qa.diagnostics.console_errors/page_errors/failed_requests/responses()` | the live console and network record |
+| `qa.diagnostics.layout()` | the viewport, the laid-out document, and each structural region's box as a share of it |
 | `qa.maestro.flow([...])`, `qa.maestro.run(flow)` | build and run a Maestro flow |
 
 `qa.dir` is the single most important attribute: **the** evidence directory, already resolved
 against `--out-dir`. Under the old format the same relative string meant the spec directory in
 one place and the repo root in another, and one run lost 38 of 66 assertions to it. There is one
 spelling now, and it is a `Path`.
+
+`qa.screenshot(name)` writes two files, not one: the image, and a `.layout.json` beside it
+carrying `ostler vet`'s DOM scan of the same instant — the viewport, the laid-out document, and
+every structural region's box against it. That second file is the only layout evidence anything
+downstream can read, and the independent audit refutes a pass from it. A browser assertion
+cannot stand in for it: `by_role` finds an element in the accessibility tree whether the page
+lays it out across the window or crushes it into a column against one margin.
 
 `qa.http` is loud on purpose: any status ≥ 400 raises `HttpError` carrying the body unless the
 call named it in `expect_status=`. That is the `curl -fsS` behaviour every shell scenario had to
