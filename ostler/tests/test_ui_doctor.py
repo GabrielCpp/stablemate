@@ -130,6 +130,56 @@ def test_bad_heading_type(repo: Path):
     assert finding is not None and finding.suggestion == "## Interactions"
 
 
+def _interaction(does: str) -> str:
+    return ("---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+            "## Interactions\n\n### click\n- on: [S](#s)\n- trigger: click\n"
+            f"- does: {does}\n")
+
+
+def test_overlong_normative_bullet(repo: Path):
+    # One `does:` carrying a paragraph is several obligations wearing one id — the scenario
+    # that covers it proves whichever clause the planner happened to read.
+    write(repo / "docs/features/groom/gui/screens/s.md", _interaction("the row saves. " * 60))
+    report = _run(repo)
+    finding = next(f for f in report.findings if f.code == "overlong-normative-bullet")
+    assert finding.severity == "error"
+    # Per bullet, not per key: a waiver has to name the one bullet, not silence `does:` book-wide.
+    assert finding.path == "docs/features/groom/gui/screens/s.md"
+    assert finding.ref == f"{finding.path}#click#does"
+
+
+def test_a_short_normative_bullet_is_not_flagged(repo: Path):
+    write(repo / "docs/features/groom/gui/screens/s.md", _interaction("the row saves."))
+    assert "overlong-normative-bullet" not in codes(_run(repo))
+
+
+def test_code_spans_and_link_hrefs_do_not_count_as_prose(repo: Path):
+    # A cited symbol says one thing however many characters it spells, and an href is
+    # addressing rather than prose. A bullet long only because of them is not overlong.
+    padding = "`" + "x" * 900 + "` [see](" + "y" * 100 + ".md)"
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _interaction(f"the row saves, per {padding}."))
+    assert "overlong-normative-bullet" not in codes(_run(repo))
+
+
+def test_a_parenthetical_counts_as_prose(repo: Path):
+    # An aside is exactly where a second requirement hides, so discounting parentheticals
+    # would exempt the shape this rule exists to find.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _interaction("the row saves (" + "and the audit row records it. " * 30 + ")"))
+    assert "overlong-normative-bullet" in codes(_run(repo))
+
+
+def test_only_normative_bullets_are_measured(repo: Path):
+    # `trigger:` mints no obligation, so its length buys nobody a scenario and is not this
+    # rule's business.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+          "## Interactions\n\n### click\n- on: [S](#s)\n"
+          f"- trigger: {'click the row. ' * 60}\n- does: the row saves.\n")
+    assert "overlong-normative-bullet" not in codes(_run(repo))
+
+
 def test_all_ui_findings_are_errors(repo: Path):
     write(repo / "docs/features/groom/concepts/diff.md",
           "---\ntype: concept\nslug: diff\ntitle: Diff\n---\n# Diff\n\n"

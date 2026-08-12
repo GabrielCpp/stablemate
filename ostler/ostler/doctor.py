@@ -550,6 +550,29 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
                     f"'{symbol}'", path=rel, line=node.line, ref=ref))
 
 
+#: How much prose one normative bullet may spend before it stops being one claim. A bullet is
+#: minted as a single obligation and proved by a single QA scenario, so length here is not a
+#: style question: past this, the bullet is several requirements wearing one id, and the
+#: scenario that covers it proves whichever clause the planner happened to read.
+MAX_NORMATIVE_PROSE = 700
+
+#: `` `code` `` — measured as nothing. A bullet is long because it *says* a lot, and a cited
+#: symbol, route or flag says one thing however many characters it spells.
+_CODE_SPAN_RE = re.compile(r"`[^`]*`")
+#: `[text](href)` — the href is addressing, not prose, so only the text counts.
+_MD_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+
+
+def _prose(value: str) -> str:
+    """A bullet's prose: link text without its href, no code spans, parentheticals kept.
+
+    Parentheticals stay deliberately. An aside is where a second requirement hides — "(and
+    the audit row records the previous value)" is a whole obligation nobody will write a
+    scenario for — so discounting them would exempt the very shape this rule is looking for.
+    """
+    return _MD_LINK_RE.sub(r"\1", _CODE_SPAN_RE.sub("", value)).strip()
+
+
 def _bullet_values(value) -> list[str]:
     """A bullet's raw values — a repeated key parses to a list, a single one to a string.
 
@@ -683,6 +706,16 @@ def _check_ui(graph: Graph, f: list[Finding]) -> None:
                                  f"{node.id}: {node.type} missing required `{bk.key}:`",
                                  path=rel, line=node.line, ref=bk.key,
                                  suggestion=f"- {bk.key}:", fixable=True))
+
+        for key in registry.normative_keys(node.type):
+            for value in _bullet_values(node.meta.get(key, "")):
+                length = len(_prose(value))
+                if length > MAX_NORMATIVE_PROSE:
+                    f.append(Finding(
+                        "error", "overlong-normative-bullet",
+                        f"{node.id}: `{key}:` runs {length} characters of prose — too much to "
+                        f"prove as one claim; split it into one bullet per provable claim",
+                        path=rel, line=node.line, ref=f"{node.id}#{key}"))
 
     # A broken link that comes from a relation bullet (on/parent/extends/detail/…) is the more
     # specific `unresolved-relation`; index those (file, href) pairs so the link scan can classify.

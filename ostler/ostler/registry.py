@@ -230,6 +230,31 @@ RELATION_KEYS = ("on", "parent", "extends", "steps", "presents", "detail",
                  "environment", "cli", "surfaces", "requires", "params", "leads-to",
                  "exclusive-with")
 
+# The bullets QA mints an obligation from — one per value, which a scenario then has to prove.
+# They live here rather than beside the minting because two readers need the same answer: the
+# obligation mapper, and the doctor rule that refuses a normative bullet too long to prove. A
+# vocabulary those two disagree about produces a bullet that is graded but never linted, or
+# linted for a claim nothing grades.
+NORMATIVE_KEYS_BY_TYPE: dict[str, tuple[str, ...]] = {
+    "flow": ("start", "end"),
+    "component": ("role", "name", "keyboard", "states"),
+    "command": ("does",),
+    "endpoint": ("does", "status", "statuses", "error", "errors", "auth", "authorization"),
+    "interaction": ("when", "does", "keyboard"),
+    "invocation": ("when", "does", "status", "statuses", "error", "errors", "auth",
+                   "authorization"),
+    "method": ("returns", "raises"),
+    "field": ("required", "default", "semantics"),
+}
+# Normative on every node type, whatever it is.
+SHARED_NORMATIVE_KEYS = ("consistency", "consistency rule", "consistency group", "persistence",
+                         "emits", "consumes", "concurrency", "idempotency")
+
+
+def normative_keys(node_type: str) -> tuple[str, ...]:
+    """Every bullet key on `node_type` that becomes an obligation."""
+    return SHARED_NORMATIVE_KEYS + NORMATIVE_KEYS_BY_TYPE.get(node_type, ())
+
 
 UI_TYPES: tuple[UINodeType, ...] = (
     # ---- file-level surfaces / nouns / artifacts ----

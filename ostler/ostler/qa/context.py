@@ -77,26 +77,6 @@ _CLOSURE_REASON_KINDS = frozenset(
 #: sibling `role:`/`name:` obligations it happens to have been handed.
 _LOCATOR_KEYS = ("selector", "role", "name", "keyboard", "route", "entry", "params")
 
-_QA_REQUIREMENT_KEYS = {
-    "flow": ("start", "end"),
-    "component": ("role", "name", "keyboard", "states"),
-    "command": ("does",),
-    "endpoint": ("does", "status", "statuses", "error", "errors", "auth", "authorization"),
-    "interaction": ("when", "does", "keyboard"),
-    "invocation": (
-        "when",
-        "does",
-        "status",
-        "statuses",
-        "error",
-        "errors",
-        "auth",
-        "authorization",
-    ),
-    "method": ("returns", "raises"),
-    "field": ("required", "default", "semantics"),
-}
-
 
 def _sort_key(obligation_id: str) -> list[tuple[int, int | str]]:
     """Order obligation ids so `…:raises:10` follows `…:raises:2`.
@@ -1153,18 +1133,7 @@ def _obligations(
     if locators:
         base["locators"] = locators
     output = [base]
-    normative_keys = (
-        "consistency",
-        "consistency rule",
-        "consistency group",
-        "persistence",
-        "emits",
-        "consumes",
-        "concurrency",
-        "idempotency",
-        *_QA_REQUIREMENT_KEYS.get(str(node.get("type", "")), ()),
-    )
-    for key in normative_keys:
+    for key in registry.normative_keys(str(node.get("type", ""))):
         for index, requirement in enumerate(_values(node.get("bullets", {}).get(key)), start=1):
             output.append(
                 {
