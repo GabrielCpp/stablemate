@@ -31,7 +31,10 @@ import ast
 import inspect
 import json
 import os
+import shutil
+import subprocess
 import sys
+import time
 import traceback
 import urllib.error
 import urllib.parse
@@ -71,6 +74,11 @@ DRIVERS = ("python", "playwright", "maestro")
 
 DEFAULT_HTTP_TIMEOUT = 30.0
 
+#: When this process started, so a diagnostics timestamp can be placed on the *run's* clock
+#: rather than its own. The driver hands over the run offset it was at when it spawned us;
+#: everything recorded here is that plus the time since this line ran.
+_PROCESS_START = time.monotonic()
+
 
 class HttpError(RuntimeError):
     """A response whose status the scenario did not say it expected."""
@@ -93,12 +101,13 @@ class Target:
     base_url: str | None = None
     app_id: str | None = None
     browser: str | None = None
+    viewport: dict[str, int] | None = None
     recording: dict[str, Any] | None = None
     permissions: list[str] | None = None
 
     def as_json(self) -> dict[str, Any]:
         data: dict[str, Any] = {"driver": self.driver}
-        for key in ("interpreter", "base_url", "app_id", "browser", "permissions"):
+        for key in ("interpreter", "base_url", "app_id", "browser", "viewport", "permissions"):
             value = getattr(self, key)
             if value is not None:
                 data[key] = value
@@ -204,6 +213,7 @@ def target(
     base_url: str | None = None,
     app_id: str | None = None,
     browser: str | None = None,
+    viewport: Mapping[str, int] | None = None,
     recording: dict[str, Any] | None = None,
     permissions: Sequence[str] | None = None,
 ) -> Target:
@@ -218,6 +228,7 @@ def target(
         base_url=base_url,
         app_id=app_id,
         browser=browser,
+        viewport=dict(viewport) if viewport is not None else None,
         recording=recording,
         permissions=list(permissions) if permissions is not None else None,
     )
@@ -498,6 +509,7 @@ class Qa:
         qa_dir: Path,
         covers: Sequence[str],
         recorder: _Recorder,
+        offset_base_ms: int = 0,
     ) -> None:
         self.scenario_id = scenario_id
         self.target = target
@@ -511,7 +523,12 @@ class Qa:
         self._index = 0
         self.assertions = 0
         self.failures = 0
+        self.offset_base_ms = offset_base_ms
+        #: The Playwright page, for a `playwright` target. `None` otherwise, and reaching
+        #: for it says so — a scenario declared against the wrong target is a mistake worth
+        #: an `AttributeError` on the line that made it.
         self.page: Any = None
+        self.maestro = Maestro(self)
 
     # -- assertions --------------------------------------------------------------------
 
@@ -612,6 +629,143 @@ class Qa:
             raise KeyError(f"secret {name!r} is not declared in this plan")
         return declared.get()
 
+    def offset_ms(self) -> int:
+        """Now, on the run's clock — the same scale every other driver's records use."""
+        return self.offset_base_ms + round((time.monotonic() - _PROCESS_START) * 1000)
+
+    # -- the browser -------------------------------------------------------------------
+    #
+    # `qa.page` is the whole Playwright API and a scenario may use it directly. These five
+    # helpers exist for one reason beyond brevity: `describe` reads their constant
+    # arguments out of the parsed tree, so `ostler qa validate` can still hold a browser
+    # scenario to the role and name the OKF book documents for what it covers. A locator
+    # written as `qa.page.get_by_text(...)` is invisible to that check.
+
+    def by_role(self, role: str, *, name: str | None = None, **kwargs: Any) -> Any:
+        return self.browser_page.get_by_role(role, name=name, **kwargs)
+
+    def by_label(self, text: str, **kwargs: Any) -> Any:
+        return self.browser_page.get_by_label(text, **kwargs)
+
+    def by_test_id(self, value: str) -> Any:
+        return self.browser_page.get_by_test_id(value)
+
+    def by_text(self, text: str, *, exact: bool = True) -> Any:
+        return self.browser_page.get_by_text(text, exact=exact)
+
+    def by_css(self, selector: str) -> Any:
+        return self.browser_page.locator(selector)
+
+    def goto(self, url: str, **kwargs: Any) -> Any:
+        """Navigate, resolving a relative path against the target's `base_url`."""
+        return self.browser_page.goto(self.http.url_for(url), **kwargs)
+
+    def screenshot(self, name: str = "") -> Path:
+        """Photograph the page and register it as evidence."""
+        path = self.dir / "screenshots" / f"{self.scenario_id}-{name or 'screenshot'}.png"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.browser_page.screenshot(path=str(path), full_page=True)
+        self._recorder.emit({"type": "artifact", "path": str(path), "kind": "screenshot"})
+        return path
+
+    @property
+    def browser_page(self) -> Any:
+        if self.page is None:
+            raise RuntimeError(
+                f"scenario {self.scenario_id!r} reaches for the browser, but its target "
+                f"'{self.target.name}' declares driver '{self.target.driver}' — declare the "
+                "target with driver='playwright' to get a page"
+            )
+        return self.page
+
+
+class Maestro:
+    """Run a Maestro flow from inside the scenario, and hand back what it did.
+
+    The verdict is the caller's: `run` returns the result and the scenario asserts on it,
+    the way it asserts on an HTTP response. Under the YAML format the driver appended a
+    single synthetic `maestro-flow` assertion of its own, which made a mobile scenario's
+    coverage ride on the exit code of the CLI rather than on anything the plan claimed.
+    """
+
+    def __init__(self, qa: Qa) -> None:
+        self._qa = qa
+
+    def flow(self, commands: Sequence[Any]) -> str:
+        """Build flow text from Maestro commands.
+
+        YAML is a superset of JSON and Maestro's parser accepts it, which is what lets a
+        stdlib-only harness write a flow at all. A scenario with a hand-written flow file
+        passes its path to `run` instead.
+        """
+        app_id = self._qa.target.app_id
+        if not app_id:
+            raise ValueError(f"target '{self._qa.target.name}' declares no app_id")
+        return json.dumps({"appId": app_id}) + "\n---\n" + json.dumps(list(commands), indent=2)
+
+    def run(
+        self,
+        flow: str | Path,
+        *,
+        name: str = "",
+        timeout: float = 600.0,
+    ) -> MaestroResult:
+        if shutil.which("maestro") is None:
+            raise RuntimeError("the maestro CLI is not installed on this machine")
+        qa = self._qa
+        label = name or qa.scenario_id
+        if isinstance(flow, Path):
+            path = flow
+        else:
+            path = qa.dir / "generated" / f"{label}.yaml"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(flow, encoding="utf-8")
+            qa.artifact(path, kind="generated-maestro-flow")
+        junit = qa.dir / "traces" / f"{label}-junit.xml"
+        junit.parent.mkdir(parents=True, exist_ok=True)
+        test_output = qa.dir / "generated" / f"{label}-maestro-output"
+        test_output.mkdir(parents=True, exist_ok=True)
+        command = [
+            "maestro", "test",
+            "--format", "junit",
+            "--output", str(junit),
+            "--test-output-dir", str(test_output),
+            str(path),
+        ]
+        try:
+            done = subprocess.run(  # noqa: S603 - fixed argv, flow path built above
+                command, cwd=qa.root, capture_output=True, text=True, timeout=timeout, check=False
+            )
+            output, code = f"{done.stdout}{done.stderr}", done.returncode
+        except subprocess.TimeoutExpired as exc:
+            output = f"{exc.stdout or ''}{exc.stderr or ''}"
+            code = 124
+        log = qa.dir / "traces" / f"{label}-maestro.txt"
+        log.write_text(output, encoding="utf-8")
+        qa.artifact(log, kind="maestro-output")
+        if junit.is_file():
+            qa.artifact(junit, kind="junit")
+        for produced in sorted(test_output.rglob("*")):
+            if produced.is_file() and produced.stat().st_size:
+                kind = (
+                    "maestro-screenshot"
+                    if produced.suffix.lower() == ".png"
+                    else "maestro-diagnostic"
+                )
+                qa.artifact(produced, kind=kind)
+        return MaestroResult(exit_code=code, output=output, flow=path)
+
+
+@dataclass
+class MaestroResult:
+    exit_code: int
+    output: str
+    flow: Path
+
+    @property
+    def ok(self) -> bool:
+        return self.exit_code == 0
+
 
 # --------------------------------------------------------------------------------------
 # describe
@@ -647,12 +801,90 @@ def count_checks(source: str) -> dict[str, int]:
     return counts
 
 
+#: How a locator helper is spelled, and the strategy key it stands for. Both the `qa.` form
+#: and Playwright's own `page.` form are listed: a scenario is free to use the page directly,
+#: and the book check should still see what it addressed.
+LOCATOR_METHODS = {
+    "by_role": "role",
+    "get_by_role": "role",
+    "by_label": "label",
+    "get_by_label": "label",
+    "by_test_id": "test_id",
+    "get_by_test_id": "test_id",
+    "by_text": "text",
+    "get_by_text": "text",
+    "by_css": "css",
+    "locator": "css",
+}
+
+#: Stands in for a locator argument that is computed rather than written. A role addressed
+#: through a variable still counts as *addressed by role* — the check that would otherwise
+#: fire says no locator uses a role at all, which would be false.
+COMPUTED = "*"
+
+
+def extract_locators(source: str) -> dict[str, list[dict[str, Any]]]:
+    """The locators and navigations each scenario writes, in the shape `validate` reads.
+
+    Static, and it has to be: `_validate_book_locators` holds a browser scenario to the
+    role, name and route the OKF book documents for what it covers, and validation runs
+    before anything is executed. Under YAML the action list was the plan; here the plan is
+    code, so the list is recovered from the parsed tree instead.
+
+    Only what is written literally is recovered. A computed role becomes `"*"` — addressed
+    by role, matching no documented one — and a computed `goto` URL is omitted rather than
+    reported as a route the book does not document.
+    """
+    found: dict[str, list[dict[str, Any]]] = {}
+    for node in ast.parse(source).body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        # Sorted by position, because `ast.walk` yields breadth-first: a locator wrapped in
+        # `.click()` is visited after a bare one written below it, and the problems this
+        # feeds name the offending action by its number in the scenario.
+        actions: list[tuple[tuple[int, int], dict[str, Any]]] = []
+        for child in ast.walk(node):
+            if not isinstance(child, ast.Call) or not isinstance(child.func, ast.Attribute):
+                continue
+            action = _locator_action(child, child.func.attr)
+            if action is not None:
+                actions.append(((child.lineno, child.col_offset), action))
+        found[node.name] = [action for _, action in sorted(actions, key=lambda item: item[0])]
+    return found
+
+
+def _locator_action(call: ast.Call, method: str) -> dict[str, Any] | None:
+    if method == "goto":
+        url = _literal(call.args[0]) if call.args else None
+        return {"do": "goto", "url": url} if isinstance(url, str) else None
+    strategy = LOCATOR_METHODS.get(method)
+    if strategy is None:
+        return None
+    value = _literal(call.args[0]) if call.args else None
+    locator: dict[str, Any] = {strategy: value if isinstance(value, str) else COMPUTED}
+    for keyword in call.keywords:
+        if keyword.arg == "name" and strategy == "role":
+            named = _literal(keyword.value)
+            locator["name"] = named if isinstance(named, str) else COMPUTED
+    return {"locator": locator}
+
+
+def _literal(node: ast.expr) -> Any:
+    try:
+        return ast.literal_eval(node)
+    except (ValueError, SyntaxError):
+        return None
+
+
 def _describe(module_path: Path) -> dict[str, Any]:
     _load(module_path)
     data = REGISTRY.as_json()
-    counts = count_checks(module_path.read_text(encoding="utf-8"))
+    source = module_path.read_text(encoding="utf-8")
+    counts = count_checks(source)
+    locators = extract_locators(source)
     for declared in data["scenarios"]:
         declared["checks"] = counts.get(declared["function"], 0)
+        declared["locators"] = locators.get(declared["function"], [])
     return data
 
 
@@ -678,6 +910,39 @@ def _load(module_path: Path) -> None:
 # --------------------------------------------------------------------------------------
 
 
+def _open_browser(qa: Qa) -> Any:
+    """Start Playwright for a browser target and hand the page to the scenario.
+
+    The import is here rather than at module scope because this file also runs under the
+    interpreter of a project that tests nothing but an HTTP API, and playwright is a heavy
+    dependency to demand of it. There is no fallback: a `playwright` target on an
+    interpreter without playwright is an error, and it says which interpreter and what to
+    install rather than degrading into a scenario that silently proves nothing.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        import ostler_qa_browser
+    except ImportError as exc:
+        if "playwright" not in str(exc):
+            raise
+        raise ImportError(
+            f"target '{qa.target.name}' declares driver 'playwright' but {sys.executable} "
+            "has no playwright; install it with "
+            f"'{sys.executable} -m pip install playwright && {sys.executable} -m playwright "
+            "install chromium'"
+        ) from exc
+
+    browser = ostler_qa_browser.Browser(
+        qa.target,
+        qa_dir=qa.dir,
+        scenario_id=qa.scenario_id,
+        clock=qa.offset_ms,
+        emit=qa._recorder.emit,  # noqa: SLF001 - one module, split across two files
+    )
+    qa.page = browser.open()
+    return browser
+
+
 def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
     _load(module_path)
     declared = next((s for s in REGISTRY.scenarios if s.id == scenario_id), None)
@@ -693,9 +958,16 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         qa_dir=Path(context["qa_dir"]),
         covers=declared.covers,
         recorder=recorder,
+        offset_base_ms=int(context.get("offset_ms", 0)),
     )
+    browser = None
     status, error = "passed", None
     try:
+        # Inside the try: a browser that will not start is a scenario that errored, with a
+        # traceback in the record. Outside it the process would die before emitting anything
+        # and the driver could only report that no result arrived.
+        if target_decl.driver == "playwright":
+            browser = _open_browser(qa)
         declared.func(qa)
     except CheckFailed:
         status = "failed"
@@ -705,6 +977,14 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         # text, but a person debugging a red scenario opens the output file — and finding it
         # empty is what sends them to re-run the scenario by hand to see the exception.
         print(error, file=sys.stdout)
+    if browser is not None:
+        # Closing is what finalizes the trace and the video, so it happens before the
+        # verdict is emitted — but its complaints are appended to the verdict, never
+        # substituted for it.
+        problems = browser.close(failed=status != "passed")
+        if problems:
+            status = "failed" if status == "passed" else status
+            error = "; ".join([part for part in [error, *problems] if part])
     if qa.failures:
         status = "failed" if status == "passed" else status
     # A scenario that claims coverage and recorded nothing has proved nothing. Reporting it

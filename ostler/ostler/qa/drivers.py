@@ -195,7 +195,83 @@ class PythonDriver(QaDriver):
     instead of matching empty.
     """
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        # The two recorders that cannot move into the scenario process, because both film
+        # something *around* it: ffmpeg grabs the X display the browser is drawn on, and
+        # simctl/adb film a device that outlives any one scenario.
+        self._window_recorder: DisplayRecorder | None = None
+        self._device_recorder: DeviceRecorder | None = None
+        self._launch_env: dict[str, str] = {}
+
     def start(self) -> None:
+        self._start_interpreter()
+        driver = str(self.target.get("driver", "python"))
+        recording = self.target.get("recording", {"required": True})
+        if driver == "playwright":
+            self._start_window_recorder(recording)
+        elif driver == "maestro":
+            self._start_device(recording)
+
+    def _start_window_recorder(self, recording: dict[str, Any]) -> None:
+        if not recording.get("required", True) or recording.get("mode", "window") != "window":
+            return
+        viewport = self.target.get("viewport", {"width": 1440, "height": 900})
+        self._window_recorder = DisplayRecorder(
+            self.session,
+            self.target_id,
+            width=int(viewport.get("width", 1440)),
+            height=int(viewport.get("height", 900)),
+            fps=int(recording.get("fps", 30)),
+        )
+        # The whole environment, including the DISPLAY the browser must be launched onto —
+        # which is the one thing the scenario process cannot work out for itself.
+        self._launch_env = self._window_recorder.start()
+
+    def _start_device(self, recording: dict[str, Any]) -> None:
+        """Refuse a mobile target whose device is not there — blocked, not failed.
+
+        This has to stay on ostler's side: a scenario that discovers mid-body that no
+        simulator is booted reports it as a failed assertion against the product, and the
+        workflow spends a lap repairing a plan that was correct.
+        """
+        if shutil.which("maestro") is None:
+            raise DriverBlocked("maestro CLI is not installed")
+        app_id = str(self.target.get("app_id", ""))
+        device = self.target.get("device", "android")
+        if device == "android" and shutil.which("adb"):
+            probe = subprocess.run(  # noqa: S603 — fixed argv
+                ["adb", "shell", "pm", "path", app_id],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            if probe.returncode or not probe.stdout.strip():
+                raise DriverBlocked(f"app {app_id} is not installed on Android")
+        elif device != "android" and shutil.which("xcrun"):
+            probe = subprocess.run(  # noqa: S603 — fixed argv
+                ["xcrun", "simctl", "get_app_container", "booted", app_id],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            if probe.returncode:
+                raise DriverBlocked(f"app {app_id} is unavailable on iOS simulator")
+        if recording.get("required", True):
+            self._device_recorder = DeviceRecorder(self.session, self.target_id, self.target)
+            self._device_recorder.start()
+
+    def stop(self) -> None:
+        try:
+            if self._device_recorder is not None:
+                self._device_recorder.stop()
+        finally:
+            if self._window_recorder is not None:
+                self._window_recorder.stop()
+
+    def _start_interpreter(self) -> None:
         interpreter = self.interpreter()
         if not interpreter.exists():
             # Blocked, not failed: an interpreter that is not there says nothing about the
@@ -240,10 +316,16 @@ class PythonDriver(QaDriver):
             # mean the spec dir to ostler and the repo root to the shell it ran, and one run
             # lost 38 of 66 assertions to the disagreement.
             "qa_dir": str(self.session.qa_dir),
+            # Where the run's clock is right now. The scenario process has its own monotonic
+            # zero, so without this every offset it records — a video's start, a console
+            # message's `atMs` — would be measured from a different origin than the ledger's.
+            "offset_ms": self.session.offset_ms(),
         }
         read_fd, write_fd = os.pipe()
         env = harness_env(self.session.command_env())
         env["OSTLER_QA_RECORD_FD"] = str(write_fd)
+        if self._launch_env.get("DISPLAY"):
+            env["DISPLAY"] = self._launch_env["DISPLAY"]
         process = subprocess.Popen(  # noqa: S603 — agent-authored plan, explicit user intent
             harness_argv(
                 self.interpreter(),
@@ -302,6 +384,7 @@ class PythonDriver(QaDriver):
         assertions = failures = 0
         action = 0
         terminal: dict[str, Any] | None = None
+        problems: list[str] = []
         for record in records:
             kind = record.get("type")
             if kind == "assert":
@@ -339,12 +422,7 @@ class PythonDriver(QaDriver):
             elif kind == "capture":
                 self.session.set_capture(str(record["key"]), str(record["value"]))
             elif kind == "artifact":
-                self.session.register_artifact(
-                    Path(str(record["path"])),
-                    kind=str(record.get("kind", "evidence")),
-                    scenario=scenario_id,
-                    target=self.target_id,
-                )
+                problems.extend(self._register(scenario_id, record))
             elif kind == "scenario":
                 terminal = record
 
@@ -362,14 +440,58 @@ class PythonDriver(QaDriver):
             )
         elif terminal.get("error"):
             message = str(terminal["error"]).strip()[-2000:]
+        if problems:
+            message = "; ".join([part for part in [message, *problems] if part])
 
         status = "passed"
-        if timed_out or terminal is None or failures or (terminal or {}).get("status") != "passed":
+        if (
+            timed_out
+            or terminal is None
+            or failures
+            or problems
+            or (terminal or {}).get("status") != "passed"
+        ):
             status = "failed"
             failures = max(failures, 1)
         return ScenarioResult(
             status=status, assertions=assertions, failures=failures, message=message
         )
+
+    def _register(self, scenario_id: str, record: dict[str, Any]) -> list[str]:
+        """File one artifact the scenario produced, holding a recording to the target's shape.
+
+        The scenario knows *when* it filmed and ostler knows *what a recording must be*: the
+        offsets come over the wire, the measurement is taken here with `ffprobe`, and the two
+        are merged into one artifact entry. Splitting it the other way would put ffprobe in a
+        stdlib-only harness and the target's declared dimensions in a process that never
+        reads the plan.
+        """
+        path = Path(str(record["path"]))
+        kind = str(record.get("kind", "evidence"))
+        metadata = record.get("metadata")
+        metadata = dict(metadata) if isinstance(metadata, dict) else {}
+        problems: list[str] = []
+        if kind == "video" and path.is_file():
+            measured = _probe_media(path)
+            metadata.update(measured)
+            viewport = self.target.get("viewport", {"width": 1440, "height": 900})
+            width, height = int(viewport.get("width", 1440)), int(viewport.get("height", 900))
+            if measured.get("width") and (
+                measured.get("width") != width or measured.get("height") != height
+            ):
+                problems.append(
+                    f"scenario '{scenario_id}' recording is "
+                    f"{measured.get('width')}x{measured.get('height')}, "
+                    f"not the target's {width}x{height}"
+                )
+        self.session.register_artifact(
+            path,
+            kind=kind,
+            scenario=scenario_id,
+            target=self.target_id,
+            **({"metadata": metadata} if metadata else {}),
+        )
+        return problems
 
 
 def _drain(read_fd: int, records: list[dict[str, Any]]) -> None:
@@ -1323,7 +1445,11 @@ def create_driver(
         "playwright": PlaywrightDriver,
         "maestro": MaestroDriver,
     }
-    return classes[target["driver"]](session, target_id, target, root=root, variables=variables)
+    # `module` is stamped on every target by the python loader and by nothing else, so it is
+    # what tells a `playwright` target authored in Python from one authored in YAML. The YAML
+    # classes stay registered until the cutover retires them.
+    driver = "python" if target.get("module") else str(target["driver"])
+    return classes[driver](session, target_id, target, root=root, variables=variables)
 
 
 def _command_assertions(action: dict[str, Any]) -> list[tuple[str, Any]]:

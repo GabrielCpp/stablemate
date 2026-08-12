@@ -38,10 +38,21 @@ def publish_records_the_real_author(qa: Qa) -> None:
     qa.check("message is verbatim", True)
 
 
-@scenario(target=web, mechanism="live", covers=["ac:2"], checkpoints=["the banner shows"])
+# Declared against `api`, not `web`: running it must not launch a browser. What it exercises
+# is the raise path, and a `playwright` target here would make that test start Chromium.
+@scenario(target=api, mechanism="live", covers=["ac:2"], checkpoints=["the banner shows"])
 def banner_is_visible(qa: Qa) -> None:
     """The banner renders."""
     raise AssertionError("not implemented")
+
+
+@scenario(target=web, mechanism="live", covers=["ac:3"])
+def the_page_is_addressed_by_role(qa: Qa) -> None:
+    """The book's role and route, written literally so `describe` can recover them."""
+    qa.goto("/docs")
+    qa.by_role("button", name="Publish").click()
+    qa.by_text("done")
+    qa.check("published", True)
 '''
 
 
@@ -124,7 +135,25 @@ def test_describe_counts_the_assertions_statically(tmp_path: Path) -> None:
     # before anything runs.
     described = _describe(_write(tmp_path))
     counts = {s["id"]: s["checks"] for s in described["scenarios"]}
-    assert counts == {"publish-records-the-real-author": 2, "banner-is-visible": 0}
+    assert counts == {
+        "publish-records-the-real-author": 2,
+        "banner-is-visible": 0,
+        "the-page-is-addressed-by-role": 1,
+    }
+
+
+def test_describe_recovers_the_locators_a_browser_scenario_writes(tmp_path: Path) -> None:
+    # `_validate_book_locators` holds a browser scenario to the role, name and route the OKF
+    # book documents. Under YAML it read the action list; the action list is now code, so
+    # `describe` recovers the same shape from the parsed tree — before anything runs.
+    described = _describe(_write(tmp_path))
+    found = {s["id"]: s["locators"] for s in described["scenarios"]}
+    assert found["the-page-is-addressed-by-role"] == [
+        {"do": "goto", "url": "/docs"},
+        {"locator": {"role": "button", "name": "Publish"}},
+        {"locator": {"text": "done"}},
+    ]
+    assert found["publish-records-the-real-author"] == []
 
 
 def test_describe_runs_nothing(tmp_path: Path) -> None:

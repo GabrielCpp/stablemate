@@ -271,6 +271,15 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
 
 
 
+def _documented_locators(document: PlanDocument) -> dict[str, dict[str, Any]]:
+    """The `role`/`name`/`selector`/`route` the book gives for each obligation in the packet."""
+    return {
+        obligation["id"]: obligation.get("locators") or {}
+        for obligation in document.context.get("obligations", [])
+        if is_mapping(obligation) and obligation.get("id")
+    }
+
+
 def _validate_python_scenarios(
     document: PlanDocument, targets: dict[str, Any]
 ) -> tuple[list[str], set[str]]:
@@ -291,6 +300,7 @@ def _validate_python_scenarios(
             "the plan declares no scenario — decorate at least one function with @scenario"
         ], asserted_coverage
     all_coverage = _known_coverage(document.context)
+    documented = _documented_locators(document)
     seen: set[str] = set()
     for index, scenario in enumerate(scenarios):
         if not is_mapping(scenario):
@@ -330,6 +340,15 @@ def _validate_python_scenarios(
             )
         else:
             asserted_coverage.update(covers)
+        # `describe` recovers the locators from the parsed body, so the book check reads the
+        # same structure it read off a YAML action list — see `extract_locators`.
+        if targets[scenario["target"]].get("driver") == "playwright":
+            found = scenario.get("locators")
+            problems.extend(
+                _validate_book_locators(
+                    scenario_id, list(covers), found if isinstance(found, list) else [], documented
+                )
+            )
     return problems, asserted_coverage
 
 
@@ -355,11 +374,7 @@ def _validate_yaml_scenarios(  # noqa: C901
     action_ids: set[str] = set()
     asserted_coverage: set[str] = set()
     all_coverage = _known_coverage(document.context)
-    documented = {
-        obligation["id"]: obligation.get("locators") or {}
-        for obligation in document.context.get("obligations", [])
-        if is_mapping(obligation) and obligation.get("id")
-    }
+    documented = _documented_locators(document)
     for index, scenario in enumerate(scenarios):
         label = f"scenarios[{index}]"
         if not isinstance(scenario, dict):

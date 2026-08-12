@@ -36,6 +36,23 @@ def item_is_emitted(qa: Qa) -> None:
 '''
 
 
+BROWSER_PLAN = '''\
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-story-1", story="story-1")
+
+web = target("web", driver="playwright", base_url="http://localhost:5173")
+
+
+@scenario(target=web, mechanism="live", covers=["{obligation}"])
+def item_is_shown(qa: Qa) -> None:
+    """The item is on the page."""
+    qa.goto("/items")
+    {locator}
+    qa.check("the item is shown", True)
+'''
+
+
 def _spec(tmp_path: Path) -> Path:
     spec = tmp_path / "docs/specs/story-1"
     spec.mkdir(parents=True)
@@ -166,6 +183,47 @@ def test_a_failing_check_fails_the_run(tmp_path: Path) -> None:
     evidence = json.loads((spec / "qa-evidence.json").read_text(encoding="utf-8"))
     row = next(item for item in evidence["obligations"] if item["id"] == OBLIGATION)
     assert row["verdict"] == "Fail"
+
+
+def _browser_spec(tmp_path: Path, locator: str) -> Path:
+    spec = _spec(tmp_path)
+    context = json.loads((spec / "qa-okf-context.json").read_text(encoding="utf-8"))
+    context["obligations"][0]["locators"] = {"role": "listitem", "route": "/items"}
+    (spec / "qa-okf-context.json").write_text(json.dumps(context), encoding="utf-8")
+    (spec / "qa_plan.py").write_text(
+        BROWSER_PLAN.format(obligation=OBLIGATION, locator=locator), encoding="utf-8"
+    )
+    return spec
+
+
+def test_a_browser_scenario_is_held_to_the_role_the_book_documents(tmp_path: Path) -> None:
+    # The check that survives the format change: `describe` recovers the locators from the
+    # parsed body, so validation reads the same structure it read off a YAML action list.
+    spec = _browser_spec(tmp_path, 'qa.by_text("Widget")')
+    document, problems = load_plan(spec / "qa_plan.py", spec, tmp_path)
+    assert not problems and document is not None
+    reported = validate_v2(document)
+    assert any("uses a text locator" in item for item in reported)
+    assert any("no Playwright locator addresses by role" in item for item in reported)
+
+
+def test_a_browser_scenario_addressed_by_role_validates(tmp_path: Path) -> None:
+    spec = _browser_spec(tmp_path, 'qa.by_role("listitem", name="Widget")')
+    document, problems = load_plan(spec / "qa_plan.py", spec, tmp_path)
+    assert not problems and document is not None
+    assert validate_v2(document) == []
+
+
+def test_a_browser_scenario_may_not_navigate_off_the_documented_route(tmp_path: Path) -> None:
+    spec = _browser_spec(tmp_path, 'qa.by_role("listitem")')
+    module = spec / "qa_plan.py"
+    module.write_text(
+        module.read_text(encoding="utf-8").replace('qa.goto("/items")', 'qa.goto("/invented")'),
+        encoding="utf-8",
+    )
+    document, _ = load_plan(module, spec, tmp_path)
+    assert document is not None
+    assert any("not a route" in item for item in validate_v2(document))
 
 
 def test_a_raising_scenario_reports_its_traceback(tmp_path: Path) -> None:
