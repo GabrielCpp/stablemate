@@ -42,6 +42,35 @@ that do not exist in the ledger/artifacts. A runner pass is refuted when evidenc
 real contradiction, a partial journey, or an assertion that does not prove its `covers`
 claim.
 
+## Judge the layout, not only the assertions
+
+Every screenshot has a `<name>.layout.json` beside it (`schema: browser-layout/1`): the
+viewport, the laid-out document size, and each structural region's box as a share of the
+viewport. **Read it for every screenshot in the manifest.** It exists because a browser
+assertion cannot see a broken page — `by_role(...)` finds an element in the accessibility
+tree whether the page lays it out across the window or crushes it into a column against one
+margin, so a scenario proving every element is present passes over a page no user could use,
+and the screenshot that shows it is the one artifact nothing downstream reads.
+
+On a viewport at least 900px wide, refute the pass as `product-contradiction` when:
+
+- the primary content region (`main`, `article`, or the region carrying the page's body copy)
+  has `viewportWidthShare` below 0.4 and no sibling content region occupies the rest — the
+  page rendered as a narrow column, whatever its text says;
+- that region's `startsRightOf` is above 0.5 while nothing occupies the left half — content
+  pinned against a margin;
+- `flags` is non-empty: `horizontal-overflow` means the document laid out wider than the
+  window, `region-starts-off-screen` means a region begins past the right edge. Neither
+  involves a threshold; both are defects.
+
+Scope those findings `product-test` — the repair is CSS or markup in product code — so the fix
+loop repairs them inside this story rather than the run rediscovering the same page next time.
+Quote the measured numbers in `issue`; a layout finding without them is unactionable.
+
+A browser scenario that took no screenshot has no layout evidence at all. That is a `plan`
+finding — the repair is a `qa.screenshot()` in `qa_plan.py` — and it does not by itself refute
+a pass whose assertions are otherwise complete.
+
 Return `stands` only when no concrete refutation survives. A refutation must be classified:
 
 - `plan-defect`: the frozen plan did not actually test a required objective;

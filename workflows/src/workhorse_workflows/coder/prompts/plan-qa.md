@@ -180,6 +180,7 @@ dashes, so the function name is the id — no separate uniqueness bookkeeping to
 | `qa.http.get/post/put/patch/delete(path, json_body=…, headers=…, expect_status=…)` | HTTP against the target's `base_url` |
 | `qa.goto(url)`, `qa.by_role/by_label/by_test_id/by_text/by_css`, `qa.screenshot(name)`, `qa.page` | the browser, for a `playwright` target |
 | `qa.diagnostics.console_errors/page_errors/failed_requests/responses()` | the live console and network record for that page |
+| `qa.diagnostics.layout()` | where the page put its content: the viewport, and each region's box as a share of it |
 | `qa.maestro.flow([...])` / `qa.maestro.run(flow)` | build and run a Maestro flow; the result is yours to assert on |
 
 `qa.check` is the one piece of ceremony that is not optional: `qa-evidence.json` is built by
@@ -187,6 +188,13 @@ aggregating assert records over what each one `covers`, so a bare `assert` prove
 the gate. A scenario that claims coverage and records no assertion fails — at validation, from
 a static count of the `qa.check`/`qa.require` calls in its body, and again at runtime.
 
+- **Screenshot every documented state a browser scenario reaches.** `qa.screenshot(name)` also
+  writes a `.layout.json` beside the image — `ostler vet`'s DOM scan of that instant — and the
+  audit reads it to judge whether the page is laid out at all. Without it the audit has only
+  your assertions, and an assertion cannot tell a correct page from one rendered as a narrow
+  column against the margin: `by_role` finds an element in the accessibility tree either way.
+  When the obligation is itself about placement, assert on it with `qa.diagnostics.layout()`
+  rather than leaving it to the audit.
 - **Do not invent CLI flags, REST routes, or output shapes.** Check the tool's `--help`, its
   source, or the layer's `qa_skill` — do not guess by analogy with a similar-looking tool.
 - **Defeat the test runner's result cache.** A build-cached runner replays a previous PASS
