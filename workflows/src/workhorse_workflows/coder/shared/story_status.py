@@ -3,10 +3,9 @@
 Ports `scripts/story_status.py`, which was a helper module rather than a node: two nodes
 call it, and neither of them is *about* status.
 
-Story selection reads the status, not the git log. `ostler next-story` (the PRIMARY
-selector) reads the story.md **frontmatter** `status:` field, and `select_story`'s
-`dependencies.json` fallback reads the body's `- **Status**:` line. So a story whose status
-is never written is, to every later loop iteration, still open — it gets re-selected,
+Story selection reads the status, not the git log: `ostler next-story` reads the story.md
+**frontmatter** `status:` field, falling back to the body's `- **Status**:` line. So a story
+whose status is never written is, to every later loop iteration, still open — it gets re-selected,
 re-planned and re-QA'd, and its epic never reads as complete.
 
 Both outcome paths therefore go through here:

@@ -18,9 +18,9 @@ Three ports are worth naming:
 * **`prune-epic.py`'s optional JSON sidecar stays.** Its `argv[2]` was unused by the graph,
   but it is the documented back-compat path that mirrors `select_epic`'s own sidecar
   precedence, so it is a defaulted parameter rather than a deletion.
-* **The legacy fallbacks stay too** — the `epics-todo.json` sidecar in `select_epic` and
-  `prune_epic`, `dependencies.json` in `select_story`. Both exist for repos and sandboxes
-  whose graph ostler cannot answer for, and both are load-bearing in the tests.
+* **One legacy fallback stays** — the `epics-todo.json` sidecar in `select_epic` and
+  `prune_epic`, for repos and sandboxes whose graph ostler cannot answer for. `select_story`
+  has none: a story's blockers live in its own `story.md`, which only ostler parses.
 
 `emit(...)` / `sys.exit(0)` becomes a returned model, as everywhere else in this package.
 The one script that exited **non-zero** — `branch-epic.py`, when the checkout fails —
@@ -33,7 +33,7 @@ import json
 import logging
 from pathlib import Path
 
-from ostler import Ostler, markdown, model, path as okf_path, registry, select
+from ostler import Ostler, markdown, path as okf_path, registry
 from workhorse import worklist as wl
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.kit import find_docs_root, find_repo_root, load_json
@@ -105,7 +105,7 @@ SKIP_FILE = "qa-skip-stories.txt"
 CLAIMED_FILE = "epic-branches.txt"
 
 #: Matches `ostler.select`'s done tokens, which is what makes a story read as done to
-#: `ostler next-story` and to `select_story`'s `dependencies.json` fallback.
+#: `ostler next-story`.
 DONE_STATUS = "QA passed"
 
 
@@ -723,23 +723,6 @@ def _next_story_report(okf: Ostler, epic: str, skip: set[str]) -> dict | str:
         return ""
 
 
-def _is_done(story_md: Path) -> bool:
-    """Whether a story.md declares a done status — ostler's parse, ostler's verdict.
-
-    Used only by the legacy `dependencies.json` fallback, where there is no graph to ask.
-    It still must not disagree with the graph: the status is read as the *field*
-    (frontmatter `status:`, else the parsed `- **Status**:` bullet) and judged by
-    `ostler.select.is_done`. The old check was `"QA passed" in <whole file>`, which a story
-    whose prose merely mentions QA passing satisfies — a story could be skipped as built
-    while still unbuilt, and its dependents would unblock on it.
-    """
-    try:
-        doc = markdown.split(story_md.read_text(encoding="utf-8"))
-    except OSError:
-        return False
-    return select.is_done(model.story_status(doc))
-
-
 def _load_skip_set(root: Path, run_dir: str) -> set[str]:
     """The per-run skip set: story slugs `flag_qa_failure` has given up THIS run.
 
@@ -753,66 +736,6 @@ def _load_skip_set(root: Path, run_dir: str) -> set[str]:
     except OSError:
         return set()
     return {ln.strip() for ln in text.splitlines() if ln.strip()}
-
-
-def _next_from_json(root: Path, epic: str, skip: set[str]) -> dict | None | str:
-    """Fallback: the first runnable story in the epic's `dependencies.json`.
-
-    Returns a dict `{slug, path}`, `None` when every story is DONE, or `""` on error. A
-    skipped story is NOT treated as done — its dependents stay blocked, since they depend
-    on work that did not pass.
-
-    `None` means *done* and nothing else. The not-done-but-not-runnable cases each get
-    their own sentinel (`_all_skipped`, `_blocked`, `_missing_story_md`, `_no_dep_file`)
-    because the caller merges the epic on "done" — so an epic that still has unbuilt
-    stories in it must never come back as `None`.
-    """
-    dep_file = paths.epic_dir(root, epic) / "dependencies.json"
-    if not dep_file.is_file():
-        return {"_no_dep_file": True}  # sentinel: caller reports the specific reason
-    try:
-        data = json.loads(dep_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return ""
-    stories = data.get("stories")
-    if not isinstance(stories, list):
-        return ""
-
-    done: set[str] = set()
-    for entry in stories:
-        slug = str(entry.get("slug", ""))
-        path = entry.get("path", "")
-        story_md = Path(path) if path else paths.story_md(root, epic, slug)
-        if _is_done(story_md):
-            done.add(slug)
-
-    skipped_runnable = False  # a story that WOULD run but for the per-run skip set
-    waiting: list[str] = []  # not done, not runnable: deps unmet
-    for entry in stories:
-        slug = str(entry.get("slug", ""))
-        if slug in done:
-            continue
-        if any(d not in done for d in entry.get("dependencies", [])):
-            waiting.append(slug)
-            continue
-        if slug in skip:
-            # Runnable (deps satisfied) but given up this run — exclude, and remember we
-            # did, so the caller can report "stopped on skip" rather than "all done".
-            skipped_runnable = True
-            continue
-        path = entry.get("path", "")
-        if not path:
-            path = str(paths.story_md(root, epic, slug))
-        if not Path(path).is_file():
-            # Listed in the DAG but not authored yet → its own reason.
-            return {"_missing_story_md": path}
-        return {"slug": slug, "path": path}
-
-    if skipped_runnable:
-        return {"_all_skipped": True}
-    if waiting:
-        return {"_blocked": waiting}
-    return None  # all done
 
 
 @blueprint.node
@@ -886,58 +809,17 @@ def select_story(
             }
         )
 
-    # Fall back to dependencies.json only when ostler could not answer at all: it failed
-    # (""), the epic is not in its graph, or the epic carries no stories there. A real
-    # ostler verdict is authoritative — consulting the legacy file after it would let a
-    # missing dependencies.json override a correct "all done".
+    # A story ostler did not offer is not a story: with no graph answer there is nothing to
+    # select from, and merging an epic we cannot read would ship it unbuilt.
     if not nxt:
-        json_nxt = _next_from_json(root, epic, skip)
-        if isinstance(json_nxt, dict) and json_nxt.get("_no_dep_file"):
-            return found.model_copy(
-                update={
-                    "reason": (
-                        f"no dependencies.json found for epic '{epic}' — cannot select a story; "
-                        "setting it aside rather than merging an epic we cannot read"
-                    )
-                }
-            )
-        if isinstance(json_nxt, dict) and json_nxt.get("_all_skipped"):
-            return found.model_copy(
-                update={
-                    "reason": (
-                        f"remaining runnable stories in epic '{epic}' were all given up this "
-                        "run — setting it aside; start a new run or clear the skip set to retry"
-                    )
-                }
-            )
-        if isinstance(json_nxt, dict) and json_nxt.get("_blocked"):
-            return found.model_copy(
-                update={
-                    "reason": (
-                        f"remaining stories in epic '{epic}' wait on unmet dependencies "
-                        f"({', '.join(json_nxt['_blocked'])}) — setting it aside"
-                    )
-                }
-            )
-        if isinstance(json_nxt, dict) and json_nxt.get("_missing_story_md"):
-            return found.model_copy(
-                update={
-                    "reason": (
-                        f"next story's story.md not found: {json_nxt['_missing_story_md']} — "
-                        "unauthored scope, so this epic is set aside rather than merged"
-                    )
-                }
-            )
-        if isinstance(json_nxt, dict) and "slug" in json_nxt:
-            nxt = json_nxt
-        elif json_nxt is None:
-            return found.model_copy(
-                update={"story_outcome": "done", "reason": f"every story in epic '{epic}' is done"}
-            )
-        else:
-            return found.model_copy(
-                update={"reason": f"could not read the story DAG for epic '{epic}' — setting it aside"}
-            )
+        return found.model_copy(
+            update={
+                "reason": (
+                    f"ostler could not select a story for epic '{epic}' — setting it aside "
+                    "rather than merging an epic whose story graph did not answer"
+                )
+            }
+        )
 
     slug = str(nxt.get("slug"))
     # Final guard: never hand back a story in this run's skip set (the fallback already
