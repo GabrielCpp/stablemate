@@ -132,7 +132,24 @@ Real users do not type URLs or deep-link into screens — they start at the fron
       its `selector:`/bullets) or record the mismatch; `unexpected`/`unlabeled` = on-screen UI the
       book doesn't know → scaffold the interaction or return it in `discovered`. Re-run vet once
       after healing.
-   d. Link the evidence into the book: a **`vet:` bullet** on the screen doc pointing at
+   d. **Record where each structural component sits** — a `placement:` bullet on the `###` section
+      of every component whose `role:` is `main`, `article`, `navigation`, `banner`,
+      `complementary`, `region`, `form` or `dialog`. Read it off the rect you already measured in
+      (a), as a share of the viewport, and write a **band**:
+
+      ```markdown
+      - placement: width 60-100%, x 0-20%
+      ```
+
+      Keys are `x`, `y`, `width`, `height`; an omitted key is unconstrained. This is the one
+      bullet QA can use to tell a correct page from one crushed into a column against a margin,
+      because `role:` and `selector:` are satisfied either way. Two rules make it survive:
+      **state a band, never a point** — wide enough that a resize, a scrollbar or a longer label
+      does not move the component out of it — and **never widen a band to make a red QA run go
+      green**; a component outside its documented band is the defect the bullet exists to catch.
+      Constrain only what the design actually requires; a sidebar's `width` and `x` are
+      load-bearing, its `height` usually is not.
+   e. Link the evidence into the book: a **`vet:` bullet** on the screen doc pointing at
       `docs/specs/<screen-slug>/vet.md`, and on each matched component's `###` section a
       **`screenshot:` bullet** pointing at its crop
       (`docs/specs/<screen-slug>/vet/<state>-<component>.png` — the `crop` paths in the vet report).

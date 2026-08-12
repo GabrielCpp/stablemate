@@ -71,6 +71,14 @@ A browser scenario that took no screenshot has no layout evidence at all. That i
 finding — the repair is a `qa.screenshot()` in `qa_plan.py` — and it does not by itself refute
 a pass whose assertions are otherwise complete.
 
+Where `qa.vet` ran there is also a `<name>.vet.json` beside the screenshot
+(`schema: vet-placement/1`): each documented component, the box it actually occupied, and
+whether that agrees with the `placement:` band the book gives it. Read it first — it is the
+book's own verdict, and a `misplaced` or `missing` verdict is a defect stated in the terms the
+component was documented in, not a threshold you had to pick. The thresholds above remain the
+floor for a screen whose components the book has not placed yet; when a vet report covers the
+screen, quote its verdict rather than re-deriving one from the digest.
+
 Return `stands` only when no concrete refutation survives. A refutation must be classified:
 
 - `plan-defect`: the frozen plan did not actually test a required objective;

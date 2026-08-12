@@ -179,6 +179,7 @@ dashes, so the function name is the id — no separate uniqueness bookkeeping to
 | `qa.secret("NAME")` | a declared secret's value, redacted from the ledger |
 | `qa.http.get/post/put/patch/delete(path, json_body=…, headers=…, expect_status=…)` | HTTP against the target's `base_url` |
 | `qa.goto(url)`, `qa.by_role/by_label/by_test_id/by_text/by_css`, `qa.screenshot(name)`, `qa.page` | the browser, for a `playwright` target |
+| `qa.vet("docs/…/screen.md", name="loaded")` | photograph the screen and register what rendered against where the book places it |
 | `qa.diagnostics.console_errors/page_errors/failed_requests/responses()` | the live console and network record for that page |
 | `qa.diagnostics.layout()` | where the page put its content: the viewport, and each region's box as a share of it |
 | `qa.maestro.flow([...])` / `qa.maestro.run(flow)` | build and run a Maestro flow; the result is yours to assert on |
@@ -188,6 +189,15 @@ aggregating assert records over what each one `covers`, so a bare `assert` prove
 the gate. A scenario that claims coverage and records no assertion fails — at validation, from
 a static count of the `qa.check`/`qa.require` calls in its body, and again at runtime.
 
+- **Vet every documented state a UI scenario reaches — this is not optional.** A scenario on a
+  `playwright` or `maestro` target that never calls `qa.vet` is rejected at validation, before
+  anything runs, and fails again at runtime if it slipped through. `qa.vet(screen, name=…)`
+  takes the screenshot, scans the rendered regions, and registers each one against the
+  `placement:` its component carries in the book — a component that landed outside its
+  documented band becomes an ordinary failed assertion quoting the measured share, so the fix
+  loop repairs it inside the story. The screen argument is a **literal** path to a document
+  this story's OKF packet names; a computed path is rejected, because a path assembled at run
+  time cannot be checked before the run.
 - **Screenshot every documented state a browser scenario reaches.** `qa.screenshot(name)` also
   writes a `.layout.json` beside the image — `ostler vet`'s DOM scan of that instant — and the
   audit reads it to judge whether the page is laid out at all. Without it the audit has only
