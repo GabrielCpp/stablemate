@@ -72,6 +72,11 @@ RECORD_FD_ENV = "OSTLER_QA_RECORD_FD"
 MECHANISMS = ("live", "synthetic", "fixture")
 DRIVERS = ("python", "playwright", "maestro")
 
+#: The drivers that drive a user interface, and so the ones whose scenarios must vet. There
+#: is no exemption list on purpose: the single defect that motivated this passed a run whose
+#: every assertion was true, and an opt-out would have been taken by exactly that plan.
+UI_DRIVERS = ("playwright", "maestro")
+
 DEFAULT_HTTP_TIMEOUT = 30.0
 
 #: When this process started, so a diagnostics timestamp can be placed on the *run's* clock
@@ -523,6 +528,9 @@ class Qa:
         self._index = 0
         self.assertions = 0
         self.failures = 0
+        #: How many screens this scenario handed to the book. Zero on a UI target is a
+        #: failure, not a stylistic omission — see `_run`.
+        self.vets = 0
         self.offset_base_ms = offset_base_ms
         #: The Playwright page, for a `playwright` target. `None` otherwise, and reaching
         #: for it says so — a scenario declared against the wrong target is a mistake worth
@@ -694,6 +702,7 @@ class Qa:
         """
         state = name or "vet"
         path = self.screenshot(state)
+        self.vets += 1
         self._recorder.emit({
             "type": "vet",
             "screen": screen,
@@ -810,6 +819,11 @@ class MaestroResult:
 #: calling none of them proves nothing, and unlike shell that is now statically visible.
 CHECK_METHODS = frozenset({"check", "require"})
 
+#: The method that photographs a screen and hands it to the book for registration. A UI
+#: scenario that never calls it proves every element it names is *present* and nothing at
+#: all about where they landed — which is the shape of run this exists to stop passing.
+VET_METHOD = "vet"
+
 
 def count_checks(source: str) -> dict[str, int]:
     """How many `qa.check` / `qa.require` calls each top-level function contains.
@@ -904,6 +918,32 @@ def _locator_action(call: ast.Call, method: str) -> dict[str, Any] | None:
     return {"locator": locator}
 
 
+def extract_vets(source: str) -> dict[str, list[str]]:
+    """Which screens each scenario hands to the book, as written.
+
+    Recovered statically for the same reason the locators are: "does this browser scenario
+    prove the page looked right" has to have an answer before a run spends an hour arriving
+    at one. A computed screen becomes `"*"` — vetted, but naming a document validation
+    cannot check against the packet.
+    """
+    found: dict[str, list[str]] = {}
+    for node in ast.parse(source).body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        screens: list[str] = []
+        for child in ast.walk(node):
+            if (
+                not isinstance(child, ast.Call)
+                or not isinstance(child.func, ast.Attribute)
+                or child.func.attr != VET_METHOD
+            ):
+                continue
+            screen = _literal(child.args[0]) if child.args else None
+            screens.append(screen if isinstance(screen, str) else COMPUTED)
+        found[node.name] = screens
+    return found
+
+
 def _literal(node: ast.expr) -> Any:
     try:
         return ast.literal_eval(node)
@@ -917,9 +957,11 @@ def _describe(module_path: Path) -> dict[str, Any]:
     source = module_path.read_text(encoding="utf-8")
     counts = count_checks(source)
     locators = extract_locators(source)
+    vets = extract_vets(source)
     for declared in data["scenarios"]:
         declared["checks"] = counts.get(declared["function"], 0)
         declared["locators"] = locators.get(declared["function"], [])
+        declared["vets"] = vets.get(declared["function"], [])
     return data
 
 
@@ -1026,6 +1068,16 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
     # A scenario that claims coverage and recorded nothing has proved nothing. Reporting it
     # as passed is exactly the vacuity this format exists to end, so it is a failure here
     # rather than a reviewer's job four laps later.
+    # The same vacuity one layer out: on a UI target every assertion can hold while the page
+    # renders as a sliver against one margin. `validate` refuses a plan whose UI scenario
+    # never vets; this is the half a plan cannot lie its way past, since it counts the calls
+    # that actually ran.
+    if status == "passed" and target_decl.driver in UI_DRIVERS and qa.vets == 0:
+        status = "failed"
+        error = (
+            f"scenario {declared.id!r} runs against a {target_decl.driver} target and vetted "
+            "no screen — call qa.vet('<screen doc>') on each documented state it reaches"
+        )
     if status == "passed" and qa.assertions == 0 and declared.covers:
         status = "failed"
         error = (

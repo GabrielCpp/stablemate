@@ -540,6 +540,7 @@ def _gui_plan(
         '    """The widget is on the page."""\n'
         f"    qa.goto({url!r})\n"
         f"{body}"
+        '    qa.vet("docs/features/demo/screen.md", name="loaded")\n'
         '    qa.check("the widget is shown", True)\n',
         encoding="utf-8",
     )
@@ -720,3 +721,55 @@ def test_a_flow_linked_from_another_flow_is_not_also_a_contract(tmp_path: Path):
     ids = [item["id"] for item in packet["obligations"]]
     assert sorted(set(ids)) == sorted(ids)
     assert validate_context(packet) == []
+
+
+def test_a_ui_scenario_that_vets_no_screen_is_rejected(tmp_path: Path):
+    """The gate the whole change exists for: every assertion in the run that shipped the
+    defect was true, and the page was a 117px column against the right margin. A UI scenario
+    that never registers what rendered proves presence and nothing about placement."""
+    spec = tmp_path / "docs/specs/story-1"
+    _gui_context(spec)
+    plan = _gui_plan(spec, locator={"role": "alert", "name": "the failure message"})
+    plan.write_text(
+        plan.read_text(encoding="utf-8").replace(
+            '    qa.vet("docs/features/demo/screen.md", name="loaded")\n', ""
+        ),
+        encoding="utf-8",
+    )
+
+    assert any("vets no screen" in item for item in _problems(tmp_path, plan, spec))
+
+
+def test_a_vetted_screen_the_packet_does_not_name_is_rejected(tmp_path: Path):
+    """Same shape as the locator rules: the screen comes from the book, not from the author."""
+    spec = tmp_path / "docs/specs/story-1"
+    _gui_context(spec)
+    plan = _gui_plan(spec, locator={"role": "alert", "name": "the failure message"})
+    plan.write_text(
+        plan.read_text(encoding="utf-8").replace(
+            "docs/features/demo/screen.md", "docs/features/demo/invented.md"
+        ),
+        encoding="utf-8",
+    )
+
+    problems = _problems(tmp_path, plan, spec)
+    assert any("invented.md" in item and "does not name" in item for item in problems)
+
+
+def test_a_computed_vet_target_is_rejected(tmp_path: Path):
+    """A screen assembled at run time cannot be checked before the run, which is the only
+    place this gate is worth anything."""
+    spec = tmp_path / "docs/specs/story-1"
+    _gui_context(spec)
+    plan = _gui_plan(spec, locator={"role": "alert", "name": "the failure message"})
+    plan.write_text(
+        plan.read_text(encoding="utf-8").replace(
+            '"docs/features/demo/screen.md"', 'SCREEN_DIR + "/screen.md"'
+        ).replace(
+            'plan(run_id="qa-run-1", story="story-1")',
+            'SCREEN_DIR = "docs/features/demo"\n\nplan(run_id="qa-run-1", story="story-1")',
+        ),
+        encoding="utf-8",
+    )
+
+    assert any("computed screen path" in item for item in _problems(tmp_path, plan, spec))

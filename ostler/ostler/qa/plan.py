@@ -13,8 +13,15 @@ from urllib.parse import urlsplit
 
 import yaml
 
-from ostler.qa.harness_host import default_interpreter, describe
+from ostler.qa.harness_host import default_interpreter, describe, load_harness_module
 from ostler.untyped import is_mapping
+
+#: Read off the harness rather than restated, because `describe` produces these values and
+#: this module judges them: a second spelling of either one is a gate that quietly stops
+#: firing.
+_plan_harness = load_harness_module("ostler_qa")
+COMPUTED: str = _plan_harness.COMPUTED
+UI_DRIVERS: tuple[str, ...] = tuple(_plan_harness.UI_DRIVERS)
 
 #: What a `qa-plan.yml` gets told now. The YAML plan's content was a shell heredoc, and every
 #: silent-failure mode it had — a `jq` path reading a missing field as an empty stream, an
@@ -278,14 +285,62 @@ def _validate_python_scenarios(
             asserted_coverage.update(covers)
         # `describe` recovers the locators from the parsed body, so the book check reads the
         # same structure it read off a YAML action list — see `extract_locators`.
-        if targets[scenario["target"]].get("driver") == "playwright":
+        driver = targets[scenario["target"]].get("driver")
+        if driver == "playwright":
             found = scenario.get("locators")
             problems.extend(
                 _validate_book_locators(
                     scenario_id, list(covers), found if isinstance(found, list) else [], documented
                 )
             )
+        if driver in UI_DRIVERS:
+            vetted = scenario.get("vets")
+            problems.extend(
+                _validate_vets(
+                    scenario_id,
+                    vetted if isinstance(vetted, list) else [],
+                    _documented_screens(document),
+                )
+            )
     return problems, asserted_coverage
+
+
+def _documented_screens(document: PlanDocument) -> set[str]:
+    """Every document the story's packet puts an obligation on."""
+    return {
+        str(obligation["source"])
+        for obligation in document.context.get("obligations", [])
+        if is_mapping(obligation) and obligation.get("source")
+    }
+
+
+def _validate_vets(scenario_id: str, vetted: list[Any], documented: set[str]) -> list[str]:
+    """A UI scenario proves what its screens looked like, against a screen the packet names.
+
+    Not a policy knob and not a warning. Every assertion in the run that motivated this was
+    true of a page whose whole content was a column pinned against one margin — presence is
+    what a role locator proves, and placement is what it cannot. Refusing the plan is the
+    only point at which that costs nothing.
+    """
+    if not vetted:
+        return [
+            f"scenario '{scenario_id}' drives a UI and vets no screen — call "
+            "qa.vet('<screen doc path>') on each documented state it reaches, so what "
+            "rendered is registered against where the book places it"
+        ]
+    problems: list[str] = []
+    for screen in vetted:
+        if screen == COMPUTED:
+            problems.append(
+                f"scenario '{scenario_id}' vets a computed screen path; write the document "
+                "literally so validation can check it before the run"
+            )
+        elif screen not in documented:
+            problems.append(
+                f"scenario '{scenario_id}' vets '{screen}', which this story's OKF packet "
+                f"does not name — vetted screens come from {sorted(documented)}"
+            )
+    return problems
 
 
 def _validate_background(background: Any) -> list[str]:

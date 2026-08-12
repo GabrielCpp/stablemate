@@ -338,6 +338,12 @@ def test_recording_cannot_be_disabled_by_the_plan_itself(tmp_path: Path) -> None
             'api = target("api")',
             'api = target("web", driver="playwright", base_url="http://localhost:3000",\n'
             "             recording={{'required': False}})",
+        ).replace(
+            # A UI scenario has to vet, so the plan that tests the *recording* policy has to
+            # satisfy the vetting one too — otherwise it fails for the wrong reason.
+            '    qa.check("the value is ok", True, actual="ok", expected="ok")',
+            '    qa.vet("docs/features/demo/item.md", name="loaded")\n'
+            '    qa.check("the value is ok", True, actual="ok", expected="ok")',
         ),
     )
 

@@ -142,6 +142,28 @@ def test_describe_counts_the_assertions_statically(tmp_path: Path) -> None:
     }
 
 
+def test_describe_recovers_the_screens_a_scenario_vets(tmp_path: Path) -> None:
+    # The half of "mandatory" that bites before anything runs: `validate` reads this list to
+    # refuse a UI scenario that never registers what it rendered. A screen assembled at run
+    # time is reported as computed rather than guessed at, so validation can say so.
+    module = _write(
+        tmp_path,
+        PLAN.replace(
+            '    qa.check("published", True)',
+            '    qa.vet("docs/features/demo/screen.md", name="loaded")\n'
+            "    qa.vet(SCREEN)\n"
+            '    qa.check("published", True)',
+        ).replace(
+            'plan(run_id="qa-04-publish", story="04-publish")',
+            'SCREEN = "docs/features/demo/other.md"\n\nplan(run_id="qa-04-publish", story="04-publish")',
+        ),
+    )
+
+    vets = {s["id"]: s["vets"] for s in _describe(module)["scenarios"]}
+    assert vets["the-page-is-addressed-by-role"] == ["docs/features/demo/screen.md", "*"]
+    assert vets["publish-records-the-real-author"] == []
+
+
 def test_describe_recovers_the_locators_a_browser_scenario_writes(tmp_path: Path) -> None:
     # `_validate_book_locators` holds a browser scenario to the role, name and route the OKF
     # book documents. Under YAML it read the action list; the action list is now code, so
@@ -237,3 +259,26 @@ def test_require_stops_the_scenario(tmp_path: Path) -> None:
     labels = [r["label"] for r in records if r["type"] == "assert"]
     assert labels == ["author is the token uid"]
     assert records[-1]["failures"] == 1
+
+
+def test_a_ui_scenario_that_vets_nothing_fails_at_run_time(tmp_path: Path) -> None:
+    """The static gate reads the plan; this one counts the calls that actually ran, so a
+    scenario cannot reach the ledger green having proved only that its elements exist."""
+    # A maestro target rather than the browser one: the refusal is about any UI driver, and
+    # a `playwright` scenario would launch Chromium before reaching the code under test.
+    module = _write(
+        tmp_path,
+        "from ostler_qa import Qa, plan, scenario, target\n\n"
+        'plan(run_id="qa-04-publish", story="04-publish")\n\n'
+        'phone = target("phone", driver="maestro")\n\n\n'
+        '@scenario(target=phone, mechanism="live", covers=["ac:1"])\n'
+        "def the_list_is_shown(qa: Qa) -> None:\n"
+        '    """The list renders."""\n'
+        '    qa.check("the list is shown", True)\n',
+    )
+
+    code, records = _run(module, "the-list-is-shown", tmp_path)
+
+    assert code == 1
+    assert records[-1]["status"] == "failed"
+    assert "vetted no screen" in records[-1]["error"]

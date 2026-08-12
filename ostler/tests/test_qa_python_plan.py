@@ -49,6 +49,7 @@ def item_is_shown(qa: Qa) -> None:
     """The item is on the page."""
     qa.goto("/items")
     {locator}
+    qa.vet("docs/features/demo/item.md", name="items")
     qa.check("the item is shown", True)
 '''
 
