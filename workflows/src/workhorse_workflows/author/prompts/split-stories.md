@@ -5,9 +5,9 @@ agent: agent
 # Split epic `{{ workhorse_var('epic') }}` into stories
 
 You are the **story-split** stage. Decide the epic's stories and record them into the epic's
-`## Stories` section via `ostler create story` — slugs, titles, dependencies, and the seeds each
+`## Stories` section via `ostler create story` — slugs, titles, blockers, and the seeds each
 story covers. (`ostler create story` allocates the id, adds the `### <slug>` block under
-`## Stories`, and scaffolds the `story.md`.) You do NOT write `story.md` bodies here; the per-story
+`## Stories`, and scaffolds the `story.md`, whose `## Dependencies` section carries the blockers.) You do NOT write `story.md` bodies here; the per-story
 stage does that next.
 
 ## Inputs (authoritative)
@@ -27,8 +27,8 @@ stage does that next.
   is "missing" plus a separate "fidelity" seed become distinct stories; a `prerequisites` note
   drives a dependency edge. Do not size stories from the one-line summary alone. (Read seeds with
   `ostler list --type seed --epic {{ epic }} --json` if you prefer structured output.)
-- This repo's **artifact grammar** — the `## Stories` grammar (the `covers` / `depends on` edges)
-  and slug rules:
+- This repo's **artifact grammar** — the `## Stories` grammar (the `covers` edge), the story's
+  own `## Dependencies` section (the blocker edges), and slug rules:
   {{ find_by_tags("planning", "docs") | default("(none installed — mirror the best-formed existing epic's `## Stories` section)", true) }}.
 - Its **planning method** — story sizing and sequencing guidance:
   {{ find_by_tags("planning") | default("(none installed — size stories so each is independently shippable)", true) }}.
@@ -37,7 +37,7 @@ stage does that next.
 {% block repo_split_rules %}{% endblock %}
 - `{{ epic_dir }}/context.md` and the epic's existing `## Stories` section when present.
 - The milestone file under `docs/milestones/` that lists this epic. Cross-epic readiness belongs in the milestone graph, not
-  in a sibling-story `depends on:` edge. A `depends on:` value may name only a story in this same
+  in a sibling-story blocker. A `- Blocked by:` value may name only a story in this same
   epic; use milestone `dependsOn` for cross-epic sequencing.
 
 ## Task
@@ -63,8 +63,9 @@ stage does that next.
 3. **Order with `--depends`.** A story depends on another only when it genuinely needs it
    first (e.g. a shared shell/navbar before pages that live in it). Keep the graph acyclic.
 4. **Create each story with `ostler` — it allocates the id and scaffolds the files.** Pass a
-   kebab `<slug>`; ostler records the `### <slug>` edge block under `## Stories`, allocates the
-   story id, and scaffolds `{{ epic_dir }}/stories/<slug>/story.md`:
+   kebab `<slug>`; ostler records the `### <slug>` coverage block under `## Stories`, allocates the
+   story id, and scaffolds `{{ epic_dir }}/stories/<slug>/story.md` with the blockers written
+   into its `## Dependencies` section:
    ```bash
    ostler create story {{ epic }} <kebab-slug> \
      --title "<title>" \
@@ -76,8 +77,9 @@ stage does that next.
 ## Output — the epic's `## Stories` section
 
 Each `ostler create story` call adds a story block under `## Stories` in `{{ epic_dir }}/epic.md`,
-carrying its `title`, allocated `id`, `covers` (the seeds), and `depends on` (sibling slugs), and
-scaffolds the story's `story.md`. You may add optional `- phase: …` / `- effort: …` bullets to a
+carrying its `title`, allocated `id` and `covers` (the seeds), and scaffolds the story's
+`story.md` — whose `## Dependencies` section states the blockers, one `- Blocked by: <slug>`
+each, or the bare `(none)`. You may add optional `- phase: …` / `- effort: …` bullets to a
 story block if the project tracks them. Do NOT write `story.md` body content in this stage.
 
 After creating the stories, run `ostler doctor --epic {{ epic }}` to confirm the graph is acyclic,

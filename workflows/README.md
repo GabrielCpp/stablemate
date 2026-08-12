@@ -173,7 +173,7 @@ derivations of the same location is the failure the rule exists for; the second 
 learns about the config.
 
 What a workflow still owns is the **filename it invented** — `context.md`, `feedback.md`,
-`_author-context.md`, `<gate>-context.md`, `attempts.md`, `dependencies.json` — joined onto
+`_author-context.md`, `<gate>-context.md`, `attempts.md` — joined onto
 a directory ostler resolved. Run artifacts that are not documents at all (`.agents/operator`,
 `.agents/okf-build`, the dream inbox and ledger, the surveyor's `docs/survey/` scratch) stay
 with the workflow, because ostler has no opinion about them.

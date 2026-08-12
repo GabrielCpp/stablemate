@@ -16,13 +16,15 @@ are they **too few / too coarse** to be implemented and assessed?
 
 ## Required reading
 
-- `{{ epic_dir }}/epic.md` — including its `## Seeds` and `## Stories` (the dependency-DAG) sections.
-- Each `story.md` under `{{ epic_dir }}/stories/`.
+- `{{ epic_dir }}/epic.md` — including its `## Seeds` and `## Stories` (coverage) sections.
+- Each `story.md` under `{{ epic_dir }}/stories/` — its `## Dependencies` section is the
+  dependency DAG.
 
 ## What stage this is — story bodies are empty by design here
 
 The stage before you **splits** the epic: it decides the set of stories and records each one's
-title, `covers` and `depends on` under `## Stories`, and scaffolds a `story.md` per story. It does
+title and `covers` under `## Stories`, and scaffolds a `story.md` per story carrying its
+blockers. It does
 not write story bodies — the per-story authoring stage does that *after* coverage is settled.
 
 So at this point every `story.md` is expected to be a scaffold with empty `## Context` and
@@ -31,7 +33,7 @@ blank story body, an absent QA method, or missing acceptance text; the split sta
 unable to fix them, so such a verdict only sends the graph around a lap that changes nothing.
 
 Judge coverage against `epic.md` — its `## Seeds` (with their researched `surface`, `backing`,
-`prerequisites`) and the `## Stories` DAG (each story's title, `covers` and `depends on`). Read the
+`prerequisites`), the `## Stories` coverage edges, and each story's `## Dependencies`. Read the
 `story.md` files for whatever they *do* carry (a title, an existing body on a re-run), and let their
 scaffolded sections pass without comment.
 

@@ -226,7 +226,7 @@ def validate_edit_plan(
             )
         if missing_dependencies:
             errors.append(
-                f"[E_DANGLING_DEPENDENCY] story '{story.slug}' depends on removed stories: "
+                f"[E_DANGLING_DEPENDENCY] story '{story.slug}' is blocked by removed stories: "
                 + ", ".join(missing_dependencies)
             )
     active = {seed.id for seed in seeds.values() if seed.status not in _INACTIVE_SEED_STATUSES}

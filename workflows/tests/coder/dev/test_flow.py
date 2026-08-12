@@ -87,6 +87,10 @@ type: story
 
 # Story One
 
+## Dependencies
+
+(none)
+
 ## Context
 
 Users need a thing.

@@ -36,7 +36,7 @@ coder could actually build and a QA could actually verify, grounded in the resea
   interactions, and flows: what the story claims to work on, in the book's own words.
 {%- endif %}
 - the epic's `## Seeds` and `## Stories` sections in `epic.md` — the scope this story claims (the
-  seeds it covers and its dependency edges)
+  seeds it covers); the story's own `## Dependencies` section names what blocks it
 
 {% if workhorse_var('prior_audit_findings') %}
 ## Convergence re-audit

@@ -12,7 +12,7 @@ needs**, files **follow-ups** for work the goal turns out to require, and runs r
 acceptance criteria. An over-specified story does not make the coder more correct — long, detailed
 stories have still shipped with whole defects unnoticed — it just rots and misleads.
 
-> Do NOT enumerate components, data sources, file paths, gap tables, parity matrices, dependencies,
+> Do NOT enumerate components, data sources, file paths, gap tables, parity matrices, libraries,
 > required skills, or an implementation plan. If you are describing *how* to build it, stop — that
 > is the coder's job. Your job is *what* and *why*, plus *how it's judged*.
 
@@ -133,12 +133,17 @@ about real behavior — not the mere presence of an element in the DOM.
 
 ## Write `{{ workhorse_var('story_path') }}`
 
-`ostler create story` already scaffolded this `story.md` with `## Context`, `## Acceptance
-Criteria`, and `## Implementation Status` (`- **Status**: Not started`). Fill in the **Context** and
-**Acceptance Criteria** bodies — and only those. Add no other sections. The result should read:
+`ostler create story` already scaffolded this `story.md` with `## Dependencies`, `## Context`,
+`## Acceptance Criteria`, and `## Implementation Status` (`- **Status**: Not started`). Fill in the
+**Context** and **Acceptance Criteria** bodies — and only those. Add no other sections. The result
+should read:
 
 ```markdown
 # Story: <title>
+
+## Dependencies
+
+- Blocked by: <sibling-slug>      # reproduce verbatim; `(none)` when nothing blocks it
 
 ## Context
 
@@ -154,10 +159,17 @@ Criteria`, and `## Implementation Status` (`- **Status**: Not started`). Fill in
 - **Status**: Not started
 ```
 
-Do not add Description, Evidence, Verification setup, QA, Dependencies, or Required skills sections —
-the coder discovers all of that. Leave `## Implementation Status` as scaffolded; do not hand-edit
-the `- **Status**:` line — status transitions go through `ostler set-status <slug> "<status>"`
+Do not add Description, Evidence, Verification setup, QA, or Required skills sections — the coder
+discovers all of that. Leave `## Implementation Status` as scaffolded; do not hand-edit the
+`- **Status**:` line — status transitions go through `ostler set-status <slug> "<status>"`
 (the coder owns them).
+
+`## Dependencies` is likewise not yours to write. It is the story dependency graph — one
+`- Blocked by: <sibling-slug>` per blocker, or the bare `(none)` — and the planner already set it.
+**Reproduce it exactly as you found it**: never invent, reorder, reword or drop a line, and never
+replace it with prose. Dropping a blocker does not simplify the story; it lets the coder start work
+whose prerequisite does not exist yet. Edges change only through
+`ostler update story <slug> --depends <a,b>`.
 
 ## No open questions
 
