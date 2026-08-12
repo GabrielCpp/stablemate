@@ -141,7 +141,7 @@ def test_every_unwritten_story_is_named_with_its_empty_sections(tmp_path: Path):
     assert all(f.severity == "error" for f in found)
     assert all(f.epic == epic_dir for f in found)
     # Which sections are empty is the actionable part — "unwritten" alone does not say what to write.
-    assert "Context, Acceptance Criteria are empty" in found[0].message
+    assert "Context (empty), Acceptance Criteria (empty)" in found[0].message
     # And it is located: a finding without a path cannot be opened from a report.
     assert found[0].path == f"docs/epics/{epic_dir}/stories/01-a/story.md"
 
@@ -173,8 +173,24 @@ def test_a_partially_written_story_names_only_the_empty_section(tmp_path: Path):
 
     found = _unwritten(tmp_path)
     assert len(found) == 1
-    assert "Acceptance Criteria is empty" in found[0].message
+    assert "Acceptance Criteria (empty)" in found[0].message
     assert "Context" not in found[0].message
+
+
+def test_a_section_the_story_predates_is_reported_missing_not_empty(tmp_path: Path):
+    """A story written before a section was required has no heading to write under, and
+    reporting that as "empty" sends the reader looking for prose that has nowhere to go.
+    The two states need different repairs, so the finding has to tell them apart."""
+    epic_dir = _scaffolded(tmp_path, ["01-a"])
+    story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-a/story.md"
+    body = story_md.read_text(encoding="utf-8")
+    start = body.index("## Dependencies")
+    story_md.write_text(body[:start] + body[body.index("## Context") :], encoding="utf-8")
+
+    found = _unwritten(tmp_path)
+
+    assert len(found) == 1
+    assert "Dependencies (missing)" in found[0].message
 
 
 def test_a_waiver_downgrades_an_unwritten_story_without_hiding_it(tmp_path: Path):

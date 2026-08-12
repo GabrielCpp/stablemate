@@ -74,7 +74,7 @@ def test_create_story_adds_block_and_scaffold(tmp_path: Path):
     assert story.authored is False
     unwritten = [f for f in doctor.run(g2).findings if f.code == "unwritten-story"]
     assert [f.ref for f in unwritten] == ["01-apercu"]
-    assert "Context, Acceptance Criteria are empty" in unwritten[0].message
+    assert "Context (empty), Acceptance Criteria (empty)" in unwritten[0].message
 
 
 def test_create_story_writes_its_blockers_into_the_story(tmp_path: Path):

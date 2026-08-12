@@ -70,6 +70,11 @@ class Story:
     # scaffolded story has every `filled` one here — which is what distinguishes "the file exists"
     # from "somebody wrote the story".
     unwritten_sections: list[str] = field(default_factory=list)
+    # The same headings, each carrying *why* — `"Dependencies (missing)"` against
+    # `"Context (empty)"`. The two are not the same repair: an empty section is waiting on an
+    # author, a missing one predates the contract that requires it and no amount of writing
+    # under the headings that are there will satisfy the check.
+    unwritten_detail: list[str] = field(default_factory=list)
     # Bullets under `## Dependencies` that do not state a blocker — see
     # `story_dependency_strays`. Non-empty means the section's shape is wrong, which is
     # indistinguishable from "no blockers" in `dependencies` alone.
@@ -801,7 +806,7 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
             story.dependencies = story_dependencies(doc)
             story.raw["dependencies"] = story.dependencies
             story.dependency_strays = story_dependency_strays(doc)
-            story.unwritten_sections = [
-                s.heading for s, _ in required_section_problems(doc, registry.STORY_SECTIONS)
-            ]
+            problems = required_section_problems(doc, registry.STORY_SECTIONS)
+            story.unwritten_sections = [s.heading for s, _ in problems]
+            story.unwritten_detail = [f"{s.heading} ({why})" for s, why in problems]
             return

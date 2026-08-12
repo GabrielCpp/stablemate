@@ -69,7 +69,7 @@ def _guard_authored(okf: Ostler, slug: str, logger: logging.Logger) -> None:
     detail = (
         "story.md is missing"
         if story.story_md is None
-        else "story.md is still a bare scaffold — empty: " + ", ".join(story.unwritten_sections)
+        else "story.md is still a bare scaffold — " + ", ".join(story.unwritten_detail)
     )
     raise WorkflowFailed(
         f"story '{slug}' is not authored ({detail}); refusing to plan against it. "

@@ -240,8 +240,7 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
                 rel = story.story_md.relative_to(graph.root).as_posix()
                 f.append(Finding("error", "unwritten-story",
                                  f"story '{story.slug}' is still a bare scaffold — "
-                                 f"{', '.join(story.unwritten_sections)} "
-                                 f"{'is' if len(story.unwritten_sections) == 1 else 'are'} empty",
+                                 f"{', '.join(story.unwritten_detail)}",
                                  epic.name, story.slug, path=rel, line=1))
         # only meaningful when the epic uses seeds at all (a wholly-seedless epic is a valid mode)
         if not story.seed_items and epic.seeds:

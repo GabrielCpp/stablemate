@@ -177,7 +177,7 @@ def _author_report(epic: Epic, skip: frozenset[str] = frozenset()) -> dict:
             continue
         report["state"] = "ready"
         report["story"] = _story_dict(epic, story)
-        empty = ", ".join(story.unwritten_sections) or "no story.md"
+        empty = ", ".join(story.unwritten_detail) or "no story.md"
         report["detail"] = f"{story.slug} is unwritten ({empty})"
         return report
     if pending:
