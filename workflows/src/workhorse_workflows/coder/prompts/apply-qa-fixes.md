@@ -61,6 +61,12 @@ Resolve the observable failures documented in `qa.md` without adding new story s
   A layer with no testing skill in the list above has none in this repo — follow the
   conventions its existing tests already establish.
 - Preserve story-local QA evidence; add new evidence only when it helps rerun QA.
+- Never edit `qa-evidence.json`, `qa/qa-run.ndjson` or `qa/run-manifest.json`, and never
+  recompute a manifest hash. Those three are the rerun's output, and the manifest hashes are
+  what `ostler artifact vet` checks the other two against — refreshing a hash to match an
+  edited ledger makes `vet` report clean on a ledger nobody executed, so the tamper detector
+  and the evidence it guards fail together and silently. A coverage claim you believe is
+  wrong is a finding for the summary, not a record to delete.
 - Preserve unrelated user changes.
 - Stop instead of guessing if a QA failure requires a product decision, missing fixture, unavailable emulator, or non-MVP behavior.
 
