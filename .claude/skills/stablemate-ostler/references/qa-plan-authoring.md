@@ -129,7 +129,10 @@ plus the verdict: it registers each scanned region against the `placement:` band
 that component, and every disagreement becomes a failed assertion in the ledger quoting the
 measured share. A UI scenario must call it — `validate` rejects a `playwright` or `maestro`
 scenario that vets nothing, and the runtime refuses one that reached the end having vetted
-nothing. The screen path is written literally, and must be a document this story's obligation
+nothing. On a `maestro` target it photographs the device and reads the regions from the view
+hierarchy (`maestro hierarchy`, or `uiautomator` on Android via
+`qa.device_screenshot(name, source="uiautomator")`) instead of from a DOM; the sidecars it
+writes are the same two documents, stamped `device-layout/1`. The screen path is written literally, and must be a document this story's obligation
 packet names; there is no exemption list, because the run this exists to stop was a run whose
 every assertion was true.
 

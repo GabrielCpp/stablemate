@@ -44,9 +44,10 @@ claim.
 
 ## Judge the layout, not only the assertions
 
-Every screenshot has a `<name>.layout.json` beside it (`schema: browser-layout/1`): the
-viewport, the laid-out document size, and each structural region's box as a share of the
-viewport. **Read it for every screenshot in the manifest.** It exists because a browser
+Every screenshot has a `<name>.layout.json` beside it (`schema: browser-layout/1`, or
+`device-layout/1` when the screen was measured from a phone's view hierarchy instead of a
+DOM): the viewport, the laid-out document size, and each structural region's box as a share
+of the viewport. **Read it for every screenshot in the manifest.** It exists because a browser
 assertion cannot see a broken page — `by_role(...)` finds an element in the accessibility
 tree whether the page lays it out across the window or crushes it into a column against one
 margin, so a scenario proving every element is present passes over a page no user could use,
@@ -62,6 +63,10 @@ On a viewport at least 900px wide, refute the pass as `product-contradiction` wh
 - `flags` is non-empty: `horizontal-overflow` means the document laid out wider than the
   window, `region-starts-off-screen` means a region begins past the right edge. Neither
   involves a threshold; both are defects.
+
+A `device-layout/1` digest has no laid-out document distinct from the screen, so its `flags`
+list is always empty and `horizontal-overflow` is not evidence of anything there. Judge a
+device screen from the vet report below and from region shares, never from a missing flag.
 
 Scope those findings `product-test` — the repair is CSS or markup in product code — so the fix
 loop repairs them inside this story rather than the run rediscovering the same page next time.
