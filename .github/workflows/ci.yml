@@ -31,6 +31,13 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # The suite runs in ~4 minutes; anything past this is a wedge, not slow tests. Without
+    # it a hung run holds a runner for GitHub's 6-hour default — which is what a workflow
+    # state machine does when a gate it can never satisfy sends it into an operator
+    # `await`: the driver polls a file no one will write, and the job is only ever ended
+    # by a human noticing. `pytest-timeout` fails the wedged test by name first; this is
+    # the backstop for a wedge outside pytest.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -73,6 +80,7 @@ jobs:
   commit-messages:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:

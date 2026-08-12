@@ -87,3 +87,8 @@ testpaths = ["tests"]
 # retains the three most recent runs, which is how a green suite still fills a disk. Keep
 # a sandbox only when it can still be read for a reason: a failing test.
 tmp_path_retention_policy = "failed"
+# These tests drive real subprocesses and the driver's own waits — both can block with no
+# upper bound of their own (a child that never exits, an operator `await` polling for an
+# answer file). A hung test is then indistinguishable from a slow one until a runner has
+# been held for hours, so the suite states its own ceiling. See workflows/pyproject.toml.
+timeout = 120

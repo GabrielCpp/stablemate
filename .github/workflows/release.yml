@@ -90,6 +90,9 @@ jobs:
     needs: release-please
     if: needs.release-please.outputs.releases_created == 'true' || inputs.force_publish
     runs-on: ubuntu-latest
+    # Same bound as ci.yml's, and for the same reason: a wedged suite must not hold a
+    # runner for six hours. Here it also keeps a release from hanging rather than failing.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:

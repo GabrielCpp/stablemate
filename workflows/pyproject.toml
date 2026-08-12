@@ -124,3 +124,10 @@ testpaths = ["tests"]
 # depend on collection order.
 pythonpath = ["tests"]
 tmp_path_retention_policy = "failed"
+# No test here needs a minute; the whole suite runs in about one. The cap is not about
+# slowness, it is about the failure mode this suite has and the unit suites do not: a
+# drive that reaches a gate the stub cannot satisfy ends in an operator `await`, and the
+# driver polls for an answer file forever rather than failing. Unbounded, that is a CI job
+# holding a runner until someone cancels it; bounded, it is one named failure whose
+# traceback points at the state that wedged.
+timeout = 120

@@ -52,6 +52,13 @@ dev = [
     # pytest.ini that asked for it lived in the YAML tree, but the suites did not go
     # with it.
     "pytest-xdist>=3.6",
+    # A test that drives a workflow to a gate it cannot satisfy does not fail — the
+    # driver enters an operator `await` and polls a file no one will write, forever. That
+    # is not a slow suite, it is a suite with no upper bound: it held a CI runner for
+    # seventeen minutes before a human cancelled it, and would have held it for six hours.
+    # The per-test cap turns that into one named failure with a traceback pointing at the
+    # state that wedged.
+    "pytest-timeout>=2.3",
     "ruff>=0.15.20",
     # The type checker, run from this root next to ruff (`make lint`). Pinned as a dev
     # dependency rather than invoked with `uvx` so every clone and CI run checks against
