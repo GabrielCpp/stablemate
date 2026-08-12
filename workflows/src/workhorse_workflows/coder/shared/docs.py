@@ -418,11 +418,18 @@ def verify_story_documentation(
         and _finding_affects_nodes(okf, finding, affected)
     ]
     if doctor_errors:
+        # `suggestion` carries the expected form — the literal bullet the checker would
+        # accept — and dropping it left the author to infer a grammar from a complaint about
+        # the value it rejected. That is the same trap the ungrounded-symbol message above
+        # was widened to escape: a `placement:` bullet was refused twice for prose the
+        # message never said was disallowed, while the checker's own
+        # `- placement: width 60-100%, x 0-20%` sat unrendered in the finding.
         problems.append(
             "ostler doctor errors: "
             + " | ".join(
                 f"{item.get('path') or item.get('ref') or '<graph>'}:"
                 f"{item.get('line') or 0} [{item.get('code', '?')}] {item.get('message', '')}"
+                + (f" — expected form: {suggestion}" if (suggestion := item.get("suggestion")) else "")
                 for item in doctor_errors
             )
         )

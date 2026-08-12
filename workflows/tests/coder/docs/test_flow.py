@@ -684,6 +684,44 @@ def test_grounding_the_enclosing_unit_grounds_what_is_nested_inside_it(
     assert gate.failures == [f"G:{panel}::Badge.tone"], gate.failures
 
 
+def test_a_doctor_refusal_carries_the_form_the_checker_would_accept(
+    docs: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    write_json: Callable[[Path, Any], Path],
+) -> None:
+    """The same trap as the grounding message above, one gate over.
+
+    A doctor finding carries a `suggestion` — the literal bullet the checker would accept —
+    and the brief rendered only the complaint about the value it rejected. An author told
+    `placement: mostly the middle` is not a placement writes prose again with a percentage in
+    it, is refused again, and spends the rework budget inferring a grammar that was sitting
+    in the finding all along.
+    """
+    screen = "docs/features/groom/gui/screens/s.md"
+    write(
+        docs / screen,
+        "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+        "## Components\n\n### body\n- role: article\n- name: none\n"
+        "- placement: mostly the middle\n",
+    )
+    write_json(docs / SPEC_REL / CONTEXT_FILE, {"changedCode": [], "directNodes": []})
+
+    gate = verify_story_documentation(
+        logger,
+        spec_dir=SPEC_REL,
+        author_status="documented",
+        build_status="passed",
+        validation_status="passed",
+        context_mode="local",
+        author_nodes=(screen,),
+    )
+
+    assert gate.status == "invalid", gate
+    assert "malformed-placement" in gate.notes, gate.notes
+    assert "expected form: - placement: width 60-100%, x 0-20%" in gate.notes, gate.notes
+
+
 def test_a_deletion_needs_no_code_bullet(
     docs: Path,
     logger: logging.Logger,
