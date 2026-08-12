@@ -148,14 +148,15 @@ The first paragraph after the metadata bullets is the seed summary; further pros
 - title: Account Credits "Aperçu" Billing Body at Legacy Parity
 - id: ACME-01JBXR7M4E0S9YCG5NAKQ2TZVJ
 - covers: apercu-landing-body, apercu-subscription-change-plan-link
-- depends on: (none)
 - phase: 1
 - effort: 8-10 hours
 ```
 
 - `## Seeds` → `### <seed-id>` per seed (omit the whole section for a seedless epic).
-- `## Stories` → `### <slug>` per story, carrying the **edges**: `covers:` (seed ids) and
-  `depends on:` (sibling slugs). The detailed spec lives in the story's own `story.md`.
+- `## Stories` → `### <slug>` per story, carrying the **coverage edge** `covers:` (seed ids). The
+  detailed spec lives in the story's own `story.md`, and so does its place in the DAG: a
+  `## Dependencies` section stating one `- Blocked by: <sibling-slug>` per blocker, or the bare
+  `(none)`. That way what blocks a story is readable in the story.
 
 See [SPEC.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/SPEC.md) for the
 authoritative, formal definition of every field, status enum, and conformance rule.

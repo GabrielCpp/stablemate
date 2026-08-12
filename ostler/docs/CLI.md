@@ -94,6 +94,11 @@ ostler milestone set-source-items <name> <id> [id ...]
 ostler todo add <epic> [--front] | todo prune <epic> | todo reorder <e…> | todo list [--json]
 ```
 
+`--depends` names sibling slugs inside the same epic, and lands in the story's own
+`story.md` under `## Dependencies` — one `- Blocked by: <slug>` per blocker, or the bare
+`(none)` when nothing blocks it. `epic.md` carries no dependency edge. `update story`
+rewrites that section wholesale, so pass every blocker each time, or `(none)` to clear it.
+
 `create … --json` returns `{"ok": true, "id": "<allocated-id>", "name": "<name-on-disk>",
 "message": "…"}`. For `create epic` the `name` is the numbered directory that was written
 (`0001-checkout-flow`) — read it back rather than assuming which number the epic got.

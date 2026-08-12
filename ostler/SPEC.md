@@ -107,7 +107,9 @@ Replace the `/dashboard` developer-stub body with the account-credits "Aperçu" 
 
 #### `## Stories`
 Zero or more `### <slug>` subsections, each a metadata bullet list (+ optional prose). The story's
-detailed spec lives in its own `story.md` Concept (§4); this section carries the **edges**:
+detailed spec lives in its own `story.md` Concept (§4); this section carries the **coverage edge**
+— which seeds a story answers. What *blocks* a story is stated in that story's own file (§4), so a
+reader has it in front of them rather than one file up:
 
 ```markdown
 ## Stories
@@ -116,13 +118,11 @@ detailed spec lives in its own `story.md` Concept (§4); this section carries th
 - title: Account Credits "Aperçu" Billing Body (Billed & Unbilled) at Legacy Parity
 - id: ACME-01JBXR7M4E0S9YCG5NAKQ2TZVJ
 - covers: apercu-landing-body, apercu-subscription-change-plan-link, apercu-recent-bills-list
-- depends on: (none)
 - phase: 1
 - effort: 8-10 hours
 ```
 
 - `covers:` → the story's `seedItems` (comma-separated seed ids; `(none)`/empty = none).
-- `depends on:` → the story's `dependencies` (comma-separated sibling slugs).
 - `title`, `id`, `phase`, `effort` map to the same story fields. The `story.md` path is conventional
   (`stories/<slug>/story.md`).
 
@@ -136,14 +136,26 @@ status: Not started     # free text; the workflow lifecycle (e.g. "QA passed")
 surface: account-billing/apercu-billing-body   # optional
 ---
 # Story: …
+## Dependencies
+- Blocked by: 00-sign-in       # one bullet per blocker, or the bare `(none)`
 ## Context
 ## Acceptance Criteria
 ## Implementation Status
 - **Status**: Not started        # legacy status line still honored if frontmatter absent
 ```
 
-Edges (`covers`/`depends on`) live in the epic's `## Stories` section, **not** here. Prose may link
-to `docs/features/…` OKF nodes with ordinary markdown links.
+`## Dependencies` is the story's edge in the DAG, and this file is the only place it is written —
+so what blocks a story is visible to whoever has the story open. The section states one
+`- Blocked by: <sibling-slug>` per blocker; when nothing blocks it the body is the bare word
+`(none)` and **no bullet**, which says "decided, and the answer is nothing" where an empty section
+would not. A blocker may name only a story in the same epic. Change edges with
+`ostler update story --depends`, never by hand-editing a body a workflow will rewrite: a bullet
+under this heading that states anything else is a `malformed-dependency-bullet` error, which is
+what stops a rewrite from emptying the DAG quietly.
+
+The coverage edge (`covers`) is *not* here — it names seeds defined in the epic, so it lives in the
+epic's `## Stories` section (§3). Prose may link to `docs/features/…` OKF nodes with ordinary
+markdown links.
 
 ## 5. The feature Concept and the epics index
 

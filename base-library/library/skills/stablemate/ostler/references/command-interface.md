@@ -78,6 +78,11 @@ ostler set-status  <story> <status>
 ostler backlog add <id> <text> [--section S] | ostler backlog prune <id> | ostler backlog list [--json]
 ostler todo add <epic> [--front] | ostler todo prune <epic> | ostler todo reorder <e…> | ostler todo list [--json]
 ```
+
+`--depends` names sibling slugs inside the same epic, and lands in the story's own
+`story.md` under `## Dependencies` — one `- Blocked by: <slug>` per blocker, or the bare
+`(none)` when nothing blocks it. `epic.md` carries no dependency edge. `update story`
+rewrites that section wholesale, so pass every blocker each time, or `(none)` to clear it.
 `create … --json` returns `{"ok": true, "id": "<allocated-id>", "name": "<name-on-disk>", "message": "…"}`
 — for `create epic`, `name` is the numbered directory it wrote; read it back rather than guessing the number.
 

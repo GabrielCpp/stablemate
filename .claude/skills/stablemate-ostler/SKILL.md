@@ -72,14 +72,14 @@ The first paragraph after the metadata bullets is the seed summary; further pros
 - title: Account Credits "Aperçu" Billing Body at Legacy Parity
 - id: pred-16
 - covers: apercu-landing-body, apercu-subscription-change-plan-link
-- depends on: (none)
 - phase: 1
 - effort: 8-10 hours
 ```
 
 - `## Seeds` → `### <seed-id>` per seed (omit the whole section for a seedless epic).
-- `## Stories` → `### <slug>` per story, carrying the edges: `covers:` (seed ids) and
-  `depends on:` (sibling slugs).
+- `## Stories` → `### <slug>` per story, carrying the coverage edge `covers:` (seed ids). A
+  story's blockers are *not* here: its own `story.md` carries a `## Dependencies` section listing
+  one `- Blocked by: <sibling-slug>` per blocker, or the bare `(none)`.
 
 ## The two faces — pick one, then read its reference
 
