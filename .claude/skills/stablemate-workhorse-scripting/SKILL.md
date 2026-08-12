@@ -258,125 +258,34 @@ node *writes* is strict JSON; only input may be JSONC.
 
 ## The shared helpers — `workhorse_workflows.kit`
 
-Everything a node reuses lives in the **workflow** distribution, not the engine: git,
-GitHub and workspace resolution, plus `find_repo_root`, `find_docs_root`, `load_json`,
-`load_jsonc` and `run_tool`. `run_tool` is the seam for a genuine external CLI — one that
-is not git, GitHub or ostler.
+Everything a node reuses lives in the **workflow** distribution, not the engine: git, GitHub
+and workspace resolution, plus `find_repo_root`, `find_docs_root`, `load_json`, `load_jsonc`
+and `run_tool`. `run_tool` is the seam for a genuine external CLI — one that is not git,
+GitHub or ostler.
 
-```python
-from workhorse_workflows import kit
-```
+**Never shell out to `git` or `gh`.** The helpers wrap GitPython and PyGithub behind seams, so
+a node never touches the CLIs while git still runs for **real** under test. Take the repo root
+as an **argument** (`kit.find_repo_root(repo_dir)`), never from the environment.
 
-- `kit.git` — `open_repo`, `active_branch`, `current_branch`, `default_branch`,
-  `branch_exists`, `local_branch_exists`, `checkout`, `clone`, `fetch_reset`,
-  `commit_all`, `commit_paths`, `commits_ahead`, `merge_base`, `diff_text`, `show_file`,
-  `list_tracked_files`, `restore_paths`, `rename_branch`, `push_to_origin`, `origin_url`,
-  `remote_urls`, `set_identity`, `short_sha`, `allow_all_directories`.
-- `kit.github` — `resolve_github_token`, `resolve_repo`, `github_client`, `find_open_pr`,
-  `push_branch`, `repo_full_name_from_url`, `sync_to_origin`.
-- `kit.workspace` — `resolve_workspace`, `get_repo_config`, `get_affected_repos`,
-  `build_dispatch_list`, `checkout_workspace`.
-
-**Never shell out to `git` or `gh`.** The helpers wrap GitPython and PyGithub behind seams,
-so a node never touches the CLIs while git still runs for **real** under test (against a
-throwaway repo from `make_git_repo`) and GitHub is faked by patching `github_client`. Every
-git helper is fail-soft: a bad repo or failed command returns `None`/`False`/`-1` rather
-than raising into a run.
-
-```python
-# Branch: create or check out, idempotently — a resume re-enters this node.
-if kit.git.local_branch_exists(repo_path, branch):
-    kit.git.checkout(repo_path, branch)
-else:
-    kit.git.checkout(repo_path, branch, create=True)
-
-kit.git.commit_all(repo_path, f"{epic}: {slug}" if epic else slug)   # False = nothing to commit
-kit.git.commit_paths(repo_path, "prune completed epic from queue", paths.epics_index(root))
-```
-
-The pathspec on that last line comes from the workflow's `shared/paths.py`, never from a
-`docs/…` literal: a workflow joins a filename it owns onto a directory **ostler** resolved,
-so a repo that moved its epics with `docRoots:` still gets the right file staged. The rule
-is stated in `workflows/README.md` under "A workflow does not spell a doc path".
-
-`push_branch` handles the transient credential helper (the token rides `GH_TOKEN`, never a
-URL / git config / log) **and** verifies the remote head advanced to the local head — an
-unverified push is what lets a fix loop spin against a stale ref:
-
-```python
-if not kit.github.push_branch(repo_path, token, branch):   # verify=True by default
-    ...  # push attempted but did not land / did not verify
-```
-
-For GitHub, go through the seams and reach for raw PyGithub objects past them when you need
-structured responses (`gh_repo.get_workflow_runs(head_sha=…)`, `pr.merge(merge_method=…)`):
-
-```python
-token = kit.github.resolve_github_token(root)     # agents.yml workflow.githubTokenEnv → GH_TOKEN → GITHUB_TOKEN
-gh_repo, slug = kit.github.resolve_repo(root, token)
-if gh_repo is not None:
-    pr = kit.github.find_open_pr(gh_repo, branch) or gh_repo.create_pull(
-        title=title, body=body, head=branch, base=base,
-    )
-```
-
-`kit` re-exports these through a module `__getattr__`, so `kit.git.commit_all` and
-`from workhorse_workflows.kit.git import commit_all` are the same function. **Patch the
-defining submodule** (`workhorse_workflows.kit.git`), not the `kit` facade, or the
-forwarding hands the test the real one.
-
-**Working directory.** A node inherits the driver's cwd, which is not necessarily the
-checkout under work. Take the repo root as an **argument** rather than assuming it — never
-from the environment, which is prohibited here (see *No environment* below):
-
-```python
-def my_node(logger: Logger, repo_dir: str = "") -> Result:
-    root = kit.find_repo_root(repo_dir)   # argument first, else walk up from cwd
-```
-
-The workflow holds `repo_dir` as a field and `Workflow.injects` fills it into any node that
-declares the parameter, so the callsite usually says nothing at all.
+**[references/kit-helpers.md](references/kit-helpers.md)** is the full surface: every function
+on `kit.git` / `kit.github` / `kit.workspace`, the idempotent branch and commit recipes, why
+`push_branch` verifies the remote head advanced, which module to patch (the defining
+submodule, not the `kit` facade), and the working-directory rule. Read it before writing a
+node that touches a repo, a branch, a PR or a workspace file.
 
 ## OKF graph (ostler) — the in-process `ostler` API, never subprocess
 
 Don't shell out to the `ostler` CLI — no `subprocess.run(["ostler", …])`, no
-`kit.run_tool(["ostler", …])`, no local `ostler_json`/`ostler_run` helper scraping
-`--json` out of stdout with `raw_decode`. `ostler` is a dependency of the workflow
-distribution, so command the doc graph **as a library** through the `Ostler` facade — it
-returns plain Python objects (`dict`/`list`/`str` and `Result`), and an in-process test
-fakes it by patching the class:
+`kit.run_tool(["ostler", …])`, no local helper scraping `--json` out of stdout. `ostler` is a
+dependency of the workflow distribution, so a node commands the doc graph **as a library**
+through the `Ostler` facade, which returns plain Python objects and which an in-process test
+fakes by patching the class.
 
-```python
-from ostler import Ostler
-
-okf = Ostler(root)                         # root discovered upward, like `ostler -C DIR`
-queue   = okf.todo()                       # ["epic-a", …]            (ostler todo list)
-stories = okf.list("story", epic="epic-a") # [{"slug","status",…}]    (ostler list --type story)
-spec    = okf.spec_path("01-foo")          # "docs/specs/01-foo"      (ostler path spec)
-report  = okf.doctor(epic="epic-a")        # dict, == doctor --json's report
-
-res = okf.create_story("epic-a", "02-baz", "Baz", covers=["seed-1"])  # Result(.ok, .entity_id, .message)
-okf.update_story("02-baz", title="Baz", covers=["seed-1"], depends=["01-foo"])
-okf.delete_epic("epic-a")
-okf.add_seed("epic-a", "seed-2", status="researched", meta={"sourceBullet": "…"})
-okf.set_status("01-foo", "QA passed")
-```
-
-The graph is a **snapshot** read at load time: reads reuse one cached snapshot (the win over
-a subprocess-per-call); mutations (`create_*` / `update_story` / `delete_*` / `add_seed` / `set_status` / `backlog_*` /
-`todo_*` / `settle_review`) apply against a fresh load and invalidate the cache, so the next
-read sees them (`reload()` forces a refresh). A read never returns `None` — on a genuinely
-unloadable graph the call raises `(OSError, ValueError, RuntimeError)`; catch that to take a
-fallback (e.g. a JSON sidecar). Don't paper over an empty result as "unavailable": `[]` means
-an empty queue, a raise means unreadable.
-
-QA / artifact / edit subsystems live on the same facade, **lazy-imported** so the read path
-never loads the QA/vet machinery: `okf.qa_context(...)`, `okf.qa_validate(plan, spec=…)`,
-`okf.qa_run(plan, spec=…)`, `okf.qa_context_validate(spec=…)`, `okf.artifact_vet(kind, spec)`,
-`okf.settle_review(slug, write=True)`. The coder QA nodes route through the thin `qa_cli`
-helpers (`qa_run`/`qa_context`/`qa_validate`/`qa_context_validate`) that wrap these and
-normalize to `(returncode, payload, stderr)`. Full verb→method reference: the
-`ostler` skill.
+**[references/ostler-api.md](references/ostler-api.md)** carries the branch: the calls a node
+makes, the snapshot-and-invalidation semantics that decide what a read sees after a mutation,
+why a raise means unreadable while `[]` means empty, and the lazy-imported QA / artifact /
+edit subsystems the coder's QA nodes route through. Read it when a node reads or mutates
+anything under `docs/`.
 
 ## Testing — substitute, don't patch
 
