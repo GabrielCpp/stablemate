@@ -213,6 +213,10 @@ that fails it goes to its place in the placement table, or goes away.
 - **A story's behavioral docs, or anything under `docs/features/**`** → [[documentation]]
   (per-story) or [[okf-modeling]] (whole-surface). ostler owns structure and ids there.
 - **The `docs/` knowledge-graph CLI, epics, stories, coverage** → [[ostler]].
+- **How the material is written, once you know where it goes** — the context pointer and
+  what makes it fire, the information hierarchy and the disclosure move down it, completion
+  criteria, leading words, the pruning tests → [[agent-writing]]. This skill decides
+  *placement*; that one decides *wording*, for a `CLAUDE.md` and a skill alike.
 - **Changing a skill, prompt, or pack in the agent library itself** — including this skill —
   → [[agent-library]]. Generated adapter copies under `.claude/`, `.codex/` and
   `.github/` carry a `do_not_edit` metadata key: edit the library source and re-install
