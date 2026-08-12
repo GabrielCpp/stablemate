@@ -13,10 +13,11 @@ from urllib.parse import urlsplit
 
 import yaml
 
+from ostler.qa.harness_host import default_interpreter, describe
 from ostler.untyped import is_mapping
 
 MECHANISMS = {"live", "synthetic", "fixture"}
-DRIVERS = {"command", "playwright", "maestro"}
+DRIVERS = {"command", "python", "playwright", "maestro"}
 ASSERT_KEYS = {
     "assert_contains",
     "assert_count",
@@ -69,6 +70,10 @@ class PlanDocument:
     root: Path
     data: dict[str, Any]
     context: dict[str, Any]
+    #: ``"python"`` for a `qa_plan.py` read through the harness's describe pass,
+    #: ``"yaml"`` for the retiring v2 document. `data` holds the same shape either way —
+    #: that is what lets one validator serve both, and what makes the YAML half deletable.
+    kind: str = "yaml"
 
     @property
     def run_id(self) -> str:
@@ -83,6 +88,11 @@ def resolve_spec_dir(plan_file: Path, spec_dir: Path | None, root: Path) -> Path
     plan_file = plan_file if plan_file.is_absolute() else root / plan_file
     if spec_dir is not None:
         return (spec_dir if spec_dir.is_absolute() else root / spec_dir).resolve()
+    if plan_file.suffix == ".py":
+        # A python plan carries no `spec_dir` escape hatch. Learning one would mean importing
+        # the module before knowing where its evidence goes, and the key only ever existed to
+        # let a generated YAML file sit somewhere other than the spec it describes.
+        return plan_file.parent.resolve()
     try:
         raw = yaml.safe_load(plan_file.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError):
@@ -98,12 +108,16 @@ def load_plan(plan_file: Path, spec_dir: Path, root: Path) -> tuple[PlanDocument
     resolved_plan = plan_file if plan_file.is_absolute() else root / plan_file
     if not resolved_plan.is_file():
         return None, [f"plan file not found: {resolved_plan}"]
-    try:
-        data = yaml.safe_load(resolved_plan.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        return None, [f"YAML parse error: {exc}"]
-    if not isinstance(data, dict):
-        return None, ["plan must be a YAML mapping"]
+    root, spec_dir = root.resolve(), spec_dir.resolve()
+    resolved_plan = resolved_plan.resolve()
+    if resolved_plan.suffix == ".py":
+        data, problems = _describe_python_plan(resolved_plan, root)
+        kind = "python"
+    else:
+        data, problems = _parse_yaml_plan(resolved_plan)
+        kind = "yaml"
+    if data is None:
+        return None, problems
     context_path = spec_dir / "qa-okf-context.json"
     context: dict[str, Any] = {}
     if context_path.is_file():
@@ -113,7 +127,37 @@ def load_plan(plan_file: Path, spec_dir: Path, root: Path) -> tuple[PlanDocument
                 context = loaded
         except json.JSONDecodeError as exc:
             return None, [f"qa-okf-context.json is invalid JSON: {exc}"]
-    return PlanDocument(resolved_plan.resolve(), spec_dir.resolve(), root.resolve(), data, context), []
+    return PlanDocument(resolved_plan, spec_dir, root, data, context, kind), problems
+
+
+def _parse_yaml_plan(plan_file: Path) -> tuple[dict[str, Any] | None, list[str]]:
+    try:
+        data = yaml.safe_load(plan_file.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        return None, [f"YAML parse error: {exc}"]
+    if not isinstance(data, dict):
+        return None, ["plan must be a YAML mapping"]
+    return data, []
+
+
+def _describe_python_plan(plan_file: Path, root: Path) -> tuple[dict[str, Any] | None, list[str]]:
+    """Read a `qa_plan.py` by importing it in the harness and taking what it declared.
+
+    Every target is stamped with the module it came from and the interpreter it will be run
+    under, because the driver is handed one target dict and nothing else — resolving either
+    of those twice is how the validated plan and the executed plan come apart.
+    """
+    data, problems = describe(plan_file, root)
+    if data is None:
+        return None, problems
+    interpreter = default_interpreter(root)
+    targets = data.get("targets")
+    if isinstance(targets, dict):
+        for target in targets.values():
+            if isinstance(target, dict):
+                target.setdefault("module", str(plan_file))
+                target.setdefault("interpreter", str(interpreter))
+    return data, problems
 
 
 def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
@@ -129,18 +173,20 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
                 f"OKF health finding blocks execution: {finding.get('kind', 'unknown')} "
                 f"{finding.get('path', '')}".rstrip()
             )
-    if plan.get("version") != 2:
-        problems.append("'version' must be 2")
+    expected_version = 3 if document.kind == "python" else 2
+    if plan.get("version") != expected_version:
+        problems.append(f"'version' must be {expected_version}")
     for field in ("run_id", "story"):
         if not isinstance(plan.get(field), str) or not plan[field].strip():
             problems.append(f"'{field}' is required and must be non-empty")
 
+    name = document.path.name
     try:
         document.path.relative_to(spec_dir)
     except ValueError:
-        problems.append("qa-plan.yml must remain under the spec directory")
+        problems.append(f"{name} must remain under the spec directory")
     if document.path.is_relative_to(spec_dir / "qa"):
-        problems.append("qa-plan.yml cannot live under disposable qa/")
+        problems.append(f"{name} cannot live under disposable qa/")
 
     inputs = plan.get("inputs", {})
     if not isinstance(inputs, dict):
@@ -195,6 +241,111 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
             problems.append(f"target '{name}' requires app_id")
 
     problems.extend(_validate_background(plan.get("background", [])))
+
+    if document.kind == "python":
+        scenario_problems, asserted_coverage = _validate_python_scenarios(document, targets)
+    else:
+        scenario_problems, asserted_coverage = _validate_yaml_scenarios(
+            document, targets, inputs, secrets
+        )
+    problems.extend(scenario_problems)
+
+    for obligation in document.context.get("obligations", []):
+        if not isinstance(obligation, dict) or not obligation.get("id"):
+            continue
+        # An obligation the context builder marked as context-only names something this
+        # story neither built nor touched — an unimplemented endpoint the closure walked to,
+        # a screen with no `code:` behind it. Demanding an asserted scenario for it is what
+        # sent planners after routes that do not exist. Absent the key, require it: a packet
+        # written before the flag existed says nothing about which of its members are real.
+        if obligation.get("required", True) is False:
+            continue
+        if obligation["id"] not in asserted_coverage:
+            problems.append(f"required OKF obligation '{obligation['id']}' is not covered by an asserted scenario")
+    required_acs = document.context.get("acceptanceCriteria", [])
+    for criterion in required_acs if isinstance(required_acs, list) else []:
+        criterion_id = criterion.get("id") if isinstance(criterion, dict) else criterion
+        if criterion_id and criterion_id not in asserted_coverage:
+            problems.append(f"required acceptance criterion '{criterion_id}' is not covered by an asserted scenario")
+    return problems
+
+
+
+def _validate_python_scenarios(
+    document: PlanDocument, targets: dict[str, Any]
+) -> tuple[list[str], set[str]]:
+    """Check what a `qa_plan.py` declared, and which coverage its assertions can carry.
+
+    There is no action vocabulary left to police. What a scenario *does* is Python, checked
+    by the interpreter that runs it — so all that is left here is the part Python cannot see:
+    that the ids are distinct, that the targets exist, and that a scenario claiming an
+    obligation actually asserts something. That last one is `describe`'s static count of
+    `qa.check`/`qa.require` calls in the body — real analysis of a parsed tree, where the
+    v2 format could only pattern-match a shell string and guess.
+    """
+    problems: list[str] = []
+    asserted_coverage: set[str] = set()
+    scenarios = document.data.get("scenarios")
+    if not isinstance(scenarios, list) or not scenarios:
+        return [
+            "the plan declares no scenario — decorate at least one function with @scenario"
+        ], asserted_coverage
+    all_coverage = _known_coverage(document.context)
+    seen: set[str] = set()
+    for index, scenario in enumerate(scenarios):
+        if not is_mapping(scenario):
+            problems.append(f"scenarios[{index}] must be a mapping")
+            continue
+        scenario_id = str(scenario.get("id") or f"scenarios[{index}]")
+        if scenario_id in seen:
+            problems.append(f"duplicate scenario id '{scenario_id}'")
+        seen.add(scenario_id)
+        if scenario.get("target") not in targets:
+            problems.append(
+                f"scenario '{scenario_id}' references unknown target {scenario.get('target')!r}"
+            )
+            continue
+        if scenario.get("mechanism") not in MECHANISMS:
+            problems.append(
+                f"scenario '{scenario_id}' mechanism must be one of {sorted(MECHANISMS)}"
+            )
+        covers = scenario.get("covers") or []
+        if not isinstance(covers, list) or not all(isinstance(item, str) for item in covers):
+            problems.append(f"scenario '{scenario_id}'.covers must be a list of IDs")
+            covers = []
+        for cover in covers:
+            if cover not in all_coverage:
+                problems.append(
+                    f"scenario '{scenario_id}' "
+                    f"{_uncoverable(cover, document.context, all_coverage)}"
+                )
+        checks = scenario.get("checks")
+        if not isinstance(checks, int):
+            problems.append(f"scenario '{scenario_id}' is missing its static assertion count")
+        elif covers and checks == 0:
+            problems.append(
+                f"scenario '{scenario_id}' claims coverage of {sorted(covers)} but its body "
+                "calls no qa.check() — assert something the behaviour produced, on the line "
+                "that produced it"
+            )
+        else:
+            asserted_coverage.update(covers)
+    return problems, asserted_coverage
+
+
+def _validate_yaml_scenarios(  # noqa: C901
+    document: PlanDocument,
+    targets: dict[str, Any],
+    inputs: dict[str, Any],
+    secrets: dict[str, Any],
+) -> tuple[list[str], set[str]]:
+    """The v2 shell-action vocabulary, policed by hand because YAML cannot police itself.
+
+    Retiring: every rule below compensates for something a language gives for free, and the
+    whole function goes when the last YAML plan does.
+    """
+    plan, spec_dir = document.data, document.spec_dir
+    problems: list[str] = []
 
     scenarios = plan.get("scenarios")
     if not isinstance(scenarios, list) or not scenarios:
@@ -356,26 +507,7 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
             )
         if has_substantive_assertion:
             asserted_coverage.update(covers)
-
-    for obligation in document.context.get("obligations", []):
-        if not isinstance(obligation, dict) or not obligation.get("id"):
-            continue
-        # An obligation the context builder marked as context-only names something this
-        # story neither built nor touched — an unimplemented endpoint the closure walked to,
-        # a screen with no `code:` behind it. Demanding an asserted scenario for it is what
-        # sent planners after routes that do not exist. Absent the key, require it: a packet
-        # written before the flag existed says nothing about which of its members are real.
-        if obligation.get("required", True) is False:
-            continue
-        if obligation["id"] not in asserted_coverage:
-            problems.append(f"required OKF obligation '{obligation['id']}' is not covered by an asserted scenario")
-    required_acs = document.context.get("acceptanceCriteria", [])
-    for criterion in required_acs if isinstance(required_acs, list) else []:
-        criterion_id = criterion.get("id") if isinstance(criterion, dict) else criterion
-        if criterion_id and criterion_id not in asserted_coverage:
-            problems.append(f"required acceptance criterion '{criterion_id}' is not covered by an asserted scenario")
-    return problems
-
+    return problems, asserted_coverage
 
 #: An `assert_contains` value that proves only that the runner process reached its end. The
 #: spelling these plans reach for is `VITEST_EXIT:0` — a wrapper echoes the banner, the scenario

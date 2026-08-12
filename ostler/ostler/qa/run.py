@@ -328,13 +328,15 @@ def cmd_validate(
             status="invalid",
         )
 
-    try:
-        plan = yaml.safe_load(resolved_plan.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        return QaOutcome(ok=False, message=f"YAML parse error: {exc}", status="invalid")
-
     resolved_spec = resolve_spec_dir(resolved_plan, spec_dir, root)
-    if isinstance(plan, dict) and plan.get("version") == 2:
+    plan: Any = None
+    if resolved_plan.suffix != ".py":
+        try:
+            plan = yaml.safe_load(resolved_plan.read_text(encoding="utf-8"))
+        except yaml.YAMLError as exc:
+            return QaOutcome(ok=False, message=f"YAML parse error: {exc}", status="invalid")
+
+    if resolved_plan.suffix == ".py" or (isinstance(plan, dict) and plan.get("version") == 2):
         document, problems = load_plan(resolved_plan, resolved_spec, root)
         # `load_plan` hands back a document exactly when it found nothing to report, so the
         # deeper validation runs on a document that is there rather than on a `None` the
@@ -384,12 +386,14 @@ def cmd_run(
     if not validate_result.ok:
         return validate_result
 
-    try:
-        plan = yaml.safe_load(resolved_plan.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        return QaOutcome(ok=False, message=f"YAML parse error: {exc}", status="invalid")
+    plan: Any = None
+    if resolved_plan.suffix != ".py":
+        try:
+            plan = yaml.safe_load(resolved_plan.read_text(encoding="utf-8"))
+        except yaml.YAMLError as exc:
+            return QaOutcome(ok=False, message=f"YAML parse error: {exc}", status="invalid")
 
-    if plan.get("version") == 2:
+    if resolved_plan.suffix == ".py" or plan.get("version") == 2:
         document, problems = load_plan(resolved_plan, resolved_spec, root)
         if problems or document is None:
             return QaOutcome(
