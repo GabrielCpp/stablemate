@@ -41,9 +41,9 @@ page or process it reads from — not how it is described.
 ## The rule
 
 **Every scenario the findings do not cite stays byte-identical.** Read
-`<spec_dir>/qa-plan.yml` and `<spec_dir>/qa-plan.md`, change only the scenarios, actions and
-sections the diagnostics name, and leave everything else exactly as it is — including
-formatting, ordering and ids.
+`<spec_dir>/qa-plan.yml` and `<spec_dir>/qa-plan.md` — and `<spec_dir>/qa.md` when a finding
+cites it — change only the scenarios, actions and sections the diagnostics name, and leave
+everything else exactly as it is — including formatting, ordering and ids.
 
 This is not a stylistic preference. Regenerating the whole plan resamples the scenarios the
 reviewer already accepted, which hands the next review a fresh set of defects to find; the
@@ -58,9 +58,31 @@ Two consequences worth stating:
 - If a finding cannot be satisfied by an executable scenario — it asks for something outside
   the plan's authority, or for the heavyweight stack the workflow's `ensure_stack` step owns —
   record that in `qa-plan.md` and in `notes` rather than inventing a scenario to satisfy it.
+  This escape hatch is for a *coverage* demand you have no way to execute. It is not
+  available for a finding that says a sentence you wrote is false: correcting a sentence is
+  always within your authority.
 
 Adding a *new* scenario is a repair when a finding says coverage is missing. It is not a
 repair when no finding asks for it.
+
+## A finding that cites prose is closed by editing that prose
+
+Some findings do not name a scenario at all. They name a passage — a section of
+`qa-plan.md`, a caveat in `qa.md` — and say the claim it makes is untrue: the plan asserts a
+file, a test or a sibling story does not exist when it does, or that a check proves something
+it never touches. **Edit the cited passage so it says the true thing.** Read the target the
+finding names, find the sentence it quotes, and rewrite that sentence.
+
+Appending a note elsewhere does not close such a finding, and neither does adding a section
+that *discusses* the discrepancy, acknowledges it, or explains why it does not change the
+verdict. The next gate re-reads the passage the finding cited, still finds the false claim
+sitting there verbatim, and refutes again — the same demand, another full re-run of the
+suite, another audit. That has happened on live stories; it is the single most expensive way
+this turn can fail, and it fails while reporting `"status": "done"`.
+
+So before you return: for every finding whose target is a file and a section, re-read that
+exact location and confirm the words the finding objected to are gone. If you left them
+standing on purpose, say that in `notes` and say why — do not report the finding closed.
 
 ## Staying inside the contract
 
