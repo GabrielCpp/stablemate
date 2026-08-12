@@ -681,6 +681,28 @@ class Qa:
         self.diagnostics.measure(path)
         return path
 
+    def vet(self, screen: str, name: str = "") -> Path:
+        """Photograph a screen and hand ostler the screen it is supposed to be.
+
+        `screenshot` records geometry nobody has an opinion about. This one names the
+        documented screen, so ostler can register what rendered against what the book placed
+        — and a component sitting where the book does not put it becomes a failed assertion
+        in the ledger, inside the story, rather than a picture somebody might open.
+
+        The resolving happens on the ostler side: the harness runs under the project's
+        interpreter, has never seen the book, and cannot import ostler to look.
+        """
+        state = name or "vet"
+        path = self.screenshot(state)
+        self._recorder.emit({
+            "type": "vet",
+            "screen": screen,
+            "state": state,
+            "screenshot": str(path),
+            "regions": str(path.with_suffix(".regions.json")),
+        })
+        return path
+
     @property
     def browser_page(self) -> Any:
         if self.page is None:

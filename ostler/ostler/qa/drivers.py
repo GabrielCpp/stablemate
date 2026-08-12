@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 
+from ostler.model import load as load_graph
 from ostler.qa.harness_host import (
     DEFAULT_SCENARIO_TIMEOUT,
     default_interpreter,
@@ -26,6 +27,8 @@ from ostler.qa.harness_host import (
     harness_env,
 )
 from ostler.qa.session import QaSession, _redact_bytes
+from ostler.vet import placement
+from ostler.vet.regions import RegionList
 
 
 @dataclass
@@ -88,6 +91,8 @@ class PythonDriver(QaDriver):
         self._window_recorder: DisplayRecorder | None = None
         self._device_recorder: DeviceRecorder | None = None
         self._launch_env: dict[str, str] = {}
+        # The documented screens, read on the first `vet` record and kept for the target.
+        self._screens: dict[str, list[placement.VettedComponent]] | None = None
 
     def start(self) -> None:
         self._start_interpreter()
@@ -308,6 +313,29 @@ class PythonDriver(QaDriver):
                 self.session.set_capture(str(record["key"]), str(record["value"]))
             elif kind == "artifact":
                 problems.extend(self._register(scenario_id, record))
+            elif kind == "vet":
+                verdicts, trouble = self._vet(scenario_id, record)
+                problems.extend(trouble)
+                for verdict in verdicts:
+                    action += 1
+                    assertions += 1
+                    passed, _ = self.session.run_assert(
+                        f"{scenario_id}-{action}",
+                        verdict.sentence(),
+                        "scenario_check",
+                        {
+                            "passed": verdict.ok,
+                            "actual": "; ".join(verdict.detail) or "as documented",
+                            "expected": verdict.expected,
+                        },
+                        root=self.root,
+                        scenario=scenario_id,
+                        driver="python",
+                        action=action,
+                        covers=covers,
+                    )
+                    if not passed:
+                        failures += 1
             elif kind == "scenario":
                 terminal = record
 
@@ -377,6 +405,66 @@ class PythonDriver(QaDriver):
             **({"metadata": metadata} if metadata else {}),
         )
         return problems
+
+    # -- vetting -----------------------------------------------------------------------
+
+    def _book(self) -> dict[str, list[placement.VettedComponent]]:
+        """The documented screens, read once per target and kept.
+
+        The graph is loaded here rather than handed down from the CLI because `qa run` also
+        arrives through `ostler.api`, and a table built in only one of the two entry points
+        would leave the other's runs silently unvetted — which is the exact failure mode
+        this whole change exists to remove.
+        """
+        if self._screens is None:
+            self._screens = placement.screen_components(load_graph(self.root))
+        return self._screens
+
+    def _vet(
+        self, scenario_id: str, record: dict[str, Any]
+    ) -> tuple[list[placement.ComponentVerdict], list[str]]:
+        """Register one photographed screen against the screen the book documents.
+
+        Anything that makes the registration vacuous — an unknown screen, a screen with no
+        addressable component, a sidecar that is not there — is a *problem*, not an empty
+        verdict list. A vacuous vet that reports zero disagreements is indistinguishable from
+        a screen that is correct, and that is the shape of evidence this replaces.
+        """
+        screen = str(record.get("screen", ""))
+        shot = Path(str(record.get("screenshot", "")))
+        regions_path = Path(str(record.get("regions", "")))
+        layout_path = shot.with_suffix(".layout.json")
+        components = self._book().get(screen)
+        if components is None:
+            return [], [
+                f"scenario '{scenario_id}' vets '{screen}', which the book does not document "
+                "as a screen with components — name the screen file the state belongs to"
+            ]
+        if not regions_path.is_file() or not layout_path.is_file():
+            return [], [
+                f"scenario '{scenario_id}' vetted '{screen}' but produced no scan beside "
+                f"{shot.name} — the page was gone by the time it was measured"
+            ]
+        frame = json.loads(layout_path.read_text(encoding="utf-8"))["viewport"]
+        viewport = placement.Viewport(width=frame["width"], height=frame["height"])
+        regions = RegionList.validate_json(regions_path.read_bytes())
+        verdicts = placement.check(components, regions, viewport)
+
+        report = {
+            "schema": "vet-placement/1",
+            "screen": screen,
+            "state": str(record.get("state", "")),
+            "screenshot": shot.name,
+            "viewport": {"width": viewport.width, "height": viewport.height},
+            "regionCount": len(regions),
+            "verdicts": [verdict.model_dump(mode="json") for verdict in verdicts],
+        }
+        report_path = shot.with_suffix(".vet.json")
+        report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        self.session.register_artifact(
+            report_path, kind="vet", scenario=scenario_id, target=self.target_id
+        )
+        return verdicts, []
 
 
 def _drain(read_fd: int, records: list[dict[str, Any]]) -> None:

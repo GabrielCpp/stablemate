@@ -21,6 +21,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict
 
+from ostler.model import Graph
 from ostler.qa.harness_host import load_harness_module
 from ostler.vet.geometry import BBox
 from ostler.vet.regions import RegionBox
@@ -65,6 +66,9 @@ class Placement(BaseModel):
 
     bands: dict[str, Band]
 
+    def text(self) -> str:
+        return ", ".join(f"{key} {band.text()}" for key, band in self.bands.items())
+
     def disagreements(self, bbox: BBox, viewport: Viewport) -> list[str]:
         """One sentence per violated band, each quoting the measured number.
 
@@ -98,6 +102,7 @@ class ComponentVerdict(BaseModel):
     node_id: str
     selector: str
     status: str  # matched | misplaced | missing
+    expected: str
     detail: list[str] = []
     bbox: BBox | None = None
 
@@ -140,23 +145,54 @@ def check(
     """
     verdicts: list[ComponentVerdict] = []
     for component in components:
+        expected = component.placement.text() if component.placement else "rendered on this screen"
         region = next(
             (r for r in regions if any(_matches(component.selector, s) for s in r.selectors)),
             None,
         )
         if region is None:
             verdicts.append(ComponentVerdict(
-                node_id=component.node_id, selector=component.selector, status="missing"))
+                node_id=component.node_id, selector=component.selector,
+                status="missing", expected=expected))
             continue
-        said = component.placement.disagreements(region.bbox, viewport) if component.placement else []
+        said = (
+            component.placement.disagreements(region.bbox, viewport)
+            if component.placement
+            else []
+        )
         verdicts.append(ComponentVerdict(
             node_id=component.node_id,
             selector=component.selector,
             status="misplaced" if said else "matched",
+            expected=expected,
             detail=said,
             bbox=region.bbox,
         ))
     return verdicts
+
+
+def screen_components(graph: Graph) -> dict[str, list[VettedComponent]]:
+    """Every documented screen's registrable components, keyed by the screen's doc path.
+
+    A component with no `selector:` is left out rather than reported: nothing can address it
+    in a render, so listing it would turn every vet into a wall of unprovable `missing`. The
+    doctor is where that omission is a finding — here it is just absent.
+    """
+    table: dict[str, list[VettedComponent]] = {}
+    for node in graph.ui_nodes:
+        if node.type != "component":
+            continue
+        selector = str(node.meta.get("selector", "")).strip().strip("`").strip()
+        if not selector:
+            continue
+        raw = str(node.meta.get("placement", "")).strip()
+        parsed = parse_placement(raw) if raw else None
+        table.setdefault(node.id.split("#")[0], []).append(VettedComponent(
+            node_id=node.id,
+            selector=selector,
+            placement=parsed if isinstance(parsed, Placement) else None,
+        ))
+    return table
 
 
 def parse_placement(text: str) -> Placement | str:
