@@ -205,7 +205,7 @@ prepare_story -> clear_qa_evidence -> resolve_qa_context -> detect_qa_okf
 -> verify_qa_evidence -> audit_qa -> regression/completion gates
 ```
 
-`qa-plan.yml` is mandatory for command, browser, and mobile surfaces. Node functions call
+`qa_plan.py` is mandatory for command, browser, and mobile surfaces. Node functions call
 `okf.qa_context(...)`, `okf.qa_context_validate(...)`, `okf.qa_validate(...)` and
 `okf.qa_run(...)` on the `Ostler` facade (through the `qa_cli` helpers); no QA agent
 drives Playwright/Maestro/commands or authors the run log, manifest, or evidence.

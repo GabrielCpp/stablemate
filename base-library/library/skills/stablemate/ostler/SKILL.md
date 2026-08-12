@@ -91,6 +91,13 @@ Both faces drive the same functional core, and neither is a wrapper over the oth
   and the snapshot/caching semantics. Read it when you are writing a `workhorse` node,
   script, or test.
 
+A third reference is neither face — it is the format ostler *executes*:
+
+- **[references/qa-plan-authoring.md](references/qa-plan-authoring.md)** — a story's
+  `qa_plan.py`: the `plan`/`target`/`background`/`secret`/`input_file` declarations, the `@scenario`
+  decorator, everything a scenario reaches through `qa`, and the rules validation enforces. Read
+  it when you are writing or repairing a QA plan.
+
 **Short handles.** An id is `<PREFIX>-<26-char ULID>`; ostler abbreviates it git-style to the
 shortest unambiguous `<PREFIX>-<6+ chars>`. Human output prints handles, `--json` prints full
 ids, and a handle is accepted wherever a command takes an id. Never write a handle into a

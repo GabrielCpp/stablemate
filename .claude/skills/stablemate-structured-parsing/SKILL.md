@@ -1,6 +1,6 @@
 ---
 name: stablemate-structured-parsing
-description: "Parse, don't match — a format with a grammar (Markdown, YAML frontmatter, JSON/JSONC, Python, a unified diff) is read with its parser, never with a regex over its raw text. Covers the parser-per-format table, the ostler.markdown query API (sections, bullets, tables, links, frontmatter), where regex is still correct (log lines, slugifiers, identifier validators, our own line protocols), and how to declare an exemption in scripts/check_parsers.py. Load when writing or reviewing code that reads a document, extracts a symbol, scrapes an agent reply, or reaches for `re`."
+description: "Parse, don't match — a format with a grammar (Markdown, YAML frontmatter, JSON/JSONC, Python, Go/TypeScript/PHP/Twig source, a unified diff) is read with its parser, never with a regex over its raw text. Covers the parser-per-format table, the ostler.markdown query API (sections, bullets, tables, links, frontmatter), where regex is still correct (log lines, slugifiers, identifier validators, our own line protocols), and how to declare an exemption in scripts/check_parsers.py. Load when writing or reviewing code that reads a document, extracts a symbol, scrapes an agent reply, or reaches for `re`."
 metadata:
   generated_by: farrier
   source: library/skills/stablemate/structured-parsing/SKILL.md
@@ -20,7 +20,7 @@ wrong; it returns a confident answer that happens to be false, and the caller ha
 tell. Every defect below shipped, ran for months, and was found by reading the code rather
 than by a failure.
 
-## The three that were real
+## The five that were real
 
 **A URL truncated every workspace config.** `load_jsonc` stripped comments with
 `re.sub(r"//[^\n]*", "", text)`. A regex does not know what a string literal is, so
@@ -40,7 +40,28 @@ document with code spans blanked out by *another* regex, approximating what the 
 stream already knew exactly. A link in a code span is simply not a `link_open` token, so
 the approximation became structurally true and the masking hack was deleted.
 
-Markdown **tables** were a fourth, quieter case: the parser ran on the bare `commonmark`
+**A commented-out export was a unit the book owed coverage for.** `ostler`'s symbol front
+end read Go, TypeScript, PHP and Twig with a declaration regex per language, and a regex
+matches text — so `/* export function ghost() {} */` entered the coverage *denominator*, a
+name inside a template literal grounded a `code:` citation, and an imported `type Auth`
+grounded one too (the facade bug the module was extracted to kill, in TypeScript). It failed
+the other way at the same time: `export abstract class`, `export const {a, b} = …` and Go's
+grouped `type (…)` were shapes the alternation did not spell, so a *correct* citation
+reported `missing-code-symbol` with no edit that could clear it. Across three real repos the
+switch to tree-sitter dropped 71 names it had been reporting as declarations and admitted
+2,274 real ones it had missed. Now `ostler.syntax`.
+
+**A test name was truncated at the comma inside it.** `ostler`'s QA context read `verify:`
+bullets with one regex whose symbol group was `[^`,]+`, so a bullet citing a real test —
+`… > exports the live editor through canonical XML, revokes its object URL, and clears the
+named status` — was read as `… > exports the live editor through canonical XML`. That name
+matches nothing, so the grounding gate reported a correct citation as citing a test that
+does not exist, and a story burned four documentation review passes being told to repair
+something that was already right. The comma was inside an inline-code span the whole time;
+the parser knew where the span ended and the regex could not. Now `markdown.all_code_spans`
+plus `str.partition("::")`.
+
+Markdown **tables** were a sixth, quieter case: the parser ran on the bare `commonmark`
 preset, so every table in the library's docs came back as an undifferentiated paragraph and
 any caller wanting a row had no option but to split on `|` itself.
 
@@ -55,7 +76,10 @@ any caller wanting a row had no option but to split on `|` itself.
 | JSON with comments / trailing commas | `json5.loads` (`workhorse_workflows.kit.load_jsonc`) | strip-comments-then-`json.loads` |
 | A JSON object embedded in agent prose | `json.JSONDecoder().raw_decode` scanned from each `{` (`runner/extract._json_objects`) | `re.search(r"\{.*\}", DOTALL)` |
 | Python source | `ast` | `^(?:async\s+)?(?:def\|class)\s+(\w+)` |
+| Go, TypeScript/TSX, PHP, Twig source | `ostler.syntax.parse(language, text)` — tree-sitter | `^func\s+(\w+)`, `^export\s+(?:class\|const)\s+(\w+)` |
 | Unified diff | `unidiff.PatchSet` | `^@@ -\d+ \+\d+ @@` |
+| A path, and where its suffix begins | `pathlib.Path(p).suffix` against a set | `\.(?:py\|tsx?\|go\|ya?ml)` |
+| A ref with a declared separator (`path::name`) | `str.partition("::")` — the right half is the name, commas and all | `(?P<symbol>[^,]+)` |
 
 `ostler.markdown` is the one markdown parser. `farrier` keeps its own frontmatter module
 because it never needs the section tree and `farrier → ostler` is a dependency edge we do
@@ -124,15 +148,17 @@ flags regex pattern literals whose text encodes a known format's grammar, naming
 to use instead. It is a pattern-shape denylist, not semantic analysis: it catches the shapes
 known to have gone wrong, and cannot prove an arbitrary regex is innocent.
 
-When a format genuinely has no parser available — Go, TypeScript, PHP, Twig, Make — declare
-the site in `ALLOWED` in `scripts/check_parsers.py`, keyed by `(path, shape)`, with a reason
-that says *why this one is right*:
+When a format genuinely has no parser available — Make, a `.rb`/`.java`/`.rs` source no
+grammar in `ostler.syntax` reads — declare the site in `ALLOWED` in
+`scripts/check_parsers.py`, keyed by `(path, shape)`, with a reason that says *why this one
+is right*:
 
 ```python
-    ("ostler/ostler/inventory.py", "lang-decl"): (
-        "Go/TypeScript/PHP/Twig declaration scanning. Python goes through `ast`; these four "
-        "have no parser in the stdlib, and pulling a per-language grammar in for a symbol "
-        "*inventory* buys less than it costs"
+    ("ostler/ostler/qa/context.py", "lang-decl"): (
+        "the last-resort line scan for a language *no* grammar reads — `.rb`, `.java`, `.rs`. "
+        "Every language `ostler.syntax` knows is parsed (`inventory.extents`) and never reaches "
+        "this; attributing a changed hunk to the nearest declaration-shaped line above it is "
+        "worse than a parse and better than reporting the diff touched nothing"
     ),
 ```
 

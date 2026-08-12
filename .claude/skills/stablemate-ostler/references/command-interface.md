@@ -115,8 +115,8 @@ ostler qa context --base REV [--head REV|WORKTREE] --spec DIR \
   --source-root SURFACE=PATH [--source-root SURFACE=PATH ...] \
   [--story-file PATH] --json
 ostler qa context-validate --spec DIR --json
-ostler qa validate DIR/qa-plan.yml --spec DIR --json
-ostler qa run DIR/qa-plan.yml --spec DIR --json
+ostler qa validate DIR/qa_plan.py --spec DIR --json
+ostler qa run DIR/qa_plan.py --spec DIR --json
 ```
 
 `qa context` writes `qa-okf-context.json` and its Markdown rendering beside the plan.
@@ -124,7 +124,7 @@ Blocking unmapped production changes use a nonzero process exit but still produc
 workflow adapters must route that as `invalid`, not crash. Plan validation reports
 `passed|invalid`. Execution reports `passed|failed|blocked|invalid` and owns deletion and
 recreation of `qa/`, service/driver cleanup, `qa-run.ndjson`, `run-manifest.json`, and
-evidence. `qa-plan.yml` and static `qa-inputs/` remain outside disposable `qa/`.
+evidence. `qa_plan.py` and static `qa-inputs/` remain outside disposable `qa/`.
 
 A browser scenario also leaves `qa/traces/<scenario>-diagnostics.json` (manifest kind
 `browser-diagnostics`) — the whole console and the whole network for that scenario, every
