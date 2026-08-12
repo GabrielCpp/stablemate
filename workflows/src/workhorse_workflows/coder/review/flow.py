@@ -52,6 +52,7 @@ from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.dev import read_operator_context
 from workhorse_workflows.coder.shared.review import (
     check_feedback,
+    clear_review_resolution,
     resolve_review_context,
     verify_review_resolution,
 )
@@ -152,6 +153,10 @@ class Review(Workflow):
         clean allowance and a fresh read of the code, but not an unbounded number of cycles.
         """
         self.logger.info("reviewing %s", self.ctx.story_slug, extra={"activity": True})
+        # Before the findings that the round's settlement will be checked against exist. Here
+        # rather than in `setup` because the operator loop re-enters this state without it,
+        # and that re-entry is a fresh review round like any other.
+        self.call(clear_review_resolution, self.docs_path, self.ctx.story_slug)
         result = self.agent(
             "prompts/code-review.md",
             returns=CodeReviewResult,

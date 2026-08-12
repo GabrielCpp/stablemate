@@ -528,6 +528,39 @@ def test_a_story_with_no_verdict_sidecar_passes_the_claim_through(
     assert not (docs / SPEC_REL / "review-settlement.json").exists()
 
 
+def test_a_previous_cycles_settlement_cannot_settle_this_ones_findings(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Findings are numbered positionally and the numbers restart every review round.
+
+    So a resolution left behind by an earlier round names the same ids as the review that
+    just replaced it, and `settle-review` would verify the old round's artifacts against the
+    new round's findings and call every one of them settled — a fresh set of required fixes
+    reaching QA having never been applied. The round clears both sidecars before it writes
+    the findings they will be checked against.
+    """
+    spec = docs / SPEC_REL
+    (spec / "review-resolution.json").write_text(
+        json.dumps({"findings": [{"id": "F1", "disposition": "addressed"}]}), encoding="utf-8"
+    )
+    (spec / "review-settlement.json").write_text(
+        json.dumps({"all_verified": True, "any_blocked": False, "verified": ["F1"]}),
+        encoding="utf-8",
+    )
+
+    agent = _Agent(docs, needs_changes=1, apply_status="applied")
+
+    result = drive_flow(Review(story=STORY), env(), agent)
+
+    assert result.status == "approved", result
+    # Neither stale sidecar survived into the round, so nothing settled on last round's proof.
+    assert not (spec / "review-resolution.json").exists()
+    assert not (spec / "review-settlement.json").exists()
+
+
 # --------------------------------------------------------------------------- the operator
 
 

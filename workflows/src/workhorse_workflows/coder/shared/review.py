@@ -78,6 +78,47 @@ def resolve_review_context(
 
 
 @blueprint.node
+def clear_review_resolution(
+    logger: logging.Logger,
+    docs_path: str = "",
+    story_slug: str = "",
+    repo_dir: str = "",
+) -> ImplResult:
+    """Delete the previous cycle's resolution verdict and settlement ledger.
+
+    Findings are labelled positionally — `Finding 1` … `Finding N` — and the labels restart at
+    one every time a review runs. So a resolution left over from an earlier cycle names the
+    same ids as the review that just replaced it, and `settle-review` verifies the old cycle's
+    artifacts against the new cycle's findings and reports every one of them settled. The
+    apply turn then correctly reports `no_changes_needed` against a ledger that is already
+    green, and a fresh set of required fixes reaches QA having never been applied.
+
+    Clearing here rather than teaching the ids to be unique: the sidecars are outputs of one
+    cycle, and a cycle that has not written its own verdict yet has none. An absent resolution
+    is already the pass-through case in `verify_review_resolution`, so the first pass of a
+    cycle behaves exactly as it does on a story reviewed for the first time.
+    """
+    docs_root = find_docs_root(docs_path, repo_dir)
+    if not story_slug:
+        logger.warning("no story_slug given — nothing to clear")
+        return ImplResult(status="applied", notes="")
+    spec_dir = docs_root / "docs" / "specs" / story_slug
+    cleared = []
+    for name in (RESOLUTION_FILE, SETTLEMENT_FILE):
+        stale = spec_dir / name
+        if stale.is_file():
+            stale.unlink()
+            cleared.append(name)
+    if cleared:
+        logger.info(
+            "cleared last cycle's review sidecars for %r: %s",
+            story_slug,
+            ", ".join(cleared),
+        )
+    return ImplResult(status="applied", notes=", ".join(cleared))
+
+
+@blueprint.node
 def verify_review_resolution(
     logger: logging.Logger,
     docs_path: str = "",
@@ -209,4 +250,9 @@ def check_feedback(
     return Feedback()
 
 
-__all__ = ["check_feedback", "resolve_review_context", "verify_review_resolution"]
+__all__ = [
+    "check_feedback",
+    "clear_review_resolution",
+    "resolve_review_context",
+    "verify_review_resolution",
+]
