@@ -54,6 +54,17 @@ no QA verdict at all — which is strictly worse than QA run against a merely ad
 a scenario reaches and observes what its `covers` claims, it passes. Improvements you would
 like but do not need go in `notes`.
 
+**An obligation is covered by the union of the scenarios carrying its id, not by any one of
+them.** An OKF `does:` bullet is routinely a whole route contract in a single paragraph — the
+passing path, the validation refusal, each failure response, the conflict status. No one
+scenario can observe all of that, so a review that asks a single scenario to prove a composite
+obligation has posed a question with no satisfiable answer, and the author spends the whole
+repair budget moving the same id between scenarios. The mechanical gate unions `covers:` across
+the plan, and so do you: read the obligation clause by clause, and refuse only a clause that no
+scenario in the plan would catch failing. Never direct the author to carry an id "only where
+the complete behaviour is observed" — name the unproven clause instead, and let the id ride on
+every scenario that proves a part of it.
+
 **Find everything you are going to find, this pass.** List every finding you have, however
 many that is. A defect you could have named this pass and held back is not grounds for a later
 refusal: if the author repairs what you listed, you approve.
@@ -61,7 +72,8 @@ refusal: if the author repairs what you listed, you approve.
 For every scenario, independently verify — against the acceptance criteria and obligations it
 `covers`, and not beyond them:
 
-- its objective is explicit and corresponds to every AC/obligation in `covers`;
+- its objective is explicit and corresponds to the part of each AC/obligation in `covers` that
+  this scenario is there to prove;
 - causal preconditions are established and asserted rather than assumed from fixture selection;
 - long browser/mobile chains begin at the documented flow entry and contain observable
   checkpoints before the terminal assertion;
@@ -76,7 +88,8 @@ For every scenario, independently verify — against the acceptance criteria and
 
 Do not execute the plan, drive the product, edit either plan file, or author evidence. This is an
 independent review, not another planning pass. Approve when every acceptance criterion and
-obligation in the contract has a scenario that would actually catch it failing. Otherwise return
+obligation in the contract has, somewhere in the plan, a scenario that would actually catch
+each of its clauses failing. Otherwise return
 precise revision notes keyed to scenario and coverage IDs.
 
 Return JSON only:
