@@ -33,6 +33,15 @@ Three rules govern the content (profile §2, §8):
   `getByRole(role, {name})` (stable across CSS churn), with the brittle `selector:` only as a
   fallback. A control you can't give a role + accessible name is an a11y gap *and* a doc gap —
   flag it, don't paper over it with a class selector.
+- **Every structural component says where it sits** — a `placement:` bullet on the `component`
+  node whose `role:` is `main`, `article`, `navigation`, `banner`, `complementary`, `region`,
+  `form` or `dialog`, as bands over the viewport: `- placement: width 60-100%, x 0-20%` (keys
+  `x`/`y`/`width`/`height`, an omitted key unconstrained). QA registers what actually rendered
+  against it, so it is the only bullet that can tell a correct page from one crushed into a
+  narrow column against a margin — `role:` and `selector:` hold either way. Read the numbers off
+  the running UI, never invent them; **state a band, never a point**, wide enough to survive a
+  resize; and never widen one to make a red run green. Buttons and other leaf controls get no
+  `placement:` — their position is brittle and uninteresting.
 - **Structure it so the graph can *see* it — don't bury spec in prose.** A field or method described
   in a sentence is invisible to `ostler graph`; the same thing as a **nested typed section** is a
   first-class node you can query. Model a concept's methods as `### method:` sections and a format's

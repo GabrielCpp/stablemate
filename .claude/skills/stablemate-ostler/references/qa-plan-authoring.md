@@ -105,6 +105,7 @@ working tree.
 | `qa.http.get/post/put/patch/delete(path, json_body=…, headers=…, expect_status=…)` | HTTP bound to the target's `base_url` |
 | `qa.dir`, `qa.root`, `qa.spec_dir`, `qa.scenario_id`, `qa.covers` | the paths and identity, already resolved |
 | `qa.goto`, `qa.by_role/by_label/by_test_id/by_text/by_css`, `qa.screenshot`, `qa.page` | the browser |
+| `qa.vet(screen, name=…)` | photograph the state and register what rendered against the screen document |
 | `qa.diagnostics.console_errors/page_errors/failed_requests/responses()` | the live console and network record |
 | `qa.diagnostics.layout()` | the viewport, the laid-out document, and each structural region's box as a share of it |
 | `qa.maestro.flow([...])`, `qa.maestro.run(flow)` | build and run a Maestro flow |
@@ -123,6 +124,15 @@ anything downstream can read, and the independent audit refutes a pass from them
 assertion cannot stand in for it: `by_role` finds an element in the accessibility tree whether
 the page lays it out across the window or crushes it into a column against one margin.
 
+`qa.vet("docs/features/web-app/gui/screens/reference.md", name="loaded")` is `qa.screenshot`
+plus the verdict: it registers each scanned region against the `placement:` band the book gives
+that component, and every disagreement becomes a failed assertion in the ledger quoting the
+measured share. A UI scenario must call it — `validate` rejects a `playwright` or `maestro`
+scenario that vets nothing, and the runtime refuses one that reached the end having vetted
+nothing. The screen path is written literally, and must be a document this story's obligation
+packet names; there is no exemption list, because the run this exists to stop was a run whose
+every assertion was true.
+
 `qa.http` is loud on purpose: any status ≥ 400 raises `HttpError` carrying the body unless the
 call named it in `expect_status=`. That is the `curl -fsS` behaviour every shell scenario had to
 remember to ask for, made the default.
@@ -137,6 +147,10 @@ remember to ask for, made the default.
   and refuses a scenario whose body contains no `qa.check`/`qa.require`; the runtime refuses
   again if a scenario finishes having recorded none. Coverage rides on assertion records, so a
   bare `assert` is invisible to `qa-evidence.json` and proves nothing to the gate.
+- **A UI scenario must vet.** `extract_vets` walks the source the same way and refuses a
+  `playwright`/`maestro` scenario with no `qa.vet` call, a computed screen path, or a screen
+  the story's packet does not name. Presence is not placement: every assertion can hold while
+  the page renders as a sliver against one margin.
 - **Browser locators come from the book.** `qa.by_role(...)` and its siblings exist so
   `describe` can read their constant arguments out of the parsed tree and check them against
   the OKF node's documented `role`/`name`/`selector`. A locator written as
