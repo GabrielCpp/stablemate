@@ -67,6 +67,7 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) check-parsers
 	$(MAKE) check-portability
 	$(MAKE) check-library
+	$(MAKE) check-skills
 	$(MAKE) check-vendor
 
 .PHONY: test-bench
@@ -118,6 +119,14 @@ check-library: ## Guard the base library's front matter (a broken fence loses ta
 	# the gate checks the same files here and in CI, whatever overlay is configured.
 	STABLEMATE_BASE_DIR=$(CURDIR)/base-library \
 	  uv run farrier library --check --strict --library $(CURDIR)/base-library
+
+.PHONY: check-skills
+check-skills: ## Guard the base library's writing doctrine (sprawl, dead disclosure, direction)
+	# Three failures that leave a skill installing cleanly and reading fine to a human: a
+	# SKILL.md long enough that the agent attends to all of it only on some runs, a
+	# bundled reference nothing links to (installed everywhere, read nowhere), and a skill
+	# firing a prompt — inverting a human entry point into an autonomous one.
+	uv run python scripts/check_skills.py
 
 .PHONY: vendor
 vendor: ## Copy core/stablemate_core into workhorse and farrier (run it with any core change)
