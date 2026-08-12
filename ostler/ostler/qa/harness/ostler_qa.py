@@ -700,6 +700,15 @@ class Qa:
         The resolving happens on the ostler side: the harness runs under the project's
         interpreter, has never seen the book, and cannot import ostler to look.
         """
+        if self.target.driver != "playwright":
+            # Said here rather than left to `browser_page`, whose advice — declare the target
+            # with driver='playwright' — is exactly wrong for a phone. The registration itself
+            # is platform-agnostic; what a device still lacks is a source of regions.
+            raise RuntimeError(
+                f"scenario {self.scenario_id!r} vets '{screen}' on a '{self.target.driver}' "
+                "target, and only a browser target can scan its regions yet — vetting a "
+                "device screen needs the view-hierarchy source (maestro/uiautomator/idb)"
+            )
         state = name or "vet"
         path = self.screenshot(state)
         self.vets += 1
