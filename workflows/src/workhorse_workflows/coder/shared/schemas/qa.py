@@ -531,6 +531,16 @@ class QaLoop(CoderResult):
     #: The counts are part of the fingerprint deliberately: a repair that gets the scenario
     #: three steps further before failing has moved, and has earned its next lap.
     repaired_failures: tuple[str, ...] = ()
+    #: Which repair loop stamped `repaired_failures` — `"code fix"` or `"QA-plan repair"`.
+    #:
+    #: The two loops share one fingerprint field but are not one loop, and without this the
+    #: sameness test reads across them. A plan repair stamps the fingerprint; the repaired
+    #: plan is reviewed, approved, and its findings routed to the *fix* loop — all without a
+    #: second run, because a plan repair does not re-run the suite. The fix loop's first
+    #: visit then compares the untouched fingerprint against itself and reports "the last
+    #: code fix left the QA run failing identically" about a code fix that never happened.
+    #: A live story escalated to the operator that way with zero code laps spent.
+    repaired_lap: str = ""
 
     #: The budget line a give-up is about to report — `"4 QA-plan repair"` — parked here
     #: while the operator gate gets its one shot at the story first.

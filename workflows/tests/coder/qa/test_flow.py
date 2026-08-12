@@ -411,8 +411,10 @@ class _Agent:
         repair: str = "repaired",
         review: str = "approved",
         revise_plans: int = 0,
+        approve_reviews: int = 0,
         plan_findings: list[dict[str, str]] | None = None,
         disposition: str = "confirmed",
+        repair_plans: int = 0,
         failure_class: str = "none",
         objective: str = "yes",
         assessment_class: str = "none",
@@ -430,10 +432,14 @@ class _Agent:
         self.repair = repair
         self.review = review
         self.revise_plans = revise_plans
+        self.approve_reviews = approve_reviews
         # `None` is not `[]`: the default is one well-formed finding per refusal, and an
         # explicit empty list is a test asking for the shape the flow now rejects.
         self.plan_findings = plan_findings
         self.disposition = disposition
+        # `revise_plans`' convention one gate over: a count of *leading* assessments that
+        # send the failure to the plan author, after which the assessment behaves normally.
+        self.repair_plans = repair_plans
         self.failure_class = failure_class
         self.objective = objective
         self.assessment_class = assessment_class
@@ -509,7 +515,11 @@ class _Agent:
     def _review_qa_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         # `revise_plans` follows `_Ostler`'s convention: a count of *leading* refusals, for
         # the tests that need the reviewer to relent and let a plan through.
-        disposition = "revise" if nth <= self.revise_plans else self.review
+        # `approve_reviews` shifts that window later: the leading passes it names are waved
+        # through first. It exists because a plan lap's review is the second one, and only a
+        # refusal routes findings — an explicit approval goes straight to the stack.
+        nth = max(nth - self.approve_reviews, 0)
+        disposition = "revise" if 0 < nth <= self.revise_plans else self.review
         # A refusal carries a well-formed finding by default, because the real reviewer's
         # contract now says it must: the flow raises on a `revise` that names nothing. A fake
         # still free to emit the old prose-only shape would let a test pass over a path
@@ -526,9 +536,12 @@ class _Agent:
         # A runner failure the assessment confirms is a product defect unless the test says
         # otherwise; a runner pass has nothing to classify.
         failed = data["runner_status"] == "failed"
+        plan_lap = failed and nth <= self.repair_plans
         return {
-            "disposition": self.disposition,
-            "failure_class": self.assessment_class if failed else self.failure_class,
+            "disposition": "repair_plan" if plan_lap else self.disposition,
+            "failure_class": ("plan" if plan_lap else self.assessment_class)
+            if failed
+            else self.failure_class,
             "objective_reached": "no" if failed else self.objective,
             "findings": self.assessment_findings,
             "notes": f"assessment pass {nth}",
@@ -1728,6 +1741,42 @@ def test_a_fix_that_leaves_the_run_failing_identically_is_not_repeated(
     assert len(unaided) < Qa.MAX_QA_REWORKS
     # And the failure reached a person instead of the rest of the budget.
     assert agent.counts()["resolve-operator"] >= 1, agent.counts()
+
+
+def test_a_plan_repair_does_not_make_the_fix_loops_first_visit_a_stall(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The two repair loops share one fingerprint field and must not share its verdict.
+
+    Straight from a live story. The run failed, the assessment sent it to the plan author,
+    the plan lap stamped the fingerprint, the repaired plan was approved, and its one
+    product-test finding was routed to the fix loop — all without a second run, because a
+    plan repair does not re-run the suite. The fix loop's first visit then compared the
+    untouched fingerprint against itself, announced "the last code fix left the QA run
+    failing identically", and escalated to the operator having spent no code lap at all.
+
+    A stall means *this* loop paid for a repair and got the same answer. Neither half of
+    that was true here.
+    """
+    ostler(fail_runs=1, scenarios=(_STUCK,))
+    agent = _Agent(
+        docs,
+        repair_plans=1,
+        approve_reviews=1,
+        revise_plans=1,
+        plan_findings=[_a_product_test_finding("R1")],
+    )
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    # The fix loop got its own lap, unaided — not a guided one behind an operator gate.
+    unaided = [a for a in agent.args_for("apply-qa-fixes") if "operator_feedback" not in a]
+    assert len(unaided) == 1, agent.args_for("apply-qa-fixes")
+    assert "resolve-operator" not in agent.counts(), agent.counts()
 
 
 def test_a_fix_that_gets_the_run_further_still_earns_its_next_lap(

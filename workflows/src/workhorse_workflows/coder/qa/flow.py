@@ -1465,15 +1465,24 @@ class Qa(Workflow):
             )
         return None
 
-    def _repeating(self, loop: QaLoop) -> bool:
+    def _repeating(self, loop: QaLoop, lap: str) -> bool:
         """Has the last repair left the run failing at exactly what it failed at before?
 
         The guards below each bound a *count* of laps. This bounds their usefulness: once a
         repair has been paid for and the suite fails identically — same scenarios, same
         assertion depth — the next lap buys the same turn and the same re-run for the same
         answer. See `QaLoop.repaired_failures` for the story it comes from.
+
+        `lap` is what makes it one loop's question rather than both loops'. The plan loop and
+        the fix loop stamp the same field, and a plan repair hands its findings to the fix
+        loop without re-running the suite — so a fix loop that compared the raw fingerprint
+        would call its own first visit a stall, on the strength of a code fix nobody made.
         """
-        return bool(loop.run_failures) and loop.run_failures == loop.repaired_failures
+        return (
+            bool(loop.run_failures)
+            and loop.repaired_lap == lap
+            and loop.run_failures == loop.repaired_failures
+        )
 
     def _guard_plan(self, result: object, loop: QaLoop) -> Continue | Await | Done:
         """Spend the post-run component of the QA-plan judgement budget.
@@ -1481,14 +1490,16 @@ class Qa(Workflow):
         Like both guards below, this returns to `repair_plan` and not to `plan`: a finding
         against one scenario is not a reason to resample the seven the gate already passed.
         """
-        if self._repeating(loop):
+        if self._repeating(loop, "QA-plan repair"):
             return self._stalled(result, loop, "QA-plan repair")
         if loop.plan_judgement_rework >= self.MAX_PLAN_REWORKS:
             return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
         return self._plan_lap(
             result,
             loop.update(
-                plan_rework=loop.plan_rework + 1, repaired_failures=loop.run_failures
+                plan_rework=loop.plan_rework + 1,
+                repaired_failures=loop.run_failures,
+                repaired_lap="QA-plan repair",
             ),
         )
 
@@ -1600,9 +1611,11 @@ class Qa(Workflow):
         verification-only attempt is cheap and often decisive. `code`, `environment` and an
         untriaged blank earn nothing.
         """
-        if self._repeating(loop):
+        if self._repeating(loop, "code fix"):
             return self._stalled(result, loop, "code fix")
-        loop = loop.update(repaired_failures=loop.run_failures)
+        loop = loop.update(
+            repaired_failures=loop.run_failures, repaired_lap="code fix"
+        )
         if loop.qa_rework < self.MAX_QA_REWORKS:
             return Continue(result, self.apply_fixes, loop=loop)
         if loop.bonus_used or loop.failure_class != "evidence":
