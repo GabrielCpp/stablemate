@@ -332,6 +332,12 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # name — but it has to be *stated*, so "no name" and "nobody looked" stay distinguishable.
             BulletKey("role", required=True),
             BulletKey("name", required=True),
+            # Where the component lands on the screen, as bands of the viewport
+            # (`width 60-100%, x 0-20%`). Screen-relative on purpose: no `sidebar`/`main-column`
+            # vocabulary, nothing that assumes the page has a grid. It is the one documented
+            # fact a role+name assertion cannot check — `getByRole` finds an element whether the
+            # page lays it out across the window or crushes it into a column against one margin.
+            BulletKey("placement"),
             BulletKey("keyboard"),   # how it's reached/operated by keyboard
             BulletKey("extends", link=True),
             BulletKey("parent", link=True),

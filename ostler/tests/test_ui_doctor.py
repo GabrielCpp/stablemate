@@ -75,6 +75,44 @@ def test_missing_required_bullet(repo: Path):
     assert "trigger" not in missing   # present
 
 
+def _screen_with(repo: Path, bullets: str) -> None:
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+          f"## Components\n\n### body\n{bullets}")
+
+
+def test_a_component_that_carries_the_page_says_where_it_sits(repo: Path):
+    """`role:` and `name:` are the accessibility contract, and a scenario asserting on them
+    passes on a component crushed into a column against one margin — which is a defect that
+    reached a green run. `placement:` is the documented fact that check cannot carry, and it
+    is asked only of the roles that carry a page."""
+    _screen_with(repo, "- role: article\n- name: none\n")
+    report = _run(repo)
+    assert "missing-placement" in codes(report)
+    finding = next(f for f in report.findings if f.code == "missing-placement")
+    assert finding.ref == "docs/features/groom/gui/screens/s.md#body#placement", finding.ref
+    assert finding.path == "docs/features/groom/gui/screens/s.md" and finding.line
+
+    _screen_with(repo, "- role: article\n- name: none\n- placement: width 60-100%, x 0-20%\n")
+    assert "missing-placement" not in codes(_run(repo))
+
+    # A button's placement is brittle and proves nothing, so it is never demanded.
+    _screen_with(repo, "- role: button\n- name: Save\n")
+    assert "missing-placement" not in codes(_run(repo))
+
+
+def test_a_placement_nobody_could_violate_is_a_finding_not_coverage(repo: Path):
+    _screen_with(repo, "- role: article\n- name: none\n- placement: mostly the middle\n")
+    report = _run(repo)
+    assert "malformed-placement" in codes(report)
+    assert "missing-placement" not in codes(report), "it is present, just wrong"
+    message = next(f.message for f in report.findings if f.code == "malformed-placement")
+    assert "not a `key min-max%` pair" in message, message
+
+    _screen_with(repo, "- role: article\n- name: none\n- placement: width 100-60%\n")
+    assert "malformed-placement" in codes(_run(repo))
+
+
 def test_dangling_link(repo: Path):
     write(repo / "docs/features/groom/concepts/diff.md",
           "---\ntype: concept\nslug: diff\ntitle: Diff\n---\n# Diff\n\n"

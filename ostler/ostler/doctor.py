@@ -13,6 +13,7 @@ from pathlib import Path
 from ostler import (dynamic_registry, freeze, inventory, links as links_mod, markdown,
                     registry, schemas, select)
 from ostler import graph as graph_mod, locators as loc_mod, reach, waivers as waivers_mod
+from ostler.vet import placement as placement_mod
 from ostler import refs as refs_mod
 from ostler.refs import normalize_ref
 from ostler.model import Graph, Epic, required_section_problems
@@ -684,6 +685,36 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
             **_at(unnamed["node"])))
 
 
+def _check_placement(node, rel: str, f: list[Finding]) -> None:
+    """A structural component says where it sits, and says it in a form QA can check.
+
+    `role:` and `name:` are the accessibility contract, and a scenario asserting on them
+    passes whether the page lays the component out across the window or crushes it into a
+    column against one margin — that defect reached a green run, which is why the bullet
+    exists. It is only asked of the roles that carry a page: a button's placement is brittle
+    and proves nothing about the layout.
+    """
+    values = _bullet_values(node.meta.get("placement", ""))
+    role = str(node.meta.get("role", "")).strip()
+    if not values:
+        if role in placement_mod.PLACED_ROLES:
+            f.append(Finding(
+                "error", "missing-placement",
+                f"{node.id}: role={role} carries the page but no `placement:` says where it "
+                f"sits — a role+name assertion passes on a component crushed into a sliver",
+                path=rel, line=node.line, ref=f"{node.id}#placement",
+                suggestion="- placement: width 60-100%, x 0-20%   (read off the running UI)"))
+        return
+    for value in values:
+        parsed = placement_mod.parse_placement(value)
+        if isinstance(parsed, str):
+            f.append(Finding(
+                "error", "malformed-placement",
+                f"{node.id}: `placement: {value}` is not a placement — {parsed}",
+                path=rel, line=node.line, ref=f"{node.id}#placement",
+                suggestion="- placement: width 60-100%, x 0-20%"))
+
+
 def _check_ui(graph: Graph, f: list[Finding]) -> None:
     froot = graph.doc_roots.get("features")
     if froot is not None and froot.is_dir():
@@ -706,6 +737,9 @@ def _check_ui(graph: Graph, f: list[Finding]) -> None:
                                  f"{node.id}: {node.type} missing required `{bk.key}:`",
                                  path=rel, line=node.line, ref=bk.key,
                                  suggestion=f"- {bk.key}:", fixable=True))
+
+        if node.type == "component":
+            _check_placement(node, rel, f)
 
         for key in registry.normative_keys(node.type):
             for value in _bullet_values(node.meta.get(key, "")):

@@ -162,7 +162,13 @@ def merge_rects(
     return regions
 
 
-def _share(value: float, total: float) -> float:
+def share(value: float, total: float) -> float:
+    """A length as a fraction of the viewport, rounded once, here.
+
+    Public because a documented `placement:` is checked in the same units the layout digest
+    reports, and a second rounding on the ostler side would put a component on the wrong side
+    of its own declared band.
+    """
     return round(value / total, 3) if total else 0.0
 
 
@@ -192,9 +198,9 @@ def summarize(frame: dict[str, Any], regions: list[dict[str, Any]]) -> dict[str,
                 "role": region["role"],
                 "selector": region["selectors"][0],
                 "bbox": {key: round(float(box[key]), 1) for key in ("x", "y", "width", "height")},
-                "viewportWidthShare": _share(float(box["width"]), width),
-                "viewportHeightShare": _share(float(box["height"]), height),
-                "startsRightOf": _share(float(box["x"]), width),
+                "viewportWidthShare": share(float(box["width"]), width),
+                "viewportHeightShare": share(float(box["height"]), height),
+                "startsRightOf": share(float(box["x"]), width),
             }
         )
 
