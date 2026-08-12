@@ -46,7 +46,11 @@ class Story:
     slug: str
     title: str
     path: str
+    # The seeds this story covers, from the epic's `## Stories` block.
     seed_items: list[str]
+    # The sibling stories that must finish first, from *this story's* `## Dependencies` section —
+    # so the blockers are visible in the file a reader has open. Empty until `_attach_story_md`
+    # reads the story.md; a story whose file is missing has no blockers to state.
     dependencies: list[str]
     # Allocated id, repo-prefixed (e.g. "TODO-15"). Minted by ostler when the story is
     # created, recorded both in the epic's `## Stories` block and in the story's own
@@ -66,6 +70,10 @@ class Story:
     # scaffolded story has every `filled` one here — which is what distinguishes "the file exists"
     # from "somebody wrote the story".
     unwritten_sections: list[str] = field(default_factory=list)
+    # Bullets under `## Dependencies` that do not state a blocker — see
+    # `story_dependency_strays`. Non-empty means the section's shape is wrong, which is
+    # indistinguishable from "no blockers" in `dependencies` alone.
+    dependency_strays: list[str] = field(default_factory=list)
 
     @property
     def authored(self) -> bool:
@@ -282,6 +290,48 @@ def story_body_status(doc: markdown.MarkdownDoc) -> str:
     return str(bullet.value if bullet else "" or "")
 
 
+def story_dependencies(doc: markdown.MarkdownDoc) -> list[str]:
+    """The sibling slugs a story's ``## Dependencies`` section says block it.
+
+    The one place that answers "what does this story.md say blocks it". Only ``- Blocked by:``
+    bullets carry an edge, so the section's ``(none)`` — and any prose somebody adds around the
+    list — contributes nothing without the parser having to recognize the word.
+    """
+    section = doc.find_section(registry.STORY_DEPS_HEADING)
+    if section is None:
+        return []
+    want = registry.STORY_DEPS_LABEL.strip().lower()
+    deps: list[str] = []
+    for top in section.bullets:
+        for bullet in top.walk():
+            if bullet.label != want:
+                continue
+            # A comma list on one bullet is tolerated: the canonical form is a bullet each, but
+            # a hand edit that writes `- Blocked by: a, b` states the same graph.
+            deps += [dep for dep in _split_list(bullet.value) if dep not in deps]
+    return deps
+
+
+def story_dependency_strays(doc: markdown.MarkdownDoc) -> list[str]:
+    """Bullets under ``## Dependencies`` that state something other than ``- Blocked by:``.
+
+    A story.md is written by an agent, and the failure mode that costs the most is the quiet one:
+    a rewrite that turns the blockers into prose or renames the label empties the DAG without
+    anything failing. :func:`story_dependencies` cannot tell that apart from a story with no
+    blockers, so the shape is reported separately and `doctor` turns it into an error.
+    """
+    section = doc.find_section(registry.STORY_DEPS_HEADING)
+    if section is None:
+        return []
+    want = registry.STORY_DEPS_LABEL.strip().lower()
+    return [
+        bullet.text.strip()
+        for top in section.bullets
+        for bullet in top.walk()
+        if bullet.label != want
+    ]
+
+
 def _meta_from_bullets(section: markdown.Section) -> dict[str, str | list[str]]:
     """Parse the leading `- key: value` metadata bullets of a section into an ordered dict.
 
@@ -330,7 +380,7 @@ def _first_paragraph(section: markdown.Section) -> str:
 
 
 def _split_list(value: str) -> list[str]:
-    """Parse a `covers:`/`depends on:` value into a list, honoring the empty tokens."""
+    """Parse a `covers:`/`Blocked by:` value into a list, honoring the empty tokens."""
     if value.strip().lower() in registry.EMPTY_TOKENS:
         return []
     return [p.strip() for p in value.split(",") if p.strip()
@@ -387,16 +437,17 @@ def _parse_stories(doc: markdown.MarkdownDoc, epic_name: str, root: Path,
             continue
         meta = _meta_from_bullets(sub)
         seed_items = _split_list(_meta_scalar(meta, registry.STORY_COVERS_KEY))
-        dependencies = _split_list(_meta_scalar(meta, registry.STORY_DEPENDS_KEY))
         rel = (epic_dir / "stories" / slug / "story.md").relative_to(root).as_posix()
-        raw = {"slug": slug, "seedItems": seed_items, "dependencies": dependencies, **meta}
+        # `dependencies` is deliberately absent here: the epic states which seeds a story covers,
+        # the story states what blocks it. `_attach_story_md` fills it in from the story.md.
+        raw = {"slug": slug, "seedItems": seed_items, **meta}
         stories.append(Story(
             slug=slug,
             title=_meta_scalar(meta, "title"),
             path=rel,
             eid=_meta_scalar(meta, "id"),
             seed_items=seed_items,
-            dependencies=dependencies,
+            dependencies=[],
             raw=raw,
         ))
     return stories
@@ -747,6 +798,9 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
             story.doc_refs = refs.doc_hrefs
             story.status = story_status(doc)
             story.body_status = story_body_status(doc)
+            story.dependencies = story_dependencies(doc)
+            story.raw["dependencies"] = story.dependencies
+            story.dependency_strays = story_dependency_strays(doc)
             story.unwritten_sections = [
                 s.heading for s, _ in required_section_problems(doc, registry.STORY_SECTIONS)
             ]

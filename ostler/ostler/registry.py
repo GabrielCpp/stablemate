@@ -41,13 +41,14 @@ SEED_META_KEYS = (
 )
 # The two list-valued seed keys, comma-separated on the bullet.
 SEED_LIST_META_KEYS = ("layers", "services")
-# Metadata-bullet keys recognized inside a `### <slug>` story block. `covers`/`depends on` are the
-# graph edges; the rest are plain fields.
+# Metadata-bullet keys recognized inside a `### <slug>` story block. `covers` is the one graph
+# edge left here — it names seeds defined in this same file, so it stays beside them. A story's
+# dependencies do not: they live in the story's own `## Dependencies` section (see below), where
+# somebody reading the story can see what blocks it without opening the parent epic.
 STORY_COVERS_KEY = "covers"        # → seedItems
-STORY_DEPENDS_KEY = "depends on"   # → dependencies
-STORY_META_KEYS = (STORY_COVERS_KEY, STORY_DEPENDS_KEY, "title", "id", "phase", "effort")
+STORY_META_KEYS = (STORY_COVERS_KEY, "title", "id", "phase", "effort")
 
-# A metadata value meaning "empty list" in covers/depends.
+# A metadata value meaning "empty list" in covers.
 EMPTY_TOKENS = {"", "(none)", "none", "-", "—"}
 
 
@@ -61,23 +62,41 @@ class SectionSpec:
     *filled* separates the two questions a scaffolded document makes distinct: the heading
     exists (the scaffolder wrote it) versus somebody has since written under it. Only the
     second one means the document says anything.
+
+    *stub* is the line the scaffolder writes under the heading — a machine-written field the
+    author does not invent (the status bullet, the dependency list), as opposed to the prose a
+    `filled` section waits for. Keeping it in this table is what stops the scaffolder from
+    growing its own idea of the layout.
     """
     heading: str
     filled: bool = False       # True → the heading must carry prose, not merely exist
+    stub: str = ""             # scaffolded body line; "" → left blank for an author to write
 
+
+STORY_STATUS_HEADING = "Implementation Status"
+STORY_STATUS_LABEL = "Status"          # `- **Status**: <value>` under the heading above
+DEFAULT_STORY_STATUS = "Not started"
+
+# A story's blockers, in the story's own body. One bullet per blocker so the section reads as a
+# list and a diff names the edge that changed; the bare `(none)` — not a `- Blocked by: (none)`
+# bullet — when nothing blocks it, so "nothing blocks this" is a stated fact rather than an
+# empty section that might equally mean nobody has decided yet.
+STORY_DEPS_HEADING = "Dependencies"
+STORY_DEPS_LABEL = "Blocked by"        # `- Blocked by: <sibling-slug>`
+STORY_DEPS_NONE = "(none)"
 
 # story.md's body contract. `crud.create_story` scaffolds *from this table* and `model` /
 # `doctor` check against it, so the scaffold cannot drift into satisfying its own checkers —
 # the exact failure that let 44 empty stories read as authored.
 STORY_SECTIONS: tuple[SectionSpec, ...] = (
+    # Dependencies leads: what blocks a story is the first thing a reader needs to know, and
+    # putting it above the prose keeps it out of the way of the sections an author rewrites.
+    SectionSpec(STORY_DEPS_HEADING, filled=False, stub=STORY_DEPS_NONE),
     SectionSpec("Context", filled=True),
     SectionSpec("Acceptance Criteria", filled=True),
-    SectionSpec("Implementation Status", filled=False),   # scaffolded: holds the Status bullet
+    SectionSpec(STORY_STATUS_HEADING, filled=False,
+                stub=f"- **{STORY_STATUS_LABEL}**: {DEFAULT_STORY_STATUS}"),
 )
-
-STORY_STATUS_HEADING = "Implementation Status"
-STORY_STATUS_LABEL = "Status"          # `- **Status**: <value>` under the heading above
-DEFAULT_STORY_STATUS = "Not started"
 
 # OKF reserved per-bundle filenames.
 RESERVED_FILES = {"index.md", "log.md"}

@@ -77,6 +77,44 @@ def test_create_story_adds_block_and_scaffold(tmp_path: Path):
     assert "Context, Acceptance Criteria are empty" in unwritten[0].message
 
 
+def test_create_story_writes_its_blockers_into_the_story(tmp_path: Path):
+    """The scaffold states the DAG edge in the file a reader has open, not one file up."""
+    crud.create_epic(load(tmp_path), "billing", "Billing", prefix="acme")
+    assert crud.create_story(load(tmp_path), "billing", "01-first", "First").ok
+    assert crud.create_story(load(tmp_path), "billing", "02-second", "Second",
+                             depends=["01-first"]).ok
+
+    epic_text = (tmp_path / "docs/epics/0001-billing/epic.md").read_text(encoding="utf-8")
+    assert "depends on" not in epic_text
+
+    second = (tmp_path / "docs/epics/0001-billing/stories/02-second/story.md"
+              ).read_text(encoding="utf-8")
+    assert "## Dependencies\n\n- Blocked by: 01-first\n" in second
+    # Dependencies leads the body, ahead of the prose sections an author rewrites.
+    assert second.index("## Dependencies") < second.index("## Context")
+
+    first = (tmp_path / "docs/epics/0001-billing/stories/01-first/story.md"
+             ).read_text(encoding="utf-8")
+    assert "## Dependencies\n\n(none)\n" in first
+    assert "Blocked by" not in first
+
+    story = present(load(tmp_path).find_story("02-second"))[1]
+    assert story.dependencies == ["01-first"]
+    # An unstated blocker list is not an unwritten section — `(none)` is a complete answer.
+    assert "Dependencies" not in story.unwritten_sections
+
+
+def test_none_passed_as_a_blocker_is_not_written_as_one(tmp_path: Path):
+    """`--depends '(none)'` is how a caller says "no blockers"; it must not name one."""
+    crud.create_epic(load(tmp_path), "billing", "Billing", prefix="acme")
+    assert crud.create_story(load(tmp_path), "billing", "01-only", "Only",
+                             depends=["(none)"]).ok
+    text = (tmp_path / "docs/epics/0001-billing/stories/01-only/story.md"
+            ).read_text(encoding="utf-8")
+    assert "## Dependencies\n\n(none)\n" in text
+    assert "Blocked by" not in text
+
+
 def test_set_status_updates_frontmatter_and_line(repo: Path):
     res = crud.set_status(load(repo), "01-foo", "QA passed")
     assert res.ok
@@ -143,7 +181,13 @@ def test_delete_story_removes_block_and_dir(repo: Path):
     assert g.find_story("01-foo") is None
 
 
-def test_update_story_changes_edges_without_touching_story_body(tmp_path: Path):
+def test_update_story_rewrites_only_the_dependencies_section(tmp_path: Path):
+    """The two edges are written where each is read, and nothing else in either file moves.
+
+    `covers` names seeds defined in the epic, so it stays in epic.md; the blockers are the
+    story's own `## Dependencies`. The hand-authored prose in both files is what the assertions
+    are really about — an update that rewrote a body from a template would take it with it.
+    """
     assert crud.create_epic(load(tmp_path), "accounts", "Accounts", prefix="t").ok
     assert crud.add_seed(load(tmp_path), "accounts", "sign-in", status="researched").ok
     assert crud.add_seed(load(tmp_path), "accounts", "raw-xml", status="researched").ok
@@ -156,7 +200,7 @@ def test_update_story_changes_edges_without_touching_story_body(tmp_path: Path):
         story_path.read_text(encoding="utf-8") + "\nHand-authored contract.\n",
         encoding="utf-8",
     )
-    before = story_path.read_bytes()
+    assert "## Dependencies\n\n(none)\n" in story_path.read_text(encoding="utf-8")
     epic_path = tmp_path / "docs/epics/0001-accounts/epic.md"
     epic_path.write_text(
         epic_path.read_text(encoding="utf-8").replace(
@@ -181,10 +225,21 @@ def test_update_story_changes_edges_without_touching_story_body(tmp_path: Path):
     assert updated.seed_items == ["raw-xml"]
     assert updated.dependencies == ["sign-in"]
     assert updated.eid == original.eid
-    assert story_path.read_bytes() == before
+    story_text = story_path.read_text(encoding="utf-8")
+    assert "## Dependencies\n\n- Blocked by: sign-in\n" in story_text
+    assert "Hand-authored contract." in story_text
     epic_text = epic_path.read_text(encoding="utf-8")
+    assert "depends on" not in epic_text
     assert "- effort: small" in epic_text
     assert "Keep this note." in epic_text
+
+    # …and clearing them puts the bare `(none)` back, never a `- Blocked by: (none)` bullet.
+    assert crud.update_story(load(tmp_path), "editor", title="Interactive and raw XML editor",
+                             covers=["raw-xml"], depends=[]).ok
+    story_text = story_path.read_text(encoding="utf-8")
+    assert "## Dependencies\n\n(none)\n" in story_text
+    assert "Blocked by" not in story_text
+    assert present(load(tmp_path).find_story("editor"))[1].dependencies == []
 
 
 def test_delete_epic_removes_its_milestone_reference(tmp_path: Path):

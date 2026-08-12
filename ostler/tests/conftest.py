@@ -32,8 +32,12 @@ def write_json(path: Path, data: dict) -> None:
 
 
 def epic_md(eid: str, title: str, seeds: list[tuple[str, str, str]],
-            stories: list[tuple[str, str, list[str], list[str]]]) -> str:
-    """seeds: (id, status, summary). stories: (slug, title, covers[], depends[])."""
+            stories: list[tuple[str, str, list[str]]]) -> str:
+    """seeds: (id, status, summary). stories: (slug, title, covers[]).
+
+    No dependency edge here: a story's blockers are stated in its own `## Dependencies`
+    section, which `story_md` renders.
+    """
     out = ["---", "type: epic", f"id: {eid}", f"title: {title}", "---",
            f"# Epic: {title}", ""]
     if seeds:
@@ -41,22 +45,23 @@ def epic_md(eid: str, title: str, seeds: list[tuple[str, str, str]],
         for sid, status, summary in seeds:
             out += [f"### {sid}", f"- status: {status}", "", summary, ""]
     out += ["## Stories", ""]
-    for slug, stitle, covers, depends in stories:
+    for slug, stitle, covers in stories:
         out += [f"### {slug}",
                 f"- title: {stitle}",
                 f"- covers: {', '.join(covers) if covers else '(none)'}",
-                f"- depends on: {', '.join(depends) if depends else '(none)'}",
                 ""]
     return "\n".join(out) + "\n"
 
 
 def story_md(slug: str, title: str, status: str,
-             doc_ref: str | None = None) -> str:
+             doc_ref: str | None = None, depends: list[str] | None = None) -> str:
     # A written story: every `filled` section of registry.STORY_SECTIONS carries prose, so the
     # fixture repo is authored and `doctor` stays green. Leave one blank and it reports
     # `unwritten-story` — which is the point of the check.
+    deps = [f"- Blocked by: {d}" for d in (depends or [])] or ["(none)"]
     body = ["---", "type: story", f"slug: {slug}", f"status: {status}", "---",
-            f"# Story: {title}", "", "## Context", "",
+            f"# Story: {title}", "", "## Dependencies", "", *deps, "",
+            "## Context", "",
             f"Why {title} matters.", "", "## Implementation Status", "",
             f"- **Status**: {status}", "", "## Acceptance Criteria", ""]
     body.append("- The thing works.")
@@ -84,7 +89,7 @@ def repo(tmp_path: Path) -> Path:
     write(root / "docs/epics/epic-a/epic.md", epic_md(
         "t-1", "epic-a",
         seeds=[("seed-a1", "researched", "first"), ("seed-a2", "resolved", "done")],
-        stories=[("01-foo", "Foo", ["seed-a1"], [])],
+        stories=[("01-foo", "Foo", ["seed-a1"])],
     ))
     write(root / "docs/epics/epic-a/stories/01-foo/story.md",
           story_md("01-foo", "Foo", "Not started", "../../../features/area/rec.md"))
@@ -93,7 +98,7 @@ def repo(tmp_path: Path) -> Path:
     write(root / "docs/epics/epic-b/epic.md", epic_md(
         "t-2", "epic-b",
         seeds=[("seed-b1", "researched", "bee")],
-        stories=[("01-bar", "Bar", ["seed-b1"], [])],
+        stories=[("01-bar", "Bar", ["seed-b1"])],
     ))
     write(root / "docs/epics/epic-b/stories/01-bar/story.md",
           story_md("01-bar", "Bar", "Not started"))

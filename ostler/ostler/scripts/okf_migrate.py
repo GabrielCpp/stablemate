@@ -16,7 +16,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import markdown, registry
+from ostler import crud, markdown, registry
 
 
 def _dump_fm(fm: dict) -> str:
@@ -53,16 +53,16 @@ def _seed_block(item: dict) -> list[str]:
 
 
 def _story_block(st: dict) -> list[str]:
+    """The story's `### <slug>` metadata in epic.md. Its dependencies are *not* here: they go
+    into the story's own `## Dependencies` section, written by :func:`_write_story_deps`."""
     slug = str(st.get("slug"))
     covers = [str(x) for x in (st.get("seedItems") or [])]
-    deps = [str(x) for x in (st.get("dependencies") or [])]
     out = [f"### {slug}"]
     if st.get("title"):
         out.append(f"- title: {st['title']}")
     if st.get("id"):
         out.append(f"- id: {st['id']}")
     out.append(f"- covers: {', '.join(covers) if covers else '(none)'}")
-    out.append(f"- depends on: {', '.join(deps) if deps else '(none)'}")
     if st.get("phase") not in (None, ""):
         out.append(f"- phase: {st['phase']}")
     if st.get("effort"):
@@ -85,6 +85,18 @@ def _stories_from_folders(edir: Path) -> list[dict]:
             title = first.lstrip("# ").removeprefix("Story:").strip()
         out.append({"slug": slug, "title": title, "seedItems": [], "dependencies": []})
     return out
+
+
+def _write_story_deps(edir: Path, stories: list[dict]) -> None:
+    """Carry each story's `dependencies` out of the manifest and into its own story.md."""
+    for st in stories:
+        slug = str(st.get("slug") or "")
+        story_f = edir / "stories" / slug / "story.md"
+        if not slug or not story_f.exists():
+            continue
+        doc = markdown.split(story_f.read_text(encoding="utf-8"))
+        crud.ensure_dependencies(doc, [str(x) for x in (st.get("dependencies") or [])])
+        story_f.write_text(doc.render(), encoding="utf-8")
 
 
 def _migrate_epic(edir: Path) -> bool:
@@ -128,6 +140,7 @@ def _migrate_epic(edir: Path) -> bool:
             parts += _story_block(st)
 
     epic_f.write_text(f"---\n{_dump_fm(fm)}---\n{chr(10).join(parts).rstrip()}\n", encoding="utf-8")
+    _write_story_deps(edir, stories)
     seed_f.unlink(missing_ok=True)
     deps_f.unlink(missing_ok=True)
     return True

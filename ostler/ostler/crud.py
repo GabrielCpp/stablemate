@@ -50,6 +50,59 @@ def _remove_subsection(doc: markdown.MarkdownDoc, heading: str, sub_title: str) 
     return False
 
 
+def _dependency_lines(depends: list[str]) -> list[str]:
+    """The body of a story's ``## Dependencies`` section: a bullet each, or the bare ``(none)``.
+
+    The empty tokens are dropped rather than written: `--depends '(none)'` is how a caller says
+    "no blockers", and rendering it as `- Blocked by: (none)` would state a blocker named
+    `(none)` — the exact bullet the section must never carry.
+    """
+    slugs = [d.strip() for d in depends if d.strip().lower() not in registry.EMPTY_TOKENS]
+    if not slugs:
+        return [registry.STORY_DEPS_NONE]
+    return [f"- {registry.STORY_DEPS_LABEL}: {slug}" for slug in slugs]
+
+
+def _write_dependencies(doc: markdown.MarkdownDoc, depends: list[str]) -> bool:
+    """Rewrite a story doc's ``## Dependencies`` body; False when it has no such heading.
+
+    Replaces the section's whole body rather than editing bullets in place: the edge set is
+    ostler's to state, and a stale ``- Blocked by:`` left behind by a shorter new list would be
+    read as a real blocker. Refusing when the heading is absent is what keeps a malformed story
+    from silently acquiring a second Dependencies section.
+    """
+    section = doc.find_section(registry.STORY_DEPS_HEADING)
+    if section is None:
+        return False
+    lines = doc.body.split("\n")
+    end = section.line_end
+    while end > section.line_start + 1 and not lines[end - 1].strip():
+        end -= 1                                  # keep the blank line before the next heading
+    lines[section.line_start + 1:end] = ["", *_dependency_lines(depends)]
+    doc.body = "\n".join(lines)
+    doc._sections = None
+    return True
+
+
+def ensure_dependencies(doc: markdown.MarkdownDoc, depends: list[str]) -> None:
+    """State *depends* in a story doc's ``## Dependencies``, adding the section when it has none.
+
+    The tolerant form of :func:`_write_dependencies`, for a migration meeting story.md files
+    written before the section existed. `update_story` deliberately does *not* use it: there, a
+    missing heading means the story is malformed and the operator should hear about it.
+    """
+    if _write_dependencies(doc, depends):
+        return
+    lines = doc.body.split("\n")
+    # Directly under the H1 — the blockers are the first thing a reader of the story needs.
+    after_title = next((i + 1 for i, ln in enumerate(lines) if ln.startswith("# ")), 0)
+    lines[after_title:after_title] = [
+        "", f"## {registry.STORY_DEPS_HEADING}", "", *_dependency_lines(depends),
+    ]
+    doc.body = "\n".join(lines)
+    doc._sections = None
+
+
 def dump_frontmatter(fm: dict) -> str:
     return yaml.safe_dump(fm, sort_keys=False, allow_unicode=True)
 
@@ -195,31 +248,31 @@ def delete_epic(graph: Graph, name: str) -> Result:
 # ---------------------------------------------------------------------------
 # stories
 # ---------------------------------------------------------------------------
-def _story_block(slug: str, title: str, sid: str,
-                 covers: list[str], depends: list[str]) -> list[str]:
+def _story_block(slug: str, title: str, sid: str, covers: list[str]) -> list[str]:
     return [
         f"### {slug}",
         f"- title: {title}",
         f"- id: {sid}",
         f"- covers: {', '.join(covers) if covers else '(none)'}",
-        f"- depends on: {', '.join(depends) if depends else '(none)'}",
         "",
     ]
 
 
-def _story_body(title: str) -> str:
+def _story_body(title: str, depends: list[str]) -> str:
     """The story.md skeleton, generated from ``registry.STORY_SECTIONS``.
 
     Scaffolding from the same table the checks read is the point: a hardcoded skeleton drifts
     into satisfying its own validators, which is how a repo full of empty stories reported
-    itself authored. Only the status section gets a stub line — the `filled` ones are left
-    deliberately blank so they read as unwritten until an author writes them.
+    itself authored. Sections carrying a machine-written field get their `stub`; the `filled`
+    ones are left deliberately blank so they read as unwritten until an author writes them.
     """
     lines = [f"# Story: {title}", ""]
     for spec in registry.STORY_SECTIONS:
         lines += [f"## {spec.heading}", ""]
-        if spec.heading == registry.STORY_STATUS_HEADING:
-            lines += [f"- **{registry.STORY_STATUS_LABEL}**: {registry.DEFAULT_STORY_STATUS}", ""]
+        if spec.heading == registry.STORY_DEPS_HEADING:
+            lines += [*_dependency_lines(depends), ""]
+        elif spec.stub:
+            lines += [spec.stub, ""]
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
@@ -241,7 +294,7 @@ def create_story(graph: Graph, epic_name: str, slug: str, title: str,
     sid = ids.allocate(graph, prefix)
     doc = markdown.split(epic_md.read_text(encoding="utf-8"))
     _insert_subsection(doc, registry.STORIES_HEADING,
-                       _story_block(slug, title, sid, covers or [], depends or []))
+                       _story_block(slug, title, sid, covers or []))
     epic_md.write_text(doc.render(), encoding="utf-8")
 
     # The allocated id belongs in the story's own frontmatter, not only in the epic's
@@ -251,7 +304,7 @@ def create_story(graph: Graph, epic_name: str, slug: str, title: str,
     # parent epic and match on slug. Ids are ostler-minted and repo-prefixed (`TODO-15`), so
     # carrying it here is what makes the story addressable in the graph.
     fm = {"type": "story", "id": sid, "slug": slug, "status": registry.DEFAULT_STORY_STATUS}
-    body = _story_body(title)
+    body = _story_body(title, depends or [])
     story_md.parent.mkdir(parents=True, exist_ok=True)
     story_md.write_text(f"---\n{dump_frontmatter(fm)}---\n{body}", encoding="utf-8")
     return Result(True, f"created story '{slug}' ({sid}) in epic '{epic_name}'",
@@ -266,11 +319,17 @@ def update_story(
     covers: list[str],
     depends: list[str],
 ) -> Result:
-    """Replace a story's graph metadata without touching its id, body, status, or extra fields."""
+    """Replace a story's graph metadata without touching its id, body, status, or extra fields.
+
+    Two files, because the two edges live where each is readable: `covers` names seeds defined in
+    the epic and is rewritten there, while the blockers are rewritten in the story's own
+    ``## Dependencies`` section. Both are written or the call fails — a half-applied update would
+    leave the DAG stating one thing in one file and another in the other.
+    """
     found = graph.find_story(slug)
     if found is None:
         return Result(False, f"no story '{slug}'")
-    epic, _story = found
+    epic, story = found
     epic_md = epic.epic_md
     if epic_md is None:
         return Result(False, f"epic '{epic.name}' has no epic.md to update the story in")
@@ -284,10 +343,19 @@ def update_story(
     if story_section is None:
         return Result(False, f"no story '{slug}'")
 
+    story_md = story.story_md
+    if story_md is None:
+        return Result(False, f"story '{slug}' has no story.md to write its dependencies into")
+    story_doc = markdown.split(story_md.read_text(encoding="utf-8"))
+    if not _write_dependencies(story_doc, depends):
+        return Result(
+            False,
+            f"story '{slug}' has no '## {registry.STORY_DEPS_HEADING}' section to update",
+        )
+
     values = {
         "title": title,
         registry.STORY_COVERS_KEY: ", ".join(covers) if covers else "(none)",
-        registry.STORY_DEPENDS_KEY: ", ".join(depends) if depends else "(none)",
     }
     lines = doc.body.split("\n")
     seen: set[str] = set()
@@ -302,7 +370,8 @@ def update_story(
         return Result(False, f"story '{slug}' is missing metadata: {', '.join(missing)}")
     doc.replace_body(lines)
     epic_md.write_text(doc.render(), encoding="utf-8")
-    return Result(True, f"updated story '{slug}' in epic '{epic.name}'", [epic_md])
+    story_md.write_text(story_doc.render(), encoding="utf-8")
+    return Result(True, f"updated story '{slug}' in epic '{epic.name}'", [epic_md, story_md])
 
 
 def delete_story(graph: Graph, slug: str) -> Result:

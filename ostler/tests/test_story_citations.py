@@ -56,7 +56,7 @@ def book_repo(root: Path, context: str) -> Path:
     write(root / SCREEN, SCREEN_MD)
     write(root / "docs/epics/e/epic.md",
           "---\ntype: epic\nid: t-1\ntitle: E\n---\n# Epic: E\n\n"
-          "## Stories\n\n### 01-s\n- title: S\n- covers: (none)\n- depends on: (none)\n")
+          "## Stories\n\n### 01-s\n- title: S\n- covers: (none)\n")
     write(root / STORY_DIR / "story.md", story(context))
     return root
 

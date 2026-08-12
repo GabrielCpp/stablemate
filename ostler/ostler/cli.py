@@ -188,7 +188,9 @@ def _build_parser() -> argparse.ArgumentParser:
     crt.add_argument("slug")
     crt.add_argument("--title", required=True)
     crt.add_argument("--covers", default="")
-    crt.add_argument("--depends", default="")
+    crt.add_argument("--depends", default="",
+                     help="sibling slugs that block this story; written as `- Blocked by:` "
+                          "bullets in the story's own `## Dependencies` section")
     crt.add_argument("--prefix")
     crt.add_argument("--json", action="store_true")
     crf = crs.add_parser("feature")
@@ -216,7 +218,9 @@ def _build_parser() -> argparse.ArgumentParser:
     upst.add_argument("slug")
     upst.add_argument("--title", required=True)
     upst.add_argument("--covers", required=True)
-    upst.add_argument("--depends", required=True)
+    upst.add_argument("--depends", required=True,
+                      help="the story's complete blocker list, rewritten into its "
+                           "`## Dependencies` section; pass '(none)' to clear it")
 
     # ---- template-declared kinds: generic instance CRUD + hierarchy CRUD --
     gn = sub.add_parser("new", help="create an instance of a template-declared kind")

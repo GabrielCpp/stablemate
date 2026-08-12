@@ -5,7 +5,9 @@ from pathlib import Path
 from ostler import doctor
 from ostler.model import load
 
-from conftest import epic_md, write
+from conftest import epic_md, story_md, write
+
+FOO_STORY = "docs/epics/epic-a/stories/01-foo/story.md"
 
 
 def codes(report):
@@ -24,7 +26,7 @@ def test_cross_epic_seed_reference_is_flagged(repo: Path):
     write(repo / "docs/epics/epic-a/epic.md", epic_md(
         "t-1", "epic-a",
         seeds=[("seed-a1", "researched", "first"), ("seed-a2", "resolved", "done")],
-        stories=[("01-foo", "Foo", ["seed-b1"], [])],
+        stories=[("01-foo", "Foo", ["seed-b1"])],
     ))
 
     report = doctor.run(load(repo))
@@ -32,6 +34,29 @@ def test_cross_epic_seed_reference_is_flagged(repo: Path):
     # seed-a1 is now uncovered -> orphan
     assert "orphan-seed" in codes(report)
     assert report.errors  # non-zero exit
+
+
+def test_blocker_naming_no_story_is_flagged(repo: Path):
+    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", depends=["no-such-story"]))
+    assert "dangling-dependency" in codes(doctor.run(load(repo)))
+
+
+def test_blocker_in_another_epic_is_flagged(repo: Path):
+    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", depends=["01-bar"]))
+    assert "cross-epic-dependency" in codes(doctor.run(load(repo)))
+
+
+def test_a_dependencies_bullet_that_names_no_blocker_is_flagged(repo: Path):
+    """The guard against a silent rewrite: story.md is agent-written, and a body turned into
+    prose empties the DAG with nothing else reporting it."""
+    text = story_md("01-foo", "Foo", "Not started", depends=["01-bar"])
+    write(repo / FOO_STORY, text.replace("- Blocked by: 01-bar", "- Needs: 01-bar"))
+
+    findings = [f for f in doctor.run(load(repo)).findings
+                if f.code == "malformed-dependency-bullet"]
+
+    assert [f.ref for f in findings] == ["01-foo"]
+    assert "Needs: 01-bar" in findings[0].message
 
 
 def test_resolved_seed_not_required_to_be_covered(repo: Path):
@@ -56,7 +81,7 @@ def test_missing_type_is_flagged(repo: Path):
 def test_seedless_epic_no_covers_warning(repo: Path):
     # a wholly-seedless epic (globex-style) must not raise story-covers-no-seed
     write(repo / "docs/epics/epic-c/epic.md", epic_md(
-        "t-3", "epic-c", seeds=[], stories=[("01-x", "X", [], [])]))
+        "t-3", "epic-c", seeds=[], stories=[("01-x", "X", [])]))
     write(repo / "docs/epics/epic-c/stories/01-x/story.md",
           "---\ntype: story\nslug: 01-x\nstatus: Not started\n---\n# Story: X\n")
     warns = {f.code for f in doctor.run(load(repo)).findings if f.severity == "warn"}

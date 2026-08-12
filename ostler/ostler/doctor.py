@@ -195,19 +195,31 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
                                   f"story '{story.slug}' references unknown seed '{sid}'",
                                   epic.name, sid))
 
-        # dependencies resolve to sibling stories
+        # `## Dependencies` in the story's own body resolves to sibling stories
+        deps_ref = f"its `## {registry.STORY_DEPS_HEADING}` section"
         for dep in story.dependencies:
             if dep in {s.slug for s in epic.stories}:
                 continue
             other = graph.epic_of_story(dep)
             if other is not None:
                 f.append(Finding("error", "cross-epic-dependency",
-                                  f"story '{story.slug}' depends on '{dep}' from epic "
-                                  f"'{other.name}', not '{epic.name}'", epic.name, dep))
+                                  f"story '{story.slug}' is blocked by '{dep}' from epic "
+                                  f"'{other.name}', not '{epic.name}' — {deps_ref}",
+                                  epic.name, dep))
             else:
                 f.append(Finding("error", "dangling-dependency",
-                                  f"story '{story.slug}' depends on unknown story '{dep}'",
-                                  epic.name, dep))
+                                  f"story '{story.slug}' is blocked by unknown story '{dep}' "
+                                  f"in {deps_ref}", epic.name, dep))
+
+        # The shape of that section. A bullet stating anything but a blocker is how a rewrite
+        # empties the DAG silently — the edges vanish and nothing else reports it.
+        for stray in story.dependency_strays:
+            f.append(Finding("error", "malformed-dependency-bullet",
+                             f"story '{story.slug}' has a bullet under "
+                             f"`## {registry.STORY_DEPS_HEADING}` that states no blocker: "
+                             f"{stray!r}", epic.name, story.slug,
+                             suggestion=f"write it as `- {registry.STORY_DEPS_LABEL}: <slug>`, "
+                                        f"or `{registry.STORY_DEPS_NONE}` with no bullet at all"))
 
         # story.md file present
         if story.story_md is None:

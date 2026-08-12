@@ -87,6 +87,6 @@ def test_freeze_a_seed(repo):
     write(repo / "docs/epics/epic-a/epic.md", epic_md(
         "t-1", "epic-a",
         seeds=[("seed-a1", "researched", "rewritten"), ("seed-a2", "resolved", "done")],
-        stories=[("01-foo", "Foo", ["seed-a1"], [])],
+        stories=[("01-foo", "Foo", ["seed-a1"])],
     ))
     assert "frozen-mutated" in _codes(repo)
