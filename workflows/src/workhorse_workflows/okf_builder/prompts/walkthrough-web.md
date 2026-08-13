@@ -116,7 +116,7 @@ Real users do not type URLs or deep-link into screens — they start at the fron
    `{{ workhorse_var('screenshots_dir') }}/<slug>-<state>.png` and reference it from the screen/flow
    doc with a **`screenshot:` bullet** holding the repo-relative path
    (`docs/features/{{ workhorse_var('service') }}/gui/screenshots/<slug>-<state>.png`). These are
-   committed documentation evidence — but do NOT put them in `code:`/`verify:`, which are code refs
+   committed documentation evidence — but do NOT put them in `code:`/`tests:`, which are code refs
    the linter validates.
 6. **Visually register every documented component** with `ostler vet` — same page, still at top
    scroll, no resize between the screenshot and this step:

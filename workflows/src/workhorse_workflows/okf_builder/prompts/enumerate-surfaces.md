@@ -47,7 +47,7 @@ explicit source root below.
      local tool may have only `local`, or none).
    Do not resolve the steps/ports/health here — the investigator documents each to the bar.
 3. Find the **test stack** — how the system is *verified*, and how a contributor adds to it. This is
-   the surface a `verify:` bullet points into, so a book that cites tests without describing the
+   the surface a `tests:` bullet points into, so a book that cites tests without describing the
    harness that runs them cites something a reader cannot execute. Read `Makefile`/`justfile` test
    targets, `package.json` scripts, `playwright.config.*` / `vitest.config.*` / `jest.config.*` /
    `pytest.ini` / `pyproject [tool.pytest]` / `go.mod` + `*_test.go` layout, and the CI workflow —

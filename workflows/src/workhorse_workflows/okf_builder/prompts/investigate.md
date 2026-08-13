@@ -45,7 +45,10 @@ item by running `ostler fmt <touched>` on what you wrote.
 
 Document to the **spec-complete bar** (enough to regenerate behavior-equivalent code — *what*, not
 coding patterns), **merge** into any node that already exists (the book, not a changelog), and set
-`code:`/`verify:` to the real `path::symbol`. Then emit the deeper items you discovered.
+`code:`/`tests:` to the real `path::symbol`. `verify:` is not one of those: it declares the
+observation that proves the node, as a call from ostler's check vocabulary
+(`http_status(409, title="Conflict")`, `persists(subject="the draft")`) — `doctor` refuses anything
+else. Then emit the deeper items you discovered.
 
 **One provable claim per normative bullet.** Every value of `does:`, `when:`, `returns:`,
 `raises:`, `status:`, `error:`, `auth:`, `persistence:`, `emits:`, `consumes:`, `concurrency:`,
@@ -131,8 +134,8 @@ missing rather than re-reading the whole tree.
     promotes them to `verified` later. Order the steps so a reader can stand the system up from the
     doc alone. Emit any surface/concept the runbook references but that isn't documented yet.
 - **harness** — document **one test tier**: how it is run, where its specs live, and how a
-  contributor adds one. A `verify:` bullet elsewhere in the book names a test; this is the node that
-  says what running it takes, so `verify:` points into something executable instead of a bare string.
+  contributor adds one. A `tests:` bullet elsewhere in the book cites a test; this is the node that
+  says what running it takes, so the citation points into something executable, not a bare string.
   Author it as a `runbook` under `docs/features/<svc>/ops/` (`ostler scaffold runbook <tier>
   --service <svc>`) with `driver:` set to what the tier actually drives — `web` for a browser e2e
   suite, `cli` for a unit/lint runner — plus an `environment:` link when it needs a booted stack.
@@ -221,7 +224,7 @@ so a mistake costs you one more item next round, not a missed defect. If you wan
 specific bullet landed, re-read the file you just wrote.
 
 Every path link you write must resolve; put a node's key relations in its **opening prose** (a file
-node's graph links are its intro region). Never invent a `verify:` — omit if no test exists.
+node's graph links are its intro region). Never invent a `tests:` citation — omit if no test exists.
 
 ## Output
 

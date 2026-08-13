@@ -408,7 +408,11 @@ class OkfBuilder(Workflow):
             str(paths.waivers_path(self.ctx.features_root)),
             rescan,
         )
-        if coverage.coverage_complete:
+        # Two gaps, both computed, and the book is done only when neither is open: the join
+        # says every unit is cited, the doctor scan says every cited node declares what
+        # observing it looks like. A book that passes the first alone is exhaustively
+        # documented and entirely unprovable.
+        if coverage.coverage_complete and not coverage.undeclared_count:
             return Continue(coverage, self.walkthrough)
         return Continue(coverage, self.recheck, rnd=rnd, rescan=coverage.rescan_round)
 
@@ -426,8 +430,9 @@ class OkfBuilder(Workflow):
         inventory = self.output(inventory_source)
         coverage = self.output(compute_coverage)
         self.logger.info(
-            "adjudicating %d uncovered unit(s), re-scan %d",
+            "adjudicating %d uncovered unit(s) and %d undeclared node(s), re-scan %d",
             coverage.missing_count,
+            coverage.undeclared_count,
             rescan,
             extra={"activity": True},
         )
@@ -447,6 +452,8 @@ class OkfBuilder(Workflow):
                 "inventory_errors": inventory.inventory_errors,
                 "missing_path": coverage.missing_path,
                 "missing_count": coverage.missing_count,
+                "undeclared_path": coverage.undeclared_path,
+                "undeclared_count": coverage.undeclared_count,
                 "coverage_summary": coverage.coverage_summary,
                 "coverage_error": coverage.coverage_error,
                 "waivers_path": str(paths.waivers_path(self.ctx.features_root)),
