@@ -1795,6 +1795,9 @@ class Qa(Workflow):
             # A post-run finding is by construction a finding against a plan that imported
             # and ran, so what is on disk is runnable.
             plan_validates=True,
+            # And it is also the one guard where "runnable" buys nothing: the plan on disk
+            # is the plan that just produced the failures being judged.
+            already_ran=True,
         )
 
     def _stalled(self, result: object, loop: QaLoop, lap: str) -> Continue | Await | Done:
@@ -1864,7 +1867,12 @@ class Qa(Workflow):
         )
 
     def _plan_lap(
-        self, result: object, loop: QaLoop, *, plan_validates: bool
+        self,
+        result: object,
+        loop: QaLoop,
+        *,
+        plan_validates: bool,
+        already_ran: bool = False,
     ) -> Continue | Await | Done:
         """Take the lap the guard just paid for, unless the plan has had too many in total.
 
@@ -1879,9 +1887,16 @@ class Qa(Workflow):
         inferred — a plan that parses is demoted to the runner exactly as a spent reviewer
         budget demotes it, with `run` → `assess` → `audit` all still standing downstream, and
         only a plan that will not import has nothing left to run and ends the flow.
+
+        `already_ran` is the other half of that: the demotion is worth a turn only from a
+        gate that judged the plan *before* it ran. Reached from `_guard_plan` the plan on
+        disk is the one that just produced the failures being judged, and the demotion skips
+        `repair_plan` — so it re-runs an unedited plan against unedited code, pays a fresh
+        assessment turn to be told the same thing, and only then trips `_repeating`. A live
+        story spent a suite run and a `power="high"` assessment on exactly that lap.
         """
         if loop.plan_lane_seconds >= self.plan_lane_budget_s:
-            if plan_validates:
+            if plan_validates and not already_ran:
                 self.logger.info(
                     "the QA plan lane has spent %.0fs of its %ds budget — running the plan "
                     "it has rather than repairing it further",

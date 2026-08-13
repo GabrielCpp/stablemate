@@ -1287,6 +1287,33 @@ def test_a_context_rebuild_past_the_plan_budget_does_not_buy_another_author(
     assert okf.runs == 2, "the rebuilt packet re-ran the plan it had"
 
 
+def test_a_spent_plan_budget_after_the_run_does_not_re_run_the_same_plan(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The demotion to the runner is worth a turn only from a gate that judged the plan
+    *before* it ran.
+
+    Reached from `_guard_plan` the plan on disk is the one that just produced the failures
+    being judged, and the demotion skips `repair_plan` — so it re-ran an unedited plan
+    against unedited code, paid a `power="high"` assessment turn to be told the same thing,
+    and only then tripped `_repeating`. A live story spent exactly that lap.
+
+    Same ending either way; this is the lap before it.
+    """
+    okf = ostler(fail_runs=99)
+    agent = _Agent(docs, repair_plans=99, escalate=True)
+
+    result = drive_flow(Qa(story=STORY, plan_lane_budget_s=0), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert result.spent == "the QA plan lane's wall-clock budget", result.spent
+    assert okf.runs == 1, "the failing plan was never re-run unedited"
+    assert agent.counts()["qa-story"] == 1, agent.counts()
+
+
 def test_a_refusal_only_the_stack_could_fix_does_not_cost_a_replan(
     docs: Path,
     ostler: Callable[..., _Ostler],
