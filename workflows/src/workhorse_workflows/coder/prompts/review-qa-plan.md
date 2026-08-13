@@ -97,6 +97,11 @@ For every scenario, independently verify — against the acceptance criteria and
   environment;
 - runner-owned artifacts will demonstrate the claimed result.
 
+A one-shot read of a still-settling UI — `.count()`, `.get_attribute()`, `evaluate()` with no
+wait on *that* locator before it — is a race, and it fails in the shape of a product defect; if
+you see one, raise it as a `plan` finding whose `kind` is **not** `coverage`, because a race is a
+defect in how the plan reads, not a gap in what it covers.
+
 Do not execute the plan, drive the product, edit either plan file, or author evidence. This is an
 independent review, not another planning pass. Approve when every acceptance criterion and
 obligation in the contract has, somewhere in the plan, a scenario that would actually catch

@@ -204,6 +204,18 @@ aggregating assert records over what each one `covers`, so a bare `assert` prove
 the gate. A scenario that claims coverage and records no assertion fails — at validation, from
 a static count of the `qa.check`/`qa.require` calls in its body, and again at runtime.
 
+- **Wait for the thing you are about to read.** `.count()`, `.get_attribute()`,
+  `.inner_text()`, `.is_visible()` and `qa.page.evaluate()` sample the page **once**, at
+  whatever instant Python reached the line — none of them retry. Against a UI still resolving
+  a fetch, a re-render or a transition that is a race, and a race fails in the exact shape of
+  a product defect: intermittently, with a plausible actual value. That is expensive, because
+  it buys a repair lap spent on the wrong hypothesis before anyone notices the plan was the
+  problem. Await the specific locator first — `badge.wait_for(state="visible")` — and then
+  read it. A wait for something *else* does not count: `qa.page.wait_for_url("**/editor/*")`
+  waits for the navigation, not for the badge the next line samples, and a badge rendered two
+  frames later still reads as absent. A state that is transient by nature — a spinner between
+  two fast round trips — is not made observable by sampling faster: hold the transition (block
+  the response, throttle the route) or assert on the durable thing it leaves behind.
 - **Vet every documented state a UI scenario reaches — this is not optional.** A scenario on a
   `playwright` or `maestro` target that never calls `qa.vet` is rejected at validation, before
   anything runs, and fails again at runtime if it slipped through. `qa.vet(screen, name=…)`

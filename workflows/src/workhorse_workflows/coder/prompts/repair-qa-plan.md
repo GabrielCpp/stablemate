@@ -82,6 +82,23 @@ Two consequences worth stating:
 Adding a *new* scenario is a repair when a finding says coverage is missing. It is not a
 repair when no finding asks for it.
 
+## A race is repaired by waiting, never by loosening
+
+When a finding says an assertion failed intermittently, or that it read a half-rendered page,
+the plan raced the product: the assertion was right and the read was early. `.count()`,
+`.get_attribute()`, `.inner_text()` and `qa.page.evaluate()` sample once and never retry, so
+against a UI still settling they report whatever happened to be on screen at that instant.
+
+Repair the **read**. Await the specific locator — `badge.wait_for(state="visible")` — before
+sampling it, and check that the wait is a wait for *that* element: a `wait_for_url` waits for
+the navigation and proves nothing about what rendered after it.
+
+Do not widen the expected value, delete the check, or add a sleep. The first two turn a red
+run green without touching the product, which is the most expensive mistake available in this
+turn; the third is the same race with a worse constant. A state that is transient by nature
+needs the transition held (block the response, throttle the route) or a durable consequence
+asserted instead.
+
 ## A finding that cites prose is closed by editing that prose
 
 Some findings do not name a scenario at all. They name a passage — a section of
