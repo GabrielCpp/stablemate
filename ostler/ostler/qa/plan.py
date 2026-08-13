@@ -279,7 +279,8 @@ def _validate_python_scenarios(
             problems.append(
                 f"scenario '{scenario_id}' claims coverage of {sorted(covers)} but its body "
                 "calls no qa.check() — assert something the behaviour produced, on the line "
-                "that produced it"
+                "that produced it. The count is static and over this function alone, so a "
+                "check inside a helper the scenario calls does not count; inline it here"
             )
         else:
             asserted_coverage.update(covers)

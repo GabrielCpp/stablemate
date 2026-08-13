@@ -152,6 +152,22 @@ def test_coverage_without_an_assertion_is_rejected(tmp_path: Path) -> None:
     assert any("is not covered by an asserted scenario" in item for item in reported)
 
 
+def test_the_finding_says_a_helper_s_checks_do_not_count(tmp_path: Path) -> None:
+    """Factoring shared assertions into a helper is the ordinary way to write a scenario that
+    proves the same thing for two locales, and it reads to this static count as zero checks.
+    The refusal is deliberate, but a message naming only the symptom sends the author to read
+    `count_checks` to discover the rule — so the rule travels with the finding."""
+    spec = _spec(tmp_path)
+    hollow = PLAN[: PLAN.index('    payload = json')] + "    _assert_it(qa)\n"
+    document, problems = load_plan(_plan(spec, hollow), spec, tmp_path)
+    assert not problems and document is not None
+
+    reported = [item for item in validate_v2(document) if "calls no qa.check()" in item]
+
+    assert reported, "a scenario whose only checks live in a helper still counts as zero"
+    assert "helper" in reported[0] and "inline it here" in reported[0]
+
+
 def test_an_unknown_cover_names_what_the_plan_could_cover(tmp_path: Path) -> None:
     spec = _spec(tmp_path)
     document, _ = load_plan(
