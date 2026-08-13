@@ -84,14 +84,28 @@ rejects every `code:` target that isn't there, with no exception, so the correct
 deletion is to remove the bullet that cites it — or the node, if it described only what was
 deleted — never to invent a citation for something gone.
 
+**`missing-code-symbol` after your own refactor is the same situation wearing a disguise.** The
+behavior survived, so the node is right and only the citation is stale; the symbol that used to
+carry it may have been *dissolved* into another rather than moved. Open the file and read what
+it declares now, then cite that. Do not explain where the symbol "really lives" from memory —
+grounding is part-wise and a re-export does not satisfy it, so an unverified explanation is a
+guess that fails the next lap identically.
+
 If the gate notes name an unowned path, `not_required` is the one answer that cannot be right:
 a grounding bullet you had to add makes the answer `documented`.
 
 **The other half: what the behavior would look like observed.** `code:` and `tests:` say where
 the behavior lives; `verify:` says what holds when it works, and it is a *declaration*, not a
-ref. It is a named call from ostler's check vocabulary with typed arguments — `http_status`,
-`json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `visible`, `persists`, `emitted`,
-`conflict_on_stale`:
+ref. It is a named call from ostler's check vocabulary with typed arguments.
+
+**Read the signatures; do not infer them from the name.** The arguments are not uniform —
+`absent` takes `subject`, `visible` takes `locator`, `emitted` takes `event` — and a plausible
+guess costs a full gate lap:
+
+```bash
+ostler checks            # every check: signature + the defect it excludes
+ostler checks emitted    # one of them
+```
 
 ```markdown
 - does: on a stale write the manifest is left byte-identical and the request is refused
@@ -103,8 +117,9 @@ ref. It is a named call from ostler's check vocabulary with typed arguments — 
 Two grounding failures land here, and they are repaired differently:
 
 - **`unparsed-check`** (error, blocking) — the value is not a call: a test id, an unknown name, a
-  bad argument. Move a test id to `tests:` and declare the observation in its place. Never
-  "repair" it by deleting the bullet.
+  bad argument. Move a test id to `tests:` and declare the observation in its place. The
+  finding's suggestion line carries the failing check's own signature — use it rather than
+  guessing again. Never "repair" it by deleting the bullet.
 - **`undeclared-obligation`** (warn) — the node mints obligations and declares nothing at all, so
   a QA plan claiming them can assert anything and still pass. Add one `verify:` per observation
   the node's normative bullets promise. Read the code you just grounded to decide *which* call:

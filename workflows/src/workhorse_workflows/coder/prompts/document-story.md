@@ -121,8 +121,10 @@ without a product or author decision, return `blocked` and name that item.
    as-built prose and structured bullets; set `code:` / `tests:` to the **real**
    `path::symbol` you just wrote (omit `tests:` rather than invent a test that doesn't
    exist), and `verify:` to the observation that proves the node — a call from ostler's check
-   vocabulary, e.g. `http_status(409, title="Conflict")`, never a test name. Keep every path
-   link resolving.
+   vocabulary, e.g. `http_status(409, title="Conflict")`, never a test name. Run `ostler checks`
+   for the signatures before writing a call you have not written before — the arguments are not
+   uniform (`absent` takes `subject`, `visible` takes `locator`), and a guessed one is a blocking
+   `unparsed-check` and a wasted gate lap. Keep every path link resolving.
    Never weaken an invariant, journey completion condition, persistence rule, event
    contract, or concurrency requirement merely to match the implementation. Such drift
    is a product/author decision, not a grounding edit.
