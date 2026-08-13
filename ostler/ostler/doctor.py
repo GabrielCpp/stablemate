@@ -866,7 +866,10 @@ def _check_ui(graph: Graph, f: list[Finding]) -> None:
                         "error", "unparsed-check",
                         f"{node.id}: `{key}:` {parsed}",
                         path=rel, line=node.line, ref=f"{node.id}#{key}",
-                        suggestion=f'- {key}: http_status(code=409, title="Conflict")'))
+                        # The failing check's own signature, never a canned example: an author
+                        # shown `http_status(code=…)` after mis-calling `absent` learns nothing
+                        # about `absent`, and guesses again on the next lap.
+                        suggestion=f"- {key}: {checks.expected_form(value)}"))
 
         # The gap `unparsed-check` cannot see: a node that declares nothing at all. `verify:` is
         # on no type's required list, so a book stays green while every obligation it mints goes
@@ -883,9 +886,12 @@ def _check_ui(graph: Graph, f: list[Finding]) -> None:
                 f"{node.id}: {normative} normative bullet{'s' if normative > 1 else ''} and no "
                 f"`{check_keys[0]}:` — nothing says what observing them looks like, so a QA plan "
                 f"claiming them can assert anything and still pass; declare a check per "
-                f"observation",
+                f"observation (`ostler checks` lists the vocabulary and its signatures)",
                 path=rel, line=node.line, ref=f"{node.id}#{check_keys[0]}",
-                suggestion=f'- {check_keys[0]}: http_status(code=409, title="Conflict")'))
+                # Nothing was declared, so there is no attempted name to echo back — but an
+                # example is one check out of ten, and the author has to pick from all of them.
+                suggestion=f'- {check_keys[0]}: http_status(code=409, title="Conflict")'
+                           f'   # or: {", ".join(s.name for s in checks.CHECKS)}'))
 
     # A broken link that comes from a relation bullet (on/parent/extends/detail/…) is the more
     # specific `unresolved-relation`; index those (file, href) pairs so the link scan can classify.

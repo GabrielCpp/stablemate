@@ -207,9 +207,9 @@ def parse_check(value: str) -> CheckCall | str:
     try:
         expression = ast.parse(text, mode="eval").body
     except SyntaxError:
-        return f"`{text}` is not a check call — expected `name(arg=…)`"
+        return _not_a_call(text)
     if not isinstance(expression, ast.Call) or not isinstance(expression.func, ast.Name):
-        return f"`{text}` is not a check call — expected `name(arg=…)`"
+        return _not_a_call(text)
     name = expression.func.id
     spec = CHECK_BY_NAME.get(name)
     if spec is None:
@@ -239,6 +239,50 @@ def parse_check(value: str) -> CheckCall | str:
         args[param.name] = bound
 
     return bind(name, args)
+
+
+def _not_a_call(text: str) -> str:
+    """Why this value is not a check — naming the likeliest mistake when it is recognisable.
+
+    Overwhelmingly the thing written in `verify:` that is not a call is a *test reference*,
+    which is the habit the vocabulary replaced (see this module's docstring). Saying only
+    "expected `name(arg=…)`" leaves the author to invent a call for an observation they were
+    never asked to name here, and the invented call is what fails on the next lap; saying
+    where the reference belongs ends the loop in one.
+    """
+    if "::" in text or text.rsplit(".", 1)[-1] in _TEST_REF_SUFFIXES:
+        return (f"`{text}` is a code/test reference, not a check — a test id says which code "
+                f"ran, not what was observed. Put it on `tests:` and declare the observation "
+                f"here as a call, e.g. `visible(locator=…)`; `ostler checks` lists the "
+                f"vocabulary")
+    return f"`{text}` is not a check call — expected `name(arg=…)`; see `ostler checks`"
+
+
+#: Enough to recognise a path written where a call belongs. Not a filesystem probe: the value
+#: may name a test that does not exist yet, and the advice is the same either way.
+_TEST_REF_SUFFIXES = {"py", "ts", "tsx", "js", "jsx", "go", "rs", "php", "dart", "java", "kt"}
+
+
+def expected_form(value: str) -> str:
+    """The form the author was reaching for, for a `verify:` value that did not parse.
+
+    A refusal is only actionable if it shows the shape that would have been accepted, and the
+    shape depends on *which* check was attempted — a fixed example teaches the wrong signature
+    to every author whose check is not that one, which is exactly how `absent(locator=…)` and
+    `emitted(subject=…)` get written. When the name is recoverable and known, that check's own
+    signature is the answer; when it is not, the whole vocabulary is, because the author has
+    not yet chosen from it.
+    """
+    text = value.strip()
+    try:
+        expression = ast.parse(text, mode="eval").body
+    except SyntaxError:
+        expression = None
+    if isinstance(expression, ast.Call) and isinstance(expression.func, ast.Name):
+        spec = CHECK_BY_NAME.get(expression.func.id)
+        if spec is not None:
+            return spec.signature()
+    return " | ".join(spec.signature() for spec in CHECKS)
 
 
 def bind(name: str, args: Mapping[str, Any]) -> CheckCall | str:

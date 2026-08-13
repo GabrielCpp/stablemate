@@ -70,3 +70,20 @@ def test_new_rejects_malformed_field(tmp_path: Path):
     run(tmp_path, "template", "new", "research", "program")
     run(tmp_path, "template", "edit", "research", "--set", "program.default_path=specs")
     assert run(tmp_path, "new", "program", "SMCNv3", "not-a-kv-pair") == 2
+
+
+def test_checks_lists_the_vocabulary_without_a_book(tmp_path: Path, capsys):
+    """No graph is loaded: an author looking a signature up is often standing outside a book,
+    and the vocabulary is a property of ostler rather than of any one repository."""
+    assert run(tmp_path, "checks") == 0
+    out = capsys.readouterr().out
+    assert "absent(subject: str)" in out
+    assert "emitted(event: str, count: int = …)" in out
+
+    assert run(tmp_path, "checks", "absent", "--json") == 0
+    spec = json.loads(capsys.readouterr().out)
+    assert [s["name"] for s in spec] == ["absent"]
+    assert spec[0]["params"] == [{"name": "subject", "type": "str", "required": True}]
+    assert spec[0]["excludes"]
+
+    assert run(tmp_path, "checks", "manifest_unchanged") == 1

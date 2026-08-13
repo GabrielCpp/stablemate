@@ -12,6 +12,7 @@ from pathlib import Path
 import yaml
 
 from ostler import backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
+from ostler import checks as checks_mod
 from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
@@ -49,6 +50,10 @@ def _build_parser() -> argparse.ArgumentParser:
     d.add_argument(
         "--no-schema", action="store_true", help="skip JSON Schema validation"
     )
+
+    ck = sub.add_parser("checks", help="the `verify:` check vocabulary and its signatures")
+    ck.add_argument("name", nargs="?", help="one check, instead of all of them")
+    ck.add_argument("--json", action="store_true")
 
     t = sub.add_parser("trace", help="walk the graph from a node")
     t.add_argument("token", help="seed id, story slug, surface or doc path")
@@ -1136,9 +1141,42 @@ def _cmd_template(graph, args) -> int:
     return _result(templates_mod.apply(root, args.name))
 
 
+def _cmd_checks(args: argparse.Namespace) -> int:
+    """Print the `verify:` vocabulary, so a signature can be read rather than guessed."""
+    specs = list(checks_mod.CHECKS)
+    if args.name:
+        spec = checks_mod.CHECK_BY_NAME.get(args.name)
+        if spec is None:
+            known = ", ".join(sorted(checks_mod.CHECK_BY_NAME))
+            print(f"ostler checks: `{args.name}` is not a check — the vocabulary is: {known}",
+                  file=sys.stderr)
+            return 1
+        specs = [spec]
+    if args.json:
+        _out(json.dumps([
+            {
+                "name": s.name,
+                "signature": s.signature(),
+                "params": [{"name": p.name, "type": p.type, "required": p.required}
+                           for p in s.params],
+                "excludes": s.excludes,
+            }
+            for s in specs
+        ], indent=2))
+        return 0
+    # `excludes` alongside the signature on purpose: it is what makes the choice between two
+    # checks decidable, and an author picking by name alone picks the weaker one.
+    _out("\n\n".join(f"{s.signature()}\n    excludes {s.excludes}" for s in specs))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command dispatch
     args = _build_parser().parse_args(argv)
     cwd = Path(args.chdir) if args.chdir else None
+    # Before the graph: the vocabulary is a property of ostler, not of a book, and an author
+    # who needs to look a signature up is often standing somewhere there is no book to load.
+    if args.command == "checks":
+        return _cmd_checks(args)
     graph = load(cwd)
     _use_handles(graph, args)
     c = args.command

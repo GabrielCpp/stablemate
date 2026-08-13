@@ -33,7 +33,10 @@ def test_list_arguments_round_trip() -> None:
     ("value", "fragment"),
     [
         ("Test_Service_Publish_ShouldConflict", "not a check call"),
-        ("api/publish.go::Publish", "not a check call"),
+        # A test reference is the mistake this vocabulary replaced, so its refusal says where
+        # the reference belongs rather than only that a call was expected.
+        ("api/publish.go::Publish", "Put it on `tests:`"),
+        ("a sentence about the manifest", "not a check call"),
         ("http_status()", "requires `code: int`"),
         ('http_status(409, reason="x")', "has no argument `reason`"),
         ("http_status(409, code=500)", "given twice"),
@@ -82,3 +85,24 @@ def test_a_runbook_step_verify_stays_a_reference() -> None:
     """Same word, different job: a boot step's `verify:` says how to tell the *step* ran."""
     assert registry.check_keys("step") == ()
     assert registry.UI_TYPES_BY_NAME["step"].bullet_by_key["verify"].link
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ('absent(locator="the row")', "absent(subject: str)"),
+        ('emitted(subject="page.published")', "emitted(event: str, count: int = …)"),
+    ],
+)
+def test_the_expected_form_is_the_failing_checks_own_signature(value: str, expected: str) -> None:
+    """The counter-case is a canned example: an author shown `http_status(code=…)` after
+    mis-calling `absent` learns nothing about `absent`, and guesses again on the next lap."""
+    assert isinstance(checks.parse_check(value), str)
+    assert checks.expected_form(value) == expected
+
+
+def test_the_expected_form_falls_back_to_the_whole_vocabulary() -> None:
+    """No name recovered means no check chosen yet, so the answer is the menu."""
+    form = checks.expected_form("api/publish.go::Publish")
+    for spec in checks.CHECKS:
+        assert spec.signature() in form
