@@ -301,6 +301,27 @@ def materialize(app: Path, story: str, dest: Path) -> Path:
     return dest
 
 
+def reset_stack_state(dest: Path) -> None:
+    """Drop the trial's compose volumes, once, before the run starts.
+
+    The app's `qa-stack.yml` deliberately does not do this in its `launch` line: a bring-up
+    happens at the head of every plan lane, so a `down -v` there can land in the middle of a
+    story that is proving a booking survives a restart, and empty the ledger under it. Here
+    there is no run in flight yet, which makes this the one safe moment to reset.
+
+    Every trial shares one compose project name (farrier ties the trial directory's basename
+    to its generated skills, so the directory cannot be named after the defect), which is
+    exactly why the previous trial's volume is still there to drop.
+    """
+    compose = dest / "compose.yml"
+    if not compose.is_file():
+        return
+    subprocess.run(
+        ["docker", "compose", "-f", "compose.yml", "down", "-v", "--remove-orphans"],
+        cwd=dest, capture_output=True, text=True, check=False,
+    )
+
+
 def checkout(fixture: Fixture, story: str, flow: str, dest: Path) -> Path:
     """Clone the bundle at this story's commit and rewind the flow's outputs.
 
@@ -324,6 +345,7 @@ def checkout(fixture: Fixture, story: str, flow: str, dest: Path) -> Path:
                 f"materialized tree does not have")
         commit = f"materialized {story}"
         materialize(fixture.app, story, dest)
+        reset_stack_state(dest)
     else:
         if dest.exists():
             shutil.rmtree(dest)

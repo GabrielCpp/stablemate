@@ -7,8 +7,9 @@
 # basename, so a trial cannot be named after its defect. Two replays would then share one
 # project: the second trial's `docker compose` would find the first's containers and volume
 # already there and adopt them, and the seeded defect would never be the code under test.
-# One fixed project name instead, torn down and rebuilt at every bring-up (see the `launch`
-# line in `qa-stack.yml`), so a trial always starts from an empty ledger.
+# One fixed project name instead, whose volume the harness drops once per trial before the
+# run starts, so a trial always begins on an empty ledger without the stack's own `launch`
+# line having to destroy state mid-story (see `qa-stack.yml`).
 name: seat-booking-bench
 
 services:
