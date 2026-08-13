@@ -184,6 +184,98 @@ def test_materialized_book_is_unchanged(tmp_path: Path) -> None:
     assert changed_docs == ""
 
 
+# ── the answer key ────────────────────────────────────────────────────────────────────
+
+
+def defects() -> list[dict[str, str]]:
+    data = yaml.safe_load((APP / "defects.yml").read_text(encoding="utf-8"))
+    return list(data["defects"])
+
+
+def defect_ids() -> list[str]:
+    return [row["id"] for row in defects()]
+
+
+def obligation_ids() -> set[str]:
+    """Every obligation id this book can mint, independent of any diff.
+
+    `build_context` mints these against a `base..head` diff, which needs a git repo and takes
+    the better part of a minute. The private helpers underneath it are the same code path
+    minus the diff — which is what a check on the answer key wants, since a defect's row must
+    resolve whichever story it is seeded in.
+    """
+    from ostler.model import load  # noqa: PLC0415 - a heavy import only these tests need
+    from ostler.qa.context import _obligations, _serialized_graph  # noqa: PLC0415
+
+    nodes, _edges = _serialized_graph(load(APP))
+    return {
+        obligation["id"]
+        for node in nodes.values()
+        for obligation in _obligations(
+            node, [], journey=str(node.get("type", "")) in ("flow", "journey")
+        )
+    }
+
+
+def test_the_answer_key_names_its_defects_once() -> None:
+    ids = defect_ids()
+    assert len(ids) == len(set(ids)), ids
+    assert set(ids) == {path.name for path in (APP / "defects").iterdir() if path.is_dir()}
+
+
+@pytest.mark.parametrize("row", defects(), ids=defect_ids())
+def test_every_defect_variant_exists_on_both_sides(row: dict[str, str]) -> None:
+    """A row names a file that exists as a variant *and* in the app.
+
+    Only the pair is meaningful: a variant with no counterpart in the app tree overwrites
+    nothing the story implements, and an app path with no variant is a row that applies
+    nothing at all. Either way the trial runs and reports a catch it never earned.
+    """
+    assert (APP / "defects" / row["id"] / row["path"]).is_file()
+    assert (APP / row["path"]).is_file()
+
+
+@pytest.mark.parametrize("row", defects(), ids=defect_ids())
+def test_every_defect_obligation_resolves(row: dict[str, str]) -> None:
+    """An id the book no longer mints is a row that can only ever be scored as missed."""
+    assert row["obligation"] in obligation_ids(), row["obligation"]
+
+
+@pytest.mark.parametrize("row", defects(), ids=defect_ids())
+def test_every_defect_lands_in_its_story(row: dict[str, str]) -> None:
+    """The seeded file has to be one the story actually touches.
+
+    QA obligates on the diff. A defect in a file outside `diff.yml` is committed as part of
+    the *before* tree, so nothing in the run under measurement is asked about it — the defect
+    is real, present, and out of scope, which scores as a miss against QA for a fixture bug.
+    """
+    diff = manifest(row["story"])
+    assert row["path"] in {*diff["changed"], *diff["added"]}, (
+        f"{row['id']}: {row['path']} is not in {row['story']}'s diff"
+    )
+
+
+@pytest.mark.parametrize("row", defects(), ids=defect_ids())
+def test_every_defect_actually_changes_the_story_image(row: dict[str, str]) -> None:
+    """The variant must differ from what the story would otherwise ship — and only there."""
+    correct = replay.story_image(APP, row["story"], row["path"], phase="post").read_bytes()
+    assert (APP / "defects" / row["id"] / row["path"]).read_bytes() != correct
+
+
+@pytest.mark.parametrize("row", defects(), ids=defect_ids())
+def test_every_defect_variant_is_importable(row: dict[str, str]) -> None:
+    """A variant that will not compile is caught by anything and measures nothing."""
+    source = (APP / "defects" / row["id"] / row["path"]).read_text(encoding="utf-8")
+    compile(source, f"{row['id']}/{row['path']}", "exec")
+
+
+@pytest.mark.parametrize("row", defects(), ids=defect_ids())
+def test_every_defect_declares_a_route_and_an_expectation(row: dict[str, str]) -> None:
+    assert row["expect"] == "contradicted"
+    assert row["caught_by"] in {"run", "audit"}
+    assert row["why"].strip()
+
+
 def test_fixture_points_at_the_app_and_names_the_trial_dir() -> None:
     fixture = replay.load_fixture("seat-booking")
     assert fixture.app == APP

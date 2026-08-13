@@ -1,0 +1,121 @@
+# The answer key: nine seeded defects, each naming the obligation it contradicts.
+#
+# A trial applies one row by copying `defects/<id>/<path>` over the materialized worktree —
+# a whole-file overwrite, not a patch. A patch stops applying the moment the app is edited
+# and does so *silently*: the trial still runs, the defect is simply not there, and the score
+# reads as a catch. An overwrite either lands or raises.
+#
+# `obligation` is the OKF id the defect makes false, and `expect` is an **evidence-map
+# status** rather than a prose verdict, so scoring is a lookup rather than a reading of the
+# QA report. Every id here is minted by the book as it stands — `benchmarks/tests/` asserts
+# that, because an id that stops resolving turns a scored row into a permanent miss.
+#
+# `caught_by` is the route the defect is *expected* to travel, recorded so a surprise is
+# legible — it is not a scoring gate. Whether a given defect surfaces from a failing scenario
+# or from the auditor depends on the QA plan under measurement, and that plan is the thing
+# being measured; scoring on the route would grade the flow against one particular way of
+# finding the bug rather than against finding it.
+#
+#   run    — a declared check the plan runs should assert this and fail
+#   audit  — no assertion fails; only the auditor reading evidence against the clause sees it
+#
+# There is no `validate` row. `ostler qa validate` refuses a *plan* that claims an obligation
+# without invoking its declared checks, which is a property of the plan, not of the app — no
+# edit to `app/` can produce it, so seeding one here would measure the harness rather than
+# detection. It is covered where it lives, in ostler's own tests.
+#
+# Every defect is a plausible implementation, not a syntax error or a crash: each variant
+# imports, serves, and answers. A defect that takes the service down is caught by any check
+# at all and measures nothing.
+
+defects:
+  - id: D1
+    story: confirm-booking
+    path: app/booking.py
+    obligation: okf:docs/features/booking/http/seat-booking-api.md#post-seat-booking:concurrency:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      the version comparison is deleted, so `confirm` is an unconditional write — a caller
+      quoting a stale version books a seat somebody else already holds.
+
+  - id: D2
+    story: confirm-booking
+    path: app/booking.py
+    obligation: okf:docs/features/booking/http/seat-booking-api.md#post-seat-booking:persistence:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      `confirm` mutates the ledger in memory and never writes it, so the booking answers `201`
+      and is gone after a restart — invisible to every check but `persists`.
+
+  - id: D3
+    story: seat-map
+    path: app/booking.py
+    obligation: okf:docs/features/booking/http/seat-booking-api.md#get-seat-map:does:3
+    expect: contradicted
+    caught_by: run
+    why: >
+      `seat_map` filters to free seats, so a sold seat drops out of the map instead of being
+      listed with its state and the map changes shape as seats sell.
+
+  - id: D4
+    story: seat-hold
+    path: app/booking.py
+    obligation: okf:docs/features/booking/http/seat-booking-api.md#delete-seat-hold:does:2
+    expect: contradicted
+    caught_by: run
+    why: >
+      `release` rebuilds the ledger from an empty one, so releasing A1 also resets every other
+      seat — the released seat looks right and its neighbours are silently perturbed.
+
+  - id: D5
+    story: seat-map
+    path: app/booking.py
+    obligation: okf:docs/features/booking/http/seat-booking-api.md#get-seat-map:does:2
+    expect: contradicted
+    caught_by: run
+    why: >
+      the seat payload loses `version`, so a client can render the map but has no
+      compare-and-swap token to confirm against.
+
+  - id: D6
+    story: seat-hold
+    path: app/booking.py
+    obligation: okf:docs/features/booking/concepts/seat.md#hold:raises:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      `hold` refuses only a booked seat, so a held seat can be held again and two people walk
+      away believing they have it.
+
+  - id: D7
+    story: seat-map
+    path: app/page.py
+    obligation: okf:docs/features/booking/gui/screens/seat-map.md#seat-button:states:2
+    expect: contradicted
+    caught_by: run
+    why: >
+      the `disabled` attribute is never emitted, so a sold seat is still clickable — the
+      `data-state` is correct, which is what makes it survive a reading of the markup.
+
+  - id: D8
+    story: seat-map
+    path: app/page.py
+    obligation: okf:docs/features/booking/gui/screens/seat-map.md#free-seat-summary:contract
+    expect: contradicted
+    caught_by: run
+    why: >
+      the summary counts anything not booked as free, so a held seat reads as available and
+      the count is only wrong while somebody is deciding.
+
+  - id: D9
+    story: seat-map
+    path: app/page.py
+    obligation: okf:docs/features/booking/gui/screens/seat-map.md#seat-map-region:contract
+    expect: contradicted
+    caught_by: audit
+    why: >
+      CSS pushes the seat map region to 24% width at 62% from the left, outside the declared
+      `placement: width 40-100%, x 0-30%` — every seat is still present, visible and
+      operable, so no assertion fails and only the layout digest read against the clause shows it.
