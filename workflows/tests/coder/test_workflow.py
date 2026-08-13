@@ -553,9 +553,10 @@ def test_the_pr_cluster_passes_through_offline_and_still_advances_the_queue(
 
     So a tokenless run still traverses the gate and the merge, and both report `unavailable`
     — the pass-through the port kept deliberately, because the alternative is that no run
-    without a GitHub token can ever finish an epic. The branch the gate polls is asserted
-    here too: it is the bare epic name while the branch that exists is `feat/<epic>`, which
-    is the inert-gate defect recorded in the progress ledger and preserved by this port.
+    without a GitHub token can ever finish an epic. `ci_epic` stays the bare epic name —
+    it is what names the operator-context file and the escalation prose — and the branch is
+    derived from it at the call site, which is the inert-gate defect the port preserved and
+    this suite now pins the other way round in the red-CI test below.
     """
     repo = epic()
     _Sub(repo).install(monkeypatch)
@@ -1524,7 +1525,14 @@ def test_red_ci_spends_its_three_attempts_and_then_escalates_to_a_human(
 
     assert result.has_epic is False, result
     assert len(polls) == 5, polls
+    # Every poll asked about the branch the PR is actually opened from. Handed the bare
+    # epic instead, `find_open_pr` matches nothing, the gate reports `unavailable`, and the
+    # flow passes that through — so the epic merges with CI never read and the log says
+    # only what a tokenless run would say.
+    assert set(polls) == {f"feat/{EPIC}"}, polls
     assert sub.calls.count("FixCi") == 3, sub.calls
+    # The fix loop is handed that same branch; the epic name would push nothing.
+    assert {c.branch for c in sub.calls_to("FixCi")} == {f"feat/{EPIC}"}
     # The note on the PR was attempted before the human was asked.
     assert _output(run_env, flag_ci_failure)["ci_flagged"] is False
     # The questions landed beside the epic they are about, and named the spent budget.

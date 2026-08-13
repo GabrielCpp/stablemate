@@ -83,7 +83,7 @@ from workhorse_workflows.coder.shared.backlog import (
     seed_fix_story,
     select_fix_item,
 )
-from workhorse_workflows.coder.shared.ci import poll_pr_checks, push_ci_fix
+from workhorse_workflows.coder.shared.ci import epic_branch, poll_pr_checks, push_ci_fix
 from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
 from workhorse_workflows.kit.telemetry import counter_labels
 from workhorse_workflows.coder.shared.dev import (
@@ -791,7 +791,7 @@ class Coder(Workflow):
         merge budget also has to be fresh for each epic's PR.
         """
         gate = self.output(open_pr)
-        checks = self.call(poll_pr_checks, "", gate.ci_epic)
+        checks = self.call(poll_pr_checks, "", epic_branch(gate.ci_epic))
         if checks.status in ("passed", "unavailable"):
             return Continue(checks, self.merge, epic=epic, zero_diff=zero_diff,
                             merge_rework=merge_rework)
@@ -816,9 +816,10 @@ class Coder(Workflow):
         gate = self.output(open_pr)
         summary = self.output(poll_pr_checks).summary
         self.handoff(
-            FixCi, repo="", branch=gate.ci_epic, ci_summary=summary, docs_path=self.docs_path
+            FixCi, repo="", branch=epic_branch(gate.ci_epic), ci_summary=summary,
+            docs_path=self.docs_path,
         )
-        push = self.call(push_ci_fix, "", gate.ci_epic)
+        push = self.call(push_ci_fix, "", epic_branch(gate.ci_epic))
         if push.status in ("pushed", "unavailable"):
             return Continue(push, self.ci, epic=epic, zero_diff=zero_diff,
                             ci_rework=ci_rework + 1, merge_rework=merge_rework)

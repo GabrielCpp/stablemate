@@ -49,6 +49,18 @@ from workhorse_workflows.kit import (
     resolve_workspace,
 )
 
+def epic_branch(epic: str) -> str:
+    """The branch an epic's work lives on — the one its PR is opened from.
+
+    A helper rather than a literal because the CI gate is handed the *epic* and every
+    GitHub lookup needs the *branch*. Passing the bare epic name to `poll_pr_checks` finds
+    no PR (its head is `feat/<epic>`, never `<epic>`), and the gate reports `unavailable`,
+    which the flow passes through by design — so a whole epic merges with CI never
+    consulted and nothing in the log distinguishes that from an offline run.
+    """
+    return f"feat/{epic}" if epic else ""
+
+
 #: An Actions run in any of these states is red. `cancelled` and `stale` are included
 #: deliberately: neither is evidence the branch is good, and treating them as green is how
 #: a broken pipeline reads as a passing one.
@@ -365,6 +377,7 @@ def push_ci_fix(logger: logging.Logger, repo_dir: str, branch: str) -> PushOutco
 
 
 __all__ = [
+    "epic_branch",
     "poll_pr_checks",
     "push_ci_fix",
     "push_epic_branch",
