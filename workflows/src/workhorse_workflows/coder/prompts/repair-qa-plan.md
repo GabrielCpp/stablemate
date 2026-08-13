@@ -8,6 +8,15 @@ A QA plan for this story already exists and a gate sent it back. Apply the repai
 diagnostics name. **Do not re-author the plan.** Do not execute the scored QA run — the
 per-scenario dry run described below is the one execution this turn owns.
 
+## Time budget — {{ node_timeout_min }} minutes
+
+This turn is stopped at its budget ("unbounded" = no cap), and what survives is the file on
+disk rather than this turn's reply. Apply the repairs **one at a time, saving after each**,
+so a turn that runs out has landed every edit it finished. Take the worklist in the order it
+is given; if you cannot reach the end of it, a plan carrying most of the cited repairs is
+worth more than one carrying none. Re-authoring the plan is out of budget as well as out of
+scope — it is the single fastest way to lose this turn's work.
+
 ## Inputs
 
 - Story: `{{ workhorse_var('story_path') }}`

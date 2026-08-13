@@ -337,16 +337,36 @@ class Qa(Workflow):
     #: gates that judge the plan (`review-qa-plan` and the post-run assessment);
     #: `MAX_PLAN_VALIDATION_REWORKS` bounds repairs of a `qa_plan.py` that does not import.
     #: See `QaLoop.plan_judgement_rework` for the story that split them.
-    MAX_PLAN_REWORKS: ClassVar[int] = 4
+    #:
+    #: The judgement budget is the tighter of the two, and was cut from four. A judgement lap
+    #: is a `power="high"` review plus a re-author, and the lane's whole wall clock lives
+    #: there: `plan-qa`, `review-qa-plan` and `repair-qa-plan` were 1527 of a QA lane's ~1800
+    #: minutes, against 2.9% for actually running the plan. A lap not granted here yields a
+    #: slightly worse plan that is still run, assessed and audited; the laps it replaces yield
+    #: judgement and, when they run out, no QA verdict at all.
+    #: Three and not two, because `MAX_BLOCKING_PLAN_REVIEWS` already spends two of these
+    #: before the plan has ever run, and the budget exists to buy repairs of a plan that has
+    #: been *executed* — cutting to two would leave the post-run assessment nothing to spend,
+    #: which is the treadmill that ceiling was added to stop. See the test of that name.
+    #: `MAX_PLAN_VALIDATION_REWORKS` is left alone: a `qa_plan.py` that will not import
+    #: cannot be run *at all*, so those laps are not a quality trade, and each is `power="low"`.
+    MAX_PLAN_REWORKS: ClassVar[int] = 3
     MAX_PLAN_VALIDATION_REWORKS: ClassVar[int] = 3
     #: And the ceiling on their *product*. The two budgets above are spent independently, so
     #: nothing stopped a story alternating between them: three schema repairs and four
     #: judgement repairs is seven laps that every individual guard considers legal, and a
     #: live story reached thirteen turns of `plan-qa` that way. This bounds the sum, so the
     #: stacked budgets can no longer multiply. It is deliberately the smaller number: a plan
-    #: still being repaired on the seventh lap is not converging, and the six laps before it
+    #: still being repaired on the sixth lap is not converging, and the five laps before it
     #: are the evidence.
-    MAX_TOTAL_PLAN_LAPS: ClassVar[int] = 6
+    #:
+    #: It is the *sum* of the two budgets above and not their product, which is the whole
+    #: point — and it is why it must never be cut below that sum. Three schema repairs are
+    #: legal, two blocking reviews are legal, and a ceiling under five would let a run of
+    #: typos spend the reader's budget: exactly the starvation
+    #: `test_schema_repairs_cannot_starve_the_semantic_plan_gate` exists to catch. The
+    #: lane's wall clock is held by the per-turn caps on the three plan nodes, not here.
+    MAX_TOTAL_PLAN_LAPS: ClassVar[int] = 5
     #: Not a spend ceiling — a review *ceiling*, and the only one of these that changes what a
     #: finding *means* rather than how many are affordable. Past this many plan-review reworks
     #: no `plan` finding could block whatever `kind` it claimed to be, so `_validated` stops
@@ -555,6 +575,11 @@ class Qa(Workflow):
             # medium: writing a runnable plan against a schema, from a story and an
             # obligation packet that both already exist.
             power="medium",
+            # 20 min. Without a cap this node inherits the run's 3600s watchdog, and it
+            # used it: over four days its longest turns were exactly 60.0 min, and two
+            # thirds of the whole node's wall clock was spent past the 15-min mark by the
+            # minority of turns that ran long. Fifty of sixty-five finished inside 20.
+            timeout=1200,
             add_dirs=self._dirs(),
             args=self._plan_args(loop),
         )
@@ -582,6 +607,10 @@ class Qa(Workflow):
             # work that authoring the plan was, and paying the authoring tier for it is what
             # tempted the turn to rewrite rather than repair.
             power="low",
+            # 15 min. Applying a cited worklist averages five, and a repair turn that has
+            # run three times that is rewriting the file rather than editing it — which is
+            # the failure this node exists to prevent.
+            timeout=900,
             add_dirs=self._dirs(),
             args=self._plan_args(loop),
         )
@@ -710,6 +739,10 @@ class Qa(Workflow):
             # high: judging whether a plan actually verifies the story's claims is the
             # harder half of writing one.
             power="high",
+            # 15 min, which clips nothing observed — the longest review in four days ran
+            # 17.3 and the mean is 5.6. It is a guard against this node, the most
+            # expensive in the lane, discovering the 3600s watchdog.
+            timeout=900,
             add_dirs=self._dirs(),
             args={
                 "story_path": self.ctx.story_path,

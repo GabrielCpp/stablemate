@@ -7,6 +7,21 @@ agent: agent
 Author the complete, machine-executable QA plan for one reviewed story. Do not execute
 QA. Ostler is the only primary executor for command, browser, and mobile scenarios.
 
+## Time budget — {{ node_timeout_min }} minutes
+
+This turn is stopped at its budget ("unbounded" = no cap). What survives is **the file on
+disk**, not this turn's reply, so work in an order that leaves a usable draft at every
+moment:
+
+- Write `<spec_dir>/qa_plan.py` **incrementally**. Get a small, importable plan onto disk
+  first, then add scenarios to it. A file that imports and covers the story's central
+  claim is worth more than a larger one that was cut off mid-write.
+- Size the scenario set to the budget rather than discovering it. If the acceptance
+  criteria imply more scenarios than fit, cover each criterion once and stop; the run,
+  the assessment and the audit all stand downstream of you and will name what is missing.
+- A plan that is stopped short is repaired from where it stands, not re-authored — so
+  every minute you spend on a draft that lands is kept.
+
 ## Inputs
 
 - Story: `{{ workhorse_var('story_path') }}`

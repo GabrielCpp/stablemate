@@ -1138,7 +1138,7 @@ def test_the_stacked_plan_budgets_cannot_multiply(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
-    assert result.spent == "6 total QA-plan lap", result.spent
+    assert result.spent == f"{Qa.MAX_TOTAL_PLAN_LAPS} total QA-plan lap", result.spent
     # Seven author turns for six charged laps: the draft, plus the one polish repair the
     # reviewer's last refusal buys. That one is deliberately free — it replaces a
     # `power="high"` review pass with a `power="low"` edit, so charging it to the ceiling
@@ -1380,7 +1380,7 @@ def test_a_plan_loop_give_up_leaves_the_reviewers_finding_on_disk(
     giveup = docs / SPEC_REL / "qa.md"
     assert giveup.is_file(), "the give-up must leave the file its status points at"
     text = giveup.read_text(encoding="utf-8")
-    assert "4 QA-plan repair" in text, text
+    assert f"{Qa.MAX_PLAN_REWORKS} QA-plan repair" in text, text
     # And every earlier refusal beside it: two refusals that say the same thing mean the plan
     # turn was told and did not comply, which is a different triage from two fresh findings.
     assert "Plan review — every refusal, in order" in text, text
@@ -1752,7 +1752,8 @@ def test_the_evidence_gate_invalidates_a_pass_it_cannot_verify(
     assert result.status == "exhausted", result
     assert agent.counts()["audit-qa"] == 0, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
-    assert agent.planned() == 5, agent.counts()
+    # The draft, plus one plan turn per judgement rework the gate is entitled to spend.
+    assert agent.planned() == Qa.MAX_PLAN_REWORKS + 1, agent.counts()
 
 
 def test_an_audit_that_refutes_the_pass_turns_it_into_a_product_failure(
@@ -2071,12 +2072,13 @@ def test_each_exhaustion_names_the_budget_it_spent(
     assert okf.runs == 1
 
     # The post-run budget, reached only through a plan the reviewer approved and the runner
-    # executed — five runs, each one an assessment that did not reach the objective.
+    # executed — the first run plus one per judgement repair, each an assessment that did not
+    # reach the objective.
     okf = ostler(fail_runs=99)
     result = drive_flow(Qa(story=STORY), env(), _Agent(docs, escalate=True))
     assert result.status == "exhausted", result
-    assert result.spent == "4 QA-plan repair", result.spent
-    assert okf.runs == 5
+    assert result.spent == f"{Qa.MAX_PLAN_REWORKS} QA-plan repair", result.spent
+    assert okf.runs == Qa.MAX_PLAN_REWORKS + 1
 
     ostler(fail_runs=99)
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
