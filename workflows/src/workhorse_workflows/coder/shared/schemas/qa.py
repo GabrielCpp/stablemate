@@ -547,6 +547,25 @@ class QaLoop(CoderResult):
     #: code fix left the QA run failing identically" about a code fix that never happened.
     #: A live story escalated to the operator that way with zero code laps spent.
     repaired_lap: str = ""
+    #: Every repair class this story has actually dispatched a lap against — the values
+    #: `repaired_lap` has taken, unioned.
+    #:
+    #: `repaired_lap` names the *latest* one and so cannot answer "has the other hypothesis
+    #: ever been tried", which is the question a stall has to ask before ending the story.
+    tried_laps: tuple[str, ...] = ()
+    #: Whether this story has already taken the one hypothesis-class switch it is allowed.
+    #:
+    #: A repair that moved nothing refutes the *hypothesis*, not the story: "the plan repair
+    #: changed nothing" is evidence the failure is not in the plan, which argues for trying
+    #: the product rather than for giving up. A live story was abandoned on exactly that
+    #: inference having never spent a code lap, and the five assertions it died on were races
+    #: in the plan. So the first stall switches class instead of escalating.
+    #:
+    #: The whole termination argument rests on this being monotone and written in exactly one
+    #: place (`Qa._switched`): one switch per story, only toward a class that has never run,
+    #: and the second stall — whichever class raises it — falls through to the operator gate
+    #: as before.
+    class_switched: bool = False
 
     #: The budget line a give-up is about to report — `"4 QA-plan repair"` — parked here
     #: while the operator gate gets its one shot at the story first.
@@ -679,6 +698,24 @@ class QaLoop(CoderResult):
     def with_qa(self, qa: QaResult) -> QaLoop:
         """The same loop carrying a new running verdict."""
         return self.model_copy(update={"qa": qa})
+
+    def with_lap(self, lap: str, **changes: object) -> QaLoop:
+        """The same loop dispatching a repair lap of class `lap`, with the class remembered.
+
+        `repaired_lap` is overwritten every lap, so on its own it cannot say whether the
+        *other* hypothesis has ever been tried — which is what `Qa._switched` has to know
+        before a stall is allowed to end the story. `tried_laps` is the union, and it is
+        bounded at three entries by there being three classes.
+        """
+        return self.model_copy(
+            update={
+                **changes,
+                "repaired_lap": lap,
+                "tried_laps": self.tried_laps
+                if lap in self.tried_laps
+                else (*self.tried_laps, lap),
+            }
+        )
 
     def charged(self, seconds: float, *, plan: bool = False) -> QaLoop:
         """The same loop with one turn's wall-clock added to the lane it was spent in.

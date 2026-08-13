@@ -1986,7 +1986,10 @@ def test_a_fix_that_leaves_the_run_failing_identically_is_not_repeated(
     rather than as a harness that cannot be repaired from here.
 
     Sameness is the signal. One fix is still attempted, because there is no evidence about a
-    repair until it has run; the second is put to the operator instead of to the budget.
+    repair until it has run; the second buys the *other* hypothesis one lap (see
+    `Qa._switched`) and only after that does the failure go to the operator instead of to the
+    budget. What the detector still stops is the fix loop grinding out `MAX_QA_REWORKS`
+    identical laps.
     """
     ostler(fail_runs=99, scenarios=(_STUCK,))
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"))
@@ -1997,10 +2000,88 @@ def test_a_fix_that_leaves_the_run_failing_identically_is_not_repeated(
     # The operator gate runs the same fixer prompt, so count the laps of the *fix loop* —
     # the ones carrying no operator answer — rather than every invocation of it.
     unaided = [a for a in agent.args_for("apply-qa-fixes") if "operator_feedback" not in a]
-    assert len(unaided) == 1, agent.args_for("apply-qa-fixes")
-    assert len(unaided) < Qa.MAX_QA_REWORKS
+    assert len(unaided) < Qa.MAX_QA_REWORKS, agent.args_for("apply-qa-fixes")
+    # The stall bought exactly one plan repair — the untried class — and that lap is the
+    # whole difference between this ending and the one the docstring above describes.
+    assert agent.counts()["repair-qa-plan"] == 1, agent.counts()
     # And the failure reached a person instead of the rest of the budget.
     assert agent.counts()["resolve-operator"] >= 1, agent.counts()
+
+
+def test_a_stalled_plan_repair_tries_the_other_hypothesis_before_the_operator(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The defect this whole switch exists for, in the direction it actually happened.
+
+    A live story failed five assertions, every one of them a race *in the QA plan*. The
+    assessment sent it to the plan author, the repair moved nothing, `_repeating` read the
+    identical fingerprint as a stall, and the story was abandoned into `qa-skip-stories.txt`
+    **having never spent a code lap**. But "the plan repair changed nothing" is evidence
+    against the plan hypothesis, not against the story: it argues for looking at the product
+    next, which is the one thing that run never did.
+    """
+    ostler(fail_runs=99, scenarios=(_STUCK,))
+    agent = _Agent(docs, repair_plans=99, escalate=True)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    unaided = [a for a in agent.args_for("apply-qa-fixes") if "operator_feedback" not in a]
+    assert len(unaided) >= 1, agent.counts()
+    # The fixer is told which hypothesis was spent, so it does not re-derive it.
+    assert "the other side" in unaided[0]["qa_notes"], unaided[0]["qa_notes"]
+
+
+def test_the_hypothesis_switch_happens_at_most_once_per_story(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`class_switched` is monotone, and that is the whole termination argument.
+
+    Both classes stall here, one after the other, against a suite that never moves. The
+    second stall — whichever class raises it — has to fall straight through to the operator
+    gate, or the two loops trade laps until every budget is spent on the same answer.
+    """
+    ostler(fail_runs=99, scenarios=(_STUCK,))
+    agent = _Agent(docs, repair_plans=99, escalate=True)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    # One shot at the operator, not one per stall.
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
+    # And the marker says the story ran out *after* the second hypothesis, so a human
+    # triaging it does not spend the lap that was already spent.
+    assert "after switching repair class" in result.spent, result.spent
+
+
+def test_a_dev_target_switching_to_the_product_reports_instead_of_fixing(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The switch routes through `_fixable`, not `apply_fixes`.
+
+    `apply_fixes` is the shorter wiring and would have had a `dev` run editing a repo it is
+    only allowed to file findings against — the shortcut does not get to skip that rule.
+    """
+    ostler(fail_runs=99, scenarios=(_STUCK,))
+    agent = _Agent(docs, repair_plans=99, escalate=True)
+
+    result = drive_flow(Qa(story=STORY, target_env="dev"), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
+    assert agent.counts()["report-qa-dev"] == 1, agent.counts()
+    # The switch is what ended the story: `report_dev` is terminal, so the stall never
+    # reached the gate at all. Without it this run would have escalated instead.
+    assert "resolve-operator" not in agent.counts(), agent.counts()
 
 
 def test_a_plan_repair_does_not_make_the_fix_loops_first_visit_a_stall(

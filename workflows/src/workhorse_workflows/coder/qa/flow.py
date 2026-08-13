@@ -134,6 +134,14 @@ _OVERRAN_REPAIR = (
     "from there — re-applying an edit that is already in place is wasted budget, and "
     "starting the file over discards the ones that landed."
 )
+_SWITCHED = (
+    "A {spent} was already spent on this failure, and the suite then failed identically — "
+    "the same scenarios, the same number of assertions in. So the defect is most likely not "
+    "where that repair was looking. Treat what it repaired as correct and look for the cause "
+    "on the other side: if the plan was repaired, the product is the suspect, and if the "
+    "product was fixed, suspect how the plan reads it — an assertion that samples a value "
+    "without waiting for it fails in the exact shape of a broken product."
+)
 
 
 def _finding(passed: bool, notes: str) -> str:
@@ -1787,10 +1795,10 @@ class Qa(Workflow):
             return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
         return self._plan_lap(
             result,
-            loop.update(
+            loop.with_lap(
+                "QA-plan repair",
                 plan_rework=loop.plan_rework + 1,
                 repaired_failures=loop.run_failures,
-                repaired_lap="QA-plan repair",
             ),
             # A post-run finding is by construction a finding against a plan that imported
             # and ran, so what is on disk is runnable.
@@ -1809,7 +1817,14 @@ class Qa(Workflow):
         human or the auto-operator can act on — most often by classifying it as a harness
         failure rather than a product one. Reaching the same conclusion by burning the budget
         costs three more agent turns and three more full suite runs to say it less clearly.
+
+        But "not repairable from where we are repairing it" is an argument for repairing it
+        somewhere else, and only after that for ending the story — so the untried class goes
+        first. See `_switched`.
         """
+        other = "code fix" if lap == "QA-plan repair" else "QA-plan repair"
+        if not loop.class_switched and other not in loop.tried_laps:
+            return self._switched(result, loop, lap, other)
         self.logger.info(
             "the last %s left the QA run failing identically (%s) — escalating instead of "
             "spending another lap",
@@ -1824,9 +1839,49 @@ class Qa(Workflow):
             result,
             loop.update(
                 operator_consulted=True,
-                giveup_reason=f"a {lap} that changed nothing",
+                giveup_reason=(
+                    f"a {lap} that changed nothing after switching repair class"
+                    if loop.class_switched
+                    else f"a {lap} that changed nothing"
+                ),
             ),
         )
+
+    def _switched(
+        self, result: object, loop: QaLoop, spent: str, other: str
+    ) -> Continue | Await | Done:
+        """A repair that moved nothing refutes the *hypothesis*, not the story.
+
+        `_repeating` is a correct budget signal and a wrong diagnosis. "The QA-plan repair
+        changed nothing" is evidence that the failure is not in the plan, and that is an
+        argument for looking at the product — not for ending the story. A live story was
+        abandoned into `qa-skip-stories.txt` on exactly that inference having spent zero code
+        laps, and the five assertions it died on were races in the plan.
+
+        One switch per story, and only toward a class that has never run. That is the whole
+        termination argument: `QaLoop.class_switched` is monotone and written only here, both
+        exits below charge a counter with its own ceiling, and the second stall — whichever
+        class raises it — falls straight through to the gate above. The operator's one shot is
+        untouched, because `operator_consulted` is not set here.
+
+        `_fixable` and not `apply_fixes`: a `dev` run reports findings rather than editing
+        code it does not own, and that is not a rule this shortcut gets to skip.
+        """
+        self.logger.info(
+            "the %s left the QA run failing identically (%s) — trying a %s before the "
+            "operator, because a repair that moved nothing refutes the hypothesis class",
+            spent,
+            "; ".join(loop.run_failures),
+            other,
+            extra={"activity": True},
+        )
+        loop = loop.update(
+            class_switched=True,
+            qa=loop.qa.model_copy(update={"notes": _SWITCHED.format(spent=spent)}),
+        )
+        if other == "code fix":
+            return self._fixable(result, loop)
+        return self._guard_plan(result, loop)
 
     def _guard_plan_validation(
         self, result: object, loop: QaLoop
@@ -1952,9 +2007,7 @@ class Qa(Workflow):
         """
         if self._repeating(loop, "code fix"):
             return self._stalled(result, loop, "code fix")
-        loop = loop.update(
-            repaired_failures=loop.run_failures, repaired_lap="code fix"
-        )
+        loop = loop.with_lap("code fix", repaired_failures=loop.run_failures)
         if loop.lane_seconds >= self.qa_lane_budget_s:
             # A code fix is a `power="medium"` turn plus a whole suite re-run, so it is the
             # single most expensive lap left. The verdict the evidence supports is the
