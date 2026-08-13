@@ -496,11 +496,15 @@ class Ostler:
                             self._resolve(spec) if spec else None, root=self.root)
 
     def qa_run(self, plan_file: str | Path, *, spec: str | Path | None = None,
-               stop_on_fail: bool = False) -> QaOutcome:
-        """Execute a ``qa_plan.py`` in batch mode (``ostler qa run``)."""
+               stop_on_fail: bool = False, sandboxed: bool = False) -> QaOutcome:
+        """Execute a ``qa_plan.py`` in batch mode (``ostler qa run``).
+
+        ``sandboxed`` is the CLI's ``--sandbox``: each scenario runs in a container with no
+        repository on disk. Exposed here because the caller that most needs it is a
+        workflow node, which drives this API rather than the CLI."""
 
         return cmd_run(Path(plan_file), self._resolve(spec) if spec else None,
-                       stop_on_fail=stop_on_fail, root=self.root)
+                       stop_on_fail=stop_on_fail, sandboxed=sandboxed, root=self.root)
 
     # -- schema-checked artifacts (ostler ``artifact …``) -------------------
     def artifact_vet(self, kind: str, spec: str | Path) -> dict:
