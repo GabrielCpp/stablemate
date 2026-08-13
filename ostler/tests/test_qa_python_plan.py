@@ -9,8 +9,11 @@ interpreter or absent from the format.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
+from typing import Any
 
+from ostler.qa.harness_host import load_harness_module
 from ostler.qa.plan import load_plan, resolve_spec_dir, validate_v2
 from ostler.qa.run import cmd_run, cmd_validate
 
@@ -267,3 +270,40 @@ def test_a_raising_scenario_reports_its_traceback(tmp_path: Path) -> None:
     assert not outcome.ok
     stdout = (spec / "qa" / "steps" / "item-is-emitted-stdout.txt").read_text(encoding="utf-8")
     assert "FileNotFoundError" in stdout
+
+
+def test_by_text_matches_a_substring_and_takes_a_pattern() -> None:
+    """`qa.by_text` defers to Playwright's own default rather than pinning `exact=True`.
+
+    The pinned form is the defect this guards: a page that renders the text inside a larger
+    node — a filename quoted in a rejection sentence, a composite badge string — matched
+    nothing, and a locator that *cannot* match reads downstream as a failing product rather
+    than as a broken assertion. Taking a `Pattern` belongs to the same fix: without it an
+    author who needs a case-insensitive match drops to `qa.page.get_by_text`, which
+    `extract_locators` cannot see, and the locator stops being checked against the book.
+    """
+    harness = load_harness_module("ostler_qa")
+    forwarded: list[tuple[Any, dict[str, Any]]] = []
+
+    class _Page:
+        def get_by_text(self, text: Any, **kwargs: Any) -> str:
+            forwarded.append((text, kwargs))
+            return "locator"
+
+    qa = harness.Qa(
+        scenario_id="s",
+        target=harness.Target("web", driver="playwright"),
+        root=Path("/"),
+        spec_dir=Path("/"),
+        qa_dir=Path("/"),
+        covers=[],
+        recorder=harness._Recorder(fd=-1),
+    )
+    qa.page = _Page()
+
+    qa.by_text("not-a-docx.txt")
+    pattern = re.compile("brouillon local", re.IGNORECASE)
+    qa.by_text(pattern)
+    qa.by_text("Publish", exact=True)
+
+    assert forwarded == [("not-a-docx.txt", {}), (pattern, {}), ("Publish", {"exact": True})]

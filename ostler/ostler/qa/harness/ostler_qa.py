@@ -31,6 +31,7 @@ import ast
 import inspect
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -669,8 +670,15 @@ class Qa:
     def by_test_id(self, value: str) -> Any:
         return self.browser_page.get_by_test_id(value)
 
-    def by_text(self, text: str, *, exact: bool = True) -> Any:
-        return self.browser_page.get_by_text(text, exact=exact)
+    def by_text(self, text: str | re.Pattern[str], **kwargs: Any) -> Any:
+        # Playwright's own default (`exact=False`, whitespace-normalised substring), not a
+        # pinned `exact=True`. The pinned form silently matched nothing whenever the page
+        # rendered the text inside a larger node — a composite string, a filename quoted in
+        # a sentence — and the miss reads downstream as a product defect rather than as a
+        # locator that cannot match. `str | Pattern` for the same reason `by_label` takes
+        # `**kwargs`: an author who needs a case-insensitive match should not have to drop
+        # to `qa.page.get_by_text`, which `extract_locators` cannot see.
+        return self.browser_page.get_by_text(text, **kwargs)
 
     def by_css(self, selector: str) -> Any:
         return self.browser_page.locator(selector)
