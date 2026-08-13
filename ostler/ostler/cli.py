@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import sys
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
@@ -475,10 +476,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--daemon",
         action="append",
         default=[],
-        metavar="NAME:CMD",
+        metavar="NAME:ARGV",
         dest="daemons",
-        help="background daemon to start (repeatable); "
-        "append :READY_URL to poll before advancing",
+        help="background daemon to start (repeatable); ARGV is tokenised, not run through "
+        "a shell — append :READY_URL to poll before advancing",
     )
 
     qa_step = qas.add_parser(
@@ -487,7 +488,7 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_step.add_argument("--id", required=True)
     qa_step.add_argument("--label", required=True)
     qa_step.add_argument(
-        "--mechanism", required=True, choices=["live", "synthetic", "fixture"]
+        "--mechanism", required=True, choices=["live", "fixture"]
     )
     qa_step.add_argument("--cmd", required=True)
     qa_step.add_argument("--timeout", type=float, default=60)
@@ -574,6 +575,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="spec-relative directory for the ledger; anything but 'qa' is a dry run "
              "and writes no qa-evidence.json",
     )
+    qa_run.add_argument(
+        "--sandbox",
+        action="store_true",
+        dest="sandboxed",
+        help="run each scenario in a container with no repository on disk, so a unit "
+             "suite cannot stand in for behavioral evidence; needs a `sandbox:` block "
+             "in the repository's qa-stack.yml",
+    )
     qa_run.add_argument("--json", action="store_true")
 
     qa_context = qas.add_parser(
@@ -621,6 +630,34 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     qa_context_validate.add_argument("--spec", required=True, type=Path)
     qa_context_validate.add_argument("--json", action="store_true")
+
+    qa_evidence_map = qas.add_parser(
+        "evidence-map",
+        help="join the context packet, the run log, the manifest and qa-evidence.json "
+             "into one status per obligation",
+    )
+    qa_evidence_map.add_argument("--spec", default=None, type=Path)
+    qa_evidence_map.add_argument(
+        "--out-dir",
+        default="qa",
+        dest="out_dir",
+        metavar="NAME",
+        help="spec-relative directory holding the ledger to read; must match the run's",
+    )
+    qa_evidence_map.add_argument(
+        "--status",
+        default="",
+        choices=["", *qa_mod.STATUSES],
+        help="print only the obligations with this status",
+    )
+    qa_evidence_map.add_argument(
+        "--out",
+        default=None,
+        type=Path,
+        metavar="PATH",
+        help="also write the map as JSON here",
+    )
+    qa_evidence_map.add_argument("--json", action="store_true")
 
     return p
 
@@ -863,13 +900,17 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         for raw in args.daemons:
             parts = raw.split(":", 2)
             name = parts[0]
+            # `shlex.split`, not a shell: it recovers the argv an author wrote with quotes,
+            # and leaves `&&` or `|` as literal arguments that fail at `exec` with the
+            # program named. A daemon has not been able to be a command line since the shell
+            # came out of `start_daemon`, and the CLI is not the place to put one back.
             if len(parts) == 2:
-                daemons.append((name, parts[1], None))
+                daemons.append((name, shlex.split(parts[1]), None))
             elif len(parts) == 3:
-                daemons.append((name, parts[1], parts[2]))
+                daemons.append((name, shlex.split(parts[1]), parts[2]))
             else:
                 _out(
-                    f"error: invalid --daemon format: {raw!r} (expected NAME:CMD[:READY_URL])"
+                    f"error: invalid --daemon format: {raw!r} (expected NAME:ARGV[:READY_URL])"
                 )
                 return 2
         result = qa_mod.cmd_start(
@@ -953,6 +994,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             stop_on_fail=args.stop_on_fail,
             only=args.scenarios,
             out_dir=args.out_dir,
+            sandboxed=args.sandboxed,
             root=root,
         )
         if getattr(args, "json", False):
@@ -1038,6 +1080,25 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         else:
             _out("Context is valid." if not problems else "Context validation failed:\n" + "\n".join(f"  - {p}" for p in problems))
         return 1 if problems else 0
+
+    if op == "evidence-map":
+        spec_dir = _resolve_spec(args.spec)
+        try:
+            data = qa_mod.build_evidence_map(spec_dir, qa_dirname=args.out_dir)
+        except qa_mod.EvidenceMapError as exc:
+            _out(json.dumps({"status": "invalid", "message": str(exc)}, indent=2)
+                 if args.json else f"error: {exc}")
+            return 1
+        if args.out:
+            args.out.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        if args.json:
+            _out(json.dumps(data, indent=2))
+        else:
+            _out("\n".join(qa_mod.render_evidence_map(data, only=args.status)))
+        # Non-zero when anything is not `covered`, so a caller can gate on the join without
+        # parsing it. `contradicted` and `uncovered` are both blocking and both mean the
+        # published evidence does not describe the run.
+        return 0 if data["counts"]["covered"] == len(data["obligations"]) else 1
 
     return 2
 

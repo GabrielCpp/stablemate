@@ -17,7 +17,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -28,7 +28,8 @@ QA_DIRNAME = "qa"
 SESSION_FILE = "qa-session.json"
 RUN_LOG = "qa-run.ndjson"
 
-_MECHS = {"live", "synthetic", "fixture"}
+#: See `qa/plan.py::MECHANISMS` for why `synthetic` is not here.
+_MECHS = {"live", "fixture"}
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +126,7 @@ class QaSession:
             "story": story,
             "env": env,
             "captures": {},  # key → captured string value from step --capture
-            "daemons": [],  # [{name, pid, cmd, log_file}]
+            "daemons": [],  # [{name, pid, argv, log_file}]
             "step_count": 0,
             "assert_count": 0,
             "pass_count": 0,
@@ -306,7 +307,7 @@ class QaSession:
     def start_daemon(
         self,
         name: str,
-        cmd: str,
+        argv: Sequence[str],
         *,
         ready_check: str | Mapping[str, Any] | None = None,
         timeout: float = 30,
@@ -314,17 +315,24 @@ class QaSession:
     ) -> int:
         """Launch a daemon subprocess, store its PID, write daemon_start record.
 
-        stdout/stderr are tee'd to ``qa/daemon-<name>.log``.
-        If *ready_check* is given, ostler polls it before returning — an HTTP URL for a
-        200, or a ``{cmd, assert_contains}`` mapping for a command whose stdout says so
-        (see `_poll_ready`). Returns the PID.
+        *argv* is a program and its arguments, executed directly — there is no shell here,
+        and that is the point rather than a detail. This call used to take a command line
+        and run it under `bash -c`, which made `background: [{cmd: "go test ./..."}]` a
+        supported way to file a unit suite's exit code as behavioral evidence, on the host,
+        where no sandbox reaches it. With an argv list there is nothing to interpret: no
+        `&&`, no pipeline, no expansion, and a plan that wants two processes declares two
+        daemons.
+
+        stdout/stderr are tee'd to ``qa/daemon-<name>.log``. If *ready_check* is given,
+        ostler polls it before returning — see `_poll_ready`. Returns the PID.
         """
+        argv = list(argv)
+        if not argv:
+            raise ValueError(f"daemon '{name}' declares an empty argv")
         log_file = self.qa_dir / f"daemon-{name}.log"
         with log_file.open("wb") as lf:
-            proc = subprocess.Popen(
-                cmd,
-                shell=True,  # noqa: S603 — agent-controlled command, explicit user intent
-                executable="/bin/bash",
+            proc = subprocess.Popen(  # noqa: S603 — argv from the plan, and no shell
+                argv,
                 stdout=lf,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
@@ -333,7 +341,7 @@ class QaSession:
             )
         pid = proc.pid
         self._data.setdefault("daemons", []).append(
-            {"name": name, "pid": pid, "cmd": cmd, "log_file": str(log_file)}
+            {"name": name, "pid": pid, "argv": argv, "log_file": str(log_file)}
         )
         self._save()
         self._append(
@@ -341,20 +349,18 @@ class QaSession:
                 "kind": "daemon_start",
                 "name": name,
                 "pid": pid,
-                "cmd": _redact(cmd, self._secret_values.values()),
+                "argv": [_redact(part, self._secret_values.values()) for part in argv],
                 "log_file": str(log_file),
                 "ready_check": ready_check,
             }
         )
         if ready_check:
-            # The same cwd the daemon got: a check like `curl … | grep` is as likely to be
-            # written relative to the service's directory as its start command is. `proc`
-            # and the log go too, so a daemon that dies on startup is reported as dead with
-            # what it printed, rather than as a service that took too long — see `_poll_ready`.
+            # `proc` and the log go along, so a daemon that dies on startup is reported as
+            # dead with what it printed, rather than as a service that took too long — see
+            # `_poll_ready`.
             _poll_ready(
                 ready_check,
                 timeout=timeout,
-                cwd=cwd or self.spec_dir,
                 proc=proc,
                 log_file=log_file,
             )
@@ -398,7 +404,7 @@ class QaSession:
     ) -> dict[str, Any]:
         """Execute *cmd* in a subprocess and append a ``step`` record.
 
-        *captures*: list of (key, jq_path) — extract from stdout JSON.
+        *captures*: list of (key, json_path) — extract from stdout JSON.
         *out_path*: write stdout verbatim to this path as a sidecar file.
         Returns the record dict.
         """
@@ -476,15 +482,15 @@ class QaSession:
                 resolved_out, kind="command-output", scenario=scenario, target=driver
             )
 
-        # Apply jq captures
+        # Apply the declared captures
         captured: dict[str, str] = {}
         if captures:
             try:
                 data = json.loads(body_raw.decode("utf-8", errors="replace"))
             except (json.JSONDecodeError, ValueError):
                 data = None
-            for key, jq_path in captures:
-                value = _jq_extract(data, jq_path)
+            for key, json_path in captures:
+                value = _extract_path(data, json_path)
                 if value is not None:
                     self.set_capture(key, value)
                     captured[key] = value
@@ -731,8 +737,15 @@ def _expand(
     return re.sub(r"\{\{([^}]+)\}\}", _sub, template)
 
 
-def _jq_extract(data: Any, path: str) -> str | None:
-    """Extract a value using a simple ``$.<key>`` or ``$.<key>.<key>`` path."""
+def _extract_path(data: Any, path: str) -> str | None:
+    """Extract a value using a simple ``$.<key>`` or ``$.<key>.<key>`` path.
+
+    Named for what it does rather than for the tool it replaced. `jq` was never an ostler
+    dependency — every `jq` expression in the corpus came from the retired YAML engine's
+    shell heredocs — but the lesson it taught outlives it and is the reason this returns
+    `None` rather than an empty string: a missing key has to be distinguishable from a key
+    holding nothing, or an assertion agrees with a broken lookup and with a working one.
+    """
     if data is None:
         return None
     path = path.lstrip("$").lstrip(".")
@@ -828,33 +841,23 @@ def _kill_pid(pid: int) -> int:
     return 0
 
 
-def _ready_via_url(url: str) -> bool:
+def _ready_via_url(
+    url: str, *, method: str = "GET", status: int = 200, timeout: float = 2
+) -> bool:
+    """One HTTP probe: ready when *url* answers *status* to *method*.
+
+    A status outside 2xx arrives as an `HTTPError`, which is a response and not a transport
+    failure — so it is read for its code rather than swallowed, and a probe expecting 409 or
+    401 works exactly like one expecting 200.
+    """
+    request = urllib.request.Request(url, method=method.upper())  # noqa: S310
     try:
-        with urllib.request.urlopen(url, timeout=2) as resp:  # noqa: S310
-            return bool(resp.status == 200)
+        with urllib.request.urlopen(request, timeout=timeout) as resp:  # noqa: S310
+            return bool(resp.status == status)
+    except urllib.error.HTTPError as exc:
+        return bool(exc.code == status)
     except (urllib.error.URLError, OSError):
         return False
-
-
-def _ready_via_cmd(check: Mapping[str, Any], cwd: Path | None) -> bool:
-    """Run the check command; ready when it exits 0 and its stdout carries the needle."""
-    try:
-        done = subprocess.run(  # noqa: S602 — agent-controlled command, explicit user intent
-            str(check["cmd"]),
-            shell=True,
-            executable="/bin/bash",
-            capture_output=True,
-            timeout=float(check.get("timeout", 10)),
-            cwd=cwd,
-        )
-    except (subprocess.SubprocessError, OSError):
-        return False
-    if done.returncode != 0:
-        return False
-    needle = check.get("assert_contains")
-    if needle in (None, ""):
-        return True
-    return str(needle) in done.stdout.decode("utf-8", "replace")
 
 
 def _log_tail(log_file: Path | None, lines: int = 15) -> str:
@@ -879,27 +882,25 @@ def _poll_ready(
     check: str | Mapping[str, Any],
     timeout: float = 30,
     *,
-    cwd: Path | None = None,
     proc: subprocess.Popen | None = None,
     log_file: Path | None = None,
 ) -> None:
     """Poll a daemon's readiness check until it succeeds or *timeout* seconds elapse.
 
-    Two forms, because a URL cannot express every service's notion of "up". A **string**
-    is polled for HTTP 200, which is the original contract and covers a health endpoint.
-    A **mapping** — `{cmd, assert_contains}`, the plan's own vocabulary for asserting on a
-    command's stdout — runs the command instead, and is ready when it exits 0 and its
-    output carries the needle.
+    Two spellings of one probe. A **string** is a URL polled for a 200, which is the
+    original contract and covers a health endpoint. A **mapping** — `{url, method, status}`
+    — is the same probe with the two things a health endpoint does not need: a service whose
+    only route is a `POST` has no URL that answers 200 to a `GET`.
 
-    The command form is not a convenience. A service whose only route is a `POST` has no
-    URL that answers 200 to a `GET`, so the string form cannot probe it at all; the plan
-    that surfaced this had to readiness-check with `curl -X POST … -w '%{http_code}'`
-    against `assert_contains: 201`. Worse, the mapping used to reach `urlopen` intact,
-    which set `.timeout` on it and raised `'dict' object has no attribute 'timeout'` —
-    an `AttributeError`, so it escaped the `URLError`/`OSError` guard here and surfaced
-    at the top of the run as `0 scenarios` with the cause discarded. The plan validated
-    and the reviewer approved it, so the coder loop re-planned a correct plan until its
-    rework guard ran out.
+    That second form used to be `{cmd, assert_contains}`, a shell command whose stdout had
+    to carry a needle. Every use of it in the corpus was `curl -X POST … -w '%{http_code}'`
+    against `assert_contains: 201` — an HTTP probe spelled as a subprocess, which is how a
+    readiness check became one more way to run an arbitrary command on the host. Worse, the
+    mapping used to reach `urlopen` intact, which set `.timeout` on it and raised
+    `'dict' object has no attribute 'timeout'` — an `AttributeError`, so it escaped the
+    `URLError`/`OSError` guard and surfaced at the top of the run as `0 scenarios` with the
+    cause discarded. The plan validated and the reviewer approved it, so the coder loop
+    re-planned a correct plan until its rework guard ran out.
 
     *proc* and *log_file* are what makes a failure here readable. A daemon that cannot start
     at all — the port is taken, the binary does not compile, a migration failed — exits
@@ -922,18 +923,22 @@ def _poll_ready(
     that is how a launcher hands off to the service it spawned, so it stays a valid path to
     ready.
     """
-    if not isinstance(check, str) and not str(check.get("cmd", "")).strip():
-        # Fail on the shape, not by polling it until the timeout: a mapping with no command
-        # is never going to become ready, and "timed out after 30s" would hide why.
-        raise ValueError(f"daemon ready_check mapping needs a 'cmd': {dict(check)}")
-    described = check if isinstance(check, str) else check.get("cmd", check)
+    if isinstance(check, str):
+        url, method, status = check, "GET", 200
+    else:
+        raw_url = check.get("url")
+        if not isinstance(raw_url, str) or not raw_url.strip():
+            # Fail on the shape, not by polling it until the timeout: a mapping with no URL
+            # is never going to become ready, and "timed out after 30s" would hide why.
+            raise ValueError(f"daemon ready_check mapping needs a 'url': {dict(check)}")
+        url = raw_url
+        method = str(check.get("method", "GET"))
+        status = int(check.get("status", 200))
+    described = url if method == "GET" and status == 200 else f"{method} {url} -> {status}"
+    probe_timeout = 2.0 if isinstance(check, str) else float(check.get("timeout", 2))
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        ready = (
-            _ready_via_url(check)
-            if isinstance(check, str)
-            else _ready_via_cmd(check, cwd)
-        )
+        ready = _ready_via_url(url, method=method, status=status, timeout=probe_timeout)
         code = proc.poll() if proc is not None else None
         # A crash outranks a passing check, and that order is the whole point — see the
         # docstring. Exit 0 does not: it is how a launcher hands off, so keep polling.

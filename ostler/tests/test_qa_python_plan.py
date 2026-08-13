@@ -131,6 +131,27 @@ def test_a_valid_plan_has_no_problems(tmp_path: Path) -> None:
     assert validate_v2(document) == []
 
 
+def test_a_synthetic_mechanism_is_refused_and_named(tmp_path: Path) -> None:
+    """`synthetic` named the one thing a QA run must never accept: a suite standing in for
+    the product. Two gates, because they catch it at different moments and a plan that only
+    tripped the second would already have imported. The decorator refuses the declaration
+    outright; `validate_v2` keeps its own branch for a document assembled any other way, and
+    says what to write instead — an unadorned "must be one of ['fixture', 'live']" leaves the
+    author to guess whether their evidence was retired or merely misspelled.
+    """
+    spec = _spec(tmp_path)
+    source = PLAN.replace('mechanism="live"', 'mechanism="synthetic"')
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert document is None
+    assert any("mechanism must be one of" in item for item in problems)
+
+    document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert not problems and document is not None
+    document.data["scenarios"][0]["mechanism"] = "synthetic"
+    reported = validate_v2(document)
+    assert any("retired" in item and "fixture" in item for item in reported)
+
+
 def test_an_unimportable_plan_fails_validation(tmp_path: Path) -> None:
     # The static check YAML could never offer. A broken import used to surface an hour into
     # a run, as a driver failure against a story that was fine.
@@ -180,6 +201,110 @@ def test_an_unknown_cover_names_what_the_plan_could_cover(tmp_path: Path) -> Non
     )
     assert document is not None
     assert any("unknown ID" in item for item in validate_v2(document))
+
+
+DECLARED = {
+    "call": 'json_path(path="item.id", equals="abc")',
+    "name": "json_path",
+    "args": {"path": "item.id", "equals": "abc"},
+}
+
+VERIFY_PLAN = '''\
+import json
+from pathlib import Path
+
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-story-1", story="story-1")
+
+api = target("api")
+
+
+@scenario(target=api, mechanism="live", covers=["{obligation}"])
+def item_is_emitted(qa: Qa) -> None:
+    """The emitted item carries the id it was asked for."""
+    payload = json.loads(Path(qa.root, "out.json").read_text(encoding="utf-8"))
+    qa.verify("json_path", payload, {args}, covers=["{obligation}"])
+'''
+
+
+def _declaring(spec: Path) -> None:
+    """Put the observation the book declares onto the packet's one obligation."""
+    context_path = spec / "qa-okf-context.json"
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    context["obligations"][0]["checksDeclared"] = [DECLARED]
+    context_path.write_text(json.dumps(context), encoding="utf-8")
+
+
+def test_a_declared_check_the_plan_never_invokes_is_refused(tmp_path: Path) -> None:
+    """The reviewer's recurring finding, now a set difference.
+
+    `qa.check` takes an already-collapsed bool, so this plan's assertion could be arbitrarily
+    weaker than the claim and still cite it — which is exactly what a person was being paid
+    `power=high` to notice, once per story, forever. The book named the observation; either
+    the plan makes it or it does not.
+    """
+    spec = _spec(tmp_path)
+    _declaring(spec)
+    document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert not problems and document is not None
+
+    reported = [item for item in validate_v2(document) if "declares `json_path" in item]
+
+    assert reported, "an obligation whose declared check nobody invokes must not validate"
+    # The defect a weaker assertion would let through travels with the refusal: without it
+    # the repair reads as ceremony, and the cheapest way to satisfy ceremony is to restate.
+    assert "passes on the default the defect also produces" in reported[0]
+
+
+def test_invoking_the_declared_check_with_its_arguments_binds(tmp_path: Path) -> None:
+    spec = _spec(tmp_path)
+    _declaring(spec)
+    source = VERIFY_PLAN.replace("{args}", 'path="item.id", equals="abc"')
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+    assert validate_v2(document) == []
+
+
+def test_the_same_check_with_weaker_arguments_is_a_different_call(tmp_path: Path) -> None:
+    # `json_path(path=…)` alone asserts the field is *present*, which is what the default the
+    # defect produces also satisfies. It is a legal call and the wrong one, and nothing about
+    # the difference needs judging: the canonical spellings differ.
+    spec = _spec(tmp_path)
+    _declaring(spec)
+    source = VERIFY_PLAN.replace("{args}", 'path="item.id"')
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+    assert any("declares `json_path" in item for item in validate_v2(document))
+
+
+def test_a_verify_call_naming_no_known_check_is_refused_by_name(tmp_path: Path) -> None:
+    spec = _spec(tmp_path)
+    _declaring(spec)
+    source = VERIFY_PLAN.replace('"json_path"', '"json_pathe"').replace(
+        "{args}", 'path="item.id", equals="abc"'
+    )
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+    reported = [item for item in validate_v2(document) if "qa.verify" in item]
+    assert reported and "is not a known check" in reported[0]
+
+
+def test_the_declared_check_runs_and_lands_in_the_evidence(tmp_path: Path) -> None:
+    # The declaration is executable, which is the whole claim: the comparison is the
+    # harness's, so the scenario cannot choose a weaker one.
+    spec = _spec(tmp_path)
+    _declaring(spec)
+    source = VERIFY_PLAN.replace("{args}", 'path="item.id", equals="abc"')
+    module = _plan(spec, source)
+    (tmp_path / "out.json").write_text(json.dumps({"item": {"id": "abc"}}), encoding="utf-8")
+
+    assert cmd_run(module, spec, root=tmp_path).ok
+    evidence = json.loads((spec / "qa-evidence.json").read_text(encoding="utf-8"))
+    assert next(row for row in evidence["obligations"] if row["id"] == OBLIGATION)["verdict"] == "Pass"
+
+    (tmp_path / "out.json").write_text(json.dumps({"item": {"id": "wrong"}}), encoding="utf-8")
+    assert not cmd_run(module, spec, root=tmp_path).ok
 
 
 def test_running_the_plan_records_the_assertion_as_evidence(tmp_path: Path) -> None:
@@ -326,7 +451,7 @@ def test_an_obligation_no_check_claims_is_rejected(tmp_path: Path) -> None:
 
     reported = validate_v2(document)
 
-    assert any("no qa.check()/qa.require() in its body claims it" in item for item in reported)
+    assert any("in its body claims it" in item for item in reported)
     # And it is not quietly credited on the way out either.
     assert any("is not covered by an asserted scenario" in item for item in reported)
 
@@ -376,3 +501,23 @@ def test_an_unbound_check_is_not_credited_to_the_scenario_s_obligations(tmp_path
 
     assert bound["covers"] == [OBLIGATION]
     assert unbound.get("covers", []) == []
+
+
+def test_a_scenario_whose_only_assertion_retries_validates_clean(tmp_path: Path) -> None:
+    """`eventually` is an assertion, and the gate has to agree — otherwise the doctrine tells
+    an author to hold the sampler and the validator answers that their scenario proves
+    nothing. Both vacuity rules count it and both bind its `covers=`, because `count_checks`
+    and `extract_check_covers` read one shared `CHECK_METHODS` set.
+    """
+    spec = _spec(tmp_path)
+    retrying = PLAN.replace(
+        '    qa.check("the item is the one requested", payload["item"]["id"] == "abc",\n'
+        '             actual=payload["item"]["id"], expected="abc", covers=["{obligation}"])\n',
+        '    qa.eventually("the item is the one requested",\n'
+        '                  lambda: payload["item"]["id"] == "abc",\n'
+        '                  expected="abc", covers=["{obligation}"])\n',
+    )
+    document, problems = load_plan(_plan(spec, retrying), spec, tmp_path)
+
+    assert not problems and document is not None
+    assert validate_v2(document) == []

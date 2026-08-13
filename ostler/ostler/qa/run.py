@@ -7,7 +7,7 @@ session operations and produces human-readable / JSON output.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -46,14 +46,15 @@ class QaOutcome:
 # start
 # ---------------------------------------------------------------------------
 
-DaemonSpec = tuple[str, str, str | Mapping[str, Any] | None]
-"""A background daemon to start: its name, its command, and how to tell it is ready.
+DaemonSpec = tuple[str, Sequence[str], str | Mapping[str, Any] | None]
+"""A background daemon to start: its name, its argv, and how to tell it is ready.
 
-The readiness probe is a URL to poll, a ``{cmd, assert_contains}`` mapping to run, or
-``None`` for a daemon nobody waits on. Named because the CLI builds this list and hands it
-straight here — spelled out twice, the two spellings drift and the list stops being
-assignable for reasons that read as a type-checker complaint rather than as the API change
-they are.
+The argv is a program and its arguments, never a command line — nothing here reaches a
+shell. The readiness probe is a URL to poll, a ``{url, method, status}`` mapping for a
+service that is not a GET-200 health endpoint, or ``None`` for a daemon nobody waits on.
+Named because the CLI builds this list and hands it straight here — spelled out twice, the
+two spellings drift and the list stops being assignable for reasons that read as a
+type-checker complaint rather than as the API change they are.
 """
 
 
@@ -68,8 +69,8 @@ def cmd_start(
 ) -> QaOutcome:
     """Open a new QA session and optionally start background daemons.
 
-    *daemons*: list of (name, cmd, ready_check) tuples, where the readiness check is
-    either a URL polled for a 200 or a ``{cmd, assert_contains}`` mapping.
+    *daemons*: list of (name, argv, ready_check) tuples, where the readiness check is
+    either a URL polled for a 200 or a ``{url, method, status}`` mapping.
     """
     env = env or {}
     try:
@@ -85,9 +86,9 @@ def cmd_start(
 
     session.write_session_start()
     pids: dict[str, int] = {}
-    for name, cmd, ready_check in daemons or []:
+    for name, argv, ready_check in daemons or []:
         try:
-            pid = session.start_daemon(name, cmd, ready_check=ready_check)
+            pid = session.start_daemon(name, argv, ready_check=ready_check)
             pids[name] = pid
         except (OSError, TimeoutError, ValueError) as exc:
             session.close(status="blocked")
@@ -351,6 +352,7 @@ def cmd_run(
     stop_on_fail: bool = False,
     only: list[str] | None = None,
     out_dir: str = "qa",
+    sandboxed: bool = False,
     root: Path,
 ) -> QaOutcome:
     """Execute a `qa_plan.py` in batch mode.
@@ -360,6 +362,9 @@ def cmd_run(
 
     ``only`` and ``out_dir`` are the dry run: a subset of the scenarios, written somewhere
     other than ``qa/`` and producing no ``qa-evidence.json``.
+
+    ``sandboxed`` runs each scenario in a container that has no repository on disk, so a
+    scenario cannot rerun a unit suite and file the exit code as behavioral evidence.
     """
     resolved_plan = plan_file if plan_file.is_absolute() else root / plan_file
     resolved_spec = resolve_spec_dir(resolved_plan, spec_dir, root)
@@ -381,6 +386,7 @@ def cmd_run(
         stop_on_fail=stop_on_fail,
         only=only,
         qa_dirname=out_dir,
+        sandboxed=sandboxed,
     )
     return QaOutcome(
         ok=status == "passed",

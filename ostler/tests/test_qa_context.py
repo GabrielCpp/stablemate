@@ -37,8 +37,8 @@ title: Item
 
 - code: app/service.py::create_item
 - code: app/service.py::read_item
-- verify: tests/test_service.py::test_create
-- verify: tests/test_service.py::test_read
+- tests: tests/test_service.py::test_create
+- tests: tests/test_service.py::test_read
 """,
         encoding="utf-8",
     )
@@ -320,7 +320,9 @@ title: Items
   - request: persist the item
   - error: preserve fields and expose an alert
 - code: app/items.py::save_item
-- verify: tests/test_items.py::test_save, tests/test_items.py::test_retry
+- verify: persists(subject="the saved item")
+- verify: visible(locator="alert", text="could not save")
+- tests: tests/test_items.py::test_save, tests/test_items.py::test_retry
 """,
         encoding="utf-8",
     )
@@ -349,6 +351,59 @@ title: Items
         "tests/test_items.py"
     }
     assert len(packet["verificationRefs"]) == 2
+    # `verify:` and `tests:` land in different places on purpose: the checks travel with the
+    # obligations a scenario has to prove, the test paths only with the regression index.
+    declared = {
+        row["call"]
+        for item in packet["obligations"]
+        if item["node"].endswith("#save-item")
+        for row in item["checksDeclared"]
+    }
+    assert declared == {
+        'persists(subject="the saved item")',
+        'visible(locator="alert", text="could not save")',
+    }
+    assert not any("tests/test_items.py" in row for row in declared)
+
+
+def test_a_contract_declaring_no_observation_is_a_health_warning(tmp_path: Path):
+    """Not "cites no test" — a test citation proves nothing about the running product. The
+    defect worth naming is an impacted contract no scenario can be held to."""
+    (tmp_path / "docs/features/acme/screens").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    doc = tmp_path / "docs/features/acme/screens/items.md"
+    body = """---
+type: screen
+slug: items
+title: Items
+---
+# Items
+
+## Interactions
+
+### save-item
+- on: [items](#items)
+- trigger: click
+- does:
+  - request: persist the item
+- code: app/items.py::save_item
+"""
+    doc.write_text(body, encoding="utf-8")
+    (tmp_path / "app/items.py").write_text("def save_item():\n    return 1\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/items.py").write_text("def save_item():\n    return 2\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    assert "missing-declared-check" in {f["kind"] for f in packet["healthFindings"]}
+
+    doc.write_text(body + '- verify: persists(subject="the item")\n', encoding="utf-8")
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    assert "missing-declared-check" not in {f["kind"] for f in packet["healthFindings"]}
 
 
 def test_the_tenth_case_of_a_bullet_sorts_after_the_second():
@@ -379,7 +434,7 @@ title: Items
 ---
 # Items
 - code: app/items.py::save_item
-- verify: tests/test_items.py::test_save
+- tests: tests/test_items.py::test_save
 """,
         encoding="utf-8",
     )
@@ -390,8 +445,8 @@ title: Accounts
 ---
 # Accounts
 - code: app/accounts.py::login
-- verify: tests/test_accounts.py::test_login
-- verify: mobile/test/accounts_test.dart::login succeeds
+- tests: tests/test_accounts.py::test_login
+- tests: mobile/test/accounts_test.dart::login succeeds
 """,
         encoding="utf-8",
     )
@@ -847,16 +902,16 @@ def test_a_backticked_verify_ref_keeps_the_commas_inside_its_test_name():
         "`docs-app/app/lib/drafts.test.ts::describe(\"createPairedDrafts\") > generates once, "
         "cloning the input independently` and `docs-app/app/x.browser.test.tsx::describe(\"S\") > b`"
     )
-    assert _verification_refs({"bullets": {"verify": backticked}}) == [
+    assert _verification_refs({"bullets": {"tests": backticked}}) == [
         'docs-app/app/lib/drafts.test.ts::describe("createPairedDrafts") > generates once, '
         "cloning the input independently",
         'docs-app/app/x.browser.test.tsx::describe("S") > b',
     ]
     # Prose in backticks is not a citation, and a bullet citing without them still splits on
     # the comma — nothing marks where a target ends there, so that reading has to stay lossy.
-    assert _verification_refs({"bullets": {"verify": "`not a citation at all`"}}) == []
+    assert _verification_refs({"bullets": {"tests": "`not a citation at all`"}}) == []
     assert _verification_refs(
-        {"bullets": {"verify": "tests/test_items.py::test_save, tests/test_items.py::test_retry"}}
+        {"bullets": {"tests": "tests/test_items.py::test_save, tests/test_items.py::test_retry"}}
     ) == ["tests/test_items.py::test_save", "tests/test_items.py::test_retry"]
 
 

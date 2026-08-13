@@ -12,9 +12,16 @@ Commands:
   ostler qa run     <plan-file> [--spec DIR] [--stop-on-fail]
   ostler qa validate <plan-file>
   ostler qa context-show [--spec DIR] [--required] [--node SUBSTR] [--limit N]
+  ostler qa evidence-map [--spec DIR] [--status S] [--out PATH]
 """
 
 from ostler.qa.run import DaemonSpec, QaOutcome, cmd_assert, cmd_report, cmd_replay, cmd_run, cmd_start, cmd_step, cmd_stop, cmd_validate
+from ostler.qa.evidence_map import (
+    STATUSES,
+    EvidenceMapError,
+    build_evidence_map,
+    render_evidence_map,
+)
 from ostler.qa.context import (
     build_context,
     render_context,
@@ -41,4 +48,8 @@ __all__ = [
     "render_obligations",
     "select_obligations",
     "validate_context",
+    "STATUSES",
+    "EvidenceMapError",
+    "build_evidence_map",
+    "render_evidence_map",
 ]

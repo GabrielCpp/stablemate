@@ -83,19 +83,23 @@ class PythonDriver(QaDriver):
     instead of matching empty.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, launcher: "Launcher | None" = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        # *Where* the scenario process runs, which is the one axis a sandbox changes. The
+        # driver keeps everything else — the ledger, the grading, the recorders' contract —
+        # so a containerized run and a local one are the same run with a different launcher.
+        self.launcher: Launcher = launcher or LocalLauncher()
         # The two recorders that cannot move into the scenario process, because both film
         # something *around* it: ffmpeg grabs the X display the browser is drawn on, and
         # simctl/adb film a device that outlives any one scenario.
         self._window_recorder: DisplayRecorder | None = None
         self._device_recorder: DeviceRecorder | None = None
-        self._launch_env: dict[str, str] = {}
+        self.launch_env: dict[str, str] = {}
         # The documented screens, read on the first `vet` record and kept for the target.
         self._screens: dict[str, list[placement.VettedComponent]] | None = None
 
     def start(self) -> None:
-        self._start_interpreter()
+        self.launcher.preflight(self)
         driver = str(self.target.get("driver", "python"))
         recording = self.target.get("recording", {"required": True})
         if driver == "playwright":
@@ -107,16 +111,18 @@ class PythonDriver(QaDriver):
         if not recording.get("required", True) or recording.get("mode", "window") != "window":
             return
         viewport = self.target.get("viewport", {"width": 1440, "height": 900})
-        self._window_recorder = DisplayRecorder(
-            self.session,
-            self.target_id,
+        # The launcher chooses the recorder because the two have to agree about which
+        # machine the browser is drawn on: filming the host's X display while the browser
+        # runs in a container yields a valid, empty video, which reads as evidence.
+        self._window_recorder = self.launcher.window_recorder(
+            self,
             width=int(viewport.get("width", 1440)),
             height=int(viewport.get("height", 900)),
             fps=int(recording.get("fps", 30)),
         )
         # The whole environment, including the DISPLAY the browser must be launched onto —
         # which is the one thing the scenario process cannot work out for itself.
-        self._launch_env = self._window_recorder.start()
+        self.launch_env = self._window_recorder.start()
 
     def _start_device(self, recording: dict[str, Any]) -> None:
         """Refuse a mobile target whose device is not there — blocked, not failed.
@@ -161,17 +167,6 @@ class PythonDriver(QaDriver):
             if self._window_recorder is not None:
                 self._window_recorder.stop()
 
-    def _start_interpreter(self) -> None:
-        interpreter = self.interpreter()
-        if not interpreter.exists():
-            # Blocked, not failed: an interpreter that is not there says nothing about the
-            # product, and a run that reports it as a product failure sends the workflow to
-            # repair a plan that is fine.
-            raise DriverBlocked(
-                f"target '{self.target_id}' names interpreter '{interpreter}', which does not "
-                "exist — create the project venv, or drop `interpreter=` to use ostler's own"
-            )
-
     def interpreter(self) -> Path:
         declared = self.target.get("interpreter")
         if not declared:
@@ -211,44 +206,7 @@ class PythonDriver(QaDriver):
             # message's `atMs` — would be measured from a different origin than the ledger's.
             "offset_ms": self.session.offset_ms(),
         }
-        read_fd, write_fd = os.pipe()
-        env = harness_env(self.session.command_env())
-        env["OSTLER_QA_RECORD_FD"] = str(write_fd)
-        if self._launch_env.get("DISPLAY"):
-            env["DISPLAY"] = self._launch_env["DISPLAY"]
-        process = subprocess.Popen(  # noqa: S603 — agent-authored plan, explicit user intent
-            harness_argv(
-                self.interpreter(),
-                "run",
-                str(self.module_path()),
-                scenario_id,
-                json.dumps(context),
-            ),
-            cwd=self.root,
-            env=env,
-            pass_fds=(write_fd,),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-        os.close(write_fd)
-        records: list[dict[str, Any]] = []
-        # Drained on a thread. Both the record pipe and the merged stdout pipe are bounded,
-        # so a scenario that fills one while the driver reads only the other deadlocks —
-        # and it would do it exactly on the verbose scenarios, the ones already in trouble.
-        reader = threading.Thread(target=_drain, args=(read_fd, records), daemon=True)
-        reader.start()
-        timed_out = False
-        try:
-            output_raw, _ = process.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            _kill_group(process)
-            output_raw, _ = process.communicate()
-            timed_out = True
-        reader.join(timeout=5)
-        safe = _redact_bytes(output_raw or b"", self.session.secret_values.values())
-        return records, safe.decode("utf-8", errors="replace"), process.returncode, timed_out
+        return self.launcher.execute(self, scenario_id, timeout, context)
 
     def _write_output(self, scenario_id: str, output: str) -> None:
         """Keep the scenario's own stdout — this is where a traceback lands."""
@@ -320,7 +278,14 @@ class PythonDriver(QaDriver):
             elif kind == "artifact":
                 problems.extend(self._register(scenario_id, record))
             elif kind == "vet":
-                verdicts, trouble = self._vet(scenario_id, record)
+                try:
+                    verdicts, trouble = self._vet(scenario_id, record)
+                except ValueError as exc:
+                    # A path the registration cannot place under the spec directory. It used
+                    # to propagate to the runner's bare `except`, which turned one bad
+                    # screenshot into `status="invalid"` for the whole run — the account of
+                    # every scenario that had already passed, thrown away by the last one.
+                    verdicts, trouble = [], [f"scenario '{scenario_id}' vet failed: {exc}"]
                 problems.extend(trouble)
                 for verdict in verdicts:
                     action += 1
@@ -354,11 +319,16 @@ class PythonDriver(QaDriver):
             # tail is the only account of it, so it goes in the message rather than being
             # left for someone to find in the artifact.
             message = (
-                f"scenario '{scenario_id}' produced no result (exit {exit_code}): "
-                + output.strip()[-500:]
+                f"scenario '{scenario_id}' produced no result (exit {exit_code})"
+                f"{self.launcher.no_result_hint()}: " + output.strip()[-500:]
             )
         elif terminal.get("error"):
-            message = str(terminal["error"]).strip()[-2000:]
+            # The hint belongs here as much as above. A scenario that raised inside its body
+            # graded itself, so the terminal record exists — but under the sandbox the raise
+            # is usually a `FileNotFoundError` on a path that plainly *does* exist on the
+            # host, and a reader with no idea the repository was taken away reads that as an
+            # ostler defect and goes looking for it.
+            message = str(terminal["error"]).strip()[-2000:] + self.launcher.no_result_hint()
         if problems:
             message = "; ".join([part for part in [message, *problems] if part])
 
@@ -403,13 +373,16 @@ class PythonDriver(QaDriver):
                     f"{measured.get('width')}x{measured.get('height')}, "
                     f"not the target's {width}x{height}"
                 )
-        self.session.register_artifact(
-            path,
-            kind=kind,
-            scenario=scenario_id,
-            target=self.target_id,
-            **({"metadata": metadata} if metadata else {}),
-        )
+        try:
+            self.session.register_artifact(
+                path,
+                kind=kind,
+                scenario=scenario_id,
+                target=self.target_id,
+                **({"metadata": metadata} if metadata else {}),
+            )
+        except ValueError as exc:
+            problems.append(f"scenario '{scenario_id}' produced an unusable artifact: {exc}")
         return problems
 
     # -- vetting -----------------------------------------------------------------------
@@ -483,6 +456,104 @@ class PythonDriver(QaDriver):
             report_path, kind="vet", scenario=scenario_id, target=self.target_id
         )
         return verdicts, []
+
+
+class Launcher:
+    """Where a scenario process runs, and what films it.
+
+    Three methods, because three things depend on the machine: whether the runtime is
+    there at all, how the process is started and killed, and which display the browser is
+    drawn on. Everything else about a run — the ledger, the grading, the manifest, the
+    vetting — is host-side and identical either way, which is the property that makes a
+    sandboxed run comparable to a local one rather than a different kind of evidence.
+    """
+
+    def preflight(self, driver: PythonDriver) -> None:
+        """Refuse a target whose runtime is absent. Raise `DriverBlocked`, never fail it."""
+        return None
+
+    def window_recorder(
+        self, driver: PythonDriver, *, width: int, height: int, fps: int
+    ) -> DisplayRecorder:
+        raise NotImplementedError
+
+    def execute(
+        self, driver: PythonDriver, scenario_id: str, timeout: float, context: dict[str, Any]
+    ) -> tuple[list[dict[str, Any]], str, int, bool]:
+        raise NotImplementedError
+
+    def no_result_hint(self) -> str:
+        """What to add when a scenario dies before grading itself.
+
+        The exit code and a stdout tail are all `_grade` has, and on an unusual runtime that
+        reads as an ostler defect. A launcher that removed a capability on purpose owes the
+        reader that sentence.
+        """
+        return ""
+
+
+class LocalLauncher(Launcher):
+    """A subprocess on this machine, under the project's own interpreter."""
+
+    def preflight(self, driver: PythonDriver) -> None:
+        interpreter = driver.interpreter()
+        if not interpreter.exists():
+            # Blocked, not failed: an interpreter that is not there says nothing about the
+            # product, and a run that reports it as a product failure sends the workflow to
+            # repair a plan that is fine.
+            raise DriverBlocked(
+                f"target '{driver.target_id}' names interpreter '{interpreter}', which does not "
+                "exist — create the project venv, or drop `interpreter=` to use ostler's own"
+            )
+
+    def window_recorder(
+        self, driver: PythonDriver, *, width: int, height: int, fps: int
+    ) -> DisplayRecorder:
+        return DisplayRecorder(
+            driver.session, driver.target_id, width=width, height=height, fps=fps
+        )
+
+    def execute(
+        self, driver: PythonDriver, scenario_id: str, timeout: float, context: dict[str, Any]
+    ) -> tuple[list[dict[str, Any]], str, int, bool]:
+        read_fd, write_fd = os.pipe()
+        env = harness_env(driver.session.command_env())
+        env["OSTLER_QA_RECORD_FD"] = str(write_fd)
+        if driver.launch_env.get("DISPLAY"):
+            env["DISPLAY"] = driver.launch_env["DISPLAY"]
+        process = subprocess.Popen(  # noqa: S603 — agent-authored plan, explicit user intent
+            harness_argv(
+                driver.interpreter(),
+                "run",
+                str(driver.module_path()),
+                scenario_id,
+                json.dumps(context),
+            ),
+            cwd=driver.root,
+            env=env,
+            pass_fds=(write_fd,),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        os.close(write_fd)
+        records: list[dict[str, Any]] = []
+        # Drained on a thread. Both the record pipe and the merged stdout pipe are bounded,
+        # so a scenario that fills one while the driver reads only the other deadlocks —
+        # and it would do it exactly on the verbose scenarios, the ones already in trouble.
+        reader = threading.Thread(target=_drain, args=(read_fd, records), daemon=True)
+        reader.start()
+        timed_out = False
+        try:
+            output_raw, _ = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _kill_group(process)
+            output_raw, _ = process.communicate()
+            timed_out = True
+        reader.join(timeout=5)
+        safe = _redact_bytes(output_raw or b"", driver.session.secret_values.values())
+        return records, safe.decode("utf-8", errors="replace"), process.returncode, timed_out
 
 
 def _drain(read_fd: int, records: list[dict[str, Any]]) -> None:
@@ -580,6 +651,15 @@ class DisplayRecorder:
             if self._xvfb is not None:
                 self._xvfb.terminate()
                 self._xvfb.wait(timeout=5)
+        self._finalize()
+
+    def _finalize(self) -> None:
+        """Measure the finished file and file it — the half that does not care where ffmpeg ran.
+
+        Split out so a recorder that films inside a container reuses these checks verbatim.
+        They are the ones that matter: a recording of the wrong display is a valid mp4 of an
+        empty desktop, and every guard below is there because that reads as evidence.
+        """
         if not self.started:
             return
         if not self.path.is_file() or not self.path.stat().st_size:
@@ -760,6 +840,7 @@ def create_driver(
     *,
     root: Path,
     variables: dict[str, str],
+    sandbox: Any | None = None,
 ) -> QaDriver:
     """Build the one driver there is.
 
@@ -767,8 +848,15 @@ def create_driver(
     between four action interpreters picks nothing. The function stays because the runner
     calls it per target and because a second driver is a plausible future; a `driver:` key
     on the target is a label for the report, not a dispatch.
+
+    ``sandbox`` is the run-scoped `ostler.qa.sandbox.Sandbox`, or `None` for a local run.
+    It is duck-typed rather than imported so that this module — which every QA run loads —
+    does not depend on the container machinery, and so that `sandbox` can import from here.
     """
-    return PythonDriver(session, target_id, target, root=root, variables=variables)
+    launcher = sandbox.launcher_for(target_id, target) if sandbox is not None else None
+    return PythonDriver(
+        session, target_id, target, root=root, variables=variables, launcher=launcher
+    )
 
 
 def _probe_media(path: Path) -> dict[str, Any]:

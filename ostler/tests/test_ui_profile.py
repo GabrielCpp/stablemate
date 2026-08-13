@@ -72,7 +72,8 @@ A leaf of the per-worker file tree.
   - state: mark row `.active`, clear siblings
   - dom: render single-file diff
 - code: `groom/groom/templates/dashboard.html::wireChanges`
-- verify: `groom/tests/test_render.py::test_changes_groups_diffs_per_repo`
+- verify: visible(locator="single-file diff")
+- tests: `groom/tests/test_render.py::test_changes_groups_diffs_per_repo`
 """
 
 
@@ -262,14 +263,15 @@ def test_a_code_finding_is_located_at_its_node(repo: Path):
     assert finding.ref == "groom/groom/gone.py::Diff"
 
 
-def test_verify_targets_stay_deferred(repo: Path):
-    # `verify:` is a test id as often as a `path::symbol`, so it has no single shape to hold it
-    # to and stays with the QA gate. Only `code:` is grounded here.
+def test_cited_tests_stay_deferred(repo: Path):
+    # `tests:` names test files for the regression node to attribute failures with; whether one
+    # exists at this commit is the QA gate's question, not the linter's. `verify:` is grounded,
+    # but against the check vocabulary — nothing here touches the filesystem.
     write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
     write(repo / "docs/features/groom/gui/components/design-system.md", DESIGN_SYSTEM)
     write_cited_code(repo)
     report = doctor.run(load(repo))
-    # SCREEN's `verify:` names a test file that does not exist; that is not a finding.
+    # SCREEN's `tests:` names a test file that does not exist; that is not a finding.
     assert report.errors == 0, [f.message for f in report.findings if f.severity == "error"]
 
 

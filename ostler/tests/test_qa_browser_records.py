@@ -153,6 +153,61 @@ def test_a_response_record_carries_the_status_a_5xx_assertion_needs(tmp_path: Pa
     ]
 
 
+def test_an_uncaught_page_error_fails_the_scenario_without_the_plan_asking(
+    tmp_path: Path,
+) -> None:
+    """The gate is the runner's, because a gate the plan writes is a gate it can write
+    four fifths of.
+
+    The corpus has exactly that: a helper checking console errors, failed requests and 5xx
+    responses that never calls ``page_errors()``, so an uncaught exception in the app rode
+    out under a green verdict. Reviewing the missing fifth was a person's job once per
+    plan; here it is a condition the scenario cannot decline to observe.
+    """
+    browser = _browser(tmp_path, at_ms=900)
+    browser._on_page_error(ValueError("locale is undefined"))
+
+    problems = browser._unclean()
+
+    assert len(problems) == 1
+    assert "uncaught page error" in problems[0]
+    assert "locale is undefined" in problems[0]
+
+
+def test_a_5xx_fails_the_scenario_and_a_4xx_does_not(tmp_path: Path) -> None:
+    """Only the two conditions no scenario ever means to provoke are automatic.
+
+    A scenario proving an error branch provokes a 4xx on purpose and must stay green; a
+    500 is the server failing to answer at all, which no acceptance criterion asks for. The
+    same reasoning keeps console errors and cancelled requests assertable rather than
+    fatal — an app legitimately logs at error level and legitimately abandons an in-flight
+    request on navigation.
+    """
+    browser = _browser(tmp_path, at_ms=4200)
+    for status in (404, 422):
+        browser._on_response(
+            SimpleNamespace(
+                url=f"http://127.0.0.1:8099/api/docs/{status}",
+                status=status,
+                request=SimpleNamespace(method="POST"),
+            )
+        )
+    assert browser._unclean() == []
+
+    browser._on_response(
+        SimpleNamespace(
+            url="http://127.0.0.1:8099/api/docs",
+            status=503,
+            request=SimpleNamespace(method="POST"),
+        )
+    )
+
+    problems = browser._unclean()
+    assert len(problems) == 1
+    assert "503" in problems[0]
+    assert "http://127.0.0.1:8099/api/docs" in problems[0]
+
+
 def test_a_failed_request_record_says_why_it_failed(tmp_path: Path) -> None:
     """``requestfailed`` fires for an app cancelling its own fetch just as it does for a
     refused connection. With only the URL recorded the two are the same entry, so a plan

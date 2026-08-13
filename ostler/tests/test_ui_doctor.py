@@ -18,6 +18,11 @@ def codes(report):
     return {f.code for f in report.findings if f.severity == "error"}
 
 
+def all_codes(report):
+    """Every finding, warns included — `codes` reads errors only, and one UI rule is a warn."""
+    return {f.code for f in report.findings}
+
+
 def _run(repo: Path):
     return doctor.run(load(repo))
 
@@ -218,6 +223,143 @@ def test_only_normative_bullets_are_measured(repo: Path):
     assert "overlong-normative-bullet" not in codes(_run(repo))
 
 
+def test_a_bullet_enumerating_status_branches_is_compound(repo: Path):
+    # The shape this rule exists for: one `does:` restating an endpoint's whole branch table.
+    # It is well under the length limit and it is five obligations.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _interaction("returns `400` on a malformed body, `409` on a stale manifest, "
+                       "and `200` with the published page otherwise"))
+    finding = next(f for f in _run(repo).findings if f.code == "compound-normative-bullet")
+    assert finding.severity == "warn"   # splitting is authoring judgment, not a `fmt` fix
+    assert "3 status codes (200, 400, 409)" in finding.message
+
+
+def test_a_bullet_naming_two_failures_is_compound(repo: Path):
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _interaction("raises `SlugCollisionError` for a duplicate slug or "
+                       "`ManifestConflict` when the revision moved"))
+    assert "compound-normative-bullet" in all_codes(_run(repo))
+
+
+def test_a_semicolon_joining_clauses_is_compound(repo: Path):
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _interaction("the row saves; the audit trail records the previous value"))
+    assert "compound-normative-bullet" in all_codes(_run(repo))
+
+
+def test_listing_two_nouns_is_not_compound(repo: Path):
+    # A rule that fires on every `and` is a rule people learn to ignore, and an ignored rule
+    # leaves the fat bullets exactly where they were.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _interaction("the page and its slug are written to the manifest"))
+    assert "compound-normative-bullet" not in all_codes(_run(repo))
+
+
+def test_one_status_code_is_not_compound(repo: Path):
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _interaction("returns `409` when the manifest revision moved under the write"))
+    assert "compound-normative-bullet" not in all_codes(_run(repo))
+
+
+def test_an_overlong_bullet_is_reported_once(repo: Path):
+    # Both rules say "this is several obligations"; saying it twice about one bullet buys the
+    # author nothing and costs a second thing to waive.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          _interaction("returns `400`; then `500`. " * 60))
+    found = all_codes(_run(repo))
+    assert "overlong-normative-bullet" in found
+    assert "compound-normative-bullet" not in found
+
+
+def _method(verify: str) -> str:
+    return ("---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+            "## Methods\n\n### Publish\n- returns: the published revision\n"
+            f"- verify: {verify}\n")
+
+
+def test_verify_naming_a_test_is_refused(repo: Path):
+    # The direction the whole vocabulary reverses: a test id says which code ran, so an
+    # assertion filed under it can be arbitrarily weaker than the claim and still cite it.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          _method("Test_Service_Publish_ShouldConflict"))
+    finding = next(f for f in _run(repo).findings if f.code == "unparsed-check")
+    assert finding.severity == "error"
+    assert "not a check call" in finding.message
+
+
+def test_verify_naming_an_unknown_check_lists_the_vocabulary(repo: Path):
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          _method('manifest_unchanged_except(page="getting-started")'))
+    finding = next(f for f in _run(repo).findings if f.code == "unparsed-check")
+    assert "is not a known check" in finding.message
+    assert "keys_unchanged" in finding.message
+
+
+def test_a_declared_check_grounds(repo: Path):
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          _method('http_status(409, title="Manifest Conflict")'))
+    assert "unparsed-check" not in all_codes(_run(repo))
+
+
+def test_a_node_that_declares_nothing_is_reported(repo: Path):
+    # The gap `unparsed-check` cannot see: no value to reject. `verify:` is required on no
+    # type, so this node is otherwise green while every obligation it mints reaches QA with
+    # nothing to bind — `qa validate` has no declaration to enforce and the evidence map has
+    # no deficit to report.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n- returns: the published revision\n"
+          "- raises: `ManifestConflict` when the revision moved\n")
+    finding = next(f for f in _run(repo).findings if f.code == "undeclared-obligation")
+    assert finding.severity == "warn"   # declaring is authoring judgment, not a `fmt` fix
+    assert "2 normative bullets" in finding.message
+    # Reported once per node across a whole book, so the vocabulary rides in the suggestion
+    # rather than in every line of it.
+    assert finding.suggestion is not None and "http_status" in finding.suggestion
+    assert finding.ref == f"{finding.path}#publish#verify"
+
+
+def test_one_declaration_answers_the_node(repo: Path):
+    # Node-level and not a count: `verify:` sits on the node, and pairing one check to one
+    # bullet is a judgement nobody has written down yet. Asking for parity would invent it.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n- returns: the published revision\n"
+          "- raises: `ManifestConflict` when the revision moved\n"
+          '- verify: http_status(409, title="Manifest Conflict")\n')
+    assert "undeclared-obligation" not in all_codes(_run(repo))
+
+
+def test_a_declaration_that_does_not_parse_is_reported_once(repo: Path):
+    # Both rules would say "this node declares no observation"; the author who wrote a test id
+    # is already being told the one thing there is to do about it.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          _method("Test_Service_Publish_ShouldConflict"))
+    found = all_codes(_run(repo))
+    assert "unparsed-check" in found
+    assert "undeclared-obligation" not in found
+
+
+def test_a_node_minting_no_obligation_is_not_asked_to_declare(repo: Path):
+    # Nothing to observe: an interaction recorded only by its trigger owes no check, and a rule
+    # that asked anyway would be noise on the descriptive half of the book.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+          "## Interactions\n\n### click\n- on: [S](#s)\n- trigger: click\n")
+    assert "undeclared-obligation" not in all_codes(_run(repo))
+
+
+def test_a_type_that_carries_no_check_key_is_never_reported(repo: Path):
+    # A `step:` under a runbook mints obligations too, but its `verify:` keeps its own older
+    # meaning — how to tell the step ran — and is not a check. There is no declaration for it
+    # to be missing, so asking would be a finding no remedy answers.
+    write(repo / "docs/features/groom/runbooks/deploy.md",
+          "---\ntype: runbook\nslug: deploy\ntitle: Deploy\n---\n# Deploy\n\n"
+          "## Steps\n\n### Push\n- step: push the image\n"
+          "- persistence: the tag is recorded in the registry\n")
+    assert "undeclared-obligation" not in all_codes(_run(repo))
+
+
 def test_all_ui_findings_are_errors(repo: Path):
     write(repo / "docs/features/groom/concepts/diff.md",
           "---\ntype: concept\nslug: diff\ntitle: Diff\n---\n# Diff\n\n"
@@ -250,12 +392,13 @@ def test_missing_section_fixed_by_scaffold(repo: Path):
     assert "missing-required-section" not in codes(report)
 
 
-def test_code_and_verify_not_grounded_at_author_time(repo: Path):
-    # `code:`/`verify:` are code refs, grounded at a later QA gate — never dangling-link here.
+def test_code_and_tests_not_grounded_at_author_time(repo: Path):
+    # `code:`/`tests:` are code refs, grounded at a later QA gate — never dangling-link here.
     write(repo / "docs/features/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Interactions\n\n### click\n- on: [x](#s)\n- trigger: click\n- does:\n  - state: x\n"
-          "- code: `groom/groom/nope.py::ghost`\n- verify: `tests/test_nope.py::ghost`\n")
+          "- code: `groom/groom/nope.py::ghost`\n- tests: `tests/test_nope.py::ghost`\n")
     report = _run(repo)
     assert "dangling-link" not in codes(report)
     assert "unresolved-relation" not in codes(report)
+    assert "unparsed-check" not in codes(report)

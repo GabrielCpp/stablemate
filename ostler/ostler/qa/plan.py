@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from urllib.parse import urlsplit
 
 import yaml
 
+from ostler import checks
 from ostler.qa.harness_host import default_interpreter, describe, load_harness_module
 from ostler.untyped import is_mapping
 
@@ -24,7 +26,7 @@ COMPUTED: str = _plan_harness.COMPUTED
 UI_DRIVERS: tuple[str, ...] = tuple(_plan_harness.UI_DRIVERS)
 
 #: What a `qa-plan.yml` gets told now. The YAML plan's content was a shell heredoc, and every
-#: silent-failure mode it had — a `jq` path reading a missing field as an empty stream, an
+#: silent-failure mode it had — a field lookup reading a missing key as an empty stream, an
 #: evidence path meaning two directories depending on which key it sat under, an assertion
 #: proving only that a process exited — had to be caught by a regex standing in for a runtime.
 #: A `qa_plan.py` gets that runtime: a wrong key raises, and the traceback names the line.
@@ -34,7 +36,13 @@ RETIRED_YAML = (
     "(one `@scenario`-decorated function per scenario) and delete the .yml"
 )
 
-MECHANISMS = {"live", "synthetic", "fixture"}
+#: Evidence provenance. `synthetic` — a test suite standing in for the product — is gone: it
+#: named the one thing a QA run must never accept, and a scenario that could declare it could
+#: pass by proving its own harness works. `fixture` stays, because it drives the *real* product
+#: from a canned input, which is a different claim. Declared in four places that must agree
+#: (`qa/plan.py`, `qa/session.py`, `qa/harness/ostler_qa.py`, `cli.py`); a second spelling here
+#: is a gate that quietly stops firing.
+MECHANISMS = {"live", "fixture"}
 DRIVERS = {"command", "python", "playwright", "maestro"}
 LOCATOR_KEYS = {"role", "name", "label", "test_id", "text", "css", "id"}
 
@@ -205,6 +213,7 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
             continue
         if obligation["id"] not in asserted_coverage:
             problems.append(f"required OKF obligation '{obligation['id']}' is not covered by an asserted scenario")
+    problems.extend(_validate_declared_checks(document, asserted_coverage))
     required_acs = document.context.get("acceptanceCriteria", [])
     for criterion in required_acs if isinstance(required_acs, list) else []:
         criterion_id = criterion.get("id") if isinstance(criterion, dict) else criterion
@@ -212,6 +221,72 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
             problems.append(f"required acceptance criterion '{criterion_id}' is not covered by an asserted scenario")
     return problems
 
+
+
+def _invoked_checks(document: PlanDocument) -> tuple[dict[str, set[str]], list[str]]:
+    """Every named check the plan invokes, keyed by the obligation the invocation binds.
+
+    Aggregated across scenarios rather than per scenario: an obligation may be discharged by
+    two scenarios — the success path in one, the conflict branch in another — and demanding
+    that one function make every declared observation would refuse plans that are correct.
+    What is *not* aggregated is the binding: a `qa.verify` with no `covers=` proves something
+    about the product, but nothing this join can credit to a claim.
+    """
+    invoked: dict[str, set[str]] = {}
+    problems: list[str] = []
+    for scenario in document.data.get("scenarios", []):
+        if not is_mapping(scenario):
+            continue
+        scenario_id = str(scenario.get("id") or "?")
+        for call in scenario.get("check_calls", []) or []:
+            if not is_mapping(call):
+                continue
+            bound = checks.bind(str(call.get("check", "")), call.get("args") or {})
+            if isinstance(bound, str):
+                # An invocation the vocabulary does not admit is worth its own refusal: it
+                # would otherwise fail only as an obligation nobody bound, which sends the
+                # author looking at the book instead of at the call they mistyped.
+                problems.append(f"scenario '{scenario_id}' calls qa.verify with {bound}")
+                continue
+            for obligation_id in call.get("covers") or []:
+                invoked.setdefault(str(obligation_id), set()).add(bound.text())
+    return invoked, problems
+
+
+def _validate_declared_checks(document: PlanDocument, asserted: set[str]) -> list[str]:
+    """Hold each claimed obligation to the observation its `verify:` bullets declare.
+
+    This is where oracle strength stops being a judgment. The reviewer's recurring finding —
+    *your assertion would still pass under the defect it exists to exclude* — was a person
+    reading a scenario and imagining the defect. Here the book names the check and its
+    arguments, and the question is whether the plan invokes that call: a set difference, with
+    the expected call and the defect it excludes in the message.
+
+    Only for obligations the plan already claims. An obligation nobody covers is reported by
+    the coverage loop above, and saying it twice in different words invites a repair that
+    closes one wording and leaves the other standing.
+    """
+    invoked, problems = _invoked_checks(document)
+    for obligation in document.context.get("obligations", []):
+        if not is_mapping(obligation) or not obligation.get("id"):
+            continue
+        obligation_id = str(obligation["id"])
+        if obligation_id not in asserted:
+            continue
+        for declared in obligation.get("checksDeclared") or []:
+            if not is_mapping(declared) or not declared.get("call"):
+                continue
+            call = str(declared["call"])
+            if call in invoked.get(obligation_id, set()):
+                continue
+            spec = checks.CHECK_BY_NAME.get(str(declared.get("name", "")))
+            excludes = f" It excludes {spec.excludes}." if spec else ""
+            problems.append(
+                f"obligation '{obligation_id}' declares `{call}` in its `verify:` bullet, and "
+                f"no assertion invokes it — call qa.verify with that name and those arguments, "
+                f"bound with covers=['{obligation_id}'].{excludes}"
+            )
+    return problems
 
 
 def _documented_locators(document: PlanDocument) -> dict[str, dict[str, Any]]:
@@ -258,7 +333,14 @@ def _validate_python_scenarios(
                 f"scenario '{scenario_id}' references unknown target {scenario.get('target')!r}"
             )
             continue
-        if scenario.get("mechanism") not in MECHANISMS:
+        mechanism = scenario.get("mechanism")
+        if mechanism == "synthetic":
+            problems.append(
+                f"scenario '{scenario_id}' declares mechanism 'synthetic', which is retired — "
+                "evidence is the running product, so drive it (`live`) or drive it from a canned "
+                "input (`fixture`)"
+            )
+        elif mechanism not in MECHANISMS:
             problems.append(
                 f"scenario '{scenario_id}' mechanism must be one of {sorted(MECHANISMS)}"
             )
@@ -283,16 +365,19 @@ def _validate_python_scenarios(
             problems.append(
                 f"scenario '{scenario_id}' claims coverage of {sorted(covers)} but its body "
                 "calls no qa.check() — assert something the behaviour produced, on the line "
-                "that produced it. The count is static and over this function alone, so a "
-                "check inside a helper the scenario calls does not count; inline it here"
+                "that produced it, with qa.check()/qa.require() or their retrying forms "
+                "qa.eventually()/qa.require_eventually(). The count is static and over this "
+                "function alone, so a check inside a helper the scenario calls does not "
+                "count; inline it here"
             )
         else:
             unclaimed = sorted(set(covers) - claimed_ids)
             if unclaimed:
                 problems.append(
                     f"scenario '{scenario_id}' declares coverage of {unclaimed} but no "
-                    "qa.check()/qa.require() in its body claims it. Bind the assertion that "
-                    "proves each obligation: qa.check(label, condition, covers=[...]), with "
+                    "qa.check()/qa.require()/qa.eventually() in its body claims it. Bind the "
+                    "assertion that proves each obligation — qa.check(label, condition, "
+                    "covers=[...]) — with "
                     "the ids written literally — the binding is read statically, so a "
                     "computed list claims nothing. The scenario-level covers is a promise "
                     "about the function; the per-check covers is what the evidence gate "
@@ -369,6 +454,13 @@ def _validate_background(background: Any) -> list[str]:
     while everything caught here is handed to it as a diagnostic naming the field. That omission
     is not academic: a `ready_check` mapping crashed the runner, and the coder loop spent
     its whole rework budget re-planning a plan that was never wrong.
+
+    Both fields lost their shell here. `argv` is a list because a daemon command line ran
+    through `bash -c`, which made `go test ./...` a legal daemon and left the one capability
+    the sandbox exists to remove reachable from the host side of it. `ready_check` is HTTP
+    because its command form was a `curl` invocation wearing a `assert_contains` — the probe
+    was always "does this URL answer with this status", and saying so directly costs nothing
+    and reopens nothing.
     """
     problems: list[str] = []
     if not isinstance(background, list):
@@ -387,57 +479,113 @@ def _validate_background(background: Any) -> list[str]:
         else:
             seen.add(name)
         label = f"background daemon '{name}'" if isinstance(name, str) and name else label
-        if not isinstance(daemon.get("cmd"), str) or not daemon["cmd"].strip():
-            problems.append(f"{label}.cmd is required and must be non-empty")
+        problems.extend(_validate_daemon_argv(label, daemon))
         timeout = daemon.get("timeout")
         if timeout is not None and (not isinstance(timeout, (int, float)) or timeout <= 0):
             problems.append(f"{label}.timeout must be positive")
-        check = daemon.get("ready_check")
-        if check is None:
-            continue
-        if isinstance(check, str):
-            # The string form is polled with `urlopen`, so anything that is not a URL it can
-            # open would spend the whole timeout failing to connect for a reason nobody sees.
-            if not check.startswith(("http://", "https://")):
-                problems.append(
-                    f"{label}.ready_check as a string must be an http(s) URL; "
-                    "use a {cmd, assert_contains} mapping for a command probe"
-                )
-        elif is_mapping(check):
-            unknown = set(check) - {"cmd", "assert_contains", "timeout"}
-            if not isinstance(check.get("cmd"), str) or not check["cmd"].strip():
-                problems.append(f"{label}.ready_check mapping requires a non-empty 'cmd'")
-            if unknown:
-                problems.append(
-                    f"{label}.ready_check has unknown keys {sorted(unknown)}; "
-                    "supported: cmd, assert_contains, timeout"
-                )
-            check_timeout = check.get("timeout")
-            if check_timeout is not None and (
-                not isinstance(check_timeout, (int, float)) or check_timeout <= 0
-            ):
-                problems.append(f"{label}.ready_check timeout must be positive")
-        else:
-            problems.append(
-                f"{label}.ready_check must be a URL string or a {{cmd, assert_contains}} mapping"
-            )
+        problems.extend(_validate_ready_check(label, daemon.get("ready_check")))
     return problems
 
 
-def check_runtime_requirements(document: PlanDocument) -> list[str]:
+def _validate_daemon_argv(label: str, daemon: Mapping[str, Any]) -> list[str]:
+    """The daemon's program and its arguments, as a list nothing expands.
+
+    `cmd` is named explicitly in the refusal because that is the field an author who has
+    seen an older plan will write, and "argv is required" would read as a missing field
+    rather than as a replaced one.
+    """
+    if "cmd" in daemon:
+        return [
+            f"{label}.cmd is retired — a daemon command line ran through a shell, which "
+            "made a unit suite a legal daemon; declare `argv` as a list instead, e.g. "
+            'argv=["go", "run", "./cmd/server"]'
+        ]
+    argv = daemon.get("argv")
+    if not isinstance(argv, list) or not argv:
+        return [f"{label}.argv is required and must be a non-empty list"]
+    if any(not isinstance(part, str) or not part.strip() for part in argv):
+        return [f"{label}.argv must be a list of non-empty strings, got {argv!r}"]
+    return []
+
+
+def _validate_ready_check(label: str, check: Any) -> list[str]:
+    """The readiness probe: a URL, or a URL with the method and status that mean "up"."""
+    if check is None:
+        return []
+    if isinstance(check, str):
+        # Polled with `urlopen`, so anything that is not a URL it can open would spend the
+        # whole timeout failing to connect for a reason nobody sees.
+        if not check.startswith(("http://", "https://")):
+            return [
+                f"{label}.ready_check as a string must be an http(s) URL; "
+                "use a {url, method, status} mapping for anything but a GET expecting 200"
+            ]
+        return []
+    if not is_mapping(check):
+        return [
+            f"{label}.ready_check must be a URL string or a {{url, method, status}} mapping"
+        ]
+    problems: list[str] = []
+    if "cmd" in check:
+        problems.append(
+            f"{label}.ready_check.cmd is retired — the command probe was a `curl` wearing "
+            "an `assert_contains`; declare the URL, and the method and status if they are "
+            'not GET and 200, e.g. {"url": …, "method": "POST", "status": 201}'
+        )
+    unknown = set(check) - {"url", "method", "status", "timeout", "cmd"}
+    if unknown:
+        problems.append(
+            f"{label}.ready_check has unknown keys {sorted(unknown)}; "
+            "supported: url, method, status, timeout"
+        )
+    url = check.get("url")
+    if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+        problems.append(f"{label}.ready_check mapping requires an http(s) 'url'")
+    status = check.get("status")
+    if status is not None and (not isinstance(status, int) or isinstance(status, bool)):
+        problems.append(f"{label}.ready_check status must be an integer")
+    check_timeout = check.get("timeout")
+    if check_timeout is not None and (
+        not isinstance(check_timeout, (int, float)) or check_timeout <= 0
+    ):
+        problems.append(f"{label}.ready_check timeout must be positive")
+    return problems
+
+
+def check_runtime_requirements(
+    document: PlanDocument,
+    *,
+    targets: set[str] | None = None,
+    sandboxed: bool = False,
+) -> list[str]:
+    """What this machine must have before the run starts, for the targets it will use.
+
+    ``targets`` is the set the selected scenarios actually name. Without it a `--scenario`
+    dry run of one HTTP check was blocked because some *other* target in the same plan
+    wanted a mobile toolchain — a requirement that run was never going to reach.
+
+    ``sandboxed`` drops the browser-toolchain probes, which under `--sandbox` are asking the
+    wrong machine: playwright and ffmpeg live in the image, and importing playwright into
+    ostler's own interpreter says nothing about whether the container has it. ``ffprobe``
+    stays required either way, because the measurement of the finished recording is taken
+    here regardless of where it was filmed.
+    """
     problems: list[str] = []
     for name, target in document.data.get("targets", {}).items():
+        if targets is not None and name not in targets:
+            continue
         driver = target.get("driver")
         recording = target.get("recording", {"required": True})
         required = recording.get("required", True)
         mode = recording.get("mode", "window" if driver == "playwright" else "device")
         if driver == "playwright":
-            try:
-                import playwright.sync_api  # noqa: F401
-            except ImportError:
-                problems.append(f"target '{name}' requires the Playwright Python package")
-            if required and mode == "window" and shutil.which("ffmpeg") is None:
-                problems.append(f"target '{name}' requires ffmpeg for window recording")
+            if not sandboxed:
+                try:
+                    import playwright.sync_api  # noqa: F401
+                except ImportError:
+                    problems.append(f"target '{name}' requires the Playwright Python package")
+                if required and mode == "window" and shutil.which("ffmpeg") is None:
+                    problems.append(f"target '{name}' requires ffmpeg for window recording")
             if required and shutil.which("ffprobe") is None:
                 problems.append(f"target '{name}' requires ffprobe to validate recording metadata")
         elif driver == "maestro":

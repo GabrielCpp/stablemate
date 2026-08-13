@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -25,7 +26,7 @@ plan(run_id="qa-04-publish", story="04-publish")
 api = target("api", interpreter=".venv/bin/python")
 web = target("web", driver="playwright", base_url="http://localhost:5173", browser="chromium")
 
-background("stack", cmd="./scripts/teststack.sh up", ready_url="http://localhost:8090/healthz")
+background("stack", argv=["./scripts/teststack.sh", "up"], ready_url="http://localhost:8090/healthz")
 ADMIN = secret("ADMIN_TOKEN", from_env="QA_ADMIN_TOKEN")
 
 
@@ -109,6 +110,9 @@ def test_describe_emits_the_declaration_set(tmp_path: Path) -> None:
     assert described["targets"]["web"]["driver"] == "playwright"
     assert described["targets"]["web"]["base_url"] == "http://localhost:5173"
     assert described["background"][0]["ready_check"] == "http://localhost:8090/healthz"
+    # An argv list, not a command line: nothing downstream of here reaches a shell, so a
+    # daemon cannot be `go test ./...` with a `&&` in it.
+    assert described["background"][0]["argv"] == ["./scripts/teststack.sh", "up"]
 
 
 def test_describe_names_the_secret_without_reading_it(tmp_path: Path) -> None:
@@ -285,3 +289,161 @@ def test_a_ui_scenario_that_vets_nothing_fails_at_run_time(tmp_path: Path) -> No
     assert code == 1
     assert records[-1]["status"] == "failed"
     assert "vetted no screen" in records[-1]["error"]
+
+
+# -- the retrying assertion --------------------------------------------------------------
+
+#: A read that is false on the first sample and true on a later one — the shape of every
+#: race this API exists to end. `check` collapses it to a dead `False` before the harness
+#: is called; `eventually` holds the sampler and looks again.
+EVENTUALLY_PLAN = '''\
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-05-arrive", story="05-arrive")
+
+api = target("api")
+
+samples = []
+
+
+def rendered() -> bool:
+    samples.append(len(samples) + 1)
+    return len(samples) >= 3
+
+
+@scenario(target=api, mechanism="live", covers=["ac:1", "ac:2"])
+def the_badge_arrives(qa: Qa) -> None:
+    """The badge is on the page once the render settles."""
+    qa.check("sampled once, on the first paint", rendered())
+    qa.eventually(
+        "the badge arrives",
+        rendered,
+        interval=0.01,
+        actual=lambda: len(samples),
+        covers=["ac:2"],
+    )
+'''
+
+
+def _asserts(records: list[dict]) -> list[dict]:
+    return [record for record in records if record["type"] == "assert"]
+
+
+def test_eventually_looks_again_where_check_sampled_the_first_paint(tmp_path: Path) -> None:
+    """The motivating defect, reduced: the same read, asserted both ways, in one scenario.
+
+    `check` reports the first paint as a product failure. `eventually` re-samples and the
+    claim holds — and the record says how long it waited, so a reader can tell an assertion
+    that settled from one that was true all along.
+    """
+    _, records = _run(_write(tmp_path, EVENTUALLY_PLAN), "the-badge-arrives", tmp_path)
+
+    early, settled = _asserts(records)
+    assert early["passed"] is False
+    # Absent, not zero: a timing field on an assertion nobody retried is a claim about a
+    # sample that was never taken, and it is exactly what a race reader would believe.
+    assert "settled_ms" not in early and "mode" not in early
+    assert settled["passed"] is True
+    assert settled["mode"] == "eventually"
+    assert settled["polls"] == 2
+    assert settled["settled_ms"] > 0
+    # Read after the loop settled — the value that decided the verdict, not one sampled
+    # before the wait began.
+    assert settled["actual"] == 3
+    assert settled["covers"] == ["ac:2"]
+
+
+def test_an_already_evaluated_condition_is_refused_and_names_the_lambda(tmp_path: Path) -> None:
+    """Never a silent fallback to `check`. Falling back would make the new API behave
+    exactly like the old one at the single moment the author got it wrong — the race ships,
+    and the plan reads as though it were already guarded against one."""
+    module = _write(
+        tmp_path,
+        EVENTUALLY_PLAN.replace("        rendered,", "        rendered(),"),
+    )
+
+    code, records = _run(module, "the-badge-arrives", tmp_path)
+
+    assert code == 1
+    assert records[-1]["status"] == "errored"
+    assert "lambda:" in records[-1]["error"]
+    assert "bool" in records[-1]["error"]
+
+
+def test_a_defect_in_the_condition_surfaces_instead_of_burning_the_deadline(
+    tmp_path: Path,
+) -> None:
+    """A `KeyError` in the lambda is a plan defect, and swallowing it as "not yet" would
+    spend the whole timeout and then report it as a product failure — the mis-hypothesis
+    this work exists to end, recreated inside its own fix."""
+    module = _write(
+        tmp_path,
+        EVENTUALLY_PLAN.replace(
+            "        rendered,\n        interval=0.01,",
+            '        lambda: {}["absent"],\n        timeout=60,\n        interval=0.01,',
+        ),
+    )
+
+    started = time.monotonic()
+    code, records = _run(module, "the-badge-arrives", tmp_path)
+    elapsed = time.monotonic() - started
+
+    assert code == 1
+    assert records[-1]["status"] == "errored"
+    assert "absent" in records[-1]["error"]
+    assert elapsed < 30, "the deadline was polled through instead of the defect being raised"
+
+
+def test_a_red_eventually_records_the_deadline_it_spent(tmp_path: Path) -> None:
+    # What tells a repair turn that the page never arrived at all, rather than arriving
+    # wrong: the assertion looked repeatedly, for a stated budget, and never saw it.
+    module = _write(
+        tmp_path,
+        EVENTUALLY_PLAN.replace(
+            "        rendered,\n        interval=0.01,",
+            "        lambda: False,\n        timeout=0.05,\n        interval=0.01,",
+        ),
+    )
+
+    code, records = _run(module, "the-badge-arrives", tmp_path)
+
+    assert code == 1
+    settled = _asserts(records)[1]
+    assert settled["passed"] is False
+    assert settled["timeout_ms"] == 50
+    assert settled["polls"] > 1
+    assert settled["settled_ms"] >= 50
+
+
+def test_require_eventually_stops_the_cascade(tmp_path: Path) -> None:
+    """When the state a journey waited for never came, every later assertion reads a page
+    the plan is not about, and the run reports failures whose actual values are all noise."""
+    module = _write(
+        tmp_path,
+        EVENTUALLY_PLAN.replace("    qa.eventually(", "    qa.require_eventually(").replace(
+            "        rendered,\n        interval=0.01,",
+            "        lambda: False,\n        timeout=0.05,\n        interval=0.01,",
+        )
+        + '    qa.check("never reached", True)\n',
+    )
+
+    code, records = _run(module, "the-badge-arrives", tmp_path)
+
+    assert code == 1
+    assert [record["label"] for record in _asserts(records)] == [
+        "sampled once, on the first paint",
+        "the badge arrives",
+    ]
+
+
+def test_describe_counts_eventually_as_an_assertion_and_binds_its_covers(
+    tmp_path: Path,
+) -> None:
+    """The one-line static change that makes the retrying spelling usable: `CHECK_METHODS`
+    is what `count_checks` and `extract_check_covers` key off, so a scenario written wholly
+    in `eventually` is neither vacuous nor uncredited for the obligation it proves."""
+    described = _describe(_write(tmp_path, EVENTUALLY_PLAN))
+
+    scenario = described["scenarios"][0]
+    assert scenario["checks"] == 2
+    assert scenario["check_covers"] == ["ac:2"]

@@ -36,7 +36,7 @@ def _book(tmp_path: Path) -> Path:
         "- role: alert\n"
         "- name: the failure message\n"
         "- code: app/widget.ts::render\n"
-        "- verify: tests/widget.test.ts::renders\n",
+        "- tests: tests/widget.test.ts::renders\n",
         encoding="utf-8",
     )
     widget = tmp_path / "app/widget.ts"
@@ -89,11 +89,11 @@ def _shared_stylesheet_book(tmp_path: Path) -> Path:
         "## Alert\n\n"
         "- role: alert\n"
         "- code: app/app.css\n"
-        "- verify: tests/alert.test.ts::styled\n\n"
+        "- tests: tests/alert.test.ts::styled\n\n"
         "## Banner\n\n"
         "- role: banner\n"
         "- code: app/app.css\n"
-        "- verify: tests/banner.test.ts::styled\n",
+        "- tests: tests/banner.test.ts::styled\n",
         encoding="utf-8",
     )
     stylesheet = tmp_path / "app/app.css"
@@ -145,7 +145,7 @@ def test_a_file_owned_by_one_node_still_owes_live_evidence(tmp_path: Path):
         "## Alert\n\n"
         "- role: alert\n"
         "- code: app/alert.css\n"
-        "- verify: tests/alert.test.ts::styled\n",
+        "- tests: tests/alert.test.ts::styled\n",
         encoding="utf-8",
     )
     stylesheet = tmp_path / "app/alert.css"
@@ -181,18 +181,18 @@ def _shared_container_book(tmp_path: Path) -> Path:
         "- role: button\n"
         "- name: Undo\n"
         "- code: app/toolbar.ts::Toolbar\n"
-        "- verify: tests/toolbar.test.ts::undoes\n\n"
+        "- tests: tests/toolbar.test.ts::undoes\n\n"
         "## Redo\n\n"
         "- role: button\n"
         "- name: Redo\n"
         "- code: app/toolbar.ts::Toolbar\n"
-        "- verify: tests/toolbar.test.ts::redoes\n\n"
+        "- tests: tests/toolbar.test.ts::redoes\n\n"
         "## Publish\n\n"
         "- role: button\n"
         "- name: Publish\n"
         "- code: app/toolbar.ts::Toolbar\n"
         "- code: app/toolbar.ts::PublishButton\n"
-        "- verify: tests/toolbar.test.ts::publishes\n",
+        "- tests: tests/toolbar.test.ts::publishes\n",
         encoding="utf-8",
     )
     toolbar = tmp_path / "app/toolbar.ts"
@@ -253,7 +253,7 @@ def _event_book(tmp_path: Path) -> Path:
         "- name: Place order\n"
         "- emits: order.placed\n"
         "- code: app/producer.py::place\n"
-        "- verify: tests/producer_test.py::places\n",
+        "- tests: tests/producer_test.py::places\n",
         encoding="utf-8",
     )
     (tmp_path / "docs/features/demo/consumer.md").write_text(
@@ -265,7 +265,7 @@ def _event_book(tmp_path: Path) -> Path:
         "- name: Receipt sent\n"
         "- consumes: order.placed\n"
         "- code: app/consumer.py::mail\n"
-        "- verify: tests/consumer_test.py::mails\n",
+        "- tests: tests/consumer_test.py::mails\n",
         encoding="utf-8",
     )
     producer = tmp_path / "app/producer.py"
@@ -668,7 +668,7 @@ def _two_flows_over_one_contract(tmp_path: Path) -> Path:
         "---\ntype: endpoint\nslug: api\ntitle: Read API\n---\n# Read API\n\n"
         "- does: serves the stored object verbatim\n"
         "- code: app/api.go::Read\n"
-        "- verify: tests/api_test.go::TestRead\n",
+        "- tests: tests/api_test.go::TestRead\n",
         encoding="utf-8",
     )
     (tmp_path / "docs/features/demo/flows/serves-object.md").write_text(

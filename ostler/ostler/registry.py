@@ -219,6 +219,8 @@ class BulletKey:
     required: bool = False
     nested: bool = False   # ``does:`` — value is a nested-bullet list, one child per effect
     link: bool = False     # value is a reference ostler resolves (doc link, or a code ref)
+    check: bool = False    # value is a named check from ``ostler.checks`` — an *observation*
+                           # that fulfils this node's obligations, with its arguments
 
 
 @dataclass(frozen=True)
@@ -240,9 +242,12 @@ class UINodeType:
         return {b.key: b for b in self.bullet_keys}
 
 
-# Bullet keys whose value is a code reference (``path::symbol`` / a test id), grounded against the
-# repo at a *later* QA gate (profile §7.2), not at author time like doc links.
-CODE_GROUNDING_KEYS = frozenset({"code", "verify"})
+# Bullet keys whose value is a code reference (``path::symbol``), grounded against the repo by
+# ``doctor._check_code_grounding``. ``verify:`` used to sit here too, on the theory that its value
+# was a test id — which is exactly the direction it no longer points: a test id names the code that
+# ran, not the thing observed, so an assertion filed under it can be arbitrarily weaker than the
+# claim. ``verify:`` is now ``check=True`` (``ostler.checks``), and its grounding is the vocabulary.
+CODE_GROUNDING_KEYS = frozenset({"code"})
 # Bullet keys naming an inter-node relation the linter resolves at author time. ``environment`` /
 # ``cli`` / ``surfaces`` are the runbook profile's relations (docs/okf-runbook.md §4.1).
 RELATION_KEYS = ("on", "parent", "extends", "steps", "presents", "detail",
@@ -273,6 +278,17 @@ SHARED_NORMATIVE_KEYS = ("consistency", "consistency rule", "consistency group",
 def normative_keys(node_type: str) -> tuple[str, ...]:
     """Every bullet key on `node_type` that becomes an obligation."""
     return SHARED_NORMATIVE_KEYS + NORMATIVE_KEYS_BY_TYPE.get(node_type, ())
+
+
+def check_keys(node_type: str) -> tuple[str, ...]:
+    """Every bullet key on `node_type` whose value is a named check (`ostler.checks`).
+
+    The counterpart of `normative_keys`: those say what the node claims, these say what
+    observing the claim looks like. `doctor` grounds the second against the vocabulary, and
+    `qa validate` refuses a scenario that does not invoke it.
+    """
+    uitype = UI_TYPES_BY_NAME.get(node_type)
+    return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.check)
 
 
 UI_TYPES: tuple[UINodeType, ...] = (
@@ -316,7 +332,13 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("start"),
             BulletKey("steps", nested=True, link=True),
             BulletKey("end"),
-            BulletKey("verify", link=True),
+            BulletKey("verify", check=True),
+            # The test files covering this node, as `path` or `path::name`. Not an obligation
+            # and not evidence: one reader wants it, the regression node, which attributes a
+            # failing suite test back to the node that owns it. That reader needs a *path* and
+            # can do nothing with an observation, which is why the two split rather than share
+            # `verify:` as they used to.
+            BulletKey("tests", link=True),
         ),
     ),
     # ---- operational surface: how the system is run/observed (docs/okf-runbook.md) ----
@@ -413,7 +435,8 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("exclusive-with", link=True),
             BulletKey("does", required=True, nested=True),
             BulletKey("code", link=True),
-            BulletKey("verify", link=True),
+            BulletKey("verify", check=True),
+            BulletKey("tests", link=True),
         ),
     ),
     UINodeType(
@@ -426,7 +449,8 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("emits"),
             BulletKey("consumes"),
             BulletKey("code", link=True),
-            BulletKey("verify", link=True),
+            BulletKey("verify", check=True),
+            BulletKey("tests", link=True),
         ),
     ),
     # A callable on a concept/format — a nested `### method: …` or a `## Methods` child. The id is
@@ -439,7 +463,8 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("raises"),
             BulletKey("returns"),
             BulletKey("code", link=True),
-            BulletKey("verify", link=True),
+            BulletKey("verify", check=True),
+            BulletKey("tests", link=True),
         ),
     ),
     # A typed attribute — a nested `### field: …` or a `## Fields` child. The id is the literal
@@ -464,7 +489,10 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("env", nested=True),      # env-var wiring this step needs
             BulletKey("health"),                # service/health steps: the real readiness signal
             BulletKey("produces"),              # run steps: output artifact path(s)/glob(s)
-            BulletKey("verify", link=True),     # run/verify steps: golden/deterministic/test-id
+            # Not `check=True`, unlike the four normative types': a boot step's `verify:` says how
+            # to tell *the step* ran (a golden file, a deterministic output), which is not an
+            # observation about the product and mints no obligation. Same word, different job.
+            BulletKey("verify", link=True),     # run/verify steps: golden/deterministic output
             BulletKey("optional"),              # `true` for best-effort steps
             BulletKey("depends-on"),            # ordering hint (default: document order)
             BulletKey("provenance"),            # derived (build pass) | verified (walkthrough)

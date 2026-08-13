@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ostler import (dynamic_registry, freeze, inventory, links as links_mod, markdown,
+from ostler import (checks, dynamic_registry, freeze, inventory, links as links_mod, markdown,
                     registry, schemas, select)
 from ostler import graph as graph_mod, locators as loc_mod, reach, waivers as waivers_mod
 from ostler.vet import placement as placement_mod
@@ -444,8 +444,13 @@ def _check_conformance(graph: Graph, f: list[Finding]) -> None:
 # It does — and that coupling is the point: `code` is declared `BulletKey("code", link=True)` but
 # nothing validated it, so two path conventions could silently coexist in one tree and a citation
 # could outlive the symbol it names. Coverage is a join over these targets; an unvalidated target
-# is a join key nobody checked. `verify:` stays deferred — its value is a test id as often as a
-# `path::symbol`, so it has no single shape to hold it to.
+# is a join key nobody checked.
+#
+# `verify:` was deferred here for years on the grounds that its value was a test id as often as a
+# `path::symbol`, so it had no single shape to hold it to. It has one now, and it is a different
+# shape entirely: a named check from `ostler.checks`, an *observation* rather than the name of the
+# code that ran. That is what makes it groundable — and what makes an assertion unable to be
+# weaker than the claim it is filed under, since the declaration is the assertion.
 #
 # A `code:` ref names something that exists, full stop — there is no escape hatch for a target
 # that has been deleted. The QA grounding gate does not require a deletion to be cited at all
@@ -600,6 +605,41 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
 #: style question: past this, the bullet is several requirements wearing one id, and the
 #: scenario that covers it proves whichever clause the planner happened to read.
 MAX_NORMATIVE_PROSE = 700
+
+#: The shapes a bullet takes when it is carrying more than one observation. Length is the crude
+#: version of this rule; these are the specific version, and they fire on bullets well under the
+#: limit — the endpoint bullet that restates a 400, two 500s, a 409 and a 200 branch is one
+#: `does:` that should have been five, and it is a comfortable 300 characters.
+#:
+#: Read off the *raw* value, not `_prose`: statuses and error names are normally written in
+#: backticks, and `_prose` deletes code spans, so measuring the prose would blind this to
+#: exactly the signal it exists to find.
+_STATUS_CODE = re.compile(r"(?<![\w.])[1-5]\d{2}(?![\w.])")
+_ERROR_NAME = re.compile(r"\b[A-Z][A-Za-z0-9]*(?:Error|Exception|Conflict|Failure|Denied)\b")
+#: A semicolon with a real clause after it. `;` inside a code span or ending a bullet is not a
+#: joined requirement, so the tail has to carry at least three words to count.
+_SEMICOLON_CLAUSE = re.compile(r";\s+(?:\S+\s+){2}\S")
+#: "and … and", specifically the clause-joining kind: at least one `and` following a comma or
+#: semicolon, plus another anywhere. Bare repeated `and`s are how anyone lists two nouns, and a
+#: rule that fires on `- does: creates the page and its slug` is a rule people learn to ignore.
+_CLAUSE_AND = re.compile(r"[,;]\s+and\b")
+_ANY_AND = re.compile(r"\band\b")
+
+
+def _split_signals(value: str) -> list[str]:
+    """Why this bullet looks like several observations, one sentence per reason (or none)."""
+    reasons: list[str] = []
+    statuses = sorted(set(_STATUS_CODE.findall(value)))
+    if len(statuses) > 1:
+        reasons.append(f"it names {len(statuses)} status codes ({', '.join(statuses)})")
+    names = sorted(set(_ERROR_NAME.findall(value)))
+    if len(names) > 1:
+        reasons.append(f"it names {len(names)} distinct failures ({', '.join(names)})")
+    if _SEMICOLON_CLAUSE.search(value):
+        reasons.append("a semicolon joins two independent clauses")
+    if _CLAUSE_AND.search(value) and len(_ANY_AND.findall(value)) > 1:
+        reasons.append("`and` joins clauses more than once")
+    return reasons
 
 
 def _prose(value: str) -> str:
@@ -784,8 +824,10 @@ def _check_ui(graph: Graph, f: list[Finding]) -> None:
         if node.type == "component":
             _check_placement(node, rel, f)
 
+        normative = 0
         for key in registry.normative_keys(node.type):
             for value in _bullet_values(node.meta.get(key, "")):
+                normative += 1
                 length = len(_prose(value))
                 if length > MAX_NORMATIVE_PROSE:
                     f.append(Finding(
@@ -793,6 +835,57 @@ def _check_ui(graph: Graph, f: list[Finding]) -> None:
                         f"{node.id}: `{key}:` runs {length} characters of prose — too much to "
                         f"prove as one claim; split it into one bullet per provable claim",
                         path=rel, line=node.line, ref=f"{node.id}#{key}"))
+                    continue
+                # A `warn`, alone among the UI checks, and for the reason the header states in
+                # reverse: there is no deterministic remedy. Splitting a bullet is authoring
+                # judgment — which branch is its own claim, what each one is called — so a
+                # strict `doctor` cannot converge on it the way it converges on `fmt`. What the
+                # rule buys is that the judgment gets made once, at the node, instead of once
+                # per story that touches it for as long as the node exists.
+                reasons = _split_signals(value)
+                if reasons:
+                    f.append(Finding(
+                        "warn", "compound-normative-bullet",
+                        f"{node.id}: `{key}:` states more than one observation — "
+                        f"{'; '.join(reasons)}. One bullet is one obligation and is proved by "
+                        f"one scenario, so the clauses that share it are covered by whichever "
+                        f"one the planner read; split it into one bullet per observation",
+                        path=rel, line=node.line, ref=f"{node.id}#{key}"))
+
+        check_keys = registry.check_keys(node.type)
+        declared = 0
+        for key in check_keys:
+            for value in _bullet_values(node.meta.get(key, "")):
+                # Counted before it is parsed: a node that declared and got the call wrong is
+                # already told so by `unparsed-check`, and telling it twice buys the author
+                # nothing and costs a second thing to waive.
+                declared += 1
+                parsed = checks.parse_check(value)
+                if isinstance(parsed, str):
+                    f.append(Finding(
+                        "error", "unparsed-check",
+                        f"{node.id}: `{key}:` {parsed}",
+                        path=rel, line=node.line, ref=f"{node.id}#{key}",
+                        suggestion=f'- {key}: http_status(code=409, title="Conflict")'))
+
+        # The gap `unparsed-check` cannot see: a node that declares nothing at all. `verify:` is
+        # on no type's required list, so a book stays green while every obligation it mints goes
+        # into QA with nothing to bind — `qa validate` has no declaration to enforce and the
+        # evidence map has no deficit to report. Node-level and not a count, because `verify:`
+        # sits on the node rather than the bullet (see `qa/context.py`'s `checksDeclared`):
+        # pairing a check to one bullet is a judgment nobody has written down yet, and the
+        # honest computable question is whether the node declares any observation at all.
+        # A `warn` for `compound-normative-bullet`'s reason — the remedy is authoring judgment,
+        # and books written before the rule carry these by the hundred.
+        if check_keys and normative and not declared:
+            f.append(Finding(
+                "warn", "undeclared-obligation",
+                f"{node.id}: {normative} normative bullet{'s' if normative > 1 else ''} and no "
+                f"`{check_keys[0]}:` — nothing says what observing them looks like, so a QA plan "
+                f"claiming them can assert anything and still pass; declare a check per "
+                f"observation",
+                path=rel, line=node.line, ref=f"{node.id}#{check_keys[0]}",
+                suggestion=f'- {check_keys[0]}: http_status(code=409, title="Conflict")'))
 
     # A broken link that comes from a relation bullet (on/parent/extends/detail/…) is the more
     # specific `unresolved-relation`; index those (file, href) pairs so the link scan can classify.

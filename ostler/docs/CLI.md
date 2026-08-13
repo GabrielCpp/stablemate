@@ -253,8 +253,8 @@ by default.
 **Sessions.** The step-by-step form, for a run driven interactively rather than from a plan:
 
 ```bash
-ostler qa start  <run_id> --story S --spec SPEC [--env KEY=VALUE] [--daemon NAME:CMD]
-ostler qa step   --id ID --label L --mechanism {live,synthetic,fixture} --cmd CMD --spec SPEC \
+ostler qa start  <run_id> --story S --spec SPEC [--env KEY=VALUE] [--daemon NAME:ARGV]
+ostler qa step   --id ID --label L --mechanism {live,fixture} --cmd CMD --spec SPEC \
                  [--timeout N] [--capture KEY=$.path] [--out PATH] [--allow-fail]
 ostler qa assert --id ID --label L --spec SPEC \
                  --check {cloudwatch_filter,event_present,field_equal,http_status,no_duplicate} \
@@ -264,9 +264,36 @@ ostler qa report --spec SPEC        # render the action ledger for a human
 ostler qa replay --spec SPEC
 ```
 
-`--daemon NAME:CMD` starts a background process for the session; append `:READY_URL` to poll
-before advancing. The full run contract is in
+`--daemon NAME:ARGV` starts a background process for the session; append `:READY_URL` to poll
+before advancing. `ARGV` is a program and its arguments, split the way a shell would split
+quotes but never handed to one — `&&`, `|` and `$VAR` reach the program as literal arguments
+and fail at `exec`. A daemon is therefore a server, not a command line, and
+`--daemon api:"go test ./..."` cannot be smuggled in as one. The full run contract is in
 [docs/QA-RUN.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/QA-RUN.md).
+
+**Evidence.** After a run, `qa evidence-map` joins the obligation scope, the run ledger, the
+artifact manifest and the published verdict into one row per obligation:
+
+```bash
+ostler qa evidence-map --spec docs/specs/<story> [--out-dir NAME] \
+  [--status {contradicted,uncovered,claimed-but-unasserted,covered}] [--out PATH] [--json]
+```
+
+Each row carries the scenarios that claimed the obligation, the passing assertions bound to
+it, the checks its `verify:` bullets declared against the ones the run actually invoked, the
+artifacts those scenarios produced, and a status:
+
+| Status | Meaning | Whose defect |
+| --- | --- | --- |
+| `covered` | a passing assertion is bound to it, invoking every declared check | — |
+| `claimed-but-unasserted` | a scenario claims it, but asserted nothing — or not the declared check | the QA plan |
+| `uncovered` | no scenario claims it and no assertion is bound to it | the QA plan |
+| `contradicted` | an assertion bound to it failed, or `qa-evidence.json` publishes a verdict the ledger does not hold | the product, or the artifact |
+
+The exit status is `0` only when every obligation is `covered`, so a caller can gate on the
+join without parsing it. A missing or malformed ledger is a refusal rather than a map full of
+`uncovered`: the two are indistinguishable in the output, and the wrong one of them reads as
+a finding about the QA plan when it is a finding about the arguments.
 
 ## Artifacts
 

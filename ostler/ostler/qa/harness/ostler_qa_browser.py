@@ -128,6 +128,37 @@ class Browser:
             self.emit({"type": "artifact", "path": str(trace), "kind": "playwright-trace"})
         problems.extend(self._register_videos())
         self._write_diagnostics()
+        problems.extend(self._unclean())
+        return problems
+
+    def _unclean(self) -> list[str]:
+        """The two browser conditions no scenario is allowed to pass over.
+
+        A plan's own clean-gate is hand-written, and the corpus has one that reads console
+        errors, failed requests and 5xx responses and forgets `page_errors()` — so an
+        uncaught exception in the app under test rode out under a green verdict. A gate a
+        plan writes is a gate a plan can write four fifths of, and reviewing the fifth was
+        a person's job once per plan, forever.
+
+        Only these two are automatic. An uncaught page exception and a 5xx are never a
+        thing a scenario *meant* to provoke — a scenario proving an error branch provokes a
+        4xx. Console errors and cancelled requests stay assertable rather than fatal,
+        because an app legitimately logs at error level and legitimately abandons an
+        in-flight request on navigation.
+        """
+        problems: list[str] = []
+        if self._page_errors:
+            first = self._page_errors[0].get("message") or self._page_errors[0]
+            problems.append(
+                f"{len(self._page_errors)} uncaught page error(s) in the browser, first: {first}"
+            )
+        server_errors = [entry for entry in self._responses if int(entry.get("status") or 0) >= 500]
+        if server_errors:
+            first = server_errors[0]
+            problems.append(
+                f"{len(server_errors)} response(s) of status 500 or higher, first: "
+                f"{first.get('method')} {first.get('url')} -> {first.get('status')}"
+            )
         return problems
 
     def permissions(self) -> list[str]:
@@ -298,8 +329,8 @@ class Browser:
 
         `requestfailed` fires only for a request that never completed, so a completed 500
         used to be invisible — and a plan asserting "no response is 500 or higher" was
-        asserting against a key nothing wrote, which `jq` reads as an empty stream and
-        passes.
+        asserting against a key nothing wrote — which a stream-oriented lookup reads as an
+        empty stream and passes.
         """
         self._responses.append(
             {

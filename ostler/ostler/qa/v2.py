@@ -10,6 +10,7 @@ from typing import Any
 
 from ostler.qa.drivers import DriverBlocked, QaDriver, ScenarioResult, create_driver
 from ostler.qa.plan import PlanDocument, check_runtime_requirements
+from ostler.qa.sandbox import Sandbox, SandboxConfig
 from ostler.qa.session import QA_DIRNAME, QaSession
 
 
@@ -20,6 +21,7 @@ def run_plan(
     stop_on_fail: bool = False,
     only: list[str] | None = None,
     qa_dirname: str = QA_DIRNAME,
+    sandboxed: bool = False,
 ) -> tuple[str, str, dict[str, Any]]:
     """Execute a validated plan and return ``(status, message, summary)``.
 
@@ -30,11 +32,6 @@ def run_plan(
     evidence gate would later read as a result: outside ``qa/`` no ``qa-evidence.json`` is
     written at all, so a plan tuned until it passed cannot become its own proof.
     """
-    runtime_problems = check_runtime_requirements(document)
-    if runtime_problems:
-        message = "QA run blocked:\n" + "\n".join(f"  - {item}" for item in runtime_problems)
-        return "blocked", message, {"status": "blocked", "problems": runtime_problems}
-
     plan = document.data
     spec_dir = document.spec_dir
     scored = qa_dirname == QA_DIRNAME
@@ -47,6 +44,17 @@ def run_plan(
             return "invalid", message, {"status": "invalid", "problems": [message]}
         selected = [scenario for scenario in selected if str(scenario["id"]) in set(only)]
     wanted_targets = {str(scenario["target"]) for scenario in selected}
+
+    # After selection, not before. This used to run against every target the plan declares,
+    # so a one-scenario dry run of an HTTP check was blocked by a mobile toolchain it would
+    # never have touched — and the block reads as a plan defect, not a machine one.
+    runtime_problems = check_runtime_requirements(
+        document, targets=wanted_targets, sandboxed=sandboxed
+    )
+    if runtime_problems:
+        message = "QA run blocked:\n" + "\n".join(f"  - {item}" for item in runtime_problems)
+        return "blocked", message, {"status": "blocked", "problems": runtime_problems}
+
     qa_dir = spec_dir / qa_dirname
     if qa_dir.exists():
         shutil.rmtree(qa_dir)
@@ -84,11 +92,18 @@ def run_plan(
     runner_errors: list[str] = []
     summary: dict[str, Any] = {}
     evidence: Path | None = None
+    #: Run-scoped, not module-scoped: it owns containers and a bound port, and the only
+    #: place guaranteed to reach them again is the `finally` below. A singleton would leak
+    #: both down every exception path this function already handles.
+    sandbox: Sandbox | None = None
     try:
+        if sandboxed:
+            sandbox = Sandbox(SandboxConfig.load(root), session=session, root=root)
+            sandbox.start()
         for daemon in plan.get("background", []):
             session.start_daemon(
                 str(daemon["name"]),
-                session.expand(str(daemon["cmd"]), variables),
+                [session.expand(str(part), variables) for part in daemon["argv"]],
                 ready_check=daemon.get("ready_check"),
                 timeout=float(daemon.get("timeout", 30)),
                 cwd=root,
@@ -102,6 +117,7 @@ def run_plan(
                 target,
                 root=root,
                 variables=variables,
+                sandbox=sandbox,
             )
             drivers[target_id] = driver
             driver.start()
@@ -136,6 +152,11 @@ def run_plan(
                     "status": result.status,
                     "assertions": result.assertions,
                     "failures": result.failures,
+                    # `_grade` composes the only account of *why* a scenario failed, and it
+                    # was being computed and dropped: the ledger recorded a failure count and
+                    # the reason survived nowhere but a stdout tail in `steps/`. A reader of
+                    # the run artifacts could see that something failed and not what.
+                    **({"message": result.message} if result.message else {}),
                 }
             )
             if result.status != "passed":
@@ -170,6 +191,11 @@ def run_plan(
                 )
             except Exception as exc:  # noqa: BLE001
                 cleanup_errors.append(f"{target_id}: {exc}")
+        if sandbox is not None:
+            try:
+                sandbox.stop()
+            except Exception as exc:  # noqa: BLE001
+                cleanup_errors.append(f"sandbox: {exc}")
         if cleanup_errors:
             status = "invalid"
             runner_errors.append(f"driver cleanup failed: {'; '.join(cleanup_errors)}")
@@ -198,6 +224,7 @@ def run_plan(
                     "status": result.status,
                     "assertions": result.assertions,
                     "failures": result.failures,
+                    **({"message": result.message} if result.message else {}),
                 }
                 for name, result in results.items()
             },

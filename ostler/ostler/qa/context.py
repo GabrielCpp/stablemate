@@ -14,6 +14,7 @@ from unidiff import PatchSet
 from unidiff.errors import UnidiffParseError
 
 from ostler import graph as graph_mod
+from ostler import checks as checks_mod
 from ostler import inventory, markdown, path as path_mod, refs as refs_mod, registry, syntax
 from ostler.model import Graph, _parse_ui_nodes, load
 
@@ -25,9 +26,15 @@ _SYMBOL_RE = re.compile(
     r"|^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*="
 )
 _AC_RE = re.compile(r"^(?:AC\s*)?(\d+)\s*[:.)-]\s*(.+)$", re.IGNORECASE)
-#: The file suffixes a `verify:` bullet may cite. A membership test, not an alternation baked
+#: The file suffixes a `tests:` bullet may cite. A membership test, not an alternation baked
 #: into a pattern: `Path.suffix` already knows where a suffix begins, and the set is the whole
 #: of what this reader needs to decide.
+#:
+#: This used to read `verify:`, back when a node's declared verification *was* the name of a
+#: test. It is not: `verify:` now declares the observation that fulfils the node's obligations
+#: (`ostler.checks`), and a test citation moved to `tests:`, which mints no obligation and is
+#: read by one consumer — the regression node's failure attribution, which needs a test path
+#: and can do nothing with an observation.
 _CITABLE_SUFFIXES = frozenset(
     f".{ext}"
     for ext in (
@@ -352,13 +359,19 @@ def build_context(
                 )
             else:
                 grounded.add(node_id)
-        if not _verification_refs(node):
+        # Not "this node cites no test": a test citation is diagnostic (`tests:`, read by
+        # regression attribution) and proves nothing about the product. What is worth a warning
+        # is an impacted contract whose obligations name no observation, because every scenario
+        # written against it is then free to assert something weaker than the claim. Only for a
+        # type that *has* a `verify:` key: a screen or a concept carries no `verify:` at all, and
+        # a warning it can never clear is one an author learns to page past.
+        if registry.check_keys(str(node.get("type", ""))) and not _declared_checks(node):
             health.append(
                 {
-                    "kind": "missing-verification",
+                    "kind": "missing-declared-check",
                     "severity": "warning",
                     "node": node_id,
-                    "message": "impacted contract has no grounded verify reference",
+                    "message": "impacted contract declares no `verify:` check to fulfil it",
                 }
             )
     obligations = [
@@ -863,7 +876,7 @@ def _as_ref(candidate: str) -> str:
 
 
 def _verification_refs(node: dict[str, Any]) -> list[str]:
-    """Every test a node's ``verify:`` bullets cite, as ``path`` or ``path::name``.
+    """Every test a node's ``tests:`` bullets cite, as ``path`` or ``path::name``.
 
     Backticked refs are read span by span off the markdown parser, because the span boundary is
     the only thing that says where a test *name* ends — and these names contain commas, dashes
@@ -876,7 +889,7 @@ def _verification_refs(node: dict[str, Any]) -> list[str]:
     ref there. That reading stays lossy on purpose — it is the reason to write the backticks.
     """
     refs: list[str] = []
-    for value in _values(node.get("bullets", {}).get("verify")):
+    for value in _values(node.get("bullets", {}).get("tests")):
         spans = markdown.all_code_spans(value)
         if spans:
             found = [_as_ref(span) for span in spans]
@@ -1001,8 +1014,8 @@ def _is_non_production_path(path: str) -> bool:
     # left to an agent that must clear the gate is to invent a contract node for them in the
     # product's feature docs. A greenfield run did exactly that: it added a `#tooling` section
     # to `docs/features/api/http/api.md` owning `qa-stack.yml` and friends, which cleared the
-    # error and bought a permanent `missing-verification` warning in exchange — a contract that
-    # can never have a grounded verify reference, because a stack manifest has no test.
+    # error and bought a permanent `missing-declared-check` warning in exchange — a contract
+    # that can never declare an observation, because a stack manifest is not a product surface.
     #
     # Root-scoped on purpose: a nested `agents.yml` is somebody's product file, not ours.
     if len(parts) == 1 and name in {"agents.yml", "qa-stack.yml"}:
@@ -1130,6 +1143,24 @@ def _is_required(
     return node_id in grounded and bool(kinds - _CLOSURE_REASON_KINDS)
 
 
+def _declared_checks(node: dict[str, Any]) -> list[dict[str, Any]]:
+    """The observations a node declares, one row per parsed `verify:` bullet.
+
+    Silent on a bullet that does not parse: `doctor` already refuses that one by name, and
+    duplicating the refusal here would make a book with one malformed bullet look like a book
+    with none — the opposite of what the packet is for. `call` is `CheckCall.text()`, the
+    canonical spelling, because it is the string `qa validate` compares a scenario's
+    invocation against; the split `name`/`args` are there so the harness does not re-parse.
+    """
+    declared: list[dict[str, Any]] = []
+    for key in registry.check_keys(str(node.get("type", ""))):
+        for value in _values(node.get("bullets", {}).get(key)):
+            parsed = checks_mod.parse_check(value)
+            if isinstance(parsed, checks_mod.CheckCall):
+                declared.append({"call": parsed.text(), "name": parsed.name, "args": parsed.args})
+    return list({row["call"]: row for row in declared}.values())
+
+
 def _locators(node: dict[str, Any]) -> dict[str, list[str]]:
     bullets = node.get("bullets", {})
     return {key: _values(bullets.get(key)) for key in _LOCATOR_KEYS if _values(bullets.get(key))}
@@ -1156,6 +1187,15 @@ def _obligations(
     locators = _locators(node)
     if locators:
         base["locators"] = locators
+    # Node-level, so every obligation minted from this node carries the same list. That is the
+    # honest reading of the book as it stands — `verify:` sits on the node, not on the bullet —
+    # and it is already enough for `qa validate`: a scenario claiming any of these obligations
+    # must invoke the declared calls. Pairing a check to a single bullet needs the atomicity
+    # pass to have happened first, and inferring the pairing before then would bind assertions
+    # to claims nobody wrote down.
+    declared = _declared_checks(node)
+    if declared:
+        base["checksDeclared"] = declared
     output = [base]
     for key in registry.normative_keys(str(node.get("type", ""))):
         for index, requirement in enumerate(_values(node.get("bullets", {}).get(key)), start=1):

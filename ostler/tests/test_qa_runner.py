@@ -13,8 +13,12 @@ import hashlib
 import json
 import os
 import signal
+import socket
 import subprocess
+import sys
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from ostler.artifact.kinds import _qa_evidence_vet
@@ -85,6 +89,100 @@ def _with_background(entry: str) -> str:
         "from ostler_qa import Qa, plan, scenario, target",
         "from ostler_qa import Qa, background, plan, scenario, target",
     ).replace('api = target("api")', f'api = target("api")\n\n{entry}')
+
+
+# ---------------------------------------------------------------------------
+# Daemons, without a shell
+#
+# `background:` takes an argv list, so every daemon below is a program and its arguments.
+# The program is this interpreter, which is the one thing a test can rely on being on the
+# box, and the source is passed with `-c`. Nothing here goes through `bash -c`, which is
+# the property under test as much as anything the assertions say: a daemon that could be a
+# command line could be `go test ./...`, and the sandbox never sees it because daemons
+# start on the host.
+#
+# Braces are avoided throughout — `_plan` runs the plan source through `str.format`.
+# ---------------------------------------------------------------------------
+
+#: A server that binds after *delay* seconds and answers *code* to a POST, 405 to a GET.
+#: The delay is what makes the readiness poll do its job: the first probe must fail.
+_SERVER = '''
+import sys, threading, time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+delay, port, code = float(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])
+time.sleep(delay)
+
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        pass
+
+    def do_GET(self):
+        self.send_response(405)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def do_POST(self):
+        self.send_response(code)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+
+server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+# Self-terminating: the launcher case starts one of these as a grandchild, and a stray
+# server outliving the suite is how a later test finds a port it did not expect.
+threading.Timer(30.0, server.shutdown).start()
+server.serve_forever()
+'''
+
+
+#: A daemon that cannot bind, printing what a real server prints on its way out.
+_DIES_ON_BIND = (
+    "import sys\n"
+    'sys.stderr.write("listen tcp :8080: bind: address already in use\\n")\n'
+    "sys.exit(1)\n"
+)
+
+#: The same death, but late enough that the readiness probe wins the race to be sampled.
+_DIES_LATE = "import time\ntime.sleep(0.5)\n" + _DIES_ON_BIND
+
+#: A launcher: it starts the real server as a child and exits 0, like `docker compose up -d`.
+_LAUNCHER = "import subprocess, sys\nsubprocess.Popen([sys.executable, '-c'] + sys.argv[1:])\n"
+
+
+def _free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+def _argv(source: str, *args: object) -> str:
+    """The `argv=[…]` literal for a daemon that runs *source* under this interpreter."""
+    parts = [sys.executable, "-c", source, *(str(arg) for arg in args)]
+    return "argv=[" + ", ".join(repr(part) for part in parts) + "]"
+
+
+def _orphan(port: int) -> ThreadingHTTPServer:
+    """A server this run did not start, answering on the port its daemon wanted.
+
+    The stand-in for the previous run's process still bound to 8080 — the thing a readiness
+    probe cannot distinguish from the daemon under test, which is the whole reason a
+    non-zero exit outranks a passing check.
+    """
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+            """Silent: the orphan is scenery, not a participant."""
+
+        def do_GET(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler's spelling
+            self.send_response(200)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
 
 
 # ---------------------------------------------------------------------------
@@ -387,17 +485,22 @@ def test_an_unrunnable_ready_check_is_caught_at_validation() -> None:
     """
     problems = _validate_background(
         [
-            {"name": "api", "cmd": "go run ./cmd/server", "ready_check": "localhost:8080/health"},
+            {"name": "api", "argv": ["go", "run", "./cmd/server"], "ready_check": "localhost:8080"},
             {"name": "web", "cmd": "npm start", "ready_check": {"assert_contains": "201"}},
-            {"name": "web", "cmd": "", "ready_check": {"cmd": "curl -s /", "url": "/"}},
+            {"name": "web", "argv": [], "ready_check": {"cmd": "curl -s /", "url": "http://x/"}},
         ]
     )
 
     assert any("must be an http(s) URL" in item for item in problems), problems
-    assert any("requires a non-empty 'cmd'" in item for item in problems), problems
     assert any("duplicate background daemon 'web'" in item for item in problems), problems
-    assert any("cmd is required and must be non-empty" in item for item in problems), problems
-    assert any("unknown keys ['url']" in item for item in problems), problems
+    # Both retired fields are refused by name. An author porting an older plan wrote `cmd`
+    # on purpose, and "argv is required" would read as a typo rather than as a removal.
+    assert any(".cmd is retired" in item for item in problems), problems
+    assert any("ready_check.cmd is retired" in item for item in problems), problems
+    assert any("argv is required and must be a non-empty list" in item for item in problems), (
+        problems
+    )
+    assert any("supported: url, method, status, timeout" in item for item in problems), problems
 
 
 # ---------------------------------------------------------------------------
@@ -405,25 +508,34 @@ def test_an_unrunnable_ready_check_is_caught_at_validation() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_a_command_ready_check_polls_until_the_daemon_says_it_is_up(tmp_path: Path) -> None:
-    """`ready_check` accepts a `{cmd, assert_contains}` mapping, not just a URL.
+def test_a_ready_check_that_is_not_a_get_200_polls_until_the_daemon_says_it_is_up(
+    tmp_path: Path,
+) -> None:
+    """`ready_check` accepts a `{url, method, status}` mapping, not just a URL.
 
-    A URL cannot express every service's notion of "up": the plan that surfaced this ran an
-    API whose only route was a `POST`, so no `GET` answered 200 and the string form could not
-    probe it at all. The mapping used to be handed straight to `urlopen`, which set
+    A bare URL cannot express every service's notion of "up": the plan that surfaced this ran
+    an API whose only route was a `POST`, so no `GET` answered 200 and the string form could
+    not probe it at all. The mapping used to be handed straight to `urlopen`, which set
     `.timeout` on it — an `AttributeError`, which the poll's `URLError`/`OSError` guard did
     not catch, so it aborted the run before its first scenario.
 
+    That plan reached the POST by declaring a `curl` command line and matching `201` in its
+    output, which is where the last host shell in a QA run lived. The capability was HTTP the
+    whole time; saying so directly keeps the plan working and removes the shell.
+
     The daemon here is slow on purpose: the check must fail once and be retried, which is the
-    whole point of a readiness probe.
+    whole point of a readiness probe. Its 405 to a `GET` is not scenery either — a probe that
+    accepted any answer would pass against a server that has no such route.
     """
     spec = _spec(tmp_path)
+    port = _free_port()
     module = _plan(
         spec,
         _with_background(
             'background("api-server",\n'
-            '           cmd="sleep 0.4; printf listening > ready.txt; sleep 30",\n'
-            '           ready_cmd="cat ready.txt", ready_contains="listening", timeout=10)'
+            f"           {_argv(_SERVER, 0.4, port, 201)},\n"
+            f'           ready_url="http://127.0.0.1:{port}/orders",\n'
+            '           ready_method="POST", ready_status=201, timeout=10)'
         ),
     )
 
@@ -433,9 +545,10 @@ def test_a_command_ready_check_polls_until_the_daemon_says_it_is_up(tmp_path: Pa
     records = _records(spec)
     assert not [row for row in records if row.get("kind") == "runner_error"], records
     (started,) = [row for row in records if row.get("kind") == "daemon_start"]
-    assert started["ready_check"]["assert_contains"] == "listening"
-    # `cat ready.txt` resolved against the daemon's cwd, which is the repo root.
-    assert (tmp_path / "ready.txt").read_text(encoding="utf-8") == "listening"
+    assert started["ready_check"]["method"] == "POST"
+    assert started["ready_check"]["status"] == 201
+    # The ledger records a program and its arguments. There is no command line to record.
+    assert started["argv"][0] == sys.executable
 
 
 def test_a_run_that_dies_before_its_scenarios_reports_why(tmp_path: Path) -> None:
@@ -448,10 +561,13 @@ def test_a_run_that_dies_before_its_scenarios_reports_why(tmp_path: Path) -> Non
     only act on a failure it can read.
     """
     spec = _spec(tmp_path)
+    # Alive but never ready: it binds nothing, and the probe's port answers no one.
     module = _plan(
         spec,
         _with_background(
-            'background("api-server", cmd="sleep 30", ready_cmd="false", timeout=1)'
+            'background("api-server",\n'
+            f'           {_argv("import time; time.sleep(30)")},\n'
+            f'           ready_url="http://127.0.0.1:{_free_port()}/health", timeout=1)'
         ),
     )
 
@@ -485,8 +601,8 @@ def test_a_daemon_that_dies_on_startup_is_reported_dead_with_what_it_printed(
         spec,
         _with_background(
             'background("api-server",\n'
-            "           cmd=\"echo 'listen tcp :8080: bind: address already in use' >&2; exit 1\",\n"
-            '           ready_cmd="false", timeout=30)'
+            f"           {_argv(_DIES_ON_BIND)},\n"
+            f'           ready_url="http://127.0.0.1:{_free_port()}/health", timeout=30)'
         ),
     )
 
@@ -510,23 +626,28 @@ def test_a_dead_daemon_whose_check_still_passes_fails_the_run(tmp_path: Path) ->
     errors, and the suite validated a binary built five minutes earlier instead of the code
     under test. Silent, and worse than any false failure.
 
-    The stand-in for the orphan is a file the check reads: the daemon fails to create it
-    (something already did), the check finds it anyway, and the run must still fail. A
-    non-zero exit outranks a passing check; the launcher case below pins the other half,
+    The orphan here is literal: a server already bound to the port before the run starts. The
+    daemon dies on it, the probe gets its 200 from the squatter, and the run must still fail.
+    A non-zero exit outranks a passing check; the launcher case below pins the other half,
     that exit 0 does not.
     """
     spec = _spec(tmp_path)
-    (tmp_path / "ready.txt").write_text("listening", encoding="utf-8")  # the orphan
-    module = _plan(
-        spec,
-        _with_background(
-            'background("api-server",\n'
-            "           cmd=\"echo 'bind: address already in use' >&2; exit 1\",\n"
-            '           ready_cmd="cat ready.txt", ready_contains="listening", timeout=10)'
-        ),
-    )
+    port = _free_port()
+    orphan = _orphan(port)
+    try:
+        module = _plan(
+            spec,
+            _with_background(
+                'background("api-server",\n'
+                f"           {_argv(_DIES_ON_BIND)},\n"
+                f'           ready_url="http://127.0.0.1:{port}/health", timeout=10)'
+            ),
+        )
 
-    outcome = cmd_run(module, root=tmp_path)
+        outcome = cmd_run(module, root=tmp_path)
+    finally:
+        orphan.shutdown()
+        orphan.server_close()
 
     assert outcome.status == "invalid", outcome.message
     assert "exited with code 1" in outcome.message, outcome.message
@@ -546,21 +667,26 @@ def test_a_daemon_that_dies_just_after_a_passing_check_still_fails_the_run(
     against the previous run's server. Exactly the false pass the test above claims to catch,
     reached by losing the race instead of by the check arriving late.
 
-    The daemon here dies half a second in, which is what a real bind failure behind a shell
-    wrapper looks like. Nothing about the verdict may depend on which of the two won.
+    The daemon here dies half a second in, which is what a real bind failure behind a startup
+    script looks like. Nothing about the verdict may depend on which of the two won.
     """
     spec = _spec(tmp_path)
-    (tmp_path / "ready.txt").write_text("listening", encoding="utf-8")  # the orphan
-    module = _plan(
-        spec,
-        _with_background(
-            'background("api-server",\n'
-            "           cmd=\"sleep 0.5; echo 'bind: address already in use' >&2; exit 1\",\n"
-            '           ready_cmd="cat ready.txt", ready_contains="listening", timeout=10)'
-        ),
-    )
+    port = _free_port()
+    orphan = _orphan(port)
+    try:
+        module = _plan(
+            spec,
+            _with_background(
+                'background("api-server",\n'
+                f"           {_argv(_DIES_LATE)},\n"
+                f'           ready_url="http://127.0.0.1:{port}/health", timeout=10)'
+            ),
+        )
 
-    outcome = cmd_run(module, root=tmp_path)
+        outcome = cmd_run(module, root=tmp_path)
+    finally:
+        orphan.shutdown()
+        orphan.server_close()
 
     assert outcome.status == "invalid", outcome.message
     assert "exited with code 1" in outcome.message, outcome.message
@@ -576,13 +702,15 @@ def test_a_launcher_that_forks_and_exits_zero_still_counts_as_ready(tmp_path: Pa
     clean exit stopped the poll, none of them could ever be a daemon here.
     """
     spec = _spec(tmp_path)
+    port = _free_port()
     module = _plan(
         spec,
         _with_background(
             'background("api-server",\n'
             # Hands off to a child that becomes ready after the launcher is already gone.
-            '           cmd="(sleep 1; printf listening > ready.txt) & exit 0",\n'
-            '           ready_cmd="cat ready.txt", ready_contains="listening", timeout=10)'
+            f"           {_argv(_LAUNCHER, _SERVER, 1, port, 200)},\n"
+            f'           ready_url="http://127.0.0.1:{port}/orders",\n'
+            '           ready_method="POST", timeout=10)'
         ),
     )
 

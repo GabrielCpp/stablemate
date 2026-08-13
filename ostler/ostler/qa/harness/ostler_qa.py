@@ -19,9 +19,9 @@ It has two modes, both entered by `ostler.qa.drivers.PythonDriver`:
     scenario lands in the step log rather than corrupting the protocol.
 
 The reason the whole format moved here from YAML is that shell fails silently and Python
-does not. `data["responses"]` raises `KeyError`; `jq '.responses[]'` reads a missing
-field as an empty stream and passes vacuously. Every affordance below is shaped to keep
-that property: `qa.http` raises on an unexpected status, `qa.dir` is handed in already
+does not. `data["responses"]` raises `KeyError`; a stream-oriented field lookup reads a
+missing field as an empty stream and passes vacuously. Every affordance below is shaped to
+keep that property: `qa.http` raises on an unexpected status, `qa.dir` is handed in already
 resolved, and a scenario that records no assertion cannot pass.
 """
 
@@ -70,7 +70,17 @@ RECORD_FD = 3
 #: parent names the number instead of the child assuming it.
 RECORD_FD_ENV = "OSTLER_QA_RECORD_FD"
 
-MECHANISMS = ("live", "synthetic", "fixture")
+#: Overrides both of the above, and takes strict precedence over them. An inherited
+#: descriptor does not cross a container boundary, so a sandboxed scenario is handed a path
+#: on a bind-mounted directory and appends to it instead. Precedence has to be strict
+#: rather than "whichever is set": an fd number left over from the host names, inside the
+#: container, either a closed descriptor or an unrelated open file, and `_Recorder` swallows
+#: `OSError` — so the failure mode of getting this wrong is a run that records nothing and
+#: says nothing about it.
+RECORD_PATH_ENV = "OSTLER_QA_RECORD_PATH"
+
+#: See `ostler.qa.plan.MECHANISMS` for why `synthetic` is not here.
+MECHANISMS = ("live", "fixture")
 DRIVERS = ("python", "playwright", "maestro")
 
 #: The drivers that drive a user interface, and so the ones whose scenarios must vet. There
@@ -85,6 +95,12 @@ UI_DRIVERS = ("playwright", "maestro")
 DEVICE_LAYOUT_SCHEMA = "device-layout/1"
 
 DEFAULT_HTTP_TIMEOUT = 30.0
+
+#: How long `qa.eventually` keeps looking, and how often — Playwright's own `expect()`
+#: defaults, deliberately: an author who already knows what `expect` costs knows what this
+#: costs, and a plan that needs a different number is saying something about the product.
+DEFAULT_EVENTUALLY_TIMEOUT = 5.0
+EVENTUALLY_INTERVAL = 0.1
 
 #: When this process started, so a diagnostics timestamp can be placed on the *run's* clock
 #: rather than its own. The driver hands over the run offset it was at when it spawned us;
@@ -265,25 +281,36 @@ def input_file(name: str, path: str) -> str:
 def background(
     name: str,
     *,
-    cmd: str,
+    argv: Sequence[str],
     ready_url: str | None = None,
-    ready_cmd: str | None = None,
-    ready_contains: str = "",
+    ready_method: str = "GET",
+    ready_status: int = 200,
     cwd: str | None = None,
     timeout: float = 30.0,
 ) -> None:
     """Declare a daemon the runner starts before the first scenario and stops after the last.
 
+    `argv` is a list, not a command line, and there is no shell behind it. A daemon used to
+    be a string run through `bash -c`, which meant `background("x", cmd="go test ./...")`
+    was a legal way to smuggle a unit suite into a run whose whole premise is that it
+    observes the product — and it survived the sandbox, because the daemon starts on the
+    host. An argv list has no `&&`, no `|`, no expansion: the first element is a program and
+    the rest are its arguments, and a plan that wants a pipeline has to say which program.
+
     Readiness is `ostler`'s to poll, not the scenario's — it is what a scenario is entitled
     to assume, and a scenario that has to wait for its own stack turns a startup failure
-    into a product failure. Give it a URL that must answer 200, or a command whose stdout
-    must contain `ready_contains`.
+    into a product failure. It is an HTTP probe: a URL, and optionally the method and status
+    that mean "up". `ready_method="POST", ready_status=201` is there for a service whose
+    only route is a POST, which is what the retired command form was actually being used
+    for — the capability was HTTP the whole time, spelled as a `curl` invocation.
     """
-    entry: dict[str, Any] = {"name": name, "cmd": cmd, "timeout": timeout}
+    entry: dict[str, Any] = {"name": name, "argv": list(argv), "timeout": timeout}
     if ready_url:
-        entry["ready_check"] = ready_url
-    elif ready_cmd:
-        entry["ready_check"] = {"cmd": ready_cmd, "assert_contains": ready_contains}
+        entry["ready_check"] = (
+            ready_url
+            if ready_method == "GET" and ready_status == 200
+            else {"url": ready_url, "method": ready_method, "status": ready_status}
+        )
     if cwd:
         entry["cwd"] = cwd
     REGISTRY.background.append(entry)
@@ -349,7 +376,7 @@ def _definition_line(func: Callable[..., None]) -> int:
 
 
 class _Recorder:
-    """Writes JSONL records to `RECORD_FD`, or nowhere when the fd is not open.
+    """Writes JSONL records to a path, to `RECORD_FD`, or nowhere.
 
     A closed fd is the normal case under `describe` and under a scenario a developer runs
     by hand with plain `python qa_plan.py`; dropping the records is what makes that work
@@ -357,10 +384,18 @@ class _Recorder:
     """
 
     def __init__(self, fd: int | None = None) -> None:
+        self._stream: Any = None
+        path = os.environ.get(RECORD_PATH_ENV)
+        if fd is None and path:
+            try:
+                self._stream = open(path, "a", encoding="utf-8")  # noqa: SIM115
+            except OSError:
+                self._stream = None
+            return
         if fd is None:
             fd = int(os.environ.get(RECORD_FD_ENV, RECORD_FD))
         try:
-            self._stream: Any = os.fdopen(os.dup(fd), "w", encoding="utf-8")
+            self._stream = os.fdopen(os.dup(fd), "w", encoding="utf-8")
         except OSError:
             self._stream = None
 
@@ -502,6 +537,234 @@ def _allowed_statuses(expect_status: int | Sequence[int] | None) -> set[int] | N
 # --------------------------------------------------------------------------------------
 
 
+def _not_yet(exc: BaseException) -> bool:
+    """Does this exception mean "the page has not got there yet", or "the plan is wrong"?
+
+    Only the first is swallowed and retried, and the narrowness is load-bearing. A
+    `KeyError` or a `NameError` inside the lambda is a defect in the *scenario*; swallowing
+    it would burn the whole deadline and then report a plan defect as a product failure —
+    which is the exact mis-hypothesis `eventually` exists to end, recreated inside its own
+    fix. `CheckFailed` is excluded for the same reason: a `qa.require` that ran inside the
+    condition has already recorded its own verdict and is not a signal to look again.
+
+    Playwright is matched by module rather than by import, because this file may import
+    nothing outside the standard library.
+    """
+    if isinstance(exc, CheckFailed):
+        return False
+    return isinstance(exc, (TimeoutError, AssertionError)) or type(exc).__module__.split(".")[
+        0
+    ] == "playwright"
+
+
+def _sampled(actual: Any) -> Any:
+    """Read an `actual=` that may be a callable, after the poll loop has settled.
+
+    A callable `actual` is the only way to report the value that *decided* the verdict
+    rather than one read before the wait began — and evidence must never be able to fail
+    the scenario, so an exception becomes its own record.
+    """
+    if not callable(actual):
+        return actual
+    try:
+        return actual()
+    except BaseException as exc:  # noqa: BLE001 — evidence, not a verdict
+        return repr(exc)
+
+
+# --------------------------------------------------------------------------------------
+# The named checks a `verify:` bullet declares, as observations
+#
+# Each verifier takes the observed value and the declared arguments and returns
+# `(passed, actual, expected)`. It raises — never returns False — when `observed` is the
+# wrong *shape*, because a shape mismatch is a defect in the scenario, and recording it as
+# a red assertion would file it against the product.
+# --------------------------------------------------------------------------------------
+
+#: Distinguishes "this path is absent" from "this path holds None" in `unchanged`.
+_MISSING = object()
+
+
+def _observed_status(observed: Any) -> tuple[int, Any]:
+    """The status code and parsed body of whatever a scenario handed over as a response."""
+    if isinstance(observed, int) and not isinstance(observed, bool):
+        return observed, None
+    status = getattr(observed, "status", getattr(observed, "status_code", None))
+    if not isinstance(status, int):
+        raise TypeError(
+            "http_status observes a response — pass the object qa.http returned (or its "
+            f"integer status), not {type(observed).__name__}"
+        )
+    body: Any = None
+    reader = getattr(observed, "json", None)
+    if callable(reader):
+        try:
+            body = reader()
+        except Exception:  # noqa: BLE001 — a non-JSON body is not a scenario defect
+            body = None
+    return status, body
+
+
+def _pair(observed: Any, check: str) -> tuple[Any, Any]:
+    """The before/after a differential check needs, insisted on rather than inferred."""
+    if isinstance(observed, (tuple, list)) and len(observed) == 2:
+        return observed[0], observed[1]
+    raise TypeError(
+        f"{check} observes a change — pass `(before, after)`, the two reads it compares, "
+        f"not {type(observed).__name__}"
+    )
+
+
+def _paths(value: Any, prefix: str = "") -> dict[str, Any]:
+    """Every leaf of a JSON-ish value, keyed by its dotted path.
+
+    Flat, so a diff can name the field that moved. Lists are indexed rather than compared
+    as wholes: `keys_unchanged` exists to catch a move implemented as a copy, and a list
+    compared as one value reports "the list changed" — the finding it was meant to replace.
+    """
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for key, item in value.items():
+            out.update(_paths(item, f"{prefix}.{key}" if prefix else str(key)))
+        return out
+    if isinstance(value, list):
+        out = {}
+        for index, item in enumerate(value):
+            out.update(_paths(item, f"{prefix}[{index}]"))
+        return out
+    return {prefix: value}
+
+
+def _resolve_path(document: Any, path: str) -> tuple[bool, Any]:
+    """Walk a dotted/indexed path. Returns whether it resolved, and to what."""
+    current = document
+    for segment in re.findall(r"[^.\[\]]+", path):
+        if isinstance(current, dict):
+            if segment not in current:
+                return False, None
+            current = current[segment]
+        elif isinstance(current, (list, tuple)):
+            if not segment.isdigit() or int(segment) >= len(current):
+                return False, None
+            current = current[int(segment)]
+        else:
+            return False, None
+    return True, current
+
+
+def _verify_http_status(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    status, body = _observed_status(observed)
+    expected: Any = {"code": args["code"]}
+    actual: Any = {"code": status}
+    passed = status == args["code"]
+    if "title" in args:
+        found = body.get("title") if isinstance(body, dict) else None
+        expected["title"], actual["title"] = args["title"], found
+        passed = passed and found == args["title"]
+    return passed, actual, expected
+
+
+def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    resolved, value = _resolve_path(observed, args["path"])
+    if args.get("absent"):
+        return not resolved, {"present": resolved}, {"present": False}
+    if not resolved:
+        return False, {"present": False}, {"path": args["path"]}
+    if "equals" in args:
+        return str(value) == args["equals"], value, args["equals"]
+    if "matches" in args:
+        return re.search(args["matches"], str(value)) is not None, value, f"~ {args['matches']}"
+    # Presence alone is what the bullet declared, and `ostler.checks` says why that is weak.
+    # It is still the author's declaration, so it is honoured rather than second-guessed here.
+    return True, value, "present"
+
+
+def _verify_unchanged(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    before, after = _pair(observed, "unchanged")
+    allowed = set(args.get("except_fields", []))
+    before_paths, after_paths = _paths(before), _paths(after)
+    changed = sorted(
+        {
+            path
+            for path in before_paths.keys() | after_paths.keys()
+            if before_paths.get(path, _MISSING) != after_paths.get(path, _MISSING)
+        }
+        - allowed
+    )
+    return not changed, {"changed": changed}, {"changed": []}
+
+
+def _verify_keys_unchanged(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    before, after = _pair(observed, "keys_unchanged")
+    gone = sorted(_paths(before).keys() - _paths(after).keys())
+    added = sorted(_paths(after).keys() - _paths(before).keys())
+    return not gone and not added, {"removed": gone, "added": added}, {"removed": [], "added": []}
+
+
+def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    found = observed if isinstance(observed, int) and not isinstance(observed, bool) else len(observed)
+    return found == args["equals"], found, args["equals"]
+
+
+def _verify_absent(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    empty = observed is None or (hasattr(observed, "__len__") and len(observed) == 0)
+    return empty, observed, "absent"
+
+
+def _verify_visible(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    if hasattr(observed, "is_visible"):
+        shown = bool(observed.is_visible())
+        text = observed.inner_text() if shown and "text" in args else None
+    else:
+        shown, text = bool(observed), observed if "text" in args else None
+    if "text" not in args:
+        return shown, {"visible": shown}, {"visible": True}
+    contains = shown and args["text"] in str(text)
+    return contains, {"visible": shown, "text": text}, {"visible": True, "text": args["text"]}
+
+
+def _verify_persists(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    written, reread = _pair(observed, "persists")
+    return reread is not None and reread == written, reread, written
+
+
+def _verify_emitted(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    found = len(observed)
+    if "count" in args:
+        return found == args["count"], found, args["count"]
+    return found > 0, found, "at least one"
+
+
+def _verify_conflict_on_stale(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    status, _ = _observed_status(observed)
+    # Any refusal counts, 409 is what the contract usually says. What must not pass is a 2xx:
+    # an unconditional overwrite accepts the stale write and reports success, which is the
+    # exact defect this check exists to exclude.
+    return 400 <= status < 500, status, "a refusal (4xx)"
+
+
+#: What observing each named check means, keyed by the name a `verify:` bullet declares.
+#:
+#: The vocabulary itself lives in `ostler.checks` — this file is stdlib-only and executes
+#: under the project's interpreter, where ostler is not installed, so the names are spelled
+#: twice on purpose. `ostler.checks` is the authority on *what may be declared*; this table
+#: is the authority on *what observing it means*. A name here with no spec there is
+#: unreachable — no bullet can declare it — and a spec there with no entry here fails at the
+#: call, by name, on the line that made it. Neither drifts silently.
+VERIFIERS: dict[str, Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]] = {
+    "http_status": _verify_http_status,
+    "json_path": _verify_json_path,
+    "unchanged": _verify_unchanged,
+    "keys_unchanged": _verify_keys_unchanged,
+    "count": _verify_count,
+    "absent": _verify_absent,
+    "visible": _verify_visible,
+    "persists": _verify_persists,
+    "emitted": _verify_emitted,
+    "conflict_on_stale": _verify_conflict_on_stale,
+}
+
+
 class Qa:
     """Everything a scenario is given. One instance per scenario process.
 
@@ -581,6 +844,155 @@ class Qa:
         if not self._record(label, condition, actual, expected, covers):
             raise CheckFailed(label)
 
+    def eventually(
+        self,
+        label: str,
+        condition: Callable[[], Any],
+        *,
+        timeout: float = DEFAULT_EVENTUALLY_TIMEOUT,
+        interval: float = EVENTUALLY_INTERVAL,
+        actual: Any = None,
+        expected: Any = None,
+        covers: Sequence[str] | None = None,
+    ) -> bool:
+        """Record one claim about behaviour that the page is allowed to arrive at.
+
+        The difference from `check` is the type of `condition`, and it is the whole point:
+        `check` receives an **already-collapsed bool**, so Python samples the DOM and hands
+        this harness a dead `False` that cannot be retried, re-read, or told apart from
+        "not yet". `.count()`, `.get_attribute()`, `.inner_text()` and `page.evaluate()`
+        sample once and never retry, so against a UI still resolving a fetch or a re-render
+        they report whatever was on screen at that instant — and the failure that produces
+        wears the exact shape of a product defect: intermittent, with a plausible actual.
+        A live story spent its whole repair budget on that wrong hypothesis.
+
+        So hand over the sampler, not its result::
+
+            qa.eventually("badge shown", lambda: badge.count() > 0, covers=["ac:2"])
+
+        The condition is evaluated once before any sleep, so an already-true claim costs
+        nothing and records `settled_ms: 0`. `actual` may be a callable too, and is then
+        read after the poll loop settles — the value that decided the verdict rather than
+        one sampled before the wait began.
+        """
+        if not callable(condition):
+            raise TypeError(
+                f"qa.eventually({label!r}, …) needs a callable to re-sample, and was handed "
+                f"an already-evaluated {type(condition).__name__}. Python collapsed the read "
+                "before this harness saw it, so there is nothing left to retry — wrap it: "
+                "lambda: <the expression you just wrote>."
+            )
+        passed, polls, settled_ms = self._poll(condition, timeout, interval)
+        return self._record(
+            label,
+            passed,
+            _sampled(actual),
+            expected,
+            covers,
+            extra={
+                "mode": "eventually",
+                "settled_ms": settled_ms,
+                "timeout_ms": int(timeout * 1000),
+                "polls": polls,
+            },
+        )
+
+    def require_eventually(
+        self,
+        label: str,
+        condition: Callable[[], Any],
+        *,
+        timeout: float = DEFAULT_EVENTUALLY_TIMEOUT,
+        interval: float = EVENTUALLY_INTERVAL,
+        actual: Any = None,
+        expected: Any = None,
+        covers: Sequence[str] | None = None,
+    ) -> None:
+        """`eventually`, stopping the scenario when the page never arrives.
+
+        The stopping variant matters more here than it does for `check`: when the state a
+        journey was waiting for never came, every later assertion is reading a page that is
+        not the one the plan is about, and the run reports a cascade of failures whose
+        actual values are all noise. That is what made the motivating run unreadable.
+        """
+        if not self.eventually(
+            label,
+            condition,
+            timeout=timeout,
+            interval=interval,
+            actual=actual,
+            expected=expected,
+            covers=covers,
+        ):
+            raise CheckFailed(label)
+
+    def verify(
+        self,
+        check: str,
+        observed: Any,
+        *,
+        covers: Sequence[str] | None = None,
+        label: str = "",
+        **args: Any,
+    ) -> bool:
+        """Make the observation an obligation's `verify:` bullet declares, and record it.
+
+        This is the assertion whose strength is not the author's to choose. `qa.check` takes
+        an already-collapsed bool, so the scenario decides what "the manifest is unchanged"
+        means and can decide it weakly — mask the object before diffing, compare three
+        entries but never the key inventory, read back through the session that wrote. Here
+        the book names the check and its arguments, `ostler qa validate` refuses a plan that
+        does not invoke exactly that call, and the comparison is `VERIFIERS`'. The assertion
+        cannot be weaker than the claim because the assertion *is* the claim.
+
+            qa.verify("http_status", response, code=409, title="Manifest Conflict",
+                      covers=[OBLIGATION])
+
+        `observed` is what the scenario went and got — a response, a parsed document, a
+        locator, or the `(before, after)` pair a differential check compares. Its shape is
+        the check's, and a wrong one raises rather than recording red: a scenario that hands
+        `unchanged` a single value has a defect of its own, and filing that against the
+        product is how a QA run reports a bug nobody has.
+        """
+        verifier = VERIFIERS.get(check)
+        if verifier is None:
+            raise ValueError(
+                f"'{check}' is not a declared check — the vocabulary is: "
+                f"{', '.join(sorted(VERIFIERS))}"
+            )
+        passed, actual, expected = verifier(observed, args)
+        rendered = ", ".join(f"{key}={value!r}" for key, value in args.items())
+        return self._record(
+            label or f"{check}({rendered})",
+            passed,
+            actual,
+            expected,
+            covers,
+            extra={"check": check, "check_args": args},
+        )
+
+    def _poll(
+        self, condition: Callable[[], Any], timeout: float, interval: float
+    ) -> tuple[bool, int, int]:
+        """Re-sample `condition` until it holds or the deadline passes.
+
+        Returns the verdict, how many times it looked, and how long it took to settle.
+        """
+        started = time.monotonic()
+        polls = 0
+        while True:
+            polls += 1
+            try:
+                passed = bool(condition())
+            except BaseException as exc:  # noqa: BLE001 — re-raised unless it means "not yet"
+                if not _not_yet(exc):
+                    raise
+                passed = False
+            elapsed = time.monotonic() - started
+            if passed or elapsed >= timeout:
+                return passed, polls, int(elapsed * 1000)
+            time.sleep(min(interval, timeout - elapsed))
+
     def _record(
         self,
         label: str,
@@ -588,29 +1000,35 @@ class Qa:
         actual: Any,
         expected: Any,
         covers: Sequence[str] | None,
+        *,
+        extra: Mapping[str, Any] | None = None,
     ) -> bool:
         passed = bool(condition)
         self._index += 1
         self.assertions += 1
         if not passed:
             self.failures += 1
-        self._recorder.emit(
-            {
-                "type": "assert",
-                "id": f"{self.scenario_id}-{self._index}",
-                "label": label,
-                "passed": passed,
-                "actual": actual,
-                "expected": expected,
-                # The assertion's own binding only. Falling back to `self.covers` — the
-                # scenario's whole list — stamped every obligation onto every assertion in
-                # the body, so one passing check reported the entire set proven and deleting
-                # the check that did the proving left the evidence row green. `validate`
-                # refuses a plan whose obligations are not each claimed, so a bare
-                # `qa.check` here is an extra claim, not an uncredited one.
-                "covers": list(covers) if covers is not None else [],
-            }
-        )
+        record: dict[str, Any] = {
+            "type": "assert",
+            "id": f"{self.scenario_id}-{self._index}",
+            "label": label,
+            "passed": passed,
+            "actual": actual,
+            "expected": expected,
+            # The assertion's own binding only. Falling back to `self.covers` — the
+            # scenario's whole list — stamped every obligation onto every assertion in
+            # the body, so one passing check reported the entire set proven and deleting
+            # the check that did the proving left the evidence row green. `validate`
+            # refuses a plan whose obligations are not each claimed, so a bare
+            # `qa.check` here is an extra claim, not an uncredited one.
+            "covers": list(covers) if covers is not None else [],
+        }
+        # Absent rather than zero on a plain `check`: a `settled_ms: 0` on an assertion that
+        # was never retried is a claim about a sample nobody took, and a reader deciding
+        # whether a red assertion is a race would believe it.
+        if extra:
+            record.update(extra)
+        self._recorder.emit(record)
         return passed
 
     # -- steps -------------------------------------------------------------------------
@@ -879,7 +1297,14 @@ class MaestroResult:
 
 #: The methods on `qa` that append an assertion record. A scenario claiming coverage and
 #: calling none of them proves nothing, and unlike shell that is now statically visible.
-CHECK_METHODS = frozenset({"check", "require"})
+#: `eventually`/`require_eventually` are in here for one reason and it is worth stating:
+#: `count_checks` and `extract_check_covers` both key off this set, so a retrying assertion
+#: counts as an assertion and its `covers=` binds with no other edit. Leaving them out would
+#: have made the doctrine's recommended spelling the one that fails validation.
+#: `verify` is in here for the same reason: it records an assertion, and its `covers=` binds
+#: exactly as the others' does. It is also the *only* one `extract_check_calls` reads, since
+#: it is the only one that names a check from the book.
+CHECK_METHODS = frozenset({"check", "require", "eventually", "require_eventually", "verify"})
 
 #: The method that photographs a screen and hands it to the book for registration. A UI
 #: scenario that never calls it proves every element it names is *present* and nothing at
@@ -951,6 +1376,61 @@ def extract_check_covers(source: str) -> dict[str, list[str]]:
                 else:
                     claimed.append(COMPUTED)
         found[node.name] = claimed
+    return found
+
+
+#: The method that makes a declared observation, and the one `extract_check_calls` reads.
+VERIFY_METHOD = "verify"
+
+
+def extract_check_calls(source: str) -> dict[str, list[dict[str, Any]]]:
+    """Which named checks each scenario invokes, with the arguments it wrote and what it binds.
+
+    This is the half of the binding that `ostler qa validate` compares against the book: an
+    obligation whose `verify:` bullet declares `keys_unchanged(subject="pages")` is only
+    covered by a scenario that calls exactly that, with those arguments, bound to that id.
+    A weaker assertion is no longer a judgment call about whether the oracle is strong
+    enough — it is a call that is not the declared one, and the difference is a string
+    comparison.
+
+    Static, and only literals: a computed argument becomes `"*"`, which canonicalises to a
+    call matching no declaration, so the obligation stays unbound and the caller says so.
+    Read before anything runs, which is the only moment at which the answer is still cheap.
+    """
+    found: dict[str, list[dict[str, Any]]] = {}
+    for node in ast.parse(source).body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        calls: list[dict[str, Any]] = []
+        for child in ast.walk(node):
+            if (
+                not isinstance(child, ast.Call)
+                or not isinstance(child.func, ast.Attribute)
+                or child.func.attr != VERIFY_METHOD
+            ):
+                continue
+            name = _literal(child.args[0]) if child.args else None
+            args: dict[str, Any] = {}
+            covers: list[str] = []
+            for keyword in child.keywords:
+                if keyword.arg is None:
+                    continue
+                value = _literal(keyword.value)
+                if keyword.arg == "covers":
+                    covers = [
+                        item if isinstance(item, str) else COMPUTED
+                        for item in (value if isinstance(value, (list, tuple)) else [None])
+                    ]
+                elif keyword.arg != "label":
+                    args[keyword.arg] = value if value is not None else COMPUTED
+            calls.append(
+                {
+                    "check": name if isinstance(name, str) else COMPUTED,
+                    "args": args,
+                    "covers": covers,
+                }
+            )
+        found[node.name] = calls
     return found
 
 
@@ -1061,11 +1541,13 @@ def _describe(module_path: Path) -> dict[str, Any]:
     source = module_path.read_text(encoding="utf-8")
     counts = count_checks(source)
     check_covers = extract_check_covers(source)
+    check_calls = extract_check_calls(source)
     locators = extract_locators(source)
     vets = extract_vets(source)
     for declared in data["scenarios"]:
         declared["checks"] = counts.get(declared["function"], 0)
         declared["check_covers"] = check_covers.get(declared["function"], [])
+        declared["check_calls"] = check_calls.get(declared["function"], [])
         declared["locators"] = locators.get(declared["function"], [])
         declared["vets"] = vets.get(declared["function"], [])
     return data
@@ -1203,7 +1685,8 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         status = "failed"
         error = (
             f"scenario {declared.id!r} claims coverage of {sorted(declared.covers)} but "
-            "recorded no assertion — call qa.check() on something the behaviour produced"
+            "recorded no assertion — call qa.check() (or qa.eventually(), when the page is "
+            "still arriving) on something the behaviour produced"
         )
     recorder.emit(
         {
