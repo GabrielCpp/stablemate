@@ -38,3 +38,9 @@ route.
 
 Every claim above is observable over HTTP or on the rendered page. There is no unit-test surface to
 cite: a sandboxed scenario has the service and nothing else on the far side of a forwarded port.
+
+The showing is twelve seats and nothing refills it, so a scenario that needs a free seat must put
+the showing back first — `DELETE /api/showing`, documented on the seat-booking API. QA drives this
+service repeatedly (a rehearsal, the scored execution, a re-run after a repair), and a scenario that
+assumes the pool it found the first time fails the second for having no seat left rather than for
+anything this story claims.
