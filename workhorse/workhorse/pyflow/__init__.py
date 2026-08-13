@@ -32,6 +32,7 @@ from __future__ import annotations
 
 from workhorse.pyflow.blueprint import Blueprint, NodeSpec
 from workhorse.pyflow.errors import (
+    AgentTimeout,
     NodeNotRunError,
     PyflowError,
     UnknownNodeError,
@@ -45,6 +46,7 @@ from workhorse.pyflow.transitions import Await, Continue, Done
 from workhorse.pyflow.workflow import StateSpec, Workflow, state
 
 __all__ = [
+    "AgentTimeout",
     "Await",
     "Blueprint",
     "Continue",

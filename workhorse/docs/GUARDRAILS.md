@@ -148,7 +148,7 @@ same CLI configuration as the conversation it is compacting.
 | `AGENT_MAX_INVOKE_RETRIES` | 60 | Additional attempts for transient agent CLI failures. Sized in days, not minutes: with the backoff below the ladder spans ~27h, so a link down for a working day is slept through rather than died inside |
 | `AGENT_MAX_COMPACT_ATTEMPTS` | 2 | `/compact`-and-continue tries on context overflow before reframing (0 disables) |
 | `AGENT_MAX_REPHRASE_ATTEMPTS` | 3 | Fresh-session reframings before the run stops. A node may override it for itself with `self.agent(..., retries=N)` — notably `retries=0` for a node whose deliverable is a file its caller can read back partially, where a reframe re-asks at full price for nothing (see [AUTHORING.md](AUTHORING.md#where-an-agent-turn-runs-cwd--add_dirs)) |
-| `AGENT_RESULT_TIMEOUT_S` | 3600 | Maximum seconds to wait for a result event |
+| `AGENT_RESULT_TIMEOUT_S` | 3600 | Maximum seconds to wait for a result event. A turn cut at its budget reaches the calling state as `workhorse.pyflow.AgentTimeout` once the ladder is spent, so a state whose deliverable is a file can land the partial draft instead of ending the run |
 | `AGENT_INVOKE_BACKOFF_BASE_S` | 15 | Base seconds for exponential backoff |
 | `AGENT_INVOKE_BACKOFF_CAP_S` | 1800 | Maximum backoff delay in seconds — the coarsest useful poll for "is the network back" |
 | `AGENT_RETRY_WAIT_BUDGET_S` | 97305 (~27h) | Cumulative transient-backoff sleep for one agent-node visit; shared by output retries and reframes |

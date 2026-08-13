@@ -20,6 +20,28 @@ class WorkflowFailed(PyflowError):
     """
 
 
+class AgentTimeout(PyflowError):
+    """An agent turn was stopped at its per-node `timeout`, with its budget spent.
+
+    Raised by `self.agent` only once the recovery ladder has finished with the turn —
+    it is the ladder's verdict, not a report of the first overrun, so a state that
+    catches this is not short-circuiting a retry that would have succeeded.
+
+    It exists so a state can *land* an overrun rather than let it end the run. The
+    ladder cannot make that decision: whether anything survives a cut turn depends
+    entirely on what the turn was writing. Where the deliverable is the turn's reply
+    there is nothing to salvage and stopping at a resumable checkpoint is right; where
+    the deliverable is a **file**, the partial draft on disk is usually worth more than
+    a fresh start, and only the calling state knows which it has. Pair it with
+    `retries=0` — otherwise the reframes spend the node's whole budget again before
+    this is ever raised.
+
+    The transport-level signal (`BackendInvocationError.timed_out`) lives in
+    `workhorse.runner.failure`, which a workflow must not import — pyflow stays cheap
+    to import because resolving a workflow *name* imports it. This is the translation.
+    """
+
+
 class RunBudgetExceeded(PyflowError):
     """The run outlived `WORKHORSE_MAX_RUNTIME_S`. An operational stop, not a verdict.
 

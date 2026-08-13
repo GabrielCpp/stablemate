@@ -34,6 +34,7 @@ from workhorse.artifacts import ArtifactWriter  # noqa: E402
 from workhorse.config_run import RunConfig  # noqa: E402
 from workhorse.manifest import ManifestContext  # noqa: E402
 from workhorse.pyflow import (  # noqa: E402
+    AgentTimeout,
     Await,
     Blueprint,
     Continue,
@@ -54,6 +55,7 @@ from workhorse.pyflow.driver import Resume, drive, read_resume  # noqa: E402
 from workhorse.pyflow.engine import RunEnv  # noqa: E402
 from workhorse.pyflow.names import NameIndex  # noqa: E402
 from workhorse.records import NodeGraphCheckpoint  # noqa: E402
+from workhorse.runner.failure import BackendInvocationError  # noqa: E402
 
 Transition = Any  # states are annotated loosely here; the driver checks the runtime type
 
@@ -858,6 +860,62 @@ def test_agent_carries_cwd_and_add_dirs_onto_the_node():
         assert nodes[0].add_dirs == ["/repos/docs", "/repos/api-service"], nodes[0]
         assert nodes[1].cwd is None, nodes[1]
         assert nodes[1].add_dirs == [], nodes[1]
+
+
+def test_an_overrun_turn_reaches_the_state_as_a_catchable_agent_timeout():
+    """A state whose deliverable is a FILE has to be able to land a cut turn.
+
+    Without a name it can catch, an overrun ends the run — even though the partial
+    draft the turn wrote is sitting on disk and the state has a repair path for
+    exactly that. `BackendInvocationError` cannot be that name: it lives in
+    `workhorse.runner.failure`, and a workflow importing the runner is what pyflow's
+    cheap-import rule exists to prevent. So the translation happens here.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+
+        def cut(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+            raise BackendInvocationError("timed out after 1200s", timed_out=True)
+
+        env = _env(tmp, agent_runner=ScriptedRunner(cut))
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                try:
+                    self.agent("prompts/review.md", returns=Payload)
+                except AgentTimeout as exc:
+                    return Done(f"landed: {exc}")
+                return Done("the turn was never cut")
+
+        assert drive(Asks(), env) == "landed: timed out after 1200s"
+
+
+def test_a_backend_failure_that_is_not_a_timeout_still_propagates():
+    """The translation is narrow on purpose.
+
+    A state that caught a crashed CLI as a timeout would go on to repair a file the
+    turn never wrote — so only `timed_out` gets the pyflow name, and everything else
+    ends the run at a resumable checkpoint the way it always has.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+
+        def crash(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+            raise BackendInvocationError("the CLI exited with code 1", transient=False)
+
+        env = _env(tmp, agent_runner=ScriptedRunner(crash))
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                try:
+                    self.agent("prompts/review.md", returns=Payload)
+                except AgentTimeout:
+                    return Done("mistaken for a timeout")
+                return Done("never reached")
+
+        try:
+            drive(Asks(), env)
+            raise AssertionError("a non-timeout backend failure must end the run")
+        except BackendInvocationError:
+            pass
 
 
 def test_the_context_manifest_is_the_outer_layer_of_an_agent_turn():

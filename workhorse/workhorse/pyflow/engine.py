@@ -32,11 +32,17 @@ from workhorse.context import WorkflowContext
 from workhorse.manifest import ManifestContext
 from workhorse.runner.spec import AgentNode, OutputSpec
 from workhorse.pyflow.blueprint import NodeSpec, node_spec
-from workhorse.pyflow.errors import NodeNotRunError, UnknownNodeError, WorkflowFailed
+from workhorse.pyflow.errors import (
+    AgentTimeout,
+    NodeNotRunError,
+    UnknownNodeError,
+    WorkflowFailed,
+)
 from workhorse.pyflow.names import NameIndex
 from workhorse.pyflow.registry import registry_of
 from workhorse.pyflow.workflow import Workflow
 from workhorse.runner.clock import SYSTEM_CLOCK, Clock
+from workhorse.runner.failure import BackendInvocationError
 from workhorse.runner.ladder import AgentRunner
 
 logger = logging.getLogger("workhorse.engine")
@@ -394,15 +400,26 @@ class Engine:
             runner = self.env.agent_runner
             if runner is None:  # pragma: no cover - see above; the field is always resolved
                 raise WorkflowFailed("this run was built without an agent runner")
-            rendered, raw = runner.run(
-                node,
-                # The manifest underneath, the state's arguments on top: a state that
-                # binds `repo` means its own, not the manifest's.
-                WorkflowContext({**self.env.manifest.as_context(), **jsonable(args)}),
-                self.env.workflow_dir,
-                self.env.session_id_path,
-                run_dir=writer.run_dir,
-            )
+            try:
+                rendered, raw = runner.run(
+                    node,
+                    # The manifest underneath, the state's arguments on top: a state that
+                    # binds `repo` means its own, not the manifest's.
+                    WorkflowContext(
+                        {**self.env.manifest.as_context(), **jsonable(args)}
+                    ),
+                    self.env.workflow_dir,
+                    self.env.session_id_path,
+                    run_dir=writer.run_dir,
+                )
+            except BackendInvocationError as exc:
+                # Only the wall-clock overrun gets a pyflow name, and only once the
+                # ladder is done with it. Everything else propagates as it always has:
+                # a state that cannot tell a cut turn from a crashed CLI would land
+                # partial work on a node that never wrote any.
+                if not exc.timed_out:
+                    raise
+                raise AgentTimeout(str(exc)) from exc
             writer.write_step(node_id, rendered, raw, {}, next_node=None)
             return _coerce(raw, returns, node_id)
 

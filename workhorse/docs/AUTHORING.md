@@ -221,6 +221,20 @@ under a tight `timeout` it multiplies that budget by the number of reframes befo
 stops. Whether a partial artifact is worth something is only knowable here, which is why
 this is a per-node keyword and not a run-level setting.
 
+Such a node usually wants to *land* an overrun too, and `AgentTimeout` is the name it
+catches to do so — raised by `self.agent` once the ladder has finished with a turn its
+`timeout` cut, so catching it is not short-circuiting a retry that would have worked.
+Only the wall-clock overrun is translated; a crashed CLI still ends the run, because a
+state that confused the two would repair a file the turn never wrote:
+
+```python
+try:
+    self.agent("prompts/plan.md", returns=Plan, timeout=1200, retries=0)
+except AgentTimeout:
+    pass                                  # the partial draft on disk is the deliverable
+return Continue(None, self.validate)      # …which the next state reads and repairs
+```
+
 These are **real values, not templates**: the state computes the path in Python and
 passes it. (They are still Jinja-rendered on the way through, so a literal path is a
 no-op render and a template string would also work — but nothing needs one.)
