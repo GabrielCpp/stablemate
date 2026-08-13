@@ -14,6 +14,7 @@ import signal
 import subprocess
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,15 @@ from ostler.qa.harness_host import (
 from ostler.qa.session import QaSession, _redact_bytes
 from ostler.vet import placement
 from ostler.vet.regions import RegionList
+
+
+def _declared(record: Mapping[str, Any]) -> tuple[str, Mapping[str, Any]] | None:
+    """The check a scenario's `qa.verify()` named, or `None` for a bare `qa.check`."""
+    name = record.get("check")
+    if not isinstance(name, str) or not name:
+        return None
+    args = record.get("check_args")
+    return name, args if isinstance(args, Mapping) else {}
 
 
 @dataclass
@@ -258,6 +268,14 @@ class PythonDriver(QaDriver):
                     # green. `validate` now refuses a plan whose obligations are not each
                     # claimed by a check, so an empty binding here is a plan that never ran.
                     covers=list(record.get("covers") or []),
+                    # What `qa.verify()` named and with which arguments, when it was a
+                    # verify at all. A plain `qa.check` carries neither and stays an
+                    # anonymous `scenario_check`; dropping them for a verify made the
+                    # evidence map unable to see any declared check as observed, so every
+                    # obligation a passing `verify:` bullet proved read `claimed-but-
+                    # unasserted` — a whole run's worth of green assertions crediting
+                    # nothing.
+                    declared=_declared(record),
                 )
                 if not passed:
                     failures += 1

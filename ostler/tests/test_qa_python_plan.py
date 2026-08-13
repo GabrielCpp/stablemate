@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from ostler.qa.evidence_map import build_evidence_map
 from ostler.qa.harness_host import load_harness_module
 from ostler.qa.plan import load_plan, resolve_spec_dir, validate_v2
 from ostler.qa.run import cmd_run, cmd_validate
@@ -305,6 +306,36 @@ def test_the_declared_check_runs_and_lands_in_the_evidence(tmp_path: Path) -> No
 
     (tmp_path / "out.json").write_text(json.dumps({"item": {"id": "wrong"}}), encoding="utf-8")
     assert not cmd_run(module, spec, root=tmp_path).ok
+
+
+def test_the_evidence_map_sees_the_declared_check_the_scenario_actually_ran(
+    tmp_path: Path,
+) -> None:
+    """The bridge between the two processes, which used to drop the check's identity.
+
+    A scenario runs in its own process, so the comparison cannot be re-executed when its
+    records come back — the assertion enters the ledger as `scenario_check`, a verdict this
+    side only transcribes. The evidence map, though, matches a `verify:` bullet against the
+    check *name and arguments* on the record, so transcribing the verdict alone left every
+    `qa.verify()` obligation `claimed-but-unasserted` no matter how green the run: the map
+    could not credit a single declared check, in any spec, on any run.
+    """
+    spec = _spec(tmp_path)
+    _declaring(spec)
+    source = VERIFY_PLAN.replace("{args}", 'path="item.id", equals="abc"')
+    module = _plan(spec, source)
+    (tmp_path / "out.json").write_text(json.dumps({"item": {"id": "abc"}}), encoding="utf-8")
+    assert cmd_run(module, spec, root=tmp_path).ok
+
+    row = next(
+        item
+        for item in build_evidence_map(spec)["obligations"]
+        if item["id"] == OBLIGATION
+    )
+
+    assert row["checksObserved"] == [DECLARED["call"]]
+    assert row["checksMissing"] == []
+    assert row["status"] == "covered"
 
 
 def test_running_the_plan_records_the_assertion_as_evidence(tmp_path: Path) -> None:

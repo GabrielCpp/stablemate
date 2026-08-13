@@ -554,8 +554,19 @@ class QaSession:
         driver: str = "command",
         action: int | None = None,
         covers: list[str] | None = None,
+        declared: tuple[str, Mapping[str, Any]] | None = None,
     ) -> tuple[bool, dict[str, Any]]:
         """Execute a named check, write raw result, append assert record.
+
+        `declared` is the check a `qa.verify()` already ran in its own process, named the
+        way the book names it. It cannot be `check_type`: the comparison happened where the
+        page was, and re-running it here would have nothing to look at — so the assertion
+        arrives as `scenario_check`, a verdict this session only transcribes. But the
+        evidence map matches an obligation's `verify:` bullet against the *name and
+        arguments* on the ledger record, so transcribing the verdict and dropping the
+        identity reported every `qa.verify()` obligation `claimed-but-unasserted`, however
+        green the run. Recording both keeps the executed check honest and the observation
+        attributable.
 
         Returns (passed, record).
         """
@@ -586,7 +597,7 @@ class QaSession:
             "kind": "assert",
             "id": assert_id,
             "label": label,
-            "check": check_type,
+            "check": declared[0] if declared else check_type,
             "params": params,
             "raw_result_file": str(raw_out_path),
             "result": "PASS" if passed else "FAIL",
@@ -598,6 +609,8 @@ class QaSession:
             record["action"] = action
         if covers:
             record["covers"] = covers
+        if declared:
+            record["check_args"] = dict(declared[1])
         # Attach summary fields from raw result
         for key in ("match_count", "count", "value", "expected"):
             if key in raw_result:
