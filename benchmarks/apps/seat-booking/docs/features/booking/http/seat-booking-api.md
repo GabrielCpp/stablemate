@@ -6,7 +6,7 @@ title: Seat booking API
 # Seat booking API
 
 - code: app/service.py::Handler
-- openapi: none; the service is five hand-routed paths over `http.server` and publishes no schema.
+- openapi: none; the service is six hand-routed paths over `http.server` and publishes no schema.
 
 The seat booking API is the whole of the product's machine surface: one showing, twelve seats, and
 three transitions a seat can make. It answers JSON on `/api/…`, serves the
@@ -156,3 +156,31 @@ confirming a hold has to quote the number the caller was given.
   - body: `{"booking": {"id": str, "seat": str, "name": str}}`
   - errors: `400 Version Required`, `400 Name Required`, `409 Seat Not Held`, `409 Stale Hold`,
     `404 No Such Seat`
+
+### delete-showing
+
+- does: puts the showing back to its opening state — every seat `free`, every version back to `0`,
+  every hold and booking dropped — and answers `204` with no body.
+- verify: http_status(204, path="/api/showing")
+- verify: count(subject="free seats", equals=12)
+- does: is idempotent: resetting a showing that is already empty answers `204` and changes nothing.
+- verify: http_status(204, path="/api/showing")
+- code: app/service.py::Handler._reset_showing
+- route: `DELETE /api/showing`
+- parent: [Seat booking API](#seat-booking-api)
+- refs: [seat ledger](../concepts/seat-ledger.md)
+- request:
+  - method: `DELETE`
+  - path: `/api/showing`
+  - body: none
+- response:
+  - status: `204`
+  - media: none
+  - body: empty
+
+The showing is twelve seats and there is no second one, so every hold and every booking spends a
+finite resource that nothing else returns. That is fine for an audience and wrong for anything that
+drives the product repeatedly — a QA rehearsal, the scored execution after it, a re-run following a
+repair — which would otherwise fail its third pass for having no free seat rather than for anything
+it was checking. Hence a route rather than a harness lever: whoever resets the showing does it
+through the documented surface, and the reset is as observable as the transitions it undoes.

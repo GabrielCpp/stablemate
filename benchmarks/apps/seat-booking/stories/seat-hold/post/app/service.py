@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from app import booking, page
-from app.store import Store
+from app.store import Store, empty_ledger
 
 #: The benchmark owns 18080-18099; seat-booking's number is recorded in
 #: `benchmarks/suites/README.md` alongside every other spec's.
@@ -53,6 +53,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(refused.refusal.status, {"title": refused.refusal.title})
 
     def do_DELETE(self) -> None:  # noqa: N802
+        if self.path == "/api/showing":
+            self._reset_showing()
+            return
         hold = SEAT_HOLD.match(self.path)
         if not hold:
             self._json(404, {"title": "Not Found"})
@@ -62,6 +65,21 @@ class Handler(BaseHTTPRequestHandler):
         except booking.Conflict as refused:
             self._json(refused.refusal.status, {"title": refused.refusal.title})
             return
+        self.send_response(204)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _reset_showing(self) -> None:
+        """Empty the ledger: every seat free again, at version 0.
+
+        A fixed twelve-seat showing is a finite resource, and QA drives it repeatedly — a
+        rehearsal, then the scored execution, then a re-run after a repair. Without a way to
+        put the showing back, the third pass fails for having no free seat rather than for
+        anything the story claims, which reads as a defect in whichever scenario happened to
+        run last. So the reset is part of the product and part of the book, not a lever the
+        harness reaches around it for.
+        """
+        self.store.write(empty_ledger())
         self.send_response(204)
         self.send_header("Content-Length", "0")
         self.end_headers()
