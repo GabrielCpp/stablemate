@@ -463,6 +463,37 @@ def _known_types(graph: Graph) -> set[str]:
             | {k.name for k in graph.template_kinds})
 
 
+def _check_container_siblings(doc: markdown.MarkdownDoc, rel: str, f: list[Finding]) -> None:
+    """No parent heading owns the same container heading twice (`### Fields` under one concept).
+
+    This is what a heading inserted into the middle of a file looks like from the graph's side.
+    Write `## concept: SlugCollisionError` just above the `### Fields` that belonged to the
+    concept above it, and markdown re-parents that block to the new concept without a word of
+    complaint: the fields are still fields, the file still parses, `doctor` was still silent —
+    the only trace is that one concept has lost its attributes and another has grown two `Fields`
+    blocks. Two of the same container under one parent has no legitimate reading, which is what
+    makes it a usable proxy for the mistake that produces it.
+    """
+    def check(parent: markdown.Section | None, siblings: list[markdown.Section]) -> None:
+        seen: dict[str, markdown.Section] = {}
+        for section in siblings:
+            title = section.title.strip()
+            if title in registry.UI_HEADING_TO_TYPE:
+                first = seen.setdefault(title, section)
+                if first is not section:
+                    owner = f"`{'#' * parent.level} {parent.title.strip()}`" if parent else rel
+                    f.append(Finding(
+                        "error", "duplicate-container-heading",
+                        f"{rel}: {owner} has two `{'#' * section.level} {title}` sections "
+                        f"(line {doc.body_offset + first.line_start + 1} and this one) — the "
+                        f"second block's {registry.UI_HEADING_TO_TYPE[title]} nodes belong to "
+                        f"whatever heading precedes them, which is not what a reader sees",
+                        path=rel, line=doc.body_offset + section.line_start + 1, ref=title))
+            check(section, section.children)
+
+    check(None, doc.sections)
+
+
 def _check_ui_file(graph: Graph, path, f: list[Finding]) -> None:
     rel = path.relative_to(graph.root).as_posix()
     try:
@@ -489,6 +520,8 @@ def _check_ui_file(graph: Graph, path, f: list[Finding]) -> None:
                              f"are {registry.UI_HEADING_TO_TYPE[canon]} nodes",
                              path=rel, line=doc.body_offset + section.line_start + 1,
                              suggestion=f"## {canon}", fixable=True))
+
+    _check_container_siblings(doc, rel, f)
 
     ftype = registry.ui_type(declared)
     if ftype is not None and ftype.kind == "file":

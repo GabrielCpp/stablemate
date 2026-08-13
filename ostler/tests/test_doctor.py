@@ -78,6 +78,63 @@ def test_missing_type_is_flagged(repo: Path):
     assert "okf-missing-type" in codes(doctor.run(load(repo)))
 
 
+def test_a_concept_inserted_mid_file_reparents_its_neighbours_fields(repo: Path):
+    """The failure this catches is invisible in the rendered page: a new `## concept:` written
+    directly above an existing `### Fields` steals that block, and nothing else in the graph
+    objects — the fields are still fields, just hanging off the wrong concept."""
+    write(repo / "docs/features/area/rec.md", """---
+type: concept
+slug: rec
+title: Rec
+---
+# rec
+
+## concept: ManifestPage
+
+## concept: SlugCollisionError
+
+### Fields
+
+- **code**: the collision code
+
+### Fields
+
+- **slug**: the page slug
+""")
+
+    findings = [f for f in doctor.run(load(repo)).findings
+                if f.code == "duplicate-container-heading"]
+
+    assert [f.ref for f in findings] == ["Fields"]
+    assert findings[0].severity == "error"
+    assert "concept: SlugCollisionError" in findings[0].message
+    assert findings[0].path == "docs/features/area/rec.md"
+
+
+def test_the_same_container_under_two_different_concepts_is_fine(repo: Path):
+    write(repo / "docs/features/area/rec.md", """---
+type: concept
+slug: rec
+title: Rec
+---
+# rec
+
+## concept: ManifestPage
+
+### Fields
+
+- **slug**: the page slug
+
+## concept: SlugCollisionError
+
+### Fields
+
+- **code**: the collision code
+""")
+
+    assert "duplicate-container-heading" not in codes(doctor.run(load(repo)))
+
+
 def test_seedless_epic_no_covers_warning(repo: Path):
     # a wholly-seedless epic (globex-style) must not raise story-covers-no-seed
     write(repo / "docs/epics/epic-c/epic.md", epic_md(
