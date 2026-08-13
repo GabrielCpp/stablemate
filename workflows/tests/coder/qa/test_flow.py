@@ -1260,6 +1260,33 @@ def test_a_plan_lane_past_its_budget_with_no_runnable_plan_gives_up_naming_it(
     assert result.spent == "the QA plan lane's wall-clock budget", result.spent
 
 
+def test_a_context_rebuild_past_the_plan_budget_does_not_buy_another_author(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The join point is an entry into the plan lane too, and it obeys the same ceiling.
+
+    `build_context` clears `plan_authored`, so a rejoin from a context rebuild used to buy a
+    fresh `power="high"` authoring turn however much of the lane's wall-clock had already
+    gone. A live story reached the author at 2947s of a 2400s budget by exactly this route:
+    a failing run, a fix lap, a rebuilt packet, and back to `plan`.
+
+    The fix lap is what routes through `build_context`; the plan the flow already has is what
+    runs the second time.
+    """
+    okf = ostler(fail_runs=1)
+    agent = _Agent(docs, assessment_class="product")
+
+    result = drive_flow(Qa(story=STORY, plan_lane_budget_s=0), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["apply-qa-fixes"] == 1, agent.counts()
+    assert agent.planned() == 1, agent.counts()
+    assert okf.runs == 2, "the rebuilt packet re-ran the plan it had"
+
+
 def test_a_refusal_only_the_stack_could_fix_does_not_cost_a_replan(
     docs: Path,
     ostler: Callable[..., _Ostler],

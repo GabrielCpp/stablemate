@@ -986,6 +986,9 @@ class Qa(Workflow):
         a second authoring turn. `build_context` clears the flag, because a state routing back
         to the join point changed what the diff obligates and the plan answering the old
         obligations must not be the one that runs.
+
+        Which makes this an entry into the plan lane, and it is held to `plan_lane_budget_s`
+        like every other one — see the branch below for the run that made it necessary.
         """
         status = self.call(ensure_stack, self.qa_stack_manifest, self.docs_path)
         if status.ready == "no":
@@ -1004,6 +1007,33 @@ class Qa(Workflow):
                 ),
             )
         if not loop.plan_authored:
+            if loop.plan_lane_seconds > 0 and loop.plan_lane_seconds >= self.plan_lane_budget_s:
+                # The join point was the one entry into the plan lane with no ceiling on it.
+                # `build_context` clears `plan_authored`, so every rejoin from a context
+                # rebuild — an `apply_fixes` lap, a grounding repair — bought a fresh
+                # `power="high"` authoring turn however much wall-clock the lane had already
+                # spent. A live story entered the author at 2947s of its 2400s budget, and
+                # would have kept doing so for as many context laps as it had left.
+                #
+                # `plan_lane_seconds > 0` is what says a plan was authored *at all*: only
+                # plan-lane turns charge that lane, so a nonzero one is the record of a turn
+                # that ran. Without it a `plan_lane_budget_s=0` run would be refused its
+                # first author and sent to run a plan that does not exist.
+                #
+                # The landing is `_plan_lap`'s, for `_plan_lap`'s reason: a plan that still
+                # parses runs, with `run` → `assess` → `audit` all standing downstream, and
+                # one that will not import has nothing left to run.
+                validation = self.call(validate_qa_plan, self.ctx.spec_dir, self.docs_path)
+                if validation.status == "passed":
+                    self.logger.info(
+                        "the QA plan lane has spent %.0fs of its %ds budget — running the "
+                        "plan on disk rather than authoring one against the rebuilt context",
+                        loop.plan_lane_seconds,
+                        self.plan_lane_budget_s,
+                        extra={"activity": True},
+                    )
+                    return Continue(validation, self.run, loop=loop.update(plan_authored=True))
+                return self._exhausted(loop, "the QA plan lane's wall-clock budget")
             return Continue(status, self.plan, loop=loop)
         return Continue(status, self.run, loop=loop)
 
