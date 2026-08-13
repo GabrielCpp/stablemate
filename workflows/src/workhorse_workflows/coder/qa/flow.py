@@ -344,8 +344,7 @@ class Qa(Workflow):
     #: The lane's wall-clock ceilings, in seconds of agent turns. Fields and not `ClassVar`s
     #: like the lap budgets below, and the difference is deliberate: those are invariants of
     #: the flow's shape, while "a story's QA must fit in an hour" is a policy an operator
-    #: decides per run — so it is a `--param`, lands in the checkpoint, and appears in the
-    #: telemetry beside the counters it bounds.
+    #: decides per run — so it is a `--param` and lands in the checkpoint.
     #:
     #: The per-turn caps and the lap budgets bound each turn and their count; their *product*
     #: is still well over an hour, so neither of them delivers the ceiling. This does. The
@@ -451,6 +450,12 @@ class Qa(Workflow):
     #: The budgets worth grouping a query by. Every one of `QaLoop`'s counters, because
     #: this flow's whole shape is which of them ran out first — `audit_rework` included,
     #: which is not a spend counter but answers the same question about the last gate.
+    #:
+    #: `QaLoop.lane_seconds` and `plan_lane_seconds` are deliberately *not* here. Every
+    #: agent turn is already a span with its own duration, so what they hold is a sum a
+    #: query reconstructs — and the lane's own wall clock is the `state:qa` span. They exist
+    #: because the flow has to read them at a transition, where it cannot query anything;
+    #: labelling them would spend cardinality restating what the spans already say.
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = (
         "context_rework",
         "plan_rework",
