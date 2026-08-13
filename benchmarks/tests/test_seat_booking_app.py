@@ -170,6 +170,21 @@ def test_materialize_does_not_ship_the_answer_key(tmp_path: Path) -> None:
         assert not (dest / name).exists(), f"{name} was copied into the trial tree"
 
 
+@pytest.mark.parametrize("story", STORIES)
+def test_materialize_keeps_every_authored_story(story: str, tmp_path: Path) -> None:
+    """The epic and all three story.md files reach the trial.
+
+    Not a restatement of the copy: the exclusion above is by name, and `stories` is also
+    what an epic calls its story folders. Excluding it at any depth deletes every
+    `story.md`, and the run refuses to plan against an unauthored story — a failure that
+    looks like a workflow bug and is a fixture bug.
+    """
+    dest = replay.materialize(APP, "seat-hold", tmp_path / "seat-booking")
+    epic = dest / "docs" / "epics" / "0001-seat-booking"
+    assert (epic / "epic.md").is_file()
+    assert (epic / "stories" / story / "story.md").is_file()
+
+
 def test_materialized_book_is_unchanged(tmp_path: Path) -> None:
     """The book sits at its authored state on both sides of HEAD.
 

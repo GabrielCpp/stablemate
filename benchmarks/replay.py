@@ -265,10 +265,15 @@ def materialize(app: Path, story: str, dest: Path) -> Path:
     if dest.exists():
         shutil.rmtree(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(
-        app, dest,
-        ignore=shutil.ignore_patterns(*NOT_THE_APP, "__pycache__", ".git"),
-    )
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        # `NOT_THE_APP` is matched at the app root only. `shutil.ignore_patterns` matches a
+        # basename at any depth, and `stories` is also what an epic calls its story folders
+        # — which silently removed every story.md from the trial and left the run with
+        # nothing authored to plan against.
+        top = NOT_THE_APP if Path(directory) == app else ()
+        return {name for name in names if name in top or name in ("__pycache__", ".git")}
+
+    shutil.copytree(app, dest, ignore=ignore)
 
     # The finished content this story is responsible for, held aside while the before tree
     # is committed.
