@@ -399,6 +399,57 @@ deterministic node *in the same graph*, and failing that gate is a real defect. 
 has no deterministic gate, add one to the workflow first — that fix is stronger than
 anything the eval would have measured.
 
+## Measuring one flow instead of the whole chain (`replay.py`)
+
+`bench.py` moves every variable at once over hours, so it cannot attribute a difference to
+the one prompt you edited. `replay.py` replays **one flow, one story** against a frozen app
+— `workhorse-coder run qa` / `run docs`, both first-class entry points taking a story slug —
+so everything else about the tree is byte-identical between trials.
+
+```bash
+replay.py run --flow qa --story expense-list -n 3 --label after   # three trials
+replay.py report before                                           # the loop table for a label
+replay.py --fixture seat-booking score                            # detection + convergence
+```
+
+Trials record into groom's telemetry like any other run, and `report` reads
+`groom.store.loop_convergence` — the same function behind `groom loops`. `--label` names the
+configuration, which is what makes a before/after comparison a comparison.
+
+### Convergence is half a measurement
+
+Laps and dollars are the wrong half to optimise alone: a flow that approves everything
+converges in one lap. `score` supplies the other half — **did QA catch what was actually
+wrong?** — and that needs an app whose defects are known in advance, which is what
+[`apps/`](apps/README.md) is. A scored round runs a clean control plus one trial per row of
+`defects.yml` and prints both numbers together:
+
+```
+caught 6/8  missed 2  false 1 | plan-qa 2.1 laps $0.94
+```
+
+Detection is scored off machine-readable state, not off reading the QA report: the
+obligation's status in the computed evidence map, or an audit refutation citing it. Three
+distinctions the verdicts keep:
+
+- **`uncovered` is not a catch.** Nothing was asserted, so nothing was detected. It scores
+  `inconclusive`, and so does a missing evidence map or an obligation this trial never owed —
+  a harness failure must never arrive as either a catch or a miss.
+- **A clean control that refutes is a fixture bug**, not a finding, and shows up as a false
+  alarm.
+- **`caught_by` is recorded, not scored.** Whether a defect surfaces from a failing scenario
+  or from the auditor is the plan's choice, and the plan is the thing under measurement.
+
+```bash
+replay.py --fixture seat-booking score                 # the whole key, plus one control per story
+replay.py --fixture seat-booking score --defect D1     # one row
+replay.py --fixture seat-booking score --sandbox       # score the sandboxed configuration
+```
+
+`--sandbox` is a workflow param threaded to `ostler qa run --sandbox`, never an environment
+read — a value outside the checkpoint means a resumed trial silently measures a different
+configuration.
+
 ## Adding a benchmark app
 
 Nothing in `bench.py` knows about any particular app. Copy a `benchmark.yaml` into a new
@@ -410,6 +461,9 @@ task's name is its directory name — the spec never repeats it. The layout:
 bench.py              the end-to-end harness: one score for the whole workflow chain
 matrix.py             one score per model set, each diffed against a frozen gold run
 sets.yml              the sets under test, the pinned judge, gold, and the task list
+replay.py             one flow, one story, against a frozen app: convergence + detection
+fixtures/             what a replay trial replays: a captured bundle, or an `app:`
+apps/                 finished apps with an answer key — input to *measuring* QA
 evals.py              the node-replay harness: A/B one change, many samples   (PLANNED)
 evals/author.yml      which author nodes are evaluable, and what grades each  (PLANNED)
 rubric.md             the judge's prompt — the file to tune when scores feel wrong

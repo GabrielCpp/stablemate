@@ -20,13 +20,23 @@ a property of the code under test.
     replay.py capture                                   refresh the bundle from `source:`
     replay.py run --flow qa --story expense-list -n 3   three trials, one story
     replay.py run --flow qa --all -n 1                  one trial of every story
-    replay.py report --label before                     the loop table for a saved label
+    replay.py report before                             the loop table for a saved label
+    replay.py --fixture seat-booking score              detection, against the answer key
 
 `--label` names the configuration being measured, and is what makes a before/after
 comparison possible: run the same command on either side of a change with different
 labels, and `report` prints each one's exit rate per node. Measurement itself is not
 reimplemented — the trials are recorded in groom's telemetry like any other run, and
 `report` reads `groom.store.loop_convergence`, the same function behind `groom loops`.
+
+Convergence alone is only half a measurement, and the wrong half to optimise on its own: a
+flow that approves everything converges in one lap. `score` supplies the other half. It
+needs a fixture whose defects are known in advance, which is what an `app:` fixture is —
+a hand-written app under `benchmarks/apps/` shipping `defects.yml`, an answer key naming
+the OKF obligation each seeded defect makes false. A scored round runs a clean control plus
+one trial per defect and prints detection beside the laps:
+
+    caught 6/8  missed 2  false 1 | plan-qa 2.1 laps $0.94
 
 What a trial deliberately does NOT do is judge the app. Whether the produced QA plan is
 any *good* is `bench.py score`'s question, and it stays a floor rather than a gradient: a
@@ -41,6 +51,7 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn
@@ -346,17 +357,33 @@ def checkout(fixture: Fixture, story: str, flow: str, dest: Path) -> Path:
     return dest
 
 
-def trial_id(label: str, flow: str, story: str, n: int) -> str:
-    return f"replay-{label}-{flow}-{story}-{n}"
+def trial_id(label: str, flow: str, story: str, n: int, variant: str = "") -> str:
+    return f"replay-{label}-{flow}-{story}{f'-{variant}' if variant else ''}-{n}"
 
 
 def run_trial(
-    fixture: Fixture, *, flow: str, story: str, label: str, n: int, budget_s: float
+    fixture: Fixture,
+    *,
+    flow: str,
+    story: str,
+    label: str,
+    n: int,
+    budget_s: float,
+    variant: str = "",
+    mutate: Callable[[Path], None] | None = None,
+    sandbox: bool = False,
 ) -> tuple[str, int]:
-    """One clone, one flow run. Returns the run id and the workflow's exit code."""
-    run_id = trial_id(label, flow, story, n)
+    """One clone, one flow run. Returns the run id and the workflow's exit code.
+
+    `mutate` runs against the checked-out tree just before the flow starts, and is how a
+    scored trial seeds its defect: the checkout is the same for every trial under a label,
+    so whatever `mutate` changes is the only variable between them.
+    """
+    run_id = trial_id(label, flow, story, n, variant)
     work = WORK_DIR / label / run_id
     repo = checkout(fixture, story, flow, work / fixture.repo_dirname)
+    if mutate is not None:
+        mutate(repo)
     artifacts = work / "artifacts"
     log = work / "run.log"
 
@@ -368,7 +395,12 @@ def run_trial(
     cmd = [
         "uv", "run", "workhorse-coder", "run", flow,
         "--runs-dir", str(artifacts), "--run-id", run_id,
-        "--params", json.dumps({"story": story, "docs_path": str(repo)}),
+        # `sandbox` is a param on the QA workflow alone, and an unknown param is a hard
+        # error — so the docs flow must not be handed one.
+        "--params", json.dumps(
+            {"story": story, "docs_path": str(repo)}
+            | ({"sandbox": sandbox} if flow == "qa" else {})
+        ),
     ]
     say(f"{run_id}")
     log.parent.mkdir(parents=True, exist_ok=True)
@@ -405,7 +437,7 @@ def cmd_run(fixture: Fixture, args: argparse.Namespace) -> int:
         for n in range(1, args.trials + 1):
             run_id, rc = run_trial(
                 fixture, flow=args.flow, story=story, label=args.label,
-                n=n, budget_s=args.budget,
+                n=n, budget_s=args.budget, sandbox=args.sandbox,
             )
             trials.append({"run_id": run_id, "flow": args.flow, "story": story, "rc": rc})
             worst = max(worst, abs(rc))
@@ -418,6 +450,216 @@ def cmd_run(fixture: Fixture, args: argparse.Namespace) -> int:
 
     report(args.label)
     return worst
+
+
+# ── score ─────────────────────────────────────────────────────────────────────────────
+
+
+CLEAN = "clean"
+
+
+def load_defects(app: Path) -> list[dict[str, str]]:
+    path = app / "defects.yml"
+    if not path.is_file():
+        die(f"no answer key at {path} — an `app:` fixture can be replayed but not scored")
+    rows = list((yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("defects") or [])
+    if not rows:
+        die(f"{path} lists no defects")
+    return rows
+
+
+def select_defects(app: Path, wanted: list[str]) -> list[dict[str, str]]:
+    rows = load_defects(app)
+    if not wanted:
+        return rows
+    by_id = {str(row["id"]): row for row in rows}
+    unknown = [name for name in wanted if name not in by_id]
+    if unknown:
+        die(f"no such defect(s): {', '.join(unknown)} (have: {', '.join(sorted(by_id))})")
+    return [by_id[name] for name in wanted]
+
+
+def seed_defect(app: Path, row: dict[str, str]) -> Callable[[Path], None]:
+    """Return the mutation that plants one defect in a checked-out tree.
+
+    A whole-file overwrite: the variant either lands on a path that exists or raises here,
+    where the trial has not yet cost anything. A patch would apply cleanly against a stale
+    app and leave the trial measuring an app with no defect in it at all.
+    """
+    variant = app / "defects" / str(row["id"]) / str(row["path"])
+    if not variant.is_file():
+        die(f"defect {row['id']}: no variant at {variant}")
+
+    def mutate(repo: Path) -> None:
+        target = repo / str(row["path"])
+        if not target.is_file():
+            die(f"defect {row['id']}: {row['path']} is not in the materialized tree")
+        shutil.copyfile(variant, target)
+
+    return mutate
+
+
+def evidence_statuses(repo: Path, story: str) -> dict[str, str] | None:
+    """`{obligation id: status}` for the run's owed obligations, or None if unbuildable.
+
+    None is not an empty map. `build_evidence_map` refuses when an input is missing, and a
+    map computed over a missing run log reports every obligation `uncovered` — which is
+    indistinguishable from a run that genuinely asserted nothing and would score a trial
+    that never started as a wall of detections.
+    """
+    from ostler import qa as qa_mod  # noqa: PLC0415 - a heavy import only scoring needs
+
+    try:
+        data = qa_mod.build_evidence_map(repo / "docs" / "specs" / story)
+    except qa_mod.EvidenceMapError:
+        return None
+    return {str(row["id"]): str(row["status"]) for row in data["obligations"]}
+
+
+def audit_result(work: Path, run_id: str) -> dict[str, Any]:
+    """The auditor's last verdict for a trial, or an empty dict if it never ran."""
+    path = work / "artifacts" / f"coder-{run_id}" / "audit-qa" / "output.json"
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def classify(
+    row: dict[str, str] | None, statuses: dict[str, str] | None, audit: dict[str, Any]
+) -> tuple[str, str]:
+    """Score one trial against its row. Returns `(verdict, the status that decided it)`.
+
+    Two routes count as a catch, because the flow has two places a defect can surface and
+    which one fires is a property of the QA plan — the thing under measurement:
+
+    * the **evidence map** puts the named obligation at the row's `expect`, which is a set
+      operation over the run's own artifacts, or
+    * the **auditor** refuted the pass and its findings name that obligation.
+
+    A miss is the specific, worse outcome: the run published a pass *and* claimed the
+    obligation covered. Anything else — no map, an obligation out of scope, a run that
+    blocked before it asserted anything — is `inconclusive` rather than a catch or a miss,
+    since scoring an infrastructure failure either way is a number about this machine.
+    """
+    refuted = str(audit.get("verdict", "")) == "refuted"
+    if row is None:  # the clean control: any contradiction at all is a false alarm
+        if statuses is None:
+            return "inconclusive", "no evidence map"
+        contradicted = sorted(k for k, v in statuses.items() if v == "contradicted")
+        if contradicted:
+            return "false", contradicted[0]
+        return ("false", "audit refuted") if refuted else ("clean", "no contradiction")
+
+    obligation = str(row["obligation"])
+    status = (statuses or {}).get(obligation, "")
+    if status == str(row["expect"]):
+        return "caught", status
+    cited = obligation in json.dumps(audit)
+    if refuted and cited:
+        return "caught", "audit refutation"
+    if statuses is None:
+        return "inconclusive", "no evidence map"
+    if not status:
+        return "inconclusive", "obligation not owed by this trial"
+    if status == "covered":
+        return "missed", status
+    return "inconclusive", status
+
+
+def cmd_score(fixture: Fixture, args: argparse.Namespace) -> int:
+    """Run a clean control plus one trial per defect, then print detection beside cost.
+
+    The control is what makes the detection number readable. A harness that refutes
+    everything scores every defect as caught, and only a trial with nothing wrong in it
+    tells the two apart — so a control that refutes is reported as a false alarm and is a
+    fixture bug, not a finding about QA.
+    """
+    if fixture.app is None:
+        die(f"fixture {fixture.name!r} has no `app:` — only an app fixture ships an answer "
+            f"key, and detection cannot be scored without one")
+    rows = select_defects(fixture.app, args.defects)
+    stories = sorted({str(row["story"]) for row in rows})
+
+    trials: list[dict[str, Any]] = []
+    worst = 0
+    # One control per story, not one per run: the obligations a trial owes come from the
+    # story's diff, so a control for story A says nothing about false alarms in story B.
+    plan: list[tuple[str, dict[str, str] | None]] = [
+        *([] if args.no_control else [(story, None) for story in stories]),
+        *[(str(row["story"]), row) for row in rows],
+    ]
+    for story, row in plan:
+        variant = str(row["id"]) if row else CLEAN
+        run_id, rc = run_trial(
+            fixture, flow="qa", story=story, label=args.label, n=1, variant=variant,
+            budget_s=args.budget, sandbox=args.sandbox,
+            mutate=seed_defect(fixture.app, row) if row else None,
+        )
+        work = WORK_DIR / args.label / run_id
+        repo = work / fixture.repo_dirname
+        verdict, because = classify(row, evidence_statuses(repo, story), audit_result(work, run_id))
+        trials.append({
+            "run_id": run_id, "flow": "qa", "story": story, "rc": rc,
+            "defect": variant, "obligation": str(row["obligation"]) if row else "",
+            "verdict": verdict, "because": because,
+        })
+        worst = max(worst, abs(rc))
+
+    ledger = WORK_DIR / args.label / "trials.json"
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    existing = json.loads(ledger.read_text(encoding="utf-8")) if ledger.is_file() else []
+    by_id = {entry["run_id"]: entry for entry in [*existing, *trials]}
+    ledger.write_text(json.dumps(sorted(by_id.values(), key=lambda e: e["run_id"]), indent=2))
+
+    score(args.label, trials)
+    report(args.label)
+    return worst
+
+
+def convergence(trials: list[dict[str, Any]]) -> str:
+    """The cost half of the headline: `| plan-qa 2.1 laps $0.94`, pooled over these trials.
+
+    Detection and convergence belong on one line because either alone is gameable in the
+    direction of the other — a flow that refutes everything catches every defect and never
+    terminates, and one that approves everything converges in a single lap.
+    """
+    from groom import store  # noqa: PLC0415 - a heavy import only the headline needs
+
+    rows = [
+        row
+        for trial in trials
+        for row in store.loop_convergence(run=trial["run_id"], min_work_items=1)
+        if row["node"] == "plan-qa"
+    ]
+    if not rows:
+        return ""
+    items = sum(row["work_items"] for row in rows)
+    turns = sum(row["turns"] for row in rows)
+    cost = sum(row["cost_usd"] or 0.0 for row in rows)
+    return f" | plan-qa {turns / items:.1f} laps ${cost:.2f}" if items else ""
+
+
+def score(label: str, trials: list[dict[str, Any]]) -> None:
+    say(f"label {label!r}: detection")
+    for trial in trials:
+        colour = {"caught": "", "clean": "", "missed": RED, "false": RED}.get(trial["verdict"], DIM)
+        print(f"  {colour}{trial['defect']:<6} {trial['verdict']:<13}{RESET if colour else ''}"
+              f" {DIM}{trial['because']}{RESET}"
+              f"\n    {DIM}{trial['obligation'] or '(control)'}{RESET}")
+    seeded = [trial for trial in trials if trial["defect"] != CLEAN]
+    caught = sum(1 for trial in seeded if trial["verdict"] == "caught")
+    missed = sum(1 for trial in seeded if trial["verdict"] == "missed")
+    false = sum(1 for trial in trials if trial["verdict"] == "false")
+    unknown = sum(1 for trial in trials if trial["verdict"] == "inconclusive")
+    line = f"  caught {caught}/{len(seeded)}  missed {missed}  false {false}{convergence(trials)}"
+    if unknown:
+        # Loudly, and never folded into a miss: an inconclusive trial is the harness
+        # failing, and averaging it into the detection rate hides the outage as a result.
+        line += f"  {RED}inconclusive {unknown}{RESET}"
+    print(f"\n{BOLD}{line}{RESET}")
 
 
 # ── report ────────────────────────────────────────────────────────────────────────────
@@ -506,9 +748,23 @@ def main(argv: list[str] | None = None) -> int:
                        help="names the configuration under test — the unit `report` compares")
     run_p.add_argument("--budget", type=float, default=0.0,
                        help="wall-clock ceiling per trial, in seconds (0 = unbounded)")
+    run_p.add_argument("--sandbox", action="store_true",
+                       help="qa flow only: run the QA plan in the docker sandbox")
 
-    report_p = sub.add_parser("report", help="the loop table for saved labels")
-    report_p.add_argument("labels", nargs="+")
+    score_p = sub.add_parser(
+        "score", help="score detection: a clean control plus one trial per seeded defect"
+    )
+    score_p.add_argument("--defect", dest="defects", action="append", default=[],
+                         metavar="ID", help="repeatable; default is every defect in the key")
+    score_p.add_argument("--label", default="score",
+                         help="names the configuration under test — the unit `report` compares")
+    score_p.add_argument("--budget", type=float, default=0.0,
+                         help="wall-clock ceiling per trial, in seconds (0 = unbounded)")
+    score_p.add_argument("--sandbox", action="store_true",
+                         help="run the QA plan in the docker sandbox, as a real run does")
+    score_p.add_argument("--no-control", action="store_true",
+                         help="skip the clean control — cheaper, and the false-alarm count "
+                              "then means nothing")
 
     args = parser.parse_args(argv)
     if args.command == "report":
@@ -517,6 +773,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "capture":
         cmd_capture(fixture)
         return 0
+    if args.command == "score":
+        return cmd_score(fixture, args)
     return cmd_run(fixture, args)
 
 

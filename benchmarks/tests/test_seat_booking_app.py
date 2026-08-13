@@ -276,6 +276,85 @@ def test_every_defect_declares_a_route_and_an_expectation(row: dict[str, str]) -
     assert row["why"].strip()
 
 
+# ── scoring ───────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("row", defects(), ids=defect_ids())
+def test_seeding_a_defect_stays_inside_the_story_diff(row: dict[str, str], tmp_path: Path) -> None:
+    """Planting the defect changes the seeded file and leaves the rest of the trial alone.
+
+    Both halves matter. A variant that lands somewhere else is a second, undocumented defect
+    the answer key does not name — and a trial carrying two defects scores one of them as a
+    catch whichever one QA found.
+    """
+    def tree(root: Path) -> dict[Path, bytes]:
+        return {
+            path: path.read_bytes()
+            for path in sorted(root.rglob("*"))
+            if path.is_file() and ".git" not in path.relative_to(root).parts
+        }
+
+    dest = replay.materialize(APP, row["story"], tmp_path / "seat-booking")
+    before = tree(dest)
+    replay.seed_defect(APP, row)(dest)
+    after = tree(dest)
+
+    assert set(after) == set(before)
+    assert [p for p in after if after[p] != before[p]] == [dest / row["path"]]
+    assert (dest / row["path"]).read_bytes() == (
+        APP / "defects" / row["id"] / row["path"]
+    ).read_bytes()
+
+
+def test_selecting_defects_defaults_to_the_whole_key() -> None:
+    assert [row["id"] for row in replay.select_defects(APP, [])] == defect_ids()
+    assert [row["id"] for row in replay.select_defects(APP, ["D3", "D1"])] == ["D3", "D1"]
+    with pytest.raises(SystemExit):
+        replay.select_defects(APP, ["D99"])
+
+
+def test_a_contradicted_obligation_is_a_catch() -> None:
+    row = {"id": "D1", "obligation": "okf:a#b:contract", "expect": "contradicted"}
+    verdict, _ = replay.classify(row, {"okf:a#b:contract": "contradicted"}, {"verdict": "stands"})
+    assert verdict == "caught"
+
+
+def test_an_audit_refutation_naming_the_obligation_is_a_catch() -> None:
+    """The second route exists because which one fires is the plan's choice, not QA's bar."""
+    row = {"id": "D9", "obligation": "okf:a#b:contract", "expect": "contradicted"}
+    audit = {"verdict": "refuted", "findings": [{"target": "okf:a#b:contract", "issue": "…"}]}
+    verdict, because = replay.classify(row, {"okf:a#b:contract": "covered"}, audit)
+    assert (verdict, because) == ("caught", "audit refutation")
+
+
+def test_a_covered_obligation_over_a_seeded_defect_is_a_miss() -> None:
+    row = {"id": "D1", "obligation": "okf:a#b:contract", "expect": "contradicted"}
+    verdict, _ = replay.classify(row, {"okf:a#b:contract": "covered"}, {"verdict": "stands"})
+    assert verdict == "missed"
+
+
+@pytest.mark.parametrize(
+    ("statuses", "because"),
+    [
+        (None, "no evidence map"),
+        ({}, "obligation not owed by this trial"),
+        ({"okf:a#b:contract": "uncovered"}, "uncovered"),
+    ],
+)
+def test_a_harness_failure_is_never_scored_as_detection(
+    statuses: dict[str, str] | None, because: str
+) -> None:
+    """`uncovered` is not a catch: nothing was asserted, so nothing was detected."""
+    row = {"id": "D1", "obligation": "okf:a#b:contract", "expect": "contradicted"}
+    assert replay.classify(row, statuses, {}) == ("inconclusive", because)
+
+
+def test_the_clean_control_scores_false_on_any_contradiction() -> None:
+    assert replay.classify(None, {"okf:a#b:contract": "covered"}, {"verdict": "stands"})[0] == "clean"
+    assert replay.classify(None, {"okf:a#b:contract": "contradicted"}, {})[0] == "false"
+    assert replay.classify(None, {"okf:a#b:contract": "covered"}, {"verdict": "refuted"})[0] == "false"
+
+
 def test_fixture_points_at_the_app_and_names_the_trial_dir() -> None:
     fixture = replay.load_fixture("seat-booking")
     assert fixture.app == APP
