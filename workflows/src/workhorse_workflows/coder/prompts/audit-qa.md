@@ -18,24 +18,58 @@ plan, request exploration, or author replacement evidence.
 
 Read all of:
 
-- `qa-okf-context.json`;
 - `qa_plan.py`;
 - `qa/qa-run.ndjson`;
 - `qa/run-manifest.json`;
-- `qa-evidence.json`;
 - the story acceptance criteria; and
 - every artifact you choose to rejudge from the current manifest.
 
-Coverage is exhaustive and deterministic, not sampled. Confirm every required AC and OKF
-obligation maps to an executed passing assertion in the ledger and current manifest.
-After coverage is established, sample the riskiest evidence for qualitative refutation:
-persistence/reload, event consumers, concurrency/idempotency, state isolation, journey
-completion, visual state, recording continuity, and error handling.
+## Coverage is computed — read the map, do not re-derive it
+
+Coverage is exhaustive and deterministic, and it is **already joined**. Run it from the spec
+directory:
+
+```bash
+ostler qa evidence-map                     # every obligation, worst status first
+ostler qa evidence-map --status uncovered  # one status at a time
+```
+
+It joins `qa-okf-context.json` × `qa/qa-run.ndjson` × `qa/run-manifest.json` ×
+`qa-evidence.json` and returns one row per obligation carrying `status`, `why`,
+`checksDeclared` / `checksObserved` / `checksMissing`, `claimedBy`, the passing and failing
+assertion counts, `logRefs`, and the `evidence` files. **Do not reconstruct that join by
+reading the four files against each other.** It is arithmetic the tooling did, a set
+difference does not run out of budget or hold an opinion, and a coverage claim you re-derived
+by hand disagrees with the one the flow gates on.
+
+Route on `status` rather than judging it:
+
+- **`covered`** — passing assertions are bound to it and every check its `verify:` bullets
+  declare was actually made. Nothing to file; this is not where refutations come from.
+- **`claimed-but-unasserted`** — a scenario named the obligation in `covers` and no passing
+  assertion backs it, or `checksMissing` is non-empty: the plan claimed a declared check it
+  never invoked. `evidence-defect`, and the repair is the missing assertion, scoped by where
+  it lands.
+- **`uncovered`** — nothing claimed it at all. `plan-defect`; the repair is a scenario.
+- **`contradicted`** — the ledger and `qa-evidence.json` disagree, or a bound assertion
+  failed under a published pass. Refute it and quote both sides from `why` and
+  `failingLogRefs`; this is the one status that is never a judgement call.
+
+An obligation whose row reports no `checksDeclared` is a hole in the *book*, not in the run:
+nothing downstream could bind it, so any assertion satisfied it. Say so in `notes` — the
+repair is a `verify:` bullet, which belongs to the documentation gate and not to this story's
+QA plan — and do not refute the pass on that alone.
+
+With the map read, spend the pass on what it cannot compute: sample the riskiest evidence for
+qualitative refutation — persistence/reload, event consumers, concurrency/idempotency, state
+isolation, journey completion, visual state, recording continuity, and error handling — and
+judge clause partiality on the story's acceptance criteria, which carry no `verify:`
+declaration and so appear in no set difference. An AC promising three things whose scenario
+proves one is a `plan-defect` the map will call `covered`.
 
 For every impacted flow, verify that evidence begins at the documented start instead of
 deep-linking past navigation, reaches the documented end, and contains no hidden 5xx/crash/console
-error. Treat `verify:` references as provenance only: confirm the cited test's level and execution
-environment are strong enough for the obligation rather than accepting its existence as proof.
+error.
 
 Use machine-readable evidence for geometric/textual claims. Never invent fields or values
 that do not exist in the ledger/artifacts. A runner pass is refuted when evidence shows a

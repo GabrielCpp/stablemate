@@ -118,9 +118,11 @@ without a product or author decision, return `blocked` and name that item.
    the rework budget and fails the flow.
 4. **When a contract did move, apply the skill's loop from existing code (Playbook B):** `ostler search`
    / `ostler list` for the node if it exists; `ostler scaffold` it if not; author the
-   as-built prose and structured bullets; set `code:` / `verify:` to the **real**
-   `path::symbol` you just wrote (omit `verify:` rather than invent a test that doesn't
-   exist). Keep every path link resolving.
+   as-built prose and structured bullets; set `code:` / `tests:` to the **real**
+   `path::symbol` you just wrote (omit `tests:` rather than invent a test that doesn't
+   exist), and `verify:` to the observation that proves the node — a call from ostler's check
+   vocabulary, e.g. `http_status(409, title="Conflict")`, never a test name. Keep every path
+   link resolving.
    Never weaken an invariant, journey completion condition, persistence rule, event
    contract, or concurrency requirement merely to match the implementation. Such drift
    is a product/author decision, not a grounding edit.
@@ -141,7 +143,7 @@ without a product or author decision, return `blocked` and name that item.
    planning prose, not the feature book. If the current story implements a journey slice named
    there and the book has no matching `flow` node yet, create one with `ostler scaffold flow
    <journey-slug> --service <service> --title "<Journey title>"`, then fill its `start:`, linked
-   `steps:`, `end:`, and `verify:` bullets from the as-built surfaces and tests. A greenfield
+   `steps:`, `end:`, and `verify:` bullets from the as-built surfaces. A greenfield
    journey is not complete until the book contains the surfaced nodes it traverses and the `flow`
    links those steps. If this story only implements an internal prerequisite for a later journey,
    say that precisely and document the prerequisite contract instead; do not invent a flow before

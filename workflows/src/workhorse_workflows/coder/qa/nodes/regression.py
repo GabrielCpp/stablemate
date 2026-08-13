@@ -296,7 +296,7 @@ def _verification_index(spec_path: Path, spec_dir: str, logger: logging.Logger) 
 
 
 def _attribute_failures(result: RegressionRun, index: list) -> RegressionRun:
-    """Attach the OKF `verify:` owner of each failing test — diagnosis, never a downgrade."""
+    """Attach the OKF `tests:` owner of each failing test — diagnosis, never a downgrade."""
     if result.status != "failed" or not result.failing_tests:
         return result
     attribution = []

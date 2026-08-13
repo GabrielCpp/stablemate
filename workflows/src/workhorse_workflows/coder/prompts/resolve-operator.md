@@ -92,7 +92,8 @@ So these resolutions are closed to you, whatever the loop has cost so far:
 - **Do not stamp the story's status, and do not edit `qa-evidence.json`.** The verdict is
   the ledger's, written by the runner from scenarios that actually ran. An operator-written
   `QA passed` is the one failure this whole loop exists to prevent.
-- **Do not accept synthetic evidence for an obligation whose `evidenceRequired` is `live`.**
+- **Do not accept a test suite as evidence about the product.** Every obligation is proved by
+  the running product; `ostler qa validate` refuses a plan that says otherwise.
 
 What is open to you: author the missing scenarios, fix the code the evidence caught, ratify
 a documented contract change, or — if the evidence genuinely cannot be produced here —

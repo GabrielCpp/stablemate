@@ -15,7 +15,7 @@ QA planning.
 - Diagnostics: `{{ workhorse_var('context_notes') }}`
 
 Read `qa-okf-context.json` when present and repair only deterministic implementation
-grounding: missing/stale `code:` or `verify:` references, unowned changed production
+grounding: missing/stale `code:` or `tests:` references, unowned changed production
 units, or broken as-built links. Use exact `path::qualified-symbol` references and keep
 all repeated grounding bullets. Run `ostler fmt` and `ostler doctor` for docs you touch.
 

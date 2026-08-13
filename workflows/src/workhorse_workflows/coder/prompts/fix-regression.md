@@ -6,7 +6,7 @@ agent: agent
 
 The deterministic regression runner just executed the committed user-journey suite for this story
 and it did **not** come back clean. The deterministic runner compared failures with the complete
-OKF `verify:` index to provide diagnostic ownership, but attribution never excludes a regression
+OKF `tests:` index to provide diagnostic ownership, but attribution never excludes a regression
 from this story. Fix every reported failure in-branch now.
 
 You are **not** re-checking this story's ACs.
@@ -42,7 +42,7 @@ log excerpts above, reproduce each failure against the real stack, and fix its r
 
 Use the supplied OKF attribution and the story diff to locate each fix, not to avoid one. An
 unattributed test is a documentation/grounding gap as well as a failing test; repair its root cause
-and add the missing `verify:` relationship rather than bypassing it.
+and add the missing `tests:` citation rather than bypassing it.
 
 ## Rules
 

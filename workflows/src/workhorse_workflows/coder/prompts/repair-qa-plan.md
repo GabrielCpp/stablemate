@@ -32,28 +32,13 @@ scope — it is the single fastest way to lose this turn's work.
 {% endfor %}{% endif %}
 {% if workhorse_var('context_notes') %}- Context diagnostics: `{{ workhorse_var('context_notes') }}`
 {% endif %}{% if workhorse_var('plan_validation_notes') %}- Plan validation diagnostics: `{{ workhorse_var('plan_validation_notes') }}`
-{% endif %}{% if workhorse_var('plan_review_notes') %}- Semantic plan-review findings: `{{ workhorse_var('plan_review_notes') }}`
 {% endif %}{% if workhorse_var('run_assessment_notes') %}- Execution-assessment diagnostics: `{{ workhorse_var('run_assessment_notes') }}`
 {% endif %}{% if workhorse_var('audit_notes') %}- Independent-audit diagnostics: `{{ workhorse_var('audit_notes') }}`
 {% endif %}{% if workhorse_var('evidence_notes') %}- Deterministic evidence diagnostics: `{{ workhorse_var('evidence_notes') }}`
 {% endif %}
 
-The reviewer's findings are a list, one per line, each naming an id, a target and the
-smallest acceptable repair. That list is the whole of your worklist.
-
-{% if workhorse_var('prior_plan_reviews') %}## Everything The Plan Reviewer Has Already Asked For
-
-Every refusal across every draft of this plan, oldest first. An entry is still open unless
-the current plan satisfies it.
-
-{{ workhorse_var('prior_plan_reviews') }}
-
-A demand that appears here *and* in the findings above has now been made twice: the previous
-repair did not land, so re-stating the same intent in different words will not close it
-either. Change what the scenario **observes** — the oracle, the artifact it asserts on, the
-page or process it reads from — not how it is described.
-
-{% endif %}
+The findings are a list, one per line, each naming an id, a target and the smallest
+acceptable repair. That list is the whole of your worklist.
 
 ## The rule
 
@@ -63,8 +48,8 @@ cites it — change only the scenario functions and sections the diagnostics nam
 everything else exactly as it is — including formatting, ordering and function names.
 
 This is not a stylistic preference. Regenerating the whole plan resamples the scenarios the
-reviewer already accepted, which hands the next review a fresh set of defects to find; the
-loop then never terminates, and the story ends with no QA verdict at all. A repair that
+earlier passes already accepted, which hands the next gate a fresh set of defects to find;
+the loop then never terminates, and the story ends with no QA verdict at all. A repair that
 rewrites an uncited scenario is a defect in this turn, even when the rewrite is an
 improvement.
 
@@ -125,8 +110,9 @@ trip over:
 
 - Every scenario keeps its `target`, `mechanism`, explicit objective (its **docstring**),
   asserted causal preconditions, observable checkpoints, `covers`, and at least one
-  `qa.check`/`qa.require`. `mechanism` is provenance (`live`, `synthetic`, `fixture`);
-  `driver` is execution. Never use a driver name as a mechanism.
+  `qa.check`/`qa.require`. `mechanism` is provenance — `live` or `fixture`, never a test
+  suite standing in for the product; `driver` is execution. Never use a driver name as a
+  mechanism.
 - A scenario's id is its function name with underscores turned into dashes. Renaming a
   function renames the scenario the findings cite — don't, unless a finding asks.
 - **Module level is declarations only.** A request, a subprocess or a file write at module
@@ -151,14 +137,24 @@ still describe the module. Do not rewrite sections whose scenarios you did not t
 
 ## Coverage Has To Be Earned
 
-`ostler qa validate` grades what a scenario's `covers` is worth: it refuses one that claims
-coverage while its body calls no `qa.check`/`qa.require` at all. Past that count, an assertion
-on a runner's exit banner — `result.returncode == 0`, `"VITEST_EXIT:0" in out`, any bare
+`ostler qa validate` grades what a scenario's `covers` is worth on two counts. It refuses one
+that claims coverage while its body calls no `qa.check`/`qa.require` at all — and it refuses one
+that claims an obligation whose `checksDeclared` name a call no scenario invokes. That second
+one is the common repair: read the obligation row, and for every declared check add
+
+```python
+qa.verify("http_status", response, code=409, title="Manifest Conflict", covers=[OBLIGATION])
+```
+
+with the id and the check name as **literal** strings, because the binding is recovered
+statically before anything runs. Do not answer it by dropping the id from `covers` — that
+narrows the claim instead of proving it, and the evidence map then reports the obligation
+`uncovered`.
+
+Past those counts, an assertion on a runner's exit banner — `result.returncode == 0`, any bare
 `EXIT:0` — proves the suite is green and is indistinguishable from a suite that skipped every
-case. A cited test file needs the case named (`-run TestX`, `-k test_x`) so the coverage rides
-on a named test. When a finding cites a scenario like that, the repair is a real oracle —
-something the command prints about the behaviour, or an assertion on the surface — not a
-reworded objective.
+case. When a finding cites a scenario like that, the repair is a real oracle — something the
+command prints about the behaviour, or an assertion on the surface — not a reworded objective.
 
 ## Dry-Run The Scenarios You Repaired
 

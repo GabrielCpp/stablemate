@@ -37,7 +37,6 @@ moment:
 {% endfor %}{% endif %}
 {% if workhorse_var('context_notes') %}- Context diagnostics: `{{ workhorse_var('context_notes') }}`
 {% endif %}{% if workhorse_var('plan_validation_notes') %}- Previous plan validation diagnostics: `{{ workhorse_var('plan_validation_notes') }}`
-{% endif %}{% if workhorse_var('plan_review_notes') %}- Previous semantic plan-review diagnostics: `{{ workhorse_var('plan_review_notes') }}`
 {% endif %}{% if workhorse_var('run_assessment_notes') %}- Previous execution-assessment diagnostics: `{{ workhorse_var('run_assessment_notes') }}`
 {% endif %}{% if workhorse_var('audit_notes') %}- Previous independent-audit diagnostics: `{{ workhorse_var('audit_notes') }}`
 {% endif %}{% if workhorse_var('evidence_notes') %}- Previous deterministic evidence diagnostics: `{{ workhorse_var('evidence_notes') }}`
@@ -49,22 +48,6 @@ hunting for the finding that is missing from this brief.
 Do not rediscover or substitute another story. If a gate did route back here, repair the existing
 plan from its specific diagnostics instead of discarding valid scenarios. Newer semantic,
 assessment, audit, or evidence findings are not superseded by an earlier structurally valid result.
-
-{% if workhorse_var('prior_plan_reviews') %}## Everything The Plan Reviewer Has Already Asked For
-
-These are the reviewer's refusals across every draft of this plan, oldest first. They are not
-history — an entry is still open unless this draft satisfies it.
-
-{{ workhorse_var('prior_plan_reviews') }}
-
-A demand that appears here and is also in the diagnostics above has now been made twice: the
-previous repair did not land, so re-stating the same intent in different words will not close it
-either. Change what the scenario **observes** — the oracle, the artifact it asserts on, the page
-or process it reads from — not how it is described. Before writing, name for yourself which
-scenario now satisfies each numbered item; if any of them cannot be satisfied by an executable
-scenario, say so in `qa-plan.md` rather than leaving it silently unaddressed for a third pass.
-
-{% endif %}
 
 ## Required Inputs
 
@@ -158,9 +141,10 @@ def publish_records_the_real_author(qa: Qa) -> None:
 
 Only declare targets the story needs. Every scenario has a target, a mechanism, an explicit
 objective (its **docstring**), asserted causal preconditions, observable checkpoints,
-`covers`, and at least one `qa.check`. `mechanism` is provenance (`live`, `synthetic`, or
-`fixture`); `driver` is execution (`python`, `playwright`, or `maestro`). Never use a driver
-name as a mechanism. A scenario's id is its function name with underscores turned into
+`covers`, and at least one `qa.check`. `mechanism` is provenance (`live` — drive the running product — or `fixture` — drive it
+from a canned input). There is no third: a test suite standing in for the product is not
+evidence about the product. `driver` is execution (`python`,
+`playwright`, or `maestro`). Never use a driver name as a mechanism. A scenario's id is its function name with underscores turned into
 dashes, so the function name is the id — no separate uniqueness bookkeeping to get wrong.
 
 ### What the module may do
@@ -188,6 +172,7 @@ dashes, so the function name is the id — no separate uniqueness bookkeeping to
 | --- | --- |
 | `qa.check(label, condition, actual=…, expected=…, covers=…)` | record one claim; returns the verdict, never raises |
 | `qa.require(label, condition, …)` | record one claim and stop the scenario if it fails |
+| `qa.verify(check, observed, covers=…, **args)` | make an observation the book *declared*; ostler owns the comparison |
 | `with qa.step("label"):` | group a phase under a named step in the ledger |
 | `qa.capture(key, value)` / `qa.get(key)` | publish a value into the ledger and read it back |
 | `qa.artifact(path, kind="…")` | register a file as evidence; a relative path resolves inside `qa.dir` |
@@ -198,6 +183,10 @@ dashes, so the function name is the id — no separate uniqueness bookkeeping to
 | `qa.diagnostics.console_errors/page_errors/failed_requests/responses()` | the live console and network record for that page |
 | `qa.diagnostics.layout()` | where the page put its content: the viewport, and each region's box as a share of it |
 | `qa.maestro.flow([...])` / `qa.maestro.run(flow)` | build and run a Maestro flow; the result is yours to assert on |
+
+`qa.verify` is `qa.check`'s stronger sibling and the one to reach for whenever the obligation
+declares a check — see "Implement Each Obligation's Declared Checks" below. Everything true of
+`qa.check`'s ledger record is true of it.
 
 `qa.check` is the one piece of ceremony that is not optional: `qa-evidence.json` is built by
 aggregating assert records over what each one `covers`, so a bare `assert` proves nothing to
@@ -352,30 +341,51 @@ Use the OKF graph as a cross-layer test specification, not as a list of titles:
   accessibility cases when those requirements appear in the packet.
 - Traverse linked contracts across the actual producer and consumer. A controller mock does not
   prove a pooled-session, persistence, wire-format, or rendered-consumer obligation.
-- Treat `verificationRefs` as leads, not proof. Determine whether each reference is unit,
-  integration, mocked UI, or real-stack journey and whether its suite runs by default. An excluded
-  or manually invoked test cannot stand in for live evidence or a default regression gate.
+- Treat `verificationRefs` — the tests the impacted nodes' `tests:` bullets cite — as leads, not
+  proof. Determine whether each reference is unit, integration, mocked UI, or real-stack journey
+  and whether its suite runs by default. An excluded or manually invoked test cannot stand in for
+  live evidence or a default regression gate. What the book declares as *proof* is its
+  `checksDeclared`, below; a `tests:` citation is provenance.
 - For each scenario with `covers`, capture at least one runner-owned artifact that demonstrates
   the asserted result. A passing exit code with no criterion-specific artifact is insufficient.
 
 A green test suite alone never decides a pass. The observable behavior and runner-owned evidence
 are the oracle. Do not put verdicts in the plan or write under `qa/`.
 
-## Coverage Has To Be Earned
+## Implement Each Obligation's Declared Checks
 
-`covers=` is a claim that this scenario *proves* those ids, and validation grades it: a
-scenario that claims coverage and whose body contains no `qa.check`/`qa.require` call is
-rejected before anything runs. Beyond that count, the claim still has to be earned. A
-scenario whose only assertion is a runner's exit banner — `result.returncode == 0`,
-`"VITEST_EXIT:0" in out`, any bare `EXIT:0` — proves the suite is green; it proves nothing
-about the behaviour the obligation names, and it is indistinguishable from a suite that
-skipped every case. Assert something the command **prints about the behaviour itself** — the
-value, the count, the status — or drive the surface and assert on what it shows.
+`covers=` is a claim that this scenario *proves* those ids, and the book already says what
+proving them looks like. Every obligation row carries `checksDeclared`: the observations the
+node's `verify:` bullets declare, each with a `name`, its `args`, and the canonical `call`
+text. **That list is your worklist, not a hint.** For each id a scenario claims, invoke every
+check it declares:
 
-The same applies to pointing a scenario at a whole committed test file. Running the file and
-asserting it passed claims coverage on the file happening to be green; name the case that
-proves it (`-run TestPublishAuthor`, `-k test_publish_author`) so the coverage rides on a
-named test.
+```python
+qa.verify("http_status", response, code=409, title="Manifest Conflict", covers=[OBLIGATION])
+qa.verify("unchanged", (before, after), subject="manifest", covers=[OBLIGATION])
+```
+
+`ostler qa validate` refuses a plan whose claimed obligation has a declared call no scenario
+invokes, and the check's comparison is ostler's rather than yours — which is the point.
+`qa.check` takes an already-collapsed bool, so a scenario can decide weakly what "the manifest
+is unchanged" means; `qa.verify` cannot, because the assertion *is* the claim.
+
+**The ids in `covers=` must be literal strings** — a module-level constant holding one literal,
+or the literal itself. The binding is recovered statically, before anything runs, so an id
+assembled from a loop variable, an f-string, or a lookup binds to nothing and the plan is
+rejected. The same goes for the check name.
+
+An obligation whose row has no `checksDeclared` is one the book never declared an observation
+for. Cover it with `qa.check`/`qa.require` as before, and say in `qa-plan.md` that the
+obligation carries no declaration — that is a documentation gap someone else repairs, and
+naming it is how it gets seen.
+
+Beyond the declared calls, the claim still has to be earned. A scenario whose only assertion
+is a runner's exit banner — `result.returncode == 0`, any bare `EXIT:0` — proves the suite is
+green; it proves nothing about the behaviour the obligation names, and it is indistinguishable
+from a suite that skipped every case. Assert something the command **prints about the
+behaviour itself** — the value, the count, the status — or drive the surface and assert on what
+it shows.
 
 ## Dry-Run Every Scenario You Write
 

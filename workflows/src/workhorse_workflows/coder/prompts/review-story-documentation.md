@@ -68,11 +68,24 @@ changelog of this story. In particular, for the surfaces this story touched:
   claimed-as-covered and never tested. Flag a bullet whose success effect, error cases,
   persistence and emissions are fused into one sentence, and name the seams to split it on;
   the repair is repeating the key, not rewording;
-- `code:` and `verify:` cite real implementation and tests without using broad or invented refs,
+- `code:` and `tests:` cite real implementation and tests without using broad or invented refs,
   and every ref names something that currently exists — `ostler doctor` rejects a `code:`
   target that isn't there, with no exception. A symbol or file this story deleted needs no
   citation at all; do not send the author back to add one, and flag a bullet that still cites
   something deleted as a defect to remove;
+- `verify:` fails differently, and is judged differently. It is not a ref: it declares the
+  **observation** that fulfils the node's obligations, as a named call from ostler's check
+  vocabulary with typed arguments — `http_status`, `json_path`, `unchanged`, `keys_unchanged`,
+  `count`, `absent`, `visible`, `persists`, `emitted`, `conflict_on_stale`. A test id in a
+  `verify:` is a defect whose repair is to move it to `tests:` and declare the check instead;
+  `ostler doctor` reports that one as `unparsed-check`;
+- every node this story touched that mints obligations **declares at least one observation**.
+  A node whose `does:`/`raises:`/`states:` bullets carry no `verify:` is a finding, and the
+  repair is a `verify:` bullet per observation — not prose, not a promise in the story. Nothing
+  downstream can supply it: `ostler qa validate` has no declaration to enforce, the evidence map
+  reports no deficit, and the obligation reaches QA where any assertion satisfies it. `ostler
+  doctor` warns `undeclared-obligation`; a warn does not block the gate, which is why this
+  review is where it gets caught;
 - behavior this story changed on an in-scope node is described completely enough to guide a
   behavior-equivalent implementation, and behavior it did not change was not *degraded* —
   a bullet the author deleted or weakened is a defect, a bullet that was already thin before

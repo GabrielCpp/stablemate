@@ -87,6 +87,35 @@ deleted — never to invent a citation for something gone.
 If the gate notes name an unowned path, `not_required` is the one answer that cannot be right:
 a grounding bullet you had to add makes the answer `documented`.
 
+**The other half: what the behavior would look like observed.** `code:` and `tests:` say where
+the behavior lives; `verify:` says what holds when it works, and it is a *declaration*, not a
+ref. It is a named call from ostler's check vocabulary with typed arguments — `http_status`,
+`json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `visible`, `persists`, `emitted`,
+`conflict_on_stale`:
+
+```markdown
+- does: on a stale write the manifest is left byte-identical and the request is refused
+- verify: http_status(409, title="Manifest Conflict")
+- verify: unchanged(subject="manifest")
+- tests: `api/publish_test.go::TestPublish_Conflict`
+```
+
+Two grounding failures land here, and they are repaired differently:
+
+- **`unparsed-check`** (error, blocking) — the value is not a call: a test id, an unknown name, a
+  bad argument. Move a test id to `tests:` and declare the observation in its place. Never
+  "repair" it by deleting the bullet.
+- **`undeclared-obligation`** (warn) — the node mints obligations and declares nothing at all, so
+  a QA plan claiming them can assert anything and still pass. Add one `verify:` per observation
+  the node's normative bullets promise. Read the code you just grounded to decide *which* call:
+  the handler that refuses a stale write declares `http_status(409, …)`; the one that writes
+  through a store before answering declares `persists(subject=…)`. This is the one bullet nobody
+  downstream can supply for you — only the node knows what the behavior promised.
+
+Do not invent an observation the code does not make. If a normative bullet is genuinely
+unobservable from outside, that is usually the bullet being descriptive rather than normative:
+reword it, which is a repair the deletion rule above already permits.
+
 ## Converge
 
 Run `ostler fmt` on the docs you touched, then `ostler doctor` (from the docs root, `-C` if
