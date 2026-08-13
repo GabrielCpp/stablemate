@@ -90,6 +90,10 @@ ALLOWED: dict[str, str] = {
     "ostler/ostler/qa/session.py":
         "tier 2 — QA daemons are spawned detached and torn down by group; this is the "
         "module whose Linux/macOS killpg difference the portability skill uses as its example.",
+    "ostler/ostler/qa/drivers.py":
+        "tier 2 — runs one scenario per subprocess in its own group, so a scenario that "
+        "wedges is killed as a tree and cannot leave a browser or a server behind. Same "
+        "lifecycle as session.py above, on the executing side of it.",
 }
 
 

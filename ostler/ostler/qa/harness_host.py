@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -57,6 +58,18 @@ DEFAULT_SCENARIO_TIMEOUT = 300.0
 #: instead of turning every `validate` into a run.
 DESCRIBE_TIMEOUT = 60.0
 
+#: The `PATH` a `describe` subprocess is given: deliberately minimal, because importing a
+#: plan module must not depend on whatever the operator happened to have on theirs — a plan
+#: that describes on one machine and not the next is the failure this whole module exists to
+#: move earlier. `os.defpath` is the stdlib's own per-platform answer for that (`:/bin:/usr/bin`
+#: on POSIX, `.;C:\bin` on Windows), where a spelled-out `/usr/bin:/bin:/usr/local/bin` is a
+#: Unix assumption in a package that ships to PyPI. Its current-directory entries are dropped:
+#: they resolve against `cwd=root`, so a repo containing a file named like a system tool would
+#: shadow the real one for its own QA subprocess.
+MINIMAL_PATH = os.pathsep.join(
+    part for part in os.defpath.split(os.pathsep) if part and part != os.curdir
+)
+
 
 def default_interpreter(root: Path) -> Path:
     """The interpreter a plan is read and run under when it names none.
@@ -77,7 +90,11 @@ def harness_env(base: dict[str, str] | None = None) -> dict[str, str]:
     """`base` with the harness on `PYTHONPATH`, which is the whole of its installation."""
     env = dict(base or {})
     existing = env.get("PYTHONPATH")
-    env["PYTHONPATH"] = f"{HARNESS_DIR}:{existing}" if existing else str(HARNESS_DIR)
+    # `os.pathsep`, not a literal `:` — PYTHONPATH is split by the platform's separator, and
+    # on Windows a colon-joined pair is one unparseable entry rather than two directories.
+    env["PYTHONPATH"] = (
+        f"{HARNESS_DIR}{os.pathsep}{existing}" if existing else str(HARNESS_DIR)
+    )
     # A plan module lives in the spec directory, which is documentation under version
     # control — so importing it writes a `__pycache__/` next to `plan.md` that nothing
     # cleans up and the next `git add` sweeps in.
@@ -99,7 +116,7 @@ def describe(module: Path, root: Path, interpreter: Path | None = None) -> tuple
         done = subprocess.run(  # noqa: S603 — fixed argv, interpreter resolved above
             harness_argv(interpreter, "describe", str(module)),
             cwd=root,
-            env=harness_env({"PATH": "/usr/bin:/bin:/usr/local/bin"}),
+            env=harness_env({"PATH": MINIMAL_PATH}),
             capture_output=True,
             text=True,
             timeout=DESCRIBE_TIMEOUT,
