@@ -1214,6 +1214,52 @@ def test_a_plan_review_cut_at_its_budget_goes_to_the_runner_unjudged(
     assert okf.runs == 1, "the plan the review never judged is still the one that ran"
 
 
+def test_a_plan_lane_past_its_wall_clock_budget_runs_the_plan_it_has(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A spent wall-clock budget over a plan that parses is the same demotion as a spent
+    reviewer budget: go to the runner.
+
+    `plan_lane_budget_s=0` is the seam — the first plan turn charges a real, tiny delta, and
+    every plan-lane ceiling is past before the reviewer is entered. A gate whose refusal
+    would only buy a lap `_plan_lap` will no longer grant is pure expense, and this is the
+    most expensive gate in the lane.
+    """
+    okf = ostler()
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY, plan_lane_budget_s=0), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["review-qa-plan"] == 0, agent.counts()
+    assert okf.runs == 1, "the plan is still the one that ran"
+
+
+def test_a_plan_lane_past_its_budget_with_no_runnable_plan_gives_up_naming_it(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The other half: past the budget with a plan that will not import, there is nothing to
+    demote to the runner, so the flow stops — and the give-up names the wall-clock budget.
+
+    Which budget ran out is the whole value of the record. A story filed as "0 attempts"
+    because the give-up reported the code-rework counter reads as untried; this one says the
+    lane ran out of hour, which is the thing an operator would raise.
+    """
+    ostler(plan_invalid=99)
+    agent = _Agent(docs, escalate=True)
+
+    result = drive_flow(Qa(story=STORY, plan_lane_budget_s=0), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert result.spent == "the QA plan lane's wall-clock budget", result.spent
+
+
 def test_a_refusal_only_the_stack_could_fix_does_not_cost_a_replan(
     docs: Path,
     ostler: Callable[..., _Ostler],

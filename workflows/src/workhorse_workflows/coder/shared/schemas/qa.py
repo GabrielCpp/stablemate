@@ -620,6 +620,23 @@ class QaLoop(CoderResult):
     #: explicitly establishes False for a fresh, known-clean QA pass.
     docs_recheck_required: bool = True
 
+    #: Wall-clock seconds this lane has spent inside agent turns, and how much of that the
+    #: plan lane (`plan`, `review_plan`, `repair_plan`) took. `Qa.qa_lane_budget_s` and
+    #: `Qa.plan_lane_budget_s` are what they are checked against.
+    #:
+    #: **Accumulated as deltas, never derived from a start timestamp.** A lane that stored
+    #: when it began and subtracted `now` would come back from a resume — or from a run
+    #: parked overnight at the operator gate — already over budget, and would then land on
+    #: the exhaustion path having spent nothing. What is being bounded is effort, and a
+    #: charged delta is the only form of it that survives a checkpoint honestly.
+    #:
+    #: Deliberately not blanked by `cleared()`, unlike the gate diagnostics: a re-planned
+    #: story has no findings against it yet, but the hour it already spent is still gone.
+    #: `ensure_stack` is charged to neither — it is `INFRA_NODES` and can legitimately wait
+    #: forty minutes for a stack to boot, which is not effort this flow can spend less of.
+    lane_seconds: float = 0.0
+    plan_lane_seconds: float = 0.0
+
     @property
     def plan_rework_total(self) -> int:
         """Repairs spent across validation, review, and post-run plan gates.
@@ -662,6 +679,19 @@ class QaLoop(CoderResult):
     def with_qa(self, qa: QaResult) -> QaLoop:
         """The same loop carrying a new running verdict."""
         return self.model_copy(update={"qa": qa})
+
+    def charged(self, seconds: float, *, plan: bool = False) -> QaLoop:
+        """The same loop with one turn's wall-clock added to the lane it was spent in.
+
+        `plan` charges the plan lane as well as the whole one — the plan lane is a slice of
+        the lane, not a sibling of it, so a plan turn is spent twice over by design.
+        """
+        return self.model_copy(
+            update={
+                "lane_seconds": self.lane_seconds + seconds,
+                "plan_lane_seconds": self.plan_lane_seconds + (seconds if plan else 0.0),
+            }
+        )
 
     def require_docs_recheck(self) -> QaLoop:
         """Mark a possible as-built mutation; this taint is monotonic within the flow."""

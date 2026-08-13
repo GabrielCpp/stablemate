@@ -68,6 +68,7 @@ Divergences from the YAML, all deliberate:
 from __future__ import annotations
 
 import sys
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, ClassVar, NamedTuple
@@ -340,7 +341,28 @@ class Qa(Workflow):
     #: ones that still match, so QA does not write scenarios for an earlier story's
     #: abandoned work. Empty drops nothing, which is the pre-snapshot behaviour.
     preexisting: tuple[str, ...] = ()
-
+    #: The lane's wall-clock ceilings, in seconds of agent turns. Fields and not `ClassVar`s
+    #: like the lap budgets below, and the difference is deliberate: those are invariants of
+    #: the flow's shape, while "a story's QA must fit in an hour" is a policy an operator
+    #: decides per run — so it is a `--param`, lands in the checkpoint, and appears in the
+    #: telemetry beside the counters it bounds.
+    #:
+    #: The per-turn caps and the lap budgets bound each turn and their count; their *product*
+    #: is still well over an hour, so neither of them delivers the ceiling. This does. The
+    #: plan lane gets the larger share because it is where the hour actually goes, and 3300
+    #: rather than 3600 leaves the non-agent nodes — the runner, the evidence gate, the
+    #: stamping — their share of the hour. `ensure_stack` is outside both (see
+    #: `QaLoop.lane_seconds`): a lane that waits forty minutes for a stack to boot will
+    #: exceed the hour by design.
+    #:
+    #: Three other turns are deliberately uncharged, for one reason between them: they are
+    #: not effort the budget can buy less of. `resolve_operator` and `apply_feedback` run
+    #: *past* the budget — the operator gate is the escalation these ceilings land on, and
+    #: charging the escalation for the exhaustion that caused it would let a resolved block
+    #: exhaust again on arrival. `report_dev` is terminal: there is no lap left for a charge
+    #: to deny.
+    qa_lane_budget_s: int = 3300
+    plan_lane_budget_s: int = 2400
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
     #: fill each one in for any node or sub-flow that declares a parameter of the same
@@ -543,6 +565,7 @@ class Qa(Workflow):
         so a blocked repair carries its reason into the operator gate it routes to.
         """
         self.logger.info("repairing the QA obligation packet", extra={"activity": True})
+        started = time.monotonic()
         reply = self.agent(
             "prompts/repair-qa-context.md",
             returns=QaContextRepair,
@@ -557,7 +580,11 @@ class Qa(Workflow):
                 "context_notes": loop.context_notes,
             },
         )
-        loop = loop.require_docs_recheck().with_qa(reply.qa_result)
+        loop = (
+            loop.charged(time.monotonic() - started)
+            .require_docs_recheck()
+            .with_qa(reply.qa_result)
+        )
         if reply.qa_context_repair.status == "repaired":
             return Continue(
                 reply, self.build_context, loop=loop.update(context_rework=loop.context_rework + 1)
@@ -592,6 +619,7 @@ class Qa(Workflow):
         """
         self.logger.info("planning QA for %s", self.ctx.story_slug, extra={"activity": True})
         overran = ""
+        started = time.monotonic()
         try:
             self.agent(
                 "prompts/plan-qa.md",
@@ -618,7 +646,9 @@ class Qa(Workflow):
                 extra={"activity": True},
             )
             overran = _OVERRAN_PLAN
-        return self._validated(loop, overran=overran)
+        return self._validated(
+            loop.charged(time.monotonic() - started, plan=True), overran=overran
+        )
 
     def repair_plan(self, loop: QaLoop) -> Continue | Await | Done:
         """Edit the cited part of a plan that already exists, leaving the rest byte-identical.
@@ -636,6 +666,7 @@ class Qa(Workflow):
         self.logger.info("repairing the QA plan for %s", self.ctx.story_slug,
                          extra={"activity": True})
         overran = ""
+        started = time.monotonic()
         try:
             self.agent(
                 "prompts/repair-qa-plan.md",
@@ -662,7 +693,9 @@ class Qa(Workflow):
                 extra={"activity": True},
             )
             overran = _OVERRAN_REPAIR
-        return self._validated(loop, overran=overran)
+        return self._validated(
+            loop.charged(time.monotonic() - started, plan=True), overran=overran
+        )
 
     def _plan_args(self, loop: QaLoop) -> dict[str, object]:
         """Every diagnostic the loop collected, for whichever plan turn is about to run.
@@ -750,6 +783,19 @@ class Qa(Workflow):
                     extra={"activity": True},
                 )
                 return Continue(validation, self.run, loop=loop.update(plan_authored=True))
+            if loop.plan_lane_seconds >= self.plan_lane_budget_s:
+                # The same arithmetic as the budget skip above, on the other ceiling. A
+                # reviewer entered past the wall-clock budget can only refuse the plan into a
+                # lap `_plan_lap` will no longer grant, so its verdict cannot change the
+                # route — and it is the most expensive turn in the lane to learn that from.
+                self.logger.info(
+                    "the QA plan lane has spent %.0fs of its %ds budget — going to the "
+                    "runner without a review",
+                    loop.plan_lane_seconds,
+                    self.plan_lane_budget_s,
+                    extra={"activity": True},
+                )
+                return Continue(validation, self.run, loop=loop.update(plan_authored=True))
             return Continue(validation, self.review_plan, loop=loop)
         return self._guard_plan_validation(validation, loop)
 
@@ -789,6 +835,7 @@ class Qa(Workflow):
         would be demoted cannot change where the plan goes next, and this is the most
         expensive node in the plan lane.
         """
+        started = time.monotonic()
         try:
             review = self.agent(
                 "prompts/review-qa-plan.md",
@@ -829,7 +876,14 @@ class Qa(Workflow):
                 "the QA-plan review was stopped at its budget — going to the runner unjudged",
                 extra={"activity": True},
             )
-            return Continue(None, self.run, loop=loop.update(plan_authored=True))
+            return Continue(
+                None,
+                self.run,
+                loop=loop.charged(time.monotonic() - started, plan=True).update(
+                    plan_authored=True
+                ),
+            )
+        loop = loop.charged(time.monotonic() - started, plan=True)
         problems = _plan_finding_problems(review)
         if problems:
             raise WorkflowFailed(
@@ -986,6 +1040,7 @@ class Qa(Workflow):
         arm is spelled out below in the order the YAML chained them, and every fall-through
         lands on the same two loops: the plan rework, or the setup repair.
         """
+        started = time.monotonic()
         assessment = self.agent(
             "prompts/qa-story.md",
             returns=QaAssessment,
@@ -1004,7 +1059,7 @@ class Qa(Workflow):
             },
         )
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
-        loop = loop.update(
+        loop = loop.charged(time.monotonic() - started).update(
             assessment_notes=_finding(assessment.disposition == "confirmed", assessment.notes),
             assessment_disposition=assessment.disposition,
             assessment_failure_class=assessment.failure_class,
@@ -1081,6 +1136,7 @@ class Qa(Workflow):
         repairs each gap; `_routed` sends them there. A refutation naming no findings still
         takes the prose path to the plan, so this adds no new way to kill a passing run.
         """
+        started = time.monotonic()
         result = self.agent(
             "prompts/audit-qa.md",
             returns=QaAudit,
@@ -1096,7 +1152,7 @@ class Qa(Workflow):
                 "qa_notes": loop.qa.notes,
             },
         )
-        loop = loop.update(
+        loop = loop.charged(time.monotonic() - started).update(
             audit_notes=_finding(
                 result.verdict == "stands" and result.refutation_class == "none", result.notes
             ),
@@ -1121,6 +1177,18 @@ class Qa(Workflow):
                 "the audit has refuted this pass %d times with plan-only findings — filing "
                 "this one as backlog work rather than spending another plan repair",
                 loop.audit_rework,
+                extra={"activity": True},
+            )
+            return Continue(result, self.backlog, loop=loop)
+        if loop.lane_seconds >= self.qa_lane_budget_s:
+            # Same landing as the blocking-audit ceiling above, on the wall-clock one. The
+            # refutation is not discarded — it is filed as backlog work, which is what this
+            # flow does with every plan-only finding it has no lap left to repair.
+            self.logger.info(
+                "the QA lane has spent %.0fs of its %ds budget — filing the audit's "
+                "plan-only refutation as backlog work",
+                loop.lane_seconds,
+                self.qa_lane_budget_s,
                 extra={"activity": True},
             )
             return Continue(result, self.backlog, loop=loop)
@@ -1155,6 +1223,7 @@ class Qa(Workflow):
         amended the ACs on disk, so the parent re-enters `dev` with the bumped budget rather
         than re-running QA against a story that changed underneath it.
         """
+        started = time.monotonic()
         triage = self.agent(
             "prompts/triage-qa.md",
             returns=QaTriage,
@@ -1171,7 +1240,9 @@ class Qa(Workflow):
                 "max_triage_scopes": str(self.MAX_TRIAGE_SCOPES),
             },
         )
-        loop = loop.update(failure_class=triage.qa_failure_class)
+        loop = loop.charged(time.monotonic() - started).update(
+            failure_class=triage.qa_failure_class
+        )
         if loop.triage_scope >= self.MAX_TRIAGE_SCOPES:
             return self._fixable(triage, loop)
         if triage.triage_action == "rescope":
@@ -1241,11 +1312,14 @@ class Qa(Workflow):
         there are no QA failures here: the note is the work. No rework is spent, which is the
         YAML's wiring — feedback is not a failure of the fix loop.
         """
+        started = time.monotonic()
         result = self._apply_fixes(qa_notes="", operator_feedback=content, power="medium")
         return Continue(
             result,
             self.build_context,
-            loop=loop.require_docs_recheck().with_qa(result),
+            loop=loop.charged(time.monotonic() - started)
+            .require_docs_recheck()
+            .with_qa(result),
         )
 
     def regression(self, loop: QaLoop) -> Continue:
@@ -1326,6 +1400,7 @@ class Qa(Workflow):
         platform = self.output(detect_regression_platform)
         run = self.output(run_regression_suite)
         self.logger.info("fixing the regression suite", extra={"activity": True})
+        started = time.monotonic()
         self.agent(
             "prompts/fix-regression.md",
             returns=RegressionFix,
@@ -1351,7 +1426,7 @@ class Qa(Workflow):
         return Continue(
             run,
             self.run_regression,
-            loop=loop.update(
+            loop=loop.charged(time.monotonic() - started).update(
                 regression_fix=loop.regression_fix + 1,
                 regression_fix_applied=True,
                 docs_recheck_required=True,
@@ -1426,8 +1501,11 @@ class Qa(Workflow):
         exhausted rather than as blocked on the one thing it is actually blocked on.
         """
         self.logger.info("applying QA fixes", extra={"activity": True})
+        started = time.monotonic()
         result = self._apply_fixes(qa_notes=loop.qa.notes, operator_feedback=None, power="high")
-        loop = loop.update(qa=result, qa_rework=loop.qa_rework + 1, docs_recheck_required=True)
+        loop = loop.charged(time.monotonic() - started).update(
+            qa=result, qa_rework=loop.qa_rework + 1, docs_recheck_required=True
+        )
         if result.status == "blocked":
             self.logger.info("QA fixer reported blocked; escalating: %s", result.notes)
             return self._gate(result, loop)
@@ -1453,6 +1531,7 @@ class Qa(Workflow):
         """
         self.logger.info("repairing the QA stack", extra={"activity": True})
         impl = self.output(resolve_impl_context)
+        started = time.monotonic()
         result = self.agent(
             "prompts/setup-fix.md",
             returns=SetupResult,
@@ -1478,7 +1557,7 @@ class Qa(Workflow):
                 "runtime_python": sys.executable,
             },
         )
-        loop = loop.update(
+        loop = loop.charged(time.monotonic() - started).update(
             setup_rework=loop.setup_rework + 1,
             docs_recheck_required=True,
             # What this turn was asked to repair, for the next `_guard_setup` to compare the
@@ -1568,10 +1647,11 @@ class Qa(Workflow):
         run. Spending `qa_rework` per lap is what the increment below was already for; all
         that was missing is somebody reading it.
         """
+        started = time.monotonic()
         result = self._apply_fixes(
             qa_notes=loop.qa.notes, operator_feedback=content, power="medium"
         )
-        loop = loop.update(
+        loop = loop.charged(time.monotonic() - started).update(
             qa=result,
             qa_rework=loop.qa_rework + 1,
             docs_recheck_required=True,
@@ -1677,6 +1757,9 @@ class Qa(Workflow):
                 repaired_failures=loop.run_failures,
                 repaired_lap="QA-plan repair",
             ),
+            # A post-run finding is by construction a finding against a plan that imported
+            # and ran, so what is on disk is runnable.
+            plan_validates=True,
         )
 
     def _stalled(self, result: object, loop: QaLoop, lap: str) -> Continue | Await | Done:
@@ -1726,7 +1809,11 @@ class Qa(Workflow):
                 loop, f"{loop.plan_validation_rework} QA-plan schema repair"
             )
         return self._plan_lap(
-            result, loop.update(plan_validation_rework=loop.plan_validation_rework + 1)
+            result,
+            loop.update(plan_validation_rework=loop.plan_validation_rework + 1),
+            # The one guard reached *because* the plan does not import: there is nothing on
+            # disk the runner could be handed instead.
+            plan_validates=False,
         )
 
     def _guard_plan_review(self, result: object, loop: QaLoop) -> Continue | Await | Done:
@@ -1734,17 +1821,41 @@ class Qa(Workflow):
         if loop.plan_judgement_rework >= self.MAX_PLAN_REWORKS:
             return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
         return self._plan_lap(
-            result, loop.update(plan_review_rework=loop.plan_review_rework + 1)
+            result,
+            loop.update(plan_review_rework=loop.plan_review_rework + 1),
+            # `review_plan` only ever judges a plan `_validated` passed, so a refusal is a
+            # judgement about a plan that imports.
+            plan_validates=True,
         )
 
-    def _plan_lap(self, result: object, loop: QaLoop) -> Continue | Await | Done:
+    def _plan_lap(
+        self, result: object, loop: QaLoop, *, plan_validates: bool
+    ) -> Continue | Await | Done:
         """Take the lap the guard just paid for, unless the plan has had too many in total.
 
         The three guards above each bound their own stage, and nothing bounded the sum until
         this did. `loop` arrives already incremented, so the ceiling is checked against what
         this lap would make the total — a flow that stops *after* spending its last lap has
         paid for a turn it will not use.
+
+        The lap count is not the only ceiling: every plan lap funnels through here, so this
+        is also where `plan_lane_budget_s` is enforced. What a spent wall-clock budget costs
+        depends on what is on disk, which is why `plan_validates` is passed in rather than
+        inferred — a plan that parses is demoted to the runner exactly as a spent reviewer
+        budget demotes it, with `run` → `assess` → `audit` all still standing downstream, and
+        only a plan that will not import has nothing left to run and ends the flow.
         """
+        if loop.plan_lane_seconds >= self.plan_lane_budget_s:
+            if plan_validates:
+                self.logger.info(
+                    "the QA plan lane has spent %.0fs of its %ds budget — running the plan "
+                    "it has rather than repairing it further",
+                    loop.plan_lane_seconds,
+                    self.plan_lane_budget_s,
+                    extra={"activity": True},
+                )
+                return Continue(result, self.run, loop=loop.update(plan_authored=True))
+            return self._exhausted(loop, "the QA plan lane's wall-clock budget")
         if loop.plan_rework_total > self.MAX_TOTAL_PLAN_LAPS:
             self.logger.info(
                 "the QA plan has had %d repair laps across every gate — ending the flow",
@@ -1764,6 +1875,8 @@ class Qa(Workflow):
         """
         if loop.setup_rework >= self.MAX_SETUP_REWORKS:
             return self._exhausted(loop, f"{loop.setup_rework} QA-setup repair")
+        if loop.lane_seconds >= self.qa_lane_budget_s:
+            return self._exhausted(loop, "the QA lane's wall-clock budget")
         if loop.blocked_problems and loop.blocked_problems == loop.setup_problems:
             self.logger.info(
                 "the QA setup fix left the identical blocked bundle (%s) — escalating",
@@ -1792,6 +1905,12 @@ class Qa(Workflow):
         loop = loop.update(
             repaired_failures=loop.run_failures, repaired_lap="code fix"
         )
+        if loop.lane_seconds >= self.qa_lane_budget_s:
+            # A code fix is a `power="medium"` turn plus a whole suite re-run, so it is the
+            # single most expensive lap left. The verdict the evidence supports is the
+            # failure already on the loop, and `_exhausted` is how this flow reports one it
+            # ran out of room to repair.
+            return self._exhausted(loop, "the QA lane's wall-clock budget")
         if loop.qa_rework < self.MAX_QA_REWORKS:
             return Continue(result, self.apply_fixes, loop=loop)
         if loop.bonus_used or loop.failure_class != "evidence":

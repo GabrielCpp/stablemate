@@ -158,6 +158,12 @@ class Coder(Workflow):
     target_env: str = "local"
     #: The QA stack manifest `qa` reads to bring services up.
     qa_stack_manifest: str = "qa-stack.yml"
+    #: How long a story's QA lane may spend inside agent turns, and how much of that the
+    #: plan lane may take. Restated here — as `target_env` and `operator_mode` are — only so
+    #: an operator can set them once on the run rather than per story; `Qa.qa_lane_budget_s`
+    #: is where the numbers are argued, and the two defaults move together.
+    qa_lane_budget_s: int = 3300
+    plan_lane_budget_s: int = 2400
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
     #: fill each one in for any node or sub-flow that declares a parameter of the same
@@ -416,6 +422,8 @@ class Coder(Workflow):
             operator_mode=self.operator_mode,
             target_env=self.target_env,
             qa_stack_manifest=self.qa_stack_manifest,
+            qa_lane_budget_s=self.qa_lane_budget_s,
+            plan_lane_budget_s=self.plan_lane_budget_s,
             triage_scope_count=triage,
             preexisting=self._preexisting(),
         )

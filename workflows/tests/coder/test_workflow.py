@@ -212,6 +212,8 @@ class _StubFlow(Workflow):
     operator_mode: str = ""
     target_env: str = ""
     qa_stack_manifest: str = ""
+    qa_lane_budget_s: int = 0
+    plan_lane_budget_s: int = 0
     triage_scope_count: int = 0
     repo: str = ""
     branch: str = ""
