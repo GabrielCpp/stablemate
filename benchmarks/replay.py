@@ -68,7 +68,11 @@ QA_OUTPUTS = (
 
 # The nodes this harness exists to move. Others still print — a change that fixes one loop
 # by pushing the work into another has not fixed anything — but these are the headline.
-WATCHED = ("plan-qa", "review-qa-plan", "document-story", "review-story-documentation")
+#
+# `review-qa-plan` used to be here and is gone: the node was deleted and its job folded
+# into `audit-qa`, so leaving it listed would keep bolding a row that can never appear
+# again while the node that inherited the work printed unmarked.
+WATCHED = ("plan-qa", "audit-qa", "document-story", "review-story-documentation")
 
 BOLD, RED, DIM, RESET = "\033[1m", "\033[31m", "\033[2m", "\033[0m"
 
