@@ -1,6 +1,16 @@
 # One service, no build step, stock image. The QA sandbox reaches it by forwarding a
 # container-loopback port at this service, so the port number is a contract with
 # `qa-stack.yml` and with `benchmarks/suites/README.md`'s port register, not a preference.
+
+# Named explicitly, because the default is the *directory basename* and every trial
+# directory is named `seat-booking` — farrier derives its generated skill names from that
+# basename, so a trial cannot be named after its defect. Two replays would then share one
+# project: the second trial's `docker compose` would find the first's containers and volume
+# already there and adopt them, and the seeded defect would never be the code under test.
+# One fixed project name instead, torn down and rebuilt at every bring-up (see the `launch`
+# line in `qa-stack.yml`), so a trial always starts from an empty ledger.
+name: seat-booking-bench
+
 services:
   seat-booking:
     image: python:3.12-slim

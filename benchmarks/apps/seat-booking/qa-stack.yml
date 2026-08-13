@@ -10,9 +10,22 @@ entry_url: http://localhost:18083
 health_path: /healthz
 # A substring of the response *body*, not a host:port — `/healthz` answers `{"status": "ok"}`.
 identity: '"status": "ok"'
-reuse: always
+# `never`, not the `always` a stock fixture stack would take. `always` adopts whatever is
+# already answering `/healthz` with the identity marker — and between two replays that is
+# the *previous trial's* container, serving the previous trial's bind-mounted `app/`. The
+# seeded defect would then not be in the service under test at all, and the trial would
+# score a clean miss for a reason no report could show. The stack is code-dependent here by
+# construction: `./app` is bind-mounted, so adoption is never safe.
+reuse: never
 boot_timeout: 60
-launch: docker compose -f compose.yml up -d --wait
+# `down -v` first, so each bring-up starts from an empty ledger. The showing is a fixed
+# 12-seat pool the book pins with `count(subject="seats", equals=12)`, so seats held or sold
+# by one QA execution are gone for the next one: without the reset the map depletes across
+# laps and a later scenario fails for having no free seat rather than for the defect it was
+# written to catch.
+launch: >-
+  docker compose -f compose.yml down -v --remove-orphans &&
+  docker compose -f compose.yml up -d --force-recreate --wait
 health:
   - curl -sf -o /dev/null http://localhost:18083/healthz
 
