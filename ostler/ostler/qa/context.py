@@ -754,17 +754,41 @@ def _working_text(root: Path, path: str) -> str:
         return ""
 
 
+def _revision_holds(root: Path, revision: str, path: str) -> bool:
+    """Whether `revision` has a blob at `path` — asked of the bytes, never of their decoding."""
+    if not path or path == "/dev/null":
+        return False
+    try:
+        _git_bytes(root, "cat-file", "-e", f"{revision}:{path}")
+    except RuntimeError:
+        return False
+    return True
+
+
 def _grounding_exists(root: Path, base: str, head: str, ref: str) -> bool:
     path, separator, symbol = ref.partition("::")
-    texts = [_revision_text(root, base, path)]
-    texts.append(
-        _working_text(root, path) if head == "WORKTREE" else _revision_text(root, head, path)
+    # Existence is asked of the filesystem and the object store, not of `_revision_text` /
+    # `_working_text`. Those answer "" for a file they cannot decode as UTF-8, and reading
+    # that as "not there" made a `code:` bullet citing any *binary* file permanently
+    # unsatisfiable — a `.docx` test fixture, a golden PNG, a compiled sample. The book was
+    # right and the gate refused it, so the only rewrite that cleared the finding was
+    # deleting a true citation. Same shape as the `inventory.declares` note below: a probe
+    # that cannot represent the answer reports the wrong one.
+    present = _revision_holds(root, base, path) or (
+        (root / path).is_file() if head == "WORKTREE" else _revision_holds(root, head, path)
     )
-    texts = [text for text in texts if text]
-    if not texts:
+    if not present:
         return False
     if not separator or not symbol or not path.endswith(".py"):
         return True
+    texts = [
+        text
+        for text in (
+            _revision_text(root, base, path),
+            _working_text(root, path) if head == "WORKTREE" else _revision_text(root, head, path),
+        )
+        if text
+    ]
     # `inventory.declares`, not `_symbols_for_lines`: the two answer different questions and
     # only the first one is grounding's. `_symbols_for_lines` attributes a *diff hunk* to the
     # declaration whose body spans it, so it can only ever report classes and functions — a

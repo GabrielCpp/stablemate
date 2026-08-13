@@ -745,6 +745,63 @@ def test_a_module_level_constant_grounds_like_any_other_declaration(tmp_path: Pa
     assert dangling == [], dangling
 
 
+def test_a_citation_of_a_binary_file_that_exists_is_not_dangling(tmp_path: Path):
+    """A `code:` bullet may cite a file nothing can decode — a `.docx` test fixture, a golden
+    image, a compiled sample — and the gate has to see it.
+
+    Existence used to be read off the *text* helpers, which answer "" for a file that is not
+    UTF-8. Every citation of a binary was therefore permanently unsatisfiable: the file was
+    right there in the worktree, the finding said it "resolves in neither base nor head", and
+    the only rewrite that cleared it was deleting a true citation.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "svc/__fixtures__").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/backend.md").write_text(
+        "---\ntype: concept\ntitle: Backend\n---\n# Backend\n\n"
+        "- code: `svc/backend.py::serve`, `svc/__fixtures__/well-formed.docx`\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "svc/backend.py").write_text("def serve(port):\n    return port\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "svc/backend.py").write_text("def serve(bind):\n    return bind\n", encoding="utf-8")
+    (tmp_path / "svc/__fixtures__/well-formed.docx").write_bytes(b"PK\x03\x04\x00\xff\xfe\x00zip")
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["svc"]})
+
+    dangling = [f["ref"] for f in packet["healthFindings"] if f["kind"] == "dangling-grounding"]
+    assert dangling == [], packet["healthFindings"]
+
+
+def test_a_citation_of_a_file_that_is_nowhere_is_still_dangling(tmp_path: Path):
+    """The widened existence check must not become "any path at all" — a citation of a file
+    that is in neither revision nor the worktree is exactly what the finding is for."""
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "svc").mkdir()
+    (tmp_path / "docs/features/demo/backend.md").write_text(
+        "---\ntype: concept\ntitle: Backend\n---\n# Backend\n\n"
+        "- code: `svc/backend.py::serve`, `svc/__fixtures__/never-written.docx`\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "svc/backend.py").write_text("def serve(port):\n    return port\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "svc/backend.py").write_text("def serve(bind):\n    return bind\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["svc"]})
+
+    dangling = [f["ref"] for f in packet["healthFindings"] if f["kind"] == "dangling-grounding"]
+    assert dangling == ["svc/__fixtures__/never-written.docx"], packet["healthFindings"]
+
+
 def test_a_citation_whose_definition_left_the_file_is_still_dangling(tmp_path: Path):
     """The widened check must not become "any name mentioned anywhere" — an import is not a
     declaration, so a symbol that moved out from under its citation stays a finding.
