@@ -446,6 +446,12 @@ replay.py --fixture seat-booking score --defect D1     # one row
 replay.py --fixture seat-booking score --sandbox       # score the sandboxed configuration
 ```
 
+Trials drive **`opencode`** unless `--cli` says otherwise, and the backend is recorded on
+every row of the ledger. Both halves of that are deliberate: a full round is a control per
+story plus a run per defect — a dozen QA flows for one number, which on the default backend
+is a benchmark nobody re-runs — and a label whose trials silently inherited `$AGENT_CLI` is
+not a configuration anyone can compare against. Same reasoning as `bench.py`'s pinned judge.
+
 `--sandbox` is a workflow param threaded to `ostler qa run --sandbox`, never an environment
 read — a value outside the checkpoint means a resumed trial silently measures a different
 configuration.

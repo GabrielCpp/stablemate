@@ -374,6 +374,7 @@ def run_trial(
     label: str,
     n: int,
     budget_s: float,
+    cli: str,
     variant: str = "",
     mutate: Callable[[Path], None] | None = None,
     sandbox: bool = False,
@@ -400,6 +401,11 @@ def run_trial(
     cmd = [
         "uv", "run", "workhorse-coder", "run", flow,
         "--runs-dir", str(artifacts), "--run-id", run_id,
+        # Passed explicitly rather than left to $AGENT_CLI, and for the same reason
+        # `bench.py` pins its judge: the backend is the largest single term in both the
+        # laps and the detection rate, so a label whose trials inherited whatever the shell
+        # happened to export is not a configuration anyone can compare against.
+        "--cli", cli,
         # `sandbox` is a param on the QA workflow alone, and an unknown param is a hard
         # error — so the docs flow must not be handed one.
         "--params", json.dumps(
@@ -442,9 +448,10 @@ def cmd_run(fixture: Fixture, args: argparse.Namespace) -> int:
         for n in range(1, args.trials + 1):
             run_id, rc = run_trial(
                 fixture, flow=args.flow, story=story, label=args.label,
-                n=n, budget_s=args.budget, sandbox=args.sandbox,
+                n=n, budget_s=args.budget, sandbox=args.sandbox, cli=args.cli,
             )
-            trials.append({"run_id": run_id, "flow": args.flow, "story": story, "rc": rc})
+            trials.append({"run_id": run_id, "flow": args.flow, "story": story,
+                           "rc": rc, "cli": args.cli})
             worst = max(worst, abs(rc))
 
     ledger = WORK_DIR / args.label / "trials.json"
@@ -600,14 +607,14 @@ def cmd_score(fixture: Fixture, args: argparse.Namespace) -> int:
         variant = str(row["id"]) if row else CLEAN
         run_id, rc = run_trial(
             fixture, flow="qa", story=story, label=args.label, n=1, variant=variant,
-            budget_s=args.budget, sandbox=args.sandbox,
+            budget_s=args.budget, sandbox=args.sandbox, cli=args.cli,
             mutate=seed_defect(fixture.app, row) if row else None,
         )
         work = WORK_DIR / args.label / run_id
         repo = work / fixture.repo_dirname
         verdict, because = classify(row, evidence_statuses(repo, story), audit_result(work, run_id))
         trials.append({
-            "run_id": run_id, "flow": "qa", "story": story, "rc": rc,
+            "run_id": run_id, "flow": "qa", "story": story, "rc": rc, "cli": args.cli,
             "defect": variant, "obligation": str(row["obligation"]) if row else "",
             "verdict": verdict, "because": because,
         })
@@ -732,6 +739,20 @@ def cmd_report(args: argparse.Namespace) -> int:
 # ── cli ───────────────────────────────────────────────────────────────────────────────
 
 
+#: The backend a trial drives unless told otherwise. `opencode` rather than the workflow
+#: default of `claude`: a full scored round is a clean control per story plus one run per
+#: seeded defect, which is a dozen QA flows for one number, and a benchmark nobody can
+#: afford to re-run is a benchmark that stops being run.
+DEFAULT_CLI = "opencode"
+
+
+def add_cli_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--cli", default=DEFAULT_CLI, metavar="NAME",
+                        help=f"agent CLI backend driving each trial (default {DEFAULT_CLI}); "
+                             f"recorded per trial, since the backend moves both halves of "
+                             f"the headline")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -755,6 +776,7 @@ def main(argv: list[str] | None = None) -> int:
                        help="wall-clock ceiling per trial, in seconds (0 = unbounded)")
     run_p.add_argument("--sandbox", action="store_true",
                        help="qa flow only: run the QA plan in the docker sandbox")
+    add_cli_flag(run_p)
 
     score_p = sub.add_parser(
         "score", help="score detection: a clean control plus one trial per seeded defect"
@@ -770,6 +792,7 @@ def main(argv: list[str] | None = None) -> int:
     score_p.add_argument("--no-control", action="store_true",
                          help="skip the clean control — cheaper, and the false-alarm count "
                               "then means nothing")
+    add_cli_flag(score_p)
 
     args = parser.parse_args(argv)
     if args.command == "report":
