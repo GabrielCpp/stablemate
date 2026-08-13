@@ -447,3 +447,59 @@ def test_describe_counts_eventually_as_an_assertion_and_binds_its_covers(
     scenario = described["scenarios"][0]
     assert scenario["checks"] == 2
     assert scenario["check_covers"] == ["ac:2"]
+
+
+STATUS_PLAN = '''\
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-05-confirm", story="05-confirm")
+
+api = target("api")
+
+
+class Always201(BaseHTTPRequestHandler):
+    def do_POST(self):  # noqa: N802
+        self.send_response(201)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def log_message(self, *args):
+        pass
+
+
+@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#confirm:concurrency:1"])
+def a_stale_confirm_is_refused(qa: Qa) -> None:
+    """A confirmation quoting an old version is refused."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Always201)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    qa.http.base_url = "http://127.0.0.1:%d" % server.server_address[1]
+    qa.http.post("/api/seats/A2/booking", json_body={"version": 1}, expect_status=409)
+    qa.check("unreached", True)
+'''
+
+
+def test_an_unmet_expect_status_is_recorded_before_it_raises(tmp_path: Path) -> None:
+    """The loudest failure the harness has must leave an assertion behind.
+
+    `expect_status=409` says the product refuses this. When it answers 201 instead, the
+    `HttpError` aborts the scenario before any `qa.check` runs — so without this record the
+    run log holds nothing bound to the obligation, and `ostler qa evidence-map` reports
+    `claimed-but-unasserted` (a QA gap) for what is actually the product contradicting the
+    book. A benchmark trial with a seeded compare-and-swap defect was detected exactly this
+    way and scored as a miss.
+    """
+    code, records = _run(_write(tmp_path, STATUS_PLAN), "a-stale-confirm-is-refused", tmp_path)
+
+    assert code == 1
+    asserted = _asserts(records)
+    assert len(asserted) == 1
+    assert asserted[0]["passed"] is False
+    assert asserted[0]["actual"] == 201
+    assert asserted[0]["expected"] == [409]
+    # Bound to the scenario's whole `covers`, unlike a bare check: the call aborts the
+    # scenario, so nothing else it claimed will be shown either.
+    assert asserted[0]["covers"] == ["okf:docs/a.md#confirm:concurrency:1"]
+    assert records[-1]["status"] == "errored"

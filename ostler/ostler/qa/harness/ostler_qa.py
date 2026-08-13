@@ -452,10 +452,21 @@ class Http:
     did not mean to get a 500 finds out on the line that caused it.
     """
 
-    def __init__(self, base_url: str | None, *, timeout: float = DEFAULT_HTTP_TIMEOUT) -> None:
+    def __init__(
+        self,
+        base_url: str | None,
+        *,
+        timeout: float = DEFAULT_HTTP_TIMEOUT,
+        on_unexpected_status: Callable[[str, str, int, Sequence[int]], None] | None = None,
+    ) -> None:
         self.base_url = (base_url or "").rstrip("/")
         self.timeout = timeout
         self.headers: dict[str, str] = {}
+        #: Called just before an `expect_status` mismatch raises, so the scenario's owner can
+        #: write the observation down. Without it the loudest kind of failure — the product
+        #: answering something the plan said it would not — leaves no assertion behind, and
+        #: the evidence map reads the obligation as unasserted rather than contradicted.
+        self._on_unexpected_status = on_unexpected_status
 
     def url_for(self, path: str) -> str:
         if path.startswith(("http://", "https://")):
@@ -502,6 +513,8 @@ class Http:
                     f"{method.upper()} {url} returned {response.status}: {response.text[:500]}"
                 )
         elif response.status not in allowed:
+            if self._on_unexpected_status is not None:
+                self._on_unexpected_status(method.upper(), url, response.status, sorted(allowed))
             raise HttpError(
                 f"{method.upper()} {url} returned {response.status}, expected "
                 f"{sorted(allowed)}: {response.text[:500]}"
@@ -792,7 +805,7 @@ class Qa:
         self.spec_dir = spec_dir
         self.dir = qa_dir
         self.covers = list(covers)
-        self.http = Http(target.base_url)
+        self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
         self._index = 0
@@ -814,6 +827,34 @@ class Qa:
         self.maestro = Maestro(self)
 
     # -- assertions --------------------------------------------------------------------
+
+    def _status_mismatch(
+        self, method: str, url: str, status: int, allowed: Sequence[int]
+    ) -> None:
+        """Write down an `expect_status` the product did not meet, before it raises.
+
+        `qa.http.post(..., expect_status=409)` *is* an assertion — the plan said the product
+        refuses this, and it did not. Until this record existed the mismatch only ever became
+        an `HttpError`, which aborts the scenario before any `qa.check` runs: the run log then
+        held no assertion bound to the obligation, and the evidence map called it
+        `claimed-but-unasserted` — a QA gap — when what actually happened was the product
+        contradicting the book. A seeded compare-and-swap defect was detected exactly this way
+        and scored as a miss.
+
+        Bound to the scenario's whole `covers`, unlike a bare `check`, which binds only what
+        it was given. The two cases are not symmetrical: a passing check credited to every
+        obligation the scenario declared would report the set proven by one observation,
+        whereas this record can only ever *add* a contradiction, and only to obligations this
+        scenario itself claimed — and it aborts the scenario, so none of the rest of that
+        claim will be shown either.
+        """
+        self._record(
+            f"{method} {url} answers {list(allowed)}",
+            False,
+            status,
+            list(allowed),
+            self.covers,
+        )
 
     def check(
         self,
