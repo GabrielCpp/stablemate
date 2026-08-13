@@ -225,7 +225,7 @@ Context grounding, semantic-plan convergence, and product repair use separate bo
 counters. Regression fixes retain one cumulative budget; a pending marker forces fresh
 primary QA after a green fix without resetting that budget.
 
-The reviewed implementation's `code:`/`verify:` grounding is hard-gated by the docs flow before
+The reviewed implementation's `code:`/`tests:` grounding is hard-gated by the docs flow before
 entering QA so impact generation sees current references. Product fixes loop back through
 context generation; setup-only fixes may rerun the already validated plan.
 

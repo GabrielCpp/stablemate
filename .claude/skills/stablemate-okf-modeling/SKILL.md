@@ -68,7 +68,7 @@ complete subgraph that `ostler doctor` passes — and share the *same mechanics*
 author → fmt → doctor loop). Only the **input** differs:
 
 - **From a description** — a human gives you intent (a feature brief, a mockup, "here's the screen
-  I want"). Design-time / greenfield. The **author** workflow uses this.
+  I want"). Design-time / greenfield, before the code exists.
 - **From existing code** — you read a running codebase and recover the graph it already implements.
   Archaeology-time. The **coder** workflow and dogfooding use this.
 
@@ -131,10 +131,44 @@ Two blind spots to hunt deliberately:
 
 ---
 
+## `verify:` — declaring the observation
+
+Every normative bullet mints a QA obligation, and `verify:` is where the node says **what would be
+observed** if that obligation holds. It is a call from ostler's check vocabulary with typed
+arguments — `http_status`, `json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `visible`,
+`persists`, `emitted`, `conflict_on_stale` — never a test id, never prose:
+
+```markdown
+- does: on conflict the manifest is left byte-identical
+- verify: unchanged(subject="manifest", except_fields=["pages.getting-started.fr.slug"])
+- verify: http_status(409, title="Manifest Conflict")
+- tests: `api/publish_test.go::TestPublish_Conflict`
+```
+
+`doctor` grounds each call against the vocabulary (`unparsed-check`, an **error**), `ostler qa
+validate` refuses a QA plan that claims the obligation without invoking the declared call with the
+declared arguments, and the harness implements each name. That chain is the point: **an assertion
+cannot come out weaker than the declaration, because the assertion *is* the declaration.** Every
+argument you leave off is a defect the QA of every future story is licensed to miss — a mask over a
+field, a comparison that never inventories keys — and nobody downstream can put it back, because
+only this node knows what the behaviour promised. A test id names the code that ran rather than the
+thing observed, which is why it lives in `tests:`, whose one reader is regression attribution.
+
+**A node whose normative bullets declare no observation is unfinished**, and `doctor` says so:
+`undeclared-obligation`. It is a warning rather than an error only because books written before the
+rule are full of them — treat it as queued work, not as noise. It follows that when you merge into
+a node that already exists and its `does:`/`raises:`/`states:` bullets carry no `verify:`, declaring
+them is part of the merge, not optional polish. The rule table and the full vocabulary are in
+[[ostler]] → "The OKF UI profile".
+
+---
+
 ## Playbook A — from a high-level description
 
-You're handed intent, not code. Turn it into the graph, then leave `code:`/`verify:` bullets as
+You're handed intent, not code. Turn it into the graph, then leave `code:`/`tests:` bullets as
 **stubs** (they're grounded later, when the code exists — never fabricate a `path::symbol`).
+`verify:` is the opposite: it is the *most* writable bullet on the node at design time, because the
+observation that would prove a behaviour is knowable before the code producing it exists.
 
 1. **Interview the description for the six layers above.** From the brief, list: what surface(s)?
    what parts does the user see? what can they do (each verb → a behavior)? what nouns recur (each →
@@ -148,20 +182,23 @@ You're handed intent, not code. Turn it into the graph, then leave `code:`/`veri
    ```
 3. **Author the prose and structured bullets** from the description — the *why*, the states, the
    guards (`when:`), the effects (`does:`). Set relation bullets (`on:`/`parent:`/`extends:`) to real
-   links between the nodes you just scaffolded. Leave `code:`/`verify:` as scaffolded stubs (or omit).
-4. **Converge:** `ostler fmt …` then `ostler doctor`. Because `code:`/`verify:` aren't link-checked,
+   links between the nodes you just scaffolded. Leave `code:`/`tests:` as scaffolded stubs (or omit),
+   and declare a `verify:` check for every normative bullet you write.
+4. **Converge:** `ostler fmt …` then `ostler doctor`. Because `code:`/`tests:` aren't link-checked,
    an intent-only graph is fully green before a line of code is written — that's the point: the graph
-   is the spec the coder later grounds.
+   is the spec the coder later grounds. `verify:` *is* checked, but against the vocabulary rather
+   than against the repo, which is exactly why it is writable this early.
 
-> This is exactly what the **author** workflow does when a story introduces or reshapes a surface:
-> emit the OKF-UI skeleton at design time so the coder inherits a target, not a blank page.
+> This is the greenfield pass: emit the OKF-UI skeleton at design time so the coder inherits a
+> target, not a blank page. The **author** workflow never runs it — author reads the book to ground
+> its stories and is forbidden from writing to it. The book belongs to this workflow.
 
 ---
 
 ## Playbook B — from existing code
 
 You're recovering the graph an app *already* implements. Read the code, then ground each node's
-`code:`/`verify:` to the real `path::symbol` (here you *do* fill them — the code exists).
+`code:`/`tests:` to the real `path::symbol` (here you *do* fill them — the code exists).
 
 1. **Discover surfaces from entry points.**
    - **GUI** — templates/render functions and their top-level containers → `screen`s; repeated
@@ -182,10 +219,15 @@ You're recovering the graph an app *already* implements. Read the code, then gro
    `extends:` fan + a `refs:` from the selector (profile §7.11 — the `--cli` backend pattern).
 4. **Ground every node to code as you go.**
    - `code:` = the `path::symbol` that renders/handles it (a template region is a `file` ref).
-   - `verify:` = the existing test that proves it (`tests/…::test_…`). If none exists, omit rather
-     than invent — a missing `verify:` is fine; a wrong one is a lie.
+   - `tests:` = the existing test that proves it (`tests/…::test_…`). If none exists, omit rather
+     than invent — a missing `tests:` is fine; a wrong one is a lie.
+   - `verify:` = the observation, in the check vocabulary above — and reading the code is what tells
+     you which one and with which arguments. The handler that returns 409 on a stale write declares
+     `http_status(409, …)`; the one that writes through a store before answering declares
+     `persists(subject=…)`. Omitting it is not neutral: it is the one bullet nobody downstream can
+     supply for you.
 5. **Scaffold, author, converge** — same loop as Playbook A, but the prose is *as-built* (describe
-   what the code does, not what you wish it did) and `code:`/`verify:` are real.
+   what the code does, not what you wish it did) and `code:`/`tests:` are real.
 
 > This is what the **coder** workflow does after implementing a story, and what dogfooding a service
 > (workhorse/groom/ostler/farrier) does: walk the code, land the subgraph, prove it green.

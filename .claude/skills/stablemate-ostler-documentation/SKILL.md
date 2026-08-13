@@ -38,7 +38,7 @@ Three rules govern *what* you write (from `docs/okf-ui-profile.md`):
    the per-type checklist in [[ostler]] → "The OKF UI profile" (profile §8).
 3. **Spec, not implementation.** Document *what* the code does — the behavior and contract. Do
    **not** write coding patterns, idioms, or library/structure choices; those are owned by the
-   stack skills (`go`, `react-router`, `python-testing`, …), not the book. `code:`/`verify:` anchor
+   stack skills (`go`, `react-router`, `python-testing`, …), not the book. `code:`/`tests:` anchor
    the current implementation; the prose never prescribes a technique.
 
 ## Which shape: a UI-profile node, or a plain `feature`?
@@ -81,8 +81,8 @@ The default: **scaffold → author → fmt → doctor.** Never hand-write the fi
    bullets to the per-type completeness bar (rule 2; each type's bullets are in [[ostler]]):
    fields with `type`/`required`/`default`, flags/args item-by-item, `does:` as ordered effects,
    errors/exit codes, and for UI the `dom:`/`props:`/`states:` contract. Describe behavior, not
-   coding patterns (rule 3). Since you just wrote the code, set `code:` / `verify:` to the real
-   `path::symbol`:
+   coding patterns (rule 3). Since you just wrote the code, set `code:` / `tests:` to the real
+   `path::symbol`, and `verify:` to the observation that proves the node, as a named check:
    ```markdown
    ### click-file-opens-diff
    - on: [changes-file-row](#changes-file-row)
@@ -92,8 +92,12 @@ The default: **scaffold → author → fmt → doctor.** Never hand-write the fi
      - state: mark row `.active`, clear siblings
      - dom: render single-file diff
    - code: `groom/groom/templates/dashboard.html::wireChanges`
-   - verify: `groom/tests/test_render.py::test_changes_groups_diffs_per_repo`
+   - verify: visible(locator="single-file diff")
+   - tests: `groom/tests/test_render.py::test_changes_groups_diffs_per_repo`
    ```
+
+   `verify:` is a call from ostler's check vocabulary, not a test name — the vocabulary and the
+   reason for the split are in [[ostler]] → "The OKF UI profile".
 
    **One provable claim per normative bullet.** Each value of `does:`, `when:`, `returns:`,
    `raises:`, `status:`, `error:`, `auth:`, `persistence:`, `emits:`, `consumes:`,
@@ -112,8 +116,8 @@ The default: **scaffold → author → fmt → doctor.** Never hand-write the fi
    ostler doctor                            # non-zero exit on any error — safe to gate the story on
    ```
    Every doctor error has a mechanical remedy (fmt fixes casing/order; scaffold stubs a missing
-   section/bullet; you fix a broken link). `code:` / `verify:` are **not** link-checked here — they
-   are code refs grounded at a later QA gate. See the full rule table in [[ostler]].
+   section/bullet; you fix a broken link). `code:` / `tests:` are **not** link-checked here — they
+   are code refs grounded at a later QA gate; `verify:` *is* checked, against the check vocabulary. See the full rule table in [[ostler]].
 
 ## Updating an existing UI node
 

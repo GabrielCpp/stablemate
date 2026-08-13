@@ -55,9 +55,10 @@ def publish_records_the_real_author(qa: Qa) -> None:
 ```
 
 A scenario's **id is its function name** with underscores turned into dashes, and its
-**objective is its docstring**. `mechanism` is provenance (`live`, `synthetic`, `fixture`);
-`driver` is execution (`python`, `playwright`, `maestro`). Never use a driver name as a
-mechanism.
+**objective is its docstring**. `mechanism` is provenance (`live` — drive the running product — or `fixture` — drive it
+from a canned input). There is no third: a test suite standing in for the product is not
+evidence about the product. `driver` is execution (`python`,
+`playwright`, `maestro`). Never use a driver name as a mechanism.
 
 ## Declarations
 
@@ -99,6 +100,7 @@ working tree.
 | --- | --- |
 | `qa.check(label, condition, actual=…, expected=…, covers=…)` | record one claim; returns the verdict, never raises |
 | `qa.require(label, condition, …)` | record one claim and stop the scenario if it fails |
+| `qa.verify(check, observed, covers=…, **args)` | make the observation the book declares, and record it |
 | `with qa.step("label"):` | group a phase under a named step in the ledger |
 | `qa.capture(key, value)` / `qa.get(key)` | publish a value into the ledger and read it back |
 | `qa.artifact(path, kind=…)` | register a file as evidence; relative paths resolve inside `qa.dir` |
@@ -110,6 +112,38 @@ working tree.
 | `qa.diagnostics.console_errors/page_errors/failed_requests/responses()` | the live console and network record |
 | `qa.diagnostics.layout()` | the viewport, the laid-out document, and each structural region's box as a share of it |
 | `qa.maestro.flow([...])`, `qa.maestro.run(flow)` | build and run a Maestro flow |
+
+### `qa.verify` — the assertion whose strength is not yours to choose
+
+An obligation whose OKF node carries a `verify:` bullet declares *the observation that
+fulfils it*, as a named check with arguments:
+
+```markdown
+- verify: json_path(path="item.id", equals="abc")
+- verify: keys_unchanged(subject="pages")
+- verify: http_status(code=409, title="Manifest Conflict")
+```
+
+Those calls arrive on the obligation row in `qa-okf-context.json` as `checksDeclared`, and
+`ostler qa validate` refuses a plan that claims the obligation without invoking each of them
+with **those arguments**, bound to **that id**:
+
+```python
+payload = qa.http.get("/items/abc").json()
+qa.verify("json_path", payload, path="item.id", equals="abc", covers=[OBLIGATION])
+```
+
+`observed` is what you went and got — a response, a parsed document, a locator, or the
+`(before, after)` pair a differential check compares. The comparison itself is the harness's,
+which is the entire point: `qa.check` takes an already-collapsed bool, so it lets the scenario
+decide what "the manifest is unchanged" means and decide it weakly — mask the object before
+diffing, compare three entries but never the key inventory, read back through the session that
+wrote. Here the assertion cannot be weaker than the claim, because the assertion *is* the
+claim. `qa.check` stays for everything the book did not declare.
+
+A wrong-shaped `observed` raises rather than recording red. A scenario handing `unchanged` a
+single value has a defect of its own, and filing that against the product is how a QA run
+reports a bug nobody has.
 
 `qa.dir` is the single most important attribute: **the** evidence directory, already resolved
 against `--out-dir`. Under the old format the same relative string meant the spec directory in
@@ -164,6 +198,11 @@ remember to ask for, made the default.
   `qa.check(..., covers=[...])` in the body names is a failed validation, not a warning. The
   ids must be literal: the binding is recovered statically by `extract_check_covers`, and a
   computed list claims nothing.
+- **A declared check must be invoked.** If the obligation's row carries `checksDeclared`, a
+  `qa.verify` with that name, those arguments and `covers=[<id>]` has to appear somewhere in
+  the plan — not necessarily in one scenario, since a success path and a conflict branch may
+  live in two. The refusal quotes the expected call and the defect a weaker assertion would
+  let through.
 - **`input_file` paths must exist and stay out of `qa/`**, which the runner deletes and
   recreates each run.
 

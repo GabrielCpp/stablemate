@@ -47,8 +47,8 @@ reported `missing-code-symbol` with no edit that could clear it. Across three re
 switch to tree-sitter dropped 71 names it had been reporting as declarations and admitted
 2,274 real ones it had missed. Now `ostler.syntax`.
 
-**A test name was truncated at the comma inside it.** `ostler`'s QA context read `verify:`
-bullets with one regex whose symbol group was `[^`,]+`, so a bullet citing a real test —
+**A test name was truncated at the comma inside it.** `ostler`'s QA context read the bullet
+citing tests (`verify:` then, `tests:` now) with one regex whose symbol group was `[^`,]+`, so a bullet citing a real test —
 `… > exports the live editor through canonical XML, revokes its object URL, and clears the
 named status` — was read as `… > exports the live editor through canonical XML`. That name
 matches nothing, so the grounding gate reported a correct citation as citing a test that
