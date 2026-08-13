@@ -93,10 +93,21 @@ def git(*args: str, cwd: Path) -> str:
 
 @dataclass(frozen=True)
 class Fixture:
-    """A frozen app plus the commit each story is replayed against."""
+    """A frozen app plus how a trial reaches one story's state.
+
+    Two forms, and a fixture is exactly one of them:
+
+    * **`source:`** — an external repo with real history, frozen into a bundle. A story is
+      replayed against the commit that finished it, named in `stories:`.
+    * **`app:`** — a tracked tree under `benchmarks/apps/` with no history at all. A story
+      is *materialized*: the git state is built from the story's own pre-images. This is
+      the form used for measuring detection, because the app and its answer key have to be
+      readable — a bundle is a binary pack `check_public.py` can only scan by path.
+    """
 
     name: str
     source: Path
+    app: Path | None
     stories: list[dict[str, str]]
 
     @property
@@ -115,7 +126,7 @@ class Fixture:
         longer resolves its own skills, and the resulting lap count measures that instead
         of the change under test.
         """
-        return self.source.name
+        return (self.app or self.source).name
 
     def commit(self, story: str, flow: str) -> str:
         for entry in self.stories:
@@ -127,6 +138,10 @@ class Fixture:
         die(f"no story {story!r} in fixture {self.name!r} (have: {known})")
 
     def slugs(self, flow: str) -> list[str]:
+        # An `app:` fixture has no per-flow commits: every story it lists is materializable
+        # for every flow, because its git state is built rather than checked out.
+        if self.app is not None:
+            return [entry["story"] for entry in self.stories]
         return [entry["story"] for entry in self.stories if entry.get(flow)]
 
 
@@ -136,9 +151,18 @@ def load_fixture(name: str) -> Fixture:
         available = ", ".join(sorted(p.stem for p in FIXTURES.glob("*.yml"))) or "none"
         die(f"no fixture {name!r} at {path} (have: {available})")
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    app = data.get("app")
+    if bool(app) == bool(data.get("source")):
+        die(f"fixture {path} must set exactly one of `app:` or `source:`")
+    if app and Path(app).is_absolute():
+        # Repo-relative on purpose: an absolute path bakes one machine's layout into a
+        # tracked file, and the whole point of the `app:` form is that the fixture travels
+        # with the repo.
+        die(f"fixture {path}: `app:` must be relative to the repo root, got {app!r}")
     return Fixture(
         name=data.get("name") or name,
         source=Path(data.get("source", "")),
+        app=(STABLEMATE / app) if app else None,
         stories=list(data.get("stories") or []),
     )
 
@@ -153,6 +177,9 @@ def cmd_capture(fixture: Fixture) -> None:
     its *history*: a story is replayed against the tree as it stood when that story was
     finished, and the later stories' commits are what make that reachable.
     """
+    if fixture.app is not None:
+        die(f"fixture {fixture.name!r} is an `app:` fixture — its tree is tracked in this "
+            f"repo and materialized per story, so there is nothing to capture")
     if not (fixture.source / ".git").is_dir():
         die(f"no git repo at {fixture.source} — nothing to capture")
     dirty = git("status", "--porcelain", cwd=fixture.source)
@@ -168,6 +195,92 @@ def cmd_capture(fixture: Fixture) -> None:
 # ── run ───────────────────────────────────────────────────────────────────────────────
 
 
+#: What an app tree carries that is *not* the app: the materialization inputs and the
+#: answer key. A trial that copied these would hand the run under measurement the list of
+#: seeded defects, which is the one thing it must not have.
+NOT_THE_APP = ("stories", "defects", "defects.yml")
+
+
+def story_diff(app: Path, story: str) -> dict[str, list[str]]:
+    """The `changed:`/`added:` manifest for one story, validated against the tree."""
+    manifest = app / "stories" / story / "diff.yml"
+    if not manifest.is_file():
+        known = ", ".join(sorted(p.name for p in (app / "stories").glob("*"))) or "none"
+        die(f"no diff manifest at {manifest} (stories: {known})")
+    data = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+    return {
+        "changed": list(data.get("changed") or []),
+        "added": list(data.get("added") or []),
+    }
+
+
+def story_image(app: Path, story: str, rel: str, *, phase: str) -> Path:
+    """Where the `pre`/`post` content of one path for one story lives.
+
+    `post/` is optional and the fallback is the app tree, because the app tree IS the last
+    story's post-image — that is what keeps it the single thing a reader checks the book
+    against. `pre/` has no fallback: a `changed:` path with no pre-image would be committed
+    at its final content, and the story's diff would silently come out empty.
+    """
+    image = app / "stories" / story / phase / rel
+    if image.is_file():
+        return image
+    if phase == "pre":
+        die(f"story {story!r} lists {rel} as changed but has no pre/ image at {image}")
+    return app / rel
+
+
+def materialize(app: Path, story: str, dest: Path) -> Path:
+    """Build, at `dest`, the git state a QA run for `story` is supposed to face.
+
+    The coder's QA lane mints its obligations from *uncommitted* changes
+    (`build_okf_context(..., base="HEAD", head="WORKTREE", ...)`), so a plain copy of a
+    finished app obligates nothing at all and the run has nothing to prove. Hence:
+
+      1. copy the app tree, minus the answer key;
+      2. commit a *before* tree — each `changed:` path replaced by its `pre/` image, each
+         `added:` path deleted;
+      3. restore this story's files into the worktree, uncommitted, from `post/` where that
+         exists and from the app tree otherwise.
+
+    `HEAD..WORKTREE` is then exactly this story's implementation diff, while the book, the
+    specs and every other story's code sit at their authored state.
+    """
+    diff = story_diff(app, story)
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(
+        app, dest,
+        ignore=shutil.ignore_patterns(*NOT_THE_APP, "__pycache__", ".git"),
+    )
+
+    # The finished content this story is responsible for, held aside while the before tree
+    # is committed.
+    after = {
+        rel: story_image(app, story, rel, phase="post").read_bytes()
+        for rel in [*diff["changed"], *diff["added"]]
+    }
+    for rel in diff["added"]:
+        (dest / rel).unlink(missing_ok=True)
+    for rel in diff["changed"]:
+        (dest / rel).write_bytes(story_image(app, story, rel, phase="pre").read_bytes())
+
+    git("init", "--quiet", "--initial-branch", "main", cwd=dest)
+    # Identity on the repo rather than the machine: a trial must not depend on whether the
+    # host has a global git config, and must not write to it either.
+    git("config", "user.email", "benchmark@example.com", cwd=dest)
+    git("config", "user.name", "seat-booking benchmark", cwd=dest)
+    git("add", "--all", cwd=dest)
+    git("commit", "--quiet", "-m", f"before {story}", cwd=dest)
+
+    for rel, body in after.items():
+        target = dest / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(body)
+    return dest
+
+
 def checkout(fixture: Fixture, story: str, flow: str, dest: Path) -> Path:
     """Clone the bundle at this story's commit and rewind the flow's outputs.
 
@@ -180,16 +293,27 @@ def checkout(fixture: Fixture, story: str, flow: str, dest: Path) -> Path:
         for what is being measured: a book rewound further would be missing entries
         outside this story's obligations, which is the very thing the reviewer is being
         asked to stop refusing on.
+
+    An `app:` fixture has no history to check out, so the tree is materialized from the
+    story's pre-images instead; the rewind below then applies unchanged.
     """
-    if dest.exists():
-        shutil.rmtree(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    commit = fixture.commit(story, flow)
-    subprocess.run(
-        ["git", "clone", "--quiet", str(fixture.bundle), str(dest)],
-        check=True, capture_output=True, text=True,
-    )
-    git("checkout", "--quiet", commit, cwd=dest)
+    if fixture.app is not None:
+        if flow != "qa":
+            die(f"fixture {fixture.name!r} is an `app:` fixture and only replays the qa "
+                f"flow — a docs replay needs the book at the previous story, which a "
+                f"materialized tree does not have")
+        commit = f"materialized {story}"
+        materialize(fixture.app, story, dest)
+    else:
+        if dest.exists():
+            shutil.rmtree(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        commit = fixture.commit(story, flow)
+        subprocess.run(
+            ["git", "clone", "--quiet", str(fixture.bundle), str(dest)],
+            check=True, capture_output=True, text=True,
+        )
+        git("checkout", "--quiet", commit, cwd=dest)
 
     if flow == "qa":
         spec = dest / "docs" / "specs" / story
@@ -265,7 +389,7 @@ def run_trial(
 
 
 def cmd_run(fixture: Fixture, args: argparse.Namespace) -> int:
-    if not fixture.bundle.is_file():
+    if fixture.app is None and not fixture.bundle.is_file():
         die(f"no bundle at {fixture.bundle} — run `replay.py capture` first")
     stories = fixture.slugs(args.flow) if args.all_stories else [args.story]
     if not args.all_stories and not args.story:

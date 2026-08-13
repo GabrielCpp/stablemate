@@ -1,0 +1,10 @@
+# The implementation diff a trial materializes for the `confirm-booking` story.
+#
+# The last story carries no `post/`: its post-image *is* the app tree, which is what makes
+# the app tree the thing a reader checks the book against rather than a fourth variant of
+# it.
+story: confirm-booking
+added: []
+changed:
+  - app/booking.py
+  - app/service.py

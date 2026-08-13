@@ -24,17 +24,26 @@ QA mints its obligations from *uncommitted* changes: the coder QA lane builds it
 `base="HEAD"`, `head="WORKTREE"`. A plain checkout of a finished tree therefore obligates nothing at
 all — every file is committed, the diff is empty, and the run has nothing to prove.
 
-So a trial materializes the git state instead of inheriting it. Each story carries a **pre-image**:
+So a trial materializes the git state instead of inheriting it. Each story carries images of the
+files it touches:
 
 ```
 stories/<story>/pre/<path>     the file as it was before this story
+stories/<story>/post/<path>    the file as it was after this story, when that is not the app tree
 stories/<story>/diff.yml       changed: […]   added: […]
 ```
 
 Materializing story *S* means: copy the app tree, `git init`, commit a *before* tree (each `changed:`
-path replaced by its `pre/` copy, each `added:` path deleted), then restore the real files into the
-worktree uncommitted. `HEAD..WORKTREE` is then exactly S's implementation diff while the book stays
-at its authored state — which is the situation a QA run is supposed to face.
+path replaced by its `pre/` copy, each `added:` path deleted), then restore S's own files into the
+worktree uncommitted — from `post/<path>` where that exists, from the app tree otherwise.
+`HEAD..WORKTREE` is then exactly S's implementation diff while the book stays at its authored
+state — which is the situation a QA run is supposed to face.
+
+`post/` is what keeps the *first* story's diff from containing the last story's code. The app tree is
+only the post-image of the final story; every earlier one that keeps extending the same module needs
+its own snapshot, or a trial on story 1 would present three stories' work as story 1's and QA would
+be scored on obligations nobody claimed to have implemented. A story with nothing to pin carries no
+`post/` directory at all, and the last story never has one.
 
 The trial directory must be named after the app (`seat-booking`, not `trial-1`): farrier derives every
 generated skill name from the repository directory's basename, and the spec dirs name those skills.

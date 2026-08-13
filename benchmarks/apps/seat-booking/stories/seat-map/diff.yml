@@ -1,0 +1,16 @@
+# The implementation diff a trial materializes for the `seat-map` story.
+#
+# `added:` paths are absent from the before-commit and present, uncommitted, in the
+# worktree. `changed:` paths are committed from `pre/<path>` and then overwritten in the
+# worktree. In both cases the worktree content comes from `post/<path>` when that file
+# exists, and from the app tree otherwise — this is the first story, so the two modules
+# later stories keep extending are pinned to their story-1 shape by `post/`.
+story: seat-map
+added:
+  - app/__init__.py
+  - app/store.py
+  - app/booking.py
+  - app/page.py
+  - app/service.py
+  - compose.yml
+changed: []
