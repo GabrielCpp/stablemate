@@ -192,7 +192,7 @@ type) and raises when the node has not run.
 
 ## Where an agent turn runs (`cwd` / `add_dirs`)
 
-`self.agent` takes four optional keywords beyond the prompt, all defaulting to "whatever
+`self.agent` takes five optional keywords beyond the prompt, all defaulting to "whatever
 the engine defaults to", so a state that says nothing behaves as before:
 
 ```python
@@ -202,6 +202,7 @@ review = self.agent(
     args={"unit": unit_id},
     power="medium",                       # the abstract tier the config maps to a model
     timeout=1800,                         # this turn's wall-clock budget, seconds
+    retries=0,                            # this node's own reframe budget
     cwd=self.ctx.repo_root,               # where the CLI is launched
     add_dirs=[self.ctx.docs_root],        # further directories it may read
 )
@@ -210,6 +211,15 @@ review = self.agent(
 `cwd` matters more than it looks: it decides whose `CLAUDE.md`, skills and git context the
 turn sees. The runner de-dupes `add_dirs` against it and turns the rest into `--add-dir`
 flags.
+
+`retries` overrides the run's `AGENT_MAX_REPHRASE_ATTEMPTS` for this node alone — how many
+times a failed turn is re-asked from scratch in a fresh session before the ladder gives up.
+Pass `0` when the turn's **deliverable is a file rather than its reply** and this state can
+read a partial one back: a reframe discards the session and re-asks at full price, which
+buys nothing the state could not get more cheaply by reading what is already on disk — and
+under a tight `timeout` it multiplies that budget by the number of reframes before the run
+stops. Whether a partial artifact is worth something is only knowable here, which is why
+this is a per-node keyword and not a run-level setting.
 
 These are **real values, not templates**: the state computes the path in Python and
 passes it. (They are still Jinja-rendered on the way through, so a literal path is a

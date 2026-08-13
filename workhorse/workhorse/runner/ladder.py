@@ -156,8 +156,11 @@ class AgentRunner:
            up to ``resilience.max_compact_attempts`` times before reframing.
         3. **Reframe** (here): if invocation or output parsing still fails, the prompt
            is rephrased from scratch in a fresh session and the node is retried, up to
-           ``resilience.max_rephrase_attempts`` times. A node the agent can't answer
-           as-phrased often succeeds when re-asked more simply.
+           ``resilience.max_rephrase_attempts`` times — or ``node.retries`` when the
+           node names its own budget. A node the agent can't answer as-phrased often
+           succeeds when re-asked more simply; a node whose deliverable is a file its
+           caller can salvage sets ``retries: 0`` and lets the caller act on the draft
+           instead of paying for the same turn again.
         When all three are spent the node **raises**, ending the run at a resumable
         checkpoint for an operator to look at. There is deliberately no fourth layer
         that invents the node's outputs: a null verdict from a review node, or a null
@@ -259,6 +262,11 @@ class AgentRunner:
         # ``rephrase`` advances only on a genuine reframe; a context-compaction retry
         # re-runs the SAME prompt on the compacted session without consuming a reframe.
         rephrase = 0
+        # The node's own reframe budget when it declares one — including 0, which is why
+        # this is an `is None` test and not a truthiness one.
+        rephrase_budget = (
+            resilience.max_rephrase_attempts if node.retries is None else node.retries
+        )
         compact_attempts = resilience.max_compact_attempts
         while True:
             prompt = (
@@ -273,7 +281,7 @@ class AgentRunner:
                     session_id_path.unlink()
                 print(
                     f"[{node_id}] 🔄 reframing prompt "
-                    f"(attempt {rephrase}/{resilience.max_rephrase_attempts})",
+                    f"(attempt {rephrase}/{rephrase_budget})",
                     flush=True,
                 )
             try:
@@ -336,7 +344,7 @@ class AgentRunner:
                     raise
 
                 # Layer 3: reframe in a fresh session.
-                if rephrase < resilience.max_rephrase_attempts:
+                if rephrase < rephrase_budget:
                     print(
                         f"[{node_id}] ⚠ node failed ({exc}); will reframe and retry",
                         flush=True,
@@ -365,7 +373,7 @@ class AgentRunner:
                 # Nothing left to try. Stop here rather than inventing this node's
                 # answer — the run dir holds the checkpoint, so an operator resumes it.
                 print(
-                    f"[{node_id}] ✖ all {resilience.max_rephrase_attempts} reframings "
+                    f"[{node_id}] ✖ all {rephrase_budget} reframings "
                     f"failed ({exc}); stopping the run — resume it once the cause is "
                     f"cleared",
                     flush=True,

@@ -56,6 +56,18 @@ class AgentNode(BaseModel):
     # The effective value is surfaced to the prompt as `node_timeout_s` /
     # `node_timeout_min` ("unbounded" when infinite), so the agent can size its work.
     timeout: float | None = 3600
+    # Per-node reframe budget: how many times a failed turn is re-asked from scratch in
+    # a fresh session before the ladder gives up on this node. None (the default) means
+    # the run's `resilience.max_rephrase_attempts`.
+    #
+    # Set it to 0 for a node whose **deliverable is a file rather than the turn's reply**
+    # and whose caller can act on a partial one. A reframe discards the session and
+    # re-asks at full price, which for such a node buys nothing the caller could not get
+    # more cheaply by reading what is already on disk — and under a tight per-node
+    # `timeout` it multiplies that budget by the number of reframes before the run stops.
+    # Only the caller knows whether a partial artifact is worth something, so this is a
+    # per-node decision, not a run-level one.
+    retries: int | None = None
 
     @field_validator("timeout", mode="before")
     @classmethod
@@ -70,6 +82,7 @@ class AgentNode(BaseModel):
                 return float("inf")
             return float(s)
         return v
+
     # Per-node working directory (Jinja2-rendered from workflow context). Sets the
     # subprocess CWD for the agent CLI, controlling CLAUDE.md/skills discovery and
     # git context. When empty/None, inherits the process CWD (existing behavior).

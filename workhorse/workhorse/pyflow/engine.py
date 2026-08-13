@@ -329,6 +329,7 @@ class Engine:
         args: dict[str, Any],
         power: str | None = None,
         timeout: float | None = None,
+        retries: int | None = None,
         cwd: str | Path | None = None,
         add_dirs: Sequence[str | Path] | None = None,
     ) -> Any:
@@ -357,6 +358,8 @@ class Engine:
                 budget["power"] = power
             if timeout is not None:
                 budget["timeout"] = timeout
+            if retries is not None:
+                budget["retries"] = retries
             # The runner Jinja-renders `cwd`/`add_dirs` — a literal path is a no-op render,
             # so real values pass through unchanged and the cwd de-dupe and `--add-dir`
             # flags come for free.

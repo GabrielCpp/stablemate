@@ -295,6 +295,7 @@ class Workflow(BaseModel):
         args: dict[str, Any] | None = None,
         power: str | None = None,
         timeout: float | None = None,
+        retries: int | None = None,
         cwd: str | Path | None = None,
         add_dirs: Sequence[str | Path] | None = None,
     ) -> T:
@@ -310,7 +311,11 @@ class Workflow(BaseModel):
         wall-clock budget in
         seconds. `cwd` is the working directory the agent CLI is launched in — which is
         what decides whose CLAUDE.md, skills and git context the turn sees — and
-        `add_dirs` are further directories it may read. All four default to None =
+        `add_dirs` are further directories it may read. `retries` is how many times a
+        failed turn is re-asked from scratch, overriding the run's reframe budget for
+        this node alone — pass 0 for a turn whose deliverable is a file this state can
+        read back and act on partially, where a fresh re-ask costs full price and
+        recovers nothing the file does not already hold. All of them default to None =
         whatever the engine defaults to, so a state that says nothing behaves exactly
         as before.
 
@@ -327,6 +332,7 @@ class Workflow(BaseModel):
             args=args or {},
             power=power,
             timeout=timeout,
+            retries=retries,
             cwd=cwd,
             add_dirs=add_dirs,
         )

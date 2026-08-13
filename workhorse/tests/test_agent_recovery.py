@@ -30,13 +30,14 @@ from workhorse.context import WorkflowContext
 from workhorse.runner.spec import AgentNode, OutputSpec
 
 
-def _node() -> AgentNode:
+def _node(**kw) -> AgentNode:
     return AgentNode(
         type="agent",
         id="review_implementation",
         prompt="Review the work and decide.",
         outputs=[OutputSpec(key="decision"), OutputSpec(key="review")],
         next="next_node",
+        **kw,
     )
 
 
@@ -239,6 +240,65 @@ def test_reframe_count_then_stop():
         pass
 
     assert calls["n"] == 3, "initial + 2 reframes, then stop (no further invoke)"
+
+
+def test_a_node_can_spend_a_smaller_reframe_budget_than_the_run():
+    """`retries=0` means one invocation and then the raise — no fresh-session re-ask.
+
+    A reframe throws the session away and re-asks at full price, which is the right
+    default when the turn's *reply* is the deliverable. For a node whose deliverable is
+    a **file**, it is not: the caller can read the partial draft off disk and repair it
+    for a fraction of the cost, so the reframes only multiply the node's wall-clock
+    budget before the run stops. Only the node knows which kind it is, hence the
+    override. The `is None` resolution is what this pins — a truthiness test would read
+    a deliberate 0 as "unset" and hand the node the run's budget back.
+    """
+    calls = {"n": 0}
+
+    def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
+        calls["n"] += 1
+        raise BackendInvocationError("No 'result' event received", transient=True)
+
+    try:
+        _run(_node(retries=0), always_fail, max_rephrase_attempts=3)
+        raise AssertionError("the exhausted ladder must raise, not default the outputs")
+    except BackendInvocationError:
+        pass
+
+    assert calls["n"] == 1, "retries=0 must not spend the run's reframe budget"
+
+
+def test_a_node_without_its_own_budget_still_uses_the_runs():
+    """The override is opt-in: an unset `retries` leaves `max_rephrase_attempts` in charge."""
+    calls = {"n": 0}
+
+    def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
+        calls["n"] += 1
+        raise BackendInvocationError("No 'result' event received", transient=True)
+
+    assert _node().retries is None
+    try:
+        _run(_node(), always_fail, max_rephrase_attempts=2)
+    except BackendInvocationError:
+        pass
+
+    assert calls["n"] == 3, "initial + 2 reframes from the run-level budget"
+
+
+def test_a_node_can_spend_a_larger_reframe_budget_than_the_run():
+    """The override widens as well as narrows — it replaces the run's number, both ways."""
+    calls = {"n": 0}
+
+    def always_fail(prompt, node_id, sid, model=None, timeout=None, **kwargs):
+        calls["n"] += 1
+        raise BackendInvocationError("No 'result' event received", transient=True)
+
+    try:
+        _run(_node(retries=3), always_fail, max_rephrase_attempts=1)
+    except BackendInvocationError:
+        pass
+
+    assert calls["n"] == 4, "initial + 3 reframes from the node's own budget"
 
 
 def test_unparseable_output_reframes_then_stops():
