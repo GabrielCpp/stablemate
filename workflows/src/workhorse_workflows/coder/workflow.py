@@ -158,6 +158,11 @@ class Coder(Workflow):
     target_env: str = "local"
     #: The QA stack manifest `qa` reads to bring services up.
     qa_stack_manifest: str = "qa-stack.yml"
+    #: Run each QA scenario in a container with no repository on disk — `Qa.sandbox`,
+    #: restated here for the same reason `target_env` is, so an operator sets it once on the
+    #: run instead of per story. Prefixed because at this level `sandbox` alone would read
+    #: as a property of the whole coder rather than of its QA lane.
+    qa_sandbox: bool = False
     #: How long a story's QA lane may spend inside agent turns, and how much of that the
     #: plan lane may take. Restated here — as `target_env` and `operator_mode` are — only so
     #: an operator can set them once on the run rather than per story; `Qa.qa_lane_budget_s`
@@ -422,6 +427,7 @@ class Coder(Workflow):
             operator_mode=self.operator_mode,
             target_env=self.target_env,
             qa_stack_manifest=self.qa_stack_manifest,
+            sandbox=self.qa_sandbox,
             qa_lane_budget_s=self.qa_lane_budget_s,
             plan_lane_budget_s=self.plan_lane_budget_s,
             triage_scope_count=triage,

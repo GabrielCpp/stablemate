@@ -296,6 +296,13 @@ class Qa(Workflow):
     #: Repo-relative stack manifest `ensure_stack` reads. Passed rather than assumed: a
     #: fixer that authors it at the root while the run reads `<service>/qa-stack.yml` loops.
     qa_stack_manifest: str = "qa-stack.yml"
+    #: Execute every scenario in a container with no repository on disk (`ostler qa run
+    #: --sandbox`). A `--param` rather than a read of the environment: the sandbox decides
+    #: what evidence is even reachable — an unsandboxed scenario can rerun a unit suite and
+    #: file the exit code as behavioral proof — so a resume that silently flipped it would
+    #: change what the run is allowed to prove. Needs a `sandbox:` block in the repo's
+    #: `qa_stack_manifest`; off by default, because a repo without one cannot run this way.
+    sandbox: bool = False
     #: The parent's rescope budget, seeded in and handed back bumped. The one piece of loop
     #: state this isolated flow does not own.
     triage_scope_count: int = 0
@@ -668,6 +675,11 @@ class Qa(Workflow):
             "spec_dir": self.ctx.spec_dir,
             "qa_dir": self.ctx.qa_dir,
             "qa_scratch_dir": QA_SCRATCH_DIRNAME,
+            # Whether the *scored* run will be sandboxed, so the rehearsal is the same
+            # execution. A dry run on the host proves reachability the scored run does not
+            # have — the scenario resolves against a repo the container will not hold — and
+            # that discrepancy surfaces as a failure the author already "verified".
+            "qa_sandboxed": self.sandbox,
             "docs_path": self.docs_path,
             "target_env": self.target_env,
             "qa_stack": impl.qa_stack,
@@ -800,7 +812,7 @@ class Qa(Workflow):
         handed. See `QaLoop.repaired_failures`.
         """
         self.logger.info("running the QA plan", extra={"activity": True})
-        result = self.call(run_qa_plan, self.ctx.spec_dir, self.docs_path)
+        result = self.call(run_qa_plan, self.ctx.spec_dir, self.docs_path, self.sandbox)
         return Continue(
             result,
             self.assess,

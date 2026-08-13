@@ -394,9 +394,14 @@ resolves. After authoring a scenario, execute it on its own:
 
 ```bash
 ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> \
-  --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}
+  --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}{% if qa_sandboxed %} --sandbox{% endif %}
 ```
-
+{% if qa_sandboxed %}
+`--sandbox` is not optional here: the scored run uses it, so a rehearsal without it executes
+somewhere else. In the container there is no repository on disk and the product is reachable
+only through the forwarded ports — a scenario that resolves a repo path, or shells out to a
+tool the gateway does not allow, passes the dry run on the host and fails the run that counts.
+{% endif %}
 `--out-dir` keeps the artifacts out of `{{ workhorse_var('qa_dir') }}`, which is the scored
 ledger the evidence gate reads — a scenario tuned until it passed must not be able to leave its
 own proof. Fix what does not resolve and run it again. This is what one call answers and no

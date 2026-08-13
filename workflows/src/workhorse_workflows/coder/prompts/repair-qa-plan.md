@@ -162,9 +162,14 @@ The stack is already up. Before returning, execute each scenario you changed on 
 
 ```bash
 ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> \
-  --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}
+  --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}{% if qa_sandboxed %} --sandbox{% endif %}
 ```
-
+{% if qa_sandboxed %}
+`--sandbox` is not optional here: the scored run uses it, so a rehearsal without it executes
+somewhere else — no repository on disk, the product reachable only through the forwarded
+ports. A repair verified on the host and broken in the container costs the lap it was meant
+to save.
+{% endif %}
 `--out-dir` keeps the artifacts out of `{{ workhorse_var('qa_dir') }}`, the scored ledger the
 evidence gate reads — a scenario tuned until it passed must not be able to leave its own proof.
 Fix what does not resolve and run it again. One call settles what no amount of re-reading does:

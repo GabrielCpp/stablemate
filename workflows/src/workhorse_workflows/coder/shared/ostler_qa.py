@@ -102,11 +102,16 @@ def qa_validate(
 
 
 def qa_run(
-    plan: str, spec_dir: str, *, docs_root: Path | None = None
+    plan: str, spec_dir: str, *, docs_root: Path | None = None, sandboxed: bool = False
 ) -> tuple[int, dict[str, Any], str]:
-    """`ostler qa run` → the four-state outcome data; rc=0 iff the run passed."""
+    """`ostler qa run` → the four-state outcome data; rc=0 iff the run passed.
+
+    `sandboxed` is `--sandbox`: every scenario executes in a container with no repository
+    on disk, so a scenario cannot rerun a unit suite and file the exit code as behavioral
+    evidence. It needs a `sandbox:` block in the repo's `qa-stack.yml`.
+    """
     try:
-        outcome = okf(docs_root).qa_run(plan, spec=spec_dir)
+        outcome = okf(docs_root).qa_run(plan, spec=spec_dir, sandboxed=sandboxed)
     except (OSError, ValueError, RuntimeError) as exc:
         return 1, {"status": "invalid"}, str(exc)
     return (0 if outcome.ok else 1), outcome.data, "" if outcome.ok else outcome.message

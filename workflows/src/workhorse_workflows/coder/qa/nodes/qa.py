@@ -264,17 +264,28 @@ def validate_qa_plan(
 
 @blueprint.node
 def run_qa_plan(
-    logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
+    logger: logging.Logger,
+    spec_dir: str = "",
+    docs_path: str = "",
+    sandbox: bool = False,
+    repo_dir: str = "",
 ) -> QaRunResult:
     """Execute the QA plan through ostler and normalize its four-state outcome.
 
     The returncode is deliberately ignored: `failed` and `blocked` are answers the runner
     is *supposed* to give, and both exit non-zero. The status comes off the payload, and
     only an unrecognized one becomes `invalid`.
+
+    `sandbox` is the runner's `--sandbox`: each scenario executes in a container holding no
+    repository, which is what makes "live evidence" a property of the environment rather
+    than of the plan's good behaviour. It arrives as a workflow `--param` and never from
+    the environment, so a resumed run executes the configuration its checkpoint records.
     """
     plan = str(Path(spec_dir) / QA_PLAN_FILE)
     docs_root = find_docs_root(docs_path, repo_dir)
-    _returncode, payload, stderr = ostler_qa.qa_run(plan, spec_dir, docs_root=docs_root)
+    _returncode, payload, stderr = ostler_qa.qa_run(
+        plan, spec_dir, docs_root=docs_root, sandboxed=sandbox
+    )
     status = str(payload.get("status", "invalid")).lower()
     if status not in RUN_STATUSES:
         status = "invalid"
