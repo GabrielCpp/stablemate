@@ -72,7 +72,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, ClassVar, NamedTuple
 
-from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
+from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
@@ -115,6 +115,24 @@ from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.kit.telemetry import counter_labels, progress_verdict, verdict_labels
 
 UNBOUNDED = float("inf")
+
+#: What the next plan turn is told when the one before it was cut at its wall-clock cap.
+#: Prepended to the validation notes by `_validated`, because a truncated `qa_plan.py` is
+#: indistinguishable from one whose author made a mistake — and the repair a mistake calls
+#: for is a rewrite, which is precisely what must not happen here. Stated as a fact about
+#: the *turn*, not as a defect in the file, so the worklist stays "finish it".
+_OVERRAN_PLAN = (
+    "The previous turn was stopped at its wall-clock budget before it could finish. "
+    "The file on disk is the draft it had written by then, not a finished plan: expect it "
+    "to end mid-scenario or mid-statement. Complete it from where it stands — keep every "
+    "scenario already written and do not re-author the file."
+)
+_OVERRAN_REPAIR = (
+    "The previous repair turn was stopped at its wall-clock budget partway through its "
+    "worklist. The file on disk has some of those edits applied and not the rest. Continue "
+    "from there — re-applying an edit that is already in place is wasted budget, and "
+    "starting the file over discards the ones that landed."
+)
 
 
 def _finding(passed: bool, notes: str) -> str:
@@ -567,23 +585,40 @@ class Qa(Workflow):
         This state is the *first draft only*. Every later lap — a schema defect, a reviewer
         refusal, a post-run finding — goes to `repair_plan`, which edits the plan instead of
         writing a new one.
+
+        The turn's *reply* is discarded — the deliverable is `qa_plan.py` on disk, which the
+        validation tail reads back. That is what makes a turn cut at its 20-minute cap
+        survivable, and it is the whole reason for `retries=0` plus the catch below.
         """
         self.logger.info("planning QA for %s", self.ctx.story_slug, extra={"activity": True})
-        self.agent(
-            "prompts/plan-qa.md",
-            returns=QaPlanResult,
-            # medium: writing a runnable plan against a schema, from a story and an
-            # obligation packet that both already exist.
-            power="medium",
-            # 20 min. Without a cap this node inherits the run's 3600s watchdog, and it
-            # used it: over four days its longest turns were exactly 60.0 min, and two
-            # thirds of the whole node's wall clock was spent past the 15-min mark by the
-            # minority of turns that ran long. Fifty of sixty-five finished inside 20.
-            timeout=1200,
-            add_dirs=self._dirs(),
-            args=self._plan_args(loop),
-        )
-        return self._validated(loop)
+        overran = ""
+        try:
+            self.agent(
+                "prompts/plan-qa.md",
+                returns=QaPlanResult,
+                # medium: writing a runnable plan against a schema, from a story and an
+                # obligation packet that both already exist.
+                power="medium",
+                # 20 min. Without a cap this node inherits the run's 3600s watchdog, and it
+                # used it: over four days its longest turns were exactly 60.0 min, and two
+                # thirds of the whole node's wall clock was spent past the 15-min mark by the
+                # minority of turns that ran long. Fifty of sixty-five finished inside 20.
+                timeout=1200,
+                # A reframe would throw the draft away and re-author from nothing, at the
+                # authoring tier and for another 20 minutes — three times over before the run
+                # stops. `repair_plan` keeps the draft and costs a fifth as much, so the cut
+                # turn is worth more to this flow than any number of fresh ones.
+                retries=0,
+                add_dirs=self._dirs(),
+                args=self._plan_args(loop),
+            )
+        except AgentTimeout:
+            self.logger.info(
+                "the QA-plan turn was stopped at its budget — validating what it wrote",
+                extra={"activity": True},
+            )
+            overran = _OVERRAN_PLAN
+        return self._validated(loop, overran=overran)
 
     def repair_plan(self, loop: QaLoop) -> Continue | Await | Done:
         """Edit the cited part of a plan that already exists, leaving the rest byte-identical.
@@ -600,21 +635,34 @@ class Qa(Workflow):
         """
         self.logger.info("repairing the QA plan for %s", self.ctx.story_slug,
                          extra={"activity": True})
-        self.agent(
-            "prompts/repair-qa-plan.md",
-            returns=QaPlanResult,
-            # low: applying a named list of edits to a file that already exists is not the
-            # work that authoring the plan was, and paying the authoring tier for it is what
-            # tempted the turn to rewrite rather than repair.
-            power="low",
-            # 15 min. Applying a cited worklist averages five, and a repair turn that has
-            # run three times that is rewriting the file rather than editing it — which is
-            # the failure this node exists to prevent.
-            timeout=900,
-            add_dirs=self._dirs(),
-            args=self._plan_args(loop),
-        )
-        return self._validated(loop)
+        overran = ""
+        try:
+            self.agent(
+                "prompts/repair-qa-plan.md",
+                returns=QaPlanResult,
+                # low: applying a named list of edits to a file that already exists is not
+                # the work that authoring the plan was, and paying the authoring tier for it
+                # is what tempted the turn to rewrite rather than repair.
+                power="low",
+                # 15 min. Applying a cited worklist averages five, and a repair turn that has
+                # run three times that is rewriting the file rather than editing it — which is
+                # the failure this node exists to prevent.
+                timeout=900,
+                # Same reasoning as `plan`: the file on disk is the deliverable, and a repair
+                # that got halfway is a better starting point than a fresh session that has
+                # to re-read the worklist from the top. `MAX_PLAN_VALIDATION_REWORKS` and
+                # then `MAX_TOTAL_PLAN_LAPS` are what bound a plan that cannot be finished.
+                retries=0,
+                add_dirs=self._dirs(),
+                args=self._plan_args(loop),
+            )
+        except AgentTimeout:
+            self.logger.info(
+                "the QA-plan repair turn was stopped at its budget — validating what it wrote",
+                extra={"activity": True},
+            )
+            overran = _OVERRAN_REPAIR
+        return self._validated(loop, overran=overran)
 
     def _plan_args(self, loop: QaLoop) -> dict[str, object]:
         """Every diagnostic the loop collected, for whichever plan turn is about to run.
@@ -651,7 +699,7 @@ class Qa(Workflow):
             "evidence_notes": loop.qa.notes,
         }
 
-    def _validated(self, loop: QaLoop) -> Continue | Await | Done:
+    def _validated(self, loop: QaLoop, overran: str = "") -> Continue | Await | Done:
         """The tail both plan turns share: clear the brief, stamp, parse, route on the parse.
 
         A plan that parses normally goes to `review_plan`. The one exception is the polish
@@ -669,13 +717,21 @@ class Qa(Workflow):
         verdict cannot change the route is the expense, not the reviewer's judgement; the
         demotion branch in the result handler still covers the lap that *reaches* the
         threshold, which is the last one whose findings are worth repairing.
+
+        `overran` is set when the turn that just ran was cut at its wall-clock cap. It is
+        prepended to the validation notes so the repair turn is *told* the file is a draft
+        someone stopped mid-sentence, rather than left to infer it from a truncated file —
+        which reads exactly like a plan whose author made a mistake, and invites a rewrite.
+        It is only ever a brief: a plan that validates goes to the runner regardless, because
+        a plan that parses is a plan that runs whatever cut its author short.
         """
         loop = loop.cleared()
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         validation = self.call(validate_qa_plan, self.ctx.spec_dir, self.docs_path)
-        loop = loop.update(
-            plan_validation_notes=_finding(validation.status == "passed", validation.notes)
-        )
+        notes = validation.notes
+        if overran:
+            notes = f"{overran}\n\n{notes}".strip()
+        loop = loop.update(plan_validation_notes=_finding(validation.status == "passed", notes))
         if validation.status == "passed":
             if loop.plan_polish_pending:
                 self.logger.info(
@@ -733,31 +789,47 @@ class Qa(Workflow):
         would be demoted cannot change where the plan goes next, and this is the most
         expensive node in the plan lane.
         """
-        review = self.agent(
-            "prompts/review-qa-plan.md",
-            returns=QaPlanReview,
-            # high: judging whether a plan actually verifies the story's claims is the
-            # harder half of writing one.
-            power="high",
-            # 15 min, which clips nothing observed — the longest review in four days ran
-            # 17.3 and the mean is 5.6. It is a guard against this node, the most
-            # expensive in the lane, discovering the 3600s watchdog.
-            timeout=900,
-            add_dirs=self._dirs(),
-            args={
-                "story_path": self.ctx.story_path,
-                "spec_dir": self.ctx.spec_dir,
-                "docs_path": self.docs_path,
-                "target_env": self.target_env,
-                # The cost of the verdict, never the content of the last one. The reviewer's
-                # amnesia about `plan_review_ledger` is what its independence rests on; how
-                # many refusals the run can still afford is not a finding.
-                "review_pass": loop.plan_review_rework + 1,
-                "blocking_passes_left": max(
-                    0, self.MAX_BLOCKING_PLAN_REVIEWS - loop.plan_review_rework
-                ),
-            },
-        )
+        try:
+            review = self.agent(
+                "prompts/review-qa-plan.md",
+                returns=QaPlanReview,
+                # high: judging whether a plan actually verifies the story's claims is the
+                # harder half of writing one.
+                power="high",
+                # 15 min, which clips nothing observed — the longest review in four days ran
+                # 17.3 and the mean is 5.6. It is a guard against this node, the most
+                # expensive in the lane, discovering the 3600s watchdog.
+                timeout=900,
+                # A review leaves no artifact, so there is nothing here to salvage and
+                # nothing a reframe could recover either — it would just spend the lane's
+                # most expensive tier twice more to arrive at the same silence. The landing
+                # below is the answer instead.
+                retries=0,
+                add_dirs=self._dirs(),
+                args={
+                    "story_path": self.ctx.story_path,
+                    "spec_dir": self.ctx.spec_dir,
+                    "docs_path": self.docs_path,
+                    "target_env": self.target_env,
+                    # The cost of the verdict, never the content of the last one. The
+                    # reviewer's amnesia about `plan_review_ledger` is what its independence
+                    # rests on; how many refusals the run can still afford is not a finding.
+                    "review_pass": loop.plan_review_rework + 1,
+                    "blocking_passes_left": max(
+                        0, self.MAX_BLOCKING_PLAN_REVIEWS - loop.plan_review_rework
+                    ),
+                },
+            )
+        except AgentTimeout:
+            # A plan that parses, that no gate refused, with `run` → `assess` → `audit` all
+            # standing downstream: this is exactly the case `_validated` already sends to the
+            # runner when the reviewer has spent its blocking budget. An unjudged plan that
+            # gets tested beats a judged plan that never runs, and the audit is the backstop.
+            self.logger.info(
+                "the QA-plan review was stopped at its budget — going to the runner unjudged",
+                extra={"activity": True},
+            )
+            return Continue(None, self.run, loop=loop.update(plan_authored=True))
         problems = _plan_finding_problems(review)
         if problems:
             raise WorkflowFailed(

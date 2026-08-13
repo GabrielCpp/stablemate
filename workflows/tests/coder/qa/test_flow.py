@@ -35,6 +35,7 @@ from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
+from workhorse.runner.failure import BackendInvocationError
 
 from workhorse_workflows.coder.shared import ostler_qa
 from workhorse_workflows.coder.qa.flow import Qa
@@ -448,6 +449,7 @@ class _Agent:
         escalate: bool = False,
         scope: str = "story",
         explode: set[str] | None = None,
+        cut: set[str] | None = None,
     ) -> None:
         self.docs = docs
         self.repair = repair
@@ -476,6 +478,11 @@ class _Agent:
         self.escalate = escalate
         self.scope = scope
         self.explode = explode or set()
+        #: Stems whose turn is stopped at its wall-clock cap. Unlike `explode`, the handler
+        #: runs *first* and only then does the raise happen: an overrun turn leaves behind
+        #: whatever it had written when the clock ran out, and a fake that raised instead of
+        #: writing would be testing the flow against a turn that never started.
+        self.cut = cut or set()
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         self.dirs: list[list[str]] = []
@@ -497,7 +504,14 @@ class _Agent:
             raise RuntimeError(f"killed during {stem}")
         handler = getattr(self, f"_{stem.replace('-', '_')}")
         nth = self.planned() if stem in self.PLAN_STEMS else self.counts()[stem]
-        return f"(scripted) {node.prompt}", handler(data, nth)
+        answer = handler(data, nth)
+        if stem in self.cut:
+            # The transport-level signal, not the pyflow one: raising `AgentTimeout` here
+            # would skip the engine's translation and let the flow pass over a chain that
+            # does not connect. `retries=0` on the node is what makes this the first and
+            # only invocation.
+            raise BackendInvocationError(f"timed out after {node.timeout}s", timed_out=True)
+        return f"(scripted) {node.prompt}", answer
 
     def counts(self) -> Counter[str]:
         return Counter(self.calls)
@@ -1144,6 +1158,60 @@ def test_the_stacked_plan_budgets_cannot_multiply(
     # `power="high"` review pass with a `power="low"` edit, so charging it to the ceiling
     # would price the cheap lap as if it were the expensive one it exists to avoid.
     assert agent.planned() == Qa.MAX_TOTAL_PLAN_LAPS + 1, agent.counts()
+
+
+def test_a_plan_turn_cut_at_its_budget_is_repaired_rather_than_failing_the_run(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """An overrun `plan-qa` lands on the repair lane, because its deliverable is a file.
+
+    The turn's reply is discarded either way — what `_validated` reads is `qa_plan.py` off
+    disk. So a turn stopped at its twenty-minute cap has still produced something, and the
+    draft it left is worth a `power="low"` repair pass rather than a dead run: standing, the
+    ladder threw the draft away and re-authored from nothing three times over, at the
+    authoring tier and for another twenty minutes each, before ending the run with no QA
+    verdict at all.
+
+    `plan_invalid=1` is what a truncated file looks like at the seam the flow actually
+    consults — `ostler qa validate` refusing to import it.
+    """
+    ostler(plan_invalid=1)
+    agent = _Agent(docs, cut={"plan-qa"})
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["repair-qa-plan"] == 1, agent.counts()
+    # The repair turn is told the file is a stopped draft rather than a mistake, so its
+    # worklist is "finish it" and not "re-author it".
+    brief = agent.args_for("repair-qa-plan")[0]
+    assert "stopped at its wall-clock budget" in brief["plan_validation_notes"], brief
+
+
+def test_a_plan_review_cut_at_its_budget_goes_to_the_runner_unjudged(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A review leaves no artifact, so the only thing to salvage is the plan it was judging.
+
+    This is the demotion `_validated` already makes when the reviewer has spent its blocking
+    budget: a plan that parses and that no gate refused, with `run` → `assess` → `audit` all
+    standing downstream. An unjudged plan that gets tested beats a judged plan that never
+    runs.
+    """
+    okf = ostler()
+    agent = _Agent(docs, cut={"review-qa-plan"})
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.planned() == 1, "the cut review must not buy a replan"
+    assert okf.runs == 1, "the plan the review never judged is still the one that ran"
 
 
 def test_a_refusal_only_the_stack_could_fix_does_not_cost_a_replan(
