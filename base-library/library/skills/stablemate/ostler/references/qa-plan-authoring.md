@@ -191,7 +191,12 @@ remember to ask for, made the default.
   bare read against a UI that is still resolving a promise, an animation or a re-render is a
   race, and it fails in exactly the shape of a product defect — intermittently, with a
   plausible actual value. Await the condition first (`expect(...).to_be_visible()`,
-  `wait_for_selector`), then read. A state that is transient by nature — a spinner between two
+  `locator.wait_for(state="visible")`, `wait_for_selector`), then read — and await *the locator
+  you are about to sample*. A wait for something else is not a wait for this: `wait_for_url()`
+  returns when the navigation commits, which says nothing about an element the route renders two
+  frames later, and the sample that follows it reads as absent. Two round trips are two instants,
+  so a `wait_for` followed by a separate `evaluate()` snapshot can observe the state *after* the
+  one it waited for. A state that is transient by nature — a spinner between two
   fast operations — needs the transition held (block the response, throttle the route) or it
   needs to be asserted through something durable it leaves behind; sampling faster does not
   fix it.
