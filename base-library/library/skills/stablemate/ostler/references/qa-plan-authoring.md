@@ -47,8 +47,10 @@ def publish_records_the_real_author(qa: Qa) -> None:
     stored = qa.http.get("/v1/objects/live/page").json()
     qa.check("author is the token uid, not the request body",
              stored["metadata"]["author"] == uid,
-             actual=stored["metadata"]["author"], expected=uid)
-    qa.check("message is verbatim", stored["metadata"]["message"] == "hello")
+             actual=stored["metadata"]["author"], expected=uid,
+             covers=["ac:1"])
+    qa.check("message is verbatim", stored["metadata"]["message"] == "hello",
+             covers=["okf:docs/features/demo/http/api.md#publish:does:1"])
     json.dump(stored, qa.artifact("steps/publish-stored.json", kind="json").open("w"))
 ```
 
@@ -72,6 +74,13 @@ mechanism.
 `ostler qa validate` set-diffs it against the obligation packet and fails closed on anything
 uncovered, so it is the one declaration that cannot move into the body — validation runs before
 anything executes.
+
+The scenario-level `covers` is a *promise about the function*. The `covers=` on each
+`qa.check`/`qa.require` is what discharges it, and validation now requires every id in the
+scenario's list to be claimed by at least one assertion, written literally. Both exist because
+they answer different questions: which obligations this scenario is responsible for, and which
+line proves each one. Collapsing them is what let a scenario keep `covers=["ac:4"]` after its
+AC4 assertions were deleted, with the remaining unrelated check reporting AC4 proven.
 
 Readiness belongs on `background`, not in a scenario. A scenario that waits for its own stack
 turns a startup failure into a product failure. `ready_url` is fetched and must answer 200 — use
@@ -151,11 +160,41 @@ remember to ask for, made the default.
   the OKF node's documented `role`/`name`/`selector`. A locator written as
   `qa.page.get_by_text(...)` is invisible to that check — use `qa.page` directly only for
   interactions the helpers do not cover.
+- **Every obligation is claimed by an assertion.** An id in the scenario's `covers` that no
+  `qa.check(..., covers=[...])` in the body names is a failed validation, not a warning. The
+  ids must be literal: the binding is recovered statically by `extract_check_covers`, and a
+  computed list claims nothing.
 - **`input_file` paths must exist and stay out of `qa/`**, which the runner deletes and
   recreates each run.
 
 ## Doctrine
 
+- **Every acceptance criterion and every OKF obligation is tested. There is no exception.**
+  Not "covered by a unit test elsewhere", not "deferred", not "unobservable from here". If an
+  obligation is genuinely unprovable through the target, that is a finding to escalate — the
+  story is either mis-specified or missing a seam — not a line to delete. `validate` fails
+  closed on an uncovered obligation precisely so the decision reaches a human.
+- **Prove it live.** The scenario exercises the running product through its real target — the
+  HTTP surface, the browser, the device. Asserting that a unit test exists, shelling out to a
+  suite, or re-checking a fixture the product never touched is wasted motion: it proves the
+  test file, not the behaviour, and the whole reason this plan runs against a live stack is
+  that the unit suite already ran and said nothing about integration.
+- **Removing an assertion is never a repair.** A failing check is a result. Deleting it,
+  loosening it until it cannot fail, or moving its obligation onto a cheaper claim converts a
+  red run into a green one without touching the product — which is the single most expensive
+  mistake available here, because everything downstream then treats the story as done. If an
+  assertion is *wrong* (it asserts something the story never promised), say so and fix the
+  assertion. If it is right and failing, the product is broken: report it. When the repair is
+  a coverage trade, stop and escalate rather than deciding it inside the lane.
+- **Read state that can still be changing with a retrying API.** `expect(locator).to_*` polls;
+  `.count()`, `.is_disabled()`, `.inner_text()` and `evaluate()` sample once, immediately. A
+  bare read against a UI that is still resolving a promise, an animation or a re-render is a
+  race, and it fails in exactly the shape of a product defect — intermittently, with a
+  plausible actual value. Await the condition first (`expect(...).to_be_visible()`,
+  `wait_for_selector`), then read. A state that is transient by nature — a spinner between two
+  fast operations — needs the transition held (block the response, throttle the route) or it
+  needs to be asserted through something durable it leaves behind; sampling faster does not
+  fix it.
 - **Do not defend against a wrong key.** `payload["items"][0]["id"]` is the correct spelling;
   `payload.get("items", [])` converts a broken response into a scenario that passes over
   nothing. Let it raise. A reviewer who sees the defensive form should file it as a finding.
