@@ -1084,7 +1084,6 @@ workflow = (
             "document-story": {"status": "passed"},
             "review-story-documentation": {"status": "passed"},
             "plan-qa": {"status": "complete"},
-            "review-qa-plan": {"status": "approved"},
             "qa-story": {"status": "passed"},
             "audit-qa": {"status": "passed"},
             "apply-qa-fixes": {"status": "passed"},

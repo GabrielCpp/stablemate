@@ -613,7 +613,7 @@ class Docs(Workflow):
         two-language schema story died on a real run: one gate failure, then three reviewer
         refusals each naming a distinct, correct, fixable defect, and the flow raised on the
         third with the book one edit from conformant. Same defect the QA flow's
-        `_guard_plan_validation` / `_guard_plan_review` split fixes.
+        `_guard_plan_validation` split fixes.
 
         Where it sends the author is `repair`, not `document`: a finding against three
         bullets is not a reason to rewrite the nodes the gate and the reviewer both passed.

@@ -61,8 +61,8 @@ def test_missing_documentation_taint_fails_closed():
 
 def test_verdicts_skip_the_gate_that_has_not_run():
     """Blank means "has not spoken", which is distinct from "found nothing wrong"."""
-    source = {"audit_verdict": "refuted", "plan_review_disposition": ""}
-    labels = verdict_labels(source, "qa", ("audit_verdict", "plan_review_disposition"))
+    source = {"audit_verdict": "refuted", "assessment_disposition": ""}
+    labels = verdict_labels(source, "qa", ("audit_verdict", "assessment_disposition"))
     assert labels == {"qa.audit_verdict": "refuted"}
 
 
@@ -78,39 +78,14 @@ def test_epic_edit_reports_reworks_and_omits_defaulted_absent_counters():
 
 def test_a_recorded_verdict_reaches_the_labels():
     loop = QaLoop(
-        plan_review_disposition="revise",
         assessment_disposition="repair_plan",
         assessment_failure_class="plan",
     )
     labels = _sealed(Qa).state_labels({"loop": loop})
-    assert labels["qa.plan_review_disposition"] == "revise"
     assert labels["qa.assessment_disposition"] == "repair_plan"
     assert labels["qa.assessment_failure_class"] == "plan"
     # The audit has not run, so it says nothing rather than claiming a verdict.
     assert "qa.audit_verdict" not in labels
-
-
-def test_the_plan_review_reports_whether_a_pass_bought_anything():
-    """The budget counters say a story's review was expensive, not why.
-
-    `plan_review_rework=3` reads the same whether the author was handed one demand three
-    times and ignored it, or closed each one and was met with a fresh one. Those want
-    opposite interventions — a plan turn that will not comply, against a reviewer that will
-    not converge. `churned` is the treadmill's own signature: the same number outstanding
-    each pass, a different set of them.
-
-    `plan_review_ids` carries the baseline and so is deliberately *not* a verdict label:
-    blanking it with the notes would make every pass score as `first_pass`.
-    """
-    loop = QaLoop(plan_review_disposition="revise", plan_review_ids=["R1"])
-    ids = ["R2"]
-    loop = loop.update(
-        plan_review_progress=progress_verdict(loop.plan_review_ids or None, ids),
-        plan_review_ids=ids,
-    )
-    labels = _sealed(Qa).state_labels({"loop": loop})
-    assert labels["qa.plan_review_progress"] == "churned"
-    assert loop.cleared().plan_review_ids == ["R2"]
 
 
 def test_verdicts_are_forgotten_with_the_notes_they_summarise():
@@ -118,9 +93,8 @@ def test_verdicts_are_forgotten_with_the_notes_they_summarise():
     behind would let a span claim `revise` for a finding already forgotten — the two are
     the same statement in two forms."""
     loop = QaLoop(
-        plan_review_disposition="revise",
-        plan_review_notes="the plan does not test the story",
-        plan_review_progress="churned",
+        assessment_disposition="repair_plan",
+        assessment_notes="the plan does not test the story",
         audit_verdict="refuted",
         audit_refutation_class="plan-defect",
         # A budget is not a finding: `cleared` must not reset the counters, or the loop
@@ -130,9 +104,8 @@ def test_verdicts_are_forgotten_with_the_notes_they_summarise():
         docs_recheck_required=True,
     )
     cleared = loop.cleared()
-    assert cleared.plan_review_disposition == ""
-    assert cleared.plan_review_notes == ""
-    assert cleared.plan_review_progress == ""
+    assert cleared.assessment_disposition == ""
+    assert cleared.assessment_notes == ""
     assert cleared.audit_verdict == "" and cleared.audit_refutation_class == ""
     assert cleared.plan_rework == 2
     assert cleared.plan_rework_total == 3
@@ -186,11 +159,11 @@ def _sealed(cls: type[Workflow], slug: str = "04-tabs") -> Workflow:
 def test_qa_reports_every_budget_on_its_loop():
     """The loop is a state parameter, so the counters are in hand with no state stashing
     a copy of them."""
-    loop = QaLoop(plan_rework=2, plan_review_rework=1, qa_rework=3)
+    loop = QaLoop(plan_rework=2, plan_validation_rework=1, qa_rework=3)
     labels = _sealed(Qa).state_labels({"loop": loop})
     assert labels["work_id"] == "04-tabs"
     assert labels["qa.plan_rework"] == "2"
-    assert labels["qa.plan_review_rework"] == "1"
+    assert labels["qa.plan_validation_rework"] == "1"
     assert labels["qa.plan_rework_total"] == "3"
     assert labels["qa.qa_rework"] == "3"
     # Every budget is reported, including the ones still at zero — the loop carries them

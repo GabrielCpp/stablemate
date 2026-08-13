@@ -240,11 +240,10 @@ class QaFinding(CoderResult):
     """One QA finding, from any of the three gates, with the authority it falls under named.
 
     `scope` is closed for the same reason `DocumentationFinding.kind` is, and here the
-    closure is load-bearing rather than diagnostic. `review-qa-plan.md` already tells the
-    reviewer in prose that the heavyweight shared stack is `ensure_stack`'s and not the
-    plan's, and that a finding the author cannot act on inside a plan file spends the repair
-    budget for nothing — and the reviewer keeps issuing them anyway. Prose cannot filter
-    prose. A named scope can.
+    closure is load-bearing rather than diagnostic. Every gate's brief says in prose that the
+    heavyweight shared stack is `ensure_stack`'s and not the plan's, and that a finding the
+    author cannot act on inside a plan file spends the repair budget for nothing — and gates
+    keep issuing them anyway. Prose cannot filter prose. A named scope can.
 
     The scope now decides *routing*, not just filtering: `_route_findings` sends a
     `product-test` finding to the fix loop, a `plan` finding to the plan author and a `stack`
@@ -259,6 +258,8 @@ class QaFinding(CoderResult):
 
     `coverage`   an AC or OKF obligation has no cited evidence that would catch it failing.
                  The runner's behaviour changes. This is the only kind that refuses a plan.
+                 Since the pre-run reviewer's deletion, `ostler qa validate` catches the
+                 mechanical half of it before any gate reads the file.
     `overclaim`  a checkpoint asserts more than its cited test proves. Execution is
                  unaffected, but `audit-qa` reads the plan's claims, so leaving one in place
                  seeds a refutation later — it is repaired, just not re-reviewed.
@@ -268,40 +269,24 @@ class QaFinding(CoderResult):
     written before this field existed, and the `assess`/`audit` gates that share this model
     without classifying all keep exactly the behaviour they had.
 
-    The case that motivated it: a live story spent four `power="high"` review passes and
-    then ended with *no QA verdict at all*, because after the first pass found a real
+    The case that motivated it: a live story spent four `power="high"` pre-run review passes
+    and then ended with *no QA verdict at all*, because after the first pass found a real
     evidence defect the next three each raised a fresh prose nit — a viewport claim the run
-    does not exercise, and an objective saying "10 test cases" where the file has 9. The
-    reviewer classified them correctly in its own prose ("neither reflects a missing
-    acceptance-criterion coverage gap") and refused anyway. `review-qa-plan.md` already
-    instructs it to find everything in one pass and approve what it has listed; the
-    instruction is prose, and prose cannot filter prose.
+    does not exercise, and an objective saying "10 test cases" where the file has 9. Its own
+    prose classified them correctly ("neither reflects a missing acceptance-criterion
+    coverage gap") and it refused anyway; the instruction to approve what it had listed was
+    prose, and prose cannot filter prose. That node is gone, and the axis it forced is what
+    the surviving gates are still judged on.
     """
 
     id: str = ""
     scope: Literal["plan", "stack", "product-test"] = "plan"
     #: See the class docstring. `coverage` is the fail-closed default and the only blocking
-    #: kind; `_route_findings` splits on it and `Qa.review_plan` gates on the split.
+    #: kind; the post-run gates report it and `_finding_line` renders it.
     kind: Literal["coverage", "overclaim", "cosmetic"] = "coverage"
     target: str = ""
     issue: str = ""
     repair: str = ""
-
-
-class QaPlanReview(CoderResult):
-    """`review-qa-plan.md` — the semantic read of a plan that already parses.
-
-    `revise` is the default because the YAML's is: a reviewer that produced nothing has not
-    approved anything, and the bounded replan loop is the safe arm.
-
-    `findings` is the repair contract; `notes` is a summary of it. A `revise` whose findings
-    are all out of the plan's authority is not a revision the author can spend a pass on —
-    see `QaFinding.scope` and `review_plan`.
-    """
-
-    disposition: str = "revise"
-    findings: list[QaFinding] = []
-    notes: str = "Semantic QA plan review produced no valid result."
 
 
 class QaAssessment(CoderResult):
@@ -422,26 +407,10 @@ class QaLoop(CoderResult):
     context_status: str = ""
     context_notes: str = ""
 
-    #: The four gate diagnostics `clear-qa-gate-state.py` blanked before each plan turn.
+    #: The three gate diagnostics `clear-qa-gate-state.py` blanked before each plan turn.
     plan_validation_notes: str = ""
-    plan_review_notes: str = ""
     assessment_notes: str = ""
     audit_notes: str = ""
-
-    #: Every plan-review refusal this flow has issued, oldest first — one entry per `revise`.
-    #: It deliberately survives `cleared()`, which is the whole point of it existing.
-    #:
-    #: `cleared()` blanks `plan_review_notes` because it describes a plan that no longer
-    #: exists. That is right for the *verdict* and wrong for the *demand*: a finding the plan
-    #: turn was told about and did not fix reaches the next turn looking brand new, so the
-    #: turn re-reads it as a first-time request, rewrites the plan wholesale again, and the
-    #: reviewer refuses it again for the same reason. A live story spent its whole judgement
-    #: budget that way — the reviewer's first and last refusal both said the copied URL was
-    #: never opened in a fresh page — and gave up with no plan ever executed.
-    #:
-    #: Bounded by construction: an entry is only appended where a judgement repair is spent,
-    #: so the ledger cannot outgrow `MAX_PLAN_REWORKS`.
-    plan_review_ledger: tuple[str, ...] = ()
 
     #: The triager's class, which is what the one-shot bonus pass is granted on. Blank until
     #: a triage turn runs — the YAML never declared this var, so an untriaged loop reads it
@@ -457,25 +426,14 @@ class QaLoop(CoderResult):
     #:
     #: Blank means the gate has not run yet, which is distinct from a gate that ran and
     #: found nothing wrong.
-    plan_review_disposition: str = ""  #: approved | revise
     assessment_disposition: str = ""  #: confirmed | repair_plan | extend_plan | repair_setup
     assessment_failure_class: str = ""  #: none | product | plan | environment | evidence
     audit_verdict: str = ""  #: stands | refuted
     audit_refutation_class: str = ""  #: none | product-contradiction | plan-defect | evidence-defect
 
-    #: What the last plan-review pass did to the findings the one before it left open — one
-    #: of `kit.telemetry.progress_verdict`'s six words. `plan_review_rework=3` says the gate
-    #: was expensive; `plan_review_rework=3` beside `churned` says each pass closed its own
-    #: worklist and opened a different one, which is the treadmill this flow died of and is
-    #: a prompt defect, not a budget that was too small. `reduced` beside the same counter
-    #: is the opposite reading and wants the opposite intervention.
-    plan_review_progress: str = ""  #: see `kit.telemetry.progress_verdict`
-
     #: Which of the above are worth a span dimension. Each is a closed vocabulary of a
     #: handful of words, so the label cardinality they add is bounded.
     VERDICT_LABELS: ClassVar[tuple[str, ...]] = (
-        "plan_review_disposition",
-        "plan_review_progress",
         "assessment_disposition",
         "assessment_failure_class",
         "audit_verdict",
@@ -483,12 +441,10 @@ class QaLoop(CoderResult):
     )
 
     #: The bounded budgets. Each was a `{value: 0}` var with a `seed`/`incr` node pair, except
-    #: `plan_validation_rework` and `plan_review_rework` — see the flow's
-    #: `_guard_plan_validation` and `_guard_plan_review`.
+    #: `plan_validation_rework` — see the flow's `_guard_plan_validation`.
     context_rework: int = 0
     plan_rework: int = 0
     plan_validation_rework: int = 0
-    plan_review_rework: int = 0
     qa_rework: int = 0
     setup_rework: int = 0
     regression_fix: int = 0
@@ -599,16 +555,6 @@ class QaLoop(CoderResult):
     #: Whether the one verification-only bonus pass past `MAX_QA_REWORKS` has been spent.
     bonus_used: bool = False
 
-    #: The plan is being repaired for findings that did not refuse it, so the lap that
-    #: follows goes straight to `stack` instead of back through `review-qa-plan`.
-    #:
-    #: This is what bounds the polish lap: not a counter, but the fact that the only state
-    #: that sets it is the one the flow leaves for `stack`. It survives `cleared()` — which
-    #: names its keys explicitly — deliberately, because a polish repair that trips schema
-    #: validation loops through `_guard_plan_validation` back to `repair_plan`, and that lap
-    #: must still skip the review it was already excused from.
-    plan_polish_pending: bool = False
-
     #: Whether a plan has been authored and approved on this pass, which is what tells `stack`
     #: where to go next.
     #:
@@ -627,20 +573,13 @@ class QaLoop(CoderResult):
     #: authoring turn and cannot skip one.
     plan_authored: bool = False
 
-    #: The finding ids the last *refusing* plan-review pass left open — the baseline
-    #: `plan_review_progress` is computed against. Not a verdict label and so not blanked by
-    #: `cleared()`: comparing this pass to the one before it requires the previous pass's
-    #: ids to outlive the draft they were written against, which is the same reason
-    #: `plan_review_ledger` is exempt. Empty means the gate has not refused yet.
-    plan_review_ids: list[str] = []
-
     #: A post-documentation mutation may have changed the as-built truth. True is the
     #: fail-closed default for checkpoints written before this field existed; `Qa.start`
     #: explicitly establishes False for a fresh, known-clean QA pass.
     docs_recheck_required: bool = True
 
     #: Wall-clock seconds this lane has spent inside agent turns, and how much of that the
-    #: plan lane (`plan`, `review_plan`, `repair_plan`) took. `Qa.qa_lane_budget_s` and
+    #: plan lane (`plan`, `repair_plan`) took. `Qa.qa_lane_budget_s` and
     #: `Qa.plan_lane_budget_s` are what they are checked against.
     #:
     #: **Accumulated as deltas, never derived from a start timestamp.** A lane that stored
@@ -671,7 +610,7 @@ class QaLoop(CoderResult):
         repairs and keep alternating between the two, which is how `plan-qa` reached thirteen
         laps when no single budget permits more than four.
         """
-        return self.plan_rework + self.plan_validation_rework + self.plan_review_rework
+        return self.plan_rework + self.plan_validation_rework
 
     @property
     def plan_judgement_rework(self) -> int:
@@ -680,16 +619,16 @@ class QaLoop(CoderResult):
         `validate_qa_plan` is a schema check: `ostler qa validate` imports `qa_plan.py`
         and says whether it is well-formed. Failing it means the plan turn mistyped a
         field — cheap to fix, deterministic, and worth nothing as evidence about whether
-        the plan tests the story. `review-qa-plan` and the post-run plan gates are the
-        opposite: an agent judging coverage, which is the work the budget exists to bound.
+        the plan tests the story. The post-run plan gates are the opposite: an agent judging
+        coverage against evidence that exists, which is the work the budget exists to bound.
 
         They shared one ceiling of four until a story spent three repairs on schema typos
-        and reached the reviewer with a single revision left, then gave up "after 4 total
+        and reached the judging gate with a single revision left, then gave up "after 4 total
         QA-plan repair" — a give-up a human reads as an intractable plan when the plan had
         in fact been read critically exactly once. Mechanical failures now spend their own
         budget (`MAX_PLAN_VALIDATION_REWORKS`) and cannot starve this one.
         """
-        return self.plan_rework + self.plan_review_rework
+        return self.plan_rework
 
     def update(self, **changes: object) -> QaLoop:
         """The same loop with some fields replaced — the port of an `incr`/`emit-kv` node."""
@@ -749,28 +688,10 @@ class QaLoop(CoderResult):
             update={
                 "qa": QaResult(),
                 "plan_validation_notes": "",
-                "plan_review_notes": "",
                 "assessment_notes": "",
                 "audit_notes": "",
                 **dict.fromkeys(self.VERDICT_LABELS, ""),
             }
-        )
-
-    @property
-    def prior_plan_review_brief(self) -> str:
-        """The plan-review ledger as the numbered brief both the plan turn and a human read.
-
-        Rendered here rather than in the flow for the reason `block_notes` is: it is one
-        composition of the loop's own fields, and two callers want the same words.
-
-        Oldest first, and numbered by the pass that issued it, because the ordinal is the
-        information the bare text lacks — "this was already asked for two drafts ago" is what
-        tells the plan turn its previous repair did not land.
-        """
-        return "\n".join(
-            f"{index}. (plan-review pass {index}) {notes.strip()}"
-            for index, notes in enumerate(self.plan_review_ledger, start=1)
-            if notes.strip()
         )
 
     @property
@@ -825,7 +746,6 @@ __all__ = [
     "QaFlowResult",
     "QaLoop",
     "QaPlanResult",
-    "QaPlanReview",
     "QaPlanValidation",
     "QaReport",
     "QaResult",

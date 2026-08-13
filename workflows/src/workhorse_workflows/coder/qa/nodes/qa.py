@@ -7,7 +7,8 @@ into a status by its own rule — and they resolve their docs root the same way,
 `find_docs_root(docs_path, repo_dir)` rather than a per-node cwd the driver does not have.
 
 `clear-qa-gate-state.py` has no node here, deliberately. It blanked five run-context keys
-(`qa_plan_validation`, `qa_plan_review`, `qa_assessment`, `qa_audit`, `qa_result`) so a
+(`qa_plan_validation`, `qa_plan_review`, `qa_assessment`, `qa_audit`, `qa_result`) back
+when a semantic plan reviewer still existed, so a
 stale diagnostic from an earlier pass could not be fed to the next `plan_qa`. Those five
 are not global state under the driver — they are the QA flow's own parameters — so
 "forget them" is expressed by the transition out of the planning turn not carrying them
@@ -82,8 +83,6 @@ def record_qa_giveup(
     spec_dir: str = "",
     story_slug: str = "",
     spent: str = "",
-    plan_review_notes: str = "",
-    plan_review_ledger: tuple[str, ...] = (),
     plan_validation_notes: str = "",
     assessment_notes: str = "",
     audit_notes: str = "",
@@ -101,12 +100,11 @@ def record_qa_giveup(
     builds the result. They are simply dropped there, because `QaFlowResult` carries the
     *code*-rework verdict and the plan gates never touch it.
 
-    A live run made the cost concrete. `group-membership` exhausted its QA-plan repairs;
-    the review gate's refusal was specific and correct — three scenarios asserted a
-    raw substring against a validation error body the API double-JSON-encodes, so they could
-    never match — and the only copy of it was a run-dir artifact that the next story's QA
-    flow overwrote within the hour. The retry starts from the same blank story and walks into
-    the same wall.
+    A live run made the cost concrete. `group-membership` exhausted its QA-plan repairs; the
+    refusal was specific and correct — three scenarios asserted a raw substring against a
+    validation error body the API double-JSON-encodes, so they could never match — and the
+    only copy of it was a run-dir artifact that the next story's QA flow overwrote within the
+    hour. The retry starts from the same blank story and walks into the same wall.
 
     Deliberately never overwrites: a real QA run's assessment is the better document, and a
     give-up that happens *after* one has run has nothing to add to it.
@@ -119,27 +117,11 @@ def record_qa_giveup(
         logger.info("%s already exists — leaving the QA run's own assessment in place", path)
         return QaGiveupRecord(path=str(path))
 
-    # Every refusal, not only the last one, when the reviewer spoke more than once. Two
-    # refusals that say the same thing are the finding a human most needs: they mean the plan
-    # turn was told and did not comply, which is a different triage from a plan that was
-    # refused once for something new each time. A single refusal is already the section
-    # below, so numbering it as a history would only add ceremony.
-    earlier = [notes for notes in plan_review_ledger if notes.strip()]
-    history = (
-        "\n\n".join(
-            f"**Pass {index}.** {notes.strip()}" for index, notes in enumerate(earlier, start=1)
-        )
-        if len(earlier) > 1
-        else ""
-    )
-
-    # The semantic verdict leads, because it is the one that names a defect rather than a
-    # schema slip — and on the budget-exhausted path it is usually the only one there is.
+    # The schema verdict leads: on the budget-exhausted path, where no plan ever ran, it is
+    # usually the only diagnosis there is.
     sections = [
         f"## {heading}\n\n{notes.strip()}\n"
         for heading, notes in (
-            ("Plan review — the semantic gate", plan_review_notes),
-            ("Plan review — every refusal, in order", history),
             ("Plan validation — `ostler qa validate`", plan_validation_notes),
             ("Run assessment", assessment_notes),
             ("Evidence audit", audit_notes),
@@ -261,10 +243,12 @@ def validate_qa_plan(
 ) -> QaPlanValidation:
     """`ostler qa validate` on `<spec_dir>/qa_plan.py` — is this plan executable?
 
-    The deterministic half of the plan gate; `review-qa-plan.md` is the semantic half. Both
-    have to pass before the stack comes up, so a plan that cannot run is caught before
-    anything expensive starts. Validating a Python plan imports it, so a plan that does not
-    import fails here rather than an hour later as a driver failure.
+    The whole pre-run plan gate, now that the semantic reviewer is gone: it has to pass
+    before the stack comes up, so a plan that cannot run is caught before anything expensive
+    starts. Validating a Python plan imports it, so a plan that does not import fails here
+    rather than an hour later as a driver failure. It is also the gate that binds each claimed
+    obligation to the `verify:` check the node declared, which is the semantic work the
+    reviewer used to do by reading.
     """
     plan = str(Path(spec_dir) / QA_PLAN_FILE)
     docs_root = find_docs_root(docs_path, repo_dir)
