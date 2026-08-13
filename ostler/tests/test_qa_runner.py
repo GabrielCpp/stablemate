@@ -35,7 +35,7 @@ api = target("api")
 @scenario(target=api, mechanism="live", covers=["{obligation}"])
 def api_contract(qa: Qa) -> None:
     """The item is emitted."""
-    qa.check("the value is ok", True, actual="ok", expected="ok")
+    qa.check("the value is ok", True, actual="ok", expected="ok", covers=["{obligation}"])
 '''
 
 
@@ -137,7 +137,11 @@ def test_one_failing_assertion_sinks_the_item_it_covers(tmp_path: Path) -> None:
     spec = _spec(tmp_path)
     module = _plan(
         spec,
-        PLAN + '    qa.check("the value is absent", False, actual="ok", expected="absent")\n',
+        # The failing check binds the obligation explicitly: an assertion is credited to what
+        # it names and nothing else, so "sinks the item it covers" now says which item.
+        PLAN
+        + '    qa.check("the value is absent", False, actual="ok", expected="absent",\n'
+        + '             covers=["{obligation}"])\n',
     )
 
     outcome = cmd_run(module, root=tmp_path)
@@ -221,9 +225,11 @@ def test_a_secret_is_runtime_only_and_redacted(tmp_path: Path, monkeypatch) -> N
         )
         .replace('api = target("api")', 'api = target("api")\n\nsecret("token", from_env="QA_TOKEN")')
         .replace(
-            '    qa.check("the value is ok", True, actual="ok", expected="ok")',
+            '    qa.check("the value is ok", True, actual="ok", expected="ok",'
+            ' covers=["{obligation}"])',
             '    print("authorizing with", qa.secret("token"))\n'
-            '    qa.check("the token was readable", bool(qa.secret("token")))',
+            '    qa.check("the token was readable", bool(qa.secret("token")),\n'
+            '             covers=["{obligation}"])',
         ),
     )
     monkeypatch.setenv("QA_TOKEN", "top-secret-value")
@@ -341,9 +347,11 @@ def test_recording_cannot_be_disabled_by_the_plan_itself(tmp_path: Path) -> None
         ).replace(
             # A UI scenario has to vet, so the plan that tests the *recording* policy has to
             # satisfy the vetting one too — otherwise it fails for the wrong reason.
-            '    qa.check("the value is ok", True, actual="ok", expected="ok")',
+            '    qa.check("the value is ok", True, actual="ok", expected="ok",'
+            ' covers=["{obligation}"])',
             '    qa.vet("docs/features/demo/item.md", name="loaded")\n'
-            '    qa.check("the value is ok", True, actual="ok", expected="ok")',
+            '    qa.check("the value is ok", True, actual="ok", expected="ok",\n'
+            '             covers=["{obligation}"])',
         ),
     )
 

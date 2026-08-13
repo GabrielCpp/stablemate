@@ -202,9 +202,12 @@ def test_run_streams_records_and_passes(tmp_path: Path) -> None:
     asserted = [record for record in records if record["type"] == "assert"]
     assert asserted[0]["label"] == "author is the token uid"
     assert asserted[0]["passed"] is True
-    # covers defaults to the scenario's declaration, which is what qa-evidence.json
-    # aggregates each assert record over.
-    assert asserted[0]["covers"] == ["ac:1", "okf:docs/a.md#publish:does:1"]
+    # An assert record carries the binding the check itself wrote, and nothing else.
+    # It used to default to the scenario's whole `covers` list, which is what
+    # qa-evidence.json aggregates over — so every assertion in the body was stamped with
+    # every obligation the scenario claimed, one passing check reported the whole set
+    # proven, and deleting the assertion that did the proving left the row green.
+    assert asserted[0]["covers"] == []
     assert records[-1] == {
         "type": "scenario",
         "id": "publish-records-the-real-author",

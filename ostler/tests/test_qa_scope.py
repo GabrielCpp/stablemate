@@ -403,7 +403,8 @@ def _plan_covering(spec: Path, obligation: str) -> Path:
         f'@scenario(target=api, mechanism="live", covers=[{obligation!r}])\n'
         "def api_contract(qa: Qa) -> None:\n"
         '    """The item is emitted."""\n'
-        '    qa.check("the value is ok", True, actual="ok", expected="ok")\n',
+        '    qa.check("the value is ok", True, actual="ok", expected="ok",\n'
+        f"             covers=[{obligation!r}])\n",
         encoding="utf-8",
     )
     return path
@@ -541,7 +542,7 @@ def _gui_plan(
         f"    qa.goto({url!r})\n"
         f"{body}"
         '    qa.vet("docs/features/demo/screen.md", name="loaded")\n'
-        '    qa.check("the widget is shown", True)\n',
+        f'    qa.check("the widget is shown", True, covers={[_GUI, *covers]!r})\n',
         encoding="utf-8",
     )
     return path

@@ -293,7 +293,13 @@ class PythonDriver(QaDriver):
                     scenario=scenario_id,
                     driver="python",
                     action=action,
-                    covers=list(record.get("covers") or covers),
+                    # The assertion's own binding, never the scenario's as a fallback.
+                    # Inheriting it credited every obligation in `covers` to every assertion
+                    # in the body, so one unrelated passing check reported the whole set
+                    # proven — and deleting the assertion that did the proving left the row
+                    # green. `validate` now refuses a plan whose obligations are not each
+                    # claimed by a check, so an empty binding here is a plan that never ran.
+                    covers=list(record.get("covers") or []),
                 )
                 if not passed:
                     failures += 1

@@ -602,7 +602,13 @@ class Qa:
                 "passed": passed,
                 "actual": actual,
                 "expected": expected,
-                "covers": list(covers) if covers is not None else self.covers,
+                # The assertion's own binding only. Falling back to `self.covers` — the
+                # scenario's whole list — stamped every obligation onto every assertion in
+                # the body, so one passing check reported the entire set proven and deleting
+                # the check that did the proving left the evidence row green. `validate`
+                # refuses a plan whose obligations are not each claimed, so a bare
+                # `qa.check` here is an extra claim, not an uncredited one.
+                "covers": list(covers) if covers is not None else [],
             }
         )
         return passed
@@ -906,6 +912,48 @@ def count_checks(source: str) -> dict[str, int]:
     return counts
 
 
+def extract_check_covers(source: str) -> dict[str, list[str]]:
+    """Which obligation ids each scenario's `qa.check`/`qa.require` calls claim, as written.
+
+    The scenario-level `covers=` is a promise about the whole function; this is the part that
+    says *which assertion* discharges it. Without the distinction the two are impossible to
+    tell apart, and the gap is not theoretical: a scenario declaring `covers=["ac:4"]` passed
+    validation on the strength of any one assertion anywhere in its body, so deleting the two
+    checks that actually exercised AC4 turned a failing run green while the ledger went on
+    reporting AC4 covered. Removing an assertion has to fail here, loudly, instead of reading
+    downstream as a product that started working.
+
+    Only ids written literally are recovered, and a computed `covers=` contributes `COMPUTED`
+    — which matches no obligation, so the obligation stays unclaimed and the caller reports it.
+    That is deliberate rather than lenient: a binding validation cannot read is a binding the
+    evidence gate cannot count either.
+    """
+    found: dict[str, list[str]] = {}
+    for node in ast.parse(source).body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        claimed: list[str] = []
+        for child in ast.walk(node):
+            if (
+                not isinstance(child, ast.Call)
+                or not isinstance(child.func, ast.Attribute)
+                or child.func.attr not in CHECK_METHODS
+            ):
+                continue
+            for keyword in child.keywords:
+                if keyword.arg != "covers":
+                    continue
+                value = _literal(keyword.value)
+                if isinstance(value, (list, tuple)):
+                    claimed.extend(
+                        item if isinstance(item, str) else COMPUTED for item in value
+                    )
+                else:
+                    claimed.append(COMPUTED)
+        found[node.name] = claimed
+    return found
+
+
 #: How a locator helper is spelled, and the strategy key it stands for. Both the `qa.` form
 #: and Playwright's own `page.` form are listed: a scenario is free to use the page directly,
 #: and the book check should still see what it addressed.
@@ -1012,10 +1060,12 @@ def _describe(module_path: Path) -> dict[str, Any]:
     data = REGISTRY.as_json()
     source = module_path.read_text(encoding="utf-8")
     counts = count_checks(source)
+    check_covers = extract_check_covers(source)
     locators = extract_locators(source)
     vets = extract_vets(source)
     for declared in data["scenarios"]:
         declared["checks"] = counts.get(declared["function"], 0)
+        declared["check_covers"] = check_covers.get(declared["function"], [])
         declared["locators"] = locators.get(declared["function"], [])
         declared["vets"] = vets.get(declared["function"], [])
     return data

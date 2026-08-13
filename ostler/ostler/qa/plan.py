@@ -273,6 +273,10 @@ def _validate_python_scenarios(
                     f"{_uncoverable(cover, document.context, all_coverage)}"
                 )
         checks = scenario.get("checks")
+        claimed = scenario.get("check_covers")
+        claimed_ids: set[str] = set()
+        if isinstance(claimed, list):
+            claimed_ids = {item for item in claimed if isinstance(item, str)}
         if not isinstance(checks, int):
             problems.append(f"scenario '{scenario_id}' is missing its static assertion count")
         elif covers and checks == 0:
@@ -283,7 +287,19 @@ def _validate_python_scenarios(
                 "check inside a helper the scenario calls does not count; inline it here"
             )
         else:
-            asserted_coverage.update(covers)
+            unclaimed = sorted(set(covers) - claimed_ids)
+            if unclaimed:
+                problems.append(
+                    f"scenario '{scenario_id}' declares coverage of {unclaimed} but no "
+                    "qa.check()/qa.require() in its body claims it. Bind the assertion that "
+                    "proves each obligation: qa.check(label, condition, covers=[...]), with "
+                    "the ids written literally — the binding is read statically, so a "
+                    "computed list claims nothing. The scenario-level covers is a promise "
+                    "about the function; the per-check covers is what the evidence gate "
+                    "counts. Without this, deleting the assertion that proves an obligation "
+                    "leaves the obligation credited to whatever unrelated check still passes"
+                )
+            asserted_coverage.update(claimed_ids & set(covers))
         # `describe` recovers the locators from the parsed body, so the book check reads the
         # same structure it read off a YAML action list — see `extract_locators`.
         driver = targets[scenario["target"]].get("driver")

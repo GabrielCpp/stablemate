@@ -35,7 +35,7 @@ def item_is_emitted(qa: Qa) -> None:
     """The emitted item carries the id it was asked for."""
     payload = json.loads(Path(qa.root, "out.json").read_text(encoding="utf-8"))
     qa.check("the item is the one requested", payload["item"]["id"] == "abc",
-             actual=payload["item"]["id"], expected="abc")
+             actual=payload["item"]["id"], expected="abc", covers=["{obligation}"])
 '''
 
 
@@ -53,7 +53,7 @@ def item_is_shown(qa: Qa) -> None:
     qa.goto("/items")
     {locator}
     qa.vet("docs/features/demo/item.md", name="items")
-    qa.check("the item is shown", True)
+    qa.check("the item is shown", True, covers=["{obligation}"])
 '''
 
 
@@ -307,3 +307,72 @@ def test_by_text_matches_a_substring_and_takes_a_pattern() -> None:
     qa.by_text("Publish", exact=True)
 
     assert forwarded == [("not-a-docx.txt", {}), (pattern, {}), ("Publish", {"exact": True})]
+
+
+def test_an_obligation_no_check_claims_is_rejected(tmp_path: Path) -> None:
+    """The scenario asserts, and asserts about something else entirely.
+
+    This is the hole the per-check binding closes. The old rule was "claims coverage and has
+    at least one check", which a scenario satisfies no matter what its checks are about — so
+    deleting the two assertions that exercised an obligation left the plan valid, the run
+    green, and the evidence row reporting the obligation proven by whatever unrelated check
+    still passed. A QA lane scored on failure count finds that move on its own; the gate has
+    to be what makes it unavailable.
+    """
+    spec = _spec(tmp_path)
+    unbound = PLAN.replace('expected="abc", covers=["{obligation}"])', 'expected="abc")')
+    document, problems = load_plan(_plan(spec, unbound), spec, tmp_path)
+    assert not problems and document is not None
+
+    reported = validate_v2(document)
+
+    assert any("no qa.check()/qa.require() in its body claims it" in item for item in reported)
+    # And it is not quietly credited on the way out either.
+    assert any("is not covered by an asserted scenario" in item for item in reported)
+
+
+def test_a_computed_covers_list_claims_nothing(tmp_path: Path) -> None:
+    """`extract_check_covers` reads the parsed tree, so only literal ids are recoverable.
+
+    Degrading to "assume it covers what it says" would reopen the hole through a variable,
+    and a binding validation cannot read is one the evidence gate cannot count either — the
+    run would then disagree with the plan that passed validation.
+    """
+    spec = _spec(tmp_path)
+    computed = PLAN.replace(
+        'expected="abc", covers=["{obligation}"])',
+        'expected="abc", covers=list(qa.covers))',
+    )
+    document, problems = load_plan(_plan(spec, computed), spec, tmp_path)
+    assert not problems and document is not None
+
+    reported = validate_v2(document)
+
+    assert any("the ids written literally" in item for item in reported)
+
+
+def test_an_unbound_check_is_not_credited_to_the_scenario_s_obligations(tmp_path: Path) -> None:
+    """A ledger record carries the assertion's own binding, never the scenario's.
+
+    The runtime half of the same defect: `run_assert` used to fall back to the scenario's
+    `covers` for any record that declared none, so every assertion in the body was stamped
+    with every obligation the scenario claimed. One passing check then proved the whole set.
+    """
+    spec = _spec(tmp_path)
+    extra = PLAN + '    qa.check("something else entirely", True)\n'
+    module = _plan(spec, extra)
+    (tmp_path / "out.json").write_text(json.dumps({"item": {"id": "abc"}}), encoding="utf-8")
+
+    outcome = cmd_run(module, spec, root=tmp_path)
+    assert outcome.ok, outcome.message
+
+    records = [
+        json.loads(line)
+        for line in (spec / "qa" / "qa-run.ndjson").read_text(encoding="utf-8").splitlines()
+        if json.loads(line).get("kind") == "assert"
+    ]
+    bound = next(record for record in records if "requested" in record["label"])
+    unbound = next(record for record in records if "something else" in record["label"])
+
+    assert bound["covers"] == [OBLIGATION]
+    assert unbound.get("covers", []) == []
