@@ -1,0 +1,29 @@
+{
+  "story": "seat-hold",
+  "services": [
+    {
+      "repo": "seat-booking",
+      "path": ".",
+      "type": "python",
+      "skills": [
+        "seat-booking-ostler"
+      ],
+      "plan_file": "plan.md"
+    }
+  ],
+  "implementation_order": [
+    "seat-booking::."
+  ],
+  "shared_packages": [],
+  "required_instructions": [
+    "seat-booking-ostler"
+  ],
+  "qa_stack": {
+    "profile": "bring the stack up with `docker compose -f compose.yml up -d --wait` and drive it over http://localhost:18083; sandboxed runs reach the same URL through the forwarded port declared in qa-stack.yml",
+    "fixtures": [
+      "a seat already held (POST /api/seats/A1/hold) to exercise the unavailable and release paths"
+    ],
+    "capable_of_rendering": "the hold and release endpoints against the live ledger, and the seat map page reflecting a held seat",
+    "notes": "the neighbour criterion needs the whole map read before and after a release, not just the released seat"
+  }
+}

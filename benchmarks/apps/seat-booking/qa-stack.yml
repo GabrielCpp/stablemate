@@ -1,0 +1,32 @@
+# How QA reaches the seat-booking service, on the host and from inside the sandbox.
+#
+# `entry_url` is the same string in both places on purpose. A sandboxed scenario opens
+# `http://localhost:18083` exactly like a host one does; what differs is that inside the
+# container that loopback port is forwarded to the published compose port, so no plan text
+# has to change between a rehearsal and the scored run. Rewriting URLs at run time would
+# mean the plan that ran is not the plan that was reviewed.
+
+entry_url: http://localhost:18083
+health_path: /healthz
+# A substring of the response *body*, not a host:port — `/healthz` answers `{"status": "ok"}`.
+identity: '"status": "ok"'
+reuse: always
+boot_timeout: 60
+launch: docker compose -f compose.yml up -d --wait
+health:
+  - curl -sf -o /dev/null http://localhost:18083/healthz
+
+sandbox:
+  # The compose service publishes 18083 on the host, so the container reaches it through
+  # docker's own host alias rather than by joining the compose network. That keeps the
+  # fixture runnable on a machine where the network name has been taken by something else.
+  forward:
+    18083: host.docker.internal:18083
+  images:
+    base: ostler-qa-sandbox:base
+    browser: ostler-qa-sandbox:browser
+  gateway:
+    # Deny-all. Nothing in this app's book needs a host verb: the whole product is an HTTP
+    # service reachable over the forwarded port, and a benchmark that granted a verb it did
+    # not need would be measuring a laxer sandbox than the one under test.
+    allow: []

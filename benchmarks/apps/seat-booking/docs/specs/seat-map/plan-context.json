@@ -1,0 +1,29 @@
+{
+  "story": "seat-map",
+  "services": [
+    {
+      "repo": "seat-booking",
+      "path": ".",
+      "type": "python",
+      "skills": [
+        "seat-booking-ostler"
+      ],
+      "plan_file": "plan.md"
+    }
+  ],
+  "implementation_order": [
+    "seat-booking::."
+  ],
+  "shared_packages": [],
+  "required_instructions": [
+    "seat-booking-ostler"
+  ],
+  "qa_stack": {
+    "profile": "bring the stack up with `docker compose -f compose.yml up -d --wait` and drive it over http://localhost:18083; sandboxed runs reach the same URL through the forwarded port declared in qa-stack.yml",
+    "fixtures": [
+      "none \u2014 a fresh ledger is an empty showing, which is exactly this story's subject"
+    ],
+    "capable_of_rendering": "the seat map page on `/` and the JSON map on `/api/seats`, both against the live ledger",
+    "notes": "there is no unit-test surface to lean on: the container has the service and nothing else, so every claim has to come from an HTTP response or the rendered page"
+  }
+}

@@ -1,0 +1,18 @@
+# seat-booking — the fictive app the standalone-QA benchmark measures against.
+#
+# The pack list is short because this repo is a *fixture*, not a product: what a trial
+# needs is whatever the QA lane reads, and nothing that would make one trial differ from
+# the next. `stablemate` is also the only pack that ships in `base-library/` — the
+# benchmark has to resolve from a public clone, and `scripts/check_public.py` asserts the
+# base library stands alone — so naming any other pack here would make the fixture
+# unbuildable for everyone outside a private overlay.
+#
+# `repo.name` is derived from the directory name, which is why a trial must materialize
+# this tree into a directory called exactly `seat-booking`: every generated skill is
+# prefixed with it, and the book's own references resolve through that prefix.
+
+agents:
+  claude: true
+
+packs:
+  - stablemate

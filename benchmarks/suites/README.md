@@ -138,6 +138,11 @@ port in its backlog's surface list, and no two specs share one — `expense-spli
 `link-shortener` api 18081, `bookmarks` api 18082 and web 18092. A new spec takes the next
 free number in the range and writes it down the same way.
 
+The frozen apps under [`benchmarks/apps/`](../apps/README.md) draw from the same range and are
+registered here for the same reason, even though they are not specs: `seat-booking` 18083. A
+fixture that measures QA and a suite that builds an app can easily be running at the same
+moment on one machine.
+
 This is not tidiness. A spec that starts a server without naming a port gets the language's
 idiomatic default — `8080` for Go, `3000` for React Router — and those are the two most
 contended ports on a developer machine. An `expense-split` run bound its QA daemon to `8080`

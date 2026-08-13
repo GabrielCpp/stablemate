@@ -1,0 +1,25 @@
+# One service, no build step, stock image. The QA sandbox reaches it by forwarding a
+# container-loopback port at this service, so the port number is a contract with
+# `qa-stack.yml` and with `benchmarks/suites/README.md`'s port register, not a preference.
+services:
+  seat-booking:
+    image: python:3.12-slim
+    working_dir: /srv
+    command: ["python", "-m", "app.service"]
+    ports:
+      - "18083:18083"
+    volumes:
+      - ./app:/srv/app:ro
+      - seat-booking-data:/data
+    environment:
+      PYTHONUNBUFFERED: "1"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:18083/healthz')"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  # Named rather than a bind mount: the ledger has to survive `compose restart` for the
+  # book's `persists` obligation to mean anything, and must not land in the tracked tree.
+  seat-booking-data:

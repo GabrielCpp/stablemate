@@ -1,0 +1,29 @@
+{
+  "story": "confirm-booking",
+  "services": [
+    {
+      "repo": "seat-booking",
+      "path": ".",
+      "type": "python",
+      "skills": [
+        "seat-booking-ostler"
+      ],
+      "plan_file": "plan.md"
+    }
+  ],
+  "implementation_order": [
+    "seat-booking::."
+  ],
+  "shared_packages": [],
+  "required_instructions": [
+    "seat-booking-ostler"
+  ],
+  "qa_stack": {
+    "profile": "bring the stack up with `docker compose -f compose.yml up -d --wait` and drive it over http://localhost:18083; sandboxed runs reach the same URL through the forwarded port declared in qa-stack.yml",
+    "fixtures": [
+      "a seat held via POST /api/seats/A1/hold, keeping the version it returns, so both the fresh and the stale confirm can be issued against it"
+    ],
+    "capable_of_rendering": "the booking endpoint against the live ledger, and a service restart (`docker compose restart`) for the durability claim",
+    "notes": "the stale-version claim is only observable as a refusal \u2014 a write followed by a read cannot tell a compare-and-swap from an unconditional overwrite"
+  }
+}
