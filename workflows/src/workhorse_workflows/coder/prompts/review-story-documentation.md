@@ -82,6 +82,26 @@ changelog of this story. In particular, for the surfaces this story touched:
   reusable contract. A new service, screen, component, endpoint, command, flow, concept, or format
   is never `not_required`.
 
+## Query the graph, don't infer it from the file
+
+Reading the markdown tells you what a heading *looks like* it belongs to. `ostler graph` tells
+you what it actually parsed as, which is the thing the book is judged on and the thing a
+mis-nested heading silently changes. Use it to prove a structural finding before you file it —
+and to withdraw one when the graph says the file is fine. The recipes, verbatim; the `ostler`
+skill's `references/command-interface.md` has the rest.
+
+```bash
+ostler graph --surface acme                          # the whole service, as an outline tree
+ostler graph --path 'concept:Widget / field'         # a concept's fields (/ = descendant, > = direct)
+ostler graph --path 'concept:Widget / field' --tree  # …with the nesting shown
+ostler graph --type field --under <id> --depth 1     # a node's direct children of one type
+ostler graph --bullet 'code=mod.py::Sym' --ids       # is this symbol already grounded, and where
+ostler graph --orphans                               # nodes no edge reaches
+```
+
+Do not spend the review guessing flags. If a query does not exist above, it is not the one to
+reach for — read the file and say what you saw.
+
 {% if workhorse_var('review_notes') %}
 ## Re-review discipline
 
