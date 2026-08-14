@@ -267,6 +267,15 @@ def _validate_declared_checks(document: PlanDocument, asserted: set[str]) -> lis
     closes one wording and leaves the other standing.
     """
     invoked, problems = _invoked_checks(document)
+    # Grouped by the call, not by the obligation. `verify:` sits on the node, so every
+    # obligation a node mints carries the same declaration (`qa/context.py`'s
+    # `checksDeclared`) — a section with four bullets and four normative lines reports the
+    # same missing call sixteen times, each message naming one id. One `qa.verify` whose
+    # `covers=` lists them all satisfies every one of them (`_invoked_checks` credits the
+    # call to each id it names), so a message per id both overstates the work and reads as
+    # an instruction to write sixteen near-identical assertions.
+    missing: dict[str, list[str]] = {}
+    named: dict[str, str] = {}
     for obligation in document.context.get("obligations", []):
         if not is_mapping(obligation) or not obligation.get("id"):
             continue
@@ -279,13 +288,24 @@ def _validate_declared_checks(document: PlanDocument, asserted: set[str]) -> lis
             call = str(declared["call"])
             if call in invoked.get(obligation_id, set()):
                 continue
-            spec = checks.CHECK_BY_NAME.get(str(declared.get("name", "")))
-            excludes = f" It excludes {spec.excludes}." if spec else ""
+            missing.setdefault(call, []).append(obligation_id)
+            named.setdefault(call, str(declared.get("name", "")))
+    for call, obligation_ids in missing.items():
+        spec = checks.CHECK_BY_NAME.get(named[call])
+        excludes = f" It excludes {spec.excludes}." if spec else ""
+        covers = ", ".join(f"'{obligation_id}'" for obligation_id in obligation_ids)
+        if len(obligation_ids) == 1:
             problems.append(
-                f"obligation '{obligation_id}' declares `{call}` in its `verify:` bullet, and "
+                f"obligation {covers} declares `{call}` in its `verify:` bullet, and "
                 f"no assertion invokes it — call qa.verify with that name and those arguments, "
-                f"bound with covers=['{obligation_id}'].{excludes}"
+                f"bound with covers=[{covers}].{excludes}"
             )
+            continue
+        problems.append(
+            f"{len(obligation_ids)} obligations declare `{call}` in their `verify:` bullets, "
+            f"and no assertion invokes it — one qa.verify with that name and those arguments, "
+            f"bound with covers=[{covers}], satisfies all of them.{excludes}"
+        )
     return problems
 
 

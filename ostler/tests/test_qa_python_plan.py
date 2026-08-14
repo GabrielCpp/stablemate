@@ -552,3 +552,73 @@ def test_a_scenario_whose_only_assertion_retries_validates_clean(tmp_path: Path)
 
     assert not problems and document is not None
     assert validate_v2(document) == []
+
+
+SIBLING = "okf:docs/features/demo/item.md:returns:1"
+
+TWO_OBLIGATION_PLAN = '''\
+import json
+from pathlib import Path
+
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-story-1", story="story-1")
+
+api = target("api")
+
+@scenario(target=api, mechanism="live",
+          covers=["okf:docs/features/demo/item.md:contract",
+                  "okf:docs/features/demo/item.md:returns:1"])
+def item_is_emitted(qa: Qa) -> None:
+    """The emitted item carries the id it was asked for."""
+    payload = json.loads(Path(qa.root, "out.json").read_text(encoding="utf-8"))
+    {assertion}
+'''
+
+
+def _two_declaring(spec: Path) -> None:
+    """Two obligations off one node, carrying the same node-level declaration."""
+    context_path = spec / "qa-okf-context.json"
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    first = context["obligations"][0]
+    first["checksDeclared"] = [DECLARED]
+    context["obligations"].append({**first, "id": SIBLING, "kind": "returns"})
+    context_path.write_text(json.dumps(context), encoding="utf-8")
+
+
+def test_one_missing_call_is_reported_once_for_every_obligation_declaring_it(
+    tmp_path: Path,
+) -> None:
+    """`verify:` sits on the node, so every obligation it mints carries the same call.
+
+    Reported per obligation, a section with four bullets and four normative lines emitted the
+    same missing call sixteen times, each naming one id — which reads as an instruction to
+    write sixteen near-identical assertions, and is what a repair lane then spends its laps
+    doing. One call satisfies them all, so it is one refusal.
+    """
+    spec = _spec(tmp_path)
+    _two_declaring(spec)
+    source = TWO_OBLIGATION_PLAN.replace(
+        "{assertion}", 'qa.check("weak", True, covers=["okf:docs/features/demo/item.md:contract", "okf:docs/features/demo/item.md:returns:1"])'
+    )
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+
+    reported = [item for item in validate_v2(document) if "json_path" in item]
+
+    assert len(reported) == 1
+    assert f"'{OBLIGATION}', '{SIBLING}'" in reported[0]
+    assert "satisfies all of them" in reported[0]
+    assert "passes on the default the defect also produces" in reported[0]
+
+
+def test_one_call_covering_both_obligations_binds_both(tmp_path: Path) -> None:
+    spec = _spec(tmp_path)
+    _two_declaring(spec)
+    source = TWO_OBLIGATION_PLAN.replace(
+        "{assertion}",
+        'qa.verify("json_path", payload, path="item.id", equals="abc", covers=["okf:docs/features/demo/item.md:contract", "okf:docs/features/demo/item.md:returns:1"])',
+    )
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+    assert validate_v2(document) == []
