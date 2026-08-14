@@ -1,5 +1,86 @@
 # Changelog
 
+## [1.1.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v1.0.0...workhorse-workflows-v1.1.0) (2026-08-14)
+
+
+### Features
+
+* **ostler:** add created/removed paired lifecycle checks ([6eaf82a](https://github.com/GabrielCpp/stablemate/commit/6eaf82aafba0e362d367265b825901202cd933d1))
+* **ostler:** record response status in the browser diagnostics ([a88591b](https://github.com/GabrielCpp/stablemate/commit/a88591b103c868b7f10fca9de904a4f462cda79c))
+* **ostler:** record the whole console and network in the diagnostics ([79e7f91](https://github.com/GabrielCpp/stablemate/commit/79e7f917c46b747474dc5ddac346a4c47700f28c))
+* **ostler:** record why a failed request failed, not just its url ([c7c0ddc](https://github.com/GabrielCpp/stablemate/commit/c7c0ddc921278710209ddc54d2e9fa963d9c92f9))
+* **ostler:** stamp a schema key on the browser diagnostics ([105cb82](https://github.com/GabrielCpp/stablemate/commit/105cb822c15f6c73c38bb86c5e72b4be1ee6e2b5))
+* **workflows:** author the QA plan as a python module ([622e4dd](https://github.com/GabrielCpp/stablemate/commit/622e4dd3768b394805348446584d737a32bebf68))
+* **workflows:** backfill a missing placement from the running ui ([3a7cd25](https://github.com/GabrielCpp/stablemate/commit/3a7cd2594b7d2a5573757618775033b95043f641))
+* **workflows:** gate okf-builder on every non-waived finding ([d581fe1](https://github.com/GabrielCpp/stablemate/commit/d581fe17f0849fcccb526feb3048c27ab5c292cf))
+* **workflows:** give each okf repair item a prompt for its own code ([03502c9](https://github.com/GabrielCpp/stablemate/commit/03502c94069b90060935ec64853d54b8b18c9187))
+* **workflows:** give the qa planner its plan-context and a dry run ([b53e1ea](https://github.com/GabrielCpp/stablemate/commit/b53e1eaf15c44c740414a4c3d49f4ff90443a429))
+* **workflows:** hand a spent QA budget to the operator before giving up ([f9f3678](https://github.com/GabrielCpp/stablemate/commit/f9f3678bccc44e4087921540254555a7e35766b6))
+* **workflows:** hold the QA lane to a wall-clock budget ([014ebcb](https://github.com/GabrielCpp/stablemate/commit/014ebcb8cbdd92b4f5a1b96e0d11c3b579ab3ea8))
+* **workflows:** let the author ratify a documentation block ([b8c2b9e](https://github.com/GabrielCpp/stablemate/commit/b8c2b9ea4381166c47a49a568084dd3b036db6d3))
+* **workflows:** let the coder QA lane run its scenarios sandboxed ([95d05df](https://github.com/GabrielCpp/stablemate/commit/95d05dfc7ccdfd2c1fb3c0aeb533af23deaa52fb))
+* **workflows:** queue undeclared obligations as okf-builder worklist ([ee41f57](https://github.com/GabrielCpp/stablemate/commit/ee41f5785604689964f4e14090ba41855e68d907))
+* **workflows:** read the qa context in slices, not whole, in plan-qa ([30fa1f8](https://github.com/GabrielCpp/stablemate/commit/30fa1f872db65a779102356135894e45e4a2c8c2))
+* **workhorse:** keep machine scratch in the cache, not the repo ([0f9c663](https://github.com/GabrielCpp/stablemate/commit/0f9c6638767c2dc71afd8f96f0b54727e2b016d0))
+
+
+### Bug Fixes
+
+* **ostler:** say a required section is missing, not empty ([809b18c](https://github.com/GabrielCpp/stablemate/commit/809b18cd56e44f3314b8d54cebbc46c9822ac06c))
+* **workflows:** bound checkpointed docs repair notes ([3742fbc](https://github.com/GabrielCpp/stablemate/commit/3742fbc18ac0e33567b083d2aff1cc283fb4bf72))
+* **workflows:** catch a set-aside epic branch up to its base ([659dd3d](https://github.com/GabrielCpp/stablemate/commit/659dd3d8b34da092e880c8fb12fef7bfba792345))
+* **workflows:** clear the review sidecars before each review round ([7571ac7](https://github.com/GabrielCpp/stablemate/commit/7571ac7672223306136808e1fa5aab42ce858627))
+* **workflows:** close a prose qa finding by editing the prose ([51e9c2f](https://github.com/GabrielCpp/stablemate/commit/51e9c2f779ec3332af3a6b2fcb8d6ed239eb8283))
+* **workflows:** compact repeated docs gate findings ([5a16eb3](https://github.com/GabrielCpp/stablemate/commit/5a16eb33660eaa10e0d032e371e5130182420dec))
+* **workflows:** continue reducing docs gate repairs ([f42595c](https://github.com/GabrielCpp/stablemate/commit/f42595c4a39d270e71ccb3dd997249b8e4671ece))
+* **workflows:** declare the playwright extra the coder's qa stage needs ([568a465](https://github.com/GabrielCpp/stablemate/commit/568a46510012ce4f728d3ed652eacdd0ff0ca9c9))
+* **workflows:** escalate a QA repair that changes nothing ([eaf2899](https://github.com/GabrielCpp/stablemate/commit/eaf2899e088b79cd10d7db2dfc743303ecbe6898))
+* **workflows:** forbid the qa fixer from rewriting the evidence ledger ([2139a55](https://github.com/GabrielCpp/stablemate/commit/2139a552c70ca3710094450853e5cf56f2667df6))
+* **workflows:** gate CI on the branch the epic PR is opened from ([151b0d1](https://github.com/GabrielCpp/stablemate/commit/151b0d1ddd04805a7f70e04e70912b98c047f522))
+* **workflows:** gate on a repeated identical blocked qa bundle ([5d64207](https://github.com/GabrielCpp/stablemate/commit/5d64207575a5bd204276796e1e4e2682c8dc0193))
+* **workflows:** group repair items by the node the ref really names ([cc10736](https://github.com/GabrielCpp/stablemate/commit/cc10736d7988aab83552a7b533090e85c1faf7c8))
+* **workflows:** hand branch_epic the run dir so its claim ledger fills ([370fb34](https://github.com/GabrielCpp/stablemate/commit/370fb34d61b1f0454244527466c33812f0da26db))
+* **workflows:** hold the QA context join point to the plan budget ([0b28885](https://github.com/GabrielCpp/stablemate/commit/0b288857f472a1faf9c95b90015f9e3949734062))
+* **workflows:** judge okf coverage across scenarios, not one by one ([b2c0ef6](https://github.com/GabrielCpp/stablemate/commit/b2c0ef6f87db070e68831a6357af314ba78b1ba4))
+* **workflows:** keep a story's Dependencies section through a rewrite ([906671e](https://github.com/GabrielCpp/stablemate/commit/906671e69fc0f9dd960fea6d7226faf8537a5b4d))
+* **workflows:** let a blocked qa fix reach the operator gate ([500750f](https://github.com/GabrielCpp/stablemate/commit/500750fcda63dd9fc1e1a7147753a1e0589f0e06))
+* **workflows:** let a drain return to an epic branch it cut itself ([d0253a9](https://github.com/GabrielCpp/stablemate/commit/d0253a9a372c68de54464caf8420c178e75d7536))
+* **workflows:** make the okf-build scratch ignore itself ([a95b31f](https://github.com/GabrielCpp/stablemate/commit/a95b31f5acb6e02416402a209e4fb9c5b7303243))
+* **workflows:** make the QA lane's wall clock advisory ([a02e58d](https://github.com/GabrielCpp/stablemate/commit/a02e58d2478c1a19b71fc8c63f4bd8728bad6a58))
+* **workflows:** make the QA plan defeat the test runner's cache ([351395d](https://github.com/GabrielCpp/stablemate/commit/351395d315a623aafd4d06b868709b889d2d7d7d))
+* **workflows:** put the check vocabulary in the repair prompt ([4518672](https://github.com/GabrielCpp/stablemate/commit/451867205a3b2d4fc20d31e9f5ab9f3a83fc00a3))
+* **workflows:** repair a cut-off QA plan instead of failing the run ([ef29840](https://github.com/GabrielCpp/stablemate/commit/ef298401d102f19a65642e928216dd26e856e7c1))
+* **workflows:** require a listing before a QA absence finding ([efffb5d](https://github.com/GabrielCpp/stablemate/commit/efffb5d17a72f03ac390e05095c757d2d592c124))
+* **workflows:** require qa evidence for universal claims ([0b1461b](https://github.com/GabrielCpp/stablemate/commit/0b1461b67fcfd9160fae42ef15c965ea3d5d0635))
+* **workflows:** require structured evidence for docs checks ([d77064f](https://github.com/GabrielCpp/stablemate/commit/d77064f2e6579602b1596b0bdac48a48f3e0e7c6))
+* **workflows:** require terminal evidence for print qa ([9436b4f](https://github.com/GabrielCpp/stablemate/commit/9436b4f8ea401e58c7e83022561d45787634a182))
+* **workflows:** retry qa after docs repair ([581a2ec](https://github.com/GabrielCpp/stablemate/commit/581a2ec08b27952a34a1d7fc2b748c80c3725966))
+* **workflows:** route an overlong bullet to a grounded repair ([8cf0abc](https://github.com/GabrielCpp/stablemate/commit/8cf0abc15f0e17e6be0144ab654b5689b6c2329b))
+* **workflows:** show the doctor's expected form in the rework brief ([678a8d1](https://github.com/GabrielCpp/stablemate/commit/678a8d10391676079abdd6009f87d59a7590ce8a))
+* **workflows:** steer qa repairs to declared checks ([5cc6831](https://github.com/GabrielCpp/stablemate/commit/5cc6831cf6aaf128e827dcf432de98632d9518a2))
+* **workflows:** stop a named doc file owning every error already in it ([2aa7a6e](https://github.com/GabrielCpp/stablemate/commit/2aa7a6ec51e9f1f5fe277db96ee4b683297c5d9f))
+* **workflows:** stop a plan repair from stalling the fix loop ([0e20a19](https://github.com/GabrielCpp/stablemate/commit/0e20a19c920b4a859ef97449dafd188113e3c4ca))
+* **workflows:** stop a spent plan budget re-running the failing QA plan ([c71a8bc](https://github.com/GabrielCpp/stablemate/commit/c71a8bca64e7a7f1a008efb05e129105dda7ea77))
+* **workflows:** stop entering the plan review once it is demoted ([072414f](https://github.com/GabrielCpp/stablemate/commit/072414f1728e71cdcc929f88f849f9b2d4c8a006))
+* **workflows:** stop the QA audit blocking a pass forever ([db005d0](https://github.com/GabrielCpp/stablemate/commit/db005d061b65b09ebbfeb04acaffadc145daba30))
+* **workflows:** stop the qa operator granting its own verdict ([670ade6](https://github.com/GabrielCpp/stablemate/commit/670ade6f53a21a14ad6bffc5f9a39d66dfc2e796))
+* **workflows:** teach the qa planner $QA_DIR, not a pinned ledger path ([cdcd299](https://github.com/GabrielCpp/stablemate/commit/cdcd29941e63130d730b1cf40b41bff3e316c771))
+* **workflows:** teach the qa planner what a vacuous assertion looks like ([f8de205](https://github.com/GabrielCpp/stablemate/commit/f8de20573cb95cd314b756e96ee32cfca2c646e9))
+* **workflows:** try the other hypothesis before abandoning a QA story ([c6b839b](https://github.com/GabrielCpp/stablemate/commit/c6b839bbe8aa88bddd6bafd4d3655c0b1a6d281c))
+
+
+### Performance Improvements
+
+* **workflows:** cap the QA plan turns and cut their lap budgets ([3bafc23](https://github.com/GabrielCpp/stablemate/commit/3bafc23eaa70753006c7ee225f065fc782d78351))
+
+
+### Code Refactoring
+
+* **workflows:** delete the QA plan reviewer the machine replaced ([b619a7e](https://github.com/GabrielCpp/stablemate/commit/b619a7e869f9054ce5d595d70ba441f1ab102a1a))
+* **workflows:** drop the dependencies.json story fallback ([41716da](https://github.com/GabrielCpp/stablemate/commit/41716da82f60a2f362e760ad11771c6eee524730))
+* **workflows:** queue one okf repair item per node and code ([f079020](https://github.com/GabrielCpp/stablemate/commit/f079020c1d7480e76c0e325dc0ecb3fcf3de5825))
+* **workflows:** stand the qa stack up before the plan is written ([c3d2848](https://github.com/GabrielCpp/stablemate/commit/c3d28485daf37d953f51d09fd5aeb51886d4533e))
+
 ## [1.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v0.2.0...workhorse-workflows-v1.0.0) (2026-08-11)
 
 
