@@ -177,11 +177,15 @@ def test_coverage_without_an_assertion_is_rejected(tmp_path: Path) -> None:
     assert any("is not covered by an asserted scenario" in item for item in reported)
 
 
-def test_the_finding_says_a_helper_s_checks_do_not_count(tmp_path: Path) -> None:
-    """Factoring shared assertions into a helper is the ordinary way to write a scenario that
-    proves the same thing for two locales, and it reads to this static count as zero checks.
-    The refusal is deliberate, but a message naming only the symptom sends the author to read
-    `count_checks` to discover the rule — so the rule travels with the finding."""
+def test_the_finding_says_which_helpers_checks_do_not_count(tmp_path: Path) -> None:
+    """A helper this module does not define is where the static read genuinely stops.
+
+    Factoring shared assertions into a module helper is the ordinary way to write a scenario
+    that proves the same thing for two locales, and that one is followed. A name the module
+    never binds is not: whatever it asserts is not in this tree. The refusal is deliberate,
+    but a message naming only the symptom sends the author to read `count_checks` to discover
+    the rule — so the rule travels with the finding.
+    """
     spec = _spec(tmp_path)
     hollow = PLAN[: PLAN.index('    payload = json')] + "    _assert_it(qa)\n"
     document, problems = load_plan(_plan(spec, hollow), spec, tmp_path)
@@ -189,8 +193,33 @@ def test_the_finding_says_a_helper_s_checks_do_not_count(tmp_path: Path) -> None
 
     reported = [item for item in validate_v2(document) if "calls no qa.check()" in item]
 
-    assert reported, "a scenario whose only checks live in a helper still counts as zero"
+    assert reported, "a scenario whose only checks live off this module still counts as zero"
     assert "helper" in reported[0] and "inline it here" in reported[0]
+
+
+def test_a_module_helper_s_checks_count_for_the_scenario_that_calls_it(tmp_path: Path) -> None:
+    """A scenario that calls `verify_created(qa, …)` asserts what the helper asserts.
+
+    At runtime there is no difference — the ledger records the helper's assertions with the
+    helper's own `covers=` either way. Reading only the scenario body made the static half
+    disagree with that, and answered a correctly bound plan with "no assertion invokes it",
+    which names neither the problem nor the fix. Inlining is not the fix: a node's `verify:`
+    bullets fan out onto every obligation it mints, so the inlined form repeats the same
+    twenty-id call in every scenario that shares the observation.
+    """
+    spec = _spec(tmp_path)
+    factored = PLAN.replace(
+        '    qa.check("the item is the one requested", payload["item"]["id"] == "abc",\n'
+        '             actual=payload["item"]["id"], expected="abc", covers=["{obligation}"])\n',
+        "    _assert_it(qa, payload)\n\n\n"
+        "def _assert_it(qa: Qa, payload: dict) -> None:\n"
+        '    qa.check("the item is the one requested", payload["item"]["id"] == "abc",\n'
+        '             actual=payload["item"]["id"], expected="abc", covers=["{obligation}"])\n',
+    )
+    document, problems = load_plan(_plan(spec, factored), spec, tmp_path)
+    assert not problems and document is not None
+
+    assert validate_v2(document) == []
 
 
 def test_an_unknown_cover_names_what_the_plan_could_cover(tmp_path: Path) -> None:
@@ -500,6 +529,45 @@ def test_a_computed_covers_list_claims_nothing(tmp_path: Path) -> None:
         'expected="abc", covers=list(qa.covers))',
     )
     document, problems = load_plan(_plan(spec, computed), spec, tmp_path)
+    assert not problems and document is not None
+
+    reported = validate_v2(document)
+
+    assert any("the ids written literally" in item for item in reported)
+
+
+def test_a_covers_list_of_module_constants_binds(tmp_path: Path) -> None:
+    """A module-level `NAME = "okf:…"` is in the parse tree, so the gate can read it.
+
+    Obligation ids run to ninety characters and a node's `verify:` bullet fans out onto every
+    obligation it mints, so a real plan binds a dozen per call. Spelled out that is unreadable
+    and every author names them — and answering that with "no assertion invokes it" describes
+    neither the problem nor the fix, which is how a story burns its whole plan-validation
+    budget on assertions that were correct when written.
+    """
+    spec = _spec(tmp_path)
+    named = f'CLAIM = "{OBLIGATION}"\n' + PLAN.replace(
+        'expected="abc", covers=["{obligation}"])',
+        "expected=\"abc\", covers=[CLAIM])",
+    )
+    document, problems = load_plan(_plan(spec, named), spec, tmp_path)
+    assert not problems and document is not None
+
+    assert validate_v2(document) == []
+
+
+def test_a_rebound_module_constant_claims_nothing(tmp_path: Path) -> None:
+    """Which value reached the call is a question the parse genuinely cannot answer.
+
+    Last-write-wins would put an id in the ledger the run never asserted, which is the same
+    disagreement between plan and run that the literal rule exists to prevent.
+    """
+    spec = _spec(tmp_path)
+    rebound = f'CLAIM = "{OBLIGATION}"\nCLAIM = "okf:docs/features/demo/item.md:does:1"\n' + PLAN.replace(
+        'expected="abc", covers=["{obligation}"])',
+        "expected=\"abc\", covers=[CLAIM])",
+    )
+    document, problems = load_plan(_plan(spec, rebound), spec, tmp_path)
     assert not problems and document is not None
 
     reported = validate_v2(document)

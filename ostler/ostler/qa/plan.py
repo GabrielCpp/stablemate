@@ -386,9 +386,10 @@ def _validate_python_scenarios(
                 f"scenario '{scenario_id}' claims coverage of {sorted(covers)} but its body "
                 "calls no qa.check() — assert something the behaviour produced, on the line "
                 "that produced it, with qa.check()/qa.require() or their retrying forms "
-                "qa.eventually()/qa.require_eventually(). The count is static and over this "
-                "function alone, so a check inside a helper the scenario calls does not "
-                "count; inline it here"
+                "qa.eventually()/qa.require_eventually(). The count is static: it follows "
+                "the helpers this module defines and the scenario calls, but nothing it "
+                "imports or reaches through an object, so a check in one of those does not "
+                "count; inline it here or move the helper into this module"
             )
         else:
             unclaimed = sorted(set(covers) - claimed_ids)

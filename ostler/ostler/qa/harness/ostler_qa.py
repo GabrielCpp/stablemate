@@ -1369,22 +1369,65 @@ def count_checks(source: str) -> dict[str, int]:
     `_exit_sentinel`, a regex guessing whether a shell string proved anything. Here the
     question "does this scenario assert" has an actual answer before anything runs.
 
-    Counts calls nested in loops, `with` blocks and helper branches, because the walk is
-    over the whole function body — but not calls in a helper the scenario *calls*, which
-    is why zero is a finding and one is not a promise.
+    Counts calls nested in loops, `with` blocks and helper branches, and calls in the
+    module-level helpers the scenario invokes — see `_reachable_calls` for why following
+    them is the honest reading rather than the lenient one.
     """
-    counts: dict[str, int] = {}
-    for node in ast.parse(source).body:
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        counts[node.name] = sum(
+    reachable = _reachable_calls(ast.parse(source))
+    return {
+        name: sum(
             1
-            for child in ast.walk(node)
-            if isinstance(child, ast.Call)
-            and isinstance(child.func, ast.Attribute)
-            and child.func.attr in CHECK_METHODS
+            for call in calls
+            if isinstance(call.func, ast.Attribute) and call.func.attr in CHECK_METHODS
         )
-    return counts
+        for name, calls in reachable.items()
+    }
+
+
+def _reachable_calls(tree: ast.Module) -> dict[str, list[ast.Call]]:
+    """Every call each top-level function makes, following the module helpers it calls.
+
+    A scenario that factors its assertions into `verify_created(qa, observation)` and calls
+    it asserts exactly as much as one that inlines them — the ledger the run writes cannot
+    tell the two apart, because at runtime there is no difference. Reading only the
+    scenario's own body made the static half disagree: the plan bound its obligations
+    correctly and validation answered `no assertion invokes it`, naming neither the real
+    problem nor its fix. Inlining is not a fix either, since a node's `verify:` bullets fan
+    out onto every obligation it mints and the resulting plan repeats the same twenty-id
+    call in every scenario.
+
+    Calls in each function are ordered by position and the caller's own come first, so the
+    action numbers the locator problems cite still count down the scenario as written.
+    Recursion terminates on the visited set, so a helper pair that calls each other is read
+    once rather than forever.
+    """
+    functions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+    def own(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.Call]:
+        calls = [child for child in ast.walk(node) if isinstance(child, ast.Call)]
+        return sorted(calls, key=lambda call: (call.lineno, call.col_offset))
+
+    found: dict[str, list[ast.Call]] = {}
+    for name, node in functions.items():
+        seen = {name}
+        pending = [node]
+        calls: list[ast.Call] = []
+        while pending:
+            body = own(pending.pop(0))
+            calls.extend(body)
+            for call in body:
+                if not isinstance(call.func, ast.Name) or call.func.id in seen:
+                    continue
+                helper = functions.get(call.func.id)
+                if helper is not None:
+                    seen.add(call.func.id)
+                    pending.append(helper)
+        found[name] = calls
+    return found
 
 
 def extract_check_covers(source: str) -> dict[str, list[str]]:
@@ -1398,35 +1441,92 @@ def extract_check_covers(source: str) -> dict[str, list[str]]:
     reporting AC4 covered. Removing an assertion has to fail here, loudly, instead of reading
     downstream as a product that started working.
 
-    Only ids written literally are recovered, and a computed `covers=` contributes `COMPUTED`
-    — which matches no obligation, so the obligation stays unclaimed and the caller reports it.
+    Only ids the parse can *read* are recovered, and anything else contributes `COMPUTED` —
+    which matches no obligation, so the obligation stays unclaimed and the caller reports it.
     That is deliberate rather than lenient: a binding validation cannot read is a binding the
     evidence gate cannot count either.
+
+    A module-level `NAME = "okf:…"` counts as readable, because it is: the value is in the
+    parse tree, one assignment away, and resolving it makes the static answer agree with the
+    runtime one instead of contradicting it. Obligation ids run to ninety characters and a
+    plan binding twenty of them per call is unreadable spelled out; every author reaches for
+    the constant, and before this the gate answered a correctly-bound assertion with "no
+    assertion invokes it" — which names neither the real problem nor its fix. A name assigned
+    more than once is left `COMPUTED`: which value reached the call is then a question the
+    parse genuinely cannot answer.
     """
+    tree = ast.parse(source)
+    constants = _module_constants(tree)
     found: dict[str, list[str]] = {}
-    for node in ast.parse(source).body:
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
+    for name, calls in _reachable_calls(tree).items():
         claimed: list[str] = []
-        for child in ast.walk(node):
+        for call in calls:
             if (
-                not isinstance(child, ast.Call)
-                or not isinstance(child.func, ast.Attribute)
-                or child.func.attr not in CHECK_METHODS
+                not isinstance(call.func, ast.Attribute)
+                or call.func.attr not in CHECK_METHODS
             ):
                 continue
-            for keyword in child.keywords:
-                if keyword.arg != "covers":
-                    continue
-                value = _literal(keyword.value)
-                if isinstance(value, (list, tuple)):
-                    claimed.extend(
-                        item if isinstance(item, str) else COMPUTED for item in value
-                    )
-                else:
-                    claimed.append(COMPUTED)
-        found[node.name] = claimed
+            for keyword in call.keywords:
+                if keyword.arg == "covers":
+                    claimed.extend(_covers_ids(keyword.value, constants))
+        found[name] = claimed
     return found
+
+
+def _resolve(node: ast.expr, constants: dict[str, Any]) -> Any:
+    """The value the parse can attribute to this expression, or `None` when it cannot.
+
+    A bare name is looked up in the module's own constants — the value is one assignment
+    away in the same tree, so reading it is still static.
+    """
+    if isinstance(node, ast.Name):
+        return constants.get(node.id)
+    return _literal(node)
+
+
+def _covers_ids(node: ast.expr, constants: dict[str, Any]) -> list[str]:
+    """The obligation ids a `covers=` argument binds, with `COMPUTED` for each unreadable one.
+
+    Both halves of the binding — the scenario's claim and the check call `ostler qa validate`
+    compares against the book — read this, so a spelling that binds in one has to bind in the
+    other. They disagreeing is what reports a correctly-bound assertion as absent.
+    """
+    written = _resolve(node, constants)
+    if isinstance(written, (list, tuple)):
+        return [item if isinstance(item, str) else COMPUTED for item in written]
+    if isinstance(node, (ast.List, ast.Tuple)):
+        elements = [_resolve(element, constants) for element in node.elts]
+        return [item if isinstance(item, str) else COMPUTED for item in elements]
+    return [COMPUTED]
+
+
+def _module_constants(tree: ast.Module) -> dict[str, Any]:
+    """Module-level `NAME = <literal>` bindings, minus every name bound more than once.
+
+    Rebinding is the whole reason for the exclusion rather than last-write-wins: a name the
+    module reassigns has no single value at the point of a call, and guessing one would put
+    an id in the ledger the run never asserted.
+    """
+    constants: dict[str, Any] = {}
+    rebound: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.AnnAssign):
+            targets = [node.target] if node.value is not None else []
+            value = node.value
+        elif isinstance(node, ast.Assign):
+            targets = list(node.targets)
+            value = node.value
+        else:
+            continue
+        for target in targets:
+            if not isinstance(target, ast.Name):
+                continue
+            if target.id in constants:
+                rebound.add(target.id)
+            constants[target.id] = _literal(value) if value is not None else None
+    for name in rebound:
+        constants.pop(name, None)
+    return constants
 
 
 #: The method that makes a declared observation, and the one `extract_check_calls` reads.
@@ -1443,35 +1543,31 @@ def extract_check_calls(source: str) -> dict[str, list[dict[str, Any]]]:
     enough — it is a call that is not the declared one, and the difference is a string
     comparison.
 
-    Static, and only literals: a computed argument becomes `"*"`, which canonicalises to a
-    call matching no declaration, so the obligation stays unbound and the caller says so.
-    Read before anything runs, which is the only moment at which the answer is still cheap.
+    Static, and only what the parse can read: an argument it cannot becomes `"*"`, which
+    canonicalises to a call matching no declaration, so the obligation stays unbound and the
+    caller says so. A module-level constant it can read, and does — the same spelling has to
+    bind here and in `extract_check_covers`, or a plan passes one half of the binding and is
+    reported absent by the other. Read before anything runs, which is the only moment at
+    which the answer is still cheap.
     """
+    tree = ast.parse(source)
+    constants = _module_constants(tree)
     found: dict[str, list[dict[str, Any]]] = {}
-    for node in ast.parse(source).body:
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
+    for function, reachable in _reachable_calls(tree).items():
         calls: list[dict[str, Any]] = []
-        for child in ast.walk(node):
-            if (
-                not isinstance(child, ast.Call)
-                or not isinstance(child.func, ast.Attribute)
-                or child.func.attr != VERIFY_METHOD
-            ):
+        for call in reachable:
+            if not isinstance(call.func, ast.Attribute) or call.func.attr != VERIFY_METHOD:
                 continue
-            name = _literal(child.args[0]) if child.args else None
+            name = _resolve(call.args[0], constants) if call.args else None
             args: dict[str, Any] = {}
             covers: list[str] = []
-            for keyword in child.keywords:
+            for keyword in call.keywords:
                 if keyword.arg is None:
                     continue
-                value = _literal(keyword.value)
                 if keyword.arg == "covers":
-                    covers = [
-                        item if isinstance(item, str) else COMPUTED
-                        for item in (value if isinstance(value, (list, tuple)) else [None])
-                    ]
+                    covers = _covers_ids(keyword.value, constants)
                 elif keyword.arg != "label":
+                    value = _resolve(keyword.value, constants)
                     args[keyword.arg] = value if value is not None else COMPUTED
             calls.append(
                 {
@@ -1480,7 +1576,7 @@ def extract_check_calls(source: str) -> dict[str, list[dict[str, Any]]]:
                     "covers": covers,
                 }
             )
-        found[node.name] = calls
+        found[function] = calls
     return found
 
 
@@ -1519,20 +1615,18 @@ def extract_locators(source: str) -> dict[str, list[dict[str, Any]]]:
     reported as a route the book does not document.
     """
     found: dict[str, list[dict[str, Any]]] = {}
-    for node in ast.parse(source).body:
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        # Sorted by position, because `ast.walk` yields breadth-first: a locator wrapped in
-        # `.click()` is visited after a bare one written below it, and the problems this
-        # feeds name the offending action by its number in the scenario.
-        actions: list[tuple[tuple[int, int], dict[str, Any]]] = []
-        for child in ast.walk(node):
-            if not isinstance(child, ast.Call) or not isinstance(child.func, ast.Attribute):
+    # `_reachable_calls` orders each function's calls by position, so a locator wrapped in
+    # `.click()` no longer sorts after a bare one written below it — the problems this feeds
+    # name the offending action by its number in the scenario.
+    for name, calls in _reachable_calls(ast.parse(source)).items():
+        actions: list[dict[str, Any]] = []
+        for call in calls:
+            if not isinstance(call.func, ast.Attribute):
                 continue
-            action = _locator_action(child, child.func.attr)
+            action = _locator_action(call, call.func.attr)
             if action is not None:
-                actions.append(((child.lineno, child.col_offset), action))
-        found[node.name] = [action for _, action in sorted(actions, key=lambda item: item[0])]
+                actions.append(action)
+        found[name] = actions
     return found
 
 
@@ -1561,20 +1655,14 @@ def extract_vets(source: str) -> dict[str, list[str]]:
     cannot check against the packet.
     """
     found: dict[str, list[str]] = {}
-    for node in ast.parse(source).body:
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
+    for name, calls in _reachable_calls(ast.parse(source)).items():
         screens: list[str] = []
-        for child in ast.walk(node):
-            if (
-                not isinstance(child, ast.Call)
-                or not isinstance(child.func, ast.Attribute)
-                or child.func.attr != VET_METHOD
-            ):
+        for call in calls:
+            if not isinstance(call.func, ast.Attribute) or call.func.attr != VET_METHOD:
                 continue
-            screen = _literal(child.args[0]) if child.args else None
+            screen = _literal(call.args[0]) if call.args else None
             screens.append(screen if isinstance(screen, str) else COMPUTED)
-        found[node.name] = screens
+        found[name] = screens
     return found
 
 
