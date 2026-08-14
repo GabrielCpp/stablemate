@@ -64,6 +64,9 @@ from workhorse_workflows.okf_builder.workflow import MAX_STALL_ROUNDS, OkfBuilde
 SERVICE = "acme"
 BOOK = f"docs/features/{SERVICE}"
 REFUND = f"{BOOK}/concepts/refund.md"
+#: The repair item `dirty` produces, minus its round prefix: `<path>#<node>#<code>`, which is
+#: what makes two findings of different codes on one node two separately-promptable turns.
+REPAIR = f"{REFUND}#acme/service.py::refund#missing-code-symbol"
 
 #: What the scripted enumeration hands back by default: one surface, whose investigation
 #: this book does not actually need — the fixture is already complete, which is what makes
@@ -133,11 +136,11 @@ class _Agent:
         self.targets.append(target)
         if target in self.explode:
             raise RuntimeError(f"killed while investigating {target}")
-        if self.repair and data["item_kind"] in {"fixup", "backfill"}:
-            # A fixup target is `r<round>:<path>`; the repair the doctor finding calls for
-            # is "stop citing a symbol that does not exist", and deleting the doc is the
-            # smallest edit that does it.
-            doc = self.repo / target.split(":", 1)[1]
+        if self.repair and str(data["item_kind"]).startswith("fix:"):
+            # A repair target is `r<round>:<path>#<node>#<code>`; the repair the doctor
+            # finding calls for is "stop citing a symbol that does not exist", and deleting
+            # the doc is the smallest edit that does it.
+            doc = self.repo / target.split(":", 1)[1].split("#")[0]
             doc.unlink(missing_ok=True)
         return {"doc_status": "documented", "discovered": self.spawn.get(target, [])}
 
@@ -307,23 +310,27 @@ def test_a_source_root_that_is_not_a_directory_fails_the_run(
 # ----------------------------------------------------------------------- the fixup loop
 
 
-def test_a_dirty_doctor_queues_one_repair_per_file_and_reconverges(
+def test_a_dirty_doctor_queues_one_repair_per_node_and_code_and_reconverges(
     dirty: Path, tmp_path: Path
 ) -> None:
     """`recheck_only` re-enters at the checkpoint, which is the repair mode's whole shape.
 
-    Round 1 finds the ungrounded `code:` citation, queues one `fixup` item targeting the
-    offending file, and sends it back through the drain. The scripted repair lands, round
-    2 is clean, and the coverage re-scan closes the run. The `r1:` prefix on the target is
-    what keeps a second round's item distinct from the first's under `record`'s dedupe.
+    Round 1 finds the ungrounded `code:` citation, queues one `fix:missing-code-symbol` item
+    targeting the offending node, and sends it back through the drain. The scripted repair
+    lands, round 2 is clean, and the coverage re-scan closes the run. The `r1:` prefix on the
+    target is what keeps a second round's item distinct from the first's under `record`'s
+    dedupe.
     """
     agent = _Agent(dirty, repair=True)
     result = _drive(_env(tmp_path), agent, recheck_only=True)
 
     # Discovery was skipped entirely: the only turn was the repair.
     assert agent.counts() == {"investigate": 1}, agent.counts()
-    assert agent.targets == [f"r1:{REFUND}"], agent.targets
-    assert agent.args_for("investigate")[0]["item_kind"] == "fixup", agent.args_for("investigate")
+    assert agent.targets == [f"r1:{REPAIR}"], agent.targets
+    args = agent.args_for("investigate")[0]
+    assert args["item_kind"] == "fix:missing-code-symbol", args
+    # The bare code rides separately, because that is what the repair prompt dispatches on.
+    assert args["item_code"] == "missing-code-symbol", args
     # The finding's own JSON travels to the turn as its context, not just the file name.
     assert "missing-code-symbol" in agent.args_for("investigate")[0]["item_context"]
 
@@ -348,7 +355,7 @@ def test_a_repair_that_never_lands_stops_the_run_rather_than_looping(
     # One investigation per tolerated round, then the give-up arm instead of a fourth.
     assert agent.counts()["investigate"] == MAX_STALL_ROUNDS, agent.counts()
     # Each round's item is distinct, which is what let the loop run at all.
-    assert agent.targets == [f"r{n}:{REFUND}" for n in (1, 2, 3)], agent.targets
+    assert agent.targets == [f"r{n}:{REPAIR}" for n in (1, 2, 3)], agent.targets
     assert (dirty / REFUND).exists()
 
 

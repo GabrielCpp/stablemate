@@ -14,11 +14,14 @@ larger fiction than the three-key dicts it would be standing in for.
 """
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Callable
 from pathlib import Path
 
 from workhorse_workflows.okf_builder.shared.checkpoint import (
+    MAX_FINDINGS_PER_ITEM,
+    _repair_items,
     checkpoint_book,
     scoped_error_findings,
     scoped_findings,
@@ -92,6 +95,64 @@ def test_findings_outside_the_book_are_not_this_run_s_problem(tmp_path: Path) ->
     )
     kept = scoped_findings(report, str(tmp_path), str(tmp_path / BOOK))
     assert [f["path"] for f in kept] == [f"{BOOK}/mine.md"]
+
+
+def test_one_item_per_node_and_code() -> None:
+    """The split that makes a per-remedy prompt possible.
+
+    Two codes over two nodes of one file is four items, each carrying one code — because the
+    prompt for an item is chosen from its kind before the turn starts, and no fragment can be
+    written for an item that mixes a dangling link with an unfalsifiable check.
+    """
+    doc = f"{BOOK}/pay.md"
+    findings = [
+        {**_finding("undeclared-obligation", path=doc), "ref": "ACME-1#charge", "line": 3},
+        {**_finding("compound-normative-bullet", path=doc), "ref": "ACME-1#charge", "line": 4},
+        {**_finding("undeclared-obligation", path=doc), "ref": "ACME-2#refund", "line": 9},
+        {**_finding("compound-normative-bullet", path=doc), "ref": "ACME-2#refund", "line": 10},
+    ]
+    items = _repair_items(findings, 3)
+
+    assert sorted(i["kind"] for i in items) == [
+        "fix:compound-normative-bullet", "fix:compound-normative-bullet",
+        "fix:undeclared-obligation", "fix:undeclared-obligation",
+    ]
+    assert all(i["target"].startswith("r3:") for i in items), "the round must re-queue a survivor"
+    for item in items:
+        ctx = json.loads(item["context"])
+        assert {f["code"] for f in ctx["findings"]} == {ctx["code"]}
+        assert item["kind"] == f"fix:{ctx['code']}"
+        assert ctx["node"] in ("ACME-1", "ACME-2")
+
+
+def test_a_grounded_code_is_a_flag_not_a_kind() -> None:
+    """`GROUNDED_CODES` stopped naming the item and started describing it.
+
+    The kind has to be the code (the prompt dispatches on it), so "this value must be read out
+    of source rather than off the finding" moves into the context where the repair prompt
+    branches on it.
+    """
+    (grounded,) = _repair_items([_finding("missing-placement", path=f"{BOOK}/s.md")], 1)
+    (mechanical,) = _repair_items([_finding("undeclared-obligation", path=f"{BOOK}/s.md")], 1)
+
+    assert grounded["kind"] == "fix:missing-placement"
+    assert json.loads(grounded["context"])["grounded"] is True
+    assert json.loads(mechanical["context"])["grounded"] is False
+
+
+def test_a_node_past_the_chunk_cap_splits_into_distinct_items() -> None:
+    """A node with more findings of one code than a turn should carry is still every finding.
+
+    Silent truncation is the failure the whole gate is built against, so the overflow becomes a
+    second worklist entry rather than a dropped tail — and the two targets must differ, or
+    `record`'s dedupe by `(kind, target)` collapses them back into one.
+    """
+    many = [{**_finding("compound-normative-bullet"), "ref": "ACME-1#charge", "line": n}
+            for n in range(MAX_FINDINGS_PER_ITEM + 1)]
+    items = _repair_items(many, 1)
+
+    assert len({i["target"] for i in items}) == 2
+    assert sum(len(json.loads(i["context"])["findings"]) for i in items) == len(many)
 
 
 def test_a_book_with_warnings_and_no_errors_is_dirty(

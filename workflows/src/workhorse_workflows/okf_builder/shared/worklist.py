@@ -112,6 +112,9 @@ def select_item(
         has_item=True,
         current_item=pick.model_dump(exclude_unset=True),
         item_kind=pick.kind,
+        # `fix:<code>` is the checkpoint's spelling for a repair item; splitting the code out
+        # here keeps the template's `{% include %}` from having to parse the kind.
+        item_code=pick.kind.removeprefix("fix:") if pick.kind.startswith("fix:") else "",
         item_target=target,
         item_context=str(getattr(pick, "context", "") or ""),
         pending_count=pend,

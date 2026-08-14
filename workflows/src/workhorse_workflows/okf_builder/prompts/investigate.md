@@ -158,17 +158,20 @@ missing rather than re-reading the whole tree.
 - **journey** — trace a user path across surfaces by following the **leads-to** edges (start
   precondition → ordered steps → outcome) and write the `flow` node with linked `steps:`. Emit
   nothing (or a missing element you noticed).
-- **fixup** — the `context` holds this node's `ostler doctor` findings. Fix **each** by its mechanical
-  remedy (`fmt` for casing/order; `scaffold`/add the heading for a missing section; fix the target
-  for dangling links). Emit nothing.
-- **backfill** — the `context` holds one document's grounded findings (a `missing-required-bullet`
-  the doc predates, an `invalid-role`, an `unnamed-interactive`, an `ambiguous-locator`, an
-  `unreachable-screen`), sorted by line. Unlike a `fixup`, **the finding does not tell you the value** —
-  you must derive it from the source and cite what you read.
-  - **Read the source once, then fix every finding it explains.** The findings in one item
-    share a document and usually a cause — the same route module, the same component file —
-    so work top-down through the list rather than treating each as a fresh investigation.
-    Every finding in the item is yours to resolve this turn.
+- **`fix:‹code›`** — a repair item from the convergence checkpoint. The `context` is a JSON object
+  `{"code", "node", "path", "grounded", "findings"}`: every finding in it is the **same** doctor code
+  on the **same** node, sorted by line, and all of them are yours to resolve this turn. Fix each by
+  its remedy (`fmt` for casing/order; `scaffold`/add the heading for a missing section; fix the
+  target for dangling links). Never delete a claim, a `verify:` or a reference to silence a check —
+  a finding that disappears because the assertion did is the one failure this loop cannot detect.
+  Emit nothing.
+- **`grounded: true` in that context** (a `missing-required-bullet` the doc predates, an
+  `invalid-role`, an `unnamed-interactive`, an `ambiguous-locator`, an `unreachable-screen`) means
+  **the finding does not tell you the value** — you must derive it from the source and cite what you
+  read.
+  - **Read the source once, then fix every finding it explains.** The item's findings share a node
+    and a cause, so work top-down through the list rather than treating each as a fresh
+    investigation.
   - Open the node's `code:` target and read it. Write each missing bullet from what the code
     actually does: for a `screen`, `route:` from its route definition, `requires:` from the guard
     wrappers that enclose it, `params:` binding each `:token` in the route to the interaction that

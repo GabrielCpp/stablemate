@@ -61,36 +61,55 @@ MAX_FINDINGS_PER_ITEM = 25
 
 
 def _repair_items(findings: list[dict], rnd: int) -> list[dict[str, str]]:
-    """One item per file (chunked), carrying that file's findings and nothing else.
+    """One item per `(file, node, code)`, chunked, carrying that group's findings only.
 
-    Grouped by path, not by node. Per-node items make the drain re-derive the same context
-    once per node: a component file with a hundred findings became a hundred turns, each
-    re-reading the same route module to answer the same question. Per file, the agent opens
-    it once — which is fewer turns *and* a more coherent repair, because sibling controls
-    are usually wrong the same way.
+    **One remedy per item, because the prompt is chosen from the code.** The kind *is* the
+    finding code — `fix:compound-normative-bullet` — so the turn's instructions are knowable
+    before it starts, and `prompts/repair.md` can dispatch to a fragment written for that
+    one defect. An item mixing a dangling link with an unfalsifiable check has no such
+    fragment: the only prompt that fits it is the generic one that made both repairs shallow.
+
+    Grouping by *node* as well as file is the price of that. An earlier version grouped by
+    file alone so a component with a hundred findings was one reading rather than a hundred
+    turns; here the file stays in the key (so a node's findings never scatter across
+    documents) but a document with three codes over two nodes is six items. What that buys
+    back is that each of the six is a single, checkable question.
 
     Findings stay sorted by line so an agent works top-down, and each chunk is bounded by
-    `MAX_FINDINGS_PER_ITEM`. The round is in the target because a finding that survives its
-    repair must be re-queued next round rather than deduped away as already-seen.
+    `MAX_FINDINGS_PER_ITEM` — a node with forty compound bullets is two items. The round is
+    in the target because a finding that survives its repair must be re-queued next round
+    rather than deduped away as already-seen.
+
+    `GROUNDED_CODES` no longer picks the item kind (the code does); it rides in the context
+    as `grounded`, which is the repair prompt's cue to demand a value read out of the source
+    rather than derived from the finding text.
     """
-    groups: dict[str, list[dict]] = {}
+    groups: dict[tuple[str, str, str], list[dict]] = {}
     for finding in findings:
-        groups.setdefault(str(finding.get("path", "")), []).append(finding)
+        path = str(finding.get("path", ""))
+        ref = str(finding.get("ref", "") or "")
+        # `ref` is `<node-id>#<member>`; the node is what a repair turn opens. A finding
+        # with no ref at all (a file-level one) is grouped under its path.
+        node = ref.split("#")[0] if ref else path
+        groups.setdefault((path, node, str(finding.get("code", ""))), []).append(finding)
 
     items = []
-    for path, group in sorted(groups.items()):
-        group.sort(key=lambda f: (f.get("line", 0), f.get("code", "")))
+    for (path, node, code), group in sorted(groups.items()):
+        group.sort(key=lambda f: (f.get("line", 0), str(f.get("ref", ""))))
         chunks = [group[i:i + MAX_FINDINGS_PER_ITEM]
                   for i in range(0, len(group), MAX_FINDINGS_PER_ITEM)]
         for n, chunk in enumerate(chunks, start=1):
-            grounded = any(f.get("code") in GROUNDED_CODES for f in chunk)
-            # The suffix only appears when a file actually split, so the common target
-            # stays readable — and two chunks of one file remain distinct worklist entries.
+            # The suffix only appears when a group actually split, so the common target
+            # stays readable — and two chunks remain distinct worklist entries.
             suffix = f"#{n}" if len(chunks) > 1 else ""
             items.append({
-                "kind": "backfill" if grounded else "fixup",
-                "target": f"r{rnd}:{path}{suffix}",
-                "context": json.dumps(chunk, indent=2),
+                "kind": f"fix:{code}",
+                "target": f"r{rnd}:{path}#{node}#{code}{suffix}",
+                "context": json.dumps(
+                    {"code": code, "node": node, "path": path,
+                     "grounded": code in GROUNDED_CODES, "findings": chunk},
+                    indent=2,
+                ),
             })
     return items
 
@@ -185,22 +204,21 @@ def checkpoint_book(
     book nobody can falsify. A finding leaves this gate one way, through the waivers file,
     which is the spelling that leaves the reason behind.
 
-    **One item per file, not one per run and not one per node.** An earlier version packed
-    every finding into a single item whose context was the last 4000 characters of the
-    findings JSON — so on a book with more than a dozen findings the rest were dropped
-    silently, and the loop churned without ever seeing them. Truncation that looks like
-    completion is the failure this gate exists to prevent. Splitting per *node* fixed that
-    but overcorrected: a component file with a hundred findings became a hundred agent
-    turns re-reading the same source. Per file, bounded by a chunk cap, keeps every finding
-    while letting one turn repair everything one reading explains.
+    **One item per node and code.** An earlier version packed every finding into a single
+    item whose context was the last 4000 characters of the findings JSON — so on a book with
+    more than a dozen findings the rest were dropped silently, and the loop churned without
+    ever seeing them. Truncation that looks like completion is the failure this gate exists
+    to prevent. Per file fixed that; per `(file, node, code)` is what makes the *repair*
+    specialisable, because an item that can only ever carry one defect has a prompt that can
+    be written for it. See `_repair_items`.
 
-    **Two kinds, because two different repairs.** A dangling link or a mis-ordered bullet
-    is mechanical: the finding names its own remedy. A *missing required bullet* is not —
-    the profile evolves, and every book authored before a bullet became required is
-    retroactively behind, with no way to derive the value from the finding text. Those are
-    emitted as `backfill`, whose prompt requires the value be grounded in source. Filed as
-    `fixup` they would be "fixed" by writing an empty or `none` stub, which satisfies the
-    linter while asserting something nobody checked.
+    **The kind is the code, and grounding is a flag.** A dangling link or a mis-ordered
+    bullet is mechanical: the finding names its own remedy. A *missing required bullet* is
+    not — the profile evolves, and every book authored before a bullet became required is
+    retroactively behind, with no way to derive the value from the finding text. Those carry
+    `grounded: true` in their context, and the repair prompt demands the value be read out
+    of source. Treated as mechanical they would be "fixed" by writing an empty or `none`
+    stub, which satisfies the linter while asserting something nobody checked.
 
     **Stall detection.** The drain-then-recheck loop assumes each fixup round *reduces* the
     findings — but a defect whose only real fix is a code change (two controls that
@@ -258,7 +276,8 @@ def checkpoint_book(
         )
     else:
         fixups = _repair_items(findings, rnd)
-        backfills = sum(1 for i in fixups if i["kind"] == "backfill")
+        backfills = sum(1 for i in fixups
+                        if i["kind"].removeprefix("fix:") in GROUNDED_CODES)
         errors = sum(1 for f in findings if f.get("severity") == "error")
         logger.info(
             "round %d: doctor reports %d finding(s): %d error, %d warn across %d item(s) "

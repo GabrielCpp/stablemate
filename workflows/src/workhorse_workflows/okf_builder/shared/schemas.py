@@ -91,6 +91,9 @@ class Pick(OkfResult):
     #: The item as stored, so `record` can close exactly what was opened.
     current_item: dict[str, Any] = {}
     item_kind: str = ""
+    #: For a repair item (`kind == "fix:<code>"`), the bare doctor code — the one value the
+    #: repair prompt dispatches its per-remedy fragment on. Empty for a discovery item.
+    item_code: str = ""
     item_target: str = ""
     item_context: str = ""
     pending_count: int = 0

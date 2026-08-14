@@ -190,12 +190,14 @@ missing `requires:`/`params:` bullets. Where you cannot ground it, leave the scr
 report it in `walk_status` — an unreachable screen is flagged, **never** pruned. The source says the
 screen exists; a failed walk only ever proves it was not confirmed, never that it is gone.
 
-### `fixup` (`context` holds `ostler doctor` output)
+### `fix:‹code›` (`context` holds one node's findings for one doctor code)
 
-A mechanical docs repair from the walk checkpoint — **no browser needed**. Fix **each** finding by its
-remedy (`fmt` for casing/order; `scaffold`/add the heading or bullet for a missing section; fix the
-target of a dangling link). Never delete a reference or fabricate a node to silence the check. Emit
-nothing.
+A docs repair from the walk checkpoint — **no browser needed**. The `context` is a JSON object
+`{"code", "node", "path", "grounded", "findings"}`; every finding in it is the same code on the same
+node. Fix **each** by its remedy (`fmt` for casing/order; `scaffold`/add the heading or bullet for a
+missing section; fix the target of a dangling link). When `grounded` is true the finding does not
+carry the value — read it out of the source rather than inventing one. Never delete a reference, a
+claim or a `verify:` to silence the check, and never fabricate a node. Emit nothing.
 
 ## Output
 

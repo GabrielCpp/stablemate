@@ -218,6 +218,7 @@ class OkfBuilder(Workflow):
             self.investigate,
             current_item=pick.current_item,
             item_kind=pick.item_kind,
+            item_code=pick.item_code,
             item_target=pick.item_target,
             item_context=pick.item_context,
             progress=pick.progress,
@@ -233,6 +234,7 @@ class OkfBuilder(Workflow):
         item_kind: str,
         item_target: str,
         item_context: str,
+        item_code: str = "",
         progress: str = "",
         rnd: int = 0,
         rescan: int = 0,
@@ -258,6 +260,7 @@ class OkfBuilder(Workflow):
             add_dirs=[self.ctx.repo_root],
             args={
                 "item_kind": item_kind,
+                "item_code": item_code,
                 "item_target": item_target,
                 "item_context": item_context,
                 "service": self.service,
