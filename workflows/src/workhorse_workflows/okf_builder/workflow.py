@@ -64,6 +64,7 @@ from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
 from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book
 from workhorse_workflows.okf_builder.shared.schemas import Discovery, Investigation, Prepared, Recheck
+from workhorse_workflows.okf_builder.shared.vocabulary import check_vocabulary
 from workhorse_workflows.okf_builder.shared.worklist import record, select_item
 from workhorse_workflows.okf_builder.walkthrough_web import WalkthroughWeb
 
@@ -254,6 +255,14 @@ class OkfBuilder(Workflow):
         to a fragment written for that code. That dispatch is the whole reason the checkpoint
         splits items per code: a prompt can only be written for a defect that is known before
         the turn starts.
+
+        A repair turn also carries the **check vocabulary and its signatures**, rendered from
+        `ostler.checks` rather than described. The first live backfill turns wrote
+        `count(subject=…, expected=1)` and `visible(locator="PDFEngine output", …)` — a check
+        that does not exist and an argument that does not — because the prompt named the
+        vocabulary (`ostler checks` lists it) instead of containing it, and a repair turn asked
+        for one small edit does not go looking. Each of those came straight back as a fresh
+        `unparsed-check`, so the round spent money to move a finding sideways.
         """
         repair = item_kind.startswith("fix:")
         where = f"{'repairing' if repair else 'documenting'} {item_kind} {item_target}"
@@ -271,6 +280,7 @@ class OkfBuilder(Workflow):
                 "item_code": item_code,
                 "item_target": item_target,
                 "item_context": item_context,
+                "check_vocabulary": check_vocabulary(),
                 "service": self.service,
                 "features_root": self.ctx.features_root,
                 "repo_root": self.ctx.repo_root,

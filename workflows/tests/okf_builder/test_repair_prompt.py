@@ -21,9 +21,11 @@ import json
 from pathlib import Path
 
 import pytest
+from ostler import checks
 from workhorse.templates import render
 
 import workhorse_workflows
+from workhorse_workflows.okf_builder.shared.vocabulary import check_vocabulary
 
 WORKFLOW_DIR = Path(workhorse_workflows.__file__).parent / "okf_builder"
 FRAGMENTS = WORKFLOW_DIR / "prompts" / "repair"
@@ -43,6 +45,7 @@ def _context(code: str) -> dict[str, object]:
                 "findings": [{"code": code, "message": "…", "line": 12}],
             }
         ),
+        "check_vocabulary": check_vocabulary(),
         "service": "acme",
         "features_root": "docs/features/acme",
         "repo_root": "/repo",
@@ -84,6 +87,20 @@ def test_the_frame_carries_the_item_through() -> None:
     assert "r1:docs/features/acme/concepts/refund.md#refund#weak-check" in rendered
     assert '"grounded": false' in rendered
     assert "Never make a finding go away by removing what it was about." in rendered
+
+
+def test_every_check_signature_reaches_the_prompt() -> None:
+    """Naming the vocabulary is not carrying it, and the difference cost a live round.
+
+    A repair turn told that `ostler checks` lists the signatures wrote `count(subject=…,
+    expected=1)` and `visible(locator="PDFEngine output", …)` — an argument that does not
+    exist and a UI check on a byte slice — and every one came back as a fresh
+    `unparsed-check`. The list is short, so it is in the prompt rather than a directory away.
+    """
+    rendered = render("prompts/repair.md", _context("undeclared-obligation"), WORKFLOW_DIR)
+
+    for spec in checks.CHECKS:
+        assert spec.signature() in rendered, f"{spec.name} is not in the repair prompt"
 
 
 def test_a_check_bearing_code_loads_the_falsifiability_bar_and_others_do_not() -> None:
