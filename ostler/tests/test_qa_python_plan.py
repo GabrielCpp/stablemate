@@ -308,6 +308,46 @@ def test_the_same_check_with_weaker_arguments_is_a_different_call(tmp_path: Path
     assert any("declares `json_path" in item for item in validate_v2(document))
 
 
+def test_a_one_argument_miss_names_the_call_the_plan_wrote_instead(tmp_path: Path) -> None:
+    """A set difference cannot say "you wrote this call and got one argument wrong".
+
+    Read without that, "no assertion invokes it" against a file plainly containing a
+    `json_path` call reads as *write another one* — so the repair lane adds a near-duplicate,
+    the difference survives, and the loop runs until the plan lane gives up. Nesting the
+    observation under a case key is how it happens in practice: every argument agrees but
+    the path, which now carries a prefix the book never declared.
+    """
+    spec = _spec(tmp_path)
+    _declaring(spec)
+    source = VERIFY_PLAN.replace("{args}", 'path="case.item.id", equals="abc"')
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+
+    reported = [item for item in validate_v2(document) if "declares `json_path" in item]
+
+    assert reported
+    assert 'invokes `json_path(path="case.item.id", equals="abc")`' in reported[0]
+    assert '`path` (declared "item.id", invoked "case.item.id")' in reported[0]
+    assert "`equals`" not in reported[0], "an argument that already agrees is not a finding"
+
+
+def test_a_call_with_nothing_in_common_is_not_offered_as_the_near_miss(tmp_path: Path) -> None:
+    """The same check name with every argument different is a different assertion.
+
+    Pointing at it would send the repair to rewrite a call that was right for the claim it
+    was written against — the opposite of the correction, and one more lap.
+    """
+    spec = _spec(tmp_path)
+    _declaring(spec)
+    source = VERIFY_PLAN.replace("{args}", 'path="other.field", matches="xyz"')
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+
+    reported = [item for item in validate_v2(document) if "declares `json_path" in item]
+
+    assert reported and "The plan invokes" not in reported[0]
+
+
 def test_a_verify_call_naming_no_known_check_is_refused_by_name(tmp_path: Path) -> None:
     spec = _spec(tmp_path)
     _declaring(spec)
@@ -690,3 +730,31 @@ def test_one_call_covering_both_obligations_binds_both(tmp_path: Path) -> None:
     document, problems = load_plan(_plan(spec, source), spec, tmp_path)
     assert not problems and document is not None
     assert validate_v2(document) == []
+
+
+def test_the_declared_call_bound_to_the_wrong_obligation_asks_for_a_wider_covers(
+    tmp_path: Path,
+) -> None:
+    """The call exists, spelled exactly right, and names an id that does not need it.
+
+    Told only that nothing invokes it, the repair writes the same call a second time — and
+    the packet grows a duplicate assertion while the obligation stays uncovered.
+    """
+    spec = _spec(tmp_path)
+    _two_declaring(spec)
+    source = TWO_OBLIGATION_PLAN.replace(
+        "{assertion}",
+        'qa.verify("json_path", payload, path="item.id", equals="abc", '
+        f'covers=["{SIBLING}"])\n'
+        f'    qa.check("weak", True, covers=["{OBLIGATION}"])',
+    )
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+
+    reported = [item for item in validate_v2(document) if "declares `json_path" in item]
+
+    assert reported
+    assert f"already invokes that exact call, bound to '{SIBLING}'" in reported[0]
+    assert "widen that call's covers=" in reported[0]
+
+

@@ -223,7 +223,7 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
 
 
 
-def _invoked_checks(document: PlanDocument) -> tuple[dict[str, set[str]], list[str]]:
+def _invoked_checks(document: PlanDocument) -> tuple[dict[str, dict[str, checks.CheckCall]], list[str]]:
     """Every named check the plan invokes, keyed by the obligation the invocation binds.
 
     Aggregated across scenarios rather than per scenario: an obligation may be discharged by
@@ -232,7 +232,7 @@ def _invoked_checks(document: PlanDocument) -> tuple[dict[str, set[str]], list[s
     What is *not* aggregated is the binding: a `qa.verify` with no `covers=` proves something
     about the product, but nothing this join can credit to a claim.
     """
-    invoked: dict[str, set[str]] = {}
+    invoked: dict[str, dict[str, checks.CheckCall]] = {}
     problems: list[str] = []
     for scenario in document.data.get("scenarios", []):
         if not is_mapping(scenario):
@@ -249,8 +249,70 @@ def _invoked_checks(document: PlanDocument) -> tuple[dict[str, set[str]], list[s
                 problems.append(f"scenario '{scenario_id}' calls qa.verify with {bound}")
                 continue
             for obligation_id in call.get("covers") or []:
-                invoked.setdefault(str(obligation_id), set()).add(bound.text())
+                invoked.setdefault(str(obligation_id), {})[bound.text()] = bound
     return invoked, problems
+
+
+def _argument_diff(declared: checks.CheckCall, written: checks.CheckCall) -> tuple[int, int, str]:
+    """How many arguments agree, how many differ, and the sentence naming the differences."""
+    spec = checks.CHECK_BY_NAME[declared.name]
+    agreeing, differing = 0, []
+    for param in spec.params:
+        want, got = declared.args.get(param.name), written.args.get(param.name)
+        if want == got:
+            agreeing += want is not None
+            continue
+        shown_want = checks.literal(want) if want is not None else "nothing"
+        shown_got = checks.literal(got) if got is not None else "nothing"
+        differing.append(f"`{param.name}` (declared {shown_want}, invoked {shown_got})")
+    return agreeing, len(differing), ", ".join(differing)
+
+
+def _near_miss(
+    call: str,
+    obligation_ids: list[str],
+    invoked: dict[str, dict[str, checks.CheckCall]],
+) -> str:
+    """The call the plan wrote *instead*, when it wrote one that all but matches.
+
+    A set difference says a call is missing; it cannot say the author already wrote that
+    call and got one argument or one `covers=` wrong. Read without that, "no assertion
+    invokes it" against a file plainly containing a `json_path` call reads as *write
+    another one* — so the repair lane adds a near-duplicate, the difference survives, and
+    the story spends its whole budget re-deriving what the diff would have said outright.
+    """
+    elsewhere = sorted(
+        obligation_id for obligation_id, calls in invoked.items() if call in calls
+    )
+    if elsewhere:
+        others = f" and {len(elsewhere) - 1} other(s)" if len(elsewhere) > 1 else ""
+        return (
+            f" The plan already invokes that exact call, bound to '{elsewhere[0]}'{others} "
+            f"— widen that call's covers= instead of writing a second one."
+        )
+    declared = checks.parse_check(call)
+    if isinstance(declared, str):
+        return ""
+    # Closest first, and only when an argument already agrees: the same check name with
+    # nothing in common is a different assertion, and pointing at it would send the repair to
+    # rewrite a call that was right for the claim it was written against.
+    closest: tuple[int, str, str] | None = None
+    for obligation_id in obligation_ids:
+        for text, written in (invoked.get(obligation_id) or {}).items():
+            if written.name != declared.name:
+                continue
+            agreeing, count, difference = _argument_diff(declared, written)
+            if not difference or not agreeing:
+                continue
+            if closest is None or count < closest[0]:
+                closest = (count, text, difference)
+    if closest is None:
+        return ""
+    return (
+        f" The plan invokes `{closest[1]}` against this obligation, differing in "
+        f"{closest[2]} — the declared arguments are the claim, so reshape what the scenario "
+        f"observes until they hold, rather than restating the call to match the observation."
+    )
 
 
 def _validate_declared_checks(document: PlanDocument, asserted: set[str]) -> list[str]:
@@ -286,7 +348,7 @@ def _validate_declared_checks(document: PlanDocument, asserted: set[str]) -> lis
             if not is_mapping(declared) or not declared.get("call"):
                 continue
             call = str(declared["call"])
-            if call in invoked.get(obligation_id, set()):
+            if call in invoked.get(obligation_id, {}):
                 continue
             missing.setdefault(call, []).append(obligation_id)
             named.setdefault(call, str(declared.get("name", "")))
@@ -294,17 +356,18 @@ def _validate_declared_checks(document: PlanDocument, asserted: set[str]) -> lis
         spec = checks.CHECK_BY_NAME.get(named[call])
         excludes = f" It excludes {spec.excludes}." if spec else ""
         covers = ", ".join(f"'{obligation_id}'" for obligation_id in obligation_ids)
+        near = _near_miss(call, obligation_ids, invoked)
         if len(obligation_ids) == 1:
             problems.append(
                 f"obligation {covers} declares `{call}` in its `verify:` bullet, and "
                 f"no assertion invokes it — call qa.verify with that name and those arguments, "
-                f"bound with covers=[{covers}].{excludes}"
+                f"bound with covers=[{covers}].{near}{excludes}"
             )
             continue
         problems.append(
             f"{len(obligation_ids)} obligations declare `{call}` in their `verify:` bullets, "
             f"and no assertion invokes it — one qa.verify with that name and those arguments, "
-            f"bound with covers=[{covers}], satisfies all of them.{excludes}"
+            f"bound with covers=[{covers}], satisfies all of them.{near}{excludes}"
         )
     return problems
 

@@ -178,16 +178,17 @@ class CheckCall:
         """
         spec = CHECK_BY_NAME[self.name]
         parts = [
-            f"{p.name}={_literal(self.args[p.name])}" for p in spec.params if p.name in self.args
+            f"{p.name}={literal(self.args[p.name])}" for p in spec.params if p.name in self.args
         ]
         return f"{self.name}({', '.join(parts)})"
 
 
-def _literal(value: CheckValue) -> str:
+def literal(value: CheckValue) -> str:
+    """One argument value, spelled the way `verify:` spells it."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, list):
-        return "[" + ", ".join(_literal(item) for item in value) + "]"
+        return "[" + ", ".join(literal(item) for item in value) + "]"
     if isinstance(value, int):
         return str(value)
     return '"' + value.replace('"', '\\"') + '"'
@@ -326,7 +327,7 @@ def _typed(value: CheckValue, declared: str) -> bool:
 
 
 #: A book is not Python, and the people writing `verify:` bullets write JSON's booleans. Both
-#: spellings parse; `_literal` emits the lowercase one, so a call and its canonical rendering
+#: spellings parse; `literal` emits the lowercase one, so a call and its canonical rendering
 #: round-trip — which they must, or `text()` produces something `parse_check` then refuses.
 _BOOLEANS = {"true": True, "false": False, "True": True, "False": False}
 

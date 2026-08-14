@@ -108,7 +108,7 @@ def _call_text(name: str, args: Any) -> str | None:
     """The canonical spelling of one recorded check invocation, or `None` if it is not one.
 
     Through `checks.bind`, which is the same canonicalisation a `verify:` bullet goes
-    through — argument order from the spec, `_literal` rendering, booleans spelled the
+    through — argument order from the spec, `literal` rendering, booleans spelled the
     book's way. Rendering it here by hand instead would compare two strings that agree only
     by accident, and the first `count=1` written after a `title="…"` would read as a missing
     check on an obligation that was in fact observed.
