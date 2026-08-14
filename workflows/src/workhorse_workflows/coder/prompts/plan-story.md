@@ -317,12 +317,36 @@ Ordered steps. **Every checklist must end with these closing steps:**
 
 ### 5. Test Scenarios
 
-Write each test case in **Given / When / Should** format:
+This section is the **contract between the acceptance criteria and the test suite** — the
+implementation is split into a tests-first pass and a code pass with a deterministic red gate
+between them, and the gate and the reviewer both read this list. A scenario missing here is a
+scenario nobody writes; an AC no scenario names is an AC the reviewer flags as uncovered.
 
-- Happy path cases
-- Error cases
-- Edge cases
-- Integration/dependency tests
+Write each test case in **Given / When / Should** format, and give every scenario two more
+fields:
+
+- **AC**: the acceptance criterion it covers, by number or exact quote. Every AC must be
+  covered by at least one scenario; a scenario may also guard an edge case no AC names —
+  mark those `AC: none (edge case)`.
+- **Level**: where the test lives —
+  - `unit` — a pure function or class, no wiring.
+  - `component` — the primary target: a component/handler/service exercised through its
+    public surface with real wiring and faked leaves.
+  - `endpoint` — an HTTP surface exercised through the router.
+  - `integration` — added or extended only where the story warrants it (a contract crossing
+    services, a persistence shape). An integration test listed here **is part of the red
+    gate**, so it must be reachable from this layer's test command in the Verification
+    Commands section.
+  - `QA-only` — verifiable only by a live walkthrough (visual layout, cross-app flow).
+    No test is written for it; QA covers it. Use this sparingly and say why.
+
+Cover happy paths, error cases, and edge cases across the scenarios.
+
+**Regression-only escape (decided here, at plan time — never by the implementer):** if the
+story changes no observable behavior (a pure refactor, a rename, a dependency bump), state
+`Test scenarios: regression-only` with one line of justification instead of a scenario list.
+The implementation then skips the tests-first pass and the red gate, and the existing suite
+is the safety net. If any new behavior exists, this escape does not apply.
 
 ### 6. Verification Commands (CRITICAL)
 
@@ -382,7 +406,7 @@ All items must be checked:
 - [ ] Wrote `docs/specs/<story-name>/plan-context.json` with `services` array (concrete paths with repo, type, skills, plan_file) — drives the implementer's per-service iteration
 - [ ] Listed every changed service in `plan-context.json`'s `services` array — it is the only place the workflow reads them from
 - [ ] Verified every service path exists and carries the marker file its `type` implies (see "How to identify services")
-- [ ] Added **Given / When / Should** test scenarios for all affected code paths
+- [ ] Added **Given / When / Should** test scenarios for all affected code paths, each with its **AC** reference and **Level** — every acceptance criterion covered by at least one scenario (or the story declared regression-only, with justification)
 - [ ] Confirmed no breaking changes to external APIs
 - [ ] Implementation checklist ends with: codegen → test → lint → verify
 - [ ] Multi-service stories: documented implementation order, integration contracts, and per-service verification
