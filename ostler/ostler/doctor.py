@@ -960,7 +960,7 @@ def _check_ui(graph: Graph, f: list[Finding]) -> None:
                 key, verb = lifecycle[0]
                 f.append(Finding(
                     "warn", "unstated-precondition",
-                    f"{node.id}: `{key}:` says the node {verb}s something, and the checks read "
+                    f"{node.id}: `{key}:` states a lifecycle change ('{verb}'), and the checks read "
                     f"only the state afterwards — which is the same state a no-op leaves when "
                     f"the subject was already there. Declare the change as a change, so the "
                     f"before-read is part of the observation rather than an assumption",
