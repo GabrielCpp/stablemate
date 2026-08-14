@@ -74,6 +74,18 @@ category with a replayable assertion or fixture case. Do not answer by strengthe
 best existing sample. A sample proves only the category it reaches; the repair is complete
 only when the plan names the remaining categories and maps each one to terminal evidence.
 
+For document/PDF/print repairs, close the specific evidence shape the finding names:
+
+- "every word" requires a complete normalized source-text inventory compared with the
+  produced output's text/OCR inventory for each cited browser, minus only named browser
+  headers/footers;
+- "every heading" includes the page/reader H1 as well as generated subsection headings;
+- "inspect by eye", "visual inspection", or equivalent wording requires a terminal
+  artifact-backed visual-review assertion with explicit accept/reject criteria for clipping,
+  chrome leakage, page breaks, blank pages, and print fidelity. Registering PDFs, screenshots,
+  rasters, or a manifest is not enough unless a `qa.check`/`qa.require` records that review's
+  verdict.
+
 ## A race is repaired by waiting, never by loosening
 
 When a finding says an assertion failed intermittently, or that it read a half-rendered page,

@@ -86,6 +86,17 @@ and do not mark the AC covered until every row has terminal evidence. A represen
 sample is evidence for only the category it actually exercises; it is not evidence for
 the unvisited remainder of a universal AC.
 
+For document/PDF/print stories, universal evidence is content-shaped, not artifact-shaped:
+
+- "every word" means derive a complete normalized source-text inventory and compare it with
+  each produced output's text/OCR inventory, with only named browser headers/footers excluded;
+- "every heading" means include the reader/page H1 and every generated subsection heading in
+  the adjacency/page-break assertions;
+- "inspect by eye", "visual inspection", or equivalent wording means record a terminal
+  artifact-backed visual-review assertion with explicit accept/reject criteria for clipping,
+  chrome leakage, page breaks, blank pages, and print fidelity. Producing PDFs, screenshots,
+  rasters, or a manifest is setup for that observation; it is not the observation itself.
+
 ## Required Outputs
 
 Write both files directly under the spec directory:
