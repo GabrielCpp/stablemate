@@ -110,7 +110,7 @@ Key flags (run `workhorse-<name> --help` for the full list):
 |---|---|
 | `--runs-dir <dir>` | Where to write run artifacts (default: `<cwd>/.agents/runs`) |
 | `--run-id <id>` | Name the stable run dir (`<workflow>-<id>`); default: a digest of `--params`, else `default` |
-| `--cli {claude,codex,copilot,cline,opencode}` | Which agent CLI drives the run (default `claude`; or `AGENT_CLI`) |
+| `--cli {claude,codex,copilot,cline,opencode}` | Which agent CLI drives the run (or `AGENT_CLI`, else the config's `default_cli`, else `claude`) |
 | `--params '<json>'` / `--params-file <path>` | Set the workflow's declared inputs on a fresh start |
 | `--dry-run` | Check the workflow and exit without running a node (see [Checking a workflow before you run it](#checking-a-workflow-before-you-run-it---dry-run)) |
 | `--resume-run <path-or-id>` / `--resume-latest` | Manually resume a checkpointed run |
@@ -307,9 +307,17 @@ The controller drives one agent CLI per run, behind a backend port
 *model* is per-node:
 
 ```bash
-workhorse-<name> run                      # claude (default)
+workhorse-<name> run                      # the configured default_cli, else claude
 workhorse-<name> run --cli codex          # or copilot, cline, opencode
 # Equivalently, set the AGENT_CLI={claude,codex,copilot,cline,opencode} env var.
+```
+
+The unnamed case is configurable, so a machine set up for one CLI does not have to
+name it on every run — put `default_cli` in the shared config (see
+[BACKENDS.md](docs/BACKENDS.md#choosing-the-agent-cli-backend)):
+
+```toml
+default_cli = "opencode"
 ```
 
 | Backend | CLI | Default model | In-place compaction |

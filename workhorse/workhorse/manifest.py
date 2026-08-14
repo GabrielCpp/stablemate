@@ -31,6 +31,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from workhorse._vendor.stablemate_core.config import resolve_default_cli
+
 # Canonical skill directory per backend — must match farrier's install layout.
 BACKEND_SKILL_DIR: dict[str, str] = {
     "claude": ".claude/skills",
@@ -247,10 +249,12 @@ def build_manifest_context(
     ``backend`` and ``repo_root`` default to ``None`` and are resolved from
     ``AGENT_CLI`` / ``AGENT_REPO_DIR`` here — the edge — rather than deeper down,
     where a caller could not influence them and a test would have to set the
-    environment to reach the other branch.
+    environment to reach the other branch. An unset ``AGENT_CLI`` falls to the
+    config's ``default_cli``, the same rung ``get_backend`` lands on, so the manifest
+    is projected for the CLI the run is actually driving.
     """
     if backend is None:
-        backend = os.environ.get("AGENT_CLI", "claude")
+        backend = os.environ.get("AGENT_CLI") or resolve_default_cli()
     if repo_root is None:
         repo_root = os.environ.get("AGENT_REPO_DIR") or "."
     return ContextManifest.model_validate(raw).project(
@@ -283,7 +287,7 @@ def load_context_manifest(context_file: str | None) -> ManifestContext:
     else:
         repo_dir = os.environ.get("AGENT_REPO_DIR", ".")
         agents_dir = Path(repo_dir) / ".agents"
-        cli = os.environ.get("AGENT_CLI", "claude").strip().lower()
+        cli = (os.environ.get("AGENT_CLI") or resolve_default_cli()).strip().lower()
         per_cli = agents_dir / f"agents-context.{cli}.json"
         path = per_cli if per_cli.is_file() else agents_dir / "agents-context.json"
         if not path.is_file():

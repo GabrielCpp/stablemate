@@ -14,6 +14,7 @@ from jinja2 import (
     make_logging_undefined,
 )
 
+from workhorse._vendor.stablemate_core.config import resolve_default_cli
 from workhorse.manifest import ManifestContext
 from workhorse.references import resolve_instruction
 
@@ -201,7 +202,7 @@ def _farrier_globals(
         return name in used_skills
 
     def agent_cli() -> str:
-        return os.environ.get("AGENT_CLI", "claude").strip().lower()
+        return (os.environ.get("AGENT_CLI") or resolve_default_cli()).strip().lower()
 
     def skill_load_ref(skill_name: str, skill_path: str = "") -> str:
         """Return the harness-native instruction for loading a skill.

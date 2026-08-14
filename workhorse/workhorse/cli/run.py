@@ -21,6 +21,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from workhorse import otel
+from workhorse._vendor.stablemate_core.config import resolve_default_cli
 from workhorse.cli.params import load_params
 from workhorse.config_run import RunConfig
 # Bound under its historical private name, which is also what lets a test patch the
@@ -88,10 +89,11 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "--cli",
         default=None,
         metavar="NAME",
-        help="Agent CLI backend to drive this run: claude (default), codex, copilot, "
-        "cline, or opencode. Overrides the AGENT_CLI env var. Selection is per-run, "
-        "not per-node. To run on an OpenRouter model, use an OpenRouter-native "
-        "backend (cline/opencode) and give nodes an 'openrouter/<slug>' model.",
+        help="Agent CLI backend to drive this run: claude, codex, copilot, cline, or "
+        "opencode. Overrides the AGENT_CLI env var, which in turn overrides the "
+        "shared config's `default_cli` (claude when that is unset too). Selection is "
+        "per-run, not per-node. To run on an OpenRouter model, use an OpenRouter-"
+        "native backend (cline/opencode) and give nodes an 'openrouter/<slug>' model.",
     )
     parser.add_argument(
         "--dry-run",
@@ -149,9 +151,14 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     # is `repo_dir`, resolved below and handed over as a run parameter.
     os.environ.setdefault("AGENT_REPO_DIR", str(Path.cwd().resolve()))
 
-    # --cli (else AGENT_CLI, else default claude) selects the backend for the run.
-    if args.cli:
-        os.environ["AGENT_CLI"] = args.cli
+    # --cli (else AGENT_CLI, else the config's `default_cli`, else claude) selects the
+    # backend for the run. The resolved name is written back to AGENT_CLI so the whole
+    # process — and every agent subprocess it spawns — reads one answer: the manifest
+    # and template layers ask the environment for the active CLI at their own edges,
+    # and a config default that only `get_backend` knew about would have them
+    # projecting a Claude manifest for an opencode run.
+    resolved_cli = (args.cli or os.environ.get("AGENT_CLI") or resolve_default_cli()).strip().lower()
+    os.environ["AGENT_CLI"] = resolved_cli
 
     # Resolve the active backend now so an unknown name fails fast with a clear
     # message instead of mid-run — and because this is the ring that gets to know

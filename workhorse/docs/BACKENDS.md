@@ -8,7 +8,8 @@ backends that need more than a flag: codex config profiles, and running OpenRout
 under `cline` / `opencode`, where pinning the upstream endpoint is the largest cost lever
 on a week-long run.
 
-Everything here is optional. A run with no config at all uses `claude` on `sonnet`; you
+Everything here is optional. A run with no config at all uses `claude` on `sonnet` (the
+CLI half of that is what `default_cli` below changes); you
 come here when you want a different CLI, a cheaper tier for the easy nodes, or a model
 the harness would not have picked.
 
@@ -25,13 +26,33 @@ a sibling module, `registry.py` maps a name to one). The CLI is chosen **per-run
 (the *model* is still per-node — see below):
 
 ```bash
-workhorse-<name> run                      # claude (default)
+workhorse-<name> run                      # the configured default_cli, else claude
 workhorse-<name> run --cli codex
 workhorse-<name> run --cli copilot
 workhorse-<name> run --cli cline          # OpenRouter-native
 workhorse-<name> run --cli opencode       # OpenRouter-native
 # Equivalently, set the AGENT_CLI={claude,codex,copilot,cline,opencode} env var.
 ```
+
+**The unnamed case is yours to set.** `default_cli` in this same config file names the
+CLI a run drives when neither `--cli` nor `AGENT_CLI` does:
+
+```toml
+default_cli = "opencode"
+```
+
+Full precedence: `--cli` → `AGENT_CLI` → `default_cli` → `claude`. It belongs in the
+config rather than in the flag because the flag's default is only reachable by editing
+workhorse — an operator whose machine is set up for one CLI would otherwise have to name
+it on every run of every workflow, and the run they forget is the one that silently
+comes back on Claude. The name is validated where every other CLI name is, when the
+adapter is resolved: a misspelled `default_cli` fails the run at startup with the list
+of real names, not quietly at the first agent node.
+
+A live run can be moved to another CLI without losing its place —
+`workhorse-<name> control switch-cli <cli> --run <id>` re-enters the current checkpoint
+on the named CLI (see [README.md](../README.md), "Pushing a fix into a run that is
+already going"). That is a per-run override too: it does not touch `default_cli`.
 
 The backend default model is overridable per run with the `AGENT_MODEL` env var.
 Workflows can request an abstract `power` tier per agent turn; your user-wide config

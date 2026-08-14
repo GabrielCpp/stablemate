@@ -18,11 +18,12 @@ from __future__ import annotations
 import io
 import os
 import tempfile
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
 from _fakes import FakeClock
+from workhorse._vendor.stablemate_core import config
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
 from workhorse.runner import failure, ladder, process
@@ -61,18 +62,71 @@ def _without_agent_cli():
     return prior
 
 
-def test_default_backend_is_claude():
-    prior = _without_agent_cli()
-    try:
+@contextmanager
+def _config(text: str):
+    """Point the shared config at a temp file holding ``text``, and clear AGENT_CLI.
+
+    Both halves are load-bearing for the default-CLI tests. The config one is not
+    hygiene: the fallback under test now *reads the developer's real config*, so
+    without this a machine configured for opencode would fail the built-in-default
+    test — and, worse, a machine configured for claude would pass the config test
+    for the wrong reason.
+    """
+    prior_cli = _without_agent_cli()
+    prior_path = os.environ.get(config.CONFIG_PATH_ENV)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "config.toml"
+        path.write_text(text)
+        os.environ[config.CONFIG_PATH_ENV] = str(path)
+        try:
+            yield path
+        finally:
+            if prior_path is None:
+                os.environ.pop(config.CONFIG_PATH_ENV, None)
+            else:
+                os.environ[config.CONFIG_PATH_ENV] = prior_path
+            if prior_cli is not None:
+                os.environ["AGENT_CLI"] = prior_cli
+
+
+def test_default_backend_is_claude_when_nothing_names_one():
+    """Neither --cli, nor AGENT_CLI, nor a configured default: the built-in stands."""
+    with _config(""):
         b = get_backend()
         assert isinstance(b, ClaudeBackend)
         assert isinstance(b, AgentBackend)
         assert b.name == "claude"
         assert b.default_model == "sonnet"
         assert b.supports_compaction is True
-    finally:
-        if prior is not None:
-            os.environ["AGENT_CLI"] = prior
+
+
+def test_config_default_cli_selects_backend():
+    """`default_cli` is the rung under AGENT_CLI — the operator's machine-wide choice."""
+    with _config('default_cli = "opencode"\n'):
+        assert isinstance(get_backend(), OpenCodeBackend)
+
+
+def test_env_var_beats_config_default_cli():
+    """The config sets the default; naming a CLI for this run still wins."""
+    with _config('default_cli = "opencode"\n'):
+        os.environ["AGENT_CLI"] = "claude"
+        assert isinstance(get_backend(), ClaudeBackend)
+        assert isinstance(get_backend("codex"), CodexBackend), "--cli beats both"
+
+
+def test_unknown_config_default_cli_fails_like_any_typo():
+    """core stores the name without validating it, so the check has to land here.
+
+    And the message has to name the config, or an operator reading it goes looking
+    for an AGENT_CLI export that nothing set.
+    """
+    with _config('default_cli = "opencodee"\n'):
+        try:
+            get_backend()
+            raise AssertionError("expected ValueError for a misspelled default_cli")
+        except ValueError as e:
+            assert "opencodee" in str(e)
+            assert "default_cli" in str(e)
 
 
 def test_env_var_selects_backend():
