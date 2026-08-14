@@ -23,21 +23,21 @@ mutate it are [the seat's methods](seat.md#methods), and the page reads it throu
 
 - sig: `read() -> dict`
 - abstract: the current ledger, completed from the empty showing so an absent seat reads as free.
-- does: returns every seat in the showing, whether or not the file mentions it.
 - verify: count(subject="seats", equals=12)
+- verify: persists(subject="seat A1 booking")
+- does: returns every seat in the showing, whether or not the file mentions it.
 - does: reads the file on each call, so a booking written by another process is visible to the next
   request rather than at the next restart.
-- verify: persists(subject="seat A1 booking")
 - parent: [Seat ledger](#seat-ledger)
 
 ### write
 
 - sig: `write(ledger: dict) -> None`
 - abstract: replaces the ledger atomically.
+- verify: keys_unchanged(subject="seats")
+- verify: persists(subject="seat A1 booking")
 - does: writes a temporary file and renames it over the ledger, so a reader never observes half a
   showing.
-- verify: keys_unchanged(subject="seats")
 - persistence: a booking is on disk before the response that announces it, and survives a restart of
   the service.
-- verify: persists(subject="seat A1 booking")
 - parent: [Seat ledger](#seat-ledger)

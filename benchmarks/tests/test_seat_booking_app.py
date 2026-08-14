@@ -63,6 +63,21 @@ def test_doctor_is_clean() -> None:
     assert report["warnings"] == 0, report["findings"]
 
 
+def test_the_book_is_already_canonical() -> None:
+    """`ostler fmt` must have nothing to say about the fixture, or the score is unreadable.
+
+    A trial's QA lane edits the book, and the diff between the authored book and the one the
+    trial ends with is the evidence for whether the obligations moved while they were being
+    measured. A non-canonical fixture makes that diff useless: the run converges on the
+    canonical shape on its way past, and 3 lines of real change arrive inside 89 lines of
+    bullet reordering. This was not hypothetical — it is what the first scored round did.
+    """
+    from ostler.api import Ostler  # noqa: PLC0415 - a heavy import only this test needs
+
+    unformatted = Ostler(APP).fmt(check=True)
+    assert not unformatted, f"run `ostler fmt` in {APP}: {unformatted}"
+
+
 def test_the_fixture_ships_the_stories_it_claims() -> None:
     from ostler.api import Ostler  # noqa: PLC0415
 
