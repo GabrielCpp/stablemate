@@ -649,9 +649,18 @@ def _paths(value: Any, prefix: str = "") -> dict[str, Any]:
 
 
 def _resolve_path(document: Any, path: str) -> tuple[bool, Any]:
-    """Walk a dotted/indexed path. Returns whether it resolved, and to what."""
+    """Walk a dotted/indexed path. Returns whether it resolved, and to what.
+
+    A leading `$` is the JSONPath root token, not a key: `$.item.id` and `item.id` name the
+    same field. `ostler.qa.session._extract_path` has always stripped it, and the vocabulary's
+    own examples are written with it — without this the two resolvers disagree and a `$`-rooted
+    `json_path` fails as *absent* against a document that holds the value.
+    """
+    segments = re.findall(r"[^.\[\]]+", path)
+    if segments and segments[0] == "$":
+        segments = segments[1:]
     current = document
-    for segment in re.findall(r"[^.\[\]]+", path):
+    for segment in segments:
         if isinstance(current, dict):
             if segment not in current:
                 return False, None

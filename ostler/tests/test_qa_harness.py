@@ -503,3 +503,41 @@ def test_an_unmet_expect_status_is_recorded_before_it_raises(tmp_path: Path) -> 
     # scenario, so nothing else it claimed will be shown either.
     assert asserted[0]["covers"] == ["okf:docs/a.md#confirm:concurrency:1"]
     assert records[-1]["status"] == "errored"
+
+
+ROOT_TOKEN_PLAN = '''\
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-06-import", story="06-import")
+
+api = target("api")
+
+DOCUMENT = {"item": {"id": "abc"}, "items": [{"id": "def"}]}
+
+
+@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#import:does:1"])
+def a_rooted_path_reads_the_same_field(qa: Qa) -> None:
+    """A `$`-rooted json_path names the same field as the bare one."""
+    qa.verify("json_path", DOCUMENT, path="$.item.id", equals="abc")
+    qa.verify("json_path", DOCUMENT, path="item.id", equals="abc")
+    qa.verify("json_path", DOCUMENT, path="$.items[0].id", equals="def")
+    qa.verify("json_path", DOCUMENT, path="$.item.missing", absent=True)
+'''
+
+
+def test_a_dollar_rooted_json_path_resolves_like_the_bare_one(tmp_path: Path) -> None:
+    """`$` is JSONPath's root token, not a key the document is expected to hold.
+
+    The vocabulary's own examples are written `$.error.title`, and `qa.session._extract_path`
+    has always stripped the prefix. The harness's resolver did not, so every `$`-rooted
+    `json_path` failed as *absent* against a document that held the value — a red assertion
+    filed against the product for a defect in the check.
+    """
+    code, records = _run(
+        _write(tmp_path, ROOT_TOKEN_PLAN), "a-rooted-path-reads-the-same-field", tmp_path
+    )
+
+    assert code == 0
+    asserted = _asserts(records)
+    assert len(asserted) == 4
+    assert [record["passed"] for record in asserted] == [True, True, True, True]
