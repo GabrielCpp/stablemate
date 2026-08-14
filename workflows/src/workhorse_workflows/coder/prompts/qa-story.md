@@ -57,6 +57,15 @@ fixture, assertion, or journey design. For a passed run, `objective_reached` is 
 full chain and terminal proof are present. A structurally valid plan that never exercised its
 objective requires repair or extension, never a pass.
 
+For acceptance criteria with universal language — `every`, `all`, `throughout`, `any
+other`, `each`, `whole app`, or a parenthesized category list — compare the plan's
+`qa-plan.md` inventory and the executed ledger against each named category. A passing
+assertion on one representative widget, state, or token does not prove the unvisited
+categories. If the inventory is missing, route a `plan` finding that asks for the inventory
+and replayable evidence for each omitted category; if a category is inventoried but its
+assertion never executed or only checks suite success/page presence, name that category in
+the finding.
+
 Write or update `<spec_dir>/qa.md` as a concise execution assessment with runner status,
 objective/checkpoint findings, scenario/assertion references, affected AC/obligation ids, and
 artifact paths already registered by the runner.

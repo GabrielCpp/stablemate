@@ -67,6 +67,13 @@ Two consequences worth stating:
 Adding a *new* scenario is a repair when a finding says coverage is missing. It is not a
 repair when no finding asks for it.
 
+When a finding cites a broad acceptance criterion — words such as `every`, `all`,
+`throughout`, `any other`, `each`, `whole app`, or a parenthesized category list — first
+write the concrete category inventory into `qa-plan.md`, then close each cited missing
+category with a replayable assertion or fixture case. Do not answer by strengthening the
+best existing sample. A sample proves only the category it reaches; the repair is complete
+only when the plan names the remaining categories and maps each one to terminal evidence.
+
 ## A race is repaired by waiting, never by loosening
 
 When a finding says an assertion failed intermittently, or that it read a half-rendered page,

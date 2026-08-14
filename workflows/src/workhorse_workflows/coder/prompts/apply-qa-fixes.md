@@ -29,6 +29,13 @@ If `{{ workhorse_var('spec_dir') }}` is blank, derive `<story-name>` from the st
 
 If the section above is non-empty, it is mid-flight feedback a human dropped into `{{ workhorse_var('spec_dir') }}/feedback.md` while the run was in progress (QA had already passed). Treat it as **required changes for this pass**, exactly like a QA failure — the Prior QA Notes above may be empty in this case, so the feedback is the work. Apply it within the story's existing scope; QA reruns after you, so do not mark the story QA-passed yourself. If the feedback asks for out-of-scope work, a product decision not present in the story or plan, or a credential/deploy you cannot perform, stop and report a blocker (status `blocked`) rather than expanding scope.
 
+If the feedback or QA report names a broad acceptance criterion (`every`, `all`,
+`throughout`, `any other`, `each`, `whole app`, or an explicit category list), treat each
+named category as required evidence. Fix product/test defects for categories that are
+broken, and leave a concrete plan-work item for categories that need new QA assertions;
+do not report the criterion resolved from a representative sample that exercised only one
+category.
+
 ## Required Context
 
 Read:

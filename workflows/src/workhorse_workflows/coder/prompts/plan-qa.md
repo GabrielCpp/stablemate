@@ -78,6 +78,14 @@ groups, persistence, producer-to-consumer events, concurrency, and idempotency. 
 drop an obligation because it is inconvenient or because a nearby assertion looks
 similar.
 
+Acceptance criteria that use universal language — `every`, `all`, `throughout`, `any
+other`, `each`, `whole app`, or a parenthesized category list — must be turned into an
+explicit coverage inventory before you write scenarios. List every named category in
+`qa-plan.md`, map each category to a scenario assertion or to an executable fixture case,
+and do not mark the AC covered until every row has terminal evidence. A representative
+sample is evidence for only the category it actually exercises; it is not evidence for
+the unvisited remainder of a universal AC.
+
 ## Required Outputs
 
 Write both files directly under the spec directory:
