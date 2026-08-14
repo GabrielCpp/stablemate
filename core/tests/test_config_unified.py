@@ -80,6 +80,52 @@ def test_values_needing_escaping_survive(cfg_file):
     assert cfgmod.get_config_value("base_dir") == tricky
 
 
+# --- the default agent CLI ---------------------------------------------------
+
+
+def test_default_cli_is_the_builtin_when_unset(cfg_file):
+    cfg_file.write_text(_POWER)
+    assert cfgmod.resolve_default_cli() == cfgmod.BUILTIN_DEFAULT_CLI == "claude"
+
+
+def test_default_cli_is_read_from_the_config(cfg_file):
+    cfg_file.write_text('default_cli = "opencode"\n')
+    assert cfgmod.resolve_default_cli() == "opencode"
+
+
+def test_default_cli_is_normalized(cfg_file):
+    """The consumers lowercase what they read; do it once, here, so they agree."""
+    cfg_file.write_text('default_cli = "  OpenCode  "\n')
+    assert cfgmod.resolve_default_cli() == "opencode"
+
+
+def test_a_malformed_default_cli_reads_as_unset(cfg_file):
+    """Never an exception: this is read on the way into an unattended week-long run,
+    and a config that has gone wrong must degrade to the built-in, not end the run.
+    An unknown *name* is a different thing and is rejected by whoever owns the
+    registry — core knows no backends."""
+    for bad in ("default_cli = 3\n", 'default_cli = ""\n', 'default_cli = "   "\n',
+                "default_cli = true\n", 'default_cli = ["opencode"]\n'):
+        cfg_file.write_text(bad)
+        assert cfgmod.resolve_default_cli() == "claude", bad
+
+
+def test_writing_the_default_cli_preserves_the_rest(cfg_file):
+    cfg_file.write_text(_POWER)
+    cfgmod.write_default_cli("OpenCode")
+    data = tomllib.loads(cfg_file.read_text())
+    assert data["default_cli"] == "opencode"
+    assert data["power"]["high"]["claude"] == {"model": "opus", "effort": "high"}
+
+
+def test_default_cli_does_not_bump_the_schema(cfg_file):
+    """Additive keys never bump CONFIG_VERSION: an older tool that ignores this one
+    falls back to the same built-in it always used, which is not a wrong answer."""
+    cfg_file.write_text('default_cli = "opencode"\n')
+    assert cfgmod.config_version_of(tomllib.loads(cfg_file.read_text())) == 1
+    assert cfgmod.check_config_version() == 1
+
+
 # --- unification + migration -------------------------------------------------
 
 

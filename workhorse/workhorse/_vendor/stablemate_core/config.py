@@ -62,6 +62,12 @@ CONFIG_VERSION = 1
 
 CONFIG_VERSION_KEY = "config_version"
 
+# The key naming the agent CLI a run drives when the invocation names none, and the
+# name used when it is unset. Additive, so it does not bump CONFIG_VERSION: an older
+# reader that ignores the key falls back to the same built-in it always used.
+DEFAULT_CLI_KEY = "default_cli"
+BUILTIN_DEFAULT_CLI = "claude"
+
 # Steps that carry a config forward one schema version: _MIGRATIONS[n] takes a v(n)
 # config and returns a v(n+1) one. Empty while CONFIG_VERSION is 1 — there is no older
 # schema to come from. When v2 lands, add the v1->v2 step here and a row above; the walk
@@ -367,6 +373,38 @@ def resolve_harness_env(backend: str, cfg: dict[str, Any] | None = None) -> dict
         for key, value in env_table.items()
         if isinstance(key, str) and key and isinstance(value, str)
     }
+
+
+def resolve_default_cli(cfg: dict[str, Any] | None = None) -> str:
+    """The agent CLI to drive when nothing on the invocation names one.
+
+    Reads the top-level ``default_cli`` key::
+
+        default_cli = "opencode"
+
+    The precedence a tool applies around this is ``--cli`` → ``AGENT_CLI`` → here →
+    :data:`BUILTIN_DEFAULT_CLI`. It lives in the config rather than as an argparse
+    default because a default in the flag is only reachable by editing the tool: an
+    operator whose machine is set up for one CLI otherwise has to name it on every
+    run of every workflow, and the one they forget is the one that silently comes
+    back on the built-in.
+
+    **Nothing is validated here.** core knows no backend registry — the names are
+    workhorse's — so a misspelling is rejected where every other bad CLI name already
+    is, at the boundary that resolves the adapter, with the list of real names in the
+    message. Only shape is normalized: a non-string, empty or whitespace value means
+    "unset" rather than an error, because a config read must never be what ends an
+    unattended run.
+    """
+    value = get_config_value(DEFAULT_CLI_KEY, cfg)
+    if isinstance(value, str) and value.strip():
+        return value.strip().lower()
+    return BUILTIN_DEFAULT_CLI
+
+
+def write_default_cli(name: str) -> None:
+    """Persist ``default_cli`` (the agent CLI a run drives when nothing names one)."""
+    write_config_key(DEFAULT_CLI_KEY, name.strip().lower())
 
 
 def get_config_value(name: str, cfg: dict[str, Any] | None = None) -> Any:
