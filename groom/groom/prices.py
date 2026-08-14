@@ -116,6 +116,11 @@ DEFAULT_PRICES: dict[str, Price] = {
     "gpt-5.6": Price(input=5.00, output=30.00, cache_read=0.50, cache_write=6.25),
     "gpt-5.6-sol": Price(input=5.00, output=30.00, cache_read=0.50, cache_write=6.25),
     "gpt-5.6-terra": Price(input=2.00, output=12.00, cache_read=0.20, cache_write=2.50),
+    # `-fast` is not a separate model: it is `gpt-5.6-terra` run in the catalogue's
+    # `modes.fast`, which sets `service_tier: priority` and publishes its own cost block at
+    # a flat 2x standard. It earns a row because the backend stamps the suffixed id on the
+    # span, and an unpriced turn is one a money-ranked report cannot sort at all.
+    "gpt-5.6-terra-fast": Price(input=4.00, output=24.00, cache_read=0.40, cache_write=5.00),
     "gpt-5.6-luna": Price(input=0.20, output=1.20, cache_read=0.02, cache_write=0.25),
 }
 
