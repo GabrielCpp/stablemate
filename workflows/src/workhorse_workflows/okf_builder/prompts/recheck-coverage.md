@@ -90,8 +90,8 @@ book is not an empty gap.
    supply for the node, because only the node knows what the behaviour promised. For each row queue
    a `requeue: true` item against that node whose `context` names the ref, the reason, and the
    observation to declare — the fix is a `verify:` bullet per observation, in the check vocabulary
-   (`http_status`, `json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `visible`,
-   `persists`, `emitted`, `conflict_on_stale`), never prose and never a test id (a test citation is
+   (`http_status`, `json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `created`,
+   `removed`, `visible`, `persists`, `emitted`, `conflict_on_stale`), never prose and never a test id (a test citation is
    `tests:`). Batch by file or by node group, the same way as check 1.
 
    Adjudicate, don't rubber-stamp: a row you cannot declare for — the behaviour is genuinely

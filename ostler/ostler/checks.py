@@ -125,6 +125,20 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "another",
     ),
     CheckSpec(
+        name="created",
+        params=(CheckParam("subject", "str", required=True),),
+        excludes="a thing that was already there reported as created — a presence check run "
+                 "only afterwards passes identically on a no-op, so the absence before the "
+                 "action is part of the observation rather than an assumption about it",
+    ),
+    CheckSpec(
+        name="removed",
+        params=(CheckParam("subject", "str", required=True),),
+        excludes="a delete asserted only by absence afterwards, which passes identically when "
+                 "the subject was never there — the presence before the action is what makes "
+                 "the disappearance attributable to it",
+    ),
+    CheckSpec(
         name="visible",
         params=(
             CheckParam("locator", "str", required=True),

@@ -728,9 +728,41 @@ def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, An
     return found == args["equals"], found, args["equals"]
 
 
+def _empty(value: Any) -> bool:
+    """Nothing there: `None`, or a sized thing with nothing in it."""
+    return value is None or (hasattr(value, "__len__") and len(value) == 0)
+
+
 def _verify_absent(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    empty = observed is None or (hasattr(observed, "__len__") and len(observed) == 0)
-    return empty, observed, "absent"
+    return _empty(observed), observed, "absent"
+
+
+def _verify_created(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    """Absent before the action, present after — both halves, or it proves nothing.
+
+    The `(before, after)` pair is insisted on rather than inferred for the reason the check
+    exists: an after-only read cannot tell a creation from a subject that was already there,
+    and that is precisely the pass this excludes. A scenario that has only the after-read is
+    told so by `_pair`, at the call, instead of quietly asserting presence.
+    """
+    before, after = _pair(observed, "created")
+    was_absent, is_present = _empty(before), not _empty(after)
+    return (
+        was_absent and is_present,
+        {"before": before, "after": after},
+        {"before": "absent", "after": "present"},
+    )
+
+
+def _verify_removed(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    """Present before the action, absent after — the mirror of `created`, and for the mirror
+    reason: absence afterwards alone passes on a subject that was never there."""
+    before, after = _pair(observed, "removed")
+    return (
+        not _empty(before) and _empty(after),
+        {"before": before, "after": after},
+        {"before": "present", "after": "absent"},
+    )
 
 
 def _verify_visible(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
@@ -780,6 +812,8 @@ VERIFIERS: dict[str, Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]] 
     "keys_unchanged": _verify_keys_unchanged,
     "count": _verify_count,
     "absent": _verify_absent,
+    "created": _verify_created,
+    "removed": _verify_removed,
     "visible": _verify_visible,
     "persists": _verify_persists,
     "emitted": _verify_emitted,

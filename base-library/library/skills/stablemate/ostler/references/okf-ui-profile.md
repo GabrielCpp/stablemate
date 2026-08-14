@@ -143,8 +143,8 @@ value — so `scaffold`'s stubs clear it. **`code:` / `tests:` bullets are code 
 
 **`verify:` is not one of them.** It declares the *observation* that fulfils the node's
 obligations, as a named check with typed arguments from ostler's vocabulary — `http_status`,
-`json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `visible`, `persists`, `emitted`,
-`conflict_on_stale`:
+`json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `created`, `removed`, `visible`,
+`persists`, `emitted`, `conflict_on_stale`:
 
 ```markdown
 - verify: http_status(409, title="Manifest Conflict")

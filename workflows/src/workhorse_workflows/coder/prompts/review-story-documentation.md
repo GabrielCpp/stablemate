@@ -76,7 +76,8 @@ changelog of this story. In particular, for the surfaces this story touched:
 - `verify:` fails differently, and is judged differently. It is not a ref: it declares the
   **observation** that fulfils the node's obligations, as a named call from ostler's check
   vocabulary with typed arguments — `http_status`, `json_path`, `unchanged`, `keys_unchanged`,
-  `count`, `absent`, `visible`, `persists`, `emitted`, `conflict_on_stale`. A test id in a
+  `count`, `absent`, `created`, `removed`, `visible`, `persists`, `emitted`,
+  `conflict_on_stale`. A test id in a
   `verify:` is a defect whose repair is to move it to `tests:` and declare the check instead;
   `ostler doctor` reports that one as `unparsed-check`;
 - every node this story touched that mints obligations **declares at least one observation**.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from ostler import checks, registry
+from ostler.qa.harness_host import load_harness_module
 
 
 def test_positional_and_keyword_arguments_bind_to_the_declared_params() -> None:
@@ -74,6 +75,34 @@ def test_every_spec_names_the_defect_it_excludes() -> None:
     for spec in checks.CHECKS:
         assert spec.excludes.strip()
         assert spec.params, f"{spec.name} observes nothing in particular"
+
+
+def test_a_lifecycle_claim_is_expressible_as_a_paired_observation() -> None:
+    """`created` / `removed` exist so "it was created" is writable without collapsing into
+    "it is there now" — the after-only spelling passes identically on a no-op."""
+    for value in ('created(subject="the seat A1 booking")', 'removed(subject="the hold")'):
+        call = checks.parse_check(value)
+        assert isinstance(call, checks.CheckCall)
+        assert call.text() == value
+        again = checks.parse_check(call.text())
+        assert again == call
+
+
+def test_a_lifecycle_check_names_its_subject() -> None:
+    """A creation with no subject is the unfalsifiable form the check was added to replace."""
+    result = checks.parse_check("created()")
+    assert isinstance(result, str)
+    assert "requires `subject: str`" in result
+    assert checks.expected_form("created()") == "created(subject: str)"
+
+
+def test_every_declarable_check_is_observable_by_the_harness() -> None:
+    """The two tables are spelled twice on purpose — `ostler.checks` says what may be
+    declared, the stdlib-only harness says what observing it means — so nothing but a test
+    stops them drifting. A name in one and not the other is a bullet that parses in the book
+    and dies at the call, or a verifier no author can reach."""
+    harness = load_harness_module("ostler_qa")
+    assert set(harness.VERIFIERS) == {spec.name for spec in checks.CHECKS}
 
 
 def test_verify_is_a_check_key_on_the_normative_types() -> None:

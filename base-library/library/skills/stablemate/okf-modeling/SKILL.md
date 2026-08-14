@@ -130,8 +130,8 @@ Two blind spots to hunt deliberately:
 
 Every normative bullet mints a QA obligation, and `verify:` is where the node says **what would be
 observed** if that obligation holds. It is a call from ostler's check vocabulary with typed
-arguments — `http_status`, `json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `visible`,
-`persists`, `emitted`, `conflict_on_stale` — never a test id, never prose:
+arguments — `http_status`, `json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `created`,
+`removed`, `visible`, `persists`, `emitted`, `conflict_on_stale` — never a test id, never prose:
 
 ```markdown
 - does: on conflict the manifest is left byte-identical
