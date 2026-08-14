@@ -111,11 +111,11 @@ touches prose. Scaffold output is already canonical.
 
 Unlike the draft profile's original "warns, never blocks" stance, UI conformance is a **hard
 `doctor` gate**: every rule is `error`-severity, carries a `path:line` location, and has a
-mechanical fix, so a workflow node can gate on `ostler doctor` and always converge. The one
-exceptions are `overlong-normative-bullet`, `compound-normative-bullet` and
-`undeclared-obligation` (warns), whose remedy is a judgement about the *source*: only the code can
-say which clauses are separate requirements, and cutting the bullet on punctuation invents
-obligations nobody can prove.
+mechanical fix, so a workflow node can gate on `ostler doctor` and always converge. The
+exceptions are `overlong-normative-bullet`, `compound-normative-bullet`,
+`undeclared-obligation`, `weak-check` and `unstated-precondition` (warns), whose remedy is a
+judgement about the *source*: only the code can say which clauses are separate requirements, and
+cutting the bullet on punctuation invents obligations nobody can prove.
 
 | Code | Means | Remedy |
 |---|---|---|
@@ -127,6 +127,8 @@ obligations nobody can prove.
 | `compound-normative-bullet` (warn) | one bullet states several observations — enumerated status codes, several error names, semicolon-joined clauses | split it: one bullet is one obligation, proved by one scenario |
 | `unparsed-check` | a `verify:` value is not a call from the check vocabulary (a test id, an unknown name, a bad argument) | rewrite it as `name(arg=…)`; a test citation belongs in `tests:` |
 | `undeclared-obligation` (warn) | the node mints obligations and declares no `verify:` at all — nothing says what observing them looks like | declare a check per observation; the node is the only place that knows what the behaviour promised |
+| `weak-check` (warn) | every check the node declares passes on the defect it is meant to catch — a field asserted by presence with no value, a `2xx` naming neither `path:` nor `title:` | name the value, the route or the title the claim turns on |
+| `unstated-precondition` (warn) | a bullet says the node creates or removes something, and the checks read only the state afterwards — the same state a no-op leaves | declare the change as a change: `created(subject=…)` / `removed(subject=…)` |
 | `unresolved-relation` | a `parent:`/`extends:`/`detail:`/`on:` link doesn't resolve | fix the link target |
 | `dangling-link` | a plain link's target **file** is missing | fix the path or create the target |
 | `missing-anchor` | file exists but `#anchor` heading isn't there | fix the anchor |

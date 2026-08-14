@@ -340,6 +340,69 @@ def test_a_declaration_that_does_not_parse_is_reported_once(repo: Path):
     assert "undeclared-obligation" not in found
 
 
+def test_a_check_that_cannot_go_red_is_reported(repo: Path):
+    # Declared, parsed, bound — and green against the defect too. Presence without a value is
+    # `json_path`'s own `excludes:` sentence, so the rule is that sentence made computable.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          _method('json_path(path="$.revision", absent=false)'))
+    finding = next(f for f in _run(repo).findings if f.code == "weak-check")
+    assert finding.severity == "warn"
+    assert "passes on the default" in finding.message
+    assert finding.ref == f"{finding.path}#publish#verify"
+
+
+def test_a_success_status_naming_neither_route_nor_title_is_weak(repo: Path):
+    write(repo / "docs/features/groom/concepts/publisher.md", _method("http_status(200)"))
+    assert "weak-check" in all_codes(_run(repo))
+
+
+def test_one_discriminating_check_answers_the_node(repo: Path):
+    # All-or-nothing, for `undeclared-obligation`'s reason: a node that declares one check
+    # that can fail has made the judgment, and which bullet it belongs to is a pairing nobody
+    # has written down.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n- returns: the published revision\n"
+          '- verify: json_path(path="$.revision", absent=false)\n'
+          '- verify: json_path(path="$.state", equals="published")\n')
+    assert "weak-check" not in all_codes(_run(repo))
+
+
+def test_a_creation_verified_only_afterwards_is_reported(repo: Path):
+    # The pass this exists to withhold: `201` and a present id say the same thing whether the
+    # revision was created or was already there.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- returns: the revision it creates under the caller's name\n"
+          '- verify: http_status(201, path="/revisions")\n')
+    finding = next(f for f in _run(repo).findings if f.code == "unstated-precondition")
+    assert finding.severity == "warn"
+    assert "creates something" in finding.message or "creates" in finding.message
+    assert finding.suggestion is not None and "created(subject=" in finding.suggestion
+
+
+def test_declaring_the_change_as_a_change_clears_it(repo: Path):
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- returns: the revision it creates under the caller's name\n"
+          '- verify: http_status(201, path="/revisions")\n'
+          '- verify: created(subject="the revision")\n')
+    assert "unstated-precondition" not in all_codes(_run(repo))
+
+
+def test_a_claim_that_changes_no_existence_is_not_asked_for_a_before_read(repo: Path):
+    # A bare stem is half the time a noun — "the issue was filed", "the register" — so only
+    # the inflections a bullet uses to say what the node does are matched.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- returns: the issue the caller filed, and the register it was recorded in\n"
+          '- verify: http_status(200, path="/revisions", title="OK")\n')
+    assert "unstated-precondition" not in all_codes(_run(repo))
+
+
 def test_a_node_minting_no_obligation_is_not_asked_to_declare(repo: Path):
     # Nothing to observe: an interaction recorded only by its trigger owes no check, and a rule
     # that asked anyway would be noise on the descriptive half of the book.
