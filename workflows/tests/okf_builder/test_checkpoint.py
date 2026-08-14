@@ -103,13 +103,17 @@ def test_one_item_per_node_and_code() -> None:
     Two codes over two nodes of one file is four items, each carrying one code — because the
     prompt for an item is chosen from its kind before the turn starts, and no fragment can be
     written for an item that mixes a dangling link with an unfalsifiable check.
+
+    The refs are doctor's real shape, `<path>#<node>#<member>` — a node id is itself prefixed
+    by the file it lives in. Reading the node as everything before the first `#` yields the
+    *path*, which puts a whole document back into one item and quietly undoes this split.
     """
     doc = f"{BOOK}/pay.md"
     findings = [
-        {**_finding("undeclared-obligation", path=doc), "ref": "ACME-1#charge", "line": 3},
-        {**_finding("compound-normative-bullet", path=doc), "ref": "ACME-1#charge", "line": 4},
-        {**_finding("undeclared-obligation", path=doc), "ref": "ACME-2#refund", "line": 9},
-        {**_finding("compound-normative-bullet", path=doc), "ref": "ACME-2#refund", "line": 10},
+        {**_finding("undeclared-obligation", path=doc), "ref": f"{doc}#charge#returns", "line": 3},
+        {**_finding("compound-normative-bullet", path=doc), "ref": f"{doc}#charge#does", "line": 4},
+        {**_finding("undeclared-obligation", path=doc), "ref": f"{doc}#refund#returns", "line": 9},
+        {**_finding("compound-normative-bullet", path=doc), "ref": f"{doc}#refund#does", "line": 10},
     ]
     items = _repair_items(findings, 3)
 
@@ -122,7 +126,23 @@ def test_one_item_per_node_and_code() -> None:
         ctx = json.loads(item["context"])
         assert {f["code"] for f in ctx["findings"]} == {ctx["code"]}
         assert item["kind"] == f"fix:{ctx['code']}"
-        assert ctx["node"] in ("ACME-1", "ACME-2")
+        assert ctx["node"] in (f"{doc}#charge", f"{doc}#refund")
+
+
+def test_a_ref_that_is_not_a_node_groups_by_the_file() -> None:
+    """Not every finding names a book node, and neither shape may lose one.
+
+    `missing-code-symbol` refs a *source* symbol, and a few checks carry no ref at all. Both
+    fall back to the document, which is the only place a repair turn could open anyway.
+    """
+    doc = f"{BOOK}/pay.md"
+    symbol = {**_finding("missing-code-symbol", path=doc), "ref": "acme/service.py::refund"}
+    refless = {**_finding("missing-code-symbol", path=doc), "ref": ""}
+    (item,) = _repair_items([symbol, refless], 1)
+
+    ctx = json.loads(item["context"])
+    assert ctx["node"] == doc
+    assert len(ctx["findings"]) == 2
 
 
 def test_a_grounded_code_is_a_flag_not_a_kind() -> None:
@@ -147,7 +167,7 @@ def test_a_node_past_the_chunk_cap_splits_into_distinct_items() -> None:
     second worklist entry rather than a dropped tail — and the two targets must differ, or
     `record`'s dedupe by `(kind, target)` collapses them back into one.
     """
-    many = [{**_finding("compound-normative-bullet"), "ref": "ACME-1#charge", "line": n}
+    many = [{**_finding("compound-normative-bullet"), "ref": f"{BOOK}/a.md#charge#does", "line": n}
             for n in range(MAX_FINDINGS_PER_ITEM + 1)]
     items = _repair_items(many, 1)
 

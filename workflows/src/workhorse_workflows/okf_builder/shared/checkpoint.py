@@ -60,6 +60,29 @@ GROUNDED_CODES = frozenset({
 MAX_FINDINGS_PER_ITEM = 25
 
 
+def _node_of(ref: str, path: str) -> str:
+    """The node a finding sits on, out of a doctor `ref` — `<path>#<node>[#<member>]`.
+
+    The member matters to the finding and not to the grouping: `…#field-accounttype#semantics`
+    and `…#field-accounttype#verify` are two questions about one node, and a turn that opens
+    the node answers both. So the ref is cut after its *node* segment, not at its first `#` —
+    which was a real defect while it lasted, because `<path>#…` means the first segment is the
+    path and every finding in a document collapsed into one item regardless of node.
+
+    Two refs do not have that shape and fall back to the path: a file-level finding with no
+    ref, and a code-symbol ref (`acme/service.py::refund`) that names source rather than book.
+    Both are honest groupings — the item is then "this file, this code".
+
+    A document's *file* node has the bare path as its id, so its findings ref `<path>#<member>`
+    and this reads the member as the node. That over-splits — two members of one file node
+    become two items — which is the safe direction: an item still carries one code over one
+    place, and no finding is dropped.
+    """
+    if not ref.startswith(path + "#"):
+        return path
+    return f"{path}#{ref[len(path) + 1 :].split('#')[0]}"
+
+
 def _repair_items(findings: list[dict], rnd: int) -> list[dict[str, str]]:
     """One item per `(file, node, code)`, chunked, carrying that group's findings only.
 
@@ -87,10 +110,7 @@ def _repair_items(findings: list[dict], rnd: int) -> list[dict[str, str]]:
     groups: dict[tuple[str, str, str], list[dict]] = {}
     for finding in findings:
         path = str(finding.get("path", ""))
-        ref = str(finding.get("ref", "") or "")
-        # `ref` is `<node-id>#<member>`; the node is what a repair turn opens. A finding
-        # with no ref at all (a file-level one) is grouped under its path.
-        node = ref.split("#")[0] if ref else path
+        node = _node_of(str(finding.get("ref", "") or ""), path)
         groups.setdefault((path, node, str(finding.get("code", ""))), []).append(finding)
 
     items = []

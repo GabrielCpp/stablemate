@@ -66,7 +66,9 @@ BOOK = f"docs/features/{SERVICE}"
 REFUND = f"{BOOK}/concepts/refund.md"
 #: The repair item `dirty` produces, minus its round prefix: `<path>#<node>#<code>`, which is
 #: what makes two findings of different codes on one node two separately-promptable turns.
-REPAIR = f"{REFUND}#acme/service.py::refund#missing-code-symbol"
+#: `missing-code-symbol` refs a *source* symbol rather than a book node, so its item groups by
+#: the document — the only place the repair turn could open.
+REPAIR = f"{REFUND}#{REFUND}#missing-code-symbol"
 
 #: What the scripted enumeration hands back by default: one surface, whose investigation
 #: this book does not actually need — the fixture is already complete, which is what makes
