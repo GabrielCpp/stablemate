@@ -69,6 +69,55 @@ class ImplResult(CoderResult):
     notes: str = ""
 
 
+class TestsResult(CoderResult):
+    """`prompts/implement-plan-tests.md` — the failing tests written, or the blocker.
+
+    Like `ImplResult`, nothing branches on it: the red gate downstream is the deterministic
+    verdict on whether the tests turn did its job, and an agent claiming `done` is not
+    evidence that it did.
+    """
+
+    status: str = ""
+    notes: str = ""
+
+
+class RedGateArm(CoderResult):
+    """`arm_red_gate` — what the gate will hold the tests turn to, recorded before it runs.
+
+    `mode` is `tdd` or `regression_only`; the second is the planner's plan-time escape (a
+    literal `Test scenarios: regression-only` in the plan) and sends the layer down the
+    classic single-turn path. `baseline` is the worktree's changed paths *before* the tests
+    turn, so the gate can diff what that turn alone touched; `test_command` and `signatures`
+    are resolved here, once, so the tests prompt is told the exact command the gate will run
+    and the gate judges purity by the same patterns every rework.
+    """
+
+    mode: str = "tdd"
+    baseline: list[str] = []
+    test_command: str = ""
+    signatures: list[str] = []
+
+
+class RedGateOutcome(CoderResult):
+    """`run_red_gate` — the deterministic verdict between the tests turn and the code turn.
+
+    `status` is one of five: `red` (the suite genuinely failed — proceed to the code turn),
+    `all_green` (exit 0 — the tests exercise nothing missing, loop back), `impure` (the
+    tests turn touched non-test files, loop back), `no_tests` (the turn changed nothing,
+    loop back), or `skipped` (no cwd, no test command, or the command never returned — the
+    gate stands aside rather than falsely failing, the same fail-open shape as the lint
+    gate's `skipped`). A blank status takes the proceed arm, because a gate that cannot
+    speak is not evidence against the tests.
+    """
+
+    status: str = ""
+    command: str = ""
+    changed_files: list[str] = []
+    non_test_files: list[str] = []
+    log_path: str = ""
+    reason: str = ""
+
+
 class FixLintResult(CoderResult):
     """`prompts/fix-lint.md` — the lint repair turn's own report. `fixed` or `failed`.
 
@@ -253,5 +302,8 @@ __all__ = [
     "PlanResult",
     "PlanValidation",
     "QaRunEntry",
+    "RedGateArm",
+    "RedGateOutcome",
     "ReuseResult",
+    "TestsResult",
 ]

@@ -1,9 +1,9 @@
 """End-to-end tests for the `dev` flow — the three gates, the layer loop, the operator.
 
-Thirty-five YAML nodes became twelve states holding three loops that share them: the reuse
-gate, the path gate and the per-layer implement/lint loop. What is worth testing is which
-arm each verdict takes and what makes each loop terminate, so the tests are organised by
-gate rather than by node.
+Thirty-five YAML nodes became twelve states holding three loops that share them — fifteen
+once the implement turn split into tests / red gate / code — the reuse gate, the path gate
+and the per-layer implement/lint loop. What is worth testing is which arm each verdict takes
+and what makes each loop terminate, so the tests are organised by gate rather than by node.
 
 **There are no seams here beyond the agent turn.** Every deterministic node runs for real:
 the story is a real authored story in a real docs repo, the workspace is two real git repos
@@ -201,7 +201,7 @@ def lint_gate(
 
 
 class _Agent:
-    """A scripted stand-in for the flow's four prompts, writing what each claims to write.
+    """A scripted stand-in for the flow's prompts, writing what each claims to write.
 
     The knobs are the flow's branches: `blocked` makes the first N planning turns report a
     block, `bad_paths` makes the first N plan writes name a repo the workspace has not got,
@@ -209,6 +209,12 @@ class _Agent:
     auto-operator hand the block to a human, `scope` is what the answer it writes claims the
     block was about, `fix_lint` decides whether the lint repair turn actually repairs
     anything, and `explode` raises on a named prompt — a run killed mid-turn.
+
+    The red-gate knobs mirror the gate's verdicts: `repos` maps a repo name to its checkout
+    so the tests turn can write a real test file into the real worktree the gate diffs,
+    `impure` makes the first N tests turns leave a production file behind, `make_green` is
+    the marker the code turn writes — the seam a real red suite checks for — and
+    `regression_only` makes every plan write carry the planner's escape marker.
     """
 
     def __init__(
@@ -223,6 +229,10 @@ class _Agent:
         scope: str = "story",
         fix_lint: Path | None = None,
         explode: set[str] | None = None,
+        repos: dict[str, Path] | None = None,
+        make_green: Path | None = None,
+        impure: int = 0,
+        regression_only: bool = False,
     ) -> None:
         self.docs = docs
         self.services = services if services is not None else SERVICES
@@ -233,6 +243,10 @@ class _Agent:
         self.scope = scope
         self.fix_lint = fix_lint
         self.explode = explode or set()
+        self.repos = repos or {}
+        self.make_green = make_green
+        self.impure = impure
+        self.regression_only = regression_only
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         #: Plan turns of either prompt, so `blocked` and `bad_paths` count the *writes*
@@ -276,9 +290,12 @@ class _Agent:
         services = GHOST if self.plans <= self.bad_paths else self.services
         spec = Path(data["spec_dir"])
         spec.mkdir(parents=True, exist_ok=True)
+        escape = "Test scenarios: regression-only — the change is covered by the existing suite.\n"
         for svc in services:
             (spec / svc["plan_file"]).write_text(
-                f"# Plan for {svc['repo']}::{svc['path']}\n", encoding="utf-8"
+                f"# Plan for {svc['repo']}::{svc['path']}\n"
+                + (escape if self.regression_only else ""),
+                encoding="utf-8",
             )
         (spec / "plan-context.json").write_text(
             json.dumps(
@@ -313,6 +330,28 @@ class _Agent:
         return {"decision": "answered", "summary": "the bucket exists in staging"}
 
     def _implement_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        return {"status": "done", "notes": f"implemented {data['service_path']}"}
+
+    def _implement_plan_tests(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """Write a real failing test into the layer's real worktree — the gate diffs it.
+
+        The `impure` laps also leave a production file behind, and the rework that follows
+        removes it: the same repair the prompt's rework section demands.
+        """
+        repo = Path(data["plan_file"]).stem.removeprefix("plan-")
+        path = self.repos.get(repo)
+        if path is not None:
+            (path / f"test_{repo}.py").write_text("assert False\n", encoding="utf-8")
+            stray = path / "impure.go"
+            if nth <= self.impure:
+                stray.write_text("package impure\n", encoding="utf-8")
+            elif stray.exists():
+                stray.unlink()
+        return {"status": "done", "notes": f"tests for {data['service_path']}"}
+
+    def _implement_plan_code(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        if self.make_green is not None:
+            self.make_green.write_text("", encoding="utf-8")
         return {"status": "done", "notes": f"implemented {data['service_path']}"}
 
     def _fix_lint(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -397,7 +436,8 @@ def test_plans_stamps_branches_and_implements_every_layer(
     assert agent.counts() == {
         "plan-story": 1,
         "check-code-reuse": 1,
-        "implement-plan": 2,
+        "implement-plan-tests": 2,
+        "implement-plan-code": 2,
     }, agent.counts()
 
     # The plan files the turn wrote untyped are OKF Concepts afterwards: `stamp_specs` ran.
@@ -409,9 +449,14 @@ def test_plans_stamps_branches_and_implements_every_layer(
     assert _branch_of(workspace["web"]) == STORY
 
     # The layers were dispatched in the plan's declared order, each with its own plan file.
-    implemented = [(a["service_path"], a["plan_file"]) for a in agent.args_for("implement-plan")]
+    implemented = [
+        (a["service_path"], a["plan_file"]) for a in agent.args_for("implement-plan-code")
+    ]
     assert implemented == [(".", "plan-api.md"), (".", "plan-web.md")], implemented
-    assert [a["service_type"] for a in agent.args_for("implement-plan")] == ["go", "react-router"]
+    assert [a["service_type"] for a in agent.args_for("implement-plan-code")] == [
+        "go",
+        "react-router",
+    ]
 
 
 def test_the_implement_turn_is_handed_the_three_values_its_prompt_reads(
@@ -432,7 +477,7 @@ def test_the_implement_turn_is_handed_the_three_values_its_prompt_reads(
 
     drive_flow(Dev(story=STORY), run_env, agent)
 
-    first = agent.args_for("implement-plan")[0]
+    first = agent.args_for("implement-plan-code")[0]
     impl = _output(run_env, resolve_impl_context)
     assert first["qa_run_plan"] == impl["qa_run_plan"]
     assert first["impl_instruction_paths"] == impl["impl_instruction_paths"]
@@ -502,7 +547,7 @@ def test_the_reuse_gate_is_bounded_and_then_proceeds_anyway(
     assert result.status == "ready", result
     assert agent.counts()["check-code-reuse"] == 3, agent.counts()
     assert agent.counts()["refine-plan"] == 2, agent.counts()
-    assert agent.counts()["implement-plan"] == 2, agent.counts()
+    assert agent.counts()["implement-plan-code"] == 2, agent.counts()
 
 
 # --------------------------------------------------------------------------- path gate
@@ -592,7 +637,7 @@ def test_a_service_path_nobody_can_repair_gives_up_instead_of_relapping(
     assert agent.counts()["resolve-operator"] == Dev.MAX_PLAN_BLOCKS, agent.counts()
     assert agent.counts()["refine-plan"] == 15, agent.counts()
     assert agent.counts()["check-code-reuse"] == 4, agent.counts()
-    assert agent.counts()["implement-plan"] == 0, agent.counts()
+    assert agent.counts()["implement-plan-code"] == 0, agent.counts()
 
 
 # --------------------------------------------------------------------------- the operator
@@ -636,7 +681,7 @@ def test_an_epic_scoped_answer_leaves_the_flow_to_be_replanned(
 
     assert result.status == "replan", result
     assert "staging bucket" in result.operator_notes
-    assert agent.counts()["implement-plan"] == 0, agent.counts()
+    assert agent.counts()["implement-plan-code"] == 0, agent.counts()
 
 
 @pytest.mark.parametrize("operator_mode", ["human", "operator"])
@@ -738,7 +783,7 @@ def test_a_plan_no_operator_can_unblock_fails_instead_of_looping(
     # exactly one more plan before the block is re-raised.
     assert agent.counts()["resolve-operator"] == Dev.MAX_PLAN_BLOCKS, agent.counts()
     assert agent.counts()["refine-plan"] == Dev.MAX_PLAN_BLOCKS, agent.counts()
-    assert agent.counts()["implement-plan"] == 0, agent.counts()
+    assert agent.counts()["implement-plan-code"] == 0, agent.counts()
 
 
 def test_the_human_operator_is_bounded_by_the_same_counter(
@@ -834,8 +879,132 @@ def test_the_lint_gate_is_bounded_and_moves_on_dirty(
 
     assert result.status == "ready", result
     assert agent.counts()["fix-lint"] == 2, agent.counts()
-    assert agent.counts()["implement-plan"] == 2, agent.counts()
+    assert agent.counts()["implement-plan-code"] == 2, agent.counts()
     assert not lint_gate.exists()
+
+
+# --------------------------------------------------------------------------- red gate
+
+
+def test_a_red_suite_proceeds_to_the_code_turn_with_the_observation(
+    docs: Path,
+    workspace: dict[str, Path],
+    write: Callable[[Path, str], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The TDD spine: tests land, the gate observes them fail, the code turn is told so.
+
+    `api` adopts the gate with a real command that checks for the marker the code turn
+    writes — so the red run is a genuine failure, not a scripted verdict — and the log the
+    gate wrote lands in the spec dir where review can audit it. `web` resolves no test
+    command, which is the `skipped` fail-open arm riding the same run.
+    """
+    write(docs / "agents.yml", "test:\n  api: sh tests.sh\n")
+    write(workspace["api"] / "tests.sh", "test -f .impl-ok\n")
+    agent = _Agent(docs, repos=workspace, make_green=workspace["api"] / ".impl-ok")
+
+    result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    code_args = agent.args_for("implement-plan-code")
+    assert code_args[0]["red_status"] == "red", code_args[0]
+    log = Path(code_args[0]["red_log_path"])
+    assert log.is_file(), log
+    assert log.parent.resolve() == (docs / SPEC_REL).resolve()
+    assert (workspace["api"] / ".impl-ok").is_file(), "the code turn never ran"
+    # `web` adopted no test command: the gate stood aside rather than falsely failing.
+    assert code_args[1]["red_status"] == "skipped", code_args[1]
+
+
+def test_a_green_suite_loops_the_tests_turn_back_and_then_fails_open(
+    docs: Path,
+    workspace: dict[str, Path],
+    write: Callable[[Path, str], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Tests that pass with the behavior unimplemented are not TDD — the gate says so.
+
+    `api`'s command is `true`, so every red run exits green: two reworks are spent with the
+    verdict in the turn's brief, and the spent budget proceeds fail-open — the reviewer's
+    coverage audit is the binding check, not this gate. `web` resolves no command and takes
+    one turn.
+    """
+    write(docs / "agents.yml", 'test:\n  api: "true"\n')
+    agent = _Agent(docs, repos=workspace)
+
+    result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["implement-plan-tests"] == 4, agent.counts()
+    assert agent.counts()["implement-plan-code"] == 2, agent.counts()
+    feedback = [a["gate_feedback"] for a in agent.args_for("implement-plan-tests")]
+    assert feedback[0] == "" and feedback[3] == "", feedback
+    assert "all_green" in feedback[1] and "all_green" in feedback[2], feedback
+
+
+def test_an_impure_diff_is_rejected_even_without_a_test_command(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Purity is judged from the diff alone, so it holds where no suite can run.
+
+    Neither repo resolves a test command, but the first tests turn leaves `impure.go`
+    behind — the gate names the file in the rework brief, the second turn removes it, and
+    the now-pure diff proceeds on the `skipped` arm.
+    """
+    agent = _Agent(docs, repos=workspace, impure=1)
+
+    result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["implement-plan-tests"] == 3, agent.counts()
+    assert agent.counts()["implement-plan-code"] == 2, agent.counts()
+    rework = agent.args_for("implement-plan-tests")[1]["gate_feedback"]
+    assert "impure" in rework and "impure.go" in rework, rework
+
+
+def test_a_regression_only_plan_takes_the_classic_single_turn(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The planner's escape hatch: `Test scenarios: regression-only` skips the split.
+
+    The decision is read off the plan text, so it is the planning turn's to make and the
+    reviewer's to audit — the implement stage just honors it with the classic prompt.
+    """
+    agent = _Agent(docs, regression_only=True)
+
+    result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["implement-plan"] == 2, agent.counts()
+    assert agent.counts()["implement-plan-tests"] == 0, agent.counts()
+    assert agent.counts()["implement-plan-code"] == 0, agent.counts()
+
+
+def test_a_docs_layer_never_enters_the_split(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A layer with nothing a test can observe red takes the classic turn unconditionally."""
+    services = [
+        {"repo": "api", "path": ".", "type": "docs", "plan_file": "plan-api.md", "skills": []}
+    ]
+    agent = _Agent(docs, services=services)
+
+    result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["implement-plan"] == 1, agent.counts()
+    assert agent.counts()["implement-plan-tests"] == 0, agent.counts()
 
 
 # --------------------------------------------------------------------------- resume
@@ -856,12 +1025,12 @@ def test_a_run_killed_mid_implement_resumes_on_that_layer(
     run_env = env()
     run_dir = run_env.writer.run_dir
 
-    with pytest.raises(RuntimeError, match="killed during implement-plan"):
-        drive_flow(Dev(story=STORY), run_env, _Agent(docs, explode={"implement-plan"}))
+    with pytest.raises(RuntimeError, match="killed during implement-plan-tests"):
+        drive_flow(Dev(story=STORY), run_env, _Agent(docs, explode={"implement-plan-tests"}))
 
     checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
-    assert resume.state == "implement", resume
+    assert resume.state == "implement_tests", resume
     assert resume.flow == "Dev", resume
     assert resume.params == {"index": 0}, resume.params
 
@@ -869,4 +1038,4 @@ def test_a_run_killed_mid_implement_resumes_on_that_layer(
     result = drive_flow(Dev(**resume.inputs), env(run_dir=run_dir), agent, resume)
 
     assert result.status == "ready", result
-    assert agent.counts() == {"implement-plan": 2}, agent.counts()
+    assert agent.counts() == {"implement-plan-tests": 2, "implement-plan-code": 2}, agent.counts()
