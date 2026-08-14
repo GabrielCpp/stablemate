@@ -140,7 +140,8 @@ still describe the module. Do not rewrite sections whose scenarios you did not t
 `ostler qa validate` grades what a scenario's `covers` is worth on two counts. It refuses one
 that claims coverage while its body calls no `qa.check`/`qa.require` at all — and it refuses one
 that claims an obligation whose `checksDeclared` name a call no scenario invokes. That second
-one is the common repair: read the obligation row, and for every declared check add
+one is the common repair: read the obligation row, and for every declared check invoke the
+declared call with exactly its declared arguments:
 
 ```python
 qa.verify("http_status", response, code=409, title="Manifest Conflict", covers=[OBLIGATION])
@@ -150,6 +151,15 @@ with the id and the check name as **literal** strings, because the binding is re
 statically before anything runs. Do not answer it by dropping the id from `covers` — that
 narrows the claim instead of proving it, and the evidence map then reports the obligation
 `uncovered`.
+
+Read the validator's near-miss sentence literally. If it says the plan already invokes the
+exact call against another obligation, widen that existing call's `covers=` list. If it says
+the plan invokes the same check with a different argument, reshape the observed object until
+the declared argument is true — for example pass the subtree to `qa.verify` so the declared
+`path="$.blocks"` remains `$.blocks`, rather than changing the plan to
+`path="$.tree.blocks"`. If a scenario currently uses `qa.check` for an obligation whose row
+has `checksDeclared`, replace that assertion with `qa.verify`; a boolean check never invokes
+the declared observation.
 
 Past those counts, an assertion on a runner's exit banner — `result.returncode == 0`, any bare
 `EXIT:0` — proves the suite is green and is indistinguishable from a suite that skipped every

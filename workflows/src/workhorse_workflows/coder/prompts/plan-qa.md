@@ -370,6 +370,12 @@ invokes, and the check's comparison is ostler's rather than yours — which is t
 `qa.check` takes an already-collapsed bool, so a scenario can decide weakly what "the manifest
 is unchanged" means; `qa.verify` cannot, because the assertion *is* the claim.
 
+The declared arguments are part of the contract. Do not rewrite them to match the shape you
+happen to captured. Shape the observed value instead: if the declaration says
+`json_path(path="$.blocks", ...)`, pass the object whose root has `blocks`, not a wrapper that
+forces `path="$.tree.blocks"`. One `qa.verify` can list every sibling obligation that declares
+the same call in `covers=`; do that instead of writing near-identical assertions per id.
+
 **The ids in `covers=` must be literal strings** — a module-level constant holding one literal,
 or the literal itself. The binding is recovered statically, before anything runs, so an id
 assembled from a loop variable, an f-string, or a lookup binds to nothing and the plan is
