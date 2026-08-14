@@ -20,6 +20,7 @@ money to check.
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -346,6 +347,30 @@ def test_a_covered_obligation_over_a_seeded_defect_is_a_miss() -> None:
     row = {"id": "D1", "obligation": "okf:a#b:contract", "expect": "contradicted"}
     verdict, _ = replay.classify(row, {"okf:a#b:contract": "covered"}, {"verdict": "stands"})
     assert verdict == "missed"
+
+
+def test_a_repaired_defect_is_a_catch_even_though_the_map_reads_covered() -> None:
+    """The loudest detection there is: QA saw it, triaged it `code`, and fixed the product.
+
+    The terminal evidence map is then computed over a repaired app and correctly reports
+    `covered`, so end-state-only scoring calls the best outcome a miss.
+    """
+    row = {"id": "D1", "obligation": "okf:a#b:contract", "expect": "contradicted"}
+    verdict, because = replay.classify(
+        row, {"okf:a#b:contract": "covered"}, {"verdict": "stands"}, survived=False
+    )
+    assert (verdict, because) == ("caught", "defect repaired")
+
+
+def test_the_seeded_file_is_the_witness_that_the_defect_survived(tmp_path: Path) -> None:
+    row = replay.select_defects(APP, ["D1"])[0]
+    target = tmp_path / row["path"]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(APP / "defects" / row["id"] / row["path"], target)
+    assert replay.defect_survived(APP, row, tmp_path) is True
+
+    target.write_text(target.read_text(encoding="utf-8") + "\n# repaired\n", encoding="utf-8")
+    assert replay.defect_survived(APP, row, tmp_path) is False
 
 
 @pytest.mark.parametrize(

@@ -533,6 +533,28 @@ def seed_defect(app: Path, row: dict[str, str]) -> Callable[[Path], None]:
     return mutate
 
 
+def defect_survived(app: Path, row: dict[str, str], repo: Path) -> bool:
+    """Is the seeded file still byte-for-byte the defect variant at the end of the trial?
+
+    This is the half of the score the terminal evidence map cannot see. The QA lane does not
+    only observe — it triages a failing observation as `code` and repairs the product. When
+    it does, the *last* evidence map is computed over a fixed app and reads `covered`, which
+    is indistinguishable from a run that never noticed anything. Reading only that end state
+    scores the loudest possible detection as a miss.
+
+    So the seeded file itself is the witness. It was planted by an overwrite (`seed_defect`)
+    and nothing but the flow can have touched it since; if it no longer matches the variant,
+    the flow acted on the defect. Byte equality, not a semantic check, because the question
+    is only whether the code under test is still the code that was seeded — a repair that
+    differs from the canonical app is still a repair.
+    """
+    variant = app / "defects" / str(row["id"]) / str(row["path"])
+    target = repo / str(row["path"])
+    if not target.is_file():
+        return False
+    return target.read_bytes() == variant.read_bytes()
+
+
 def evidence_statuses(repo: Path, story: str) -> dict[str, str] | None:
     """`{obligation id: status}` for the run's owed obligations, or None if unbuildable.
 
@@ -562,21 +584,31 @@ def audit_result(work: Path, run_id: str) -> dict[str, Any]:
 
 
 def classify(
-    row: dict[str, str] | None, statuses: dict[str, str] | None, audit: dict[str, Any]
+    row: dict[str, str] | None,
+    statuses: dict[str, str] | None,
+    audit: dict[str, Any],
+    *,
+    survived: bool = True,
 ) -> tuple[str, str]:
     """Score one trial against its row. Returns `(verdict, the status that decided it)`.
 
-    Two routes count as a catch, because the flow has two places a defect can surface and
-    which one fires is a property of the QA plan — the thing under measurement:
+    Three routes count as a catch, because the flow has three places a defect can surface
+    and which one fires is a property of the QA plan — the thing under measurement:
 
     * the **evidence map** puts the named obligation at the row's `expect`, which is a set
       operation over the run's own artifacts, or
-    * the **auditor** refuted the pass and its findings name that obligation.
+    * the **auditor** refuted the pass and its findings name that obligation, or
+    * the seeded code **did not survive** the run: QA observed the defect, triaged it as a
+      code failure and repaired it. That path ends with the obligation `covered` — the map
+      is right, the app really is fixed — so only the seeded file distinguishes it from a
+      run that never noticed. It is checked last, since the first two say *where* the
+      detection was recorded and this one only says that it happened.
 
-    A miss is the specific, worse outcome: the run published a pass *and* claimed the
-    obligation covered. Anything else — no map, an obligation out of scope, a run that
-    blocked before it asserted anything — is `inconclusive` rather than a catch or a miss,
-    since scoring an infrastructure failure either way is a number about this machine.
+    A miss is the specific, worse outcome: the run published a pass, claimed the obligation
+    covered, *and* left the defect in place. Anything else — no map, an obligation out of
+    scope, a run that blocked before it asserted anything — is `inconclusive` rather than a
+    catch or a miss, since scoring an infrastructure failure either way is a number about
+    this machine.
     """
     refuted = str(audit.get("verdict", "")) == "refuted"
     if row is None:  # the clean control: any contradiction at all is a false alarm
@@ -594,6 +626,8 @@ def classify(
     cited = obligation in json.dumps(audit)
     if refuted and cited:
         return "caught", "audit refutation"
+    if not survived:
+        return "caught", "defect repaired"
     if statuses is None:
         return "inconclusive", "no evidence map"
     if not status:
@@ -634,7 +668,12 @@ def cmd_score(fixture: Fixture, args: argparse.Namespace) -> int:
         )
         work = WORK_DIR / args.label / run_id
         repo = work / fixture.repo_dirname
-        verdict, because = classify(row, evidence_statuses(repo, story), audit_result(work, run_id))
+        verdict, because = classify(
+            row,
+            evidence_statuses(repo, story),
+            audit_result(work, run_id),
+            survived=defect_survived(fixture.app, row, repo) if row else True,
+        )
         trials.append({
             "run_id": run_id, "flow": "qa", "story": story, "rc": rc, "cli": args.cli,
             "defect": variant, "obligation": str(row["obligation"]) if row else "",
