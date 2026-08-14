@@ -131,6 +131,20 @@ Do not invent an observation the code does not make. If a normative bullet is ge
 unobservable from outside, that is usually the bullet being descriptive rather than normative:
 reword it, which is a repair the deletion rule above already permits.
 
+Pick the check by the shape of evidence the claim needs, not by the surface it appears on:
+
+- use `http_status` for route readiness and response status;
+- use `json_path` for exact payload values, extracted PDF text arrays, ordering, booleans such
+  as "same page" / "different page", and other structured evidence;
+- use `count` for cardinality, including "one heading per tab" or "no duplicate title";
+- use `visible` only for a concrete thing a user can perceive. A locator string that says
+  "A precedes B", "one per tab", "on the next page", or "all sentinels" does not prove that
+  relationship — it only renames it. Replace it with a check whose value changes when the
+  order, count, page relationship, or exact text is wrong.
+
+For command startup, observe a real readiness seam. If the implementation starts a server and
+does not print a banner, declare the health route or other actual probe, not invented stdout.
+
 ## Converge
 
 Run `ostler fmt` on the docs you touched, then `ostler doctor` (from the docs root, `-C` if
