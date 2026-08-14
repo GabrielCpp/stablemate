@@ -73,11 +73,13 @@ def _worktree_changes(cwd: Path) -> list[str] | None:
 
     Paths come back relative to the repo root, which is fine: the baseline and the
     post-turn snapshot are taken the same way, so the subtraction compares like with like.
-    A rename is charged to its new path.
+    A rename is charged to its new path. `-uall` lists untracked files individually —
+    without it a brand-new `tests/` directory collapses to one `tests/` entry, which the
+    purity check would misjudge as a non-test path.
     """
     try:
         result = subprocess.run(
-            ["git", "status", "--porcelain"],
+            ["git", "status", "--porcelain", "-uall"],
             cwd=cwd,
             capture_output=True,
             text=True,
