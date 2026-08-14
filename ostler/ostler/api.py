@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING
 from ostler import backlog as backlog_mod
 from ostler import coverage as coverage_mod
 from ostler import crud, doctor
+from ostler import fmt as fmt_mod
 from ostler import ids as ids_mod
 from ostler import path as path_mod
 from ostler import query as query_mod
@@ -184,6 +185,16 @@ class Ostler:
         """The referential-integrity report as a dict (``ostler doctor --json``)."""
         return doctor.run(self.graph, epic_filter=epic,
                           check_schema=check_schema).as_dict()
+
+    def fmt(self, *paths: str | Path, check: bool = False) -> builtins.list[str]:
+        """Canonicalize the book's shape; the repo-relative paths that were not already so.
+
+        ``check=True`` writes nothing, which is the mode a test wants: a non-canonical book
+        makes every diff against it unreadable, because the next tool through converges on
+        the canonical shape and buries the semantic change in bullet reordering.
+        """
+        result = fmt_mod.run_fmt(self.graph, [str(p) for p in paths], check=check)
+        return [str(p.relative_to(self.graph.root)) for p in result.changed]
 
     def coverage(self, *, inventory: str | Path, surface: str | None = None,
                  waivers: str | Path | None = None) -> dict:
