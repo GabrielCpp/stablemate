@@ -158,66 +158,39 @@ missing rather than re-reading the whole tree.
 - **journey** — trace a user path across surfaces by following the **leads-to** edges (start
   precondition → ordered steps → outcome) and write the `flow` node with linked `steps:`. Emit
   nothing (or a missing element you noticed).
-- **`fix:‹code›`** — a repair item from the convergence checkpoint. The `context` is a JSON object
-  `{"code", "node", "path", "grounded", "findings"}`: every finding in it is the **same** doctor code
-  on the **same** node, sorted by line, and all of them are yours to resolve this turn. Fix each by
-  its remedy (`fmt` for casing/order; `scaffold`/add the heading for a missing section; fix the
-  target for dangling links). Never delete a claim, a `verify:` or a reference to silence a check —
-  a finding that disappears because the assertion did is the one failure this loop cannot detect.
-  Emit nothing.
-- **`grounded: true` in that context** (a `missing-required-bullet` the doc predates, an
-  `invalid-role`, an `unnamed-interactive`, an `ambiguous-locator`, an `unreachable-screen`) means
-  **the finding does not tell you the value** — you must derive it from the source and cite what you
-  read.
-  - **Read the source once, then fix every finding it explains.** The item's findings share a node
-    and a cause, so work top-down through the list rather than treating each as a fresh
-    investigation.
-  - Open the node's `code:` target and read it. Write each missing bullet from what the code
-    actually does: for a `screen`, `route:` from its route definition, `requires:` from the guard
-    wrappers that enclose it, `params:` binding each `:token` in the route to the interaction that
-    mints that entity (link it — that is what makes the dependency reachable).
-  - For a `component`/`interaction`, `role:` and `name:` come from the **rendered accessibility
-    contract**, not from the tag: read the JSX/template for an explicit `role=`, then `aria-label` /
-    `aria-labelledby` / the visible text that would become the accessible name. An element with an
-    explicit `role=` overriding its tag is the case that matters most and the easiest to miss.
-    `keyboard:` comes from the key handlers and `tabIndex` you can see; write `none` when the
-    control is genuinely pointer-only.
-  - **`role:` is one bare ARIA token and nothing else** — `link`, not `` `link` — renders an `<a>``
-    via ListItemButton`` and not `` `progressbar` (implicit MUI role)``. The value is fed straight
-    into `getByRole`, so a justification appended to it produces a locator matching nothing. The
-    same applies to `name:` — the bullet holds the accessible name itself; how you determined it
-    goes in prose.
-  - **Move the justification into prose — do not delete it.** Trimming `role: n/a — non-visual
-    wrapper, never renders its own DOM` down to `role: none` satisfies the linter and destroys the
-    only sentence explaining *why*, which is the part a reader cannot re-derive from the bullets.
-    Cut the value down to the bare token **and** add the explanation to the node's prose in the same
-    edit. A repair that loses knowledge is a worse outcome than the finding it closed.
-  - Write the bare word `none` for an empty value. `n/a`, `-` and similar are understood, but the
-    book should converge on one spelling.
-  - `ambiguous-locator` means two controls on one screen carry the same `role:` and `name:`. Read
-    both in the source and settle which of three cases it is:
-    - **One is mislabelled** → correct the wrong `role:`/`name:` to what the source actually renders.
-    - **They can never be in the DOM together** (mutually-exclusive states — one error slot cleared
-      before the other is set; alternative variants of one shell chosen by a switch) → add
-      `exclusive-with: [the sibling](#its-anchor)` to one of them. This is a *claim* about runtime,
-      grounded in the code that makes them exclusive — cite it in prose. It is not a way to quiet a
-      collision you did not investigate.
-    - **They genuinely co-render with the same name** (a trigger button and the confirm button of
-      the dialog it opens; two Save buttons both visible for one user) → that is a real
-      accessibility defect. **Leave the finding standing** and record what you saw in prose;
-      **do not invent a distinguishing label** the UI does not have, and do **not** write
-      `exclusive-with` — they are not exclusive.
-  - `unnamed-interactive` means an operable control has no accessible name. Find its label in the
-    source. If there genuinely is none, the app has an unlabeled control — again, record it rather
-    than name it for the app.
-  - **`none` is a claim, not a default.** Write `- requires: none` only when you have read the route
-    module and seen that no guard wraps it; `- params: none` only when the route has no `:token`.
-    Say in the doc's prose what you checked. An unverified `none` is worse than the missing bullet:
-    the bullet reads as *unknown* and will be re-queued, while `none` reads as *verified
-    unconditional* and silently ends the inquiry — and every consumer downstream believes it.
-  - If the source does not settle it, **leave the bullet off** and say why in `doc_status`. A node
-    that stays red is a correct outcome; a node made green by a guess is not.
-  - Emit nothing.
+Repair items (`fix:‹code›`, queued by the convergence checkpoint) are **not** yours: they render a
+different prompt written for the one doctor code they carry. If you were handed one, say so in
+`doc_status` rather than guessing at a remedy.
+
+### Writing `role:` / `name:` / `requires:` / `params:` on any UI node
+
+- `role:` and `name:` come from the **rendered accessibility contract**, not from the tag: read the
+  JSX/template for an explicit `role=`, then `aria-label` / `aria-labelledby` / the visible text that
+  would become the accessible name. An element with an explicit `role=` overriding its tag is the
+  case that matters most and the easiest to miss. `keyboard:` comes from the key handlers and
+  `tabIndex` you can see; write `none` when the control is genuinely pointer-only.
+- **`role:` is one bare ARIA token and nothing else** — `link`, not `` `link` — renders an `<a>``
+  via ListItemButton`` and not `` `progressbar` (implicit MUI role)``. The value is fed straight
+  into `getByRole`, so a justification appended to it produces a locator matching nothing. The
+  same applies to `name:` — the bullet holds the accessible name itself; how you determined it
+  goes in prose. Write the bare word `none` for an empty value.
+- **Move the justification into prose — do not delete it.** Trimming `role: n/a — non-visual
+  wrapper, never renders its own DOM` down to `role: none` satisfies the linter and destroys the
+  only sentence explaining *why*, which is the part a reader cannot re-derive from the bullets.
+- Two controls on one screen must not share `role:` + `name:` (that is `ambiguous-locator`). Where
+  they can never be in the DOM together — mutually-exclusive states, alternative variants of one
+  shell chosen by a switch — write `exclusive-with: [the sibling](#its-anchor)` on one of them and
+  cite in prose the code that makes them exclusive. It is a claim about runtime, not a way to quiet
+  a collision you did not investigate. Where they genuinely co-render with the same name, that is a
+  real accessibility defect: record what you saw and **do not invent a distinguishing label** the UI
+  does not have.
+- **`none` is a claim, not a default.** Write `- requires: none` only when you have read the route
+  module and seen that no guard wraps it; `- params: none` only when the route has no `:token`.
+  Say in the doc's prose what you checked. An unverified `none` is worse than the missing bullet:
+  the bullet reads as *unknown* and will be re-queued, while `none` reads as *verified
+  unconditional* and silently ends the inquiry — and every consumer downstream believes it.
+- If the source does not settle it, **leave the bullet off** and say why in `doc_status`. A node
+  that stays red is a correct outcome; a node made green by a guess is not.
 
 **Do not run a full `ostler doctor` to check your own work.** It lints the entire repository — tens
 of seconds on a large book — to answer a question about one node, and multiplied across a drain of

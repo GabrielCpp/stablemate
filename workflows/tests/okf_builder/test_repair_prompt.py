@@ -1,0 +1,98 @@
+"""`repair.md` dispatches to the fragment written for the item's doctor code.
+
+The dispatch is one `{% include %}` over a *list* of candidates — the fragment named by
+`item_code`, then `_default.md`. Jinja renders the first that exists, which is what makes a
+code nobody wrote a fragment for fall through to the generic remedy instead of raising
+`TemplateNotFound` mid-run and killing the drain.
+
+Two things are easy to get wrong here and neither shows up until a live run:
+
+- the include path is resolved against the **workflow package directory**, not the prompt's
+  own directory, so `"repair/<code>.md"` silently misses and every item renders the default;
+- `item_code` reaches the template through `workhorse_var`, so a node that forgets to pass it
+  renders the empty string, misses every candidate, and again yields the default.
+
+Both failure modes are *silent* — the prompt still renders, just with the wrong instructions
+— so they are asserted on the rendered text rather than on the template source.
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from workhorse.templates import render
+
+import workhorse_workflows
+
+WORKFLOW_DIR = Path(workhorse_workflows.__file__).parent / "okf_builder"
+FRAGMENTS = WORKFLOW_DIR / "prompts" / "repair"
+
+
+def _context(code: str) -> dict[str, object]:
+    return {
+        "item_code": code,
+        "item_kind": f"fix:{code}",
+        "item_target": f"r1:docs/features/acme/concepts/refund.md#refund#{code}",
+        "item_context": json.dumps(
+            {
+                "code": code,
+                "node": "refund",
+                "path": "docs/features/acme/concepts/refund.md",
+                "grounded": False,
+                "findings": [{"code": code, "message": "…", "line": 12}],
+            }
+        ),
+        "service": "acme",
+        "features_root": "docs/features/acme",
+        "repo_root": "/repo",
+        "source_root": "src",
+        "source_excludes": "",
+    }
+
+
+#: Every fragment that exists, keyed by the code it is written for, minus the fallback.
+CODES = sorted(p.stem for p in FRAGMENTS.glob("*.md") if p.stem != "_default")
+
+
+def test_the_fragment_set_is_not_empty() -> None:
+    """A glob that matched nothing would make the parametrized test below vacuous."""
+    assert CODES, f"no repair fragments found under {FRAGMENTS}"
+
+
+@pytest.mark.parametrize("code", CODES)
+def test_a_known_code_renders_its_own_fragment(code: str) -> None:
+    rendered = render("prompts/repair.md", _context(code), WORKFLOW_DIR)
+
+    # The fragment's own heading is the marker: each one opens with `### `<code>` — …`.
+    assert f"### `{code}`" in rendered or code in rendered.split("Where the rule bites")[1]
+    assert "The finding's own remedy" not in rendered, (
+        f"{code} has a fragment but rendered the default"
+    )
+
+
+def test_an_unknown_code_falls_through_to_the_default() -> None:
+    rendered = render("prompts/repair.md", _context("no-such-doctor-code"), WORKFLOW_DIR)
+
+    assert "The finding's own remedy" in rendered
+
+
+def test_the_frame_carries_the_item_through() -> None:
+    """`workhorse_var` misses render empty, so the item would vanish without a word."""
+    rendered = render("prompts/repair.md", _context("weak-check"), WORKFLOW_DIR)
+
+    assert "r1:docs/features/acme/concepts/refund.md#refund#weak-check" in rendered
+    assert '"grounded": false' in rendered
+    assert "Never make a finding go away by removing what it was about." in rendered
+
+
+def test_a_check_bearing_code_loads_the_falsifiability_bar_and_others_do_not() -> None:
+    """The skill is conditional, so both directions are asserted — a guard that always
+
+    fires costs every repair turn the load, and one that never fires silently drops the
+    standard the check-bearing fragments are written against.
+    """
+    bar = "falsifiable-verification"
+
+    assert bar in render("prompts/repair.md", _context("undeclared-obligation"), WORKFLOW_DIR)
+    assert bar not in render("prompts/repair.md", _context("missing-placement"), WORKFLOW_DIR)

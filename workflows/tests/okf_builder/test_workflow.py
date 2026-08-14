@@ -22,8 +22,8 @@ What the port could get wrong, and what is therefore under test here:
   namespace caused (`round` and `rescan_round` sharing a counter) cannot be reproduced
   here because it cannot be *written* here, but the round numbering it corrupted is
   asserted directly.
-* the two arms of `checkpoint`: a dirty book queues one repair item per offending file and
-  re-enters the drain; a repaired book converges to the coverage re-scan.
+* the two arms of `checkpoint`: a dirty book queues one repair item per offending node and
+  doctor code and re-enters the drain; a repaired book converges to the coverage re-scan.
 * `MAX_STALL_ROUNDS` and the `waive` hand-off, including its honest failure on a finding
   that is not auto-waivable — the YAML could only name a `type: fail` node here.
 * the `max_items` valve, which is a **failure** and not a quiet success: a partial book
@@ -143,6 +143,10 @@ class _Agent:
             doc = self.repo / target.split(":", 1)[1].split("#")[0]
             doc.unlink(missing_ok=True)
         return {"doc_status": "documented", "discovered": self.spawn.get(target, [])}
+
+    #: A `fix:` item renders `prompts/repair.md` instead, so the dispatch above sees a
+    #: different stem for the same node. Same turn, same seam — the prompt is what differs.
+    _repair = _investigate
 
     def _recheck_coverage(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"needs_journeys": False, "discovered": []}
@@ -324,15 +328,16 @@ def test_a_dirty_doctor_queues_one_repair_per_node_and_code_and_reconverges(
     agent = _Agent(dirty, repair=True)
     result = _drive(_env(tmp_path), agent, recheck_only=True)
 
-    # Discovery was skipped entirely: the only turn was the repair.
-    assert agent.counts() == {"investigate": 1}, agent.counts()
+    # Discovery was skipped entirely, and the one turn rendered the *repair* prompt —
+    # `investigate.md` no longer carries repair instructions, so the stem is the assertion.
+    assert agent.counts() == {"repair": 1}, agent.counts()
     assert agent.targets == [f"r1:{REPAIR}"], agent.targets
-    args = agent.args_for("investigate")[0]
+    args = agent.args_for("repair")[0]
     assert args["item_kind"] == "fix:missing-code-symbol", args
     # The bare code rides separately, because that is what the repair prompt dispatches on.
     assert args["item_code"] == "missing-code-symbol", args
     # The finding's own JSON travels to the turn as its context, not just the file name.
-    assert "missing-code-symbol" in agent.args_for("investigate")[0]["item_context"]
+    assert "missing-code-symbol" in args["item_context"]
 
     assert not (dirty / REFUND).exists()
     assert result.is_webapp is False, result
@@ -352,8 +357,8 @@ def test_a_repair_that_never_lands_stops_the_run_rather_than_looping(
     with pytest.raises(WorkflowFailed, match="neither doc-repairable nor auto-waivable"):
         _drive(_env(tmp_path), agent, recheck_only=True)
 
-    # One investigation per tolerated round, then the give-up arm instead of a fourth.
-    assert agent.counts()["investigate"] == MAX_STALL_ROUNDS, agent.counts()
+    # One repair turn per tolerated round, then the give-up arm instead of a fourth.
+    assert agent.counts()["repair"] == MAX_STALL_ROUNDS, agent.counts()
     # Each round's item is distinct, which is what let the loop run at all.
     assert agent.targets == [f"r{n}:{REPAIR}" for n in (1, 2, 3)], agent.targets
     assert (dirty / REFUND).exists()

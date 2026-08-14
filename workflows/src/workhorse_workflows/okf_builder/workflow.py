@@ -241,19 +241,27 @@ class OkfBuilder(Workflow):
         stall: int = 0,
         signature: str = "",
     ) -> Continue:
-        """The heart: document ONE item to the spec-complete bar.
+        """The heart: document ONE item to the spec-complete bar, or repair one finding.
 
         The turn returns the deeper items it revealed — elements, code layers, concepts,
-        formats, journeys, fixups — and nothing else here reads them; `record_item` does.
-        Keeping the worklist write in its own state is what makes a crash mid-turn
-        re-investigate rather than close an item nothing documented.
+        formats, journeys — and nothing else here reads them; `record_item` does. Keeping the
+        worklist write in its own state is what makes a crash mid-turn re-investigate rather
+        than close an item nothing documented.
+
+        **Two prompts, chosen by the kind.** A discovery item (`surface`, `layer`, `element`,
+        …) gets `investigate.md`. A repair item from the checkpoint — `fix:<code>`, which by
+        construction carries one doctor code on one node — gets `repair.md`, which dispatches
+        to a fragment written for that code. That dispatch is the whole reason the checkpoint
+        splits items per code: a prompt can only be written for a defect that is known before
+        the turn starts.
         """
-        where = f"documenting {item_kind} {item_target}"
+        repair = item_kind.startswith("fix:")
+        where = f"{'repairing' if repair else 'documenting'} {item_kind} {item_target}"
         self.logger.info(
             "%s%s", where, f" · {progress}" if progress else "", extra={"activity": True}
         )
         result = self.agent(
-            "prompts/investigate.md",
+            "prompts/repair.md" if repair else "prompts/investigate.md",
             returns=Investigation,
             power="medium",
             cwd=self.ctx.repo_root,

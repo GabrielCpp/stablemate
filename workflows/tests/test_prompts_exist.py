@@ -11,9 +11,12 @@ The walk is over the source rather than over the loaded classes on purpose: a st
 only reachable three sub-flows and an operator gate deep is exactly the one whose prompt
 nobody notices is missing, and a runtime sweep would have to reach it to see it.
 
-Non-literal prompts are a failure here rather than a skip. There are none today, and if one
-appears the right answer is to look at it — silently dropping it would turn this check into
-one that quietly stops covering things.
+Non-literal prompts are a failure here rather than a skip, with one shape excused: a
+conditional between two literals (`"a.md" if cond else "b.md"`, which is how okf-builder's
+one drain state picks the repair prompt over the discovery one). Both arms are checked, so
+nothing stops being covered. Anything else — a computed name, an f-string — is a failure,
+because silently dropping it would turn this check into one that quietly stops covering
+things.
 """
 from __future__ import annotations
 
@@ -43,12 +46,24 @@ def _agent_prompts(source: Path) -> list[tuple[int, ast.expr]]:
         if not (isinstance(fn.value, ast.Name) and fn.value.id == "self"):
             continue
         if node.args:
-            found.append((node.lineno, node.args[0]))
+            found.extend((node.lineno, arg) for arg in _branches(node.args[0]))
             continue
         for kw in node.keywords:
             if kw.arg == "prompt":
-                found.append((node.lineno, kw.value))
+                found.extend((node.lineno, arg) for arg in _branches(kw.value))
     return found
+
+
+def _branches(arg: ast.expr) -> list[ast.expr]:
+    """The prompt expressions one call site can render — both arms of a ternary, else one.
+
+    A state that picks its prompt from the item it drew (`repair.md` for a `fix:` item,
+    `investigate.md` otherwise) still names two packaged files; checking only the whole
+    expression would report it as non-literal and check neither.
+    """
+    if isinstance(arg, ast.IfExp):
+        return [*_branches(arg.body), *_branches(arg.orelse)]
+    return [arg]
 
 
 def _sites() -> list[tuple[str, Path, int, ast.expr]]:
