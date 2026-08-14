@@ -136,6 +136,7 @@ On install the base is fetched if absent and brought up to `main` if present, so
 user gets a working base library by running the command they were going to run anyway:
 
 ```bash
+farrier init              # once per repo: writes a starter agents.yml (start with packs: [stablemate])
 farrier --repo .          # fetches the base if absent, updates it if stale, then renders
 farrier --repo . --check  # fetches if absent, but never updates — see below
 ```
