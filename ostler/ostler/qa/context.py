@@ -1025,8 +1025,10 @@ def _is_non_production_path(path: str) -> bool:
     # and no root-scoping to lean on. The dotted name is unambiguous enough to stand alone.
     if name == ".source-inventory.json":
         return True
-    # CI and agent-tooling dotfile trees.
-    return bool(parts and parts[0] in {".github", ".gitlab", ".agents"})
+    # CI and agent-tooling dotfile trees. `.opencode/opencode-loop/` records the operator
+    # loop's own sessions inside the target repo; grounding those as product contracts is
+    # the same unwinnable category as `.agents/` run artifacts.
+    return bool(parts and parts[0] in {".github", ".gitlab", ".agents", ".opencode"})
 
 
 #: How a code generator announces itself. Go standardized the wording and everything that
