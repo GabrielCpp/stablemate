@@ -39,7 +39,7 @@ For each affected repository:
 
 ### 3. Perform Self-Review
 
-Review the implementation against these three dimensions. **Duplication and missed
+Review the implementation against these four dimensions. **Duplication and missed
 utility/helper reuse are NOT reviewed here** — they are handled by the code-reuse stage
 and collected in Step 4b; do not re-derive them.
 
@@ -85,6 +85,28 @@ questions to carry into every one of them:
 Cite the rule you are applying and the file it comes from. A finding with no rule
 behind it is a preference, and belongs in 3b at most.
 
+#### 3d. AC Coverage & Test Integrity
+
+Implementation runs tests-first, but the red gate that enforces it fails open after a
+bounded number of reworks — **this audit is the binding check**, so do it against the
+story, not against the implementer's claims.
+
+- **Every acceptance criterion has a covering test.** For each criterion in the story,
+  name the test (file and test name) that exercises it and would fail if the behavior
+  regressed. A criterion with no such test is a finding, even if the behavior works
+  when exercised by hand — untested behavior has no regression protection.
+- **Test edits are justified.** Diff the test files. A test that was weakened, deleted,
+  skipped/disabled, or had its assertions loosened during implementation must carry a
+  declared justification in the implementation notes explaining why the *test* was
+  wrong. An undeclared or unconvincing edit is a finding — adjusting the test to match
+  the code inverts the contract.
+- Judge coverage at the level the criterion is observable: a user-observable criterion
+  needs a component-level test, a service behavior needs a test against its API. A
+  lower-level test that happens to touch the same code does not cover a criterion it
+  cannot observe failing.
+
+An uncovered acceptance criterion and an unjustified test edit are both **Critical**.
+
 ### 4a. Collect Automated Code-Review Findings
 
 Process the `code_review_result` input:
@@ -118,7 +140,7 @@ Combine findings from all three sources (self-review + automated code-review + c
 - **needs_changes** — one or more findings are severity Critical or Major and require a fix before QA.
 
 Severity guidelines:
-- **Critical**: Violates a mandatory rule from CLAUDE.md/skill files, introduces a bug, or breaks an acceptance criterion.
+- **Critical**: Violates a mandatory rule from CLAUDE.md/skill files, introduces a bug, breaks an acceptance criterion, leaves an acceptance criterion with no covering test, or edits a test without a declared justification.
 - **Major**: Significant code quality issue (heavy duplication, missed existing utility that makes code fragile, major conciseness problem).
 - **Minor**: Stylistic suggestion, nice-to-have simplification, or informational note. Does NOT block approval.
 
@@ -176,11 +198,11 @@ Approved | Needs changes
 
 ## Self-Review Findings
 
-<Findings from your own review (Steps 3a-3c). If none, write "None.">
+<Findings from your own review (Steps 3a-3d). If none, write "None.">
 
 ### Finding N: <Title>
 
-- **Category**: Instruction Compliance | Code Conciseness | Framework Best Practices
+- **Category**: Instruction Compliance | Code Conciseness | Framework Best Practices | AC Coverage & Test Integrity
 - **Severity**: Critical | Major | Minor
 - **Reference**: repo, file path, and line number(s)
 - **Issue**: clear description of the problem
