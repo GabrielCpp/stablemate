@@ -58,6 +58,23 @@ def item_is_shown(qa: Qa) -> None:
 '''
 
 
+AC_BROWSER_PLAN = '''\
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-story-1", story="story-1")
+
+web = target("web", driver="playwright", base_url="http://localhost:5173")
+
+
+@scenario(target=web, mechanism="live", covers=["ac:1"])
+def reader_is_keyboard_operable(qa: Qa) -> None:
+    """The reader route satisfies the story acceptance criterion."""
+    qa.goto("/reader")
+    qa.vet("docs/features/demo/reader.md", name="reader")
+    qa.check("the reader was operable", True, covers=["ac:1"])
+'''
+
+
 def _spec(tmp_path: Path) -> Path:
     spec = tmp_path / "docs/specs/story-1"
     spec.mkdir(parents=True)
@@ -81,6 +98,43 @@ def _spec(tmp_path: Path) -> Path:
                 ],
             }
         ),
+        encoding="utf-8",
+    )
+    return spec
+
+
+def _ac_spec(tmp_path: Path) -> Path:
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    (spec / "qa-okf-context.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "available": True,
+                "acceptanceCriteria": [
+                    {"id": "ac:1", "requirement": "The reader is keyboard operable."}
+                ],
+                "healthFindings": [],
+                "obligations": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/reader.md").write_text(
+        """---
+type: screen
+title: Reader
+---
+# Reader
+
+## Components
+
+### reading-region
+- selector: `article`
+- role: article
+- name: Reader content
+""",
         encoding="utf-8",
     )
     return spec
@@ -128,6 +182,16 @@ def test_load_stamps_the_module_and_interpreter_on_every_target(tmp_path: Path) 
 def test_a_valid_plan_has_no_problems(tmp_path: Path) -> None:
     spec = _spec(tmp_path)
     document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert not problems and document is not None
+    assert validate_v2(document) == []
+
+
+def test_ac_only_browser_scenario_can_vet_book_screen_outside_packet(
+    tmp_path: Path,
+) -> None:
+    spec = _ac_spec(tmp_path)
+    document, problems = load_plan(_plan(spec, AC_BROWSER_PLAN), spec, tmp_path)
+
     assert not problems and document is not None
     assert validate_v2(document) == []
 
@@ -756,5 +820,3 @@ def test_the_declared_call_bound_to_the_wrong_obligation_asks_for_a_wider_covers
     assert reported
     assert f"already invokes that exact call, bound to '{SIBLING}'" in reported[0]
     assert "widen that call's covers=" in reported[0]
-
-
