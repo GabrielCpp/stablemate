@@ -15,8 +15,10 @@ from urllib.parse import urlsplit
 import yaml
 
 from ostler import checks
+from ostler.model import load as load_graph
 from ostler.qa.harness_host import default_interpreter, describe, load_harness_module
 from ostler.untyped import is_mapping
+from ostler.vet import placement
 
 #: Read off the harness rather than restated, because `describe` produces these values and
 #: this module judges them: a second spelling of either one is a gate that quietly stops
@@ -481,11 +483,14 @@ def _validate_python_scenarios(
             )
         if driver in UI_DRIVERS:
             vetted = scenario.get("vets")
+            documented_screens = _documented_screens(document)
+            if not any(cover.startswith("okf:") for cover in covers):
+                documented_screens |= _book_screens(document)
             problems.extend(
                 _validate_vets(
                     scenario_id,
                     vetted if isinstance(vetted, list) else [],
-                    _documented_screens(document),
+                    documented_screens,
                 )
             )
     return problems, asserted_coverage
@@ -498,6 +503,19 @@ def _documented_screens(document: PlanDocument) -> set[str]:
         for obligation in document.context.get("obligations", [])
         if is_mapping(obligation) and obligation.get("source")
     }
+
+
+def _book_screens(document: PlanDocument) -> set[str]:
+    """Every screen the book can vet, for acceptance-criteria-only UI scenarios.
+
+    Story acceptance criteria can require representative UI evidence outside the current
+    diff-to-OKF packet. The run-time vet still rejects paths that are not real screens with
+    components; validation should not make those AC-only scenarios impossible before they run.
+    """
+    try:
+        return set(placement.screen_components(load_graph(document.root)))
+    except Exception:
+        return set()
 
 
 def _validate_vets(scenario_id: str, vetted: list[Any], documented: set[str]) -> list[str]:
