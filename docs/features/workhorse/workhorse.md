@@ -91,7 +91,10 @@ still shows the subcommand listing.
   - run: pin `AGENT_REPO_DIR` to the launch directory (`Path.cwd()`) when unset, so a
     node resolves the consuming repo rather than the directory the installed workflow
     package happens to sit in
-  - run: `--cli` (else `AGENT_CLI`, else `claude`) sets `AGENT_CLI` for the run; select and
+  - run: `--cli` (else `AGENT_CLI`, else the config's
+    [`default_cli`](concepts/config.md#resolve_default_cli), else `claude`) sets `AGENT_CLI` for
+    the run — the resolved name is written back, so every later reader of that variable answers
+    with the CLI actually chosen rather than re-deriving it; select and
     eagerly validate the [AgentBackend](concepts/agent-backend.md) via
     [get_backend](concepts/get-backend.md) — an unknown name prints to stderr and exits `1`
     before any state runs, rather than failing mid-run

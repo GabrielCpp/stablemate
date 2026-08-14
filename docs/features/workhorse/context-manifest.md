@@ -29,8 +29,10 @@ How [`run`](workhorse.md#run) locates the manifest file, in order:
    prints `error: --context-file not found: <path>` followed by a `Run \`make agent-install\` to
    generate .agents/agents-context.json.` hint, both to stderr, and exits `1`.
 2. No flag — auto-detect under `$AGENT_REPO_DIR/.agents/` (`$AGENT_REPO_DIR` defaults to the
-   launch `cwd`): first the per-assistant file `agents-context.$AGENT_CLI.json` (`$AGENT_CLI`
-   defaults to `claude`), then the generic `agents-context.json`.
+   launch `cwd`): first the per-assistant file `agents-context.$AGENT_CLI.json` (an unset
+   `$AGENT_CLI` falls to the config's [`default_cli`](concepts/config.md#resolve_default_cli), then
+   to `claude` — the same order [`get_backend`](concepts/get-backend.md) applies, so the manifest is
+   detected for the CLI the run actually drives), then the generic `agents-context.json`.
 3. Neither exists — the run proceeds with an **empty manifest** (`{}`); every field below then
    takes its default and the farrier helpers degrade to placeholders (`instruction_ref`/
    `prompt_ref` return a `"generated <name> … when installed"` stub, `isUsingInstruction` returns

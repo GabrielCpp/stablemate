@@ -17,7 +17,10 @@ means importing the type costs one small module, and only code that actually *se
 pays for the adapters.
 
 - code: `workhorse/workhorse/runner/backends/registry.py::get_backend`
-- verify: `workhorse/tests/test_backends.py::test_default_backend_is_claude`,
+- verify: `workhorse/tests/test_backends.py::test_default_backend_is_claude_when_nothing_names_one`,
+  `workhorse/tests/test_backends.py::test_config_default_cli_selects_backend`,
+  `workhorse/tests/test_backends.py::test_env_var_beats_config_default_cli`,
+  `workhorse/tests/test_backends.py::test_unknown_config_default_cli_fails_like_any_typo`,
   `workhorse/tests/test_backends.py::test_env_var_selects_backend`,
   `workhorse/tests/test_backends.py::test_explicit_name_overrides_env`,
   `workhorse/tests/test_backends.py::test_unknown_backend_raises`,
@@ -27,8 +30,13 @@ pays for the adapters.
 ## Contract
 
 - **Input:** `name: str | None = None`.
-- **Resolution order:** explicit `name` → the `AGENT_CLI` environment variable → `"claude"`. The
-  chosen value is `.strip().lower()`-ed, so `AGENT_CLI=" Codex "` resolves.
+- **Resolution order:** explicit `name` → the `AGENT_CLI` environment variable → the shared
+  config's `default_cli` key ([resolve_default_cli](config.md#resolve_default_cli)) →
+  `"claude"`. The chosen value is `.strip().lower()`-ed, so `AGENT_CLI=" Codex "` resolves.
+- **Where a configured name is checked:** here. `stablemate_core` stores `default_cli` without
+  validating it — the registry of real names is this module's — so a misspelled config value raises
+  the same `ValueError` a typo'd `--cli` does, and the message names `default_cli` alongside
+  `AGENT_CLI` so the operator looks in the right place.
 - **Output:** the [`AgentBackend`](agent-backend.md) subclass instance registered under that key.
   Backends are stateless by contract, so **one instance per name is cached and reused** for the
   process's lifetime — `get_backend("claude") is get_backend("claude")`.

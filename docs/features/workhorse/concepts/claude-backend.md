@@ -88,8 +88,8 @@ other adapter.
   only implementation of [Layer 2](run-agent.md#the-ladder) in the tree.
 - [`AgentRunner.turn`](agent-turn.md) — layer 1 of [the resilience ladder](run-agent.md#the-ladder)
   and the caller of `run_turn` for every backend, Claude included.
-- [`get_backend`](get-backend.md) — resolves `"claude"` (or no `--cli`/`AGENT_CLI` at all) to a
-  cached `ClaudeBackend()` instance.
+- [`get_backend`](get-backend.md) — resolves `"claude"` to a cached `ClaudeBackend()` instance;
+  also where a run that names no CLI lands, when the config sets no `default_cli` either.
 - [CodexBackend](codex-backend.md) / [CopilotBackend](copilot-backend.md) /
   [ClineBackend](cline-backend.md) / [OpenCodeBackend](opencode-backend.md) — the four sibling
   adapters, each in its own module under `runner/backends/`, each sharing a generic stream loop,

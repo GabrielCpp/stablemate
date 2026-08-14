@@ -116,10 +116,14 @@ and ignores extra positional/keyword arguments so a call site that also passes g
 a per-story layer list) doesn't raise a `TypeError`.
 
 ### `agent_cli()`
-Returns `os.environ.get("AGENT_CLI", "claude").strip().lower()` — the active backend name for this
-run (see [workhorse-<name> run](../workhorse.md#run)'s `--cli` flag, which sets `AGENT_CLI` before any
-node renders). Read directly from the environment rather than `context`, since the backend is a
-run-level (not per-node) choice.
+Returns `AGENT_CLI` (else the config's [`default_cli`](config.md#resolve_default_cli), else
+`claude`), `.strip().lower()`-ed — the active backend name for this run (see
+[workhorse-<name> run](../workhorse.md#run)'s `--cli` flag, which resolves that same order and sets
+`AGENT_CLI` before any node renders). Read directly from the environment rather than `context`,
+since the backend is a run-level (not per-node) choice. The config rung is repeated here rather
+than trusted from `run` because this global is reachable from any entry point that renders a
+prompt, and a template that answered `claude` for an opencode run would emit the wrong harness's
+skill-loading syntax.
 
 ### `skill_load_ref(skill_name, skill_path="")`
 Returns the harness-native syntax for loading a skill, so one prompt works unmodified across

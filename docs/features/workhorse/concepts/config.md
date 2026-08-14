@@ -7,7 +7,7 @@ title: stablemate config file
 
 The toolchain's small persistent settings file — **one** TOML file at
 `~/.config/stablemate/config.toml`, shared by workhorse and farrier, holding `library_dir`,
-`stablemate_dir`, `base_dir`, a `[power.<tier>.<backend>]` model/effort table, a per-backend
+`stablemate_dir`, `base_dir`, `default_cli`, a `[power.<tier>.<backend>]` model/effort table, a per-backend
 `[default.<backend>]` fallback table, and a per-harness `[harness.<backend>].env` table. Read and
 written by [farrier config](../../farrier/farrier.md#config) — workhorse is a library and ships no
 command of its own; the `power` table is consumed at run time by
@@ -134,6 +134,37 @@ rather than an error.
   non-empty string.
 - code: `core/stablemate_core/config.py::resolve_backend_default`
 
+## resolve_default_cli
+
+Resolves the top-level `default_cli` key — the agent CLI a run drives when neither `--cli` nor
+`AGENT_CLI` names one — to a normalised (`strip().lower()`) backend name, or `BUILTIN_DEFAULT_CLI`
+(`"claude"`) when the key is absent, empty, or not a string. It is the third rung of
+[get_backend](get-backend.md)'s resolution order, and the reason the built-in default is a
+*fallback* rather than the only answer: a flag's default is reachable only by editing workhorse, so
+an operator whose machine is set up for one CLI would otherwise name it on every run of every
+workflow.
+
+**No name is validated here.** core knows no backend registry, so the check lands in
+[get_backend](get-backend.md), which owns the list of real names and reports a misspelling with the
+same `ValueError` a typo'd `--cli` gets. What this function does guarantee is that a malformed
+value (a TOML integer, an empty string, a list) reads as *unset* rather than raising — it is read on
+the way into unattended week-long runs, and a config that has gone wrong must degrade to the
+built-in.
+
+The key is additive, so it does not bump `CONFIG_VERSION`: an older tool that ignores it falls back
+to the same built-in it always used.
+
+- **Input:** `cfg: dict | None` (defaults to `load_config()`).
+- **Output:** `str` — always a non-empty, lowercased name.
+- code: `core/stablemate_core/config.py::resolve_default_cli`
+- code: `core/stablemate_core/config.py::write_default_cli`
+- verify: `core/tests/test_config_unified.py::test_default_cli_is_the_builtin_when_unset`,
+  `core/tests/test_config_unified.py::test_default_cli_is_read_from_the_config`,
+  `core/tests/test_config_unified.py::test_default_cli_is_normalized`,
+  `core/tests/test_config_unified.py::test_a_malformed_default_cli_reads_as_unset`,
+  `core/tests/test_config_unified.py::test_writing_the_default_cli_preserves_the_rest`,
+  `core/tests/test_config_unified.py::test_default_cli_does_not_bump_the_schema`
+
 ## resolve_harness_env
 
 Resolves `[harness.<backend>].env` to a plain `dict[str, str]` of environment variables to add to
@@ -159,6 +190,9 @@ combination is a no-op override, not an error.
 - [`farrier config`](../../farrier/farrier.md#config) — `show`/`set-*`, the one command that reads and
   writes this file. The `power` table has no writer subcommand; it is edited by hand.
 - [`AgentRunner.run`](run-agent.md) — `resolve_power` and `resolve_backend_default` per agent turn.
+- [`get_backend`](get-backend.md) — `resolve_default_cli`, the rung under `AGENT_CLI`; and
+  [`workhorse-<name> run`](../workhorse.md#run), which resolves the name once and writes it back to
+  `AGENT_CLI` so the manifest and template layers read the same answer.
 - the [agent backend](agent-backend.md) — `resolve_harness_env` for the harness subprocess's
   environment.
 - `stablemate_core.discovery` and farrier's installer — `library_dir`/`stablemate_dir`/`base_dir`,
