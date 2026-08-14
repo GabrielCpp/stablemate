@@ -135,6 +135,14 @@ reword it, which is a repair the deletion rule above already permits.
 
 Run `ostler fmt` on the docs you touched, then `ostler doctor` (from the docs root, `-C` if
 needed). Fix any error by its named remedy until `doctor` is green for the nodes you touched.
+
+To narrow that report to your own nodes, `ostler doctor --json` emits
+`{org, profile, epics, errors, warnings, findings}`. `findings` is the list — each entry
+carries `path`, `line`, `code`, `severity` and `suggestion` — while `errors` and `warnings`
+are **counts**, not lists. Keep stderr out of the pipe (`--json 2>/dev/null`, never `2>&1`):
+a single warning line on stdout makes the document unparseable, and the parse error that
+follows looks exactly like having picked the wrong key.
+
 In `semantic` multi-repo mode, repository-local doctor cannot resolve service-repo `code:`
 paths beneath the separate docs root: report its `dangling-code-ref` / `missing-code-symbol`
 findings for independent review, but do not return `blocked` for those two grounding codes
