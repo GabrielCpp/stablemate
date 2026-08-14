@@ -919,18 +919,18 @@ def test_a_plan_turn_cut_at_its_budget_is_repaired_rather_than_failing_the_run(
     assert "stopped at its wall-clock budget" in brief["plan_validation_notes"], brief
 
 
-def test_a_plan_lane_past_its_wall_clock_budget_runs_the_plan_it_has(
+def test_a_plan_lane_past_its_wall_clock_budget_carries_on(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A spent wall-clock budget over a plan that parses is a demotion, not a give-up: go
-    to the runner with the plan on disk.
+    """A spent wall-clock budget is advisory: the lane behaves exactly as if it had room.
 
     `plan_lane_budget_s=0` is the seam — the first plan turn charges a real, tiny delta, so
-    every plan-lane ceiling is past by the time `_validated` decides what to do next. A lap
-    `_plan_lap` will no longer grant is pure expense, and the plan that parses is runnable.
+    every plan-lane comparison is past by the time `_validated` decides what to do next. It
+    used to demote a parsing plan straight to the runner and give up on one that would not
+    import; now it decides nothing at all.
     """
     okf = ostler()
     agent = _Agent(docs)
@@ -942,18 +942,17 @@ def test_a_plan_lane_past_its_wall_clock_budget_runs_the_plan_it_has(
     assert okf.runs == 1, "the plan is still the one that ran"
 
 
-def test_a_plan_lane_past_its_budget_with_no_runnable_plan_gives_up_naming_it(
+def test_a_plan_lane_past_its_budget_still_repairs_a_plan_that_will_not_import(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The other half: past the budget with a plan that will not import, there is nothing to
-    demote to the runner, so the flow stops — and the give-up names the wall-clock budget.
+    """Past the budget with a plan that will not import, the schema repairs still run.
 
-    Which budget ran out is the whole value of the record. A story filed as "0 attempts"
-    because the give-up reported the code-rework counter reads as untried; this one says the
-    lane ran out of hour, which is the thing an operator would raise.
+    A clock cannot tell a lane going nowhere from one three turns from green, and cutting on
+    it discarded stories that were converging — the give-up here names the lap ceiling that
+    was actually reached, which is a statement about the work rather than about its speed.
     """
     ostler(plan_invalid=99)
     agent = _Agent(docs, escalate=True)
@@ -961,24 +960,22 @@ def test_a_plan_lane_past_its_budget_with_no_runnable_plan_gives_up_naming_it(
     result = drive_flow(Qa(story=STORY, plan_lane_budget_s=0), env(), agent)
 
     assert result.status == "exhausted", result
-    assert result.spent == "the QA plan lane's wall-clock budget", result.spent
+    assert result.spent == f"{Qa.MAX_PLAN_VALIDATION_REWORKS} QA-plan schema repair"
+    assert agent.counts()["repair-qa-plan"] == Qa.MAX_PLAN_VALIDATION_REWORKS, agent.counts()
 
 
-def test_a_context_rebuild_past_the_plan_budget_does_not_buy_another_author(
+def test_a_context_rebuild_past_the_plan_budget_still_authors_against_it(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The join point is an entry into the plan lane too, and it obeys the same ceiling.
+    """The join point is an entry into the plan lane, bounded by `MAX_CONTEXT_REWORKS`.
 
-    `build_context` clears `plan_authored`, so a rejoin from a context rebuild used to buy a
-    fresh `power="high"` authoring turn however much of the lane's wall-clock had already
-    gone. A live story reached the author at 2947s of a 2400s budget by exactly this route:
-    a failing run, a fix lap, a rebuilt packet, and back to `plan`.
-
-    The fix lap is what routes through `build_context`; the plan the flow already has is what
-    runs the second time.
+    `build_context` clears `plan_authored` because a rebuilt packet changed what the diff
+    obligates, so the plan answering the old obligations must not be the one that runs. The
+    clock used to override that and send the stale plan to the runner anyway; what bounds
+    the rejoin now is the ceiling on the rebuilds themselves.
     """
     okf = ostler(fail_runs=1)
     agent = _Agent(docs, assessment_class="product")
@@ -987,35 +984,29 @@ def test_a_context_rebuild_past_the_plan_budget_does_not_buy_another_author(
 
     assert result.status == "passed", result
     assert agent.counts()["apply-qa-fixes"] == 1, agent.counts()
-    assert agent.planned() == 1, agent.counts()
-    assert okf.runs == 2, "the rebuilt packet re-ran the plan it had"
+    assert agent.planned() == 2, "the rebuilt packet bought its own authoring turn"
+    assert okf.runs == 2, agent.counts()
 
 
-def test_a_spent_plan_budget_after_the_run_does_not_re_run_the_same_plan(
+def test_a_spent_plan_budget_after_the_run_still_repairs_the_failing_plan(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The demotion to the runner is worth a turn only from a gate that judged the plan
-    *before* it ran.
+    """Reached from `_guard_plan`, a spent clock no longer skips `repair_plan`.
 
-    Reached from `_guard_plan` the plan on disk is the one that just produced the failures
-    being judged, and the demotion skips `repair_plan` — so it re-ran an unedited plan
-    against unedited code, paid a `power="high"` assessment turn to be told the same thing,
-    and only then tripped `_repeating`. A live story spent exactly that lap.
-
-    Same ending either way; this is the lap before it.
+    That demotion re-ran an unedited plan against unedited code and paid a `power="high"`
+    assessment turn to be told the same thing — a live story spent exactly that lap. The
+    repair budget is what bounds this now, and it is what the give-up names.
     """
-    okf = ostler(fail_runs=99)
+    ostler(fail_runs=99)
     agent = _Agent(docs, repair_plans=99, escalate=True)
 
     result = drive_flow(Qa(story=STORY, plan_lane_budget_s=0), env(), agent)
 
     assert result.status == "exhausted", result
-    assert result.spent == "the QA plan lane's wall-clock budget", result.spent
-    assert okf.runs == 1, "the failing plan was never re-run unedited"
-    assert agent.counts()["qa-story"] == 1, agent.counts()
+    assert result.spent == f"{Qa.MAX_PLAN_REWORKS} QA-plan repair", result.spent
 
 
 def test_only_the_first_draft_is_authored_and_every_lap_after_it_repairs(
@@ -1289,11 +1280,13 @@ def test_a_stack_nobody_can_repair_gives_up_instead_of_spinning(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
-    assert result.qa_rework == Qa.MAX_QA_REWORKS, result
     # Two repairs before the setup budget is spent, and the gate is what it hands off to.
-    assert agent.counts()["setup-fix"] == 2, agent.counts()
-    # One resolver turn per lap of the gate, and the laps are what is now bounded.
-    assert agent.counts()["resolve-operator"] == Qa.MAX_QA_REWORKS, agent.counts()
+    assert agent.counts()["setup-fix"] == Qa.MAX_SETUP_REWORKS, agent.counts()
+    assert result.spent == f"{Qa.MAX_SETUP_REWORKS} QA-setup repair", result.spent
+    # One resolver turn per lap of the gate, and the laps are what is now bounded — by the
+    # repeat detector, since a guided lap that leaves the identical blocked bundle has
+    # proved the answer does not reach what is broken.
+    assert agent.counts()["resolve-operator"] == 3, agent.counts()
 
 
 def test_a_setup_fix_that_changes_nothing_is_not_asked_a_second_time(
@@ -1371,11 +1364,13 @@ def test_a_fixer_that_reports_blocked_reaches_the_operator(
     filed as `exhausted`, which reads as "we tried and failed" rather than as blocked on X.
 
     Here the first `blocked` reaches the operator gate instead, so the block is put to
-    somebody who can answer it — and the flow spends half the full QA laps getting there.
-    Without this, the same script consults nobody and re-plans and re-runs the entire QA
-    suite four times over (`plan-qa`/`qa-story` × 4) before filing the story exhausted.
+    somebody who can answer it — and the flow spends half the full QA laps getting there,
+    because a blocked fix costs a gate lap as well as a fix lap. Without this, the same
+    script consults nobody and re-plans and re-runs the entire QA suite once per fix lap
+    before filing the story exhausted.
     """
     ostler(fail_runs=99)
+    laps = Qa.MAX_QA_REWORKS // 2
     seen: list[str] = []
     agent = _Agent(docs, assessment_class="product", qa_fix="blocked", escalate=True)
 
@@ -1384,12 +1379,12 @@ def test_a_fixer_that_reports_blocked_reaches_the_operator(
 
     counts = agent.counts()
     # The block is asked of the operator on the first fix, not swallowed.
-    assert counts["resolve-operator"] == 2, counts
-    assert seen == [ESCALATION_NOTE, ESCALATION_NOTE], seen
+    assert counts["resolve-operator"] == laps, counts
+    assert seen == [ESCALATION_NOTE] * laps, seen
     # And each lap that would have re-planned and re-run the whole suite is one the gate
-    # took instead: two full QA laps rather than the baseline four.
-    assert counts["qa-story"] == 2, counts
-    assert counts["plan-qa"] + counts["repair-qa-plan"] == 2, counts
+    # took instead: half the full QA laps rather than one per fix.
+    assert counts["qa-story"] == laps, counts
+    assert counts["plan-qa"] + counts["repair-qa-plan"] == laps, counts
     assert result.status == "exhausted", result
 
 
@@ -1461,8 +1456,9 @@ def test_an_audit_that_refutes_the_pass_turns_it_into_a_product_failure(
 
     # Every subsequent pass is refuted the same way, so the fix loop runs out its budget.
     assert result.status == "exhausted", result
-    assert agent.counts()["apply-qa-fixes"] == 3, agent.counts()
-    assert agent.counts()["triage-qa"] == 4, agent.counts()
+    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
+    # One triage per lap, plus the one on the lap the ceiling refuses to grant.
+    assert agent.counts()["triage-qa"] == Qa.MAX_QA_REWORKS + 1, agent.counts()
 
 
 # --------------------------------------------------------------------------- the fix loop
@@ -1624,7 +1620,8 @@ def test_a_fix_that_gets_the_run_further_still_earns_its_next_lap(
         fail_runs=99,
         scenarios=tuple(
             {"copy-link": {"status": "failed", "assertions": depth, "failures": 1}}
-            for depth in (3, 5, 7, 9)
+            # One deeper journey per lap the ceiling allows, and one for the lap it refuses.
+            for depth in range(3, 3 + 2 * (Qa.MAX_QA_REWORKS + 1), 2)
         ),
     )
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
@@ -1641,7 +1638,7 @@ def test_the_fix_loop_grants_one_bonus_pass_only_for_an_evidence_failure(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`guard_qa_bonus`: past the budget, a missing-proof finding earns one more attempt.
+    """`guard_qa_bonus`: past the lap ceiling, a missing-proof finding earns one more attempt.
 
     `code` and `environment` earn nothing, which is what the companion assertion below
     covers — the bonus is for the case where the code may well be right and the proof is
@@ -1653,7 +1650,7 @@ def test_the_fix_loop_grants_one_bonus_pass_only_for_an_evidence_failure(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
-    assert agent.counts()["apply-qa-fixes"] == 4, agent.counts()
+    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS + 1, agent.counts()
 
 
 def test_a_code_failure_earns_no_bonus_pass(
@@ -1662,14 +1659,14 @@ def test_a_code_failure_earns_no_bonus_pass(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The same run, triaged `code`: three fixes and out."""
+    """The same run, triaged `code`: the fix loop runs out its laps and stops."""
     ostler(fail_runs=99)
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
-    assert agent.counts()["apply-qa-fixes"] == 3, agent.counts()
+    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
 
 
 # ------------------------------------------------------------------ the give-up is a handoff
@@ -1701,7 +1698,7 @@ def test_a_spent_budget_asks_the_operator_before_abandoning_the_story(
     assert "staging bucket" in guided[0]["operator_feedback"]
     # And the marker still names the budget that ran out, not the gate that followed it: a
     # human triaging it needs to know the story burned its code reworks.
-    assert result.spent == "3 code rework plus an operator-guided lap", result.spent
+    assert result.spent == f"{Qa.MAX_QA_REWORKS} code rework plus an operator-guided lap"
 
 
 def test_an_escalating_resolver_gives_up_now_rather_than_halting_the_drain(
@@ -1727,7 +1724,7 @@ def test_an_escalating_resolver_gives_up_now_rather_than_halting_the_drain(
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
     assert seen == [], "auto mode must never park the run on a spent budget"
     # No guided lap was bought, so the reported budget is the one that actually ran out.
-    assert result.spent == "3 code rework", result.spent
+    assert result.spent == f"{Qa.MAX_QA_REWORKS} code rework", result.spent
 
 
 def test_the_operator_is_asked_once_per_story_and_not_once_per_budget(
@@ -1812,7 +1809,7 @@ def test_each_exhaustion_names_the_budget_it_spent(
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
     result = drive_flow(Qa(story=STORY), env(), agent)
     assert result.status == "exhausted", result
-    assert result.spent == "3 code rework", result.spent
+    assert result.spent == f"{Qa.MAX_QA_REWORKS} code rework", result.spent
 
     # A dev target reworks nothing by design, so its count is a truthful zero — which is
     # exactly the number that used to be indistinguishable from "the loop never ran".
@@ -1857,7 +1854,7 @@ def test_a_spent_rescope_budget_makes_triage_fix_in_place(
 
     assert result.status == "exhausted", result
     assert result.triage_scope == 2, "the parent's budget is handed back unspent"
-    assert agent.counts()["apply-qa-fixes"] == 3, agent.counts()
+    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
 
 
 # ------------------------------------------------------------------- routing a gate's findings
@@ -1909,7 +1906,7 @@ def test_an_audit_refuting_on_a_product_test_gap_sends_the_fixer_not_the_planner
     # The auditor never relents in this fake, so the flow still ends exhausted — but on the
     # budget that names the work, and having actually attempted it.
     assert result.status == "exhausted", result
-    assert result.spent == "3 code rework", result.spent
+    assert result.spent == f"{Qa.MAX_QA_REWORKS} code rework", result.spent
     assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
     assert agent.counts()["repair-qa-plan"] == 0, agent.counts()
     brief = agent.args_for("apply-qa-fixes")[0]["qa_notes"]
@@ -1939,7 +1936,7 @@ def test_an_extend_plan_naming_a_product_test_gap_sends_the_fixer(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "exhausted", result
-    assert result.spent == "3 code rework", result.spent
+    assert result.spent == f"{Qa.MAX_QA_REWORKS} code rework", result.spent
     assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
     assert agent.counts()["repair-qa-plan"] == 0, agent.counts()
 

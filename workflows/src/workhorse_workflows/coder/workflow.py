@@ -191,10 +191,11 @@ class Coder(Workflow):
     #: run instead of per story. Prefixed because at this level `sandbox` alone would read
     #: as a property of the whole coder rather than of its QA lane.
     qa_sandbox: bool = False
-    #: How long a story's QA lane may spend inside agent turns, and how much of that the
-    #: plan lane may take. Restated here — as `target_env` and `operator_mode` are — only so
-    #: an operator can set them once on the run rather than per story; `Qa.qa_lane_budget_s`
-    #: is where the numbers are argued, and the two defaults move together.
+    #: How long a story's QA lane is *expected* to spend inside agent turns, and how much of
+    #: that the plan lane is expected to take. Advisory — crossing one is logged, never
+    #: terminal. Restated here — as `target_env` and `operator_mode` are — only so an operator
+    #: can set them once on the run rather than per story; `Qa.qa_lane_budget_s` is where the
+    #: numbers are argued, and the two defaults move together.
     qa_lane_budget_s: int = 3300
     plan_lane_budget_s: int = 2400
 

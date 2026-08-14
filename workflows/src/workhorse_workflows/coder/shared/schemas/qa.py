@@ -580,13 +580,14 @@ class QaLoop(CoderResult):
 
     #: Wall-clock seconds this lane has spent inside agent turns, and how much of that the
     #: plan lane (`plan`, `repair_plan`) took. `Qa.qa_lane_budget_s` and
-    #: `Qa.plan_lane_budget_s` are what they are checked against.
+    #: `Qa.plan_lane_budget_s` are the advisory numbers they are reported against — they are
+    #: logged when crossed and decide nothing.
     #:
     #: **Accumulated as deltas, never derived from a start timestamp.** A lane that stored
     #: when it began and subtracted `now` would come back from a resume — or from a run
-    #: parked overnight at the operator gate — already over budget, and would then land on
-    #: the exhaustion path having spent nothing. What is being bounded is effort, and a
-    #: charged delta is the only form of it that survives a checkpoint honestly.
+    #: parked overnight at the operator gate — already over budget, and would report an hour
+    #: of effort it never spent. What is being measured is effort, and a charged delta is the
+    #: only form of it that survives a checkpoint honestly.
     #:
     #: Deliberately not blanked by `cleared()`, unlike the gate diagnostics: a re-planned
     #: story has no findings against it yet, but the hour it already spent is still gone.

@@ -311,25 +311,27 @@ class Qa(Workflow):
     #: ones that still match, so QA does not write scenarios for an earlier story's
     #: abandoned work. Empty drops nothing, which is the pre-snapshot behaviour.
     preexisting: tuple[str, ...] = ()
-    #: The lane's wall-clock ceilings, in seconds of agent turns. Fields and not `ClassVar`s
-    #: like the lap budgets below, and the difference is deliberate: those are invariants of
-    #: the flow's shape, while "a story's QA must fit in an hour" is a policy an operator
-    #: decides per run — so it is a `--param` and lands in the checkpoint.
+    #: The lane's wall-clock budgets, in seconds of agent turns — **advisory**. Crossing one
+    #: is logged and nothing else: it never ends a story, never demotes a repair to a re-run,
+    #: and never lets an unresolved audit refutation through as backlog work. Only the lap
+    #: ceilings below can end a QA loop.
     #:
-    #: The per-turn caps and the lap budgets bound each turn and their count; their *product*
-    #: is still well over an hour, so neither of them delivers the ceiling. This does. The
-    #: plan lane gets the larger share because it is where the hour actually goes, and 3300
-    #: rather than 3600 leaves the non-agent nodes — the runner, the evidence gate, the
-    #: stamping — their share of the hour. `ensure_stack` is outside both (see
-    #: `QaLoop.lane_seconds`): a lane that waits forty minutes for a stack to boot will
-    #: exceed the hour by design.
+    #: They were terminal, and that is the defect this replaced. A wall clock cannot tell a
+    #: loop that is going nowhere from one that is three turns from green, so it cut both the
+    #: same way — and what it cut was disproportionately the stories doing the *most* real
+    #: repair work, because those are the ones that spend. Two live stories reached a green
+    #: 41/41 runner and were still stamped "QA FAILED — needs manual review" with their
+    #: dependents blocked, because the clock expired before the four post-run gates had
+    #: signed off. A lap ceiling says "this was tried the agreed number of times", which is
+    #: a statement about the work; a clock says only that the work was slow.
     #:
-    #: Three other turns are deliberately uncharged, for one reason between them: they are
-    #: not effort the budget can buy less of. `resolve_operator` and `apply_feedback` run
-    #: *past* the budget — the operator gate is the escalation these ceilings land on, and
-    #: charging the escalation for the exhaustion that caused it would let a resolved block
-    #: exhaust again on arrival. `report_dev` is terminal: there is no lap left for a charge
-    #: to deny.
+    #: Kept as `--param` fields, and not deleted, because the number is still the honest
+    #: signal an operator wants in the log and in telemetry — a story that ran 3× its budget
+    #: is worth looking at, just not worth discarding. Fields and not `ClassVar`s like the
+    #: lap budgets below for the same old reason: those are invariants of the flow's shape,
+    #: while "a story's QA should fit in an hour" is a per-run policy that lands in the
+    #: checkpoint. `ensure_stack` is outside both (see `QaLoop.lane_seconds`), as are
+    #: `resolve_operator`, `apply_feedback` and `report_dev`.
     qa_lane_budget_s: int = 3300
     plan_lane_budget_s: int = 2400
 
@@ -340,40 +342,47 @@ class Qa(Workflow):
 
     #: The bounded retry budgets. All `ClassVar`, because none of them is a var the YAML
     #: declared — each guard carries a branch literal. See the module docstring.
-    MAX_QA_REWORKS: ClassVar[int] = 3
+    #:
+    #: These are now the *only* things that can end a QA loop short of a verdict, so they
+    #: carry weight the wall clock used to share. They were sized against a lane that would
+    #: be cut off by the clock anyway, which made a generous ceiling meaningless; with the
+    #: clock advisory, the ceiling is the whole policy and the code-fix one is raised from
+    #: three to eight. A code fix is the lap most likely to be *working* — each one is a
+    #: named failing check against a green-when-fixed suite — and three of them is well
+    #: inside the range where a story is still converging.
+    MAX_QA_REWORKS: ClassVar[int] = 8
     MAX_CONTEXT_REWORKS: ClassVar[int] = 3
     #: The two QA-plan budgets are deliberately separate. `MAX_PLAN_REWORKS` bounds the
     #: gates that judge the plan (the post-run assessment and the audit);
     #: `MAX_PLAN_VALIDATION_REWORKS` bounds repairs of a `qa_plan.py` that does not import.
     #: See `QaLoop.plan_judgement_rework` for the story that split them.
     #:
-    #: The judgement budget is the tighter of the two, and was cut from four. A judgement lap
-    #: is a `power="high"` gate plus a re-author, and the lane's whole wall clock lives
-    #: there: the plan nodes were 1527 of a QA lane's ~1800 minutes, against 2.9% for actually
-    #: running the plan. A lap not granted here yields a slightly worse plan that is still
-    #: run, assessed and audited; the laps it replaces yield judgement and, when they run out,
-    #: no QA verdict at all. It stays at three now that the pre-run reviewer is gone: every
-    #: one of these laps buys a repair of a plan that has actually been *executed*, which is
-    #: what the budget was always for.
+    #: The judgement budget was cut to three when a spent plan-lane clock would demote the
+    #: plan to the runner anyway — running a slightly worse plan beat spending the lane's
+    #: whole wall clock on judgement, since the plan nodes were 1527 of a QA lane's ~1800
+    #: minutes against 2.9% for actually running the plan. That demotion is gone with the
+    #: clock, so the trade is no longer "one more lap versus a run"; it is "one more lap
+    #: versus no verdict". Raised to six. Every one of these laps buys a repair of a plan
+    #: that has actually been *executed*.
     #: `MAX_PLAN_VALIDATION_REWORKS` is left alone: a `qa_plan.py` that will not import
     #: cannot be run *at all*, so those laps are not a quality trade, and each is `power="low"`.
-    MAX_PLAN_REWORKS: ClassVar[int] = 3
+    MAX_PLAN_REWORKS: ClassVar[int] = 6
     MAX_PLAN_VALIDATION_REWORKS: ClassVar[int] = 3
     #: And the ceiling on their *product*. The two budgets above are spent independently, so
     #: nothing stopped a story alternating between them: three schema repairs and four
     #: judgement repairs is seven laps that every individual guard considers legal, and a
     #: live story reached thirteen turns of `plan-qa` that way. This bounds the sum, so the
-    #: stacked budgets can no longer multiply. It is deliberately the smaller number: a plan
-    #: still being repaired on the sixth lap is not converging, and the five laps before it
-    #: are the evidence.
+    #: stacked budgets can no longer multiply.
     #:
-    #: It is the *sum* of the two budgets above and not their product, which is the whole
-    #: point — and it is why it must never be cut below that sum. Three schema repairs are
-    #: legal, two blocking reviews are legal, and a ceiling under five would let a run of
-    #: typos spend the reader's budget: exactly the starvation
-    #: `test_schema_repairs_cannot_starve_the_semantic_plan_gate` exists to catch. The
-    #: lane's wall clock is held by the per-turn caps on the three plan nodes, not here.
-    MAX_TOTAL_PLAN_LAPS: ClassVar[int] = 5
+    #: It is a *sum* and not a product, which is the whole point. Two constraints fix it.
+    #: Below, it must leave room for three schema repairs and two blocking audits to all be
+    #: legal — a ceiling under five lets a run of typos starve the reader, which is what
+    #: `test_schema_repairs_cannot_starve_the_semantic_plan_gate` exists to catch. Above, it
+    #: must stay under `MAX_PLAN_REWORKS + MAX_PLAN_VALIDATION_REWORKS`, or it is inert: at
+    #: the stacked maximum no interleaving can ever reach it. It rose from five with
+    #: `MAX_PLAN_REWORKS`, to one below that stacked maximum of nine. The lane's wall clock
+    #: is held by the per-turn caps on the three plan nodes, not here.
+    MAX_TOTAL_PLAN_LAPS: ClassVar[int] = 8
     #: Not a spend ceiling — a *blocking* ceiling, and the only one of these that changes what
     #: a finding means rather than how many are affordable. Nothing stands downstream of the
     #: audit, so a plan-scoped refutation it raises can only be closed by another plan repair,
@@ -746,8 +755,8 @@ class Qa(Workflow):
         to the join point changed what the diff obligates and the plan answering the old
         obligations must not be the one that runs.
 
-        Which makes this an entry into the plan lane, and it is held to `plan_lane_budget_s`
-        like every other one — see the branch below for the run that made it necessary.
+        Which makes this an entry into the plan lane, bounded like every other one by
+        `MAX_CONTEXT_REWORKS` — a rejoin costs a context rebuild, and those are counted.
         """
         status = self.call(ensure_stack, self.qa_stack_manifest, self.docs_path)
         if status.ready == "no":
@@ -766,33 +775,11 @@ class Qa(Workflow):
                 ),
             )
         if not loop.plan_authored:
-            if loop.plan_lane_seconds > 0 and loop.plan_lane_seconds >= self.plan_lane_budget_s:
-                # The join point was the one entry into the plan lane with no ceiling on it.
-                # `build_context` clears `plan_authored`, so every rejoin from a context
-                # rebuild — an `apply_fixes` lap, a grounding repair — bought a fresh
-                # `power="high"` authoring turn however much wall-clock the lane had already
-                # spent. A live story entered the author at 2947s of its 2400s budget, and
-                # would have kept doing so for as many context laps as it had left.
-                #
-                # `plan_lane_seconds > 0` is what says a plan was authored *at all*: only
-                # plan-lane turns charge that lane, so a nonzero one is the record of a turn
-                # that ran. Without it a `plan_lane_budget_s=0` run would be refused its
-                # first author and sent to run a plan that does not exist.
-                #
-                # The landing is `_plan_lap`'s, for `_plan_lap`'s reason: a plan that still
-                # parses runs, with `run` → `assess` → `audit` all standing downstream, and
-                # one that will not import has nothing left to run.
-                validation = self.call(validate_qa_plan, self.ctx.spec_dir, self.docs_path)
-                if validation.status == "passed":
-                    self.logger.info(
-                        "the QA plan lane has spent %.0fs of its %ds budget — running the "
-                        "plan on disk rather than authoring one against the rebuilt context",
-                        loop.plan_lane_seconds,
-                        self.plan_lane_budget_s,
-                        extra={"activity": True},
-                    )
-                    return Continue(validation, self.run, loop=loop.update(plan_authored=True))
-                return self._exhausted(loop, "the QA plan lane's wall-clock budget")
+            # `build_context` clears `plan_authored`, so every rejoin from a context rebuild —
+            # an `apply_fixes` lap, a grounding repair — buys a fresh `power="high"` authoring
+            # turn. What bounds that is `MAX_CONTEXT_REWORKS`, the ceiling on the rebuilds
+            # themselves, not the clock: a rejoin cannot happen without one.
+            self._note_plan_budget(loop)
             return Continue(status, self.plan, loop=loop)
         return Continue(status, self.run, loop=loop)
 
@@ -974,18 +961,7 @@ class Qa(Workflow):
                 extra={"activity": True},
             )
             return Continue(result, self.backlog, loop=loop)
-        if loop.lane_seconds >= self.qa_lane_budget_s:
-            # Same landing as the blocking-audit ceiling above, on the wall-clock one. The
-            # refutation is not discarded — it is filed as backlog work, which is what this
-            # flow does with every plan-only finding it has no lap left to repair.
-            self.logger.info(
-                "the QA lane has spent %.0fs of its %ds budget — filing the audit's "
-                "plan-only refutation as backlog work",
-                loop.lane_seconds,
-                self.qa_lane_budget_s,
-                extra={"activity": True},
-            )
-            return Continue(result, self.backlog, loop=loop)
+        self._note_lane_budget(loop)
         return self._guard_plan(result, loop)
 
     # ── what happens to the verdict ───────────────────────────────────────────────────
@@ -1551,12 +1527,6 @@ class Qa(Workflow):
                 plan_rework=loop.plan_rework + 1,
                 repaired_failures=loop.run_failures,
             ),
-            # A post-run finding is by construction a finding against a plan that imported
-            # and ran, so what is on disk is runnable.
-            plan_validates=True,
-            # And it is also the one guard where "runnable" buys nothing: the plan on disk
-            # is the plan that just produced the failures being judged.
-            already_ran=True,
         )
 
     def _stalled(self, result: object, loop: QaLoop, lap: str) -> Continue | Await | Done:
@@ -1655,19 +1625,9 @@ class Qa(Workflow):
         return self._plan_lap(
             result,
             loop.update(plan_validation_rework=loop.plan_validation_rework + 1),
-            # The one guard reached *because* the plan does not import: there is nothing on
-            # disk the runner could be handed instead.
-            plan_validates=False,
         )
 
-    def _plan_lap(
-        self,
-        result: object,
-        loop: QaLoop,
-        *,
-        plan_validates: bool,
-        already_ran: bool = False,
-    ) -> Continue | Await | Done:
+    def _plan_lap(self, result: object, loop: QaLoop) -> Continue | Await | Done:
         """Take the lap the guard just paid for, unless the plan has had too many in total.
 
         The three guards above each bound their own stage, and nothing bounded the sum until
@@ -1675,31 +1635,11 @@ class Qa(Workflow):
         this lap would make the total — a flow that stops *after* spending its last lap has
         paid for a turn it will not use.
 
-        The lap count is not the only ceiling: every plan lap funnels through here, so this
-        is also where `plan_lane_budget_s` is enforced. What a spent wall-clock budget costs
-        depends on what is on disk, which is why `plan_validates` is passed in rather than
-        inferred — a plan that parses is demoted to the runner exactly as a spent reviewer
-        budget demotes it, with `run` → `assess` → `audit` all still standing downstream, and
-        only a plan that will not import has nothing left to run and ends the flow.
-
-        `already_ran` is the other half of that: the demotion is worth a turn only from a
-        gate that judged the plan *before* it ran. Reached from `_guard_plan` the plan on
-        disk is the one that just produced the failures being judged, and the demotion skips
-        `repair_plan` — so it re-runs an unedited plan against unedited code, pays a fresh
-        assessment turn to be told the same thing, and only then trips `_repeating`. A live
-        story spent a suite run and a `power="high"` assessment on exactly that lap.
+        The lap count is the only ceiling here. `plan_lane_budget_s` used to be a second one,
+        which is what let a plan lane that was still making progress be cut off mid-repair;
+        it is now advisory and only logged. See `_note_plan_budget`.
         """
-        if loop.plan_lane_seconds >= self.plan_lane_budget_s:
-            if plan_validates and not already_ran:
-                self.logger.info(
-                    "the QA plan lane has spent %.0fs of its %ds budget — running the plan "
-                    "it has rather than repairing it further",
-                    loop.plan_lane_seconds,
-                    self.plan_lane_budget_s,
-                    extra={"activity": True},
-                )
-                return Continue(result, self.run, loop=loop.update(plan_authored=True))
-            return self._exhausted(loop, "the QA plan lane's wall-clock budget")
+        self._note_plan_budget(loop)
         if loop.plan_rework_total > self.MAX_TOTAL_PLAN_LAPS:
             self.logger.info(
                 "the QA plan has had %d repair laps across every gate — ending the flow",
@@ -1719,8 +1659,7 @@ class Qa(Workflow):
         """
         if loop.setup_rework >= self.MAX_SETUP_REWORKS:
             return self._exhausted(loop, f"{loop.setup_rework} QA-setup repair")
-        if loop.lane_seconds >= self.qa_lane_budget_s:
-            return self._exhausted(loop, "the QA lane's wall-clock budget")
+        self._note_lane_budget(loop)
         if loop.blocked_problems and loop.blocked_problems == loop.setup_problems:
             self.logger.info(
                 "the QA setup fix left the identical blocked bundle (%s) — escalating",
@@ -1739,20 +1678,15 @@ class Qa(Workflow):
     def _guard_qa(self, result: object, loop: QaLoop) -> Continue | Await | Done:
         """`guard_qa` + `guard_qa_bonus` + `decide_bonus_class` + `grant_qa_bonus`.
 
-        Past the budget there is exactly one more pass available, and only for an `evidence`
-        failure class: the finding is that the proof is missing rather than the code, so one
-        verification-only attempt is cheap and often decisive. `code`, `environment` and an
-        untriaged blank earn nothing.
+        Past `MAX_QA_REWORKS` there is exactly one more pass available, and only for an
+        `evidence` failure class: the finding is that the proof is missing rather than the
+        code, so one verification-only attempt is cheap and often decisive. `code`,
+        `environment` and an untriaged blank earn nothing.
         """
         if self._repeating(loop, "code fix"):
             return self._stalled(result, loop, "code fix")
         loop = loop.with_lap("code fix", repaired_failures=loop.run_failures)
-        if loop.lane_seconds >= self.qa_lane_budget_s:
-            # A code fix is a `power="medium"` turn plus a whole suite re-run, so it is the
-            # single most expensive lap left. The verdict the evidence supports is the
-            # failure already on the loop, and `_exhausted` is how this flow reports one it
-            # ran out of room to repair.
-            return self._exhausted(loop, "the QA lane's wall-clock budget")
+        self._note_lane_budget(loop)
         if loop.qa_rework < self.MAX_QA_REWORKS:
             return Continue(result, self.apply_fixes, loop=loop)
         if loop.bonus_used or loop.failure_class != "evidence":
@@ -1771,6 +1705,34 @@ class Qa(Workflow):
         if self.operator_mode in {"human", "operator"}:
             return Await(self._context, loop.block_notes, self.read_operator, loop=loop)
         return Continue(result, self.resolve_operator, loop=loop)
+
+    def _note_lane_budget(self, loop: QaLoop) -> None:
+        """Log a QA lane over its advisory wall-clock budget. Never decides anything.
+
+        Called from the guards that used to *end* on this comparison. What replaced the
+        branch is this line, and the line is the point: the number stays visible to an
+        operator reading the log or the telemetry, while the decision to stop belongs to the
+        lap ceilings, which know whether the loop is converging. See `qa_lane_budget_s`.
+        """
+        if loop.lane_seconds >= self.qa_lane_budget_s:
+            self.logger.info(
+                "the QA lane has spent %.0fs of its %ds advisory budget — continuing, the "
+                "lap ceilings decide when this story stops",
+                loop.lane_seconds,
+                self.qa_lane_budget_s,
+                extra={"activity": True},
+            )
+
+    def _note_plan_budget(self, loop: QaLoop) -> None:
+        """The same, for the plan lane. See `_note_lane_budget` and `plan_lane_budget_s`."""
+        if loop.plan_lane_seconds >= self.plan_lane_budget_s:
+            self.logger.info(
+                "the QA plan lane has spent %.0fs of its %ds advisory budget — continuing, "
+                "the plan-lap ceilings decide when this plan stops",
+                loop.plan_lane_seconds,
+                self.plan_lane_budget_s,
+                extra={"activity": True},
+            )
 
     def _exhausted(self, loop: QaLoop, spent: str = "") -> Continue | Await | Done:
         """Out of budget — ask the operator once, and only then give up.
