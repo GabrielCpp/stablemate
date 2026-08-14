@@ -38,6 +38,7 @@ from workhorse.references import format_missing, missing_references
 from workhorse.rundir import auto_resolve, derive_run_id, runtime_deadline
 from workhorse.runner import process as agent_process
 from workhorse.runner import transcript
+from workhorse.runner.failure import BackendInvocationError
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,6 +305,20 @@ def run_pyflow(invocation: RunInvocation) -> int:
             writer.finish(terminal="fail")
             otel.end_run("fail", error=str(exc), error_class=type(exc).__name__,
                              error_kind="fatal")
+            return 1
+        except BackendInvocationError as exc:
+            # The agent CLI failed past every rung of the ladder — most often a binary
+            # that is not on the non-interactive PATH at all. The message already says
+            # what to fix, so a traceback on top of it only buries the one line that
+            # matters. Recorded the way a budget stop is, not stamped terminal: the
+            # operator installs the CLI and resumes from the checkpoint just written.
+            agent_process.terminate_active()
+            print(f"[workhorse] ERROR: {exc}")
+            writer.record_interrupt(_state_of(writer), str(exc))
+            print(f"[workhorse] resume with: workhorse-{name} run "
+                  f"--resume-run {writer.run_dir}")
+            otel.end_run("fail", error=str(exc), error_class=type(exc).__name__,
+                         error_kind="fatal")
             return 1
         except Exception as exc:  # noqa: BLE001 — a smoke test reports, it does not raise
             # Only under `--dry-run`, and only because the stand-in values nodes

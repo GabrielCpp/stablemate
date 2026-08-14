@@ -33,6 +33,7 @@ from workhorse.pyflow.run import RunInvocation, run_pyflow
 from workhorse.pyflow.transitions import Continue, Done, Transition
 from workhorse.pyflow.workflow import Workflow
 from workhorse.rundir import find_latest_resumable
+from workhorse.runner.failure import BackendInvocationError
 
 
 class Budgeted(Workflow):
@@ -120,6 +121,27 @@ def test_a_workflow_that_fails_is_over_and_is_not_resumed():
         assert code == 1, code
         assert _record(runs_dir)["terminal"] == "fail", _record(runs_dir)
         assert find_latest_resumable(runs_dir) is None
+
+
+def test_a_dead_agent_cli_stops_the_run_cleanly_and_resumably():
+    """A `BackendInvocationError` past the ladder is the budget stop's sibling.
+
+    The classic first-run failure — the agent CLI is not on the non-interactive PATH —
+    used to escape `run_pyflow` as a raw traceback, burying the one actionable line
+    (`install the CLI on a stable PATH`) under thirty frames of driver internals. It is
+    an operational stop, not a verdict: the operator installs the CLI and resumes, so
+    the run must stay visible to `--resume-latest` the way a clock overrun does.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        code, runs_dir = _run(
+            tmp, BackendInvocationError("agent CLI 'claude' could not be launched")
+        )
+
+        assert code == 1, code
+        record = _record(runs_dir)
+        assert record["terminal"] is None, record
+        assert "could not be launched" in (record["error"] or ""), record
+        assert find_latest_resumable(runs_dir) is not None
 
 
 def test_the_budget_error_is_not_a_workflow_failure():
