@@ -57,6 +57,12 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 BASE = REPO / "base-library"
+
+# The skill families the public base library carries: the toolchain's own skills
+# (`stablemate/`) plus the generic cross-language contracts migrated from the overlay
+# (design/testing/architecture — the red-gate plan, docs/plans/tdd-ac-coverage.md §7).
+# Per-stack mechanics (`stacks/`) and house rules remain overlay content.
+BASE_SKILL_FAMILIES = {"stablemate", "testing", "architecture", "ui"}
 RESOLVER = REPO / "scripts" / "private_names.py"
 HOOKS_DIR = ".githooks"
 
@@ -319,11 +325,13 @@ def check_base_stands_alone() -> list[str]:
     for skill in skills:
         if skill.layer is None or skill.layer.name != install.BASE_LAYER_NAME:
             problems.append(f"skill {skill.id!r} did not resolve from the base layer")
-        if not skill.id.startswith("stablemate/"):
+        family = skill.id.split("/", 1)[0]
+        if family not in BASE_SKILL_FAMILIES:
             problems.append(
-                f"skill {skill.id!r} is in the base but is not a stablemate/* skill — "
-                "the base carries the toolchain's own skills; everything else is "
-                "overlay content"
+                f"skill {skill.id!r} is in the base but not in a base family "
+                f"({', '.join(sorted(BASE_SKILL_FAMILIES))}) — the base carries the "
+                "toolchain's own skills plus the generic cross-language contracts; "
+                "stack mechanics and house rules are overlay content"
             )
 
     # There is no workflow clause. The base shipped four workflow directories until the

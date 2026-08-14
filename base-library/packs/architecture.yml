@@ -1,0 +1,10 @@
+description: >
+  Cross-language architecture skills — the ports-and-adapters contract that
+  governs the boundaries between rings (hexagonal-architecture), and the
+  code-structure rules that govern the inside of one: when functions become an
+  object, when a module becomes two, which values need a name at a boundary, and
+  where configuration and effects may appear. Stack packs include this so the
+  language-neutral invariants ride along with the concrete mechanics, the same
+  way the ui pack carries the framework-neutral accessibility contract.
+skills:
+  - architecture/*
