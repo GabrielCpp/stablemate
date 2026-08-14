@@ -75,10 +75,12 @@ def test_each_phase_is_implemented_and_reviewed_on_its_own(
     assert agent.calls == [
         "slice-implementation-plan",
         "decompose-implementation-plan",
-        "implement-plan-task",
+        "implement-plan-task-tests",
+        "implement-plan-task-code",
         "review-plan-implementation",
         "decompose-implementation-plan",
-        "implement-plan-task",
+        "implement-plan-task-tests",
+        "implement-plan-task-code",
         "review-plan-implementation",
     ]
     assert (repo / "src" / "first.txt").is_file()

@@ -58,13 +58,18 @@ def check_agent_turn(
     context: PlanRunContext,
     task: PlanTask,
     expected_head: str,
+    require_changes: bool = True,
 ) -> None:
-    """An edit turn may change owned files, but never repository refs or configuration."""
+    """An edit turn may change owned files, but never repository refs or configuration.
+
+    `require_changes=False` is for the tests-only turn: an empty diff there is the red
+    gate's verdict to hand back as a bounded rework, not this check's hard failure.
+    """
     repository.assert_repository_identity(context)
     repository.assert_remote(context, expected_head)
     if repository.head(context) != expected_head:
         raise WorkflowFailed(f"task {task.id} agent turn moved HEAD")
-    repository.assert_owned(Path(context.repo_root), task, require_changes=True)
+    repository.assert_owned(Path(context.repo_root), task, require_changes=require_changes)
     logger.info("task %s agent turn stayed within its repository boundary", task.id)
 
 

@@ -90,6 +90,7 @@ class _Agent:
         edits: dict[str, dict[str, str]] | None = None,
         repair_edits: dict[str, dict[str, str]] | None = None,
         planning_edits: dict[str, str] | None = None,
+        test_edits: dict[str, dict[str, str]] | None = None,
         commit_on_task: str = "",
         blocked_on_task: str = "",
         reviews: list[dict[str, Any]] | None = None,
@@ -99,21 +100,31 @@ class _Agent:
         self.edits = edits or {}
         self.repair_edits = repair_edits or {}
         self.planning_edits = planning_edits or {}
+        self.test_edits = test_edits or {}
         self.commit_on_task = commit_on_task
         self.blocked_on_task = blocked_on_task
         self.reviews = reviews or [_review()]
         self.review_index = 0
         self.calls: list[str] = []
+        self.turn_args: list[tuple[str, dict[str, Any]]] = []
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
         data = ctx.as_dict()
         self.calls.append(node.id)
+        self.turn_args.append((node.id, data))
         if node.id == "decompose-implementation-plan":
             self._write(self.planning_edits)
             reply = self.decomposition
         elif node.id == "review-plan-implementation":
             reply = self.reviews[min(self.review_index, len(self.reviews) - 1)]
             self.review_index += 1
+        elif node.id == "implement-plan-task-tests":
+            task_id = data["task"]["id"]
+            self._write(self.test_edits.get(task_id, {}))
+            reply = {
+                "status": "blocked" if task_id == self.blocked_on_task else "done",
+                "notes": f"tests for {task_id}",
+            }
         else:
             task_id = (data.get("task") or data["issue"])["id"]
             writes = (
@@ -143,6 +154,9 @@ class _Agent:
 
     def count(self, node_id: str) -> int:
         return Counter(self.calls)[node_id]
+
+    def args_for(self, node_id: str) -> list[dict[str, Any]]:
+        return [data for called, data in self.turn_args if called == node_id]
 
 
 def _context(
