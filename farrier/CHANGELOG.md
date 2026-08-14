@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.1.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v2.0.0...farrier-v2.1.0) (2026-08-14)
+
+
+### Features
+
+* **core:** read the fallback agent cli from the shared config ([8cc0836](https://github.com/GabrielCpp/stablemate/commit/8cc0836a7888b6c5942eaf36b5cb950a19148dff))
+
+
+### Bug Fixes
+
+* **farrier:** point setup errors at farrier init and the pack catalog ([6162372](https://github.com/GabrielCpp/stablemate/commit/61623720eaf4b214f34438efa8db855b6518dca9))
+
 ## [2.0.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v1.5.2...farrier-v2.0.0) (2026-08-11)
 
 

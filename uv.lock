@@ -287,7 +287,7 @@ wheels = [
 
 [[package]]
 name = "farrier"
-version = "2.0.0"
+version = "2.1.0"
 source = { editable = "farrier" }
 dependencies = [
     { name = "jinja2" },
@@ -413,7 +413,7 @@ wheels = [
 
 [[package]]
 name = "groom"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "groom" }
 dependencies = [
     { name = "litestar", extra = ["standard"] },
@@ -1050,7 +1050,7 @@ wheels = [
 
 [[package]]
 name = "ostler"
-version = "1.0.1"
+version = "1.1.0"
 source = { editable = "ostler" }
 dependencies = [
     { name = "jsonschema" },
@@ -2163,7 +2163,7 @@ wheels = [
 
 [[package]]
 name = "workhorse-agent"
-version = "2.0.0"
+version = "2.1.0"
 source = { editable = "workhorse" }
 dependencies = [
     { name = "jinja2" },
@@ -2199,7 +2199,7 @@ provides-extras = ["test", "otel"]
 
 [[package]]
 name = "workhorse-workflows"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "workflows" }
 dependencies = [
     { name = "gitpython" },

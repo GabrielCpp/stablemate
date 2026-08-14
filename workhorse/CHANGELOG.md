@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.1.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v2.0.0...workhorse-agent-v2.1.0) (2026-08-14)
+
+
+### Features
+
+* **core:** read the fallback agent cli from the shared config ([8cc0836](https://github.com/GabrielCpp/stablemate/commit/8cc0836a7888b6c5942eaf36b5cb950a19148dff))
+* **workhorse:** fall back to the configured cli, not always claude ([49f72e2](https://github.com/GabrielCpp/stablemate/commit/49f72e227fd1246388a046db39a80a30f1d57248))
+* **workhorse:** keep machine scratch in the cache, not the repo ([0f9c663](https://github.com/GabrielCpp/stablemate/commit/0f9c6638767c2dc71afd8f96f0b54727e2b016d0))
+* **workhorse:** let a node set its own retry budget ([c6a9c4a](https://github.com/GabrielCpp/stablemate/commit/c6a9c4a8be16902eced558323442c644b9b94ffd))
+* **workhorse:** raise a catchable AgentTimeout from an overrun turn ([e7cb40c](https://github.com/GabrielCpp/stablemate/commit/e7cb40c0031d25af5c3e16b770aa42dc8798a3b7))
+
+
+### Bug Fixes
+
+* **workhorse:** stop a dead agent CLI escaping as a raw traceback ([1542242](https://github.com/GabrielCpp/stablemate/commit/15422421132744ca08bf003d9da76006caca86d8))
+
 ## [2.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v1.0.0...workhorse-agent-v2.0.0) (2026-08-11)
 
 

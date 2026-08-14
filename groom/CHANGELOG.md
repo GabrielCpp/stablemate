@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.0](https://github.com/GabrielCpp/stablemate/compare/groom-v1.0.0...groom-v1.1.0) (2026-08-14)
+
+
+### Features
+
+* **groom:** page when a run ends instead of only when it misbehaves ([0c11fe8](https://github.com/GabrielCpp/stablemate/commit/0c11fe8b60a1f29012c4297059284e7cc4204c8a))
+* **groom:** page when a run parks on an operator gate ([5d9297d](https://github.com/GabrielCpp/stablemate/commit/5d9297dfdb3a1a335b2bf981b51314249377cb4b))
+* **groom:** price the priority-tier variant of gpt-5.6-terra ([6cd13aa](https://github.com/GabrielCpp/stablemate/commit/6cd13aa5a14e679961c5d02be8bfa43bbbbba73d))
+* **groom:** rank a loop by the rate card when nothing billed it ([2dbbc70](https://github.com/GabrielCpp/stablemate/commit/2dbbc70e5445ef6b1e5cc3301e86bf88658000cd))
+
 ## [1.0.0](https://github.com/GabrielCpp/stablemate/compare/groom-v0.1.0...groom-v1.0.0) (2026-08-11)
 
 
