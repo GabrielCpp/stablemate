@@ -525,7 +525,7 @@ def test_the_toolchains_own_footprint_is_not_a_production_unit(tmp_path: Path):
     for path in (
         "agents.yml", "qa-stack.yml", ".agents/agents.mk", ".agents/local.compose.yaml",
         ".opencode/opencode-loop/ses_123.json", "firebase-debug.log", "firestore-debug.log",
-        "api/.mockery.yaml",
+        "api/.mockery.yaml", "docs/doctor-waivers.json",
     ):
         assert np(path), f"{path} is toolchain scaffolding and must not be a production unit"
 

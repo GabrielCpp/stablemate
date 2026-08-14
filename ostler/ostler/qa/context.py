@@ -1020,6 +1020,10 @@ def _is_non_production_path(path: str) -> bool:
     # Root-scoped on purpose: a nested `agents.yml` is somebody's product file, not ours.
     if len(parts) == 1 and name in {"agents.yml", "qa-stack.yml"}:
         return True
+    # ostler's whole-repo doctor can maintain a root-local waiver ledger while a coder run is
+    # active. The ledger is docs tooling state, not a product symbol a story can ground.
+    if parts == ("docs", "doctor-waivers.json"):
+        return True
     # The same footprint, at any depth: `okf_builder`'s coverage node writes
     # `.source-inventory.json` *into the source root it scanned*, so there is one per code tree
     # and no root-scoping to lean on. The dotted name is unambiguous enough to stand alone.
