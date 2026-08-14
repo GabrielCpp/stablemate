@@ -19,6 +19,8 @@ are they **too few / too coarse** to be implemented and assessed?
 - `{{ epic_dir }}/epic.md` — including its `## Seeds` and `## Stories` (coverage) sections.
 - Each `story.md` under `{{ epic_dir }}/stories/` — its `## Dependencies` section is the
   dependency DAG.
+- The repo's **planning method** — the slicing and sequencing rules the split is held to:
+  {{ find_by_tags("planning") | default("(none installed — hold the split to vertical slices: first story is the thinnest end-to-end journey step, later stories widen it)", true) }}.
 
 ## What stage this is — story bodies are empty by design here
 
@@ -53,7 +55,13 @@ scaffolded sections pass without comment.
    `covers`), **not** the body — a story whose acceptance section is still empty is on schedule, but
    one scoped as "improve the experience" is untestable no matter what gets written into it later.
 4. **Ordering** — dependencies reflect real prerequisites.
-5. **Deferral ownership** — nothing this epic's stories put out of scope is left unowned. The
+5. **Vertical slicing** — the dependency-root story is a walking skeleton: a thin end-to-end
+   journey step in the running system, not a "set up the backend" / "create the data model"
+   layer. Every story answers *"after this is green, what can the actor do that they couldn't
+   before?"* — a story with no answer is a horizontal slice; return `gaps` naming the journey
+   story it should fold into. Flag layer-ordered sequencing (all storage, then all API, then all
+   UI) and dependency edges that exist only because "the layer below comes first".
+6. **Deferral ownership** — nothing this epic's stories put out of scope is left unowned. The
    deterministic gate can only see edges that exist (an orphan seed, a dangling dependency); what it
    cannot see is scope the stories collectively *describe* as somebody else's — "the export flow is
    handled elsewhere", "auth is out of scope here" — with no sibling story and no open backlog item

@@ -60,9 +60,17 @@ stage does that next.
      justify a separate epic.
    - By the final story, the actor must be able to complete the epic journey end to end in the
      running system. A set of green technical stories that leaves no usable journey is incomplete.
-3. **Order with `--depends`.** A story depends on another only when it genuinely needs it
+3. **Slice vertically — the first story is the walking skeleton.** The dependency-root story is
+   the tracer bullet: the thinnest path that lets the epic's actor complete one real journey step
+   end to end in the running system, carrying the unavoidable setup (scaffold, hosting, schema
+   baseline) as ride-along work inside itself. Every later story **widens** a path that already
+   runs — after each story the actor can do something they could not do before. A story that
+   builds a layer for future stories ("the data model", "all the endpoints") with no journey step
+   of its own is a horizontal slice; fold it into the earliest story whose step needs it. The full
+   doctrine is in the planning skill above.
+4. **Order with `--depends`.** A story depends on another only when it genuinely needs it
    first (e.g. a shared shell/navbar before pages that live in it). Keep the graph acyclic.
-4. **Create each story with `ostler` — it allocates the id and scaffolds the files.** Pass a
+5. **Create each story with `ostler` — it allocates the id and scaffolds the files.** Pass a
    kebab `<slug>`; ostler records the `### <slug>` coverage block under `## Stories`, allocates the
    story id, and scaffolds `{{ epic_dir }}/stories/<slug>/story.md` with the blockers written
    into its `## Dependencies` section:
