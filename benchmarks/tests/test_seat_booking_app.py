@@ -389,6 +389,15 @@ def test_a_harness_failure_is_never_scored_as_detection(
     assert replay.classify(row, statuses, {}) == ("inconclusive", because)
 
 
+def test_an_unbilled_round_is_priced_from_tokens_and_marked_as_an_estimate() -> None:
+    """opencode reports a literal `$0` over millions of tokens. Printing `$0.00` there
+    says the round was free and kills the whole column on the mandated backend."""
+    assert replay.money([{"cost_usd": 0.94, "est_cost_usd": 0.71}]) == "$0.94"
+    assert replay.money([{"cost_usd": 0.0, "est_cost_usd": 0.71}]) == "~$0.71"
+    # Neither a bill nor a rate for the model: unpriced, and a zero would be a claim.
+    assert replay.money([{"cost_usd": 0.0, "est_cost_usd": None}]) == "$?"
+
+
 def test_the_clean_control_scores_false_on_any_contradiction() -> None:
     assert replay.classify(None, {"okf:a#b:contract": "covered"}, {"verdict": "stands"})[0] == "clean"
     assert replay.classify(None, {"okf:a#b:contract": "contradicted"}, {})[0] == "false"

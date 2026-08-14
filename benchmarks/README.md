@@ -425,7 +425,7 @@ wrong?** — and that needs an app whose defects are known in advance, which is 
 `defects.yml` and prints both numbers together:
 
 ```
-caught 6/8  missed 2  false 1 | plan-qa 2.1 laps $0.94
+caught 6/8  missed 2  false 1 | plan-qa 2.1 laps ~$0.94
 ```
 
 Detection is scored off machine-readable state, not off reading the QA report: the
@@ -439,6 +439,18 @@ distinctions the verdicts keep:
   alarm.
 - **`caught_by` is recorded, not scored.** Whether a defect surfaces from a failing scenario
   or from the auditor is the plan's choice, and the plan is the thing under measurement.
+- **A repaired defect is a catch, not a miss.** QA does not only observe: it triages a
+  failing observation as a code failure and fixes the product, after which the terminal
+  evidence map is computed over a fixed app and correctly reads `covered`. The seeded file
+  is what tells that apart from a run that never noticed — it was planted by a whole-file
+  overwrite, so a trial ending with it no longer byte-equal to the variant detected the
+  defect. A miss needs all three: a published pass, the obligation covered, *and* the
+  defect still in place.
+
+The money is the harness's own where it reports any, and `groom.prices`' rate card —
+printed `~$2.37` — where it does not. The default backend is `opencode`, which reports a
+literal `$0` over millions of tokens; a headline printing `$0.00` there would say the round
+was free. `$?` means neither exists, i.e. the model has no line in `prices.toml` yet.
 
 ```bash
 replay.py --fixture seat-booking score                 # the whole key, plus one control per story

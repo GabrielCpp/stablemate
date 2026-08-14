@@ -36,7 +36,12 @@ a hand-written app under `benchmarks/apps/` shipping `defects.yml`, an answer ke
 the OKF obligation each seeded defect makes false. A scored round runs a clean control plus
 one trial per defect and prints detection beside the laps:
 
-    caught 6/8  missed 2  false 1 | plan-qa 2.1 laps $0.94
+    caught 6/8  missed 2  false 1 | plan-qa 2.1 laps ~$0.94
+
+The money is `$0.94` when the harness billed it, `~$0.94` when nothing billed and the
+figure comes from `groom.prices`' rate card applied to the recorded tokens, and `$?` when
+neither exists. The default backend is `opencode`, which reports a literal `$0` over
+millions of tokens, so the estimate is what keeps the column alive at all.
 
 What a trial deliberately does NOT do is judge the app. Whether the produced QA plan is
 any *good* is `bench.py score`'s question, and it stays a floor rather than a gradient: a
@@ -693,11 +698,18 @@ def cmd_score(fixture: Fixture, args: argparse.Namespace) -> int:
 
 
 def convergence(trials: list[dict[str, Any]]) -> str:
-    """The cost half of the headline: `| plan-qa 2.1 laps $0.94`, pooled over these trials.
+    """The cost half of the headline: `| plan-qa 2.1 laps ~$0.94`, pooled over these trials.
 
     Detection and convergence belong on one line because either alone is gameable in the
     direction of the other — a flow that refutes everything catches every defect and never
     terminates, and one that approves everything converges in a single lap.
+
+    The money is the harness's own when it reports any, and `groom.prices`' rate card —
+    marked `~` — when it does not. A backend under subscription auth reports a literal
+    `$0` over millions of tokens, which is not a cheap round, it is an unpriced one; a
+    headline printing `$0.00` there says the flow was free and makes the whole column
+    dead on that backend. `est_cost_usd` is the same tokens at published rates, and it is
+    only ever quoted in place of a report that has nothing in it — never summed with one.
     """
     from groom import store  # noqa: PLC0415 - a heavy import only the headline needs
 
@@ -711,8 +723,20 @@ def convergence(trials: list[dict[str, Any]]) -> str:
         return ""
     items = sum(row["work_items"] for row in rows)
     turns = sum(row["turns"] for row in rows)
-    cost = sum(row["cost_usd"] or 0.0 for row in rows)
-    return f" | plan-qa {turns / items:.1f} laps ${cost:.2f}" if items else ""
+    return f" | plan-qa {turns / items:.1f} laps {money(rows)}" if items else ""
+
+
+def money(rows: list[dict[str, Any]]) -> str:
+    """`$0.94`, or `~$0.71` when the estimate is standing in, or `$?` when neither exists.
+
+    `?` rather than `$0.00`: a backend that reports nothing and a model the rate card
+    does not name leave the round genuinely unpriced, and a zero there is a claim.
+    """
+    billed = sum(row["cost_usd"] or 0.0 for row in rows)
+    if billed:
+        return f"${billed:.2f}"
+    estimated = sum(row["est_cost_usd"] or 0.0 for row in rows)
+    return f"~${estimated:.2f}" if estimated else "$?"
 
 
 def score(label: str, trials: list[dict[str, Any]]) -> None:
@@ -779,15 +803,14 @@ def report(label: str) -> None:
     for node, rows in order:
         items = sum(row["work_items"] for row in rows)
         turns = sum(row["turns"] for row in rows)
-        cost = sum(row["cost_usd"] or 0.0 for row in rows)
         mark = BOLD if node in WATCHED else ""
         print(f"  {mark}{node:<30}{RESET if mark else ''} {items:>5} {turns:>5} "
               f"{items / turns:>5.0%} {turns / items:>5.2f} "
-              f"{max(row['max_laps'] for row in rows):>4} {cost:>8.2f}")
+              f"{max(row['max_laps'] for row in rows):>4} {money(rows):>8}")
     total = sum(row["turns"] - row["work_items"] for rows in pooled.values() for row in rows)
-    spend = sum(row["cost_usd"] or 0.0 for rows in pooled.values() for row in rows)
+    every = [row for rows in pooled.values() for row in rows]
     print(f"  {DIM}{'—' * 68}{RESET}")
-    print(f"  {'TOTAL':<30} {'':>5} {'':>5} {'':>6} {'':>5} {'':>4} {spend:>8.2f}"
+    print(f"  {'TOTAL':<30} {'':>5} {'':>5} {'':>6} {'':>5} {'':>4} {money(every):>8}"
           f"   ({total} excess turns)")
 
 
@@ -854,6 +877,11 @@ def main(argv: list[str] | None = None) -> int:
                          help="skip the clean control — cheaper, and the false-alarm count "
                               "then means nothing")
     add_cli_flag(score_p)
+
+    # `main` has always dispatched this and no parser ever accepted it, so the pooled
+    # table could only be read by re-running the trials that produced it.
+    report_p = sub.add_parser("report", help="pooled lap-and-cost table for saved labels")
+    report_p.add_argument("labels", nargs="+", metavar="LABEL")
 
     args = parser.parse_args(argv)
     if args.command == "report":
