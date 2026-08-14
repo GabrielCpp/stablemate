@@ -149,6 +149,12 @@ trip over:
   `qa.dir` — this run's ledger, including a dry run's `--out-dir`. Spelling that directory
   out by hand pins it to the scored ledger even during a dry run, so the rehearsal writes
   into the evidence the scored run is judged on.
+- `qa.vet(screen, name=...)` without `components=` asks the runner to find every documented
+  component on that screen. Use that only after a state that should render the whole screen.
+  For stateful screens, mutually exclusive panels, fixture variants, tab states, loading,
+  empty, or error states, pass `components=["component-id", ...]` for the components that are
+  actually present in that screenshot. Do not turn a required state-specific vet into a
+  whole-screen vet that fails on components the state correctly omits.
 - The heavyweight stack is not the plan's to start. Only per-run `background(...)` daemons are.
 
 Keep `qa-plan.md` in step with what you changed: the AC/obligation-to-scenario map has to
