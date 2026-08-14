@@ -96,8 +96,38 @@ The default: **scaffold → author → fmt → doctor.** Never hand-write the fi
    - tests: `groom/tests/test_render.py::test_changes_groups_diffs_per_repo`
    ```
 
-   `verify:` is a call from ostler's check vocabulary, not a test name — the vocabulary and the
-   reason for the split are in [[ostler]] → "The OKF UI profile".
+   **Three bullets, three grammars. They are not interchangeable, and each is machine-checked.**
+
+   | Bullet    | Holds                                  | Checked by `doctor` against                 |
+   | --------- | -------------------------------------- | ------------------------------------------- |
+   | `code:`   | `` `path::symbol` `` — where it lives   | the file existing *and* the symbol being **declared** there |
+   | `tests:`  | `` `path::test_name` `` — what ran      | the same grounding as `code:`               |
+   | `verify:` | `name(arg=…)` — what was **observed**   | the check vocabulary and that check's signature |
+
+   A test id in `verify:` is the single most common refusal, and it is a category error, not a
+   typo: a test id says which code *ran*, which is what `tests:` is for; `verify:` says what was
+   *seen*, so an assertion can never be weaker than the claim filed under it.
+
+   **Never guess a check's arguments — read them.** `absent` takes `subject`, not `locator`;
+   `emitted` takes `event`, not `subject`. One command answers this, and it needs no book:
+
+   ```bash
+   ostler checks                # every check: signature + the defect it excludes
+   ostler checks visible        # one of them
+   ```
+
+   Run it *before* writing a `verify:` bullet you have not written before, not after doctor
+   refuses one. The vocabulary and the reason for the split are in [[ostler]] → "The OKF UI
+   profile".
+
+   **`code:` is grounded part-wise, and a refactor breaks it.** `missing-code-symbol` means the
+   symbol is not declared at that path *today* — a re-export does not ground a citation, and a
+   constant that was dissolved into a function during your own refactor no longer exists to cite
+   even though the behavior survived. The remedy is to cite what the code now declares, never to
+   waive the finding or restore the old name: read the file, find the symbol that actually owns
+   the behavior, and repoint the bullet. Verify with `rg` before you rewrite the bullet — an
+   explanation of where the symbol "really lives" that you did not check in the source is a
+   guess, and it costs a whole gate lap.
 
    **One provable claim per normative bullet.** Each value of `does:`, `when:`, `returns:`,
    `raises:`, `status:`, `error:`, `auth:`, `persistence:`, `emits:`, `consumes:`,
@@ -116,8 +146,17 @@ The default: **scaffold → author → fmt → doctor.** Never hand-write the fi
    ostler doctor                            # non-zero exit on any error — safe to gate the story on
    ```
    Every doctor error has a mechanical remedy (fmt fixes casing/order; scaffold stubs a missing
-   section/bullet; you fix a broken link). `code:` / `tests:` are **not** link-checked here — they
-   are code refs grounded at a later QA gate; `verify:` *is* checked, against the check vocabulary. See the full rule table in [[ostler]].
+   section/bullet; you fix a broken link). `code:` / `tests:` are not *link*-checked — they are
+   not document links — but they **are** grounded here, against the source tree: a missing file
+   is `dangling-code-ref` and an undeclared symbol is `missing-code-symbol`. `verify:` is checked
+   against the check vocabulary. See the full rule table in [[ostler]].
+
+   To narrow that report to your own nodes, `ostler doctor --json` emits
+   `{org, profile, epics, errors, warnings, findings}`. `findings` is the list — each entry
+   carries `path`, `line`, `code`, `severity` and `suggestion` — while `errors` and `warnings`
+   are **counts**, not lists. Keep stderr out of the pipe (`--json 2>/dev/null`, never `2>&1`):
+   one warning line on stdout makes the document unparseable, and the parse error that follows
+   looks exactly like having picked the wrong key.
 
 ## Updating an existing UI node
 

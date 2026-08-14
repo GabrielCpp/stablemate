@@ -149,6 +149,12 @@ field, a comparison that never inventories keys — and nobody downstream can pu
 only this node knows what the behaviour promised. A test id names the code that ran rather than the
 thing observed, which is why it lives in `tests:`, whose one reader is regression attribution.
 
+A declared check is not automatically an observation: presence without a value, or a `2xx` naming
+neither route nor title, is green the day the defect ships, and a creation read only afterwards
+cannot be told from a subject that was already there. `doctor` reports those as `weak-check` and
+`unstated-precondition`. [[falsifiable-verification]] is the bar and the repair — load it whenever
+you are writing checks in bulk rather than reading one.
+
 **A node whose normative bullets declare no observation is unfinished**, and `doctor` says so:
 `undeclared-obligation`. It is a warning rather than an error only because books written before the
 rule are full of them — treat it as queued work, not as noise. It follows that when you merge into

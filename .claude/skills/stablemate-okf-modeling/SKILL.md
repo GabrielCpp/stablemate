@@ -135,8 +135,8 @@ Two blind spots to hunt deliberately:
 
 Every normative bullet mints a QA obligation, and `verify:` is where the node says **what would be
 observed** if that obligation holds. It is a call from ostler's check vocabulary with typed
-arguments — `http_status`, `json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `visible`,
-`persists`, `emitted`, `conflict_on_stale` — never a test id, never prose:
+arguments — `http_status`, `json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `created`,
+`removed`, `visible`, `persists`, `emitted`, `conflict_on_stale` — never a test id, never prose:
 
 ```markdown
 - does: on conflict the manifest is left byte-identical
@@ -153,6 +153,12 @@ argument you leave off is a defect the QA of every future story is licensed to m
 field, a comparison that never inventories keys — and nobody downstream can put it back, because
 only this node knows what the behaviour promised. A test id names the code that ran rather than the
 thing observed, which is why it lives in `tests:`, whose one reader is regression attribution.
+
+A declared check is not automatically an observation: presence without a value, or a `2xx` naming
+neither route nor title, is green the day the defect ships, and a creation read only afterwards
+cannot be told from a subject that was already there. `doctor` reports those as `weak-check` and
+`unstated-precondition`. [[falsifiable-verification]] is the bar and the repair — load it whenever
+you are writing checks in bulk rather than reading one.
 
 **A node whose normative bullets declare no observation is unfinished**, and `doctor` says so:
 `undeclared-obligation`. It is a warning rather than an error only because books written before the

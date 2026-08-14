@@ -18,6 +18,7 @@ skills:
   - stablemate/groom-telemetry
   - stablemate/ostler-documentation
   - stablemate/okf-modeling
+  - stablemate/falsifiable-verification
   - stablemate/repo-docs
   - stablemate/agent-writing
   - stablemate/diagnosing-bugs

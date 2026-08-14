@@ -119,10 +119,11 @@ touches prose. Scaffold output is already canonical.
 
 Unlike the draft profile's original "warns, never blocks" stance, UI conformance is a **hard
 `doctor` gate**: every rule is `error`-severity, carries a `path:line` location, and has a
-mechanical fix, so a workflow node can gate on `ostler doctor` and always converge. The one
-exceptions are `overlong-normative-bullet` and `compound-normative-bullet` (a warn), whose remedy
-is a judgement about the *source*: only the code can say which clauses are separate requirements,
-and cutting the bullet on punctuation invents obligations nobody can prove.
+mechanical fix, so a workflow node can gate on `ostler doctor` and always converge. The
+exceptions are `overlong-normative-bullet`, `compound-normative-bullet`,
+`undeclared-obligation`, `weak-check` and `unstated-precondition` (warns), whose remedy is a
+judgement about the *source*: only the code can say which clauses are separate requirements, and
+cutting the bullet on punctuation invents obligations nobody can prove.
 
 | Code | Means | Remedy |
 |---|---|---|
@@ -133,6 +134,9 @@ and cutting the bullet on punctuation invents obligations nobody can prove.
 | `overlong-normative-bullet` | one obligation-minting bullet runs past 700 characters of prose | split it into one bullet per provable claim |
 | `compound-normative-bullet` (warn) | one bullet states several observations — enumerated status codes, several error names, semicolon-joined clauses | split it: one bullet is one obligation, proved by one scenario |
 | `unparsed-check` | a `verify:` value is not a call from the check vocabulary (a test id, an unknown name, a bad argument) | rewrite it as `name(arg=…)`; a test citation belongs in `tests:` |
+| `undeclared-obligation` (warn) | the node mints obligations and declares no `verify:` at all — nothing says what observing them looks like | declare a check per observation; the node is the only place that knows what the behaviour promised |
+| `weak-check` (warn) | every check the node declares passes on the defect it is meant to catch — a field asserted by presence with no value, a `2xx` naming neither `path:` nor `title:` | name the value, the route or the title the claim turns on |
+| `unstated-precondition` (warn) | a bullet says the node creates or removes something, and the checks read only the state afterwards — the same state a no-op leaves | declare the change as a change: `created(subject=…)` / `removed(subject=…)` |
 | `unresolved-relation` | a `parent:`/`extends:`/`detail:`/`on:` link doesn't resolve | fix the link target |
 | `dangling-link` | a plain link's target **file** is missing | fix the path or create the target |
 | `missing-anchor` | file exists but `#anchor` heading isn't there | fix the anchor |
@@ -149,8 +153,8 @@ value — so `scaffold`'s stubs clear it. **`code:` / `tests:` bullets are code 
 
 **`verify:` is not one of them.** It declares the *observation* that fulfils the node's
 obligations, as a named check with typed arguments from ostler's vocabulary — `http_status`,
-`json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `visible`, `persists`, `emitted`,
-`conflict_on_stale`:
+`json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `created`, `removed`, `visible`,
+`persists`, `emitted`, `conflict_on_stale`:
 
 ```markdown
 - verify: http_status(409, title="Manifest Conflict")
@@ -163,6 +167,23 @@ scenario that does not invoke the declared call, and the harness implements each
 names the code that ran, not the thing observed — which is why it moved to `tests:`, where its one
 reader is regression failure attribution. On a runbook `step:`, `verify:` keeps its own older
 meaning (how to tell the step ran) and is not a check.
+
+**Declaring nothing is the failure `unparsed-check` cannot see.** `verify:` is required on no type,
+so a node whose `does:`/`raises:`/`states:` bullets carry none is green while every obligation it
+mints reaches QA with nothing to bind: `qa validate` has no declaration to enforce, and the evidence
+map reports no deficit. `undeclared-obligation` is that gap, reported per **node** rather than per
+bullet — `verify:` sits on the node, and pairing one check to one bullet is a judgement nobody has
+written down yet — so what it asks is whether the node declares any observation at all. A node that
+declared and got the call wrong gets `unparsed-check` and not this, for the same reason an overlong
+bullet is not also reported as compound: one defect, one finding, one thing to waive.
+
+**Declaring something is not declaring an observation.** A check that is green whatever the code
+does leaves the obligation exactly as unprovable as no check at all, and `weak-check` /
+`unstated-precondition` are the two shapes of that a linter can see: a value asserted by presence
+alone, a success status naming neither route nor title, a creation or a delete read only after the
+action. The bar itself — name the state of the world in which the check goes red, assert the
+before-state rather than assuming it, discriminate the claim from its nearest plausible defect —
+is the [[falsifiable-verification]] skill.
 
 ### Navigating the UI graph
 

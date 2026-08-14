@@ -210,7 +210,10 @@ remember to ask for, made the default.
   `qa.verify` with that name, those arguments and `covers=[<id>]` has to appear somewhere in
   the plan — not necessarily in one scenario, since a success path and a conflict branch may
   live in two. The refusal quotes the expected call and the defect a weaker assertion would
-  let through.
+  let through. `verify:` sits on the **node**, so every obligation that node mints carries the
+  same declaration — one `qa.verify` whose `covers=` lists all of them satisfies each, and the
+  refusal names them together for exactly that reason. Do not write one near-identical
+  assertion per id.
 - **`input_file` paths must exist and stay out of `qa/`**, which the runner deletes and
   recreates each run.
 

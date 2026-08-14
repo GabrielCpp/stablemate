@@ -169,6 +169,14 @@ written down yet — so what it asks is whether the node declares any observatio
 declared and got the call wrong gets `unparsed-check` and not this, for the same reason an overlong
 bullet is not also reported as compound: one defect, one finding, one thing to waive.
 
+**Declaring something is not declaring an observation.** A check that is green whatever the code
+does leaves the obligation exactly as unprovable as no check at all, and `weak-check` /
+`unstated-precondition` are the two shapes of that a linter can see: a value asserted by presence
+alone, a success status naming neither route nor title, a creation or a delete read only after the
+action. The bar itself — name the state of the world in which the check goes red, assert the
+before-state rather than assuming it, discriminate the claim from its nearest plausible defect —
+is the [[falsifiable-verification]] skill.
+
 ### Navigating the UI graph
 
 `ostler list --type screen|component|interaction|cli|command|server|endpoint|invocation|flow|concept|format`
