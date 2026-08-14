@@ -64,3 +64,32 @@ def test_add_is_idempotent_on_code_and_ref(repo: Path):
     entry = table[("ambiguous-locator", normalize_ref(ref))]
     assert entry["reason"] == "second" and entry["backlog"] == "b2"
     assert len(table) == 1
+
+
+def test_a_warn_level_finding_is_waivable_too(repo: Path):
+    """The register is okf-builder's only exit from a warn, so it has to reach one.
+
+    Nothing about the exit code changes — it counted errors before and after. What changes is
+    the `waived` flag on a finding that was never an error: the convergence gate drains every
+    finding that does not carry one, so an obligation on prose nobody will run would otherwise
+    be re-queued every round until the stall bound failed the run, with no diffable way to say
+    "accepted". Restricting the waiver to errors left that class with no exit at all.
+    """
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n- returns: the published revision\n")
+
+    def undeclared() -> list:
+        return [f for f in doctor.run(load(repo)).findings if f.code == "undeclared-obligation"]
+
+    standing = undeclared()
+    assert standing and all(f.severity == "warn" and not f.waived for f in standing)
+
+    waivers.add(load(repo), standing[0].code, standing[0].ref,
+                "legacy surface, documented but never exercised", "backfill-legacy-obligations")
+
+    waived = undeclared()
+    assert len(waived) == len(standing)          # still reported, NOT dropped
+    assert waived[0].waived and waived[0].severity == "warn"
+    assert not waived[0].fixable
+    assert "backfill-legacy-obligations" in waived[0].message

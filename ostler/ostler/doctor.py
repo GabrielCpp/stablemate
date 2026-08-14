@@ -111,19 +111,24 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
 
 
 def _apply_waivers(graph: Graph, findings: list[Finding]) -> None:
-    """Downgrade every error finding that carries an accepted-defect waiver from error to warn.
+    """Mark every finding that carries an accepted-defect waiver: warn, waived, not fixable.
 
     A waiver never removes the finding — it stays in the report at ``warn`` with its reason and the
-    backlog id tracking the real fix, so ``doctor --json`` still shows it while the gate (which
-    counts only ``error``) stops treating it as a blocker. See ostler/waivers.py. Imported locally to
-    keep the module import graph acyclic, matching ``_check_locators``' local ``locators`` import.
+    backlog id tracking the real fix, so ``doctor --json`` still shows it while the gate stops
+    treating it as a blocker. See ostler/waivers.py. Imported locally to keep the module import graph
+    acyclic, matching ``_check_locators``' local ``locators`` import.
+
+    **A warn is waivable too, and that is not cosmetic.** The exit code counts errors, so waiving a
+    warning changes nothing there — but okf-builder's convergence gate now drains every finding that
+    is not ``waived``, at either severity, and the register is the only way out of it. Restricting
+    this to errors would leave a whole class of finding (an obligation on prose nobody will ever run)
+    with no recorded, diffable way to be accepted: the drain would re-queue it every round until the
+    stall bound failed the run. The downgrade is then a no-op and the ``waived`` flag is the point.
     """
     table = waivers_mod.load(graph)
     if not table:
         return
     for fd in findings:
-        if fd.severity != "error":
-            continue
         entry = table.get((fd.code, normalize_ref(fd.ref)))
         if entry is None:
             continue
