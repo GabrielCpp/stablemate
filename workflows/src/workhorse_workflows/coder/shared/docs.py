@@ -20,6 +20,7 @@ from typing import Any
 import yaml
 from git.exc import GitError
 from ostler import Ostler, path as okf_path
+from ostler.model import Graph
 from ostler import refs as refs_mod
 from workhorse_workflows.kit import find_docs_root, load_json
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -157,7 +158,61 @@ def _affected_doc_nodes(packet: dict[str, Any], author_nodes: list[str]) -> set[
     return {node for node in nodes if node}
 
 
-def _finding_affects_nodes(okf: Ostler, finding: dict[str, Any], affected: set[str]) -> bool:
+def story_touched_lines(
+    root: Path, paths: set[str], logger: logging.Logger
+) -> dict[str, set[int] | None]:
+    """Which lines of each doc file this story's own edits landed on.
+
+    The story's doc work is what stands between `HEAD` and the worktree, the same contract
+    `snapshot_worktree_state` documents. `None` for a path means *undecidable* — git could
+    not be read, or the file is untracked and therefore new in its entirety — and every
+    consumer here reads `None` as "charge the story for all of it".
+    """
+    unknown: dict[str, set[int] | None] = {path: None for path in paths}
+    if not paths:
+        return {}
+    try:
+        repo = open_repo(root)
+        base = Path(str(repo.working_tree_dir)).resolve()
+        rels = {(root / path).resolve().relative_to(base).as_posix(): path for path in paths}
+        untracked = set(repo.untracked_files)
+        tracked = sorted(rel for rel in rels if rel not in untracked)
+        diff = repo.git.diff("-U0", "HEAD", "--", *tracked) if tracked else ""
+    except (GitError, OSError, TypeError, ValueError, RuntimeError) as exc:
+        logger.info("could not read this story's doc diff at %s (%s)", root, exc)
+        return unknown
+
+    touched: dict[str, set[int] | None] = {
+        path: (None if rel in untracked else set()) for rel, path in rels.items()
+    }
+    current: set[int] | None = None
+    for raw in diff.splitlines():
+        if raw.startswith("+++ b/"):
+            current = None
+            if (path := rels.get(raw[6:])) is not None:
+                current = touched.setdefault(path, set())
+            continue
+        if not raw.startswith("@@ ") or current is None:
+            continue
+        # `@@ -a,b +c,d @@` — only the post-image range matters, since a finding is reported
+        # against the file as it stands now. A pure deletion has `d == 0`; it moved no line
+        # the doctor can be looking at, so it contributes nothing.
+        after = raw.split(" ")[2]
+        start, _, count = after.lstrip("+").partition(",")
+        try:
+            first, length = int(start), int(count or 1)
+        except ValueError:
+            return unknown
+        current.update(range(first, first + length))
+    return touched
+
+
+def _finding_affects_nodes(
+    graph: Graph,
+    finding: dict[str, Any],
+    affected: set[str],
+    touched: dict[str, set[int] | None] | None = None,
+) -> bool:
     """Does this doctor finding land on a node this story is responsible for?
 
     What keeps the gate from failing a story for pre-existing errors elsewhere in the book.
@@ -165,34 +220,52 @@ def _finding_affects_nodes(okf: Ostler, finding: dict[str, Any], affected: set[s
     the innermost UI node that starts at or above it, and then up its parent chain — because
     a finding inside a child node is a finding against every node that contains it.
 
-    Undecidable cases resolve to `True`. This gate is fail-closed: a finding it cannot place
-    is a finding it does not get to dismiss.
+    A *file* named as affected used to absorb every finding in it, which is how a story that
+    edited four bullets near the top of a long document was charged with a `missing-placement`
+    on a dialog 250 lines below that it had never read. So a bare file grants ownership only
+    of the anchors this story's own edits actually reached: `touched` carries the lines it
+    moved, and an anchor is this story's when one of them falls inside its span. Naming an
+    anchor outright still owns it whatever the diff says — the author's word is the stronger
+    claim, and the packet's own nodes come in the same way.
+
+    Undecidable cases resolve to `True`, including a `touched` this function was not given.
+    This gate is fail-closed: a finding it cannot place is a finding it does not get to
+    dismiss.
     """
     path = str(finding.get("path", ""))
     candidates = {node for node in affected if node.partition("#")[0] == path}
     if not candidates:
         return False
-    if path in candidates:
-        return True
     line = int(finding.get("line") or 0)
     if not line:
         return True
     try:
-        nodes = [
-            node
-            for node in okf.graph.ui_nodes
-            if node.path.relative_to(okf.graph.root).as_posix() == path and node.line <= line
-        ]
+        in_file = sorted(
+            (
+                node
+                for node in graph.ui_nodes
+                if node.path.relative_to(graph.root).as_posix() == path
+            ),
+            key=lambda node: node.line,
+        )
     except (OSError, ValueError, RuntimeError):
         return True
-    if not nodes:
+    starts = [node for node in in_file if node.line <= line]
+    if not starts:
         return True
-    owner = max(nodes, key=lambda node: node.line)
-    while owner is not None:
-        if owner.id in candidates:
+    owner = starts[-1]
+    walk: Any = owner
+    while walk is not None:
+        if walk.id in candidates:
             return True
-        owner = okf.graph.find_ui_node(owner.parent) if owner.parent else None
-    return False
+        walk = graph.find_ui_node(walk.parent) if walk.parent else None
+    if path not in candidates:
+        return False
+    moved = (touched or {}).get(path, None)
+    if moved is None:
+        return True
+    end = next((node.line for node in in_file if node.line > owner.line), None)
+    return any(owner.line <= at and (end is None or at < end) for at in moved)
 
 
 @blueprint.node
@@ -337,7 +410,9 @@ def verify_story_documentation(
        ownership is not coverage, and this is the check the whole gate exists for. It
        reports the ungrounded **references**, since those are what it tests and what the
        author must write back verbatim;
-    4. `ostler doctor` reports no errors on any node this story affected.
+    4. `ostler doctor` reports no errors on any node this story affected — the anchors it
+       named, and in a file it named bare, the anchors its own edits reached. See
+       `_finding_affects_nodes` for why that last clause is not a loosening.
 
     `preexisting` is `snapshot_worktree_state`'s reading from before the story's first dev
     turn. Paths in it that still hold the same bytes were somebody else's uncommitted work
@@ -406,6 +481,9 @@ def verify_story_documentation(
         problems.append(f"ostler doctor could not run: {exc}")
         failures.append("S:doctor-unavailable")
     affected = _affected_doc_nodes(packet, nodes)
+    touched = story_touched_lines(
+        docs_root.resolve(), {node for node in affected if "#" not in node}, logger
+    )
     # `okf` is None only when its construction raised, and then `report` is empty and the
     # comprehension never reaches the call — the guard below says so at the line itself.
     doctor_errors = [
@@ -415,7 +493,7 @@ def verify_story_documentation(
         and finding.get("severity") == "error"
         and not (context_mode == "semantic" and finding.get("code") in SEMANTIC_SUPPRESSED)
         and okf is not None
-        and _finding_affects_nodes(okf, finding, affected)
+        and _finding_affects_nodes(okf.graph, finding, affected, touched)
     ]
     if doctor_errors:
         # `suggestion` carries the expected form — the literal bullet the checker would
