@@ -237,6 +237,12 @@ __marimo__/
 docs/plans/*
 !docs/plans/.gitkeep
 
+
+
+progress.md
+.opencode
+docs/specs
+
 .agents/runs/
 .agents/worktrees/
 .agents/workflows/
@@ -244,8 +250,3 @@ docs/plans/*
 .agents/local.compose.yaml
 .agents/agents-context.json
 .agents/agents-context.*.json
-
-
-progress.md
-.opencode
-docs/specs
