@@ -94,6 +94,11 @@ ALLOWED: dict[str, str] = {
         "tier 2 — runs one scenario per subprocess in its own group, so a scenario that "
         "wedges is killed as a tree and cannot leave a browser or a server behind. Same "
         "lifecycle as session.py above, on the executing side of it.",
+    "ostler/ostler/qa/sandbox.py":
+        "tier 3 — the sandbox drives Linux containers, so its /tmp paths name locations "
+        "*inside* the image (the tmpfs home, the X socket dir) whatever the host is, and "
+        "getuid/getgid map the invoking user into `docker run --user` so bind-mounted "
+        "artifacts stay deletable — a mapping only the Linux docker daemon needs.",
 }
 
 
