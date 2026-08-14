@@ -37,6 +37,7 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder.docs.flow import Docs
+from workhorse_workflows.coder.docs.flow import _prompt_note
 from workhorse_workflows.coder.shared.docs import (
     CONTEXT_FILE,
     _doctor_errors_note,
@@ -751,6 +752,14 @@ def test_repeated_doctor_refusals_are_compacted_for_the_agent_brief() -> None:
     assert "8 more doctor error(s) omitted" in notes, notes
     assert ":19 [unparsed-check]" not in notes, notes
     assert len(notes) < 12000, notes
+
+
+def test_checkpointed_repair_notes_are_compacted_for_the_agent_brief() -> None:
+    """A resumed run may already carry the old oversized gate notes in its checkpoint."""
+    notes = _prompt_note("x" * 20000)
+
+    assert len(notes) < 12100, notes
+    assert "note truncated for the agent prompt" in notes, notes
 
 
 def test_a_deletion_needs_no_code_bullet(

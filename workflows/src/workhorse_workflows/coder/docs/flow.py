@@ -77,6 +77,16 @@ from workhorse_workflows.kit.telemetry import counter_labels, verdict_labels
 #: it is standing in for the accountable party, and cutting it off mid-decision buys a
 #: block back.
 UNBOUNDED = float("inf")
+MAX_PROMPT_NOTE_CHARS = 12000
+
+
+def _prompt_note(note: str) -> str:
+    if len(note) <= MAX_PROMPT_NOTE_CHARS:
+        return note
+    return (
+        note[:MAX_PROMPT_NOTE_CHARS].rstrip()
+        + "\n\n... note truncated for the agent prompt; rerun the gate after repairing this batch."
+    )
 
 
 class Docs(Workflow):
@@ -325,8 +335,8 @@ class Docs(Workflow):
             "epic_path": self._epic_path,
             "context_mode": classification.mode,
             "context_notes": classification.notes,
-            "gate_notes": gate_notes,
-            "review_notes": review_notes,
+            "gate_notes": _prompt_note(gate_notes),
+            "review_notes": _prompt_note(review_notes),
             "obligations": list(obligations),
         }
 
