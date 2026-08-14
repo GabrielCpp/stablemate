@@ -146,6 +146,13 @@ The default: **scaffold → author → fmt → doctor.** Never hand-write the fi
    is `dangling-code-ref` and an undeclared symbol is `missing-code-symbol`. `verify:` is checked
    against the check vocabulary. See the full rule table in [[ostler]].
 
+   To narrow that report to your own nodes, `ostler doctor --json` emits
+   `{org, profile, epics, errors, warnings, findings}`. `findings` is the list — each entry
+   carries `path`, `line`, `code`, `severity` and `suggestion` — while `errors` and `warnings`
+   are **counts**, not lists. Keep stderr out of the pipe (`--json 2>/dev/null`, never `2>&1`):
+   one warning line on stdout makes the document unparseable, and the parse error that follows
+   looks exactly like having picked the wrong key.
+
 ## Updating an existing UI node
 
 The node already exists → **just edit its body/bullets in place**, then `ostler fmt` + `ostler
