@@ -28,11 +28,11 @@ route.
 - [x] A body with no integer `version` answers `400 Version Required`.
 - [x] A body with no non-blank `name` answers `400 Name Required`.
 - [x] Confirming a seat that was never held answers `409 Seat Not Held`.
-- [x] A confirmed seat is still `booked`, at the version the confirmation returned, after the service
-  is restarted — stated against the seat map because that is where the documented API shows it. The
-  map's seat body carries no `name`, so a criterion phrased "under the same name" would ask QA to
-  prove durability through a field the product never publishes: unfalsifiable, and a QA plan is right
-  to refuse it.
+- [x] A confirmed seat is still `booked`, at the version the confirmation returned, under the same
+  name, after the service is restarted — stated against the seat map because that is where the
+  documented API shows it. The map lists a `booking` on a booked seat for exactly this reason: a
+  durability criterion naming the booking would otherwise be asking QA to prove a claim through a
+  field the product never publishes.
 
 ## 4. QA
 

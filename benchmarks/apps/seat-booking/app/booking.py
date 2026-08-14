@@ -48,6 +48,11 @@ def seat_map(store: Store) -> list[dict[str, Any]]:
     The whole map rather than the free ones: a client that only ever hears about free seats
     cannot render a seat map, and a scenario counting rows could not tell an empty theatre
     from a sold-out one.
+
+    A booked seat carries the booking it is holding. Without it the map publishes no field
+    that distinguishes one booking from another, and the story's durability criterion —
+    still booked, *under the same name*, after a restart — would be asking QA to prove a
+    claim through a field the API never exposes.
     """
     ledger = store.read()
     return [
@@ -57,6 +62,7 @@ def seat_map(store: Store) -> list[dict[str, Any]]:
             "number": int(seat[1:]),
             "state": record["state"],
             "version": record["version"],
+            **({"booking": record["booking"]} if record["booking"] else {}),
         }
         for seat, record in sorted(ledger["seats"].items())
     ]
@@ -99,13 +105,20 @@ def confirm(store: Store, seat: str, *, version: int, name: str) -> dict[str, An
     `version` is the compare-and-swap token. Anyone who held the seat, lost it, and comes
     back with the number they were given is refused — which is the one observation that
     separates this from an unconditional write.
+
+    The version is compared *before* the state, and the order is load-bearing rather than
+    incidental: the double-spend this exists to refuse is a caller whose hold has already
+    been taken and re-booked by someone else, so the seat is no longer `held` and a
+    state-first check would answer `Seat Not Held` for what is precisely a stale hold. A
+    caller quoting the seat's current version still falls through to the state check, so
+    the never-held case keeps its own refusal.
     """
     ledger = store.read()
     record = _seat(ledger, seat)
-    if record["state"] != HELD:
-        raise Conflict(SEAT_NOT_HELD)
     if record["version"] != version:
         raise Conflict(STALE_HOLD)
+    if record["state"] != HELD:
+        raise Conflict(SEAT_NOT_HELD)
     booking_id = uuid.uuid4().hex
     record["state"] = BOOKED
     record["version"] += 1

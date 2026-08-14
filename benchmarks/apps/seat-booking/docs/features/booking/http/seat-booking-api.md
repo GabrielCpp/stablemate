@@ -67,7 +67,10 @@ confirming a hold has to quote the number the caller was given.
 - response:
   - status: `200`
   - media: `application/json`
-  - body: `{"seats": [{"id": str, "row": str, "number": int, "state": str, "version": int}, …]}`
+  - body: `{"seats": [{"id": str, "row": str, "number": int, "state": str, "version": int, "booking"?: {"id": str, "name": str}}, …]}`
+  - notes: `booking` is present only on a `booked` seat, and is the map's only field that tells one
+    booking from another — the field
+    [post-seat-booking](#post-seat-booking)'s durability claim is observed through.
 
 ### post-seat-hold
 
@@ -136,14 +139,17 @@ confirming a hold has to quote the number the caller was given.
 - verify: conflict_on_stale(subject="seat A1", token="version")
 - verify: http_status(409, title="Stale Hold", path="/api/seats/A1/booking")
 - persistence: a confirmed booking is written through the ledger before the response is sent, and is
-  still there after the service restarts.
+  still listed on the seat — `booked`, at the version the confirmation returned, under the same name
+  — after the service restarts.
 - verify: persists(subject="seat A1 booking")
+- verify: json_path("seats[0].booking.name", absent=false)
 - raises: `400 Version Required` when the body carries no integer `version`.
 - verify: http_status(400, title="Version Required", path="/api/seats/A1/booking")
 - raises: `400 Name Required` when the body carries no non-blank `name`.
 - verify: http_status(400, title="Name Required", path="/api/seats/A1/booking")
-- raises: `409 Seat Not Held` when the seat was never held, so a booking cannot be conjured out of a
-  free seat.
+- raises: `409 Seat Not Held` when a request quoting the seat's current version names a seat that was
+  never held, so a booking cannot be conjured out of a free seat. Quoting any other version is the
+  stale-hold refusal above, not this one — the version is compared first.
 - verify: http_status(409, title="Seat Not Held", path="/api/seats/C4/booking")
 - route: `POST /api/seats/{seat}/booking`
 - parent: [Seat booking API](#seat-booking-api)

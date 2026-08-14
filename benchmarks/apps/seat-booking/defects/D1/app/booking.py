@@ -48,6 +48,11 @@ def seat_map(store: Store) -> list[dict[str, Any]]:
     The whole map rather than the free ones: a client that only ever hears about free seats
     cannot render a seat map, and a scenario counting rows could not tell an empty theatre
     from a sold-out one.
+
+    A booked seat carries the booking it is holding. Without it the map publishes no field
+    that distinguishes one booking from another, and the story's durability criterion —
+    still booked, *under the same name*, after a restart — would be asking QA to prove a
+    claim through a field the API never exposes.
     """
     ledger = store.read()
     return [
@@ -57,6 +62,7 @@ def seat_map(store: Store) -> list[dict[str, Any]]:
             "number": int(seat[1:]),
             "state": record["state"],
             "version": record["version"],
+            **({"booking": record["booking"]} if record["booking"] else {}),
         }
         for seat, record in sorted(ledger["seats"].items())
     ]
