@@ -39,6 +39,7 @@ from workhorse.records import parse_checkpoint
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.shared.docs import (
     CONTEXT_FILE,
+    _doctor_errors_note,
     classify_documentation_context,
     verify_story_documentation,
 )
@@ -724,6 +725,32 @@ def test_a_doctor_refusal_carries_the_form_the_checker_would_accept(
     assert gate.status == "invalid", gate
     assert "malformed-placement" in gate.notes, gate.notes
     assert "expected form: - placement: width 60-100%, x 0-20%" in gate.notes, gate.notes
+
+
+def test_repeated_doctor_refusals_are_compacted_for_the_agent_brief() -> None:
+    """A malformed pattern can mint enough findings to exceed exec argv limits.
+
+    The gate still records every stable failure id, but the prose prompt only needs the first
+    batch plus the shared repair shape. The run that forced this had 124 unparsed `verify:`
+    findings and crashed before the repair agent could start.
+    """
+    findings = [
+        {
+            "path": "docs/features/groom/gui/screens/s.md",
+            "line": index,
+            "code": "unparsed-check",
+            "message": "`verify:` names a test id instead of an observation" * 20,
+            "suggestion": "- verify: visible(locator=\"button\")",
+        }
+        for index in range(20)
+    ]
+
+    notes = _doctor_errors_note(findings)
+
+    assert "unparsed-check" in notes, notes
+    assert "8 more doctor error(s) omitted" in notes, notes
+    assert ":19 [unparsed-check]" not in notes, notes
+    assert len(notes) < 12000, notes
 
 
 def test_a_deletion_needs_no_code_bullet(

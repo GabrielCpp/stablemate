@@ -54,6 +54,11 @@ DIRECT_KINDS = {"changed-code", "file-owner", "surface-owner"}
 #: resolve a code reference against, so a dangling one is the mode's normal state.
 SEMANTIC_SUPPRESSED = {"dangling-code-ref", "missing-code-symbol"}
 
+# Keep agent briefs below OS argv/env limits when one malformed pattern creates dozens of
+# doctor findings. The full machine-readable identities still travel in `failures`.
+MAX_DOCTOR_ERRORS_IN_NOTES = 12
+MAX_DOCTOR_ERROR_MESSAGE_CHARS = 400
+
 
 def _grounded_paths(packet: dict[str, Any]) -> tuple[set[str], set[str]]:
     """The packet's direct-grounding evidence: exact `path::symbol` refs, and owned files."""
@@ -266,6 +271,30 @@ def _finding_affects_nodes(
         return True
     end = next((node.line for node in in_file if node.line > owner.line), None)
     return any(owner.line <= at and (end is None or at < end) for at in moved)
+
+
+def _doctor_error_note(item: dict[str, Any]) -> str:
+    message = str(item.get("message", ""))
+    if len(message) > MAX_DOCTOR_ERROR_MESSAGE_CHARS:
+        message = message[:MAX_DOCTOR_ERROR_MESSAGE_CHARS].rstrip() + "..."
+    suggestion = item.get("suggestion")
+    return (
+        f"{item.get('path') or item.get('ref') or '<graph>'}:"
+        f"{item.get('line') or 0} [{item.get('code', '?')}] {message}"
+        + (f" — expected form: {suggestion}" if suggestion else "")
+    )
+
+
+def _doctor_errors_note(doctor_errors: list[dict[str, Any]]) -> str:
+    shown = doctor_errors[:MAX_DOCTOR_ERRORS_IN_NOTES]
+    notes = [_doctor_error_note(item) for item in shown]
+    remaining = len(doctor_errors) - len(shown)
+    if remaining > 0:
+        notes.append(
+            f"... {remaining} more doctor error(s) omitted from this prompt; repair the "
+            "same error shape in the cited files, then rerun the gate for the next batch."
+        )
+    return "ostler doctor errors: " + " | ".join(notes)
 
 
 @blueprint.node
@@ -502,15 +531,7 @@ def verify_story_documentation(
         # was widened to escape: a `placement:` bullet was refused twice for prose the
         # message never said was disallowed, while the checker's own
         # `- placement: width 60-100%, x 0-20%` sat unrendered in the finding.
-        problems.append(
-            "ostler doctor errors: "
-            + " | ".join(
-                f"{item.get('path') or item.get('ref') or '<graph>'}:"
-                f"{item.get('line') or 0} [{item.get('code', '?')}] {item.get('message', '')}"
-                + (f" — expected form: {suggestion}" if (suggestion := item.get("suggestion")) else "")
-                for item in doctor_errors
-            )
-        )
+        problems.append(_doctor_errors_note(doctor_errors))
         # The message is excluded from the identity on purpose: a doctor error whose prose
         # was reworded is the same defect, and a pass that only changed the wording did not
         # buy anything.
