@@ -21,6 +21,7 @@ from farrier.launcher import (
     LAUNCHER_CONTEXT_MANIFEST,
     LAUNCHER_ROOT_MAKEFILE,
 )
+from farrier.layers import available_names
 from farrier.naming import repo_prefix
 from farrier.renderer import Renderer
 from farrier.selection_errors import (
@@ -178,7 +179,18 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
         [("skills", all_skills, include_skills), ("prompts", all_prompts, include_prompts)]
     )
     if not skills and not prompts:
-        raise SystemExit("Selected packs did not match any skills or prompts")
+        packs = available_names("packs", suffix=".yml")
+        catalog = (
+            "Available packs:\n" + "\n".join(f"  - {name}" for name in packs)
+            if packs
+            else "No packs found in the configured layers."
+        )
+        if not include_skills and not include_prompts:
+            raise SystemExit(
+                "The config selects nothing: `packs:` is empty and no skills or "
+                f"prompts are named directly. {catalog}"
+            )
+        raise SystemExit(f"Selected packs did not match any skills or prompts. {catalog}")
 
     renderer = Renderer(
         repo, prefix, repo_config, collect_template_values(config), skills, prompts

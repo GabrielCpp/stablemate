@@ -127,6 +127,12 @@ def _run_install(args: argparse.Namespace) -> int:
     set_layers(resolve_library_dir(args.library))
     repo = args.repo.resolve()
     config_path = args.config.resolve() if args.config else repo / "agents.yml"
+    if not args.config and not config_path.exists():
+        raise SystemExit(
+            f"Missing config: {config_path}\n"
+            "Run `farrier init` to write a starter agents.yml, then list the "
+            "packs to install under `packs:`."
+        )
     config = read_yaml(config_path)
     outputs = render_expected(config, repo)
     if args.check:
