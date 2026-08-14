@@ -386,6 +386,14 @@ rewritten artifact with no memory of how often it has already objected. Read it 
 `excess$`: the money spent on every lap after the first, priced per turn rather
 than pro-rated so a loop with cheap rework turns is not overcharged.
 
+`excess$` is what the harness billed, so a backend under subscription auth — every
+opencode turn reports a literal `$0` — leaves it empty and sorts its worst loop to
+the bottom as the cheap one. The note under the table says so, and quotes the same
+excess at the rate card in `groom.prices` beside the count of turns whose model that
+table names. Tokens are reported even when money is not, which is what makes such a
+loop rankable at all; a model with no rates is listed by `groom prices --reprice` and
+wants a line in `prices.toml`.
+
 `at-max` carries no verdict on purpose. A loop bounded by a `MAX_*` budget is
 censored — work items that would have run longer stop at exactly the cap — so a
 pile there is *suggestive* of a budget being exhausted rather than a gate being

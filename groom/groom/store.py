@@ -23,6 +23,7 @@ import sqlite3
 import tempfile
 import time
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -674,6 +675,22 @@ _LOOP_VERDICTS = ((0.8, "converged"), (0.5, "loose"), (0.3, "churning"), (0.0, "
 MIN_LOOP_WORK_ITEMS = 3
 
 
+@dataclass(frozen=True, slots=True)
+class Lap:
+    """One turn of a loop, as the three numbers ranking it needs.
+
+    `cost` is what the harness billed and `est` is what `groom.prices` says the tokens
+    were worth; `suspect_zero` marks the turn that reported exactly $0 while emitting
+    output. They stay three fields rather than one resolved number because collapsing
+    them here would decide, inside the store, whether a report is quoting a bill or a
+    rate card — a distinction the caller has to be able to label.
+    """
+
+    cost: float | None
+    suspect_zero: bool
+    est: float | None
+
+
 def loop_convergence(
     run: str = "", workflow: str = "", min_work_items: int = MIN_LOOP_WORK_ITEMS
 ) -> list[dict[str, Any]]:
@@ -722,6 +739,14 @@ def loop_convergence(
     loop in such a run to the bottom. `excess_turns` breaks the tie, and the CLI says
     out loud when the money is only partly observed.
 
+    `est_cost_usd` / `excess_est_cost_usd` are the same two sums over `groom.prices`'
+    rate card instead of the harness's report, across the `est_turns` of them whose
+    model the table names. They are reported *beside* the billed figures and never
+    added to them, exactly as in `node_costs`: one is what a vendor charged, the other
+    is what the tokens are worth, and a loop under subscription auth has only the
+    second. That is what makes a `$0` backend rankable at all — but only once its model
+    has rates, so a report quoting the estimate must quote `est_turns` with it.
+
     Nodes with fewer than `min_work_items` items are dropped: see
     :data:`MIN_LOOP_WORK_ITEMS`.
     """
@@ -737,16 +762,16 @@ def loop_convergence(
         "SELECT node, run_id,"  # noqa: S608 — clauses are literals; every value is bound
         " json_extract(attrs_json, '$.work_id') AS work_id,"
         f" {_cost} AS cost_usd, {_cost} = 0 AND COALESCE({_output}, 0) > 0 AS suspect_zero,"
-        " start_ts"
+        " est_cost_usd, start_ts"
         f" FROM spans WHERE {' AND '.join(clauses)} ORDER BY start_ts",
         params,
     ).fetchall()
 
-    # node -> (run_id, work_id) -> [(cost, suspect_zero) of each lap, in order]
-    laps: dict[str, dict[tuple[str, str], list[tuple[float | None, bool]]]] = {}
+    # node -> (run_id, work_id) -> [(cost, suspect_zero, est_cost) of each lap, in order]
+    laps: dict[str, dict[tuple[str, str], list[Lap]]] = {}
     for row in rows:
         item = (row["run_id"], str(row["work_id"]))
-        lap = (row["cost_usd"], bool(row["suspect_zero"]))
+        lap = Lap(row["cost_usd"], bool(row["suspect_zero"]), row["est_cost_usd"])
         laps.setdefault(row["node"], {}).setdefault(item, []).append(lap)
 
     report = [_loop_row(node, items) for node, items in laps.items()]
@@ -755,23 +780,24 @@ def loop_convergence(
     return report
 
 
-def _loop_row(
-    node: str, items: dict[tuple[str, str], list[tuple[float | None, bool]]]
-) -> dict[str, Any]:
+def _loop_row(node: str, items: dict[tuple[str, str], list[Lap]]) -> dict[str, Any]:
     counts = sorted(len(laps) for laps in items.values())
     turns, work_items = sum(counts), len(counts)
     exit_rate = work_items / turns
     peak = counts[-1]
     every = [lap for laps in items.values() for lap in laps]
-    priced = [cost for cost, _ in every if cost is not None]
+    priced = [lap.cost for lap in every if lap.cost is not None]
+    estimated = [lap.est for lap in every if lap.est is not None]
     # The laps after the first, by their own cost — not the total pro-rated.
-    excess = [cost for laps in items.values() for cost, _ in laps[1:] if cost is not None]
+    excess = [lap.cost for laps in items.values() for lap in laps[1:] if lap.cost is not None]
+    excess_est = [lap.est for laps in items.values() for lap in laps[1:] if lap.est is not None]
     return {
         "node": node,
         "work_items": work_items,
         "turns": turns,
         "priced_turns": len(priced),
-        "zero_cost_turns": sum(1 for _, suspect in every if suspect),
+        "est_turns": len(estimated),
+        "zero_cost_turns": sum(1 for lap in every if lap.suspect_zero),
         "excess_turns": turns - work_items,
         "exit_rate": exit_rate,
         "mean_laps": turns / work_items,
@@ -780,7 +806,9 @@ def _loop_row(
         "at_max": sum(1 for count in counts if count == peak),
         "share_ge3": sum(1 for count in counts if count >= 3) / work_items,
         "cost_usd": sum(priced) if priced else None,
+        "est_cost_usd": sum(estimated) if estimated else None,
         "excess_cost_usd": sum(excess) if excess else None,
+        "excess_est_cost_usd": sum(excess_est) if excess_est else None,
         "verdict": next(name for floor, name in _LOOP_VERDICTS if exit_rate >= floor),
     }
 

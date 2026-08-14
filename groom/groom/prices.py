@@ -99,6 +99,24 @@ DEFAULT_PRICES: dict[str, Price] = {
     "claude-sonnet-4-5": _rates(3.00, 15.00),
     "claude-sonnet-4-0": _rates(3.00, 15.00),
     "claude-haiku-4-5": _rates(1.00, 5.00),
+    # The OpenAI models this repo's own opencode runs use. Explicit cache rates rather
+    # than `_rates`' multipliers, because these are published directly and do not follow
+    # Anthropic's ratios — a cache write is ~1.25x input here, not 2x, and deriving it
+    # would over-charge every cached turn on the backend that needs the estimate most.
+    #
+    # These are the base-tier rates. Both models publish a higher tier above a 272k
+    # context, which this table does not model: the store keeps one rate per model, and a
+    # per-turn context length is not among the counts an estimate is computed from. So an
+    # opencode turn that ran long is under-estimated, in the same direction and for the
+    # same reason as the cache-TTL gap described above.
+    # gpt-5.5 publishes no cache-write rate at all; the providers that quote one quote it
+    # at 1x input, which is what this takes. Under-quoting it would be the one direction
+    # that flatters the estimate, so the flat rate is the conservative reading.
+    "gpt-5.5": Price(input=5.00, output=30.00, cache_read=0.50, cache_write=5.00),
+    "gpt-5.6": Price(input=5.00, output=30.00, cache_read=0.50, cache_write=6.25),
+    "gpt-5.6-sol": Price(input=5.00, output=30.00, cache_read=0.50, cache_write=6.25),
+    "gpt-5.6-terra": Price(input=2.00, output=12.00, cache_read=0.20, cache_write=2.50),
+    "gpt-5.6-luna": Price(input=0.20, output=1.20, cache_read=0.02, cache_write=0.25),
 }
 
 _table: dict[str, Price] | None = None

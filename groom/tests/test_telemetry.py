@@ -455,6 +455,28 @@ def test_loop_convergence_counts_the_turns_whose_cost_cannot_be_trusted():
         assert row["zero_cost_turns"] == 1
 
 
+def test_loop_convergence_reports_the_rate_card_beside_the_bill():
+    """The recovery for a `$0` backend: the tokens are reported even when the money is
+    not, so the estimate is what makes such a loop rankable at all. It is carried in its
+    own fields — a report has to be able to say which of the two it is quoting."""
+    with _TelemetryEnv():
+        priced = {
+            "name": "agent_turn", "node": "plan-qa", "span_id": "41" * 8,
+            "labels": {"work_id": "story-a", "model": "claude-sonnet-5"},
+            "numbers": {"total_cost_usd": 0.0, "usage.output_tokens": 1_000_000},
+        }
+        lap_two = {
+            "name": "agent_turn", "node": "plan-qa", "span_id": "42" * 8,
+            "labels": {"work_id": "story-a", "model": "claude-sonnet-5"},
+            "numbers": {"total_cost_usd": 0.0, "usage.output_tokens": 2_000_000},
+        }
+        store.insert_spans(otlp.parse_traces(_trace_request([priced, lap_two])))
+        row = store.loop_convergence(min_work_items=1)[0]
+        # $15 per million output tokens, and the second lap is the excess.
+        assert (row["cost_usd"], row["est_cost_usd"]) == (0.0, 45.0)
+        assert (row["est_turns"], row["excess_est_cost_usd"]) == (2, 30.0)
+
+
 def test_loop_convergence_keys_work_items_by_run_so_slugs_may_repeat():
     """Every coder run has a `story-a`. Keying laps on the slug alone would merge one
     story's single pass in three runs into a single three-lap item, and report a loop

@@ -396,6 +396,22 @@ def _format_loops(rows: list[dict]) -> str:
             " Rank those"
         )
         lines.append("      nodes by excess turns, not by money.")
+        est = sum(row["excess_est_cost_usd"] or 0.0 for row in rows)
+        est_turns = sum(row["est_turns"] for row in rows)
+        if est_turns:
+            # The recovery from the note above, not a second opinion on it: the tokens
+            # are reported even when the money is not, so a rate card can rank what a
+            # $0 report cannot. Qualified by its own coverage, since a table that names
+            # half the models would otherwise read as the whole bill.
+            lines.append(
+                f"      at rate-card prices that excess is ~${est:.2f}"
+                f" over the {est_turns} of {turns} turns"
+            )
+            lines.append("      whose model has rates (`groom reprice` after editing"
+                         " prices.toml).")
+        else:
+            lines.append("      `groom reprice` prices them from tokens once"
+                         " prices.toml names their model.")
         lines.append("")
     lines.append(
         "exit = how often this gate accepts, per lap. at-max counts the work items that"
