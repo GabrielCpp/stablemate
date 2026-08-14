@@ -21,7 +21,9 @@ Each task must declare:
 - observable acceptance criteria;
 - task ids it depends on;
 - every repository-relative file or directory it may change (never `.`, `..`, `.git`, or the plan
-  snapshot); make shared-file ownership explicit and order overlapping owners;
+  snapshot); make shared-file ownership explicit and order overlapping owners. Implementation runs
+  tests-first, so the paths must also include the test files or directories the task's acceptance
+  criteria need — a tests-only turn can create files solely inside this ownership;
 - deterministic verification commands as argv arrays, with repository-relative cwd and timeout;
 - one Conventional Commit type and tracked top-level package scope where applicable. The workflow
   builds a neutral public subject; no title, objective, task id, or plan quotation enters it.

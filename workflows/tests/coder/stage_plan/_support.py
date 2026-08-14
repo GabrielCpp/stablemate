@@ -139,6 +139,9 @@ class Agent:
             reply = self.phases[self._heading(data["plan_text"])]
         elif node.id == "review-plan-implementation":
             reply = {"status": "approved", "summary": "phase reviewed"}
+        elif node.id == "implement-plan-task-tests":
+            task_id = data["task"]["id"]
+            reply = {"status": "done", "notes": f"tests for {task_id}"}
         else:
             task_id = data["task"]["id"]
             if task_id != self.skip_edit_for:

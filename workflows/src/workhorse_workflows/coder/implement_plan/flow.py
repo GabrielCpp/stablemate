@@ -1,6 +1,7 @@
 """A checkpoint-authoritative plan-to-commits worklist."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, ClassVar
 
 from workhorse.pyflow import Continue, Done, Workflow, WorkflowFailed
@@ -34,6 +35,11 @@ from workhorse_workflows.coder.implement_plan.schemas import (
     PlanTask,
     PreparedPlan,
 )
+from workhorse_workflows.coder.shared.red_gate import (
+    REGRESSION_ONLY_MARKER,
+    arm_red_gate,
+    run_red_gate,
+)
 from workhorse_workflows.kit.telemetry import counter_labels
 
 
@@ -43,8 +49,9 @@ class ImplementPlan(Workflow):
     plan_path: str
 
     injects: ClassVar[tuple[str, ...]] = ("repo_dir",)
-    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("repair",)
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("repair", "tests_rework")
     MAX_REPAIRS: ClassVar[int] = 2
+    MAX_TESTS_REWORKS: ClassVar[int] = 2
     MAX_REVIEW_FIX_CYCLES: ClassVar[int] = 3
 
     def setup(self) -> PlanRunContext:
@@ -136,12 +143,145 @@ class ImplementPlan(Workflow):
         completed_commits: list[str],
         expected_head: str,
     ) -> Continue:
+        """Route the packet into the TDD split, or one classic turn for regression-only plans.
+
+        The marker is read from the checkpointed plan snapshot, never from the file on
+        disk — a plan edited mid-run must not flip the route between packets.
+        """
+        if REGRESSION_ONLY_MARKER in self.ctx.plan_text.lower():
+            result = self._implement_classic(task, expected_head)
+            return Continue(
+                result,
+                self.verify,
+                plan=plan,
+                index=index,
+                task=task,
+                completed_commits=completed_commits,
+                expected_head=expected_head,
+            )
+        arm = self.call(arm_red_gate, self.ctx.repo_root)
+        return Continue(
+            arm,
+            self.implement_tests,
+            plan=plan,
+            index=index,
+            task=task,
+            completed_commits=completed_commits,
+            expected_head=expected_head,
+        )
+
+    def implement_tests(
+        self,
+        plan: PreparedPlan,
+        index: int,
+        task: PlanTask,
+        completed_commits: list[str],
+        expected_head: str,
+        tests_rework: int = 0,
+        gate_feedback: str = "",
+    ) -> Continue:
+        """One tests-only turn for this packet; the red gate judges its diff next.
+
+        Ownership is checked without require_changes: an empty diff is the gate's
+        `no_tests` verdict to loop back as bounded rework, not a hard failure here.
+        """
+        arm = self.output(arm_red_gate)
+        args = self._task_args(task)
+        args["test_command"] = arm.test_command
+        args["gate_feedback"] = gate_feedback
         result = self.agent(
-            "prompts/implement-plan-task.md",
+            "prompts/implement-plan-task-tests.md",
             returns=ImplementationResult,
             power="high",
             cwd=self.ctx.repo_root,
-            args=self._task_args(task),
+            args=args,
+        )
+        self.call(check_agent_turn, self.ctx, task, expected_head, False)
+        self._require_agent_done(result, task)
+        return Continue(
+            result,
+            self.red_gate,
+            plan=plan,
+            index=index,
+            task=task,
+            completed_commits=completed_commits,
+            expected_head=expected_head,
+            tests_rework=tests_rework,
+        )
+
+    def red_gate(
+        self,
+        plan: PreparedPlan,
+        index: int,
+        task: PlanTask,
+        completed_commits: list[str],
+        expected_head: str,
+        tests_rework: int = 0,
+    ) -> Continue:
+        """Deterministically judge the tests turn: pure test diff, meaningfully red.
+
+        A rejected outcome loops back to the tests turn with the verdict, bounded by
+        MAX_TESTS_REWORKS; past the bound the gate fails open, because the review's
+        AC-coverage audit is the binding check and a stalled packet helps nobody.
+        """
+        arm = self.output(arm_red_gate)
+        outcome = self.call(
+            run_red_gate,
+            self.ctx.repo_root,
+            task.id,
+            str(Path(self.ctx.worklist_path).parent),
+            arm.baseline,
+            arm.test_command,
+            arm.signatures,
+        )
+        rejected = outcome.status in {"all_green", "impure", "no_tests"}
+        if rejected and tests_rework < self.MAX_TESTS_REWORKS:
+            return Continue(
+                outcome,
+                self.implement_tests,
+                plan=plan,
+                index=index,
+                task=task,
+                completed_commits=completed_commits,
+                expected_head=expected_head,
+                tests_rework=tests_rework + 1,
+                gate_feedback=f"[{outcome.status}] {outcome.reason}",
+            )
+        if rejected:
+            self.logger.warning(
+                "red gate still %s after %d rework(s) — proceeding fail-open",
+                outcome.status,
+                tests_rework,
+            )
+        return Continue(
+            outcome,
+            self.implement_code,
+            plan=plan,
+            index=index,
+            task=task,
+            completed_commits=completed_commits,
+            expected_head=expected_head,
+        )
+
+    def implement_code(
+        self,
+        plan: PreparedPlan,
+        index: int,
+        task: PlanTask,
+        completed_commits: list[str],
+        expected_head: str,
+    ) -> Continue:
+        """Make the packet's red suite pass; the gate's verdict rides along as context."""
+        outcome = self.output(run_red_gate)
+        args = self._task_args(task)
+        args["red_status"] = outcome.status
+        args["red_log_path"] = outcome.log_path
+        result = self.agent(
+            "prompts/implement-plan-task-code.md",
+            returns=ImplementationResult,
+            power="high",
+            cwd=self.ctx.repo_root,
+            args=args,
         )
         self.call(check_agent_turn, self.ctx, task, expected_head)
         self._require_agent_done(result, task)
@@ -154,6 +294,18 @@ class ImplementPlan(Workflow):
             completed_commits=completed_commits,
             expected_head=expected_head,
         )
+
+    def _implement_classic(self, task: PlanTask, expected_head: str) -> ImplementationResult:
+        result = self.agent(
+            "prompts/implement-plan-task.md",
+            returns=ImplementationResult,
+            power="high",
+            cwd=self.ctx.repo_root,
+            args=self._task_args(task),
+        )
+        self.call(check_agent_turn, self.ctx, task, expected_head)
+        self._require_agent_done(result, task)
+        return result
 
     def verify(
         self,

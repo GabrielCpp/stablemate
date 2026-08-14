@@ -50,8 +50,10 @@ def test_dependent_packets_become_separate_verified_remote_commits(
     assert result.status == "complete"
     assert agent.calls == [
         "decompose-implementation-plan",
-        "implement-plan-task",
-        "implement-plan-task",
+        "implement-plan-task-tests",
+        "implement-plan-task-code",
+        "implement-plan-task-tests",
+        "implement-plan-task-code",
         "review-plan-implementation",
     ]
     subjects = git(repo, "log", "--format=%s", "--reverse").stdout.splitlines()
@@ -178,6 +180,147 @@ def test_blocked_agent_result_stops_before_verification(
         drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
 
 
+def _commit_fixture_files(
+    repo: Path,
+    git: Callable[..., subprocess.CompletedProcess],
+    files: dict[str, str],
+) -> None:
+    """Land gate fixtures (agents.yml, test scripts) in the base commit and at origin."""
+    for relative, content in files.items():
+        target = repo / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    git(repo, "add", *files)
+    git(repo, "commit", "-qm", "chore: add red-gate fixtures")
+    git(repo, "push", "-q", "origin", "main")
+
+
+def test_red_tests_turn_passes_the_gate_once(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    git: Callable[..., subprocess.CompletedProcess],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    plan = tmp_path / "plan.md"
+    plan.write_text("# TDD packet\n", encoding="utf-8")
+    _commit_fixture_files(
+        repo,
+        git,
+        {
+            "agents.yml": f"test:\n  {repo.name}: sh tests.sh\n",
+            "tests.sh": "test -f src/value.txt\n",
+        },
+    )
+    task = _task("value", "src/value.txt")
+    task["paths"].append("tests/test_value.py")
+    agent = _Agent(
+        repo,
+        _decomposition(task),
+        test_edits={"value": {"tests/test_value.py": "def test_value(): assert False\n"}},
+        edits={"value": {"src/value.txt": "value\n"}},
+    )
+    run_env = env()
+
+    result = drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), run_env, agent)
+
+    assert result.status == "complete"
+    assert agent.count("implement-plan-task-tests") == 1
+    assert agent.count("implement-plan-task-code") == 1
+    code_args = agent.args_for("implement-plan-task-code")[0]
+    assert code_args["red_status"] == "red"
+    log = run_env.writer.run_dir / "implement-plan" / "red-gate-value.log"
+    assert log.is_file()
+    assert code_args["red_log_path"] == str(log)
+
+
+def test_all_green_tests_turn_gets_bounded_rework_then_fails_open(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    git: Callable[..., subprocess.CompletedProcess],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Green suite\n", encoding="utf-8")
+    _commit_fixture_files(repo, git, {"agents.yml": f'test:\n  {repo.name}: "true"\n'})
+    task = _task("value", "src/value.txt")
+    task["paths"].append("tests/test_value.py")
+    agent = _Agent(
+        repo,
+        _decomposition(task),
+        test_edits={"value": {"tests/test_value.py": "def test_value(): assert True\n"}},
+        edits={"value": {"src/value.txt": "value\n"}},
+    )
+
+    result = drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
+
+    assert result.status == "complete"
+    assert agent.count("implement-plan-task-tests") == 1 + ImplementPlan.MAX_TESTS_REWORKS
+    assert agent.count("implement-plan-task-code") == 1
+    feedback = [args["gate_feedback"] for args in agent.args_for("implement-plan-task-tests")]
+    assert feedback[0] == ""
+    assert all(entry.startswith("[all_green]") for entry in feedback[1:])
+    assert agent.args_for("implement-plan-task-code")[0]["red_status"] == "all_green"
+
+
+def test_impure_tests_turn_is_reworked_even_without_a_test_command(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Purity\n", encoding="utf-8")
+    task = _task("value", "src/value.txt")
+    task["paths"].extend(["tests/test_value.py", "src/stray.txt"])
+    agent = _Agent(
+        repo,
+        _decomposition(task),
+        test_edits={
+            "value": {
+                "tests/test_value.py": "def test_value(): assert False\n",
+                "src/stray.txt": "not a test\n",
+            }
+        },
+        edits={"value": {"src/value.txt": "value\n"}},
+    )
+
+    result = drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
+
+    assert result.status == "complete"
+    assert agent.count("implement-plan-task-tests") == 1 + ImplementPlan.MAX_TESTS_REWORKS
+    feedback = [args["gate_feedback"] for args in agent.args_for("implement-plan-task-tests")]
+    assert "impure" in feedback[1]
+    assert "src/stray.txt" in feedback[1]
+
+
+def test_regression_only_plan_keeps_the_single_implementation_turn(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    plan = tmp_path / "plan.md"
+    plan.write_text(
+        "# Behavior-preserving refactor\n\nTest Scenarios: regression-only\n",
+        encoding="utf-8",
+    )
+    task = _task("value", "src/value.txt")
+    agent = _Agent(repo, _decomposition(task), edits={"value": {"src/value.txt": "value\n"}})
+
+    result = drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
+
+    assert result.status == "complete"
+    assert agent.count("implement-plan-task") == 1
+    assert agent.count("implement-plan-task-tests") == 0
+    assert agent.count("implement-plan-task-code") == 0
+
+
 def test_review_issues_become_fixed_worklist_before_completion(
     tmp_path: Path,
     repo: Path,
@@ -210,7 +353,8 @@ def test_review_issues_become_fixed_worklist_before_completion(
     assert result.review_passes == 2
     assert agent.calls == [
         "decompose-implementation-plan",
-        "implement-plan-task",
+        "implement-plan-task-tests",
+        "implement-plan-task-code",
         "review-plan-implementation",
         "fix-plan-review-issue",
         "review-plan-implementation",
