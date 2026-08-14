@@ -171,24 +171,10 @@ You're handed intent, not code. Turn it into the graph, then leave `code:`/`test
 `verify:` is the opposite: it is the *most* writable bullet on the node at design time, because the
 observation that would prove a behaviour is knowable before the code producing it exists.
 
-1. **Interview the description for the six layers above.** From the brief, list: what surface(s)?
-   what parts does the user see? what can they do (each verb → a behavior)? what nouns recur (each →
-   a concept)? what end-to-end journeys does it enable (each → a flow)? Ask the human to fill gaps
-   in *that* structure — you're eliciting nodes, not prose.
-2. **Scaffold breadth-first, concepts and shared components first** so downstream links resolve:
-   ```bash
-   ostler scaffold concept diff   --service groom --title "Diff"
-   ostler scaffold screen  changes-view --service groom --title "Changes view"
-   ostler scaffold interaction click-file-opens-diff --in docs/features/groom/gui/screens/changes-view.md
-   ```
-3. **Author the prose and structured bullets** from the description — the *why*, the states, the
-   guards (`when:`), the effects (`does:`). Set relation bullets (`on:`/`parent:`/`extends:`) to real
-   links between the nodes you just scaffolded. Leave `code:`/`tests:` as scaffolded stubs (or omit),
-   and declare a `verify:` check for every normative bullet you write.
-4. **Converge:** `ostler fmt …` then `ostler doctor`. Because `code:`/`tests:` aren't link-checked,
-   an intent-only graph is fully green before a line of code is written — that's the point: the graph
-   is the spec the coder later grounds. `verify:` *is* checked, but against the vocabulary rather
-   than against the repo, which is exactly why it is writable this early.
+The loop — interview the description for the six layers, scaffold breadth-first, author the
+bullets with `verify:` on every normative one, converge — is step-by-step in
+[references/from-description.md](references/from-description.md). Read it when you are in
+this playbook; the summary above is not the procedure.
 
 > This is the greenfield pass: emit the OKF-UI skeleton at design time so the coder inherits a
 > target, not a blank page. The **author** workflow never runs it — author reads the book to ground
@@ -201,34 +187,10 @@ observation that would prove a behaviour is knowable before the code producing i
 You're recovering the graph an app *already* implements. Read the code, then ground each node's
 `code:`/`tests:` to the real `path::symbol` (here you *do* fill them — the code exists).
 
-1. **Discover surfaces from entry points.**
-   - **GUI** — templates/render functions and their top-level containers → `screen`s; repeated
-     rendered fragments (rows, panels, badges) → `component`s.
-   - **CLI** — the argparse/click/typer tree: the app → a `cli`; each subparser → a `command`.
-     Document each flag and positional as its **own nested bullet** under `flags:` / `args:` —
-     what it does, the context it applies in, and a link to the `concept`/`format` it drives (a
-     `--cli` flag → the backend abstraction; a `--params` flag → the format's `vars` field). A
-     bare token list is not enough.
-   - **HTTP/WS** — the route table (decorators, a router include, a `create_app`) → a `server`; each
-     route/WS channel → an `endpoint`.
-2. **Recover behaviors from handlers.** Each event handler / click wiring → an `interaction`; each
-   request handler, command body, or WS message case → an `invocation`. Read the handler to fill
-   `does:` (the state/dom/net/emit effects it actually performs) and `when:` (its guards).
-3. **Recover concepts from the type/domain layer.** Domain models, core nouns in names and docstrings
-   → domain `concept`s. Key functions/classes/modules the surfaces depend on → **code** `concept`s
-   (`code: path::symbol`). An ABC with a registry/factory and concrete subclasses → the base +
-   `extends:` fan + a `refs:` from the selector (profile §7.11 — the `--cli` backend pattern).
-4. **Ground every node to code as you go.**
-   - `code:` = the `path::symbol` that renders/handles it (a template region is a `file` ref).
-   - `tests:` = the existing test that proves it (`tests/…::test_…`). If none exists, omit rather
-     than invent — a missing `tests:` is fine; a wrong one is a lie.
-   - `verify:` = the observation, in the check vocabulary above — and reading the code is what tells
-     you which one and with which arguments. The handler that returns 409 on a stale write declares
-     `http_status(409, …)`; the one that writes through a store before answering declares
-     `persists(subject=…)`. Omitting it is not neutral: it is the one bullet nobody downstream can
-     supply for you.
-5. **Scaffold, author, converge** — same loop as Playbook A, but the prose is *as-built* (describe
-   what the code does, not what you wish it did) and `code:`/`tests:` are real.
+The loop — discover surfaces from entry points, recover behaviors from handlers and concepts
+from the type layer, ground `code:`/`tests:`/`verify:` as you go, converge — is step-by-step
+in [references/from-code.md](references/from-code.md). Read it when you are in this playbook;
+the summary above is not the procedure.
 
 > This is what the **coder** workflow does after implementing a story, and what dogfooding a service
 > (workhorse/groom/ostler/farrier) does: walk the code, land the subgraph, prove it green.
