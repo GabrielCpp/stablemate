@@ -543,7 +543,13 @@ class Docs(Workflow):
         )
         if result.status == "approved":
             self.logger.info("documentation approved for %s", self.ctx.story_slug)
-            return Done(DocsResult(status="passed", notes=result.notes))
+            return Done(
+                DocsResult(
+                    status="passed",
+                    notes=result.notes,
+                    authored_nodes=list(authored_nodes),
+                )
+            )
         if result.status == "blocked":
             self.logger.info(
                 "documentation review blocked on %s: %s", self.ctx.story_slug, result.notes

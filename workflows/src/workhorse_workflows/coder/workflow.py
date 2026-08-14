@@ -54,6 +54,7 @@ on loop 2's list, not resolved silently here.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, ClassVar
 
 from workhorse.cli import console_script
@@ -117,11 +118,38 @@ from workhorse_workflows.coder.shared.story import (
     resolve_workspace_dirs,
 )
 from workhorse_workflows.coder.shared.schemas.dev import DispatchEntry, ImplResult, PlanResult
+from workhorse_workflows.coder.shared.schemas.docs import DocsResult
 from workhorse_workflows.coder.shared.schemas.pr import MergeFixResult
 from workhorse_workflows.coder.shared.schemas.qa import QaResult
 from workhorse_workflows.coder.shared.schemas.queue import ReplanResult
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
 from workhorse_workflows.coder.stage_plan import StagePlan
+
+
+_QA_RETRY_ARTIFACTS = {
+    "qa_plan.py",
+    "qa-plan.md",
+    "qa-plan.yml",
+    "qa-plan.yaml",
+    "visual-verdicts.json",
+}
+
+
+def _docs_changed_qa_retry_artifact(result: DocsResult, spec_dir: str) -> bool:
+    spec = Path(spec_dir).as_posix().rstrip("/")
+    specs = {spec}
+    marker = "/docs/specs/"
+    if marker in spec:
+        specs.add(f"docs/specs/{spec.split(marker, 1)[1]}")
+    for node in result.authored_nodes:
+        path = node.split("#", 1)[0]
+        if Path(path).name not in _QA_RETRY_ARTIFACTS:
+            continue
+        if path.startswith("docs/specs/"):
+            return True
+        if any(path.startswith(f"{candidate}/") for candidate in specs):
+            return True
+    return False
 
 
 class Coder(Workflow):
@@ -508,6 +536,13 @@ class Coder(Workflow):
             operator_mode=self.operator_mode,
         )
         self._require_documented(result, "failed story")
+        if _docs_changed_qa_retry_artifact(result, self._story.spec_dir):
+            self.logger.info(
+                "documentation changed QA retry artifacts for %s — rerunning QA",
+                self._story.story_slug,
+                extra={"activity": True},
+            )
+            return Continue(result, self.qa, epic=epic, zero_diff=zero_diff)
         self.call(
             flag_qa_failure,
             self._queue_epic(epic),

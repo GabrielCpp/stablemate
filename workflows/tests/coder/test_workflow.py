@@ -237,7 +237,9 @@ class _Sub:
         dev_status: str = "ready",
         docs_status: str = "passed",
         docs_notes: str = "",
+        docs_authored_nodes: list[str] | None = None,
         qa_status: str = "passed",
+        qa_statuses: list[str] | None = None,
         qa_spent: str = "",
         qa_docs_recheck_required: bool = False,
         ci_status: str = "passed",
@@ -248,7 +250,9 @@ class _Sub:
         self.dev_status = dev_status
         self.docs_status = docs_status
         self.docs_notes = docs_notes
+        self.docs_authored_nodes = docs_authored_nodes or []
         self.qa_status = qa_status
+        self.qa_statuses = qa_statuses or []
         self.qa_spent = qa_spent
         self.qa_docs_recheck_required = qa_docs_recheck_required
         self.ci_status = ci_status
@@ -301,12 +305,17 @@ class _Sub:
         return ReviewResult(status="approved", notes="")
 
     def _docs(self, child: _StubFlow) -> DocsResult:
-        return DocsResult(status=self.docs_status, notes=self.docs_notes)
+        return DocsResult(
+            status=self.docs_status,
+            notes=self.docs_notes,
+            authored_nodes=self.docs_authored_nodes,
+        )
 
     def _qa(self, child: _StubFlow) -> QaFlowResult:
+        status = self.qa_statuses.pop(0) if self.qa_statuses else self.qa_status
         return QaFlowResult(
-            status=self.qa_status,
-            qa=QaResult(status=self.qa_status),
+            status=status,
+            qa=QaResult(status=status),
             qa_rework=1,
             triage_scope=child.triage_scope_count,
             operator_notes="",
@@ -1185,6 +1194,34 @@ def test_the_give_up_marker_names_the_budget_qa_actually_spent(
     marker = next(s for s in _subjects(repo) if "QA FAILED" in s)
     assert "after 4 QA-plan repair attempts" in marker, marker
     assert "after 0 attempts" not in marker, marker
+
+
+def test_a_give_up_docs_recheck_that_changes_the_qa_plan_retries_qa(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A docs recheck can repair the executable QA contract, not merely describe failure.
+
+    The give-up path runs Docs before stamping a skipped story. If that Docs pass amends the
+    story-owned QA plan, the next honest step is a fresh QA run against the new contract. Filing
+    the old exhausted result skips work that has just become runnable.
+    """
+    repo = epic()
+    sub = _Sub(
+        repo,
+        docs_authored_nodes=["docs/specs/STORY-1/qa_plan.py#compare_article_inventory"],
+        qa_statuses=["exhausted", "passed"],
+        qa_spent="QA-plan repair",
+    ).install(monkeypatch)
+    run_env = env()
+
+    drive_flow(Coder(), run_env, _Agent())
+
+    assert sub.calls.count("Qa") == 2, sub.calls
+    assert not (run_env.writer.run_dir / SKIP_FILE).exists()
+    assert all("QA FAILED" not in subject for subject in _subjects(repo))
 
 
 def test_a_give_up_with_no_named_budget_falls_back_to_the_rework_count(

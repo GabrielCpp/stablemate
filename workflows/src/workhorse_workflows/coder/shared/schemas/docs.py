@@ -249,6 +249,7 @@ class DocsResult(CoderResult):
 
     status: str = "failed"
     notes: str = ""
+    authored_nodes: list[str] = []
 
 
 __all__ = [
