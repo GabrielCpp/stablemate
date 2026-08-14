@@ -37,12 +37,22 @@ what the test is guarding, not what it calls.
 untested itself — the assertion may not reach the code, the fixture may not exercise the path,
 the mock may be absorbing the call.
 
+- **Building new behavior → write the test first, full stop.** The test exists before the
+  code it exercises, and it fails *because the behavior is missing* — not because an import
+  is broken or a fixture won't load. Then write the code that turns it green. Test-after
+  always degenerates into asserting what the code already does, which is §9's blind spot
+  built in from day one.
 - Fixing a bug → write the test **first**, watch it fail *for the reported reason*, then fix.
 - Adding a test to existing code → break the code deliberately, confirm red, restore.
 - Neither is possible → assert on a hand-built value that is wrong on purpose once, read the
   failure message, then correct it.
 
 Red-first is not ceremony. It is the only evidence that the test is wired to the thing.
+Keep the red run's output — a captured failing run is the proof a reviewer can check;
+"I saw it fail" is not. A harness that separates the test-writing pass from the
+implementing pass (as the coder workflow's red gate does) is this rule made structural:
+the tests land alone, are *observed* red by deterministic tooling, and only then does the
+implementation begin.
 
 ## 3. Derive fixtures from the producer; never restate them
 
