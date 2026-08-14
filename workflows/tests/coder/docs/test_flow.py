@@ -36,6 +36,7 @@ from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
+import workhorse_workflows.coder.docs.flow as docs_flow
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.docs.flow import _prompt_note
 from workhorse_workflows.coder.shared.docs import (
@@ -44,6 +45,8 @@ from workhorse_workflows.coder.shared.docs import (
     classify_documentation_context,
     verify_story_documentation,
 )
+from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.shared.schemas.docs import DocumentationGate
 from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
 
@@ -1387,6 +1390,39 @@ def test_the_grounding_lane_carries_its_own_verdict_into_the_failure(
         drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
     assert "4 grounding passes (stalled)" in str(excinfo.value), excinfo.value
+
+
+def test_a_grounding_gate_that_is_still_reducing_gets_another_batch(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A large deterministic doctor worklist may need more than four productive batches."""
+    outstanding = [
+        ["E:a", "E:b", "E:c", "E:d"],
+        ["E:a", "E:b", "E:c"],
+        ["E:a", "E:b"],
+        ["E:a"],
+        [],
+    ]
+
+    @blueprint.node
+    def _gate(*args: Any, **kwargs: Any) -> DocumentationGate:
+        failures = outstanding.pop(0)
+        return DocumentationGate(
+            status="invalid" if failures else "passed",
+            notes="synthetic doctor findings",
+            failures=failures,
+        )
+
+    monkeypatch.setattr(docs_flow, "verify_story_documentation", _gate)
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), _Agent())
+
+    assert result.status == "passed", result
+    assert not outstanding
 
 
 # --------------------------------------------------------------------------- resume

@@ -473,7 +473,7 @@ class Docs(Workflow):
                 authored_nodes=authored_nodes,
                 consulted=consulted,
             )
-        if rework >= self.MAX_REWORKS:
+        if rework >= self.MAX_REWORKS and progress.gate_progress_verdict != "reduced":
             raise WorkflowFailed(
                 f"documentation did not converge in {self.MAX_REWORKS + 1} grounding "
                 f"passes ({progress.gate_progress_verdict}): {gate.notes or review_notes}"
