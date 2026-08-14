@@ -232,7 +232,11 @@ a static count of the `qa.check`/`qa.require` calls in its body, and again at ru
   documented band becomes an ordinary failed assertion quoting the measured share, so the fix
   loop repairs it inside the story. The screen argument is a **literal** path to a document
   this story's OKF packet names; a computed path is rejected, because a path assembled at run
-  time cannot be checked before the run.
+  time cannot be checked before the run. Without `components=`, `qa.vet` checks every
+  documented component on that screen; use that only for a state that should render all of
+  them. For fixture variants, tab states, loading/empty/error states, or any other mutually
+  exclusive state, pass `components=["component-id", ...]` naming only the components actually
+  present in that screenshot.
 - **Screenshot every documented state a browser scenario reaches.** `qa.screenshot(name)` also
   writes a `.layout.json` beside the image — `ostler vet`'s DOM scan of that instant — and the
   audit reads it to judge whether the page is laid out at all. Without it the audit has only
