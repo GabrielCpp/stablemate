@@ -4,19 +4,16 @@ agent: agent
 
 # okf-builder — coverage re-scan (the exhaustiveness backstop)
 
-The worklist drained, `ostler doctor` is clean, and **the machine has already computed that this
-book is incomplete** — either a source unit nothing cites, or a node minting obligations it declares
-no `verify:` for. That is why you are running. Your job is to turn the two computed gaps into
-drainable work, plus find the gaps arithmetic cannot see (orphans, stubs, journeys, the runbook).
+The worklist drained, `ostler doctor` is clean — **every** non-waived finding, warns included — and
+the machine has already computed that this book is still incomplete: there is a source unit nothing
+cites. That is why you are running. Your job is to turn the computed gap into drainable work, plus
+find the gaps arithmetic cannot see (orphans, stubs, journeys, the runbook).
 
-**You do not decide whether the book is complete.** That verdict is two joins, and the machine
-computes both — coverage is arithmetic, not a self-report. The first joins the source inventory
-against the book's `code:` citations: is every unit documented. The second joins each node's
-normative bullets against its `verify:` declarations: does the book say what observing them looks
-like, or does an obligation reach QA with nothing to bind. What is genuinely yours is the
-*ambiguity* in each: whether a computed miss is a real gap or a unit already folded into a
-documented contract, and whether a node with no declaration is one you can declare for. Adjudicate
-those, record each with its reason, and queue everything else.
+**You do not decide whether the book is complete.** That verdict is a join, and the machine computes
+it — coverage is arithmetic, not a self-report. It joins the source inventory against the book's
+`code:` citations: is every unit documented. What is genuinely yours is the *ambiguity* in it —
+whether a computed miss is a real gap or a unit already folded into a documented contract.
+Adjudicate those, record each with its reason, and queue everything else.
 
 Load the method: {{ skill_load_ref("okf-modeling", skill_dir() + "/okf-modeling/SKILL.md") }}
 
@@ -41,8 +38,6 @@ inventory), `--orphans` lists unreachable nodes, `--bullet 'code=<symbol>'` chec
 - **the computed coverage verdict:** `{{ workhorse_var('coverage_summary') }}`
 - **the computed missing list** (your input for check 1): `{{ workhorse_var('missing_path') }}`
   — `{{ workhorse_var('missing_count') }}` units
-- **the computed undeclared list** (your input for check 2): `{{ workhorse_var('undeclared_path') }}`
-  — `{{ workhorse_var('undeclared_count') }}` nodes
 - coverage errors (a blind instrument, if non-empty): `{{ workhorse_var('coverage_error') }}`
 - waivers file (the one file you may write): `{{ workhorse_var('waivers_path') }}`
 
@@ -83,43 +78,33 @@ book is not an empty gap.
    - **Utility / library modules never reached from an entry point** are still surfaces of the
      service — queue them. (e.g. a `scriptutil`/`sdk` helper module imported by *other* tools.)
    Map each: class/module → `concept`, data shape → `format`, command/route/control → `element`.
-2. **The computed undeclared list — the second gap, same discipline.** Read `undeclared_path`.
-   Every row is a node whose `does:`/`raises:`/`states:`/`when:` bullets mint QA obligations and
-   which declares **no** `verify:` at all, so a QA plan claiming those obligations can assert
-   anything and still pass. This is not a style finding: it is the one bullet nobody downstream can
-   supply for the node, because only the node knows what the behaviour promised. For each row queue
-   a `requeue: true` item against that node whose `context` names the ref, the reason, and the
-   observation to declare — the fix is a `verify:` bullet per observation, in the check vocabulary
-   (`http_status`, `json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `created`,
-   `removed`, `visible`, `persists`, `emitted`, `conflict_on_stale`), never prose and never a test id (a test citation is
-   `tests:`). Batch by file or by node group, the same way as check 1.
 
-   Adjudicate, don't rubber-stamp: a row you cannot declare for — the behaviour is genuinely
-   unobservable from outside, or the bullet is descriptive rather than normative and should be
-   reworded — is queued with *that* as its context, so the drain turn rewords the bullet instead of
-   inventing a check. Do not waive it in `waivers_path`; that file is the coverage join's, and a
-   waiver there does not silence this finding.
-3. **Missing from surfaces** — re-enumerate each surface's elements (every command / endpoint /
+   You are not asked about undeclared observations here. A node whose bullets mint obligations and
+   declares no `verify:` is `undeclared-obligation`, and the convergence checkpoint you passed to
+   reach this turn drains **every** non-waived doctor finding, warns included — so by construction
+   there are none standing. Queue nothing for it; if you see one, the checkpoint is the bug.
+
+2. **Missing from surfaces** — re-enumerate each surface's elements (every command / endpoint /
    control) and diff against `ostler list`. Any un-documented surface or element → its item.
    A web GUI's server node is incomplete unless it has top-level `launch`, `working-directory`,
    `entry-url`, `health-path`, and unique response-body `identity` bullets that can start and verify
    the app locally; requeue that server when any field is absent.
-4. **Orphans** — `ostler graph --surface ‹service› --orphans` lists nodes no graph edge points to.
+3. **Orphans** — `ostler graph --surface ‹service› --orphans` lists nodes no graph edge points to.
    Repair only top-level/file nodes and independent surface elements that should be reachable from
    a surface root. Ignore nested `field`/`method` members (and other typed sections already contained
    by a documented parent); their parent containment is the structural pointer, and giving every
    member an artificial inbound link creates redundant work rather than reachability.
-5. **Stubs / below-bar** — scan documented nodes for incompleteness (a lone `code:` bullet, a
+4. **Stubs / below-bar** — scan documented nodes for incompleteness (a lone `code:` bullet, a
    `does:` with no effects, flags with no per-flag detail, a concept with no parts). Each → a
    re-visit item of its kind.
-6. **Journeys** — model representative user/business paths, not transport inventory. Never create
+5. **Journeys** — model representative user/business paths, not transport inventory. Never create
    one flow per HTTP endpoint, command, screen, or invocation. If no representative `flow` nodes
    exist yet, emit at most 3-8 coherent domain journeys for a large service (for example
    signup-to-account-completion, project lifecycle, datasheet management, and command-order
    fulfillment), each allowed to traverse several invocations. A small single-purpose service may
    need only 1-3. Set `needs_journeys: yes` so the loop drains them, then re-checks. If
    representative flows exist, do not expand them merely for endpoint coverage.
-7. **Operational surface — the run surface must be a `runbook`** (the OKF runbook profile).
+6. **Operational surface — the run surface must be a `runbook`** (the OKF runbook profile).
    The inventory file carries an `operational` list —
    the mechanical run surface (make/just targets, compose services, package/console scripts,
    `__main__` entry points). Diff it against the graph: `ostler list runbook` / `ostler list
@@ -139,10 +124,10 @@ book is not an empty gap.
  "needs_journeys": "no"}
 ```
 
-There is no `coverage_complete` to emit — the build ends when the next round *computes* both gaps
-closed: every unit covered (by a citation or by a waiver you justified) **and** no node minting
-obligations it declares no observation for, with the round cap bounded and `doctor` clean. Your
-items and your waivers are what move those numbers; nothing you can say about your own work does.
+There is no `coverage_complete` to emit — the build ends when the next round *computes* the gap
+closed: every unit covered, by a citation or by a waiver you justified, with the round cap bounded
+and `doctor` clean of every non-waived finding. Your items and your waivers are what move those
+numbers; nothing you can say about your own work does.
 
 Batch uncovered source units by their nearest coherent module/package and emit one `layer` item per
 group, listing every uncovered unit in `context`; do not emit hundreds of one-symbol items. Batch a

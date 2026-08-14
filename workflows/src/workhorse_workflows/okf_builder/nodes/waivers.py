@@ -16,7 +16,7 @@ import logging
 
 from ostler import Ostler, backlog as backlog_mod
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
-from workhorse_workflows.okf_builder.shared.checkpoint import scoped_error_findings
+from workhorse_workflows.okf_builder.shared.checkpoint import scoped_findings
 from workhorse_workflows.okf_builder.shared.schemas import Waived
 
 #: Doctor codes whose ONLY real remedy is a source change. Deliberately narrow: a code a
@@ -52,14 +52,23 @@ def auto_waive(
     A stalled finding that is NOT auto-waivable (a mis-annotated role, a missing bullet —
     things a doc edit *could* fix) is a genuine dead end: `has_unwaivable` comes back true
     and the workflow fails honestly rather than papering over it.
+
+    **Two reads of doctor, deliberately.** The dead-end verdict is taken over the *standing*
+    set — every non-waived finding, which is exactly what the checkpoint gates on — because
+    a stall on warns alone is still a stall, and answering it from the error-only view would
+    report nothing to waive and send the workflow back to a checkpoint that is still dirty,
+    forever. The IOU-minting loop keeps the error-only view: a backlog id per finding is the
+    right price for a code-fix-only a11y defect and the wrong one for thousands of prose
+    warns, which are repaired in the book rather than owed in code.
     """
     okf = Ostler(repo_root)
-    findings = scoped_error_findings(okf.doctor(), repo_root, features_root)
-    if not findings:
+    report = okf.doctor()
+    standing = scoped_findings(report, repo_root, features_root)
+    if not standing:
         # Nothing standing (a race, or all already waived): let the next checkpoint converge.
-        return Waived(note="no standing error findings — nothing to waive")
+        return Waived(note="no standing findings — nothing to waive")
 
-    unwaivable = [f for f in findings if f.get("code") not in AUTO_WAIVABLE]
+    unwaivable = [f for f in standing if f.get("code") not in AUTO_WAIVABLE]
     if unwaivable:
         for f in unwaivable:
             logger.warning(
@@ -69,8 +78,11 @@ def auto_waive(
         codes = ", ".join(sorted({str(f.get("code")) for f in unwaivable}))
         return Waived(
             has_unwaivable=True,
-            note=f"{len(unwaivable)} standing finding(s) are not auto-waivable ({codes})",
+            note=f"{len(unwaivable)} of {len(standing)} standing finding(s) are not "
+                 f"auto-waivable ({codes})",
         )
+
+    findings = scoped_findings(report, repo_root, features_root, errors_only=True)
 
     reissue = (
         f"workhorse-okf-builder --params '{{\"service\":\"{service}\",\"recheck_only\":true}}'"

@@ -112,15 +112,25 @@ def _signature(findings: list[dict]) -> str:
     return hashlib.sha1(json.dumps(keys).encode()).hexdigest()[:16]
 
 
-def scoped_error_findings(report: dict, repo_root: str, features: str) -> list[dict]:
-    """Doctor's error-level findings located in the service book being built.
+def scoped_findings(report: dict, repo_root: str, features: str, *,
+                    errors_only: bool = False) -> list[dict]:
+    """Doctor's standing findings located in the service book being built.
 
     A monorepo's unrelated epic/spec history may already contain doctor findings. Those
     cannot be repaired by a docs/features-only workflow and must not prevent one service
     book converging.
 
-    Already-waived findings are `warn` and so excluded, which is what lets
-    `nodes/waivers.py` re-run without re-waiving.
+    **Standing means not waived, not "error".** Severity is the wrong discriminator for a
+    gate whose job is a *complete* book: `undeclared-obligation` and
+    `compound-normative-bullet` are warns, and they are the bulk of what makes an existing
+    book unprovable — draining errors alone converges on a book whose every claim is still
+    unfalsifiable. Waiving demotes a finding to `warn` *and* stamps `waived: true`
+    (`doctor._apply_waivers`), so reading the stamp rather than the severity leaves the
+    waivers file as the one and only way a finding leaves this gate — with its reason
+    recorded in the book.
+
+    `errors_only=True` is for `nodes/waivers.py` alone, which mints one backlog IOU per
+    standing finding: widening *that* would file thousands of IOUs for prose warns.
 
     Shared with `nodes/waivers.py`, which needs the identical set — in the YAML it was
     *copied* into `auto-waive.py` under a comment saying it mirrored this one, and the two
@@ -139,11 +149,17 @@ def scoped_error_findings(report: dict, repo_root: str, features: str) -> list[d
     return [
         finding for finding in report.get("findings", [])
         if isinstance(finding, dict)
-        and finding.get("severity") == "error"
+        and (finding.get("severity") == "error" if errors_only
+             else not finding.get("waived"))
         and (not prefix
              or str(finding.get("path", "")) == prefix
              or str(finding.get("path", "")).startswith(prefix + "/"))
     ]
+
+
+def scoped_error_findings(report: dict, repo_root: str, features: str) -> list[dict]:
+    """The error-only view of `scoped_findings`, kept for the one caller that needs it."""
+    return scoped_findings(report, repo_root, features, errors_only=True)
 
 
 @blueprint.node(stub=stubs.clean)
@@ -161,6 +177,13 @@ def checkpoint_book(
     worklist items the drain loop repairs before re-converging. Orphan / stub / coverage
     detection is left to the recheck agent (it needs to read code and walk `ostler trace`);
     this node owns only the deterministic part.
+
+    **The gate is: no standing finding that is not explicitly waived.** Not "no errors" —
+    the codes that decide whether a book's claims can ever be *observed*
+    (`undeclared-obligation`, `compound-normative-bullet`, `weak-check`,
+    `unstated-precondition`) are all warns, so an error-only gate converges happily on a
+    book nobody can falsify. A finding leaves this gate one way, through the waivers file,
+    which is the spelling that leaves the reason behind.
 
     **One item per file, not one per run and not one per node.** An earlier version packed
     every finding into a single item whose context was the last 4000 characters of the
@@ -208,7 +231,7 @@ def checkpoint_book(
         logger.warning("no features root given — skipping ostler fmt; doctor findings are unscoped")
 
     try:
-        findings = scoped_error_findings(okf.doctor(), repo_root, features_root)
+        findings = scoped_findings(okf.doctor(), repo_root, features_root)
         out = json.dumps(findings, indent=2)
     except (OSError, ValueError, RuntimeError) as exc:
         findings = [{"severity": "error", "message": str(exc), "path": features_root}]
@@ -236,11 +259,12 @@ def checkpoint_book(
     else:
         fixups = _repair_items(findings, rnd)
         backfills = sum(1 for i in fixups if i["kind"] == "backfill")
+        errors = sum(1 for f in findings if f.get("severity") == "error")
         logger.info(
-            "round %d: doctor reports %d error(s) across %d item(s) in %s — "
-            "queuing %d backfill + %d fixup item(s)%s",
-            rnd, len(findings), len(fixups), features_root or repo_root, backfills,
-            len(fixups) - backfills,
+            "round %d: doctor reports %d finding(s): %d error, %d warn across %d item(s) "
+            "in %s — queuing %d backfill + %d fixup item(s)%s",
+            rnd, len(findings), errors, len(findings) - errors, len(fixups),
+            features_root or repo_root, backfills, len(fixups) - backfills,
             f" [stall {stall}: same findings as last round]" if stall else "",
         )
     return Checkpoint(
@@ -254,4 +278,5 @@ def checkpoint_book(
     )
 
 
-__all__ = ["GROUNDED_CODES", "MAX_FINDINGS_PER_ITEM", "checkpoint_book", "scoped_error_findings"]
+__all__ = ["GROUNDED_CODES", "MAX_FINDINGS_PER_ITEM", "checkpoint_book",
+           "scoped_error_findings", "scoped_findings"]

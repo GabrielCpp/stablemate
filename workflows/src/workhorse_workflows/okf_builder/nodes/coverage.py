@@ -280,35 +280,6 @@ def _relative_source(source_root: str, repo_root: str) -> str:
         return source_root  # a source tree outside the repo: absolute is all there is
 
 
-def _undeclared(okf: Ostler, features_root: str, repo_root: str) -> list[dict]:
-    """Nodes whose normative bullets declare no observation (`undeclared-obligation`).
-
-    The second computed gap, and it needs its own read because the checkpoint cannot see it:
-    that gate drains doctor's **errors**, and this is a warn — its remedy is a judgement
-    about the source, exactly like the coverage rows the recheck agent already adjudicates.
-    A node with obligations and no `verify:` reaches QA with nothing to bind, so leaving it
-    out of the worklist is how a book gets called finished while every claim in it is
-    unprovable.
-    """
-    try:
-        prefix = Path(features_root).resolve().relative_to(
-            Path(repo_root).resolve()
-        ).as_posix().rstrip("/") if features_root else ""
-    except (ValueError, OSError):
-        prefix = Path(features_root).as_posix().rstrip("/")
-    findings = []
-    for finding in okf.doctor().get("findings", []):
-        if not isinstance(finding, dict) or finding.get("code") != "undeclared-obligation":
-            continue
-        path = str(finding.get("path", ""))
-        if prefix and path != prefix and not path.startswith(prefix + "/"):
-            continue
-        findings.append({"ref": finding.get("ref", ""), "path": path,
-                         "line": finding.get("line", 0),
-                         "reason": finding.get("message", "")})
-    return findings
-
-
 def _screen_count(okf: Ostler, service: str) -> int:
     """Screens the book documents. The second axis of §9's verdict starts its life here."""
     data = graph_mod.build(okf.graph, etype="screen", surface=service or None)
@@ -379,19 +350,6 @@ def compute_coverage(
         encoding="utf-8")
     missing_path = str(missing_file)
 
-    try:
-        undeclared = _undeclared(okf, features_root, repo_root)
-    except (OSError, ValueError, RuntimeError, KeyError) as exc:
-        # Same rule as the join above: a gap this node could not compute is not an absence
-        # of gaps. The list comes back empty with the reason attached to `coverage_error`,
-        # which is a value the recheck prompt reads.
-        logger.warning("undeclared-obligation scan failed: %s", exc)
-        undeclared, result["errors"] = [], [*result["errors"], f"undeclared scan failed: {exc}"]
-    undeclared_file = Path(f"{inventory_path}.undeclared.json")
-    undeclared_file.write_text(
-        json.dumps({"surface": service, "undeclared": undeclared}, indent=2),
-        encoding="utf-8")
-
     coverage_path = ""
     if features_root:
         try:
@@ -415,16 +373,14 @@ def compute_coverage(
             coverage_path = str(out)
 
     complete = is_complete(result)
-    logger.info("coverage for %s: %d/%d units covered, %d waived, %d screens, %d missing, "
-                "%d undeclared → complete=%s", service or "(whole book)", result["covered"],
+    logger.info("coverage for %s: %d/%d units covered, %d waived, %d screens, %d missing "
+                "→ complete=%s", service or "(whole book)", result["covered"],
                 result["total"], result["waived"], screens, len(result["missing"]),
-                len(undeclared), "yes" if complete else "no")
+                "yes" if complete else "no")
     return Coverage(
         coverage_complete=complete,
         missing_count=len(result["missing"]),
         missing_path=missing_path,
-        undeclared_count=len(undeclared),
-        undeclared_path=str(undeclared_file),
         coverage_path=coverage_path,
         coverage_summary=render(result),
         coverage_error="; ".join(result["errors"]),

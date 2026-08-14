@@ -157,11 +157,6 @@ class Coverage(OkfResult):
     coverage_complete: bool = False
     missing_count: int = 0
     missing_path: str = ""
-    #: The other computed gap: nodes minting obligations that declare no `verify:` check.
-    #: Separate from `coverage_complete`, which stays what its name says — the join of the
-    #: book's `code:` citations against the source inventory. The workflow requires both.
-    undeclared_count: int = 0
-    undeclared_path: str = ""
     coverage_path: str = ""
     coverage_summary: str = ""
     coverage_error: str = ""
