@@ -6,7 +6,9 @@ It is reached from the main graph as a `type: flow` node, and standalone as
 
     plan → (reuse gate)* → (path gate)* → dispatch → (layer → implement → (lint → fix)* )*
 
-Thirty-five nodes become twelve states. Six of the thirty-five are `type: branch` routers
+Thirty-five nodes become twelve states — fifteen once the implement turn split into the
+tests / red-gate / code chain, which is post-port work with no YAML counterpart (see
+`shared/red_gate.py`). Six of the thirty-five are `type: branch` routers
 that read a value the node directly above them had just produced, so each folds into the
 `if` at the end of the state that produced it; five more are `type: call fn: seed/incr`
 counter nodes, which disappear entirely, because a counter is a state parameter now. What is
@@ -75,6 +77,7 @@ from workhorse_workflows.coder.shared.dev import (
     select_next_layer,
     validate_plan_context,
 )
+from workhorse_workflows.coder.shared.red_gate import arm_red_gate, run_red_gate
 from workhorse_workflows.coder.shared.story import (
     prepare_story,
     resolve_workspace_dirs,
@@ -87,6 +90,7 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     OperatorResolution,
     PlanResult,
     ReuseResult,
+    TestsResult,
 )
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.kit.telemetry import counter_labels
@@ -94,6 +98,10 @@ from workhorse_workflows.kit.telemetry import counter_labels
 #: `timeout: infinity` — the resolver stands in for a human and must not be cut off
 #: mid-resolution. A finite number of seconds here caps it.
 UNBOUNDED = float("inf")
+
+#: Layer types with no behavior a test can observe red — a docs layer and an infra plan
+#: take the classic single implement turn instead of the tests/code split.
+NON_TDD_TYPES = ("docs", "terraform")
 
 
 class Dev(Workflow):
@@ -122,6 +130,10 @@ class Dev(Workflow):
     max_lint_reworks: int = 2
     #: Plan-level code-reuse rework passes before implementation proceeds anyway.
     max_reuse_reworks: int = 2
+    #: Per-layer trips back to the tests turn when the red gate rejects it (a green suite,
+    #: an impure diff, an empty diff). Spent, the layer proceeds fail-open: the reviewer's
+    #: coverage audit is the binding check, and a gate must not dead-end the loop.
+    max_tests_reworks: int = 2
 
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
@@ -160,6 +172,7 @@ class Dev(Workflow):
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = (
         "plan_rework",
         "reuse_rework",
+        "tests_rework",
         "lint_rework",
         "plan_blocks",
     )
@@ -454,24 +467,146 @@ class Dev(Workflow):
         return Continue(pick, self.implement, index=pick.index)
 
     def implement(self, index: int) -> Continue:
-        """Implement one service layer against its plan file.
+        """Route one service layer into the tests/code split, or the classic single turn.
 
-        A state of its own, holding nothing but the turn: it is the expensive thing in the
-        loop, and the checkpoint is written before a state runs, so leaving the lint gate
-        downstream is what makes a resume cheap.
+        The split is the TDD contract made structural: the tests land alone, `run_red_gate`
+        *observes* them fail, and only then does the code turn begin — the plan's Test
+        Scenarios enforced by tooling rather than requested by prompt. Two layer shapes
+        stay on the classic `implement-plan.md` turn: the `NON_TDD_TYPES` (nothing a test
+        can observe red) and a plan that declared the `regression-only` escape, which
+        `arm_red_gate` reads off the plan text so the decision stays the planner's.
+
+        `arm_red_gate` must run *before* the tests turn — it records the worktree baseline
+        the gate later diffs against, so pre-existing dirt is never charged to that turn.
+        """
+        layer = self._layer
+        if layer.type in NON_TDD_TYPES:
+            self._implement_classic()
+            return Continue(None, self.lint, index=index)
+        arm = self.call(
+            arm_red_gate, layer.cwd, layer.service, self.ctx.spec_dir, layer.plan_file
+        )
+        if arm.mode == "regression_only":
+            self._implement_classic()
+            return Continue(None, self.lint, index=index)
+        return Continue(arm, self.implement_tests, index=index)
+
+    def implement_tests(
+        self, index: int, tests_rework: int = 0, gate_feedback: str = ""
+    ) -> Continue:
+        """Write the plan's Test Scenarios as failing tests — tests only, no production code.
+
+        The first half of the split. The prompt is told the exact command the gate will run
+        and, on a rework lap, why the gate rejected the previous attempt. Its own `done` is
+        not branched on: the red gate downstream is the verdict.
+        """
+        layer = self._layer
+        arm = self.output(arm_red_gate)
+        impl = self.output(resolve_impl_context)
+        self.agent(
+            "prompts/implement-plan-tests.md",
+            returns=TestsResult,
+            # high: translating acceptance criteria into tests that can genuinely fail is
+            # a design task, not transcription.
+            power="high",
+            cwd=layer.cwd,
+            add_dirs=self._dirs(),
+            args={
+                "story_path": self.ctx.story_path,
+                "spec_dir": self.ctx.spec_dir,
+                "plan_file": layer.plan_file,
+                "service_path": layer.service_path,
+                "service_type": layer.type,
+                "test_command": arm.test_command,
+                "impl_instruction_paths": impl.impl_instruction_paths,
+                "gate_feedback": gate_feedback,
+            },
+        )
+        return Continue(None, self.red_gate, index=index, tests_rework=tests_rework)
+
+    def red_gate(self, index: int, tests_rework: int = 0) -> Continue:
+        """Hold the tests turn to its contract: a pure diff, observed genuinely red.
+
+        Deterministic, like the lint gate, and fail-open the same way: `red` and `skipped`
+        (and a blank) proceed to the code turn, while `all_green`, `impure` and `no_tests`
+        loop back to the tests turn with the reason as its brief — until the budget is
+        spent, at which point the layer proceeds anyway and the reviewer's coverage audit
+        is what catches it.
+        """
+        layer = self._layer
+        arm = self.output(arm_red_gate)
+        outcome = self.call(
+            run_red_gate,
+            layer.cwd,
+            layer.service,
+            self.ctx.spec_dir,
+            arm.baseline,
+            arm.test_command,
+            arm.signatures,
+        )
+        rejected = outcome.status in {"all_green", "impure", "no_tests"}
+        if rejected and tests_rework < self.max_tests_reworks:
+            return Continue(
+                outcome,
+                self.implement_tests,
+                index=index,
+                tests_rework=tests_rework + 1,
+                gate_feedback=f"[{outcome.status}] {outcome.reason}",
+            )
+        if rejected:
+            self.logger.warning(
+                "red gate still %s after %d rework(s) — proceeding fail-open",
+                outcome.status,
+                tests_rework,
+            )
+        return Continue(outcome, self.implement_code, index=index)
+
+    def implement_code(self, index: int) -> Continue:
+        """Make the observed-red tests green — the second half of the split.
 
         `cwd` is the service repo, which is what lets workhorse resolve a repo-specific
         flavor override and the right `CLAUDE.md`; the story, spec and plan files live in
         the docs repo, so every workspace directory is granted explicitly — a backend whose
         sandbox allows only cwd and its subdirectories cannot read the plan otherwise.
 
-        The last three args are **not** in the YAML node, and their absence there is why
-        they are here. `implement-plan.md` reads `impl_instruction_paths`, `qa_run_plan`
-        and `qa_stack` directly; under the YAML engine they were in scope because a node's
-        declared outputs land in the run context and the prompt renders against the whole
-        of it. `Engine.agent` renders against `args` and nothing else, so a value a prompt
-        reads has to be passed. Same three values, same source node — only the route
-        differs.
+        `impl_instruction_paths`, `qa_run_plan` and `qa_stack` are passed for the reason
+        the classic turn passes them: `Engine.agent` renders against `args` and nothing
+        else, so a value a prompt reads has to be passed. The red observation rides along
+        so the turn knows what it owes green, and its log so a reviewer can check the
+        red run actually happened.
+        """
+        layer = self._layer
+        impl = self.output(resolve_impl_context)
+        outcome = self.output(run_red_gate)
+        self.agent(
+            "prompts/implement-plan-code.md",
+            returns=ImplResult,
+            # high: writes the production change, across whatever the plan touches.
+            power="high",
+            cwd=layer.cwd,
+            add_dirs=self._dirs(),
+            args={
+                "story_path": self.ctx.story_path,
+                "spec_dir": self.ctx.spec_dir,
+                "plan_file": layer.plan_file,
+                "service_path": layer.service_path,
+                "service_type": layer.type,
+                "verification": layer.verification,
+                "impl_instruction_paths": impl.impl_instruction_paths,
+                "qa_run_plan": impl.qa_run_plan,
+                "qa_stack": impl.qa_stack,
+                "red_status": outcome.status,
+                "red_log_path": outcome.log_path,
+            },
+        )
+        return Continue(None, self.lint, index=index)
+
+    def _implement_classic(self) -> None:
+        """The original single `implement-plan.md` turn, for the layers the split skips.
+
+        A helper rather than a state: both callers are arms of `implement`, and the fix
+        lane elsewhere still runs this same prompt — see its docstring history in git for
+        why the last three args are passed explicitly.
         """
         layer = self._layer
         impl = self.output(resolve_impl_context)
@@ -494,7 +629,6 @@ class Dev(Workflow):
                 "qa_stack": impl.qa_stack,
             },
         )
-        return Continue(None, self.lint, index=index)
 
     def lint(self, index: int, lint_rework: int = 0) -> Continue:
         """Run this service's lint, and route on whether it is clean.
