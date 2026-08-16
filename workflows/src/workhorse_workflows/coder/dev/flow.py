@@ -474,8 +474,9 @@ class Dev(Workflow):
         *observes* them fail, and only then does the code turn begin — the plan's Test
         Scenarios enforced by tooling rather than requested by prompt. Two layer shapes
         stay on the classic `implement-plan.md` turn: the `NON_TDD_TYPES` (nothing a test
-        can observe red) and a plan that declared the `regression-only` escape, which
-        `arm_red_gate` reads off the plan text so the decision stays the planner's.
+        can observe red) and a plan that carries one of the two escapes — `regression_only`
+        and `qa_only` — which `arm_red_gate` reads off the plan text so the decision stays
+        the planner's rather than becoming a heuristic here.
 
         `arm_red_gate` must run *before* the tests turn — it records the worktree baseline
         the gate later diffs against, so pre-existing dirt is never charged to that turn.
@@ -487,7 +488,7 @@ class Dev(Workflow):
         arm = self.call(
             arm_red_gate, layer.cwd, layer.service, self.ctx.spec_dir, layer.plan_file
         )
-        if arm.mode == "regression_only":
+        if arm.mode in {"regression_only", "qa_only"}:
             self._implement_classic()
             return Continue(None, self.lint, index=index)
         return Continue(arm, self.implement_tests, index=index)

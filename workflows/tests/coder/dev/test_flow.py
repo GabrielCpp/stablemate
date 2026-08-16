@@ -213,8 +213,9 @@ class _Agent:
     The red-gate knobs mirror the gate's verdicts: `repos` maps a repo name to its checkout
     so the tests turn can write a real test file into the real worktree the gate diffs,
     `impure` makes the first N tests turns leave a production file behind, `make_green` is
-    the marker the code turn writes — the seam a real red suite checks for — and
-    `regression_only` makes every plan write carry the planner's escape marker.
+    the marker the code turn writes — the seam a real red suite checks for —
+    `regression_only` makes every plan write carry the planner's escape marker, and
+    `qa_only` makes every plan's scenario list entirely QA-only.
     """
 
     def __init__(
@@ -233,6 +234,7 @@ class _Agent:
         make_green: Path | None = None,
         impure: int = 0,
         regression_only: bool = False,
+        qa_only: bool = False,
     ) -> None:
         self.docs = docs
         self.services = services if services is not None else SERVICES
@@ -247,6 +249,7 @@ class _Agent:
         self.make_green = make_green
         self.impure = impure
         self.regression_only = regression_only
+        self.qa_only = qa_only
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         #: Plan turns of either prompt, so `blocked` and `bad_paths` count the *writes*
@@ -291,10 +294,22 @@ class _Agent:
         spec = Path(data["spec_dir"])
         spec.mkdir(parents=True, exist_ok=True)
         escape = "Test scenarios: regression-only — the change is covered by the existing suite.\n"
+        # No marker: this is the *derived* escape, which is the arm a real planner that
+        # forgot the marker line takes.
+        qa_only = (
+            "## 5. Test Scenarios\n\n"
+            "### Scenario 1: The refreshed page looks right\n"
+            "- **AC:** 1\n"
+            "- **Level:** QA-only — visual layout, nothing assertable\n"
+        )
         for svc in services:
+            body = ""
+            if self.regression_only:
+                body = escape
+            elif self.qa_only:
+                body = qa_only
             (spec / svc["plan_file"]).write_text(
-                f"# Plan for {svc['repo']}::{svc['path']}\n"
-                + (escape if self.regression_only else ""),
+                f"# Plan for {svc['repo']}::{svc['path']}\n" + body,
                 encoding="utf-8",
             )
         (spec / "plan-context.json").write_text(
@@ -1025,6 +1040,29 @@ def test_a_regression_only_plan_takes_the_classic_single_turn(
     assert agent.counts()["implement-plan"] == 2, agent.counts()
     assert agent.counts()["implement-plan-tests"] == 0, agent.counts()
     assert agent.counts()["implement-plan-code"] == 0, agent.counts()
+
+
+def test_a_wholly_qa_only_plan_takes_the_classic_single_turn(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A plan whose every scenario is QA-only leaves the tests turn nothing it may write.
+
+    The split is unwinnable there — the turn is told to write the plan's scenarios and the
+    plan's scenarios are all excluded from the suite — so three high-power turns would be
+    spent discovering that the diff is empty. No marker is written here: this is the
+    derived arm, which is what a planner that used the levels correctly but forgot the
+    marker line produces.
+    """
+    agent = _Agent(docs, qa_only=True)
+
+    result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["implement-plan"] == 2, agent.counts()
+    assert agent.counts()["implement-plan-tests"] == 0, agent.counts()
 
 
 def test_a_docs_layer_never_enters_the_split(

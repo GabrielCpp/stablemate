@@ -84,9 +84,13 @@ class TestsResult(CoderResult):
 class RedGateArm(CoderResult):
     """`arm_red_gate` — what the gate will hold the tests turn to, recorded before it runs.
 
-    `mode` is `tdd` or `regression_only`; the second is the planner's plan-time escape (a
-    literal `Test scenarios: regression-only` in the plan) and sends the layer down the
-    classic single-turn path. `baseline` is the worktree's changed paths *before* the tests
+    `mode` is `tdd`, `regression_only` or `qa_only`, and the last two both send the layer
+    down the classic single-turn path. `regression_only` is the planner's escape for a
+    story that changes no observable behavior; `qa_only` is for one whose every scenario
+    is `Level: QA-only`, where the tests turn is told to exclude every scenario there is
+    and so has nothing it may legitimately write. Neither means "no tests": the classic
+    prompt still requires a test for every new behavior. They mean no enforced split and
+    no gate. `baseline` is the worktree's changed paths *before* the tests
     turn, so the gate can diff what that turn alone touched; `test_command` and `signatures`
     are resolved here, once, so the tests prompt is told the exact command the gate will run
     and the gate judges purity by the same patterns every rework.
