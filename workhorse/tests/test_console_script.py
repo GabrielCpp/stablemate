@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import os
 import sys
 import zipfile
 from pathlib import Path
@@ -178,8 +179,16 @@ class _StubRegistry(Registry):
         return Path(__file__).resolve().parent
 
 
-def _capture_run_call(argv: list[str]) -> dict:
-    """Drive an entry point to the driver boundary and return what it handed over."""
+def _capture_run_call(argv: list[str], repo_dir_env: str | None = None) -> dict:
+    """Drive an entry point to the driver boundary and return what it handed over.
+
+    `repo_dir_env` pins `AGENT_REPO_DIR` for the call, and the default of `None` *unsets*
+    it rather than inheriting whatever the caller happens to have exported. The CLI's
+    `repo_dir` default has two arms — that variable, then the launch cwd — so a test that
+    leaves the variable ambient is not testing either arm, it is testing the environment
+    it was started in. Every coder run exports `AGENT_REPO_DIR`, which is exactly the
+    environment `make test` runs under from inside one.
+    """
     seen: dict = {}
     registry = _StubRegistry()
 
@@ -194,7 +203,12 @@ def _capture_run_call(argv: list[str]) -> dict:
         )
         return 0
 
+    environ = {k: v for k, v in os.environ.items() if k != "AGENT_REPO_DIR"}
+    if repo_dir_env is not None:
+        environ["AGENT_REPO_DIR"] = repo_dir_env
+
     with (
+        patch.dict(os.environ, environ, clear=True),
         patch.object(run_cmd, "run_pyflow", fake_run_pyflow),
         patch.object(run_cmd, "_load_context_manifest", lambda *a, **k: ManifestContext()),
     ):
@@ -218,10 +232,25 @@ def test_every_flag_reaches_the_engine(tmp_path: Path) -> None:
     assert seen["run_id"] == "test123"
     # `repo_dir` is defaulted in by the CLI itself — a run always has a checkout, and
     # every workflow declares it — so it reaches the engine alongside what was passed.
-    assert seen["params"] == {"story": "AUTH-12", "repo_dir": str(Path.cwd())}
+    # With no `AGENT_REPO_DIR` set (the helper unsets it), the default is the launch cwd.
+    assert seen["params"] == {"story": "AUTH-12", "repo_dir": str(Path.cwd().resolve())}
     # Every flag the parser grows has to reach the engine, or the command quietly
     # becomes a poorer CLI than the driver it feeds.
     assert seen["dry_run"] is True
+
+
+def test_an_exported_repo_dir_beats_the_launch_directory() -> None:
+    """`AGENT_REPO_DIR` wins over the cwd, and the cwd is not consulted at all.
+
+    This is the arm every real run takes: the launcher pins the worktree and then a
+    command may be invoked from a subdirectory of it — `make -C workhorse test` is the
+    everyday case. Asserting a value the cwd cannot produce is what makes the two arms
+    distinguishable; the same assertion written as `Path.cwd()` passes for the wrong
+    reason whenever the two happen to agree.
+    """
+    seen = _capture_run_call(["run", "qa"], repo_dir_env="/pinned/repo")
+
+    assert seen["params"]["repo_dir"] == "/pinned/repo"
 
 
 def test_run_is_injected_when_argv_names_no_subcommand() -> None:
