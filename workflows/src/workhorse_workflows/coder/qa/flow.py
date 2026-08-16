@@ -94,6 +94,7 @@ from workhorse_workflows.coder.qa.nodes.regression import (
     run_regression_suite,
 )
 from workhorse_workflows.coder.shared.review import check_feedback
+from workhorse_workflows.coder.shared.scenarios import qa_only_scenarios
 from workhorse_workflows.coder.shared.story import prepare_story, stamp_specs
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
 from workhorse_workflows.coder.shared.schemas.qa import (
@@ -677,8 +678,16 @@ class Qa(Workflow):
         `qa_scratch_dir` is the other half of the dry run: it is deliberately *not* under
         `qa_dir`, because `clear_qa_evidence` wipes that and `verify_qa_evidence` reads it. A
         scenario tuned until it passed must not be able to leave its own admissible evidence.
+
+        `qa_only_scenarios` is the dev plan's own list of what it decided *not* to write a
+        test for. The dev lane's red gate reads the same section to decide whether to run
+        the tests-first split at all; passing the QA-only subset here is the other half of
+        that decision, because a scenario excluded from the suite and handed to nobody is
+        covered by nothing in the run. They arrive as data — title, AC, level — so the
+        planner turns each into an obligation rather than re-deriving the list by reading.
         """
         impl = self.output(resolve_impl_context)
+        spec_abs = Path(self.ctx.spec_dir) if self.ctx.spec_dir else None
         return {
             "story_path": self.ctx.story_path,
             "spec_dir": self.ctx.spec_dir,
@@ -693,6 +702,10 @@ class Qa(Workflow):
             "target_env": self.target_env,
             "qa_stack": impl.qa_stack,
             "shared_packages": impl.shared_packages,
+            "qa_only_scenarios": [
+                {"title": s.title, "ac": s.ac, "level": s.level}
+                for s in qa_only_scenarios(spec_abs, "")
+            ],
             "context_status": loop.context_status,
             "context_notes": loop.context_notes,
             "plan_validation_notes": loop.plan_validation_notes,
