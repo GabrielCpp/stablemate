@@ -404,7 +404,6 @@ def run_trial(
     cli: str,
     variant: str = "",
     mutate: Callable[[Path], None] | None = None,
-    sandbox: bool = False,
 ) -> tuple[str, int]:
     """One clone, one flow run. Returns the run id and the workflow's exit code.
 
@@ -433,12 +432,7 @@ def run_trial(
         # laps and the detection rate, so a label whose trials inherited whatever the shell
         # happened to export is not a configuration anyone can compare against.
         "--cli", cli,
-        # `sandbox` is a param on the QA workflow alone, and an unknown param is a hard
-        # error — so the docs flow must not be handed one.
-        "--params", json.dumps(
-            {"story": story, "docs_path": str(repo)}
-            | ({"sandbox": sandbox} if flow == "qa" else {})
-        ),
+        "--params", json.dumps({"story": story, "docs_path": str(repo)}),
     ]
     say(f"{run_id}")
     log.parent.mkdir(parents=True, exist_ok=True)
@@ -475,7 +469,7 @@ def cmd_run(fixture: Fixture, args: argparse.Namespace) -> int:
         for n in range(1, args.trials + 1):
             run_id, rc = run_trial(
                 fixture, flow=args.flow, story=story, label=args.label,
-                n=n, budget_s=args.budget, sandbox=args.sandbox, cli=args.cli,
+                n=n, budget_s=args.budget, cli=args.cli,
             )
             trials.append({"run_id": run_id, "flow": args.flow, "story": story,
                            "rc": rc, "cli": args.cli})
@@ -668,7 +662,7 @@ def cmd_score(fixture: Fixture, args: argparse.Namespace) -> int:
         variant = str(row["id"]) if row else CLEAN
         run_id, rc = run_trial(
             fixture, flow="qa", story=story, label=args.label, n=1, variant=variant,
-            budget_s=args.budget, sandbox=args.sandbox, cli=args.cli,
+            budget_s=args.budget, cli=args.cli,
             mutate=seed_defect(fixture.app, row) if row else None,
         )
         work = WORK_DIR / args.label / run_id
@@ -858,8 +852,6 @@ def main(argv: list[str] | None = None) -> int:
                        help="names the configuration under test — the unit `report` compares")
     run_p.add_argument("--budget", type=float, default=0.0,
                        help="wall-clock ceiling per trial, in seconds (0 = unbounded)")
-    run_p.add_argument("--sandbox", action="store_true",
-                       help="qa flow only: run the QA plan in the docker sandbox")
     add_cli_flag(run_p)
 
     score_p = sub.add_parser(
@@ -871,8 +863,6 @@ def main(argv: list[str] | None = None) -> int:
                          help="names the configuration under test — the unit `report` compares")
     score_p.add_argument("--budget", type=float, default=0.0,
                          help="wall-clock ceiling per trial, in seconds (0 = unbounded)")
-    score_p.add_argument("--sandbox", action="store_true",
-                         help="run the QA plan in the docker sandbox, as a real run does")
     score_p.add_argument("--no-control", action="store_true",
                          help="skip the clean control — cheaper, and the false-alarm count "
                               "then means nothing")

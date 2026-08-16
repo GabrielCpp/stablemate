@@ -3,7 +3,7 @@
 `replay.py` replays one flow over one story against a frozen app, so a before/after
 comparison moves one variable instead of every variable. This document is the whole tool:
 the trial loop, why convergence alone is half a measurement, how detection is scored off
-machine-readable state, and the pinned-backend and `--sandbox` decisions behind it. See
+machine-readable state, and the pinned-backend decision behind it. See
 [README.md](../README.md) for the benchmark harness it sits beside.
 
 The flow is named as a first-class entry point taking a story slug — `workhorse-coder run qa`
@@ -58,7 +58,6 @@ was free. `$?` means neither exists, i.e. the model has no line in `prices.toml`
 ```bash
 replay.py --fixture seat-booking score                 # the whole key, plus one control per story
 replay.py --fixture seat-booking score --defect D1     # one row
-replay.py --fixture seat-booking score --sandbox       # score the sandboxed configuration
 ```
 
 Trials drive **`opencode`** unless `--cli` says otherwise, and the backend is recorded on
@@ -66,7 +65,3 @@ every row of the ledger. Both halves of that are deliberate: a full round is a c
 story plus a run per defect — a dozen QA flows for one number, which on the default backend
 is a benchmark nobody re-runs — and a label whose trials silently inherited `$AGENT_CLI` is
 not a configuration anyone can compare against. Same reasoning as `bench.py`'s pinned judge.
-
-`--sandbox` is a workflow param threaded to `ostler qa run --sandbox`, never an environment
-read — a value outside the checkpoint means a resumed trial silently measures a different
-configuration.
