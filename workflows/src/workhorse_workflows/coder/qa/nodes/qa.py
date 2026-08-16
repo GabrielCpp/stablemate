@@ -92,11 +92,10 @@ def record_qa_giveup(
 ) -> QaGiveupRecord:
     """Write `<spec_dir>/qa.md` when the flow gives up before any QA run produced one.
 
-    A give-up stamps the story `QA give-up after N ... — needs manual review`, and
-    `flag_qa_failure` appends `qa.md` to that status *if the file exists* — its own
-    docstring names the case where it does not: "the QA-plan repair budget running out with
-    no plan to execute". On that path the human is sent to do a manual review with nothing
-    to read. The flow is not empty-handed at that moment, though: the gate that refused the
+    A give-up ends the run, and `Coder.give_up`'s failure names this file when it is there.
+    It is not always there — the QA-plan repair budget can run out with no plan ever
+    executed — and on that path the operator is handed a stop with nothing to read. The flow
+    is not empty-handed at that moment, though: the gate that refused the
     plan handed its findings to `QaLoop`, and they are still on the loop when `_exhausted`
     builds the result. They are simply dropped there, because `QaFlowResult` carries the
     *code*-rework verdict and the plan gates never touch it.
@@ -149,7 +148,7 @@ def record_qa_giveup(
         f"QA never reached a verdict on this story: {spent or 'the retry budget'} was spent "
         "and no\nrun produced an assessment. There is no evidence directory, because nothing "
         "ran. What\nfollows is what the gates said before the budget ended, which is the whole "
-        "of what the\n\"needs manual review\" status is asking a human to review.\n\n" + body,
+        "of what the\nrun knew when it stopped.\n\n" + body,
         encoding="utf-8",
     )
     logger.info("recorded the give-up diagnostics at %s", path)

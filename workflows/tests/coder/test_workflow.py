@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -1177,23 +1178,27 @@ def test_the_give_up_marker_names_the_budget_qa_actually_spent(
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The marker commit is the only thing a human triaging a given-up story reads first.
+    """The failure message is the only thing an operator triaging a give-up reads first.
 
     `exhausted` covers four unrelated budgets, and this graph used to stamp the code-rework
     count for all of them. A story that spent every QA-plan repair and so never reached a
-    code fix was committed as `[QA FAILED after 0 attempts]`, which reads as a story the loop
-    declined to try — the opposite of what happened, and enough to send the reader looking
-    for a routing bug instead of at the plan. `QaFlowResult.spent` names its own budget and
-    this is where that name has to surface.
+    code fix was reported as `after 0 attempts`, which reads as a story the loop declined to
+    try — the opposite of what happened, and enough to send the reader looking for a routing
+    bug instead of at the plan. `QaFlowResult.spent` names its own budget and this is where
+    that name has to surface.
+
+    It surfaces in the exception rather than in a commit subject because a give-up no longer
+    commits anything: the operator reading this is as often a `/loop` tick polling the run's
+    terminal state as a human, and neither can act on a story that shipped behind a marker.
     """
     repo = epic()
     _Sub(repo, qa_status="exhausted", qa_spent="4 QA-plan repair").install(monkeypatch)
 
-    drive_flow(Coder(), env(), _Agent())
+    with pytest.raises(WorkflowFailed, match="4 QA-plan repair attempt") as caught:
+        drive_flow(Coder(), env(), _Agent())
 
-    marker = next(s for s in _subjects(repo) if "QA FAILED" in s)
-    assert "after 4 QA-plan repair attempts" in marker, marker
-    assert "after 0 attempts" not in marker, marker
+    assert "after 0 attempt" not in str(caught.value), caught.value
+    assert not any("QA FAILED" in s for s in _subjects(repo)), _subjects(repo)
 
 
 def test_a_give_up_docs_recheck_that_changes_the_qa_plan_retries_qa(
@@ -1239,10 +1244,8 @@ def test_a_give_up_with_no_named_budget_falls_back_to_the_rework_count(
     repo = epic()
     _Sub(repo, qa_status="exhausted").install(monkeypatch)
 
-    drive_flow(Coder(), env(), _Agent())
-
-    marker = next(s for s in _subjects(repo) if "QA FAILED" in s)
-    assert "after 1 attempts" in marker, marker
+    with pytest.raises(WorkflowFailed, match="after 1 attempt"):
+        drive_flow(Coder(), env(), _Agent())
 
 
 def test_the_give_up_status_names_the_qa_assessment_that_explains_the_failure(
@@ -1252,7 +1255,7 @@ def test_the_give_up_status_names_the_qa_assessment_that_explains_the_failure(
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """"Needs manual review" has to say where the review starts, and it is not `review.md`.
+    """A failure has to say where the diagnosis starts, and it is not `review.md`.
 
     Everything else the give-up leaves behind points elsewhere. The story's own
     `## Implementation Status` block carries a `- **Review**:` link written by the review
@@ -1261,20 +1264,16 @@ def test_the_give_up_status_names_the_qa_assessment_that_explains_the_failure(
     Observed on a benchmark give-up whose `qa.md` diagnosed all eleven failures as one plan
     defect while the story pointed the reader at a review complaining about test helpers.
 
-    The status line rather than a second bullet, because the link bullets belong to the
-    review prompt and on this path that prompt may not have run at all — the status is the
-    only line this node reliably owns.
+    In the exception rather than in the story's status line: the story is no longer written
+    to at all on this path, and the operator who has to act — often a `/loop` tick reading
+    the run's terminal error — never opens the story file to find out where to look.
     """
     repo = epic()
     write(repo / "docs" / "specs" / "STORY-1" / "qa.md", "# QA\n\nEleven assertions failed.\n")
     _Sub(repo, qa_status="exhausted", qa_spent="4 QA-plan repair").install(monkeypatch)
 
-    drive_flow(Coder(), env(), _Agent())
-
-    status = (repo / "docs" / "epics" / EPIC / "stories" / "STORY-1" / "story.md").read_text(
-        encoding="utf-8"
-    )
-    assert "docs/specs/STORY-1/qa.md" in status, status
+    with pytest.raises(WorkflowFailed, match=r"docs/specs/STORY-1/qa\.md"):
+        drive_flow(Coder(), env(), _Agent())
 
 
 def test_a_give_up_with_no_qa_assessment_written_points_nowhere_rather_than_at_a_ghost(
@@ -1284,41 +1283,41 @@ def test_a_give_up_with_no_qa_assessment_written_points_nowhere_rather_than_at_a
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A give-up can precede any assessment: the QA-plan repair budget can run out with no
-    plan ever executed, so there is nothing to point at. A status naming a file that is not
+    plan ever executed, so there is nothing to point at. A failure naming a file that is not
     there sends the reader hunting for a missing artifact instead of reading the code, which
-    is strictly worse than the honest bare marker."""
+    is strictly worse than the honest bare message."""
     repo = epic()
     _Sub(repo, qa_status="exhausted").install(monkeypatch)
 
-    drive_flow(Coder(), env(), _Agent())
+    with pytest.raises(WorkflowFailed) as caught:
+        drive_flow(Coder(), env(), _Agent())
 
-    status = (repo / "docs" / "epics" / EPIC / "stories" / "STORY-1" / "story.md").read_text(
-        encoding="utf-8"
-    )
-    assert "needs manual review" in status, status
-    assert "qa.md" not in status, status
+    assert "qa.md" not in str(caught.value), caught.value
+    assert "nothing was committed" in str(caught.value), caught.value
 
 
-def test_a_blocked_docs_verdict_costs_its_own_story_and_not_the_rest_of_the_queue(
+def test_a_blocked_docs_verdict_stops_the_run_rather_than_shipping_the_story(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A documentation block is a finding about one story, and it used to kill the run.
+    """A documentation block ends the run, carrying the refusal's reason.
 
     Observed: the author was asked to document a CORS story, found that the implementation
     granted every origin when the allow-list was unset — the opposite of the fail-closed
     guarantee the story's own plan required — and refused to write the book's claim as true.
-    The refusal was right. Failing the flow for it was not: the run died on the first epic
-    of nine and took eight unrelated ones with it.
 
-    So the block takes `give_up`'s shape instead — stamp the story, commit behind a marker,
-    skip it, select the next one — and a two-story epic is the smallest one that can show
-    the second story still built. The refused story is documented once and never revisited,
-    which is the other half: the flow that just refused would refuse again on the same
-    grounds, and the skip set is what stops that being a loop. `Docs` is still entered a
-    third time, for STORY-2 — that is the epic's final pass, not a retry.
+    This node has been both ways. Failing the run cost eight unrelated epics behind the
+    first; flagging and continuing cost worse, because it committed the refused story behind
+    a `[DOCS BLOCKED — needs manual review]` marker and reported the run a success, so the
+    queue built on a baseline the reviewer had rejected and the review it asked for never
+    happened. Stopping is the recoverable half of that trade: the run is checkpointed, so
+    the epics behind this one are deferred rather than lost, and an operator patches the
+    finding and resumes. Shipping the story is not recoverable at all.
+
+    `notes` has to reach the failure because it is the only place the refusal is written
+    down — unlike a QA give-up there is no `qa.md`, and the story file is no longer stamped.
     """
     repo = epic(count=2)
 
@@ -1330,54 +1329,36 @@ def test_a_blocked_docs_verdict_costs_its_own_story_and_not_the_rest_of_the_queu
 
     sub = _BlockingFirst(repo).install(monkeypatch)
 
-    result = drive_flow(Coder(), env(), _Agent())
+    with pytest.raises(WorkflowFailed, match=re.escape(BLOCK_REASON)) as caught:
+        drive_flow(Coder(), env(), _Agent())
 
-    assert result.has_epic is False, result
+    assert "STORY-1" in str(caught.value), caught.value
+    # The refused story is documented once and never revisited: the flow that just refused
+    # would refuse again on the same grounds.
     documented = [c.story for c in sub.calls_to("Docs")]
     assert documented.count("STORY-1") == 1, documented
-    assert sub.calls.count("Qa") == 1, sub.calls
-    marker = next(s for s in _subjects(repo) if "DOCS BLOCKED" in s)
-    assert "STORY-1" in marker, marker
-    status = (repo / "docs" / "epics" / EPIC / "stories" / "STORY-1" / "story.md").read_text(
-        encoding="utf-8"
-    )
-    assert BLOCK_REASON in status, status
+    # Docs precedes QA here, so the refusal costs the QA pass too — the run stops at the
+    # refusal rather than spending an agent on a story it has already decided not to ship.
+    assert sub.calls.count("Qa") == 0, sub.calls
+    assert not any("DOCS BLOCKED" in s for s in _subjects(repo)), _subjects(repo)
+    # STORY-2 is deferred, not lost — nothing was built for it, and nothing claims it was.
+    assert not any("STORY-2" in s for s in _subjects(repo)), _subjects(repo)
 
 
-def test_a_required_final_docs_block_is_contained_without_normal_commit(
+@pytest.mark.parametrize("mode", ["epic", "story"])
+def test_a_required_final_docs_block_stops_the_run_in_either_mode(
+    mode: str,
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A tainted story cannot publish normally when its required recheck blocks."""
-    repo = epic()
+    """A tainted story cannot publish when its required recheck blocks — in either mode.
 
-    class _BlockingFinal(_Sub):
-        def _docs(self, child: _StubFlow) -> DocsResult:
-            if self.calls.count("Docs") == 1:
-                return DocsResult(status="passed", notes="")
-            return DocsResult(status="blocked", notes=BLOCK_REASON)
-
-    sub = _BlockingFinal(repo).install(monkeypatch)
-    sub.qa_docs_recheck_required = True
-
-    result = drive_flow(Coder(), env(), _Agent())
-
-    assert result.has_epic is False, result
-    assert sub.calls.count("Docs") == 2, sub.calls
-    assert "feat(acme): story STORY-1" not in _subjects(repo), _subjects(repo)
-    assert any("DOCS BLOCKED" in subject for subject in _subjects(repo)), _subjects(repo)
-    assert _dirty(repo) == "", _dirty(repo)
-
-
-def test_story_mode_fails_when_the_required_final_docs_recheck_blocks(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Story mode has no queue in which to contain a stale-documentation finding."""
+    The parametrisation is the point. Epic mode used to contain this finding in the queue
+    while story mode failed, so the same refusal shipped a commit or didn't depending on how
+    the run was launched. The two modes now agree, and this asserts they keep agreeing.
+    """
     repo = epic()
 
     class _BlockingFinal(_Sub):
@@ -1387,12 +1368,14 @@ def test_story_mode_fails_when_the_required_final_docs_recheck_blocks(
             return DocsResult(status="blocked", notes=BLOCK_REASON)
 
     sub = _BlockingFinal(repo, qa_docs_recheck_required=True).install(monkeypatch)
+    flow = Coder() if mode == "epic" else Coder(mode="story", story="STORY-1", epic=EPIC)
 
-    with pytest.raises(WorkflowFailed, match="there is no queue"):
-        drive_flow(Coder(mode="story", story="STORY-1", epic=EPIC), env(), _Agent())
+    with pytest.raises(WorkflowFailed, match=re.escape(BLOCK_REASON)):
+        drive_flow(flow, env(), _Agent())
 
     assert sub.calls.count("Docs") == 2, sub.calls
     assert "feat(acme): story STORY-1" not in _subjects(repo), _subjects(repo)
+    assert not any("DOCS BLOCKED" in subject for subject in _subjects(repo)), _subjects(repo)
 
 
 # ------------------------------------------------------------------- the nested drain

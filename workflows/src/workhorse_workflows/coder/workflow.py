@@ -55,7 +55,7 @@ on loop 2's list, not resolved silently here.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, NoReturn
 
 from workhorse.cli import console_script
 from workhorse.pyflow import (
@@ -104,9 +104,7 @@ from workhorse_workflows.coder.shared.queue import (
     branch_epic,
     branch_story,
     commit_story,
-    flag_docs_block,
     flag_epic_blocked,
-    flag_qa_failure,
     init_base,
     prune_epic,
     select_epic,
@@ -397,39 +395,28 @@ class Coder(Workflow):
         self._require_documented(result, "story")
         return Continue(result, self.qa, epic=epic, zero_diff=zero_diff, triage=triage)
 
-    def blocked_docs(self, epic: str = "", zero_diff: int = 0, notes: str = "") -> Continue:
-        """The docs phase refused the story: flag it, and take the next one.
+    def blocked_docs(self, epic: str = "", zero_diff: int = 0, notes: str = "") -> NoReturn:
+        """The docs phase refused the story: the run ends failed.
 
         `give_up`'s counterpart for the other verdict that ends a story unfinished, and it
-        exists because the refusal used to fail the *run*. A block is the author or the
-        reviewer saying the book cannot be made true of this code — in the run that forced
-        this state, because the implementation contradicted a fail-closed guarantee its own
-        plan required. That is a finding about one story, and killing the queue for it costs
-        every independent epic behind it.
+        fails for the same reason. A block is the author or the reviewer saying the book
+        cannot be made true of this code — in the run that forced this state, because the
+        implementation contradicted a fail-closed guarantee its own plan required. Flagging
+        that and taking the next story committed a `[DOCS BLOCKED — needs manual review]`
+        marker onto the branch and moved on, so an automated run reported success carrying a
+        story its own reviewer had refused.
 
         No `Docs` re-entry, which is what separates this from `give_up`: the flow that just
-        refused would refuse again on the same grounds, and a second refusal is the loop
-        `flag_docs_block`'s skip-set entry exists to prevent.
+        refused would refuse again on the same grounds.
 
-        Story mode fails, for `give_up`'s reason: there is no next story to move on to, so
-        "flag and continue" would be a run that reported success having built nothing.
+        `notes` carries the refusal's reason into the failure, because it is the only place
+        it is written down — unlike a QA give-up, there is no `qa.md` to point an operator at.
         """
         slug = self._story.story_slug
-        if self.mode != "epic":
-            raise WorkflowFailed(
-                f"documentation was blocked for story {slug!r} and there is no queue to "
-                f"move on to: {notes or 'no reason given'}"
-            )
-        self.logger.warning("documentation blocked for %s — flagging and moving on", slug)
-        result = self.call(
-            flag_docs_block,
-            self._queue_epic(epic),
-            slug,
-            notes,
-            self._story.story_path,
-            str(self.run_dir),
+        raise WorkflowFailed(
+            f"documentation was blocked for story {slug!r}, so the run cannot honestly "
+            f"continue: {notes or 'no reason given'}. Nothing was committed for this story."
         )
-        return Continue(result, self.select_story, epic=epic, zero_diff=zero_diff)
 
     def qa(self, epic: str = "", zero_diff: int = 0, triage: int = 0) -> Continue:
         """`qa_phase` + `decide_qa_outcome`: the four-way gate the whole loop turns on.
@@ -505,22 +492,30 @@ class Coder(Workflow):
     def give_up(
         self, epic: str = "", zero_diff: int = 0, attempts: int | str = 0
     ) -> Continue:
-        """`decide_qa_fail` → `failed_docs` → `qa_give_up`: QA is out of attempts.
+        """`decide_qa_fail` → `failed_docs`: QA is out of attempts, so the run ends failed.
 
-        In story mode this is the end of the run and it is a failure — there is no next
-        story to move on to. In epic mode the story is flagged, whatever *was* built is
-        still documented (the `failed_docs` handoff, which is why documentation runs even on
-        the failing path), and the loop takes the next story.
+        Every mode fails here, and that is deliberate. A give-up used to commit the story
+        behind a `[QA FAILED — needs manual review]` marker and take the next one, which is
+        the worst available outcome for an *automated* runner: it reads as progress in `git
+        log`, the next story builds on a baseline QA rejected, and the review it asks for
+        never happens because nothing stopped to demand it. The run is checkpointed, so
+        stopping costs nothing an operator cannot resume — patch the plan or the workflow and
+        re-enter at this node.
+
+        Documentation still runs first (the `failed_docs` handoff): whatever *was* built is
+        described before the run dies, and the re-entry below exists because documenting can
+        legitimately repair the QA artifacts that caused the give-up.
+
+        The message carries `attempts` — `QaFlowResult.spent`'s phrase, naming which budget
+        ran out — and the spec dir, because the operator reading it is as often a `/loop`
+        tick as a human, and "needs manual review" is not something a poller can act on.
+        `record_qa_giveup` has already written the failure class and the artifact paths to
+        `<spec_dir>/qa.md`, uncommitted, which is where that operator should start.
 
         `attempts` is a count only for a result that predates `QaFlowResult.spent`; normally
         it is that field's phrase ("4 QA-plan repair"), which is why it is stringified rather
-        than counted here. Both forms read correctly in the marker commit and the flag.
+        than counted here. Both forms read correctly in the failure the run ends on.
         """
-        if self.mode != "epic":
-            raise WorkflowFailed(
-                f"QA never passed for story {self._story.story_slug!r} after {attempts} "
-                "attempt(s); giving up."
-            )
         result = self.handoff(
             Docs,
             story=self._story.story_slug,
@@ -538,16 +533,17 @@ class Coder(Workflow):
                 extra={"activity": True},
             )
             return Continue(result, self.qa, epic=epic, zero_diff=zero_diff)
-        self.call(
-            flag_qa_failure,
-            self._queue_epic(epic),
-            self._story.story_slug,
-            str(attempts),
-            self._story.story_path,
-            self._story.spec_dir,
-            str(self.run_dir),
+        # Named only if it is actually there. A give-up can precede any assessment — the
+        # QA-plan repair budget can run out with no plan ever executed — and pointing an
+        # operator at a file that was never written sends them hunting for a missing
+        # artifact instead of reading the code.
+        assessment = Path(self._story.spec_dir) / "qa.md"
+        where = f" the failure class and the artifact paths are in {assessment};" \
+            if assessment.is_file() else ""
+        raise WorkflowFailed(
+            f"QA never passed for story {self._story.story_slug!r} after {attempts} "
+            f"attempt(s);{where} nothing was committed for this story."
         )
-        return Continue(result, self.select_story, epic=epic, zero_diff=zero_diff)
 
     # ── the backlog drain, nested inside the story ────────────────────────────────────
 
