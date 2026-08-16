@@ -55,7 +55,6 @@ class PlanRunContext(CoderResult):
     base_commit: str = ""
     origin_digest: str = ""
     git_control_digest: str = ""
-    other_refs_digest: str = ""
     run_nonce: str = ""
 
 

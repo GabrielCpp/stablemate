@@ -18,7 +18,6 @@ from workhorse_workflows.coder.implement_plan.inventory import (
     assert_plan_unchanged,
     git_control_digest,
     origin_digest,
-    other_refs_digest,
     task_key,
 )
 from workhorse_workflows.coder.implement_plan.schemas import (
@@ -113,8 +112,13 @@ def assert_repository_identity(context: PlanRunContext) -> None:
         raise WorkflowFailed("Git configuration, hooks, or info controls changed during implement-plan")
     if raw_git(context).for_each_ref("--format=%(refname)", "refs/replace").strip():
         raise WorkflowFailed("replacement refs appeared during implement-plan")
-    if other_refs_digest(Path(context.repo_root), context.branch) != context.other_refs_digest:
-        raise WorkflowFailed("a non-current Git ref changed during implement-plan")
+    # Deliberately no fingerprint over the repository's *other* refs. The run reads and
+    # writes exactly two — its branch and origin/<branch> — and those are asserted
+    # directly (HEAD unmoved, remote unmoved). A sibling branch, a tag, a note or a
+    # remote-tracking ref moving cannot change this run's parent chain or its content,
+    # so failing on it only breaks the case the isolation is *for*: a dedicated worktree
+    # sharing one repository with other work. `refs/replace` is the one ref class that
+    # does rewrite object content, and it is refused above.
 
 
 def assert_remote(context: PlanRunContext, expected: str) -> None:

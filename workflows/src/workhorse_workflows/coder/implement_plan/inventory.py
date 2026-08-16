@@ -75,19 +75,6 @@ def git_control_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
-def other_refs_digest(root: Path, branch: str) -> str:
-    """Identity of every ref the workflow does not deliberately advance."""
-    try:
-        lines = open_repo(root).git.for_each_ref("--format=%(refname) %(objectname)").splitlines()
-    except GitError as exc:
-        raise WorkflowFailed(f"cannot fingerprint refs at {root}: {exc}") from exc
-    mutable = (f"refs/heads/{branch} ", f"refs/remotes/origin/{branch} ")
-    payload = "\n".join(
-        sorted(line for line in lines if not line.startswith(mutable))
-    )
-    return hashlib.sha256(payload.encode()).hexdigest()
-
-
 def origin_endpoint(root: Path) -> str:
     """Credential-free identity shared by every origin fetch and push target."""
     try:
@@ -307,7 +294,6 @@ def snapshot_plan(logger, plan_path: str, run_dir: str, repo_dir: str = "") -> P
         base_commit=base_commit,
         origin_digest=origin_digest(repo_root),
         git_control_digest=git_control_digest(repo_root),
-        other_refs_digest=other_refs_digest(repo_root, branch),
         run_nonce=secrets.token_hex(16),
     )
     _atomic_json(
@@ -398,7 +384,6 @@ __all__ = [
     "git_control_digest",
     "origin_endpoint",
     "origin_digest",
-    "other_refs_digest",
     "prepare_plan",
     "snapshot_plan",
     "task_key",
