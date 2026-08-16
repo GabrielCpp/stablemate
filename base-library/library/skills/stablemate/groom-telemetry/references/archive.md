@@ -1,0 +1,78 @@
+# The archive: what the node actually said
+
+Telemetry says a node re-decided something eleven times; it cannot say why. The reasoning,
+the tool calls and the file the agent read and then ignored live in the agent CLI's own
+session store — on whichever host ran it, for as long as that CLI feels like keeping them.
+So groom harvests its own copy on a tick (`GROOM_HARVEST_EVERY_S`, 300) into:
+
+```
+<archive>/<run_id>/<gen>-<seq>-<node>__<session_id>/
+    transcript.jsonl      # what the runner captured
+    prompt.md             # the rendered prompt that provoked the turn
+    output.json           # the parsed answer
+    context_after.json    # optional
+    sidechains/           # subagent transcripts, when the copy came from the CLI store
+```
+
+Run-major, so a run drops in one `rm -rf`; keyed by the **visit**, so a node visited five
+times is five directories rather than one overwritten one.
+
+```bash
+groom transcript ls --run RUN --node plan-qa    # one row per lap, in visit order
+groom transcript show --session SESSION         # its files on disk + the prompt
+groom transcript harvest                        # copy now, don't wait for the tick
+groom transcript backfill --dry-run             # what the CLI still holds, unarchived
+```
+
+`ls` orders by the **visit key, not the clock** — so laps read top to bottom even across a
+checkpoint rewind, which a wall-clock sort does not survive. `show` prints *paths*, not the
+transcript: a record runs to tens of megabytes and what you want is somewhere to point a
+pager, a `jq`, or a replay.
+
+Three things routinely surprise people here:
+
+- **`src` is recorded, never inferred.** `store` is the CLI's own session directory and is
+  the richest — it carries attachments and the subagent sidechains that never cross stdout.
+  `tee` is the redacted stream capture, used when that store is not on this host.
+  `store-backfill` came from the CLI after the fact.
+- **`legacy-N` is a reconstructed ordinal, not a real visit.** A `sessions.jsonl` written
+  before the engine stamped `generation`/`seq` gets a key rebuilt from the map's own order.
+  It orders the run's turns and claims nothing more — don't read `legacy-17` as generation 1,
+  seq 17. Most history worth revisiting is legacy-keyed.
+- **A container's run dir is on a volume the host cannot read**, and it is destroyed by the
+  very event that makes anyone want it. The sidecar announces turn movement and groom
+  **pulls** the records over the same socket the Files panel uses, mirroring them under
+  `<archive>/.incoming/<container>/<run>` and then harvesting them as if local. The last
+  pull is unconditional at the run's terminal. If the sidecar never connected, that
+  container's records are simply absent — nothing else degrades, and no amount of
+  `harvest` will conjure them.
+
+Empty result from `ls` means the tick hasn't run, this host cannot see the run dir, or the
+record only ever existed in the CLI's store. Try `harvest`, then `backfill --dry-run`, in
+that order.
+
+**The archive rides its own clock.** `GROOM_TRANSCRIPT_RETENTION_DAYS` defaults to `0` —
+keep everything — because a transcript is wanted precisely when someone comes back long
+after the spans aged out (`GROOM_RETENTION_DAYS`, 14). Do not assume telemetry and
+transcripts cover the same window; the archive usually reaches further back.
+
+## Evaluating a prompt against every session that ran it
+
+That needs the archive transposed — not one run's laps, but every session that ever ran
+that node:
+
+```bash
+groom transcript export --by-node DIR --node plan-qa --workflow coder
+```
+
+```
+DIR/<workflow>/<node>/<source>__<session_id>.json
+DIR/INDEX.json
+```
+
+One file per session (`task`, `source`, `session_id`, `cwd`, `model`, `time_created`,
+`n_messages`, `messages[]`), streamed a line at a time because the corpus does not fit in
+memory. `task` is the node, from the `sessions.jsonl` index join — classification is
+**exact**, with no heading regex and no unclassified bucket. The export is a *view*: it
+duplicates nothing, has no default output directory, and should be thrown away and retaken
+after the next harvest rather than maintained.

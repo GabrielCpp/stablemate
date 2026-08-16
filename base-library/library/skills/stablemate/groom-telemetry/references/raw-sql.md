@@ -1,0 +1,79 @@
+# Raw SQL against `groom.db`
+
+There is no privileged view — the dashboard, the CLI and you read the same file.
+
+```bash
+sqlite3 -header "$(groom db-path)" "
+  SELECT node, ROUND(end_ts - start_ts, 1) AS secs, status
+  FROM spans WHERE run_id = 'RUN' ORDER BY start_ts DESC LIMIT 20;"
+```
+
+Four tables: **`spans`**, **`metrics`**, **`logs`** — the first three carrying an
+`attrs_json` of whatever OTel attributes the producer set — and **`turns`**, which holds
+no bodies at all: it is the index over the archive, keyed by
+`(run_id, generation, seq, session_id)`.
+
+## The footgun: quote every dotted key
+
+OTel attribute keys are flat strings that merely *look* nested. `set_attribute` is called
+with `usage.output_tokens`, and that reaches `attrs_json` as a literal key containing a
+dot:
+
+```sql
+json_extract(attrs_json, '$.usage.output_tokens')     -- NULL, always, no error
+json_extract(attrs_json, '$."usage.output_tokens"')   -- 17550
+```
+
+SQLite reads the unquoted dot as navigation into an object that is not there and returns
+NULL **silently**. A query that returns all-NULL for a column you know is populated is
+this, essentially every time.
+
+Most queries dodge it entirely, because the fields worth having are real columns on
+`spans`: `duration_ms`, `total_cost_usd`, `input_tokens`, `output_tokens`,
+`cache_read_tokens`, `cache_creation_tokens`, `pid`, `resume_generation`, `head_start`,
+`head_end`. Everything else — `workhorse.node`, `backend`, `model`, `session.id`, and
+whatever the workflow declared in `labels()` — stays in `attrs_json`.
+
+## Three column semantics to respect
+
+- **NULL is not `0.0`.** A harness that reports no cost yields NULL, deliberately, so that
+  averaging an unknown together with a real zero cannot understate spend. Spans ingested
+  before these columns shipped are NULL and are never backfilled — `groom cost` falls back
+  to `attrs_json`, and so should anything you write.
+- **`resume_generation`** counts how many times a run dir has been started. A resume reuses
+  the `run_id` and opens a fresh root span, so it is what distinguishes a gap that crosses
+  a generation (crash-and-resume) from one that does not (the process waiting or thinking).
+- **`head_start`/`head_end` on a span, `head` on a log and a turn, are observations, not
+  assertions.** An unequal pair records that something moved `HEAD` inside that span; the
+  engine says nothing about why, and reading the reason is your job. NULL means nothing
+  observed a tree, which is not an unknown hash.
+
+## Recipes
+
+```sql
+-- Which node is open right now, and for how long (no span exists for it yet).
+SELECT json_extract(attrs_json, '$.node') AS node, value AS secs_in_node
+FROM metrics WHERE name = 'workhorse.node.elapsed_s'
+ORDER BY ts DESC LIMIT 1;
+
+-- Recovery-ladder events: retries, reframes, compactions, watchdog kills.
+SELECT s.node, e.value ->> 'name' AS event, datetime(e.value ->> 'ts', 'unixepoch')
+FROM spans s, json_each(s.attrs_json, '$.events') e
+WHERE s.run_id = 'RUN' ORDER BY s.start_ts;
+
+-- Slowest nodes across every run.
+SELECT node, COUNT(*) n, ROUND(AVG(end_ts - start_ts), 1) avg_s
+FROM spans WHERE name NOT LIKE 'run:%' GROUP BY node ORDER BY avg_s DESC LIMIT 10;
+
+-- From a span to the artifacts that produced it (prompt.md, output.json).
+SELECT DISTINCT run_dir FROM spans WHERE run_id = 'RUN';
+```
+
+That last one is why this stays local: `run_dir` is a resource attribute on every span, so
+a query hands you the path to the prompt and the outputs on disk — a join a hosted trace
+backend cannot make.
+
+The HTTP surface answers the same shapes when groom is up:
+`GET /traces?run=…&node=…&status=…&slower_than=…`. It returns **only runs live right now**
+unless you pass `show_ended=1` — naming an explicit `run=` always finds it, finished or
+not. A "missing" run in the telemetry pane is nearly always this and not data loss.

@@ -240,6 +240,8 @@ progress.md
 docs/specs
 .opencode/opencode-loop
 
+docs/backload.md
+
 .agents/runs/
 .agents/worktrees/
 .agents/workflows/
@@ -247,4 +249,3 @@ docs/specs
 .agents/local.compose.yaml
 .agents/agents-context.json
 .agents/agents-context.*.json
-docs/backload.md

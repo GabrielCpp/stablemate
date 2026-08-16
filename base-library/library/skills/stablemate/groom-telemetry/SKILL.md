@@ -59,8 +59,8 @@ Corollary: an empty `spans` result for a live run is not a broken exporter.
 | What would it have cost (unpriced harness)? | `groom prices --reprice`, then `cost`'s `est$` |
 | Which review→rework loops don't converge? | `groom loops --workflow coder` |
 | What occupied the wall clock? | `groom profile --run RUN` |
-| What did the node actually say? | `groom transcript ls` → `show` |
-| Anything the CLI doesn't answer | `sqlite3 "$(groom db-path)"` |
+| What did the node actually say? | `groom transcript ls` → `show` — [archive](references/archive.md) |
+| Anything the CLI doesn't answer | `sqlite3 "$(groom db-path)"` — [raw SQL](references/raw-sql.md) |
 
 Read them in roughly that order. Each one narrows the next: `status` names a node,
 `loops` names a node that repeats, and `transcript` is where you find out why.
@@ -152,84 +152,26 @@ is left unpriced rather than guessed from its family. Add rates in
 
 Telemetry says a node re-decided something eleven times; it cannot say why. The reasoning,
 the tool calls and the file the agent read and then ignored live in the agent CLI's own
-session store — on whichever host ran it, for as long as that CLI feels like keeping them.
-So groom harvests its own copy on a tick (`GROOM_HARVEST_EVERY_S`, 300) into:
-
-```
-<archive>/<run_id>/<gen>-<seq>-<node>__<session_id>/
-    transcript.jsonl      # what the runner captured
-    prompt.md             # the rendered prompt that provoked the turn
-    output.json           # the parsed answer
-    context_after.json    # optional
-    sidechains/           # subagent transcripts, when the copy came from the CLI store
-```
-
-Run-major, so a run drops in one `rm -rf`; keyed by the **visit**, so a node visited five
-times is five directories rather than one overwritten one.
+session store, which groom harvests on a tick into an archive beside the db.
 
 ```bash
 groom transcript ls --run RUN --node plan-qa    # one row per lap, in visit order
 groom transcript show --session SESSION         # its files on disk + the prompt
-groom transcript harvest                        # copy now, don't wait for the tick
-groom transcript backfill --dry-run             # what the CLI still holds, unarchived
 ```
 
-`ls` orders by the **visit key, not the clock** — so laps read top to bottom even across a
-checkpoint rewind, which a wall-clock sort does not survive. `show` prints *paths*, not the
-transcript: a record runs to tens of megabytes and what you want is somewhere to point a
-pager, a `jq`, or a replay.
-
-Three things routinely surprise people here:
-
-- **`src` is recorded, never inferred.** `store` is the CLI's own session directory and is
-  the richest — it carries attachments and the subagent sidechains that never cross stdout.
-  `tee` is the redacted stream capture, used when that store is not on this host.
-  `store-backfill` came from the CLI after the fact.
-- **`legacy-N` is a reconstructed ordinal, not a real visit.** A `sessions.jsonl` written
-  before the engine stamped `generation`/`seq` gets a key rebuilt from the map's own order.
-  It orders the run's turns and claims nothing more — don't read `legacy-17` as generation 1,
-  seq 17. Most history worth revisiting is legacy-keyed.
-- **A container's run dir is on a volume the host cannot read**, and it is destroyed by the
-  very event that makes anyone want it. The sidecar announces turn movement and groom
-  **pulls** the records over the same socket the Files panel uses, mirroring them under
-  `<archive>/.incoming/<container>/<run>` and then harvesting them as if local. The last
-  pull is unconditional at the run's terminal. If the sidecar never connected, that
-  container's records are simply absent — nothing else degrades, and no amount of
-  `harvest` will conjure them.
-
-Empty result from `ls` means the tick hasn't run, this host cannot see the run dir, or the
-record only ever existed in the CLI's store. Try `harvest`, then `backfill --dry-run`, in
-that order.
-
-**The archive rides its own clock.** `GROOM_TRANSCRIPT_RETENTION_DAYS` defaults to `0` —
-keep everything — because a transcript is wanted precisely when someone comes back long
-after the spans aged out (`GROOM_RETENTION_DAYS`, 14). Do not assume telemetry and
-transcripts cover the same window; the archive usually reaches further back.
-
-### Evaluating a prompt against every session that ran it
-
-That needs the archive transposed — not one run's laps, but every session that ever ran
-that node:
-
-```bash
-groom transcript export --by-node DIR --node plan-qa --workflow coder
-```
-
-```
-DIR/<workflow>/<node>/<source>__<session_id>.json
-DIR/INDEX.json
-```
-
-One file per session (`task`, `source`, `session_id`, `cwd`, `model`, `time_created`,
-`n_messages`, `messages[]`), streamed a line at a time because the corpus does not fit in
-memory. `task` is the node, from the `sessions.jsonl` index join — classification is
-**exact**, with no heading regex and no unclassified bucket. The export is a *view*: it
-duplicates nothing, has no default output directory, and should be thrown away and retaken
-after the next harvest rather than maintained.
+**[references/archive.md](references/archive.md)** carries that branch whole: the
+`<run_id>/<gen>-<seq>-<node>__<session_id>/` visit-key layout, why `ls` sorts by visit and
+not the clock, what `src` and a `legacy-N` key mean, how a container's records are pulled
+over the sidecar socket, the retention clock that outlives telemetry, and the `--by-node`
+export that transposes the archive for evaluating one prompt across every session that ran
+it. Read it when `ls` comes back empty, when a record is on a host you cannot reach, or
+when you are grading a prompt rather than debugging a run.
 
 ## Raw SQL
 
-There is no privileged view — the dashboard, the CLI and you read the same file.
+There is no privileged view — the dashboard, the CLI and you read the same file. Four
+tables: `spans`, `metrics`, `logs` — the first three carrying an `attrs_json` of whatever
+OTel attributes the producer set — and `turns`, the bodiless index over the archive.
 
 ```bash
 sqlite3 -header "$(groom db-path)" "
@@ -237,76 +179,12 @@ sqlite3 -header "$(groom db-path)" "
   FROM spans WHERE run_id = 'RUN' ORDER BY start_ts DESC LIMIT 20;"
 ```
 
-Four tables: **`spans`**, **`metrics`**, **`logs`** — the first three carrying an
-`attrs_json` of whatever OTel attributes the producer set — and **`turns`**, which holds
-no bodies at all: it is the index over the archive, keyed by
-`(run_id, generation, seq, session_id)`.
-
-### The footgun: quote every dotted key
-
-OTel attribute keys are flat strings that merely *look* nested. `set_attribute` is called
-with `usage.output_tokens`, and that reaches `attrs_json` as a literal key containing a
-dot:
-
-```sql
-json_extract(attrs_json, '$.usage.output_tokens')     -- NULL, always, no error
-json_extract(attrs_json, '$."usage.output_tokens"')   -- 17550
-```
-
-SQLite reads the unquoted dot as navigation into an object that is not there and returns
-NULL **silently**. A query that returns all-NULL for a column you know is populated is
-this, essentially every time.
-
-Most queries dodge it entirely, because the fields worth having are real columns on
-`spans`: `duration_ms`, `total_cost_usd`, `input_tokens`, `output_tokens`,
-`cache_read_tokens`, `cache_creation_tokens`, `pid`, `resume_generation`, `head_start`,
-`head_end`. Everything else — `workhorse.node`, `backend`, `model`, `session.id`, and
-whatever the workflow declared in `labels()` — stays in `attrs_json`.
-
-### Three column semantics to respect
-
-- **NULL is not `0.0`.** A harness that reports no cost yields NULL, deliberately, so that
-  averaging an unknown together with a real zero cannot understate spend. Spans ingested
-  before these columns shipped are NULL and are never backfilled — `groom cost` falls back
-  to `attrs_json`, and so should anything you write.
-- **`resume_generation`** counts how many times a run dir has been started. A resume reuses
-  the `run_id` and opens a fresh root span, so it is what distinguishes a gap that crosses
-  a generation (crash-and-resume) from one that does not (the process waiting or thinking).
-- **`head_start`/`head_end` on a span, `head` on a log and a turn, are observations, not
-  assertions.** An unequal pair records that something moved `HEAD` inside that span; the
-  engine says nothing about why, and reading the reason is your job. NULL means nothing
-  observed a tree, which is not an unknown hash.
-
-### Recipes
-
-```sql
--- Which node is open right now, and for how long (no span exists for it yet).
-SELECT json_extract(attrs_json, '$.node') AS node, value AS secs_in_node
-FROM metrics WHERE name = 'workhorse.node.elapsed_s'
-ORDER BY ts DESC LIMIT 1;
-
--- Recovery-ladder events: retries, reframes, compactions, watchdog kills.
-SELECT s.node, e.value ->> 'name' AS event, datetime(e.value ->> 'ts', 'unixepoch')
-FROM spans s, json_each(s.attrs_json, '$.events') e
-WHERE s.run_id = 'RUN' ORDER BY s.start_ts;
-
--- Slowest nodes across every run.
-SELECT node, COUNT(*) n, ROUND(AVG(end_ts - start_ts), 1) avg_s
-FROM spans WHERE name NOT LIKE 'run:%' GROUP BY node ORDER BY avg_s DESC LIMIT 10;
-
--- From a span to the artifacts that produced it (prompt.md, output.json).
-SELECT DISTINCT run_dir FROM spans WHERE run_id = 'RUN';
-```
-
-That last one is why this stays local: `run_dir` is a resource attribute on every span, so
-a query hands you the path to the prompt and the outputs on disk — a join a hosted trace
-backend cannot make.
-
-The HTTP surface answers the same shapes when groom is up:
-`GET /traces?run=…&node=…&status=…&slower_than=…`. It returns **only runs live right now**
-unless you pass `show_ended=1` — naming an explicit `run=` always finds it, finished or
-not. A "missing" run in the telemetry pane is nearly always this and not data loss.
-
+**[references/raw-sql.md](references/raw-sql.md)** carries the rest, and you want it before
+writing a second query: the dotted-key footgun that returns NULL **silently** for every
+`usage.output_tokens`-shaped extract, which fields are real columns and so dodge it, the
+three column semantics that make a wrong answer look right (NULL is not `0.0`;
+`resume_generation`; `head_start`/`head_end` are observations), the recipe set, and the
+`/traces` HTTP surface. Read it whenever the table above sends you to `sqlite3`.
 ## Hygiene, and two ways to read a lie
 
 - **Test telemetry is not evidence.** One `make test` of the workflows suite once wrote a

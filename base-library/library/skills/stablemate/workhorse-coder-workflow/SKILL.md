@@ -121,197 +121,53 @@ run does not re-derive it.
 
 ## State Topology
 
-Twenty-seven states cover what was eighty YAML nodes. The factor of three is the `decide_*`
-nodes disappearing into the `if` at the end of the state that produced the value they branch
-on, and the eight `incr_*`/`reset_*`/`init_*` counter nodes becoming keyword arguments.
+Twenty-seven states cover what was eighty YAML nodes. **Where a state boundary goes:** a
+state ends where the *expensive or irreversible* thing begins — each `handoff` to a
+sub-flow, each agent turn, each of the two operator gates. Deterministic nodes fold forward
+into whichever state branches on them, which is why `dev`, `review`, `document` and `qa`
+are four states rather than one: a kill during QA must not re-run the implementation.
 
-**Where a state boundary goes:** a state ends where the *expensive or irreversible* thing
-begins — each `handoff` to a sub-flow, each agent turn, each of the two operator gates.
-Deterministic nodes fold forward into whichever state branches on them. That is why
-`prune_epic` sits inside `open_pr` (a straight line) while `dev`, `review`, `document` and
-`qa` are four states rather than one: a kill during QA must not re-run the implementation.
+Both modes converge on `prepare`, whose `prepare_story` node is the **single canonical
+source** for `story_path`, `spec_dir`, `qa_dir`, `story_slug` and `story_epic`. Never
+bypass it and never re-derive those paths.
 
-### Story Mode
-```
-start → prepare → dev → review → document → qa → drain… → finalize
-      → commit → commit_pr → done
-```
-`start` cuts the branch itself in story mode, off the current HEAD, recording the base it
-came from — the PR at the far end has to target that base, and re-deriving it from the slug
-is how the two drifted once.
-
-### Epic Mode
-```
-start → select_epic → select_story → prepare → dev → review → document → qa
-      → drain → fix_plan → fix_dispatch → fix_implement → fix_check → fix_apply
-      → fix_recheck → finalize → commit → select_story        (loop within epic)
-                                        ↘ [stories exhausted] open_pr
-                                          → merge → merge_operator → select_epic
-```
-`open_pr` pops the epic off the queue before opening the PR — that order is deliberate.
-`merge` returns `Continue | Await`: the CI/merge gate is the one place a human is always
-allowed to be the next step.
-
-### `prepare` — the convergence state
-
-Both modes pass through `prepare` before `dev`. Its `prepare_story` node is the **single
-canonical source** for `story_path`, `spec_dir`, `qa_dir`, `story_slug` and `story_epic`,
-returned as one `StoryPaths` model. Never bypass it and never re-derive those paths.
-
-```python
-def prepare(self, slug: str = "", epic: str = "", zero_diff: int = 0) -> Continue:
-    story = self.call(prepare_story, self.docs_path, slug or self.story, epic or self.epic)
-    return Continue(story, self.dev, epic=epic, zero_diff=zero_diff)
-```
-
-### The backlog drain is nested as well as standalone
-
-`flows/fix.py` is the standalone drain. States `drain` through `fix_recheck` are the same
-seven steps run *inside* a story's run, right after that story goes green. They are not a
-`handoff` to `Fix` because the two differ at the far end: the standalone flow documents and
-commits each drained item on its own, while the nested copy leaves both to the story's own
-`finalize` and `commit`, so one commit covers the story and everything drained behind it.
-The duplication is inherited from the YAML and is preserved deliberately.
-
-### Documentation gate topology
-
-The reviewed implementation enters a standalone, hard-gated `docs` flow before QA:
-
-```text
-prepare_story -> resolve_documentation_context -> detect_documentation_okf
--> document_story -> build/validate diff-to-OKF context -> verify_story_documentation
--> review_story_documentation -> documentation_done
-```
-
-Repositories without an OKF `docs/features/` tree are explicitly not applicable. Once that tree
-exists, an unreadable graph, `ostler doctor` error, surface-only production ownership, blocked
-authoring, semantic rejection, or exhausted repair budget ends at `documentation_failed`; it may
-not proceed to QA or commit. The parent invokes the same flow again after QA/regression/fix-drain
-mutations immediately before commit, and before QA-give-up or standalone fix-story commits.
-Local monorepos receive deterministic repository-wide code mapping with document roots excluded;
-multi-repo/non-Git docs roots
-use scoped doctor findings plus the independent semantic reviewer rather than an invalid cross-repo
-diff. CI/merge remediation is contract-preserving and must escalate if behavior would change. Run
-the phase independently with `workhorse-coder run docs`.
-
-### QA control-plane topology
-
-The primary QA path is fixed:
-
-```text
-prepare_story -> clear_qa_evidence -> resolve_qa_context -> detect_qa_okf
--> build_qa_okf_context -> validate_qa_okf_context -> plan_qa
--> validate_qa_plan -> review_qa_plan -> run_qa_plan -> assess_qa_run
--> verify_qa_evidence -> audit_qa -> regression/completion gates
-```
-
-`qa_plan.py` is mandatory for command, browser, and mobile surfaces. Node functions call
-`okf.qa_context(...)`, `okf.qa_context_validate(...)`, `okf.qa_validate(...)` and
-`okf.qa_run(...)` on the `Ostler` facade (through the `qa_cli` helpers); no QA agent
-drives Playwright/Maestro/commands or authors the run log, manifest, or evidence.
-`review_qa_plan` independently checks whether the valid plan can reach and observe its
-objectives. `assess_qa_run` constructively judges whether each completed run actually did
-so and may request bounded plan repair/extension. `audit_qa` sees only an
-objective-confirmed, evidence-valid candidate pass, treats plan/evidence as frozen, and
-may only let it stand or refute it.
-
-Routing is fail-closed: `invalid` returns to context/planning repair, `blocked` enters
-setup/operator handling, `failed` enters defect triage, and only `passed` reaches the
-evidence gate and auditor. Never declare a default output of `passed`.
-
-Audit refutations are classified: plan/evidence defects return to planning, while a
-product contradiction becomes the normal failed `qa_result` and enters defect triage.
-Context grounding, semantic-plan convergence, and product repair use separate bounded
-counters. Regression fixes retain one cumulative budget; a pending marker forces fresh
-primary QA after a green fix without resetting that budget.
-
-The reviewed implementation's `code:`/`tests:` grounding is hard-gated by the docs flow before
-entering QA so impact generation sees current references. Product fixes loop back through
-context generation; setup-only fixes may rerun the already validated plan.
+**[references/state-topology.md](references/state-topology.md)** draws all four topologies —
+story mode, epic mode, the backlog drain that is nested as well as standalone, and the
+hard-gated documentation and QA control planes with their fail-closed routing, bounded
+repair counters and audit classification. Read it when adding or reordering a state, when a
+run took a branch you did not expect, or when changing what a gate is allowed to conclude.
 
 ---
 
 ## Ostler Path Integration
 
-Ostler resolves slugs to canonical paths. Scripts call it instead of hardcoding path patterns.
+Ostler resolves slugs to canonical paths, and nodes command it **in-process** through the
+`Ostler` facade — never `run_tool(["ostler", …])`, because the CLI is a different process
+with a different interpreter and pipx isolation makes "the shim is on PATH" and "the module
+imports" routinely disagree.
 
-### CLI Subcommands
-```bash
-ostler path epic <epic>              # → docs/epics/<NNNN-epic>
-ostler path spec <slug>              # → docs/specs/<slug>
-ostler path story <epic> <slug>      # → docs/epics/<NNNN-epic>/stories/<slug>/story.md
-ostler path branch <slug>            # → <slug>  (bare id — already unique)
-ostler path branch <slug> --epic     # → feat/<slug>  (the epic's number is dropped)
-```
+A workflow joins the filename **it** owns — `story.md`, `context.md` — onto a directory
+ostler resolved, and never spells a `docs/…` path of its own. Catch the raise where a
+fallback is genuinely correct; never catch it to emit a **verdict**, because a gate that
+could not read the graph is a failure, not a pass.
 
-Epic directories carry their creation order (`0001-checkout-flow`), which is exactly why nothing
-here joins `docs/epics/<epic>` by hand — the commands above take the bare slug and return the
-folder that exists.
-
-All commands respect `docRoots` from `ostler.yml` / `agents.yml`. Pass `-C <docs_root>` when not running from the docs repo CWD.
-
-### In nodes (Python) — the library facade, never the CLI
-
-Nodes command ostler **in-process** through `Ostler`. There is no `run_tool(["ostler", …])`
-here: the CLI is a different process with a different interpreter, and pipx isolation makes
-"the shim is on PATH" and "the module imports" routinely disagree.
-
-```python
-from ostler import Ostler, path as okf_path
-
-okf = Ostler(docs_root)                        # root discovered upward, like `ostler -C DIR`
-spec_dir_rel = okf.spec_path(slug)             # docs/specs/<slug>
-try:
-    story_path_rel = okf.story_path(epic, slug)
-except (OSError, ValueError, RuntimeError):    # an unloadable graph raises; [] means empty
-    story_path_rel = ""
-# The fallback is the last resort only, for a docs tree ostler could not read at all; it is
-# still ostler's layout rule being applied, just without a graph.
-story_path = (
-    (docs_root / story_path_rel).resolve() if story_path_rel
-    else okf_path.story_dir_in(docs_root, epic, slug) / "story.md"
-)
-```
-
-Note what the fallback is *not*: a `f"docs/epics/{epic}/stories/{slug}/story.md"` literal.
-A workflow joins the filename **it** owns — `story.md`, `context.md`, `<gate>-context.md` —
-onto a directory ostler resolved, and never spells a `docs/…` path of its own. The graph-free
-`ostler.path` helpers (`story_dir_in`, `epic_dir_in`, `epics_index_in`, `backlog_path_in`,
-`features_root_in`) exist for exactly this: they honour `docRoots:` and find the numbered
-epic folder from a bare slug without paying for a graph load. Full rule and its reasoning:
-"A workflow does not spell a doc path" in `workflows/README.md`.
-
-Catch the raise where a fallback is genuinely correct — a path convention the graph cannot
-confirm. Never catch it to emit a **verdict**: a gate that could not read the graph is a
-failure, not a pass. Full verb→method reference: the `ostler` skill.
+**[references/ostler-paths.md](references/ostler-paths.md)** has the `ostler path` subcommand
+set, the worked `Ostler`-facade callsite with its fallback, and the graph-free `ostler.path`
+helpers that honour `docRoots:` without paying for a graph load. Read it when a node needs a
+doc path. Full verb→method reference: the `ostler` skill.
 
 ---
 
 ## Ambient path threading — `repo_dir`, `docs_path`, `workspace_file`
 
 The three are run **inputs**, listed once as `paths.AMBIENT` and declared as the class's
-`injects`. A node that needs one just declares a parameter of the same name; `self.call`
-and `self.handoff` fill it from the workflow, so the ordinary callsite says nothing. A
-callsite value always wins, and an empty field injects nothing, so the target's own default
-stands. None of them is ever read from the environment — that is prohibited across every
-workflow (`workflows/README.md`, and the `workhorse-scripting` skill) and
-enforced by `make check-no-env`; the CLI translates `$FOO` into `--params` at the process
-boundary instead.
+`injects`; a node that needs one just declares a parameter of the same name. None is ever
+read from the environment — prohibited across every workflow and enforced by
+`make check-no-env`.
 
-`paths.py` keeps **three** repo-root resolvers on purpose, because the YAML's scripts did not
-agree and the disagreement is behavioral: a run launched from a subdirectory, or from a repo
-whose `docs/epics/` exists but whose `.git` does not, lands on a different root under each.
-Each takes `repo_dir` first and only falls back to a `cwd` walk when it is empty. Call the
-one the node's semantics need:
-
-| Resolver | Marker when `repo_dir` is empty | Used by |
-|---|---|---|
-| `kit.find_repo_root(repo_dir)` | `agents.yml`/`.git` upward from `cwd` | the consuming code repo |
-| `paths.epics_repo_root(repo_dir)` | `agents.yml` or a `docs/epics/` **directory** | `prune_epic` — a docs checkout with no `.git` still gets its queue popped |
-| `paths.launch_repo_root(repo_dir)` | `cwd` if project-shaped, else upward | the operator gates — its `cwd`-first probe is what lets a test point a gate at a sandbox by chdir alone |
-
-Docs specifically: `find_docs_root(docs_path, repo_dir)` from `workhorse_workflows.kit` — the
-explicit path when given, else the repo root, i.e. docs beside the code.
+**[references/ambient-paths.md](references/ambient-paths.md)** explains why `paths.py` keeps
+**three** repo-root resolvers whose disagreement is behavioral, and which to call. Read it
+before resolving a repo or docs root in a node.
 
 ---
 

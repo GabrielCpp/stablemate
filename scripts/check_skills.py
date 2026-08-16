@@ -56,14 +56,7 @@ _WORDISH = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_./"
 #: `skill name` → why it carries its length with nothing disclosed. Printed on failure, and
 #: checked for staleness: an entry whose skill is now under budget (or now discloses) fails
 #: too, so a reason cannot outlive the file it excuses.
-ALLOWED: dict[str, str] = {
-    "groom-telemetry": "not yet split — the pattern was proven on ostler and "
-    "workhorse-scripting first; the disclosure cut here is a whole-file read, not a "
-    "line-range move, because the CLI surface and the span model interleave",
-    "workhorse-coder-workflow": "not yet split — the per-state material is one long "
-    "sequence, and cutting it by branch means deciding which states a reader reaches "
-    "independently, which is a judgement the next pass over this skill owes it",
-}
+ALLOWED: dict[str, str] = {}
 
 
 def _assets(skill_dir: Path) -> list[str]:

@@ -1,0 +1,35 @@
+# When a module becomes two
+
+Two triggers for splitting one module into two: what the docstring admits, and what an
+entry point is doing besides dispatching.
+
+Every rule below is one of the trigger rows in
+[the code-structure skill](../SKILL.md); read that table first if you are scanning for
+which rule fired.
+
+## 2.1 The docstring test
+
+**Statement.** A module names one capability. You should be able to describe it in a noun phrase
+with no "and".
+
+**Trigger.** Its header comment or docstring needs a bulleted list of the unrelated things it does.
+
+**Fix.** One module per bullet, named for the bullet.
+
+This trigger is worth more than its accuracy, because of *when* it fires: while you are writing the
+docstring, which is exactly when splitting is still cheap. A module that has already reached the
+list-of-bullets stage will keep growing, because every new concern now has precedent.
+
+**Counter-case.** A deliberate facade whose docstring enumerates what it re-exports. A facade
+re-exports; it does not implement. If the bullets describe *implementations*, it is not a facade.
+
+## 2.2 The entry point parses and dispatches; it does not do the work
+
+**Statement.** A CLI entry point, HTTP handler, or job main resolves inputs and hands off. Command
+bodies live beside their command.
+
+**Trigger.** A file containing both argument/route wiring and the implementation of more than one
+command or endpoint.
+
+**Fix.** One module per command, holding that command's argument definition and its body; the entry
+point holds only the table that maps a name to it.
