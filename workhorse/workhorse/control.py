@@ -76,6 +76,11 @@ class Request:
     core: bool = False
     at_boundary: bool = False
     cli: str = ""
+    #: The named model set a `switch-profile` asks the run to resolve from next. Empty
+    #: for every other verb. It is its own field rather than a second meaning for `cli`
+    #: because the two are independent axes: a run can be moved onto another CLI, another
+    #: profile, or both, and one string could not say which was meant.
+    profile: str = ""
     requested_at: str = ""
 
     @property
@@ -96,6 +101,7 @@ class Request:
                 "core": self.core,
                 "at_boundary": self.at_boundary,
                 "cli": self.cli,
+                "profile": self.profile,
                 "requested_at": self.requested_at or datetime.now(UTC).isoformat(),
             }
         )
@@ -115,6 +121,7 @@ class Request:
             core=bool(raw.get("core", False)),
             at_boundary=bool(raw.get("at_boundary", False)),
             cli=str(raw.get("cli", "")),
+            profile=str(raw.get("profile", "")),
             requested_at=str(raw.get("requested_at", "")),
         )
 

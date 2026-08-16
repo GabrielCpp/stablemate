@@ -14,11 +14,14 @@ from __future__ import annotations
 
 import io
 from contextlib import contextmanager, redirect_stdout
+from dataclasses import replace
 from unittest.mock import patch
 
 from workhorse._vendor.stablemate_core.config import resolve_backend_default, resolve_power
 from workhorse.runner import ladder
 from workhorse.runner.ladder import _resolve_power_settings
+
+from _fakes import FakeBackend, FakeClock
 
 
 CONFIG = {
@@ -167,6 +170,79 @@ def test_a_profile_deleted_mid_run_resolves_empty_rather_than_raising():
         # Warned once per name, not once per turn: this runs for every agent node.
         assert _resolve_power_settings("high", "claude", None, "gone") == (None, None)
     assert noise.getvalue().count("gone") == 1, noise.getvalue()
+
+
+# ── control switch-profile moves a live run onto another set ────────────────
+
+_SWITCHABLE = {
+    "profiles": {
+        "cheap": {"power": {"high": {"fake": {"model": "haiku"}}}},
+        "elsewhere": {"power": {"high": {"claude": {"model": "opus"}}}},
+        "bare": {"harness": {"fake": {"env": {"X": "1"}}}},
+    }
+}
+
+
+def _runner():
+    return ladder.AgentRunner(backend=FakeBackend(None), clock=FakeClock())
+
+
+def test_a_switch_is_one_assignment_that_the_next_turn_reads():
+    """The whole mechanism: the profile is re-narrowed every turn, so moving a run onto
+    another model set is a name and nothing else — no reload, no re-exec."""
+    runner = _runner()
+    with _file(_SWITCHABLE):
+        assert ladder.switch_profile(runner, "cheap") == {
+            "ok": True, "profile": "cheap", "was": ""
+        }
+        assert runner.profile.name == "cheap"
+        assert _resolve_power_settings("high", "fake", None, runner.profile.name) == (
+            "haiku", None
+        )
+
+
+def test_the_box_is_shared_so_a_sub_flow_cannot_put_the_parent_back():
+    """The runner is frozen and a handoff copies the env around it, so a *string* here
+    could not be reassigned at all — and a per-copy string would put the parent flow back
+    on the old model set the moment the child returned. One box is what makes "the run's
+    profile" a single fact rather than one per frame."""
+    runner = _runner()
+    child = replace(runner)  # what a copied frame holds
+    with _file(_SWITCHABLE):
+        ladder.switch_profile(child, "cheap")
+    assert runner.profile.name == "cheap"
+
+
+def test_an_unknown_profile_is_refused_rather_than_applied():
+    """Refused *and said so*: a switch read as landed when it did not would leave a
+    week-long run spending on the models nobody chose."""
+    runner = _runner()
+    with _file(_SWITCHABLE):
+        reply = ladder.switch_profile(runner, "nope")
+    assert reply["ok"] is False and "nope" in str(reply["error"])
+    assert runner.profile.name == ""
+
+
+def test_a_profile_that_maps_nothing_for_this_runs_backend_is_refused():
+    """It would not fail — it would quietly resolve through `[default.<backend>]` to the
+    machine's models, which is the substitution profiles exist to prevent."""
+    runner = _runner()
+    with _file(_SWITCHABLE):
+        reply = ladder.switch_profile(runner, "elsewhere")
+    assert reply["ok"] is False and "fake" in str(reply["error"])
+    assert runner.profile.name == ""
+
+
+def test_a_profile_carrying_no_models_at_all_is_allowed_through():
+    """The check is "has models, but none for this backend". A profile that only sets
+    harness environment names no models for anyone, and refusing it would be wrong."""
+    runner = _runner()
+    with _file(_SWITCHABLE):
+        assert ladder.switch_profile(runner, "bare")["ok"] is True
+
+
+def test_a_run_that_drives_no_agent_is_told_so_rather_than_crashing():
+    assert ladder.switch_profile(None, "cheap")["ok"] is False
 
 
 if __name__ == "__main__":  # parity with the other tests' dual-run style

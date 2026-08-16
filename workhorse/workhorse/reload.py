@@ -34,6 +34,13 @@ RELOAD_EXIT_CODE = 3
 
 ACTION = "reload"
 
+#: Move a live run onto another named model set. Not a reload, and deliberately not
+#: spelled as one: a reload exists to replace *code*, and the profile is re-read and
+#: re-narrowed on every turn by construction, so there is nothing here to swap. It is
+#: honoured at the state boundary only — cutting a turn for it would throw away work to
+#: reach a decision the very next turn makes anyway.
+SWITCH_PROFILE = "switch-profile"
+
 logger = logging.getLogger(__name__)
 
 
@@ -95,6 +102,21 @@ def cut_by(request: Request | None) -> Request | None:
     """
     if request is None:
         return None
+    if request.action == SWITCH_PROFILE:
+        # Never a cut, whatever `--at-boundary` says: the turn already streaming was
+        # spawned with the model the old profile named, and killing it would buy the new
+        # one nothing that waiting for the next turn does not.
+        #
+        # Answered here even though the boundary is what applies it — and answered as
+        # *queued* rather than as done. The connection this request came in on is dropped
+        # by the next `take()`, a select slice away, so a verdict withheld until the
+        # boundary would reach nobody; and an "ok" here would claim a switch that the
+        # boundary can still refuse.
+        control.answer(
+            {"ok": True, "queued": True, "profile": request.profile, "cut": False}
+        )
+        control.hold(request)
+        return None
     if request.action != ACTION:
         control.answer({"error": f"this run does not know the action {request.action!r}"})
         logger.warning("ignoring an unknown control action: %s", request.action)
@@ -108,14 +130,19 @@ def cut_by(request: Request | None) -> Request | None:
 
 
 def boundary_requested() -> Request | None:
-    """A reload outstanding at a state boundary, or None. Never raises.
+    """A request the state boundary can honour, or None. Never raises.
 
     Every reload is honoured here, `--at-boundary` or not: the boundary is where a request
     that arrived while a script node ran, or one the stream loop held, is finally acted on.
+    A `switch-profile` is returned unanswered, because the frame that applies it is the
+    one that knows whether it could be applied and to what — and a switch that was refused
+    must not have been acknowledged as one that landed.
     """
     request = control.outstanding()
     if request is None:
         return None
+    if request.action == SWITCH_PROFILE:
+        return request
     if request.action != ACTION:
         control.answer({"error": f"this run does not know the action {request.action!r}"})
         logger.warning("ignoring an unknown control action: %s", request.action)
@@ -127,6 +154,7 @@ def boundary_requested() -> Request | None:
 __all__ = [
     "ACTION",
     "RELOAD_EXIT_CODE",
+    "SWITCH_PROFILE",
     "ReloadRequested",
     "boundary_requested",
     "cut_by",

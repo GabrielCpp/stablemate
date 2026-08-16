@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from workhorse._vendor.stablemate_core.config import (
     UnknownProfileError,
     load_config,
+    profile_has_backend,
     resolve_backend_default,
     resolve_power,
     select_profile,
@@ -97,6 +98,59 @@ def resolved_profile(profile: str) -> dict[str, Any]:
     return _profile_config(profile) or {}
 
 
+@dataclass
+class ProfileSelection:
+    """Which named model set the run is on *now* — one box every frame shares.
+
+    A mutable holder rather than a string on the frozen runner, because
+    `control switch-profile` applies in-process and a run has several references to its
+    runner by then: a handoff copies the `RunEnv`, so a string replaced on one of them
+    would put the parent flow back on the old model set the moment the child returned.
+    One box is what makes "the run's profile" a single fact instead of one per frame.
+
+    The name only. What it selects is re-read from the config every turn, which is why a
+    switch needs nothing but this assignment.
+    """
+
+    name: str = ""
+
+
+def switch_profile(runner: "AgentRunner | None", name: str) -> dict[str, object]:
+    """Move a live run onto the ``name`` model set, and say what happened.
+
+    The return value is the operator's reply rather than an exception, because all three
+    outcomes are things they have to be *told*: a switch that was refused and read as one
+    that landed would leave a week-long run spending on the models nobody chose.
+
+    Both refusals are the ones the CLI boundary makes at startup, applied to the run as it
+    now is: an unknown profile, and a profile that maps nothing for the backend this run
+    is actually driving — which would not fail, it would quietly resolve through
+    `[default.<backend>]` to the machine's models.
+    """
+    if runner is None:
+        return {"ok": False, "error": "this run drives no agent, so it resolves no models"}
+    try:
+        tables = select_profile(load_config(), name)
+    except UnknownProfileError as exc:
+        return {"ok": False, "error": str(exc)}
+    backend = runner.backend.name
+    if (tables.get("power") or tables.get("default")) and not profile_has_backend(
+        tables, backend
+    ):
+        return {
+            "ok": False,
+            "error": f"profile {name!r} has no entries for the CLI backend {backend!r} "
+            f"this run is driving; switch-cli first, or give the profile a "
+            f"[power.<tier>.default] fallback",
+        }
+    was, runner.profile.name = runner.profile.name, name
+    # Warned-about names are forgotten on the way past: a profile re-created in the config
+    # after having been deleted deserves to be complained about again if it goes missing a
+    # second time, and the set is what would otherwise swallow that.
+    _warned_missing_profile.discard(name)
+    return {"ok": True, "profile": name, "was": was}
+
+
 def _resolve_power_settings(
     power: str | None,
     backend_name: str,
@@ -143,8 +197,9 @@ class AgentRunner:
     #: Run-level model override, already resolved from the environment.
     model_override: str | None = None
     #: The named model set this run resolves its models from, or "" for the config's
-    #: top-level tables. The name only — what it selects is re-read every turn.
-    profile: str = ""
+    #: top-level tables. A shared box rather than a string because `control
+    #: switch-profile` moves it while the run is going — see :class:`ProfileSelection`.
+    profile: ProfileSelection = field(default_factory=ProfileSelection)
 
     @classmethod
     def from_config(cls, config: RunConfig, *, clock: Clock = SYSTEM_CLOCK) -> AgentRunner:
@@ -160,7 +215,7 @@ class AgentRunner:
             clock=clock,
             print_prompt=config.print_prompt,
             model_override=config.model_override,
-            profile=config.profile,
+            profile=ProfileSelection(config.profile),
         )
 
     def run(
@@ -303,7 +358,7 @@ class AgentRunner:
         # model/effort for the active backend. Missing config falls back to the run's
         # override then the backend's defaults, preserving harness behavior.
         model, node_effort = _resolve_power_settings(
-            node.power, self.backend.name, self.model_override, self.profile
+            node.power, self.backend.name, self.model_override, self.profile.name
         )
         model = model or self.backend.default_model
 

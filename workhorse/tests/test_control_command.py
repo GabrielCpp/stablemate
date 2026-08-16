@@ -68,6 +68,8 @@ class _Listener:
     def __init__(self, run_dir: Path) -> None:
         self.channel = control.SocketChannel.open(run_dir)
         self.taken: list[control.Request] = []
+        #: What this stand-in replies with, when a test needs a particular verdict.
+        self.answer: dict[str, object] | None = None
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._serve, daemon=True)
         self._thread.start()
@@ -84,7 +86,11 @@ class _Listener:
             if request is None:
                 continue
             self.taken.append(request)
-            self.channel.reply({"ok": True, "cut": request.cuts_the_turn})
+            self.channel.reply(
+                self.answer
+                if self.answer is not None
+                else {"ok": True, "cut": request.cuts_the_turn}
+            )
 
     def close(self) -> None:
         self._stop.set()
@@ -274,12 +280,47 @@ def test_a_switch_with_no_cli_and_a_reload_with_one_are_both_refused(capsys) -> 
         with pytest.raises(SystemExit) as excinfo:
             _control(runs, "switch-cli", "--run", "t", "--runs-dir", str(runs))
         assert excinfo.value.code == 1
-        assert "needs the CLI to switch to" in capsys.readouterr().err
+        assert "needs the name to switch to" in capsys.readouterr().err
 
         with pytest.raises(SystemExit) as excinfo:
             _control(runs, "reload", "claude", "--run", "t", "--runs-dir", str(runs))
         assert excinfo.value.code == 1
-        assert "takes no CLI name" in capsys.readouterr().err
+        assert "takes no name" in capsys.readouterr().err
+
+
+def test_a_profile_switch_is_its_own_verb_carrying_the_name(capsys) -> None:
+    """The opposite of `switch-cli`: nothing about it is a reload. The profile is
+    re-narrowed every turn, so the run only has to be told a name — no process image, and
+    no `--core`. Its own field rather than a second meaning for `cli`, because the two are
+    independent axes and the run has to know which was meant."""
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        run_dir = _run_dir(runs)
+
+        with _listening(run_dir) as listener:
+            _control(runs, "switch-profile", "cheap", "--run", "t", "--runs-dir", str(runs))
+
+        assert [(r.action, r.core, r.cli, r.profile) for r in listener.taken] == [
+            ("switch-profile", False, "", "cheap")
+        ], listener.taken
+        assert "resolve from cheap from the next turn on" in capsys.readouterr().out
+
+
+def test_a_refused_profile_switch_exits_nonzero(capsys) -> None:
+    """The run is what refuses — an unknown profile, or one with no entries for the CLI
+    this run drives — and an operator's script must be able to see that."""
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        run_dir = _run_dir(runs)
+
+        with _listening(run_dir) as listener:
+            listener.answer = {"ok": False, "error": "unknown profile 'cheap'"}
+            with pytest.raises(SystemExit) as excinfo:
+                _control(
+                    runs, "switch-profile", "cheap", "--run", "t", "--runs-dir", str(runs)
+                )
+        assert excinfo.value.code == 1
+        assert "unknown profile" in capsys.readouterr().out
 
 
 if __name__ == "__main__":

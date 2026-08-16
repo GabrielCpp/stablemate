@@ -25,13 +25,16 @@ import sys
 import sysconfig
 import tempfile
 import types
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from _fakes import RecordingTelemetry  # noqa: E402
+from _fakes import FakeBackend, RecordingTelemetry  # noqa: E402
+from workhorse._vendor.stablemate_core.config import CONFIG_PATH_ENV  # noqa: E402
 from workhorse import control, otel, reload  # noqa: E402
 from workhorse.artifacts import ArtifactWriter  # noqa: E402
 from workhorse.config_run import RunConfig  # noqa: E402
@@ -42,6 +45,7 @@ from workhorse.pyflow.registry import Registry  # noqa: E402
 from workhorse.pyflow.run import RunInvocation, run_pyflow  # noqa: E402
 from workhorse.pyflow.transitions import Done, Transition  # noqa: E402
 from workhorse.pyflow.workflow import Workflow  # noqa: E402
+from workhorse.runner import ladder  # noqa: E402
 
 
 # --------------------------------------------------------------------------- helpers
@@ -93,6 +97,16 @@ class _Armed:
 
     def __exit__(self, *exc: Any) -> None:
         control.arm(None)
+
+
+@contextmanager
+def _no_config_env() -> Iterator[None]:
+    """A re-exec appends `--config` when one is set, and the machine running the tests
+    may well have set one. Removing it is what makes an exact-argv assertion an assertion
+    about the code rather than about the developer's shell."""
+    with patch.dict(run_mod.os.environ):
+        run_mod.os.environ.pop(CONFIG_PATH_ENV, None)
+        yield
 
 
 def _raises(exc_type: type[BaseException], fn: Any, *args: Any, **kwargs: Any) -> BaseException:
@@ -182,6 +196,59 @@ def test_a_boundary_request_is_honoured_after_the_checkpoint_and_before_the_body
         # Acknowledged on the way past, so the operator's CLI reports a message that
         # landed rather than one that merely went out.
         assert channel.replies == [{"ok": True, "cut": False}], channel.replies
+
+
+def test_a_profile_switch_is_applied_in_place_and_the_run_carries_on():
+    """The opposite of a reload in the one way that matters: nothing unwinds. The profile
+    is re-narrowed every turn, so telling the runner a new name *is* the switch — a
+    re-entry would cost the state for a decision the next turn makes anyway."""
+    ran: list[str] = []
+
+    class Quiet(Workflow):
+        def start(self) -> Transition:
+            ran.append("start")
+            return Done("finished")
+
+    cfg = {"profiles": {"cheap": {"power": {"high": {"fake": {"model": "haiku"}}}}}}
+    with tempfile.TemporaryDirectory() as tmp:
+        env = dataclasses.replace(
+            _env(tmp), agent_runner=ladder.AgentRunner(backend=FakeBackend(None))
+        )
+        request = control.Request(action=reload.SWITCH_PROFILE, profile="cheap")
+        with (
+            _Armed(request) as channel,
+            patch("workhorse.runner.ladder.load_config", lambda: cfg),
+        ):
+            assert drive(Quiet(), env) == "finished"
+
+        assert ran == ["start"], "the switch stopped the run it was only meant to steer"
+        runner = env.agent_runner
+        assert runner is not None and runner.profile.name == "cheap"
+        # Answered here rather than by `reload.py`: this is the frame that knows whether
+        # it could be applied, and a refusal reported as a success would leave a week-long
+        # run spending on the models nobody chose.
+        assert channel.replies == [{"ok": True, "profile": "cheap", "was": ""}]
+
+
+def test_a_profile_switch_the_run_refuses_is_reported_as_a_refusal():
+    class Quiet(Workflow):
+        def start(self) -> Transition:
+            return Done("finished")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        env = dataclasses.replace(
+            _env(tmp), agent_runner=ladder.AgentRunner(backend=FakeBackend(None))
+        )
+        request = control.Request(action=reload.SWITCH_PROFILE, profile="gone")
+        with (
+            _Armed(request) as channel,
+            patch("workhorse.runner.ladder.load_config", lambda: {}),
+        ):
+            assert drive(Quiet(), env) == "finished"
+
+        runner = env.agent_runner
+        assert runner is not None and runner.profile.name == ""
+        assert channel.replies and channel.replies[0]["ok"] is False
 
 
 def test_an_unarmed_run_never_stops_at_a_boundary():
@@ -284,7 +351,7 @@ def test_a_core_reload_replaces_the_process_only_after_the_run_is_finalized():
 
     fake = RecordingTelemetry()
 
-    def fake_exec(name: str, run_dir: Path, *, cli: str = "") -> int:
+    def fake_exec(name: str, run_dir: Path, *, cli: str = "", profile: str = "") -> int:
         at_exec.append((run_dir, list(fake.ended), control.armed().fileno() is not None))
         return reload.RELOAD_EXIT_CODE
 
@@ -328,6 +395,7 @@ def test_the_re_exec_argv_is_the_resume_spelling_not_the_original_one():
     with (
         patch.object(run_mod.os, "execv", fake_execv),
         patch.object(run_mod.sys, "argv", [script, "run", "--param", "story=4"]),
+        _no_config_env(),
     ):
         rc = run_mod._exec_reload("stub", Path("/runs/stub-t"))
 
@@ -351,12 +419,39 @@ def test_moving_a_run_onto_another_cli_re_execs_naming_it():
     with (
         patch.object(run_mod.os, "execv", fake_execv),
         patch.object(run_mod.sys, "argv", [script, "run", "--cli", "opencode"]),
+        _no_config_env(),
     ):
         run_mod._exec_reload("stub", Path("/runs/stub-t"), cli="claude")
 
     assert calls == [
         [script, "run", "--resume-run", "/runs/stub-t", "--cli", "claude"]
     ], calls
+
+
+def test_a_re_exec_carries_the_live_profile_and_the_config_file_it_is_reading():
+    """Two things the resume would otherwise get wrong. The profile, because
+    `switch-profile` applies in-process and `run.json` still names the one the run was
+    launched with — so with no flag the new image would resolve from the profile the
+    operator switched *away* from. The config file, because a re-exec that does not say
+    which one it is on is the one nobody can diagnose from the line they have."""
+    calls: list[list[str]] = []
+
+    def fake_execv(path: str, argv: list[str]) -> None:
+        calls.append(list(argv))
+        raise OSError("no such image")
+
+    script = "/nonexistent/bin/workhorse-stub"
+    with (
+        patch.object(run_mod.os, "execv", fake_execv),
+        patch.object(run_mod.sys, "argv", [script, "run"]),
+        patch.dict(run_mod.os.environ, {CONFIG_PATH_ENV: "/etc/stablemate.toml"}),
+    ):
+        run_mod._exec_reload("stub", Path("/runs/stub-t"), profile="cheap")
+
+    assert calls == [[
+        script, "run", "--resume-run", "/runs/stub-t",
+        "--profile", "cheap", "--config", "/etc/stablemate.toml",
+    ]], calls
 
 
 def test_a_switch_is_a_core_reload_even_when_nobody_asked_for_one():
@@ -372,7 +467,7 @@ def test_a_switch_is_a_core_reload_even_when_nobody_asked_for_one():
         env.writer.write_state_checkpoint("start", {}, inputs={}, flow="Stub", ctx={})
         raise reload.ReloadRequested("switch requested", core=False, cli="claude")
 
-    def fake_exec(name: str, run_dir: Path, *, cli: str = "") -> int:
+    def fake_exec(name: str, run_dir: Path, *, cli: str = "", profile: str = "") -> int:
         at_exec.append((run_dir, cli))
         return reload.RELOAD_EXIT_CODE
 

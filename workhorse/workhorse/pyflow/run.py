@@ -23,6 +23,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from workhorse._vendor.stablemate_core.config import CONFIG_PATH_ENV
 from workhorse import control, gitstate, logsetup, otel, reload
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
@@ -79,16 +80,19 @@ class _CoreReloadRequested(Exception):
 
     Private, and deliberately not a `PyflowError`: nothing about the run failed, and the
     only frame allowed to act on it is the one outside the `finally` that finalizes the
-    run. Its one payload is the agent CLI to come back on, because that is the single
-    thing the checkpoint does *not* hold: the backend is resolved at the process edge
-    from `--cli`, so a run moved onto another one has to say so in the argv it re-execs
-    with. Everything else the new image needs it reads off the checkpoint, as any resume
-    does.
+    run. Its payload is what the checkpoint does *not* hold: the agent CLI to come back on
+    (the backend is resolved at the process edge from `--cli`, so a run moved onto another
+    one has to say so in the argv it re-execs with), and a profile a live `switch-profile`
+    moved the run onto since it started — `run.json` still names the one it was launched
+    with, so without this the new image would silently resolve from the profile the
+    operator switched *away* from. Everything else the new image reads off the checkpoint,
+    as any resume does.
     """
 
-    def __init__(self, cli: str = "") -> None:
+    def __init__(self, cli: str = "", profile: str = "") -> None:
         super().__init__(cli)
         self.cli = cli
+        self.profile = profile
 
 
 def run_pyflow(invocation: RunInvocation) -> int:
@@ -246,6 +250,9 @@ def run_pyflow(invocation: RunInvocation) -> int:
     core_reload = False
     #: The agent CLI the re-exec'd image is told to use, when a `switch-cli` asked for one.
     core_reload_cli = ""
+    #: The profile it is told to use, when a live `switch-profile` moved the run off the
+    #: one `run.json` records. Empty means "whatever the record says", the normal case.
+    core_reload_profile = ""
     try:
         try:
             _drive_reloadable(wf, env, resume, registry=registry, writer=writer)
@@ -259,6 +266,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
             agent_process.terminate_active()
             core_reload = True
             core_reload_cli = exc.cli
+            core_reload_profile = exc.profile
             otel.end_run("reload")
         except KeyboardInterrupt:
             agent_process.terminate_active()
@@ -360,7 +368,9 @@ def run_pyflow(invocation: RunInvocation) -> int:
         channel.close()
 
     if core_reload:
-        return _exec_reload(name, writer.run_dir, cli=core_reload_cli)
+        return _exec_reload(
+            name, writer.run_dir, cli=core_reload_cli, profile=core_reload_profile
+        )
 
     verdict = "dry-run ok — every node ran its stand-in" if dry_run else "done"
     print(f"[workhorse] {verdict} — artifacts in {writer.run_dir}")
@@ -419,7 +429,14 @@ def _drive_reloadable(
                     "[workhorse] reload: --core — re-executing this run from '%s'",
                     pending_resume.state,
                 )
-                raise _CoreReloadRequested(exc.cli) from exc
+                # The live profile, and only when it is not the one `run.json` already
+                # names: a `switch-profile` applies in-process, so the record is stale for
+                # exactly as long as the run lasts, and a re-exec is where that stops
+                # being harmless.
+                live = env.agent_runner.profile.name if env.agent_runner else ""
+                raise _CoreReloadRequested(
+                    exc.cli, live if live != env.config.profile else ""
+                ) from exc
             registry, replaced = _reimport(registry)
             env.workflow_dir = registry.directory()
             env.nodes = registry.nodes
@@ -452,7 +469,7 @@ def _drive_reloadable(
             )
 
 
-def _exec_reload(name: str, run_dir: Path, *, cli: str = "") -> int:
+def _exec_reload(name: str, run_dir: Path, *, cli: str = "", profile: str = "") -> int:
     """Replace this process image with a resume of the same run. Normally never returns.
 
     `os.execv` rather than an exit code the caller restarts on, because exec keeps the
@@ -480,6 +497,16 @@ def _exec_reload(name: str, run_dir: Path, *, cli: str = "") -> int:
         # this edge rather than held by the run. Passed explicitly rather than left to
         # the inherited environment, which still names the CLI the run started on.
         argv += ["--cli", cli]
+    if profile:
+        # Only when a live `switch-profile` moved the run: with no flag the resume reads
+        # the profile off `run.json`, which is the right answer for every other re-exec.
+        argv += ["--profile", profile]
+    config_path = os.environ.get(CONFIG_PATH_ENV)
+    if config_path:
+        # `execv` does carry the environment, so this is belt-and-braces — but the argv is
+        # printed and logged, and a re-exec that does not say which config file it is on is
+        # the one nobody can diagnose from the line they have.
+        argv += ["--config", config_path]
     executable = shutil.which(argv[0]) or argv[0]
     if executable.endswith(".py"):
         # `python -m workhorse...` / a script run by path: exec the interpreter, since

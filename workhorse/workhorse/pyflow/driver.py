@@ -21,7 +21,7 @@ from typing import Any, get_type_hints
 
 from pydantic import TypeAdapter, ValidationError
 
-from workhorse import gates, otel, reload
+from workhorse import control, gates, otel, reload
 from workhorse.artifacts import ArtifactWriter
 from workhorse.control import NULL_CHANNEL, ControlChannel, Request, wait_until
 from workhorse.pyflow import activity as activity_log
@@ -30,6 +30,7 @@ from workhorse.pyflow.errors import RunBudgetExceeded, WorkflowFailed
 from workhorse.pyflow.transitions import Await, Continue, Done
 from workhorse.pyflow.workflow import Workflow
 from workhorse.records import Checkpoint, PyflowCheckpoint, parse_checkpoint
+from workhorse.runner import ladder
 from workhorse.runner.clock import SYSTEM_CLOCK, Clock
 
 logger = logging.getLogger("workhorse.engine")
@@ -339,7 +340,22 @@ def drive(
         # carries what it asked for on the exception, because the request came off the
         # channel and there is nothing left on disk for the unwind to re-read.
         boundary = reload.boundary_requested()
-        if boundary is not None:
+        if boundary is not None and boundary.action == reload.SWITCH_PROFILE:
+            # Applied here, in this process, rather than re-entering: the profile is
+            # re-read and re-narrowed on every turn, so assigning the name is the whole
+            # switch. `reload.boundary_requested` deliberately left it unanswered — this
+            # is the frame that knows whether it could be applied, and a refusal
+            # acknowledged as a success would leave a week-long run spending on the models
+            # nobody chose.
+            reply = ladder.switch_profile(env.agent_runner, boundary.profile)
+            if reply.get("ok"):
+                env.log.info(
+                    "[workhorse] profile → '%s' from the next turn on", boundary.profile
+                )
+            else:
+                env.log.warning("[workhorse] profile → refused: %s", reply.get("error"))
+            control.answer(reply)
+        elif boundary is not None:
             env.log.info("[workhorse] reload → requested; re-entering at '%s'", spec.name)
             raise reload.ReloadRequested(
                 f"reload requested at the boundary before {spec.name}",

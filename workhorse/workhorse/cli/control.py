@@ -3,7 +3,10 @@
 `reload` asks a live run to cut whatever it is doing, pick the pushed code up, and
 re-enter its own checkpoint — the operator's half of :mod:`workhorse.reload`. `switch-cli`
 is that same reload carrying the one thing a checkpoint cannot hold: the agent CLI to come
-back on, which is chosen at the process edge from `--cli` rather than by the run. `status`
+back on, which is chosen at the process edge from `--cli` rather than by the run.
+`switch-profile` is the other axis and, unlike the CLI, needs no reload at all: the profile
+is re-read and re-narrowed on every turn, so the run only has to be told a new name and the
+next turn resolves from it. `status`
 asks where it is, and is answered by the run itself: everything in the answer is also on
 disk, but a reply *on that run's socket* is the one thing the disk cannot prove — that
 this process is the one still serving this run dir. The run is a different process (often
@@ -35,25 +38,28 @@ from workhorse.records import PyflowCheckpoint, parse_checkpoint, parse_run_reco
 from workhorse.rundir import find_latest_resumable, resolve_run_dir
 
 NAME = "control"
-HELP = "Signal a run that is already in flight (reload, status, switch-cli)"
+HELP = "Signal a run in flight (reload, status, switch-cli, switch-profile)"
 
 SWITCH_CLI = "switch-cli"
+SWITCH_PROFILE = reload.SWITCH_PROFILE
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "action",
-        choices=["reload", "status", SWITCH_CLI],
+        choices=["reload", "status", SWITCH_CLI, SWITCH_PROFILE],
         help="reload: pick up pushed code and re-enter the checkpoint. status: ask the "
         "run where it is, which is also a proof that this process is the one serving "
-        "that run dir. switch-cli: re-enter the same checkpoint on another agent CLI.",
+        "that run dir. switch-cli: re-enter the same checkpoint on another agent CLI. "
+        "switch-profile: resolve the next turn's models from another named profile.",
     )
     parser.add_argument(
-        "cli",
+        "target",
         nargs="?",
         default=None,
-        metavar="CLI",
-        help="For switch-cli only: the agent CLI to come back on (claude, opencode, …).",
+        metavar="NAME",
+        help="For switch-cli, the agent CLI to come back on (claude, opencode, …); for "
+        "switch-profile, the profile to resolve models from next.",
     )
     parser.add_argument(
         "--run",
@@ -89,7 +95,7 @@ def run(args: argparse.Namespace) -> None:
         else (Path.cwd() / ".agents" / "runs").resolve()
     )
     run_dir = _target(args.run, runs_dir, args.registry.name)
-    cli = _switch_target(args.action, args.cli)
+    cli, profile = _switch_target(args.action, args.target)
     request = control.Request(
         # A CLI switch is a reload on the wire, and deliberately not a verb of its own:
         # honouring it is already what a `--core` reload does — replace the process image
@@ -100,6 +106,7 @@ def run(args: argparse.Namespace) -> None:
         core=args.core or bool(cli),
         at_boundary=args.at_boundary,
         cli=cli,
+        profile=profile,
     )
     try:
         reply = control.send(run_dir, request)
@@ -115,6 +122,19 @@ def run(args: argparse.Namespace) -> None:
         _report(run_dir, reply)
         return
 
+    if profile:
+        # No `when`: a profile switch is only ever honoured at the next state boundary,
+        # whatever `--at-boundary` says, and the reply is the run's verdict rather than an
+        # acknowledgement — it is the frame that applied it that says whether it could be.
+        print(f"profile switch requested for {run_dir}: resolve from {profile} "
+              "from the next turn on")
+        print(f"  reply:   {reply or 'delivered, no answer'}")
+        print(f"  run:     {_liveness(run_dir)}")
+        print(f"  at:      {_position(run_dir)}")
+        if isinstance(reply, dict) and reply.get("ok") is False:
+            sys.exit(1)
+        return
+
     when = "at the next state boundary" if args.at_boundary else "cutting the current turn"
     if cli:
         print(f"switch requested for {run_dir}: re-enter on {cli}, {when}")
@@ -126,23 +146,28 @@ def run(args: argparse.Namespace) -> None:
     print(f"  at:      {_position(run_dir)}")
 
 
-def _switch_target(action: str, cli: str | None) -> str:
-    """The CLI named for a `switch-cli`, having rejected the two ways of misspelling it.
+def _switch_target(action: str, name: str | None) -> tuple[str, str]:
+    """The (cli, profile) a switch verb named, having rejected the ways of misspelling it.
 
-    Both directions are errors rather than tolerated: a `switch-cli` with no name has
-    nothing to switch to, and a name handed to `reload` or `status` would be silently
-    dropped — which reads, from the operator's side, exactly like a switch that worked.
+    Both directions are errors rather than tolerated: a switch with no name has nothing to
+    switch to, and a name handed to `reload` or `status` would be silently dropped — which
+    reads, from the operator's side, exactly like a switch that worked.
+
+    Two fields rather than one string because the two are independent axes, and the run has
+    to be told which was meant: a CLI switch costs a process image, a profile switch costs
+    nothing but the next turn's resolution.
     """
-    if action != SWITCH_CLI:
-        if cli:
-            print(f"error: {action} takes no CLI name (got {cli!r})", file=sys.stderr)
+    if action not in (SWITCH_CLI, SWITCH_PROFILE):
+        if name:
+            print(f"error: {action} takes no name (got {name!r})", file=sys.stderr)
             sys.exit(1)
-        return ""
-    if not cli:
-        print(f"error: {SWITCH_CLI} needs the CLI to switch to, e.g. "
-              f"`control {SWITCH_CLI} claude`", file=sys.stderr)
+        return "", ""
+    if not name:
+        example = "claude" if action == SWITCH_CLI else "cheap"
+        print(f"error: {action} needs the name to switch to, e.g. "
+              f"`control {action} {example}`", file=sys.stderr)
         sys.exit(1)
-    return cli
+    return (name, "") if action == SWITCH_CLI else ("", name)
 
 
 def _report(run_dir: Path, reply: dict[str, object]) -> None:
