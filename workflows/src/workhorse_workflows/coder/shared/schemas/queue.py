@@ -11,7 +11,7 @@ pass sees it.
 **The `yes`/`no` scalars become bools, and `story_outcome` does not.** That is `ci.py`'s
 rule applied again: a two-state answer whose blank means "no" is a bool, and a tri-state
 whose YAML `default:` arm is the pessimistic one stays a string. `has_epic`,
-`epic_blocked`, `pruned`, `committed`, `qa_flagged` and `has_story` are all the former.
+`epic_blocked`, `pruned`, `committed` and `has_story` are all the former.
 `story_outcome` is `story | done | blocked`, and the whole reason `select-next-story.py`
 exists in its current form is that conflating its arms merged an epic with 20 of 21
 stories unbuilt — so it stays a string, and it defaults to `blocked`, never to `done`.
@@ -159,27 +159,6 @@ class StoryCommitted(CoderResult):
     superseded_outcome: bool = False
 
 
-class QaFlagged(CoderResult):
-    """`flag-qa-failure.py` — the given-up story was committed behind its `[QA FAILED]` marker.
-
-    False means there was nothing to commit, which is not a failure: the story's status is
-    stamped and its slug is in the per-run skip set either way, and those — not the marker
-    commit — are what stop it being re-selected.
-    """
-
-    qa_flagged: bool = False
-
-
-class DocsBlockFlagged(CoderResult):
-    """`flag_docs_block` — the refused story was committed behind its `[DOCS BLOCKED]` marker.
-
-    `QaFlagged`'s sibling and false means the same thing: nothing to commit. The stamp and
-    the per-run skip set are what stop the story being re-selected, not this commit.
-    """
-
-    docs_block_flagged: bool = False
-
-
 class ReplanResult(CoderResult):
     """`replan_epic`'s reply — the rewrite of the epic the operator's answer forced.
 
@@ -194,12 +173,10 @@ class ReplanResult(CoderResult):
 
 __all__ = [
     "BaseBranch",
-    "DocsBlockFlagged",
     "EpicBlocked",
     "EpicBranch",
     "EpicPick",
     "EpicPruned",
-    "QaFlagged",
     "ReplanResult",
     "RunScope",
     "StoryBranch",

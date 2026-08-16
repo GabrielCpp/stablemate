@@ -10,8 +10,10 @@ re-planned and re-QA'd, and its epic never reads as complete.
 
 Both outcome paths therefore go through here:
 
-* the give-up path (`flag_qa_failure`) — an honest "did not pass" marker;
 * the success path (`commit_story`) — `QA passed`.
+
+There is no longer a second, give-up path: a story that does not pass QA ends the run
+with nothing committed and nothing stamped, so the only status this writes is a true one.
 
 `Ostler.set_status` writes BOTH the frontmatter and the body line, and locates that line
 through ostler's markdown parser, which is why it is **the** path. The body-only rewrite

@@ -1,13 +1,18 @@
 """The main graph's queue spine: pick an epic, pick a story, branch, record the outcome.
 
 Ports `init-base.py`, `branch-story.py`, `select-next-epic.py`, `branch-epic.py`,
-`select-next-story.py`, `flag-epic-blocked.py`, `prune-epic.py`, `commit-story.py` and
-`flag-qa-failure.py` — every non-agent node the main graph runs between its sub-flows.
+`select-next-story.py`, `flag-epic-blocked.py`, `prune-epic.py` and `commit-story.py` —
+every non-agent node the main graph runs between its sub-flows.
 
 They are one module because they are one loop, and because they only make sense together:
-`select_epic` skips what `flag_epic_blocked` wrote, `select_story` skips what
-`flag_qa_failure` wrote, and `prune_epic` pops what both of them declined to. Splitting
-them by verb would have put each half of a contract in a different file.
+`select_epic` skips what `flag_epic_blocked` wrote, `select_story` skips what the skip set
+holds, and `prune_epic` pops what both of them declined to. Splitting them by verb would
+have put each half of a contract in a different file.
+
+`flag-qa-failure.py` and its docs-block sibling are gone rather than ported-and-kept. They
+committed a story behind a `needs manual review` marker and let the queue go on, and the
+review they named never happened — `Coder.give_up` and `Coder.blocked_docs` now end the run
+instead.
 
 Three ports are worth naming:
 
@@ -41,12 +46,10 @@ from workhorse_workflows.coder.shared import commits, paths, story_status
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.queue import (
     BaseBranch,
-    DocsBlockFlagged,
     EpicBlocked,
     EpicBranch,
     EpicPick,
     EpicPruned,
-    QaFlagged,
     RunScope,
     StoryBranch,
     StoryCommitted,
@@ -62,14 +65,11 @@ from workhorse_workflows.kit import (
     commit_paths,
     current_branch,
     default_branch,
-    find_open_pr,
     get_affected_repos,
     GitError,
     is_ancestor,
     local_branch_exists,
     merge_ref,
-    resolve_github_token,
-    resolve_repo,
     resolve_workspace,
     restore_paths,
     show_file,
@@ -724,10 +724,15 @@ def _next_story_report(okf: Ostler, epic: str, skip: set[str]) -> dict | str:
 
 
 def _load_skip_set(root: Path, run_dir: str) -> set[str]:
-    """The per-run skip set: story slugs `flag_qa_failure` has given up THIS run.
+    """The per-run skip set: story slugs to leave alone for the REST OF THIS RUN.
 
-    Missing dir or file → empty set, so this is a no-op on the first pass and on any run
-    that never gave up a story.
+    Nothing in the workflow writes this file any more — a give-up ends the run rather than
+    skipping the story. It is kept as the **operator's** lever: a run that died on a story
+    you have decided not to fix is resumed past it by writing the slug into
+    `<run_dir>/qa-skip-stories.txt` before the resume. That is a deliberate, recorded human
+    decision, which is exactly what the automatic version was not.
+
+    Missing dir or file → empty set, so this is a no-op on every run nobody has touched.
     """
     if not run_dir:
         return set()
@@ -1005,234 +1010,11 @@ def commit_story(
     return StoryCommitted(committed=any_committed, superseded_outcome=superseded)
 
 
-def _record_skip(run_dir: str, slug: str) -> None:
-    """Add `slug` to the per-run skip set `select_story` reads."""
-    if not run_dir or not slug:
-        return
-    path = Path(run_dir)
-    path.mkdir(parents=True, exist_ok=True)
-    skip_file = path / SKIP_FILE
-    existing = skip_file.read_text(encoding="utf-8").splitlines() if skip_file.exists() else []
-    if slug not in existing:
-        with skip_file.open("a", encoding="utf-8") as f:
-            f.write(f"{slug}\n")
-
-
-@blueprint.node
-def flag_qa_failure(
-    logger: logging.Logger,
-    epic: str = "",
-    story_slug: str = "",
-    attempts: str = "?",
-    story_path: str = "",
-    spec_dir: str = "",
-    run_dir: str = "",
-    repo_dir: str = "",
-) -> QaFlagged:
-    """A story failed automated QA after its last rework. Flag it and let the queue go on.
-
-    The epic queue is NOT halted. Instead: the story's current state is committed behind a
-    clear marker, so the work is preserved and shows up in the epic PR's diff and commit
-    list for the reviewer; the epic PR is commented on where one is already open; and the
-    workflow continues to the next story.
-
-    The status stamped here deliberately does NOT say "QA passed": this is a give-up, and
-    the status is what a human — and `select_story`'s fallback — reads to judge whether the
-    story's work is trustworthy. Dependents of this story stay blocked, because they depend
-    on work that did NOT pass. Both selection paths already skip a given-up story without
-    needing the text to claim a pass: ostler reads the same honest value out of the
-    frontmatter, and the per-run skip set excludes the slug for the rest of THIS run
-    regardless of the status text. A fresh run, or an operator clearing the skip set, will
-    legitimately retry it.
-
-    It also names `qa.md`, which is the document that says *why*. Everything else the
-    give-up leaves behind points somewhere else: the story's own `## Implementation Status`
-    block links `review.md` (written by the review phase, about code quality) and nothing
-    links the QA assessment, so a reader who does the "manual review" this asks for lands
-    on a code review that is silent about the failure. The path goes in the status text
-    rather than in a second bullet because the status is the one line this node reliably
-    owns — the link bullets are the review prompt's to write, and on this path that prompt
-    may never have run.
-    """
-    slug = story_slug or "story"
-    root = find_repo_root(repo_dir)
-
-    marker = f"[QA FAILED after {attempts} attempts — needs manual review]"
-    new_status = f"QA give-up after {attempts} attempts — needs manual review"
-    assessment = _qa_assessment_path(root, spec_dir)
-    if assessment:
-        new_status = f"{new_status}: {assessment}"
-    story_status.mark(root, slug, new_status, epic=epic, story_path=story_path, logger=logger)
-
-    # Belt-and-braces over the stamp above: this excludes the story for the REMAINDER OF
-    # THIS RUN even if the stamp did not take (no graph AND no story.md). The file lives in
-    # the run dir, so a fresh run starts with an empty set and an operator resets by
-    # clearing it.
-    _record_skip(run_dir, slug)
-
-    # Still `feat`: whatever the marker says about its QA, this commit carries the story's
-    # implementation, and a reviewer who merges it ships that code. Typing the give-up
-    # `chore` to dodge a version bump would ship the feature with no release naming it —
-    # the exact silence this format exists to prevent.
-    committed = bool(
-        commit_all(
-            root,
-            commits.message(
-                "feat",
-                commits.scope(root.name),
-                slug,
-                marker=marker,
-                epic=epic,
-                story=slug,
-            ),
-        )
-    )
-    if not committed:
-        logger.info("nothing to commit for %s (no changes, or the commit failed)", slug)
-
-    _comment_on_epic_pr(
-        logger,
-        root,
-        epic,
-        slug,
-        marker,
-        f"did not pass automated QA after {attempts} rework attempts.",
-        assessment,
-    )
-    return QaFlagged(qa_flagged=committed)
-
-
-@blueprint.node
-def flag_docs_block(
-    logger: logging.Logger,
-    epic: str = "",
-    story_slug: str = "",
-    notes: str = "",
-    story_path: str = "",
-    run_dir: str = "",
-    repo_dir: str = "",
-) -> DocsBlockFlagged:
-    """The docs phase refused the story. Flag it and let the queue go on.
-
-    `flag_qa_failure`'s sibling, for the other verdict that ends a story without finishing
-    it. A documentation block is not a documentation bug: it is the author or the reviewer
-    saying the book cannot be made true of this code — usually, as the run that forced this
-    node found, because the implementation contradicts a guarantee its own plan required.
-    That is a real finding about the *story*, and the same three properties that make the QA
-    give-up safe make it safe here: the work is committed behind a marker so a human can
-    see it, the status is stamped honestly so dependents stay blocked, and the slug joins
-    the per-run skip set so the queue moves on instead of re-documenting the same refusal.
-
-    Failing the whole run instead — which is what the flow did before — cost every epic
-    behind this one for a finding scoped to one story.
-
-    No assessment path goes in the status the way `qa.md` does for a QA give-up: a docs
-    block leaves no document of its own, so `notes` is the only record of why and it goes
-    into the status text directly.
-    """
-    slug = story_slug or "story"
-    root = find_repo_root(repo_dir)
-
-    marker = "[DOCS BLOCKED — needs manual review]"
-    reason = notes.strip().replace("\n", " ") or "no reason given"
-    story_status.mark(
-        root,
-        slug,
-        f"Docs blocked — needs manual review: {reason}",
-        epic=epic,
-        story_path=story_path,
-        logger=logger,
-    )
-    _record_skip(run_dir, slug)
-
-    # `feat` for the same reason as the QA give-up: the marker qualifies the story, it does
-    # not remove the story's code from the commit.
-    committed = bool(
-        commit_all(
-            root,
-            commits.message(
-                "feat",
-                commits.scope(root.name),
-                slug,
-                marker=marker,
-                epic=epic,
-                story=slug,
-            ),
-        )
-    )
-    if not committed:
-        logger.info("nothing to commit for %s (no changes, or the commit failed)", slug)
-
-    _comment_on_epic_pr(
-        logger,
-        root,
-        epic,
-        slug,
-        marker,
-        f"could not be documented — the documentation phase reported it blocked: {reason}",
-    )
-    return DocsBlockFlagged(docs_block_flagged=committed)
-
-
-def _qa_assessment_path(root: Path, spec_dir: str) -> str:
-    """`<spec_dir>/qa.md` repo-relative, or `""` when there is no such file.
-
-    Existence-checked rather than assumed: a give-up can happen before QA ever wrote an
-    assessment (the QA-plan repair budget running out with no plan to execute), and a
-    status pointing at a file that is not there is worse than one that points nowhere.
-    """
-    if not spec_dir:
-        return ""
-    qa_md = Path(spec_dir) / "qa.md"
-    if not qa_md.is_file():
-        return ""
-    try:
-        return str(qa_md.relative_to(root))
-    except ValueError:
-        return str(qa_md)  # outside the repo — an absolute path still finds it
-
-
-def _comment_on_epic_pr(
-    logger: logging.Logger, root: Path, epic: str, slug: str, marker: str, why: str,
-    assessment: str = "",
-) -> None:
-    """Best-effort note on the epic PR — it only lands if that PR is already open.
-
-    During the story loop it usually is not (the PR is opened after the last story), so the
-    marker commit is the reliable signal and this is the convenience.
-
-    `why` is the caller's own sentence about what went wrong, because the two give-ups this
-    serves fail for unrelated reasons and a comment that called a docs block a QA failure
-    would send the reviewer to the wrong artefact.
-    """
-    branch = f"feat/{epic}"
-    token = resolve_github_token(root)
-    if not token:
-        return
-    repo, _ = resolve_repo(root, token)
-    pr = find_open_pr(repo, branch) if repo is not None else None
-    if pr is None:
-        logger.info(
-            "epic PR for %s not open yet — relying on the marker commit to flag %s", branch, slug
-        )
-        return
-    try:
-        where = f" The QA assessment is at `{assessment}`." if assessment else ""
-        pr.create_issue_comment(
-            f"⚠️ Story `{slug}` {why} "
-            f"It was committed behind the marker `{marker}` for manual review.{where}",
-        )
-    except Exception as exc:  # noqa: BLE001 - a PR comment is never worth failing the run
-        logger.info("could not post PR comment for %s: %s", slug, exc)
-
-
 __all__ = [
     "branch_epic",
     "branch_story",
     "commit_story",
-    "flag_docs_block",
     "flag_epic_blocked",
-    "flag_qa_failure",
     "init_base",
     "prune_epic",
     "select_epic",

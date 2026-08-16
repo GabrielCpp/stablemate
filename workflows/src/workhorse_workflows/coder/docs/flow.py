@@ -715,8 +715,8 @@ class Docs(Workflow):
 
         An escalation ends the flow blocked rather than waiting, for the reason
         `Qa.resolve_operator` gives: the story drain is single-threaded, so a parked story
-        parks every epic behind it. The story is still filed visibly by `flag_docs_block`;
-        it is deferred to a human who is no longer blocking the queue while they think.
+        parks every epic behind it. The block is not silent: it surfaces as the run's own
+        failure, carrying its reason, which is what an operator polls for.
         """
         self.logger.info("resolving the documentation block", extra={"activity": True})
         result = self.agent(
@@ -761,8 +761,8 @@ class Docs(Workflow):
 
         An `epic`-scoped answer is not something this flow can act on — it says the epic's
         premise was wrong, which no edit to one story's documentation reaches — so it comes
-        back as the block's verdict, carrying the answer as the notes `flag_docs_block`
-        stamps onto the story.
+        back as the block's verdict, carrying the answer as the notes `Coder.blocked_docs`
+        puts into the failure.
 
         `review_rework` resets. The reviewer's budget was spent arguing about a question
         that had no ratified answer; now there is one, and re-entering with nothing left to

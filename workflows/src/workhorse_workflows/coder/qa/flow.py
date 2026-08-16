@@ -1767,8 +1767,8 @@ class Qa(Workflow):
         `record_qa_giveup` is the other half of that same fix. Naming the budget tells the
         human *how* the flow stopped; the gate diagnostics on `loop` are the only record of
         *why*, and they die here otherwise — `QaFlowResult` carries the code-rework verdict
-        and the plan gates never write to it. The node persists them beside the story, which
-        is where `flag_qa_failure` already looks for the file it points the status at.
+        and the plan gates never write to it. The node persists them beside the story, at the
+        path `Coder.give_up` names in the failure the run ends on.
 
         Past the operator gate that is a *pair* of facts, and the first one is the one a
         human triaging the marker needs: which budget ran out originally. The lap the
