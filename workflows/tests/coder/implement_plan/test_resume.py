@@ -148,7 +148,16 @@ def test_real_checkpoint_resumes_committed_task_without_reimplementation(
         "src/value.txt",
         verification=[_command(f"from pathlib import Path; assert not Path({str(marker)!r}).exists()")],
     )
-    agent = _Agent(repo, _decomposition(task), edits={"resume": {"src/value.txt": "done\n"}})
+    # The hook re-creates the marker on every commit and the repair turn clears it, so the
+    # packet fails its committed tree once per attempt and the run stops at that state only
+    # after spending its whole repair budget there — the one way to halt at `verify_committed`
+    # now that a committed-tree failure buys a repair rather than ending the run.
+    agent = _Agent(
+        repo,
+        _decomposition(task),
+        edits={"resume": {"src/value.txt": "done\n"}},
+        repair_removes=[str(marker)],
+    )
     run_env = env()
 
     with pytest.raises(WorkflowFailed, match="committed verification failed"):
@@ -211,6 +220,7 @@ def test_nested_review_worklist_resumes_committed_fix_without_re_review(
             "review-1-review-fix": {"src/value.txt": "review-fixed\n"},
         },
         reviews=[_review(issue), _review(summary="fix verified")],
+        repair_removes=[str(marker)],
     )
     run_env = env()
 

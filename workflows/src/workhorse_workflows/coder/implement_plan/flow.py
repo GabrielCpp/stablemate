@@ -14,6 +14,7 @@ from workhorse_workflows.coder.implement_plan.execution import (
     decide_task_entry,
     project_plan_progress,
     publish_plan_task,
+    retract_task_commit,
     verify_final_candidate,
     verify_committed_task,
     verify_plan_task,
@@ -358,6 +359,7 @@ class ImplementPlan(Workflow):
                 task=task,
                 completed_commits=completed_commits,
                 expected_head=expected_head,
+                repair=repair,
             )
         if repair >= self.MAX_REPAIRS:
             self.call(
@@ -423,6 +425,7 @@ class ImplementPlan(Workflow):
         task: PlanTask,
         completed_commits: list[str],
         expected_head: str,
+        repair: int = 0,
     ) -> Continue:
         result = self.call(commit_plan_task, self.ctx, task, expected_head)
         return Continue(
@@ -434,6 +437,7 @@ class ImplementPlan(Workflow):
             completed_commits=completed_commits,
             expected_parent=expected_head,
             commit_sha=result.commit_sha,
+            repair=repair,
         )
 
     def verify_committed(
@@ -444,8 +448,18 @@ class ImplementPlan(Workflow):
         completed_commits: list[str],
         expected_parent: str,
         commit_sha: str,
+        repair: int = 0,
     ) -> Continue:
-        """Verify the exact clean tree that the next state may publish."""
+        """Verify the exact clean tree that the next state may publish.
+
+        This gate sees what the worktree cannot: only what was committed. A command that
+        passed a moment ago and fails here has found a real defect in the packet, and
+        until now that finding was terminal — the one gate in the loop with no second
+        chance, positioned after the most expensive work in it. It spends the packet's
+        repair budget instead, which is why the counter is threaded through the commit:
+        a packet gets `MAX_REPAIRS` repair turns in total, not one allowance per gate,
+        so the two cannot hand it back and forth forever.
+        """
         result = self.call(
             verify_committed_task,
             self.ctx,
@@ -453,6 +467,31 @@ class ImplementPlan(Workflow):
             expected_parent,
             commit_sha,
         )
+        if not result.passed:
+            if repair >= self.MAX_REPAIRS:
+                self.call(
+                    project_plan_progress,
+                    self.ctx,
+                    plan,
+                    index,
+                    completed_commits,
+                    task.id,
+                )
+                raise WorkflowFailed(
+                    f"task {task.id} committed verification failed:\n{result.findings}"
+                )
+            self.call(retract_task_commit, self.ctx, task, expected_parent, commit_sha)
+            return Continue(
+                result,
+                self.repair,
+                plan=plan,
+                index=index,
+                task=task,
+                completed_commits=completed_commits,
+                expected_head=expected_parent,
+                repair=repair,
+                findings=result.findings,
+            )
         if index + 1 == len(plan.tasks):
             return Continue(
                 result,

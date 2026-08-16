@@ -192,10 +192,61 @@ def test_clean_committed_tree_must_pass_packet_verification(
     (repo / "src" / "value.txt").write_text("different\n", encoding="utf-8")
     committed = commit_plan_task(logger, context, task, context.base_commit)
 
-    with pytest.raises(WorkflowFailed, match="committed verification failed"):
-        verify_committed_task(
-            logger, context, task, context.base_commit, committed.commit_sha
-        )
+    result = verify_committed_task(
+        logger, context, task, context.base_commit, committed.commit_sha
+    )
+
+    # The verdict is reported rather than raised so the flow can spend a repair turn on
+    # it; what this test protects is that the committed bytes are what got tested.
+    assert not result.passed
+
+
+def test_committed_tree_failure_is_repaired_rather_than_ending_the_run(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    git: Callable[..., subprocess.CompletedProcess],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The gate after the packet's most expensive work is worth a repair turn.
+
+    Only committed files reach the export, so a command that passed in the worktree and
+    fails here has found something real — and it used to find it terminally, discarding
+    a tests turn, a code turn and a passing verification for a fault one edit wide. The
+    commit is retracted, the work stays in the worktree, and the packet is repaired.
+    """
+    marker = tmp_path / "only-the-first-commit"
+    sentinel = tmp_path / "commit-seen"
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.write_text(
+        f"#!/bin/sh\n[ -e {sentinel} ] || {{ touch {marker}; touch {sentinel}; }}\n",
+        encoding="utf-8",
+    )
+    hook.chmod(0o755)
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Repair a committed tree\n", encoding="utf-8")
+    task = _task(
+        "committed-repair",
+        "src/value.txt",
+        verification=[
+            _command(f"from pathlib import Path; assert not Path({str(marker)!r}).exists()")
+        ],
+    )
+    agent = _Agent(
+        repo,
+        _decomposition(task),
+        edits={"committed-repair": {"src/value.txt": "done\n"}},
+        repair_removes=[str(marker)],
+    )
+
+    result = drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
+
+    assert result.status == "complete"
+    assert agent.count("repair-plan-task") == 1
+    # One packet is still one commit: the retracted attempt left no history behind it.
+    assert git(repo, "rev-parse", "HEAD").stdout == git(origin, "rev-parse", "main").stdout
+    assert git(repo, "rev-list", "--count", "HEAD").stdout.strip() == "2"
 
 
 def test_clean_filter_cannot_hide_different_committed_bytes(
