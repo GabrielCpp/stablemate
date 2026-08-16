@@ -90,6 +90,7 @@ class _Agent:
         reworked: list[dict[str, Any]] | None = None,
         edits: dict[str, dict[str, str]] | None = None,
         repair_edits: dict[str, dict[str, str]] | None = None,
+        repair_removes: list[str] | None = None,
         planning_edits: dict[str, str] | None = None,
         test_edits: dict[str, dict[str, str]] | None = None,
         commit_on_task: str = "",
@@ -103,6 +104,11 @@ class _Agent:
         self.decomposition_index = 0
         self.edits = edits or {}
         self.repair_edits = repair_edits or {}
+        # Absolute paths a repair turn deletes. A committed-tree failure is retracted and
+        # handed back for repair, so a fixture that fails only after a commit needs the
+        # repair turn to undo the thing the commit created — otherwise the next worktree
+        # verification fails for a reason the packet never had.
+        self.repair_removes = [Path(path) for path in repair_removes or []]
         self.planning_edits = planning_edits or {}
         self.test_edits = test_edits or {}
         self.commit_on_task = commit_on_task
@@ -133,11 +139,11 @@ class _Agent:
             }
         else:
             task_id = (data.get("task") or data["issue"])["id"]
-            writes = (
-                self.repair_edits.get(task_id, {})
-                if node.id in {"repair-plan-task", "repair-plan-review-issue"}
-                else self.edits.get(task_id, {})
-            )
+            repairing = node.id in {"repair-plan-task", "repair-plan-review-issue"}
+            if repairing:
+                for target in self.repair_removes:
+                    target.unlink(missing_ok=True)
+            writes = self.repair_edits.get(task_id, {}) if repairing else self.edits.get(task_id, {})
             self._write(writes)
             if task_id == self.commit_on_task:
                 subprocess.run(["git", "add", "-A"], cwd=self.repo, check=True)

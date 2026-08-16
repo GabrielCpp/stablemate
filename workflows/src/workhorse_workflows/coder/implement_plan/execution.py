@@ -22,6 +22,21 @@ from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.kit import push_to_origin
 
 
+# Prefixed to a committed-tree failure, because the verdict otherwise contradicts what the
+# repair turn just watched succeed, and its first move is to re-run the commands in the
+# worktree, where they pass again. Naming the export as the difference points it at the two
+# causes that are actually possible.
+_EXPORT_FINDINGS = (
+    "These commands passed in the worktree and failed against a clean export of the "
+    "commit, which contains only the committed files. So either the packet left something "
+    "out of its declared paths — a new file, a fixture, a generated artefact — or a command "
+    "depends on state the worktree happened to have and a fresh checkout does not, such as "
+    "an already-populated environment, an editable install, or a cached build. Fix the "
+    "packet, not the verification command, unless the command itself was what assumed that "
+    "state.\n\n"
+)
+
+
 @blueprint.node
 def check_planning_turn(logger, context: PlanRunContext) -> None:
     """A planning-only agent must leave repository identity and content untouched."""
@@ -99,7 +114,15 @@ def verify_committed_task(
     expected_parent: str,
     commit_sha: str,
 ) -> VerificationResult:
-    """Test the exact clean committed tree that publication will send to origin."""
+    """Test the exact clean committed tree that publication will send to origin.
+
+    A command failing *here* after passing in the worktree is a finding about the packet,
+    not about the repository: the export carries only what was committed, so the
+    difference is a file the commit left behind or a dependence on ambient state the
+    worktree happened to have. The caller decides what that costs — the structural
+    assertions stay fatal, but the commands' verdict is returned, so the packet can be
+    repaired against it instead of the run ending one state before its own publication.
+    """
     repository.assert_clean_at(context, commit_sha, expected_parent)
     repository.validate_task_commit(context, task, expected_parent, commit_sha)
     repository.assert_tree_matches_worktree(context, task, commit_sha)
@@ -107,9 +130,37 @@ def verify_committed_task(
         result = repository.run_commands(candidate, task.verification)
     repository.assert_clean_at(context, commit_sha, expected_parent)
     if not result.passed:
-        raise WorkflowFailed(f"task {task.id} committed verification failed:\n{result.findings}")
+        logger.info("task %s committed verification failed:\n%s", task.id, result.findings)
+        return result.model_copy(update={"findings": _EXPORT_FINDINGS + result.findings})
     logger.info("task %s committed tree passed verification", task.id)
     return result
+
+
+@blueprint.node
+def retract_task_commit(
+    logger,
+    context: PlanRunContext,
+    task: PlanTask,
+    expected_parent: str,
+    commit_sha: str,
+) -> None:
+    """Undo an unpublished packet commit, leaving its work in the worktree to repair.
+
+    A packet is one commit, so repairing what the committed tree revealed cannot mean
+    adding a second one: the message is a pure function of the packet and the parent is
+    checkpointed. Move HEAD back instead and keep the files. The state this lands in —
+    HEAD at `expected_parent`, worktree dirty — is exactly the one an implementation turn
+    leaves, so `decide_task_entry` recovers a crash here as `implement` with no special
+    case. Refuse once the commit has reached origin: retracting a published commit is a
+    history rewrite on a shared branch.
+    """
+    repository.assert_repository_identity(context)
+    head = repository.head(context)
+    if head != commit_sha:
+        raise WorkflowFailed(f"task {task.id} commit {commit_sha[:12]} is no longer HEAD")
+    repository.assert_remote(context, expected_parent)
+    repository.reset_soft(context, expected_parent)
+    logger.info("retracted task %s commit %s for repair", task.id, commit_sha[:12])
 
 
 @blueprint.node
@@ -264,6 +315,7 @@ __all__ = [
     "decide_task_entry",
     "project_plan_progress",
     "publish_plan_task",
+    "retract_task_commit",
     "verify_final_candidate",
     "verify_committed_task",
     "verify_plan_task",

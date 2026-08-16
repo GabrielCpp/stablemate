@@ -196,6 +196,14 @@ def assert_clean_at(context: PlanRunContext, expected_head: str, expected_remote
     assert_remote(context, expected_remote)
 
 
+def reset_soft(context: PlanRunContext, target: str) -> None:
+    """Move the branch back to `target`, keeping every file the commit contained."""
+    try:
+        raw_git(context).reset("--soft", target)
+    except (GitError, ValueError) as exc:
+        raise WorkflowFailed(f"cannot move HEAD back to {target[:12]}: {exc}") from exc
+
+
 def commit_message(context: PlanRunContext, task: PlanTask) -> str:
     blocks = [commit_subject(task)]
     body = commit_body(task)

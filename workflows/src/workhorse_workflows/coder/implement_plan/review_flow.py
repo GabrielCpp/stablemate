@@ -10,6 +10,7 @@ from workhorse_workflows.coder.implement_plan.execution import (
     commit_plan_task,
     decide_task_entry,
     publish_plan_task,
+    retract_task_commit,
     verify_committed_task,
     verify_final_candidate,
     verify_plan_task,
@@ -133,6 +134,7 @@ class ReviewIssues(Workflow):
                 issue=issue,
                 commits=commits,
                 expected_head=expected_head,
+                repair=repair,
             )
         if repair >= self.MAX_REPAIRS:
             self.call(
@@ -196,6 +198,7 @@ class ReviewIssues(Workflow):
         issue: PlanTask,
         commits: list[str],
         expected_head: str,
+        repair: int = 0,
     ) -> Continue:
         result = self.call(commit_plan_task, self.ctx, issue, expected_head)
         return Continue(
@@ -206,6 +209,7 @@ class ReviewIssues(Workflow):
             commits=commits,
             expected_parent=expected_head,
             commit_sha=result.commit_sha,
+            repair=repair,
         )
 
     def verify_committed(
@@ -215,7 +219,15 @@ class ReviewIssues(Workflow):
         commits: list[str],
         expected_parent: str,
         commit_sha: str,
+        repair: int = 0,
     ) -> Continue:
+        """Verify the clean committed tree, spending the issue's repair budget on it.
+
+        Same bargain as the parent flow: only the committed files reach the export, so a
+        command that passed in the worktree and fails here has found something real, and
+        the fix belongs in the issue rather than in a dead run. The counter comes through
+        the commit so the two gates share one budget.
+        """
         result = self.call(
             verify_committed_task,
             self.ctx,
@@ -223,6 +235,31 @@ class ReviewIssues(Workflow):
             expected_parent,
             commit_sha,
         )
+        if not result.passed:
+            if repair >= self.MAX_REPAIRS:
+                self.call(
+                    project_review_progress,
+                    self.ctx,
+                    self.plan,
+                    self.cycle,
+                    index,
+                    commits,
+                    issue.id,
+                )
+                raise WorkflowFailed(
+                    f"review issue {issue.id} committed verification failed:\n{result.findings}"
+                )
+            self.call(retract_task_commit, self.ctx, issue, expected_parent, commit_sha)
+            return Continue(
+                result,
+                self.repair,
+                index=index,
+                issue=issue,
+                commits=commits,
+                expected_head=expected_parent,
+                repair=repair,
+                findings=result.findings,
+            )
         if index + 1 == len(self.plan.tasks):
             return Continue(
                 result,
