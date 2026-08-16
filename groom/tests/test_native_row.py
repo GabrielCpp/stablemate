@@ -13,6 +13,7 @@ Run: uv run pytest tests/test_native_row.py
 from __future__ import annotations
 
 import asyncio
+import json
 import subprocess
 import time
 from pathlib import Path
@@ -187,6 +188,90 @@ def test_localfs_read_write_roundtrip_and_traversal_guard(tmp_path):
     # Traversal is rejected, not written outside the base.
     assert localfs.write_file(str(tmp_path), "../escape", "x") is False
     assert localfs.read_file(str(tmp_path), "../escape") is None
+
+
+# --------------------------------------------------------------------------- #
+# Gates raised inside a sub-flow
+# --------------------------------------------------------------------------- #
+def _checkpoint(run_dir: Path, rel: str, state_name: str, waiting_on: str | None) -> None:
+    target = run_dir / rel if rel else run_dir
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "checkpoint.json").write_text(
+        json.dumps(
+            {
+                "engine": "pyflow",
+                "state": state_name,
+                "waiting_on": waiting_on,
+            }
+        )
+    )
+
+
+def test_native_gate_raised_inside_a_subflow_is_found(tmp_path):
+    """The blocking `Await` belongs to the child flow's checkpoint; the root only
+    names the node that handed off to it. Reading the root alone left the run
+    blocked with nothing on the dashboard to answer."""
+    _reset()
+    run_dir = tmp_path / "runs" / "coder-r1"
+    workspace = tmp_path / "workspace"
+    gate = workspace / "docs" / "story" / "context.md"
+    gate.parent.mkdir(parents=True)
+    gate.write_text("STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\nWhich corpus?\n")
+    _checkpoint(run_dir, "", "review", None)
+    _checkpoint(run_dir, "review/_flow", "read_operator", str(gate))
+
+    alerts.ingest_metrics(
+        [
+            _metric(
+                "C1", "workhorse.run.heartbeat", 1,
+                run_dir=str(run_dir), workspace=str(workspace), node="review",
+            )
+        ],
+        now=time.time(),
+    )
+
+    assert groom_app._sync_native_row(state.RUNS["C1"]) is True
+    wf = state.WORKFLOWS["C1"]
+    assert wf.state == WorkflowState.BLOCKED
+    assert wf.gates["docs/story/context.md"].question == "Which corpus?"
+
+
+def test_native_gate_ignores_a_finished_siblings_checkpoint(tmp_path):
+    """A flow node inside a loop leaves its `_flow` scope behind. Only the chain the
+    root's current state names is followed, so the previous story's gate — still
+    AWAITING because nobody ever answered it — is not re-raised."""
+    _reset()
+    run_dir = tmp_path / "runs" / "coder-r2"
+    workspace = tmp_path / "workspace"
+    stale = workspace / "docs" / "old.md"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\nStale?\n")
+    _checkpoint(run_dir, "", "dev", None)
+    _checkpoint(run_dir, "dev/_flow", "layer", None)
+    _checkpoint(run_dir, "qa/_flow", "resolve_operator", str(stale))
+
+    alerts.ingest_metrics(
+        [
+            _metric(
+                "C2", "workhorse.run.heartbeat", 1,
+                run_dir=str(run_dir), workspace=str(workspace), node="dev",
+            )
+        ],
+        now=time.time(),
+    )
+
+    groom_app._sync_native_row(state.RUNS["C2"])
+    wf = state.WORKFLOWS["C2"]
+    assert wf.gates == {}
+    assert wf.state == WorkflowState.RUNNING
+
+
+def test_active_waiting_on_stops_at_the_depth_bound(tmp_path):
+    """A checkpoint whose state names its own scope would otherwise walk forever."""
+    run_dir = tmp_path / "loop"
+    for depth in range(groom_app._MAX_FLOW_DEPTH + 3):
+        _checkpoint(run_dir, "/".join(["self/_flow"] * depth), "self", None)
+    assert groom_app._active_waiting_on(str(run_dir)) == ""
 
 
 # --------------------------------------------------------------------------- #

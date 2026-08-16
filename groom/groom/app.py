@@ -186,14 +186,48 @@ async def _ensure_volumes(container_id: str) -> None:
     )
 
 
+# A flow invoked at a node checkpoints under `<run>/<node>/_flow`, and that flow can
+# invoke another the same way, so the live checkpoint is at the bottom of a chain the
+# root only names the first link of. The bound is a runaway guard, not a real limit —
+# the deepest shipped graph (coder → review → …) is two.
+_SUBFLOW_DIR = "_flow"
+_MAX_FLOW_DEPTH = 8
+
+
+def _active_waiting_on(run_dir: str) -> str:
+    """What the run's *innermost* live flow is blocked on, "" when nothing is.
+
+    The root checkpoint is not the answer on its own: when a state hands off to a
+    sub-flow, the `Await` — and so the `waiting_on` — belongs to the child's
+    checkpoint, while the parent's says only which node it is sitting in. Reading the
+    root alone is why a gate raised inside `coder`'s review flow reached nobody: the
+    run was blocked, the operator was paged by nothing, and the dashboard showed it
+    running. So descend the chain the parent names, deepest `waiting_on` wins.
+
+    Only the current state's child is followed, never a sibling: a flow node inside a
+    loop leaves a finished `_flow` scope behind, and that scope's last checkpoint is
+    not a gate anybody still owes an answer to.
+    """
+    prefix = ""
+    waiting = ""
+    for _ in range(_MAX_FLOW_DEPTH):
+        raw = localfs.read_file(run_dir, f"{prefix}checkpoint.json")
+        if raw is None:
+            break
+        position = checkpoints.parse_position(raw)
+        if position.waiting_on:
+            waiting = position.waiting_on
+        if not position.current_node:
+            break
+        prefix = f"{prefix}{position.current_node}/{_SUBFLOW_DIR}/"
+    return waiting
+
+
 def _native_gate(run: RunTelemetry) -> GateInfo | None:
     """The exact gate named by a native pyflow checkpoint, if still pending."""
     if not run.run_dir or not run.workspace:
         return None
-    raw = localfs.read_file(run.run_dir, "checkpoint.json")
-    if raw is None:
-        return None
-    waiting_on = checkpoints.parse_position(raw).waiting_on
+    waiting_on = _active_waiting_on(run.run_dir)
     if not waiting_on:
         return None
     workspace = Path(run.workspace).resolve()
