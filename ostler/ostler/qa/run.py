@@ -8,14 +8,18 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-
 
 from ostler.qa.session import QaSession, RUN_LOG
 from ostler.qa.plan import load_plan, resolve_spec_dir, validate_v2
 from ostler.qa.v2 import run_plan as run_v2_plan
+from ostler.qa import lint as lint_mod
+from ostler.qa import tools as tools_mod
+from ostler.qa.outcome import QaOutcome
+
+__all__ = ["DaemonSpec", "QaOutcome", "cmd_assert", "cmd_report", "cmd_replay", "cmd_run",
+           "cmd_start", "cmd_step", "cmd_stop", "cmd_validate"]
 
 
 def _raise_keyboard_interrupt(signum: int, frame: Any) -> None:
@@ -27,19 +31,6 @@ def _raise_keyboard_interrupt(signum: int, frame: Any) -> None:
     runs and background daemons still get stopped instead of orphaned.
     """
     raise KeyboardInterrupt
-
-
-@dataclass
-class QaOutcome:
-    ok: bool
-    message: str
-    data: dict[str, Any] = field(default_factory=dict)
-    status: str = ""
-
-    def __post_init__(self) -> None:
-        if not self.status:
-            self.status = "passed" if self.ok else "failed"
-        self.data.setdefault("status", self.status)
 
 
 # ---------------------------------------------------------------------------
@@ -322,6 +313,20 @@ def cmd_validate(
             status="invalid",
         )
 
+    lint_result = lint_mod.cmd_lint(resolved_plan, spec_dir, root=root)
+    if not lint_result.ok:
+        return lint_result
+
+    tool_problems = tools_mod.preflight_errors(root)
+    if tool_problems:
+        msg = "QA tool preflight failed:\n" + "\n".join(f"  - {p}" for p in tool_problems)
+        return QaOutcome(
+            ok=False,
+            message=msg,
+            data={"problems": tool_problems},
+            status="invalid",
+        )
+
     resolved_spec = resolve_spec_dir(resolved_plan, spec_dir, root)
     document, problems = load_plan(resolved_plan, resolved_spec, root)
     # `load_plan` hands back a document exactly when it found nothing to report, so the
@@ -352,7 +357,6 @@ def cmd_run(
     stop_on_fail: bool = False,
     only: list[str] | None = None,
     out_dir: str = "qa",
-    sandboxed: bool = False,
     root: Path,
 ) -> QaOutcome:
     """Execute a `qa_plan.py` in batch mode.
@@ -362,9 +366,6 @@ def cmd_run(
 
     ``only`` and ``out_dir`` are the dry run: a subset of the scenarios, written somewhere
     other than ``qa/`` and producing no ``qa-evidence.json``.
-
-    ``sandboxed`` runs each scenario in a container that has no repository on disk, so a
-    scenario cannot rerun a unit suite and file the exit code as behavioral evidence.
     """
     resolved_plan = plan_file if plan_file.is_absolute() else root / plan_file
     resolved_spec = resolve_spec_dir(resolved_plan, spec_dir, root)
@@ -386,7 +387,6 @@ def cmd_run(
         stop_on_fail=stop_on_fail,
         only=only,
         qa_dirname=out_dir,
-        sandboxed=sandboxed,
     )
     return QaOutcome(
         ok=status == "passed",

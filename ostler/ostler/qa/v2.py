@@ -10,7 +10,6 @@ from typing import Any
 
 from ostler.qa.drivers import DriverBlocked, QaDriver, ScenarioResult, create_driver
 from ostler.qa.plan import PlanDocument, check_runtime_requirements
-from ostler.qa.sandbox import Sandbox, SandboxConfig
 from ostler.qa.session import QA_DIRNAME, QaSession
 
 
@@ -21,7 +20,6 @@ def run_plan(
     stop_on_fail: bool = False,
     only: list[str] | None = None,
     qa_dirname: str = QA_DIRNAME,
-    sandboxed: bool = False,
 ) -> tuple[str, str, dict[str, Any]]:
     """Execute a validated plan and return ``(status, message, summary)``.
 
@@ -48,9 +46,7 @@ def run_plan(
     # After selection, not before. This used to run against every target the plan declares,
     # so a one-scenario dry run of an HTTP check was blocked by a mobile toolchain it would
     # never have touched — and the block reads as a plan defect, not a machine one.
-    runtime_problems = check_runtime_requirements(
-        document, targets=wanted_targets, sandboxed=sandboxed
-    )
+    runtime_problems = check_runtime_requirements(document, targets=wanted_targets)
     if runtime_problems:
         message = "QA run blocked:\n" + "\n".join(f"  - {item}" for item in runtime_problems)
         return "blocked", message, {"status": "blocked", "problems": runtime_problems}
@@ -92,14 +88,7 @@ def run_plan(
     runner_errors: list[str] = []
     summary: dict[str, Any] = {}
     evidence: Path | None = None
-    #: Run-scoped, not module-scoped: it owns containers and a bound port, and the only
-    #: place guaranteed to reach them again is the `finally` below. A singleton would leak
-    #: both down every exception path this function already handles.
-    sandbox: Sandbox | None = None
     try:
-        if sandboxed:
-            sandbox = Sandbox(SandboxConfig.load(root), session=session, root=root)
-            sandbox.start()
         for daemon in plan.get("background", []):
             session.start_daemon(
                 str(daemon["name"]),
@@ -117,7 +106,6 @@ def run_plan(
                 target,
                 root=root,
                 variables=variables,
-                sandbox=sandbox,
             )
             drivers[target_id] = driver
             driver.start()
@@ -191,11 +179,6 @@ def run_plan(
                 )
             except Exception as exc:  # noqa: BLE001
                 cleanup_errors.append(f"{target_id}: {exc}")
-        if sandbox is not None:
-            try:
-                sandbox.stop()
-            except Exception as exc:  # noqa: BLE001
-                cleanup_errors.append(f"sandbox: {exc}")
         if cleanup_errors:
             status = "invalid"
             runner_errors.append(f"driver cleanup failed: {'; '.join(cleanup_errors)}")

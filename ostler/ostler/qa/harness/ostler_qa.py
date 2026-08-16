@@ -841,6 +841,7 @@ class Qa:
         covers: Sequence[str],
         recorder: _Recorder,
         offset_base_ms: int = 0,
+        tools: Mapping[str, str] | None = None,
     ) -> None:
         self.scenario_id = scenario_id
         self.target = target
@@ -848,6 +849,12 @@ class Qa:
         self.spec_dir = spec_dir
         self.dir = qa_dir
         self.covers = list(covers)
+        #: `{name: command}` for every QA tool this repo opted into (`agents.yml`'s
+        #: `qa: {tools: [...]}`) and ostler resolved to a definition. Built and preflighted
+        #: on ostler's side of the process boundary — see `ostler.qa.tools` — because this
+        #: file cannot read `agents.yml` or the stablemate config; it only ever imports the
+        #: standard library.
+        self._tool_commands = dict(tools or {})
         self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
@@ -868,6 +875,24 @@ class Qa:
         #: itself on a 5xx or an uncaught exception it provoked.
         self.diagnostics: Any = None
         self.maestro = Maestro(self)
+        self.tesseract = Tesseract(self)
+        self.convert = Convert(self)
+
+    def tool(self, name: str) -> "Tool":
+        """A user- or machine-declared external command, opted into via `agents.yml`.
+
+        The generic escape hatch for a repo's own tools (`ocr-diff`, a linter, whatever)
+        that have no typed wrapper — `qa.tesseract`/`qa.convert` are this same mechanism
+        with a friendlier surface for the two built-ins, and reach it the same way.
+        """
+        command = self._tool_commands.get(name)
+        if command is None:
+            raise RuntimeError(
+                f"qa tool {name!r} is not available — opt into it via this repo's "
+                f"agents.yml `qa: {{tools: [{name!r}]}}`, and if it is not a built-in, "
+                f"define it in ~/.config/stablemate/config.toml's [qa_tools.{name}]"
+            )
+        return Tool(self, name, command)
 
     # -- assertions --------------------------------------------------------------------
 
@@ -1375,6 +1400,96 @@ class MaestroResult:
         return self.exit_code == 0
 
 
+@dataclass
+class ToolResult:
+    command: list[str]
+    stdout: str
+    stderr: str
+    exit_code: int
+
+    @property
+    def ok(self) -> bool:
+        return self.exit_code == 0
+
+
+class Tool:
+    """One opted-in external command, resolved to an argv on this machine.
+
+    Handed back by `Qa.tool(name)`, never constructed directly — the command it runs
+    came from the opt-in/definition split in `ostler.qa.tools`, not from anything this
+    scenario wrote.
+    """
+
+    def __init__(self, qa: Qa, name: str, command: str) -> None:
+        self._qa = qa
+        self.name = name
+        self._command = command
+
+    def run(self, *args: str, timeout: float = 60.0) -> ToolResult:
+        if shutil.which(self._command) is None:
+            raise RuntimeError(
+                f"qa tool {self.name!r} names command {self._command!r}, which is not "
+                "on PATH — `ostler qa validate` should have caught this before the run"
+            )
+        argv = [self._command, *args]
+        try:
+            done = subprocess.run(  # noqa: S603 - argv built from a config-declared command
+                argv, cwd=self._qa.root, capture_output=True, text=True, timeout=timeout, check=False
+            )
+            return ToolResult(command=argv, stdout=done.stdout, stderr=done.stderr, exit_code=done.returncode)
+        except subprocess.TimeoutExpired as exc:
+            return ToolResult(
+                command=argv,
+                stdout=str(exc.stdout) if exc.stdout else "",
+                stderr=str(exc.stderr) if exc.stderr else "",
+                exit_code=124,
+            )
+
+
+class Tesseract:
+    """OCR over an image, via the `tesseract` CLI opted into `agents.yml`'s `qa.tools`."""
+
+    def __init__(self, qa: Qa) -> None:
+        self._qa = qa
+
+    def ocr(self, image: str | Path, *, timeout: float = 60.0) -> str:
+        result = self._qa.tool("tesseract").run(str(image), "stdout", timeout=timeout)
+        if not result.ok:
+            raise RuntimeError(f"tesseract failed on {image}: {result.stderr or result.stdout}")
+        return result.stdout
+
+
+class Convert:
+    """Resize (and, over time, other transforms) via ImageMagick's `convert`."""
+
+    def __init__(self, qa: Qa) -> None:
+        self._qa = qa
+
+    def resize(
+        self,
+        image: str | Path,
+        width: int,
+        height: int,
+        *,
+        out: str | Path | None = None,
+        timeout: float = 60.0,
+    ) -> Path:
+        src = Path(image)
+        dest = (
+            Path(out)
+            if out is not None
+            else self._qa.dir / "generated" / f"{src.stem}-{width}x{height}{src.suffix}"
+        )
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        result = self._qa.tool("convert").run(
+            str(src), "-resize", f"{width}x{height}", str(dest), timeout=timeout
+        )
+        if not result.ok:
+            raise RuntimeError(f"convert failed on {image}: {result.stderr or result.stdout}")
+        self._qa.artifact(dest, kind="resized-image")
+        return dest
+
+
 # --------------------------------------------------------------------------------------
 # describe
 # --------------------------------------------------------------------------------------
@@ -1812,6 +1927,7 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         covers=declared.covers,
         recorder=recorder,
         offset_base_ms=int(context.get("offset_ms", 0)),
+        tools=context.get("tools", {}),
     )
     browser = None
     status, error = "passed", None

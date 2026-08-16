@@ -219,13 +219,14 @@ def test_a_synthetic_mechanism_is_refused_and_named(tmp_path: Path) -> None:
 
 def test_an_unimportable_plan_fails_validation(tmp_path: Path) -> None:
     # The static check YAML could never offer. A broken import used to surface an hour into
-    # a run, as a driver failure against a story that was fine.
+    # a run, as a driver failure against a story that was fine. `ostler_qa` is on the lint
+    # allowlist, so this reaches the actual import rather than being rejected by lint first.
     spec = _spec(tmp_path)
-    _plan(spec, "import nonexistent_project_module\n")
+    _plan(spec, "from ostler_qa import nonexistent_project_name\n")
     outcome = cmd_validate(spec / "qa_plan.py", spec, root=tmp_path)
     assert not outcome.ok
     assert "failed to import" in outcome.message
-    assert "nonexistent_project_module" in outcome.message
+    assert "nonexistent_project_name" in outcome.message
 
 
 def test_coverage_without_an_assertion_is_rejected(tmp_path: Path) -> None:

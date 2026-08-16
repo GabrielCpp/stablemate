@@ -356,6 +356,33 @@ explicit attribute here, and the two that used to cost the most are the first tw
 | `qa.secret(name)`                  | the runtime value of a declared secret — redacted everywhere it is written |
 | `qa.page`, `qa.diagnostics`, `qa.by_role(…)`, `qa.goto(…)`, `qa.screenshot()` | the browser, for a `playwright` target |
 | `qa.maestro.run(flow)`             | a Maestro flow, for a `maestro` target                                  |
+| `qa.tesseract.ocr(image)`          | OCR text from an image, via the `tesseract` CLI                         |
+| `qa.convert.resize(image, w, h)`   | resize an image via ImageMagick's `convert`; returns the output path    |
+| `qa.tool(name).run(*args)`         | any other opted-in external command; returns a `ToolResult(stdout, stderr, exit_code)` |
+
+### QA tools (`qa.tool`, `qa.tesseract`, `qa.convert`)
+
+Every external command a scenario reaches for through `qa.tool` — including the two typed
+wrappers above — has to be opted into by this repo, and defined for this machine. Two
+tiers, because they change for different reasons and at different times:
+
+- **Opt-in** — `agents.yml` (or `.agents.yml`, `ostler.yml`, `ostler.yaml`)'s
+  `qa: {tools: [tesseract, convert, ocr-diff]}` — is committed: which tools *this* QA
+  plan is allowed to reach for.
+- **Definition** — `~/.config/stablemate/config.toml`'s `[qa_tools.<name>]` table
+  (`command`, `description`) — is per-machine: CI's `tesseract` is a container binary, a
+  laptop's is Homebrew's. `tesseract` and `convert` need no entry unless a repo wants to
+  override the command name; every other tool needs one.
+
+`ostler qa validate` and `ostler qa run` refuse to start if an opted-in name has no
+definition anywhere, or if its command is not on `PATH` — the same `DriverBlocked`
+doctrine that already covers a missing `maestro` CLI. `ostler qa tools list` prints the
+resolved catalog and whether each tool is currently available.
+
+`tesseract` (OCR) and ImageMagick's `convert` are host binaries farrier does not
+provision — install them the way this machine installs any CLI (e.g.
+`apt install tesseract-ocr imagemagick`, `brew install tesseract imagemagick`) before
+opting a repo into them.
 
 `covers=` on the decorator is the machine-checkable link to the obligations
 `qa-okf-context.json` lists, and it is what `qa-evidence.json` is aggregated over. A
@@ -489,60 +516,6 @@ under the target's interpreter and reads the declarations back, so it catches:
 - Interpret CloudWatch log output — it passes `--filter <token>` and ostler counts matches.
 
 ---
-
-## `--sandbox`: taking the repository away (experimental)
-
-QA is meant to prove that the product behaves, not that its test suite passes. The rule saying so
-has always been prose in a prompt, and prose cannot filter prose — audits keep finding plans whose
-acceptance criteria rest on a unit suite's exit code.
-
-`ostler qa run --sandbox` replaces the rule with the absence of the capability. Each scenario runs
-in its own container holding an interpreter, the QA harness and its own spec directory, and nothing
-else: `go test ./...` fails on a missing directory, `npx vitest` fails on a missing command, and a
-jsdom overclaim is impossible because there is no source to import. What still works is everything
-that was behavioral evidence in the first place — HTTP against the running system, a real browser, a
-screen recording, `qa vet`.
-
-Paths are identical on both sides. The spec directory is bind-mounted at its own absolute path and
-an empty tmpfs covers the repository root, so a screenshot the scenario writes is at that same path
-on the host and every existing check — the manifest's containment rule, the vetter's sidecar lookup,
-`ffprobe` on the video — keeps working with no translation layer.
-
-Everything environment-specific is declared by the repository under test, in `qa-stack.yml`, never
-defaulted by ostler:
-
-```yaml
-sandbox:
-  network: acme_default              # the compose network the containers join
-  forward:                           # loopback port in the container -> what it reaches
-    8090: api-service:8090           # so a plan's hardcoded http://localhost:8090 still resolves
-    5173: host-gateway:5173          # a host process rather than a compose service
-  images:
-    base: ostler-qa-sandbox:base
-    browser: ostler-qa-sandbox:browser
-  gateway:
-    allow: []                        # default-deny; see below
-```
-
-Build the images from the `ostler/` package directory:
-
-```bash
-docker build -f docker/sandbox/Dockerfile --target base    -t ostler-qa-sandbox:base    .
-docker build -f docker/sandbox/Dockerfile --target browser -t ostler-qa-sandbox:browser .
-```
-
-Some legitimate evidence genuinely needs the host — a device the container has no path to, a tool
-licensed to the machine. That door is a **verb list, not a shell**: the repository declares the exact
-argv of each thing a scenario may ask for, a scenario names a verb and appends arguments, and
-anything undeclared is refused with a reason. The list is empty unless someone widened it, so the
-default posture is that nothing reaches the host. Every request, allowed or denied, is appended to
-the run ledger — a denial that leaves no trace is an attempt that looks like it never happened.
-
-**Two holes this does not close, named rather than hidden.** `describe` still imports the plan
-module on the host with the repository present, so import-time code in a `qa_plan.py` is still
-governed by policy rather than by capability. And `background:` / `ready_check:` commands are host
-shell by design, so a background entry that runs a test suite is a sanctioned host-side rerun. Both
-need their own answer before `--sandbox` becomes the default.
 
 ## Integration with `qa-evidence.json` and the workflow gate
 

@@ -21,6 +21,7 @@ from typing import Any
 
 
 from ostler.model import load as load_graph
+from ostler.qa import tools as qa_tools
 from ostler.qa.harness_host import (
     DEFAULT_SCENARIO_TIMEOUT,
     default_interpreter,
@@ -110,6 +111,9 @@ class PythonDriver(QaDriver):
 
     def start(self) -> None:
         self.launcher.preflight(self)
+        problems = qa_tools.preflight_errors(self.root)
+        if problems:
+            raise DriverBlocked("; ".join(problems))
         driver = str(self.target.get("driver", "python"))
         recording = self.target.get("recording", {"required": True})
         if driver == "playwright":
@@ -215,6 +219,11 @@ class PythonDriver(QaDriver):
             # zero, so without this every offset it records — a video's start, a console
             # message's `atMs` — would be measured from a different origin than the ledger's.
             "offset_ms": self.session.offset_ms(),
+            # `{name: command}` for every QA tool this repo opted into and ostler resolved
+            # to a definition — see `ostler.qa.tools`. `start()` already refused the run if
+            # any opted-in tool didn't resolve, so this is always complete by the time a
+            # scenario reaches for `qa.tool(...)`.
+            "tools": qa_tools.resolved_commands(self.root),
         }
         return self.launcher.execute(self, scenario_id, timeout, context)
 
@@ -858,7 +867,6 @@ def create_driver(
     *,
     root: Path,
     variables: dict[str, str],
-    sandbox: Any | None = None,
 ) -> QaDriver:
     """Build the one driver there is.
 
@@ -866,15 +874,8 @@ def create_driver(
     between four action interpreters picks nothing. The function stays because the runner
     calls it per target and because a second driver is a plausible future; a `driver:` key
     on the target is a label for the report, not a dispatch.
-
-    ``sandbox`` is the run-scoped `ostler.qa.sandbox.Sandbox`, or `None` for a local run.
-    It is duck-typed rather than imported so that this module — which every QA run loads —
-    does not depend on the container machinery, and so that `sandbox` can import from here.
     """
-    launcher = sandbox.launcher_for(target_id, target) if sandbox is not None else None
-    return PythonDriver(
-        session, target_id, target, root=root, variables=variables, launcher=launcher
-    )
+    return PythonDriver(session, target_id, target, root=root, variables=variables)
 
 
 def _probe_media(path: Path) -> dict[str, Any]:

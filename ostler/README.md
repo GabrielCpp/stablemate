@@ -224,19 +224,7 @@ verdict the ledger does not hold, every consumer downstream reads the summary an
 them goes back to check. The whole thing is a set difference, which is why it belongs in a
 command rather than in a reviewer's instructions.
 
-#### `--sandbox`: taking the repository away (experimental)
-
-QA is meant to prove that the product behaves, not that its test suite passes — and prose in
-a prompt cannot filter prose. `ostler qa run --sandbox` replaces the rule with the absence of
-the capability: each scenario runs in its own container holding an interpreter, the QA harness
-and its own spec directory, and no source tree, so a unit suite has nothing to run against
-while HTTP, a real browser, a screen recording and `qa vet` all still work. Paths are identical
-on both sides, so every existing containment and sidecar check keeps working untranslated. The
-repository under test declares the containers' network, port forwards, images and the
-verb-list (never a shell) host escape in `qa-stack.yml`; ostler defaults none of it.
-
-The run contract — and with it the `sandbox:` keys, the two image builds and the two holes
-this does not yet close — is in
+The run contract is in
 [docs/QA-RUN.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/QA-RUN.md); the
 artifact contracts are in
 [docs/ARTIFACT-CONTRACTS.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/ARTIFACT-CONTRACTS.md).

@@ -658,19 +658,12 @@ def check_runtime_requirements(
     document: PlanDocument,
     *,
     targets: set[str] | None = None,
-    sandboxed: bool = False,
 ) -> list[str]:
     """What this machine must have before the run starts, for the targets it will use.
 
     ``targets`` is the set the selected scenarios actually name. Without it a `--scenario`
     dry run of one HTTP check was blocked because some *other* target in the same plan
     wanted a mobile toolchain — a requirement that run was never going to reach.
-
-    ``sandboxed`` drops the browser-toolchain probes, which under `--sandbox` are asking the
-    wrong machine: playwright and ffmpeg live in the image, and importing playwright into
-    ostler's own interpreter says nothing about whether the container has it. ``ffprobe``
-    stays required either way, because the measurement of the finished recording is taken
-    here regardless of where it was filmed.
     """
     problems: list[str] = []
     for name, target in document.data.get("targets", {}).items():
@@ -681,13 +674,12 @@ def check_runtime_requirements(
         required = recording.get("required", True)
         mode = recording.get("mode", "window" if driver == "playwright" else "device")
         if driver == "playwright":
-            if not sandboxed:
-                try:
-                    import playwright.sync_api  # noqa: F401
-                except ImportError:
-                    problems.append(f"target '{name}' requires the Playwright Python package")
-                if required and mode == "window" and shutil.which("ffmpeg") is None:
-                    problems.append(f"target '{name}' requires ffmpeg for window recording")
+            try:
+                import playwright.sync_api  # noqa: F401
+            except ImportError:
+                problems.append(f"target '{name}' requires the Playwright Python package")
+            if required and mode == "window" and shutil.which("ffmpeg") is None:
+                problems.append(f"target '{name}' requires ffmpeg for window recording")
             if required and shutil.which("ffprobe") is None:
                 problems.append(f"target '{name}' requires ffprobe to validate recording metadata")
         elif driver == "maestro":

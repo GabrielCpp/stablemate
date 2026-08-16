@@ -52,8 +52,10 @@ from ostler.crud import Result
 from ostler.qa import (
     QaOutcome,
     build_context,
+    cmd_lint,
     cmd_run,
     cmd_validate,
+    tools as qa_tools_mod,
     validate_context,
     write_context,
 )
@@ -500,6 +502,13 @@ class Ostler:
         packet = json.loads(context_file.read_text(encoding="utf-8"))
         return validate_context(packet)
 
+    def qa_lint(self, plan_file: str | Path, *, spec: str | Path | None = None) -> QaOutcome:
+        """Statically lint a ``qa_plan.py``'s AST without importing or executing it
+        (``ostler qa lint``)."""
+
+        return cmd_lint(Path(plan_file),
+                        self._resolve(spec) if spec else None, root=self.root)
+
     def qa_validate(self, plan_file: str | Path, *, spec: str | Path | None = None) -> QaOutcome:
         """Validate a ``qa_plan.py`` without executing it (``ostler qa validate``)."""
 
@@ -507,15 +516,29 @@ class Ostler:
                             self._resolve(spec) if spec else None, root=self.root)
 
     def qa_run(self, plan_file: str | Path, *, spec: str | Path | None = None,
-               stop_on_fail: bool = False, sandboxed: bool = False) -> QaOutcome:
-        """Execute a ``qa_plan.py`` in batch mode (``ostler qa run``).
-
-        ``sandboxed`` is the CLI's ``--sandbox``: each scenario runs in a container with no
-        repository on disk. Exposed here because the caller that most needs it is a
-        workflow node, which drives this API rather than the CLI."""
+               stop_on_fail: bool = False) -> QaOutcome:
+        """Execute a ``qa_plan.py`` in batch mode (``ostler qa run``)."""
 
         return cmd_run(Path(plan_file), self._resolve(spec) if spec else None,
-                       stop_on_fail=stop_on_fail, sandboxed=sandboxed, root=self.root)
+                       stop_on_fail=stop_on_fail, root=self.root)
+
+    def qa_tools_catalog(self) -> dict:
+        """This repo's opted-in QA tools, resolved against the machine's stablemate
+        config (``ostler qa tools list``); same ``{"tools": [...], "errors": [...]}``
+        shape the CLI prints."""
+
+        specs, errors = qa_tools_mod.catalog(self.root)
+        rows = [
+            {
+                "name": spec.name,
+                "command": spec.command,
+                "description": spec.description,
+                "builtin": spec.builtin,
+                "available": spec.available,
+            }
+            for spec in specs.values()
+        ]
+        return {"tools": rows, "errors": errors}
 
     # -- schema-checked artifacts (ostler ``artifact …``) -------------------
     def artifact_vet(self, kind: str, spec: str | Path) -> dict:

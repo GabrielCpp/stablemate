@@ -553,6 +553,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     qa_replay.add_argument("--spec", required=True, type=Path)
 
+    qa_lint = qas.add_parser(
+        "lint", help="statically lint a qa_plan.py's AST without importing or executing it"
+    )
+    qa_lint.add_argument("plan_file", type=Path)
+    qa_lint.add_argument("--spec", default=None, type=Path)
+    qa_lint.add_argument("--json", action="store_true")
+
     qa_validate = qas.add_parser(
         "validate", help="validate a qa_plan.py without executing"
     )
@@ -580,15 +587,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="spec-relative directory for the ledger; anything but 'qa' is a dry run "
              "and writes no qa-evidence.json",
     )
-    qa_run.add_argument(
-        "--sandbox",
-        action="store_true",
-        dest="sandboxed",
-        help="run each scenario in a container with no repository on disk, so a unit "
-             "suite cannot stand in for behavioral evidence; needs a `sandbox:` block "
-             "in the repository's qa-stack.yml",
-    )
     qa_run.add_argument("--json", action="store_true")
+
+    qa_tools = qas.add_parser("tools", help="inspect this repo's opted-in QA tools")
+    qa_tools_ops = qa_tools.add_subparsers(dest="tools_op", required=True)
+    qa_tools_list = qa_tools_ops.add_parser("list", help="list opted-in tools and whether they resolve")
+    qa_tools_list.add_argument("--json", action="store_true")
 
     qa_context = qas.add_parser(
         "context", help="build the base/head changed-code to OKF obligation packet"
@@ -978,6 +982,17 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         result = qa_mod.cmd_replay(spec_dir)
         return 0 if result.ok else 1
 
+    if op == "lint":
+        spec_dir = args.spec
+        if spec_dir is not None and not spec_dir.is_absolute():
+            spec_dir = root / spec_dir
+        result = qa_mod.cmd_lint(args.plan_file, spec_dir, root=root)
+        if args.json:
+            _out(json.dumps(result.data, indent=2))
+        else:
+            _out(result.message)
+        return 0 if result.ok else 1
+
     if op == "validate":
         spec_dir = args.spec
         if spec_dir is not None and not spec_dir.is_absolute():
@@ -999,7 +1014,6 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             stop_on_fail=args.stop_on_fail,
             only=args.scenarios,
             out_dir=args.out_dir,
-            sandboxed=args.sandboxed,
             root=root,
         )
         if getattr(args, "json", False):
@@ -1007,6 +1021,28 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         else:
             _out(result.message)
         return 0 if result.ok else 1
+
+    if op == "tools":
+        specs, errors = qa_mod.tools.catalog(root)
+        rows = [
+            {
+                "name": spec.name,
+                "command": spec.command,
+                "description": spec.description,
+                "builtin": spec.builtin,
+                "available": spec.available,
+            }
+            for spec in specs.values()
+        ]
+        if args.json:
+            _out(json.dumps({"tools": rows, "errors": errors}, indent=2))
+        else:
+            for row in rows:
+                mark = "ok" if row["available"] else "MISSING"
+                _out(f"{row['name']} ({row['command']}) [{mark}] - {row['description']}")
+            for error in errors:
+                _out(f"error: {error}")
+        return 0 if not errors and all(row["available"] for row in rows) else 1
 
     if op == "context":
         spec_dir = _resolve_spec(args.spec)

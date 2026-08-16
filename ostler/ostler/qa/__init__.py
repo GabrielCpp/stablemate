@@ -10,12 +10,15 @@ Commands:
   ostler qa report  [--spec DIR]
   ostler qa replay  [--spec DIR]
   ostler qa run     <plan-file> [--spec DIR] [--stop-on-fail]
+  ostler qa lint    <plan-file>
   ostler qa validate <plan-file>
   ostler qa context-show [--spec DIR] [--required] [--node SUBSTR] [--limit N]
   ostler qa evidence-map [--spec DIR] [--status S] [--out PATH]
 """
 
 from ostler.qa.run import DaemonSpec, QaOutcome, cmd_assert, cmd_report, cmd_replay, cmd_run, cmd_start, cmd_step, cmd_stop, cmd_validate
+from ostler.qa.lint import cmd_lint
+from ostler.qa import tools
 from ostler.qa.evidence_map import (
     STATUSES,
     EvidenceMapError,
@@ -41,6 +44,7 @@ __all__ = [
     "cmd_report",
     "cmd_replay",
     "cmd_run",
+    "cmd_lint",
     "cmd_validate",
     "build_context",
     "write_context",
@@ -52,4 +56,5 @@ __all__ = [
     "EvidenceMapError",
     "build_evidence_map",
     "render_evidence_map",
+    "tools",
 ]
