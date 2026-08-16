@@ -58,8 +58,8 @@ def test_dependent_packets_become_separate_verified_remote_commits(
     ]
     subjects = git(repo, "log", "--format=%s", "--reverse").stdout.splitlines()
     assert subjects[-2:] == [
-        "feat: implement planned change",
-        "feat: implement planned change",
+        "feat: implement first piece",
+        "feat: implement second piece",
     ]
     assert git(repo, "rev-parse", "HEAD").stdout == git(origin, "rev-parse", "main").stdout
     worklist = json.loads(
@@ -397,8 +397,8 @@ def test_review_issues_become_fixed_worklist_before_completion(
     assert git(origin, "show", "main:src/value.txt").stdout == "fixed\n"
     subjects = git(repo, "log", "--format=%s", "--reverse").stdout.splitlines()
     assert subjects[-2:] == [
-        "feat: implement planned change",
-        "fix: implement planned change",
+        "feat: implement initial",
+        "fix: implement missing edge",
     ]
     review_worklist = json.loads(
         (run_env.writer.run_dir / "implement-plan" / "review-worklist.json").read_text()

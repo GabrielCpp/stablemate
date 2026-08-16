@@ -6,6 +6,7 @@ import json
 import re
 import secrets
 import stat
+import textwrap
 from collections import deque
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit, urlunsplit
@@ -122,6 +123,27 @@ def _clean_repo_relative(value: str, *, label: str, allow_dot: bool = False) -> 
     return normalized
 
 
+def commit_subject(task: PlanTask) -> str:
+    """The task's Conventional Commit subject, derived from its own title.
+
+    Derived rather than fixed because the subject is the durable output: a reader
+    six months out has the log and nothing else, and a run of commits all reading
+    "implement planned change" tells them only that a machine was here. It stays a
+    pure function of the packet so `validate_task_commit` can still assert the
+    committed message byte-for-byte.
+    """
+    head = task.commit_type + (f"({task.commit_scope})" if task.commit_scope else "")
+    description = " ".join(task.title.split()).rstrip(".")
+    description = description[:1].lower() + description[1:]
+    return f"{head}: {description}"
+
+
+def commit_body(task: PlanTask) -> str:
+    """The task's objective, wrapped at 72 columns; empty when it has none."""
+    paragraphs = [" ".join(block.split()) for block in task.objective.strip().split("\n\n")]
+    return "\n\n".join(textwrap.fill(block, width=72) for block in paragraphs if block)
+
+
 def validate_command(command: VerificationCommand, *, owner: str) -> VerificationCommand:
     if not command.argv or any(not part for part in command.argv):
         raise WorkflowFailed(f"{owner} has a verification command with an empty argv")
@@ -190,8 +212,7 @@ def _validate_task(task: PlanTask, context: PlanRunContext) -> PlanTask:
         not _SCOPE.fullmatch(task.commit_scope) or task.commit_scope not in valid_scopes
     ):
         raise WorkflowFailed(f"task {task.id} has invalid commit scope {task.commit_scope!r}")
-    head = task.commit_type + (f"({task.commit_scope})" if task.commit_scope else "")
-    if len(f"{head}: implement planned change") > 72:
+    if len(commit_subject(task)) > 72:
         raise WorkflowFailed(f"task {task.id} commit subject exceeds 72 characters")
     task.depends_on = list(dict.fromkeys(task.depends_on))
     return task
@@ -381,6 +402,8 @@ def write_worklist(
 
 __all__ = [
     "assert_plan_unchanged",
+    "commit_body",
+    "commit_subject",
     "git_control_digest",
     "origin_endpoint",
     "origin_digest",
