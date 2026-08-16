@@ -41,11 +41,8 @@ from workhorse_workflows.coder.implement_plan.schemas import (
     PlanTask,
     PreparedPlan,
 )
-from workhorse_workflows.coder.shared.red_gate import (
-    REGRESSION_ONLY_MARKER,
-    arm_red_gate,
-    run_red_gate,
-)
+from workhorse_workflows.coder.shared.red_gate import arm_red_gate, run_red_gate
+from workhorse_workflows.coder.shared.scenarios import escape_in_text
 from workhorse_workflows.kit.telemetry import counter_labels
 
 
@@ -177,12 +174,14 @@ class ImplementPlan(Workflow):
         completed_commits: list[str],
         expected_head: str,
     ) -> Continue:
-        """Route the packet into the TDD split, or one classic turn for regression-only plans.
+        """Route the packet into the TDD split, or one classic turn when the plan escapes it.
 
-        The marker is read from the checkpointed plan snapshot, never from the file on
+        Either escape — `regression_only`, or a scenario list that is entirely QA-only and
+        so leaves the tests turn nothing it may legitimately write — takes the single turn.
+        The verdict is read from the checkpointed plan snapshot, never from the file on
         disk — a plan edited mid-run must not flip the route between packets.
         """
-        if REGRESSION_ONLY_MARKER in self.ctx.plan_text.lower():
+        if escape_in_text(self.ctx.plan_text):
             result = self._implement_classic(plan, task, expected_head)
             return Continue(
                 result,

@@ -42,11 +42,14 @@ from pathlib import Path
 import yaml
 from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.shared.scenarios import (
+    QA_ONLY_MARKER,
+    REGRESSION_ONLY_MARKER,
+    declares_marker,
+    plan_escape,
+    qa_only_scenarios,
+)
 from workhorse_workflows.coder.shared.schemas.dev import RedGateArm, RedGateOutcome
-
-#: The planner's plan-time escape hatch, matched case-insensitively in the layer's plan
-#: file and the root plan.md. `plan-story.md` specifies this literal phrasing.
-REGRESSION_ONLY_MARKER = "test scenarios: regression-only"
 
 #: Basename patterns that identify a test file across the stacks the workflows target.
 #: An `agents.yml` `test_signatures:` entry for the service replaces this list.
@@ -243,22 +246,6 @@ def _attributed_failures(lines: list[str], test_files: list[str]) -> list[str]:
     return [path for path in test_files if Path(path).name in named]
 
 
-def _plans_declare_regression_only(spec_abs: Path | None, plan_file: str) -> bool:
-    """Whether the layer's plan or the root plan declares the regression-only escape."""
-    if spec_abs is None:
-        return False
-    for name in dict.fromkeys((plan_file, "plan.md")):
-        if not name:
-            continue
-        try:
-            text = (spec_abs / name).read_text(encoding="utf-8")
-        except OSError:
-            continue
-        if REGRESSION_ONLY_MARKER in text.lower():
-            return True
-    return False
-
-
 def _sanitize_label(label: str) -> str:
     """Turn a service name into a safe filename component."""
     return re.sub(r"[^a-zA-Z0-9_-]", "-", label).strip("-")
@@ -295,9 +282,20 @@ def arm_red_gate(
     once here so the tests prompt is told the exact command the gate will run.
     """
     spec_abs = _spec_abs(spec_dir, repo_dir)
-    if _plans_declare_regression_only(spec_abs, plan_file):
+    escape = plan_escape(spec_abs, plan_file)
+    if escape == "regression_only":
         logger.info("plan declares '%s' — classic single-turn path", REGRESSION_ONLY_MARKER)
         return RedGateArm(mode="regression_only")
+    if escape == "qa_only":
+        scenarios = qa_only_scenarios(spec_abs, plan_file)
+        logger.warning(
+            "every one of the plan's %d test scenarios is QA-only (%s) — skipping the "
+            "tests-first split and the red gate; the whole acceptance burden is the QA "
+            "lane's",
+            len(scenarios),
+            "declared" if declares_marker(spec_abs, plan_file, QA_ONLY_MARKER) else "derived",
+        )
+        return RedGateArm(mode="qa_only")
 
     if not cwd:
         return RedGateArm()
