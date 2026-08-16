@@ -1,0 +1,390 @@
+"""The persistent, content-addressed parse index store.
+
+``model._FEATURE_DOC_CACHE`` is already keyed on a file's **content digest** rather than
+its mtime, and for the right reason: the writer phases of a workflow edit these files
+between loads, so a same-size rewrite inside one filesystem timestamp tick is exactly
+what a stat-keyed cache serves stale. What that cache lacks is survival — every ``ostler``
+invocation is a fresh process, so its 24 seconds of saved work are thrown away at exit.
+This module is that cache, persisted and generalised.
+
+**Nothing in ostler consults it yet.** It ships alone so its key and its validity rules
+can be reviewed on their own, before a caller makes either hard to change.
+
+Three rules carry the whole design.
+
+*One epoch hash.* :func:`epoch` is a single combined hash over every global input —
+the tool version, the bundled schemas, the dynamic kind registry, the config files ostler
+reads, the waiver file and the freeze manifest. Any change to any one of them invalidates
+every entry. There is deliberately no per-input granularity: recomputing a book is cheap
+next to the cost of getting a partial invalidation subtly wrong, and a wrong partial
+invalidation is silent.
+
+*The entry key is the repo-name-qualified repo-relative path plus the content sha.*
+Repo-relative rather than absolute is load-bearing — two worktrees of one repo, and the
+same repo mounted in a container, produce the same key, so one entry serves all of them.
+The repo name and the relative path are both in the key because the same bytes at a
+different path are a different entry.
+
+*Damage is a miss, never an error.* The store is an optimisation; it may never be the
+reason a command fails. A truncated payload, a corrupt one, a payload stamped with a
+schema version this build does not write, an index directory that cannot be created —
+each reads as a miss and each write survives it.
+
+Payloads are :mod:`pickle` stamped with :data:`SCHEMA_VERSION`, compared for *equality*
+rather than ``>=``: a payload written by a newer ostler is as unreadable as one written
+by an older one, and misreading it is worse than recomputing it.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import pickle
+import time
+from importlib import metadata
+from importlib.resources import files
+from pathlib import Path
+from typing import Any
+
+from ostler import dynamic_registry
+from ostler._vendor.stablemate_core import base_cache, config as core_config
+
+#: The environment override for the index directory. Highest precedence after an
+#: explicit argument, so a container can point every tool in it at a copied-in cache.
+INDEX_DIR_ENV = "OSTLER_INDEX_DIR"
+
+#: The key ostler's own (shared, home) config uses to name the index directory.
+CONFIG_KEY = "ostler_index_dir"
+
+#: Where the index lands under the shared stablemate cache when nothing overrides it.
+#: XDG semantics — deleting it at any point costs time and never correctness.
+INDEX_DIR_NAME = "ostler-index"
+
+#: The on-disk layout of an entry file. Bump for any change an older reader would get
+#: *wrong*; the epoch already carries the ostler version, so class drift is caught for
+#: free and this only has to guard the file layout itself.
+SCHEMA_VERSION = 1
+
+#: How long an entry may go untouched before the next write prunes it. Two weeks: long
+#: enough that an occasional book survives a quiet fortnight, short enough that an
+#: unattended machine cannot grow the cache without limit.
+DEFAULT_MAX_AGE_S = 14 * 24 * 60 * 60.0
+
+#: The config files ``model._load_config`` reads, in its order. Mirrored rather than
+#: imported because ``model`` exposes no constant for them; the epoch only needs their
+#: *bytes*, so reading one ostler does not honour would over-invalidate, never
+#: under-invalidate.
+CONFIG_FILENAMES = ("ostler.yml", "ostler.yaml", "agents.yml", ".agents.yml")
+
+#: ``docs/doctor-waivers.json``, relative to the repo root (``waivers.WAIVERS_FILE``).
+WAIVERS_RELPATH = ("docs", "doctor-waivers.json")
+
+#: ``.agents/ids.json``, relative to the repo root (``freeze._ids_path``).
+IDS_RELPATH = (".agents", "ids.json")
+
+#: Every global input the epoch covers, in the spelling :func:`epoch_inputs` keys.
+EPOCH_LABELS: tuple[str, ...] = (
+    "version",
+    "schemas",
+    "kinds",
+    "config",
+    "waivers",
+    "freeze",
+)
+
+_PAYLOAD_KEY = "value"
+_VERSION_KEY = "schema_version"
+
+
+# ---------------------------------------------------------------------------
+# Digest helpers
+# ---------------------------------------------------------------------------
+def _sha(*chunks: bytes) -> str:
+    digest = hashlib.sha256()
+    for chunk in chunks:
+        digest.update(len(chunk).to_bytes(8, "big"))
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _file_sha(path: Path) -> str | None:
+    """The sha of *path*'s bytes, or ``None`` when it cannot be read.
+
+    Absence is a legitimate answer here — the waiver file and the freeze manifest are
+    both optional — so this never raises.
+    """
+    try:
+        return _sha(path.read_bytes())
+    except OSError:
+        return None
+
+
+def _absent() -> str:
+    """The material of an input that is not on disk.
+
+    A named constant rather than ``""`` so that "no waiver file" and "an empty waiver
+    file" hash differently — creating an empty file is a real edit.
+    """
+    return "absent"
+
+
+# ---------------------------------------------------------------------------
+# The epoch: one hash over every global input
+# ---------------------------------------------------------------------------
+def _ostler_version() -> str:
+    try:
+        return metadata.version("ostler")
+    except metadata.PackageNotFoundError:  # pragma: no cover - source checkout
+        return "unknown"
+
+
+def _schemas_material() -> str:
+    """A digest over every bundled JSON Schema, by name and by content."""
+    root = files("ostler").joinpath("schema")
+    chunks: list[bytes] = []
+    for entry in sorted(root.iterdir(), key=lambda item: item.name):
+        if not entry.name.endswith(".json"):
+            continue
+        chunks.append(entry.name.encode("utf-8"))
+        chunks.append(entry.read_bytes())
+    return _sha(*chunks)
+
+
+def _kinds_material(root: Path) -> str:
+    """The dynamic kind registry: the repo's ``.agents/templates.yml`` plus the built-ins.
+
+    Hashed from the file's raw bytes rather than the parsed mapping, so a change ostler's
+    parser currently ignores still busts the cache.
+    """
+    templates = dynamic_registry.templates_path(root)
+    builtins = ",".join(sorted(dynamic_registry.BUILTIN_NAMES))
+    return _sha(
+        builtins.encode("utf-8"),
+        (_file_sha(templates) or _absent()).encode("utf-8"),
+    )
+
+
+def _config_material(root: Path) -> str:
+    """Every config file ostler reads, named and hashed in the order it reads them."""
+    chunks: list[bytes] = []
+    for name in CONFIG_FILENAMES:
+        chunks.append(name.encode("utf-8"))
+        chunks.append((_file_sha(root / name) or _absent()).encode("utf-8"))
+    return _sha(*chunks)
+
+
+def _waivers_material(root: Path) -> str:
+    return _file_sha(root.joinpath(*WAIVERS_RELPATH)) or _absent()
+
+
+def _freeze_material(root: Path) -> str:
+    """The ``frozen`` table of ``.agents/ids.json``, not the whole registry.
+
+    Minting an id rewrites that file on almost every authoring turn, and a counter bump
+    says nothing about any document's parse products. The frozen pins do.
+    """
+    path = root.joinpath(*IDS_RELPATH)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return _absent()
+    frozen = data.get("frozen") if isinstance(data, dict) else None
+    return _sha(json.dumps(frozen, sort_keys=True, default=str).encode("utf-8"))
+
+
+def epoch_inputs(root: Path) -> dict[str, str]:
+    """The material of every global input, one entry per label in :data:`EPOCH_LABELS`.
+
+    Separated from :func:`epoch` so that what the epoch covers is inspectable — a test,
+    or a future ``ostler cache explain``, can see *which* input moved without owning a
+    second, subtly different derivation of the hash.
+    """
+    return {
+        "version": _ostler_version(),
+        "schemas": _schemas_material(),
+        "kinds": _kinds_material(root),
+        "config": _config_material(root),
+        "waivers": _waivers_material(root),
+        "freeze": _freeze_material(root),
+    }
+
+
+def epoch(root: Path) -> str:
+    """One combined hash over :func:`epoch_inputs`, and a pure function of it.
+
+    ``epoch_inputs`` is looked up on the module at call time on purpose: that is the seam
+    a test — and eventually a cache-explain command — substitutes to move one input whose
+    material has no on-disk home.
+    """
+    inputs = epoch_inputs(root)
+    chunks: list[bytes] = []
+    for label in sorted(inputs):
+        chunks.append(label.encode("utf-8"))
+        chunks.append(str(inputs[label]).encode("utf-8"))
+    return _sha(*chunks)
+
+
+# ---------------------------------------------------------------------------
+# Where the index lives
+# ---------------------------------------------------------------------------
+def index_dir(explicit: Path | str | None = None) -> Path:
+    """The index directory: *explicit* → ``$OSTLER_INDEX_DIR`` → config → the default.
+
+    The default is under the shared stablemate cache, which every stablemate tool already
+    treats as deletable at any time — the right home for something whose loss costs only
+    time.
+    """
+    if explicit is not None:
+        return Path(explicit).expanduser()
+
+    from_env = os.environ.get(INDEX_DIR_ENV)
+    if from_env:
+        return Path(from_env).expanduser()
+
+    configured = core_config.get_config_value(CONFIG_KEY)
+    if isinstance(configured, str) and configured.strip():
+        return Path(configured).expanduser()
+
+    return base_cache.cache_root() / INDEX_DIR_NAME
+
+
+# ---------------------------------------------------------------------------
+# The store
+# ---------------------------------------------------------------------------
+class IndexStore:
+    """A content-addressed store of parse products for one repo root.
+
+    Construct one per command. It resolves its directory and its epoch lazily, so
+    constructing it costs nothing when every lookup turns out to be a miss.
+    """
+
+    def __init__(
+        self,
+        root: Path,
+        *,
+        directory: Path | str | None = None,
+        max_age_s: float = DEFAULT_MAX_AGE_S,
+    ) -> None:
+        self.root = Path(root)
+        self.directory = index_dir(directory)
+        self.max_age_s = max_age_s
+        self._epoch: str | None = None
+
+    # -- keys ---------------------------------------------------------------
+    @property
+    def epoch(self) -> str:
+        if self._epoch is None:
+            self._epoch = epoch(self.root)
+        return self._epoch
+
+    def entry_name(self, path: Path) -> str:
+        """The repo-name-qualified repo-relative name of *path*.
+
+        Absolute-path fallback for a file outside the root: it cannot be shared across
+        worktrees, but it also must not silently collide with one that can.
+        """
+        target = Path(path)
+        try:
+            relative = target.resolve().relative_to(self.root.resolve())
+        except (OSError, ValueError):
+            return str(target)
+        return f"{self.root.resolve().name}/{relative.as_posix()}"
+
+    def key(self, path: Path) -> str | None:
+        """The entry key for *path*, or ``None`` when its bytes cannot be read."""
+        content = _file_sha(Path(path))
+        if content is None:
+            return None
+        return _sha(
+            self.epoch.encode("utf-8"),
+            self.entry_name(path).encode("utf-8"),
+            content.encode("utf-8"),
+        )
+
+    def _entry_path(self, key: str) -> Path:
+        # Sharded on the first two hex characters so one directory never holds every
+        # entry of every repo this machine has ever seen.
+        return self.directory / key[:2] / key
+
+    # -- reads and writes ---------------------------------------------------
+    def get(self, path: Path) -> Any | None:
+        """The stored value for *path*, or ``None`` for any kind of miss.
+
+        Every failure mode collapses to ``None`` on purpose: an unreadable file, a
+        truncated pickle, a payload from another schema version and a directory that is
+        not a directory are all "recompute it", and none of them is the caller's problem.
+        """
+        key = self.key(path)
+        if key is None:
+            return None
+        try:
+            raw = self._entry_path(key).read_bytes()
+        except OSError:
+            return None
+        try:
+            payload = pickle.loads(raw)
+        except Exception:
+            # `pickle.loads` raises essentially anything on damaged input — the opcode
+            # stream is a program. Narrowing this would only mean a corrupt entry
+            # crashing the command instead of missing, which is the one outcome this
+            # store must never produce.
+            return None
+        if not isinstance(payload, dict):
+            return None
+        # Equality, not `>=`: a payload a newer ostler wrote is as unreadable as an
+        # older one's, and misreading it is worse than recomputing it.
+        if payload.get(_VERSION_KEY) != SCHEMA_VERSION:
+            return None
+        return payload.get(_PAYLOAD_KEY)
+
+    def put(self, path: Path, value: Any) -> None:
+        """Store *value* for *path*, pruning past the age bound first.
+
+        Never raises: a store that cannot write is a store that gives no speedup, not a
+        command that fails.
+        """
+        key = self.key(path)
+        if key is None:
+            return
+        self.prune()
+        entry = self._entry_path(key)
+        payload = {_VERSION_KEY: SCHEMA_VERSION, _PAYLOAD_KEY: value}
+        try:
+            entry.parent.mkdir(parents=True, exist_ok=True)
+            # Written through a temporary in the same directory and renamed, so a reader
+            # racing a writer sees either the old entry or the new one, never half of a
+            # pickle. `os.replace` is atomic on every platform ostler runs on.
+            temporary = entry.with_name(f"{entry.name}.{os.getpid()}.tmp")
+            temporary.write_bytes(pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL))
+            os.replace(temporary, entry)
+        except (OSError, pickle.PicklingError, TypeError, ValueError, RecursionError):
+            return
+
+    # -- self-bounding ------------------------------------------------------
+    def prune(self, now: float | None = None) -> int:
+        """Delete entries untouched for longer than ``max_age_s``; return how many.
+
+        A bound, not a sweep: an entry inside the bound survives every write. Runs on the
+        write path rather than as a command, so an unattended machine bounds itself
+        without anyone remembering to.
+        """
+        if self.max_age_s <= 0:
+            return 0
+        cutoff = (time.time() if now is None else now) - self.max_age_s
+        removed = 0
+        try:
+            candidates = list(self.directory.rglob("*"))
+        except OSError:
+            return 0
+        for candidate in candidates:
+            try:
+                if not candidate.is_file() or candidate.stat().st_mtime >= cutoff:
+                    continue
+                candidate.unlink()
+            except OSError:
+                # Another process pruning the same shared cache is expected, not an
+                # error: it wins the race and the entry is gone either way.
+                continue
+            removed += 1
+        return removed
