@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.metadata
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -14,9 +15,12 @@ from typing import Any
 from farrier import layers as _layers
 from farrier import pipx
 from farrier._vendor.stablemate_core.config import (
+    CONFIG_PATH_ENV,
     ConfigVersionError,
+    UnknownProfileError,
     config_path,
     read_config,
+    select_profile,
     write_base_dir,
     write_library_dir,
     write_stablemate_dir,
@@ -143,12 +147,39 @@ def _run_install(args: argparse.Namespace) -> int:
 
 
 def _run_config(args: argparse.Namespace) -> int:
+    if getattr(args, "config_file", None):
+        # Written into the environment rather than threaded through, because the reader
+        # and the four writers below all resolve the path themselves — one assignment
+        # here moves every one of them, and a parameter would have to be added to each.
+        # It is also what a subprocess of this one would need to agree with.
+        os.environ[CONFIG_PATH_ENV] = str(args.config_file.expanduser())
     try:
         return _dispatch_config(args)
     except ConfigVersionError as exc:
         # A config written by a newer stablemate-core. Actionable and deterministic, so
         # it exits cleanly like every other config error here rather than as a traceback.
         raise SystemExit(f"error: {exc}") from exc
+    except UnknownProfileError as exc:
+        # Same class of thing: the operator named something the file does not define, and
+        # the message already lists what it does.
+        raise SystemExit(f"error: {exc}") from exc
+
+
+def _flatten(table: dict[str, Any], prefix: str = "") -> list[tuple[str, Any]]:
+    """A nested config table as dotted `key=value` pairs, in file order.
+
+    What an operator cannot do with `cat`: a profile is three tables deep
+    (`power.high.claude.model`), so a TOML echo only reproduces the file they already
+    have, while one line per leaf is greppable and diffable against another profile.
+    """
+    lines: list[tuple[str, Any]] = []
+    for key, value in table.items():
+        path = f"{prefix}{key}"
+        if isinstance(value, dict):
+            lines.extend(_flatten(value, f"{path}."))
+        else:
+            lines.append((path, value))
+    return lines
 
 
 def _dispatch_config(args: argparse.Namespace) -> int:
@@ -180,13 +211,22 @@ def _dispatch_config(args: argparse.Namespace) -> int:
 
     # show — with a key: print bare value; without: print all as key=value
     cfg = read_config()
+    if args.profile:
+        # Narrowed to the profile and flattened, because that is the shape of the answer:
+        # a profile replaces the top-level tables rather than layering over them, so what
+        # is printed here is the whole config a run on `--profile <name>` resolves from,
+        # not a fragment to be read against the file around it.
+        entries = dict(_flatten(select_profile(cfg, args.profile)))
+    else:
+        entries = dict(cfg)
     if args.key:
-        value = cfg.get(args.key)
+        value = entries.get(args.key)
         if value is None:
-            raise SystemExit(f"error: '{args.key}' is not set in {config_path()}")
+            where = f" profile '{args.profile}' of" if args.profile else ""
+            raise SystemExit(f"error: '{args.key}' is not set in{where} {config_path()}")
         print(value)
     else:
-        for key, value in cfg.items():
+        for key, value in entries.items():
             print(f"{key}={value}")
     return 0
 
@@ -430,6 +470,15 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # config
     config_p = sub.add_parser("config", help="Manage the farrier home config")
+    config_p.add_argument(
+        "--config",
+        dest="config_file",
+        type=Path,
+        metavar="PATH",
+        help="Read and write this config file instead of the home one (also $"
+        + CONFIG_PATH_ENV
+        + "). Goes before the action: `farrier config --config ./c.toml show`",
+    )
     config_sub = config_p.add_subparsers(dest="config_action", required=True)
     set_lib = config_sub.add_parser(
         "set-library", help="Record the library directory in the home config"
@@ -457,6 +506,15 @@ def _build_parser() -> argparse.ArgumentParser:
         nargs="?",
         default=None,
         help="If given, print only the value of this key",
+    )
+    show_p.add_argument(
+        "--profile",
+        default="",
+        metavar="NAME",
+        help="Show the named [profiles.NAME] table instead of the top level, flattened "
+        "to dotted keys (power.high.claude.model=opus). A profile replaces the top "
+        "level rather than layering over it, so this is the whole config a run on "
+        "--profile NAME resolves from",
     )
 
     # source

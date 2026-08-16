@@ -82,6 +82,8 @@ The rest of the verbs:
 
 ```bash
 farrier config show                        # every config key as key=value
+farrier config show --profile cheap        # one [profiles.<name>] table, flattened
+farrier config --config ./c.toml show      # …read from that file rather than the home one
 farrier source .claude/skills/x/SKILL.md   # the library file that generated an adapter
 farrier scaffold --list                    # the scaffolds this repo may apply, and their params
 farrier scaffold <id> [--param KEY=VALUE]  # seed repo files from one
@@ -92,6 +94,16 @@ farrier version
 `source` takes the path of a *generated* file and prints the library file behind it. It
 is the one to reach for before editing anything under `.claude/`, `.codex/` or
 `.github/`: those are outputs, and an edit there is discarded by the next install.
+
+`config show --profile <name>` prints one `[profiles.<name>]` table — the named model
+set a run selects with `workhorse-<name> run --profile <name>` — flattened to one dotted
+line per leaf (`power.high.claude.model=haiku`). A profile **replaces** the top-level
+tables rather than layering over them, so what it prints is the whole config that run
+resolves from, and two profiles diff against each other line by line. `--config PATH`
+goes before the action and names the file every config verb reads and writes, so the
+question can be asked of a config that is not this machine's home one. There is no
+setter: a profile is a nested table, and `set-library`-style flat assignment cannot
+express one — edit the file.
 
 ## Configuring `agents.yml`
 
