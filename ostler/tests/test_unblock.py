@@ -1,7 +1,7 @@
 """`ostler unblock` — clearing the give-up stamps a coder run leaves on stories.
 
-The stamp is written by `flag_qa_failure`/`flag_docs_block` and read by whatever agent picks
-the story up next. It is prose, it lands in two places per story.md, and a run stamps several
+The stamp is left on stories by coder runs that predate the give-up hard-fail, and read by
+whatever agent picks the story up next. It is prose, it lands in two places per story.md, and a run stamps several
 stories in one pass — which is what makes retyping it by hand the wrong tool.
 """
 from __future__ import annotations

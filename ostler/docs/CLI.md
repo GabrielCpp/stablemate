@@ -105,7 +105,8 @@ rewrites that section wholesale, so pass every blocker each time, or `(none)` to
 
 `unblock` clears the give-up stamps a coder run leaves behind — `QA give-up after N attempts …`,
 `Docs blocked — needs manual review: …`, `Blocked` — and restores `Not started` (or `--status S`).
-It is the inverse of what `flag_qa_failure` and `flag_docs_block` write, and it exists because
+Newer coder runs no longer write those stamps — a give-up ends the run instead — but stories
+stamped by older runs still carry them. It exists because
 that stamp is a *sentence*, it lands in both the frontmatter and the body bullet of every
 `story.md`, and one run stamps several stories at once. A story whose status is not in that
 vocabulary is never rewritten, so a `QA passed` story survives `--all` and a second run is a

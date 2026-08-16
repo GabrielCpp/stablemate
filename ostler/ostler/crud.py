@@ -417,8 +417,10 @@ def unblock(graph: Graph, *, story: str = "", epic: str = "",
             status: str = registry.DEFAULT_STORY_STATUS) -> Result:
     """Clear the give-up stamp off a story, an epic's stories, or the whole graph.
 
-    The inverse of what `flag_qa_failure` and `flag_docs_block` write, and the reason it is a
-    command rather than an operator editing frontmatter: the stamp is a *sentence* (``QA
+    The coder workflow no longer stamps these — a give-up ends the run instead — but every
+    story stamped by a run that predates that still carries one, and `Blocked` is still
+    written by hand. The reason this is a command rather than an operator editing
+    frontmatter: the stamp is a *sentence* (``QA
     give-up after 4 attempts — needs manual review: docs/specs/11-copy-link/qa.md``), it is
     written into two places in every story.md (the frontmatter field and the body bullet),
     and a run gives up on several stories at once — six in one observed epic, all of which an

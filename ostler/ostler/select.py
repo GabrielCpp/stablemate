@@ -12,8 +12,8 @@ from ostler.model import Epic, Graph, Story
 
 _DONE_STATUSES = {"qa passed", "passed", "done", "merged", "complete"}
 
-#: The openings of every status a coder run stamps when it gives up on a story. Each is
-#: written by one node and each carries a trailing explanation — `QA give-up after 3
+#: The openings of every status a coder run stamped when it gave up on a story. Each
+#: carries a trailing explanation — `QA give-up after 3
 #: attempts — needs manual review: docs/specs/x/qa.md` — so this is a prefix vocabulary,
 #: not a set of whole values like :data:`_DONE_STATUSES`.
 _BLOCKED_PREFIXES = ("blocked", "docs blocked", "qa give-up", "qa give up")
