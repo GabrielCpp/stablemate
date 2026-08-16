@@ -340,5 +340,36 @@ def test_migration_refuses_when_no_step_is_registered(cfg_file, monkeypatch):
         cfgmod.write_config_key("base_dir", "/p")
 
 
+# --- [qa_tools.*] -------------------------------------------------------------
+
+
+def test_load_config_reads_qa_tools_table(cfg_file):
+    """`[qa_tools.<name>]` is read generically, like `[power.*]` — no dedicated accessor.
+
+    ostler's tool registry (`ostler.qa.tools`) reads this table straight off
+    `load_config()["qa_tools"]`; this is the contract that call depends on.
+    """
+    cfg_file.write_text(
+        '[qa_tools.tesseract]\ncommand = "tesseract"\ndescription = "OCR"\n'
+        '[qa_tools."ocr-diff"]\ncommand = "/opt/bin/ocr-diff"\n'
+    )
+
+    data = cfgmod.load_config()
+
+    assert data["qa_tools"]["tesseract"] == {"command": "tesseract", "description": "OCR"}
+    assert data["qa_tools"]["ocr-diff"] == {"command": "/opt/bin/ocr-diff"}
+
+
+def test_writing_a_key_preserves_qa_tools_table(cfg_file):
+    """The same non-destructive-write guarantee [power.*] gets, for [qa_tools.*]."""
+    cfg_file.write_text('[qa_tools.tesseract]\ncommand = "tesseract"\n')
+
+    cfgmod.write_config_key("base_dir", "/some/path")
+
+    data = tomllib.loads(cfg_file.read_text())
+    assert data["qa_tools"]["tesseract"] == {"command": "tesseract"}
+    assert data["base_dir"] == "/some/path"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
