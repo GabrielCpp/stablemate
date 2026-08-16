@@ -91,12 +91,19 @@ def _paths(node_id: str, by_id: dict) -> tuple[list, list]:
     return titles[::-1], types[::-1]
 
 
-def build(graph: Graph, *, etype: str | None = None, surface: str | None = None) -> dict:
+def build(graph: Graph, *, etype: str | None = None, surface: str | None = None,
+          resolver: LinkResolver | None = None) -> dict:
     """Assemble the graph: every node (with bullets + out-edges) and a flat edge list.
 
     ``etype``/``surface`` optionally scope the dump to one node type or one service.
+
+    A caller that also resolves links itself passes its ``resolver`` in. Each resolver memoizes a
+    target file's heading anchors per instance, so a second instance re-reads and re-parses every
+    link target — on a large book the single most expensive thing a doctor run does, and paid twice
+    for one run's worth of answers. Left None, the build owns a resolver for its own lifetime.
     """
-    resolver = LinkResolver(graph)
+    if resolver is None:
+        resolver = LinkResolver(graph)
     features_root = path_mod.features_root(graph)
     by_id = {n.id: n for n in graph.ui_nodes}
     nodes: list[dict] = []
