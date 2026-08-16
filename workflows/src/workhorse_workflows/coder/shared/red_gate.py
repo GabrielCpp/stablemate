@@ -13,6 +13,14 @@ tooling between them that makes the split *enforced* rather than requested. Two 
   must be red *because the behavior is missing* before the code turn is allowed to start.
   A green suite, an impure diff or an empty diff routes back to the tests turn.
 
+A non-zero exit is not by itself that evidence. A repository whose suite is a sequence of
+subprojects stops at the first one that fails, which may be several steps before the new
+tests are so much as collected — and the gate would then certify a red it never observed.
+So the failure has to *name* one of the files the tests turn wrote. When it names none the
+verdict is `unattributed`: the code turn still proceeds, because the tests turn is not at
+fault for a repository that was already broken, but it is told the red proved nothing and
+must observe the packet's own failure itself.
+
 Command resolution is the lint gate's convention-plus-override, applied to `test`: an
 explicit `agents.yml` entry (`test:` or `workflow.test:`, keyed by service name or cwd
 basename) wins, otherwise `make test` when the Makefile defines that target, otherwise
@@ -346,6 +354,24 @@ def run_red_gate(
             changed_files=changed,
             log_path=log_path,
             reason="the suite passed — the new tests fail on nothing",
+        )
+
+    if not any(Path(path).name in output for path in changed):
+        logger.warning(
+            "suite failed for %s (exit %s) without naming any file the tests turn wrote",
+            service_dir,
+            returncode,
+        )
+        return RedGateOutcome(
+            status="unattributed",
+            command=test_command,
+            changed_files=changed,
+            log_path=log_path,
+            reason=(
+                f"the suite exited {returncode} without the run ever naming one of the new "
+                "test files — the failure is something the repository was already failing, "
+                "and this gate has observed nothing about these tests"
+            ),
         )
 
     logger.info("red observed for %s (exit %s)", service_dir, returncode)

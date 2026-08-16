@@ -897,11 +897,16 @@ def test_a_red_suite_proceeds_to_the_code_turn_with_the_observation(
 
     `api` adopts the gate with a real command that checks for the marker the code turn
     writes — so the red run is a genuine failure, not a scripted verdict — and the log the
-    gate wrote lands in the spec dir where review can audit it. `web` resolves no test
+    gate wrote lands in the spec dir where review can audit it. The script names the test
+    file in its failure the way a real suite does, which is what lets the gate attribute
+    the red to the tests turn rather than to the repository. `web` resolves no test
     command, which is the `skipped` fail-open arm riding the same run.
     """
     write(docs / "agents.yml", "test:\n  api: sh tests.sh\n")
-    write(workspace["api"] / "tests.sh", "test -f .impl-ok\n")
+    write(
+        workspace["api"] / "tests.sh",
+        "test -f .impl-ok || { echo 'FAIL test_api.py'; exit 1; }\n",
+    )
     agent = _Agent(docs, repos=workspace, make_green=workspace["api"] / ".impl-ok")
 
     result = drive_flow(Dev(story=STORY), env(), agent)
@@ -915,6 +920,36 @@ def test_a_red_suite_proceeds_to_the_code_turn_with_the_observation(
     assert (workspace["api"] / ".impl-ok").is_file(), "the code turn never ran"
     # `web` adopted no test command: the gate stood aside rather than falsely failing.
     assert code_args[1]["red_status"] == "skipped", code_args[1]
+
+
+def test_a_failure_that_never_reaches_the_new_tests_is_not_a_red_observation(
+    docs: Path,
+    workspace: dict[str, Path],
+    write: Callable[[Path, str], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A non-zero exit is not by itself evidence about the tests that were just written.
+
+    A suite that walks several subprojects stops at the first one that fails, which can be
+    several steps before the new tests are collected at all — and the gate would then
+    certify a red it never observed, letting a code turn take an unrelated failure as its
+    contract. The script here fails on something else entirely and never names the test
+    file, so the verdict is `unattributed`: the run still proceeds, because the tests turn
+    is not at fault for a repository that was already broken, but the code turn is told the
+    gate proved nothing and must observe the failure itself.
+    """
+    write(docs / "agents.yml", "test:\n  api: sh tests.sh\n")
+    write(workspace["api"] / "tests.sh", "echo 'other_package: build failed'; exit 2\n")
+    agent = _Agent(docs, repos=workspace)
+
+    result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    code_args = agent.args_for("implement-plan-code")
+    assert code_args[0]["red_status"] == "unattributed", code_args[0]
+    # Proceeding, not looping: an unattributable failure spends no tests-turn rework.
+    assert agent.counts()["implement-plan-tests"] == 2, agent.counts()
 
 
 def test_a_green_suite_loops_the_tests_turn_back_and_then_fails_open(

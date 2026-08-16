@@ -101,7 +101,10 @@ class RedGateArm(CoderResult):
 class RedGateOutcome(CoderResult):
     """`run_red_gate` — the deterministic verdict between the tests turn and the code turn.
 
-    `status` is one of five: `red` (the suite genuinely failed — proceed to the code turn),
+    `status` is one of six: `red` (the suite failed and the run named one of the new test
+    files — proceed to the code turn), `unattributed` (the suite failed without ever
+    reaching them, so the failure is the repository's own and the gate has observed nothing
+    about these tests — proceed, but the code turn is told the red is not evidence),
     `all_green` (exit 0 — the tests exercise nothing missing, loop back), `impure` (the
     tests turn touched non-test files, loop back), `no_tests` (the turn changed nothing,
     loop back), or `skipped` (no cwd, no test command, or the command never returned — the
