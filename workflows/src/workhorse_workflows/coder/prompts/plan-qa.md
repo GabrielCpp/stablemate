@@ -34,6 +34,11 @@ moment:
 {% endfor %}{% endif %}{% if qa_stack.capable_of_rendering %}  - what it can render: {{ qa_stack.capable_of_rendering }}
 {% endif %}{% endif %}{% if shared_packages %}- Shared files this story's services both read, resolved by the implementation plan:
 {% for p in shared_packages %}  - `{{ p }}`
+{% endfor %}{% endif %}{% if qa_only_scenarios %}- Scenarios the implementation plan marked **QA-only** — no automated test was written for
+  any of these, so each one is an obligation of *this* plan and nothing else in the run
+  covers it. Every one of them must appear below as an obligation with its own `verify:`
+  check; dropping one silently leaves its acceptance criterion unverified:
+{% for s in qa_only_scenarios %}  - {{ s.title }} — AC {{ s.ac or 'none stated' }} ({{ s.level }})
 {% endfor %}{% endif %}
 {% if workhorse_var('context_notes') %}- Context diagnostics: `{{ workhorse_var('context_notes') }}`
 {% endif %}{% if workhorse_var('plan_validation_notes') %}- Previous plan validation diagnostics: `{{ workhorse_var('plan_validation_notes') }}`
