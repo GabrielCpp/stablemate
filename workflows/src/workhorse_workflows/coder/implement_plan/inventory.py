@@ -373,6 +373,33 @@ def prepare_plan(
     logger, decomposition: PlanDecomposition, context: PlanRunContext
 ) -> PreparedPlan:
     """Validate the agent proposal into immutable checkpoint authority."""
+    return _prepared_plan(logger, decomposition, context)
+
+
+@blueprint.node
+def audit_plan_decomposition(
+    logger, decomposition: PlanDecomposition, context: PlanRunContext
+) -> str:
+    """Why this proposal cannot become checkpoint authority, or "" if it can.
+
+    Decomposition is the one agent turn in this flow with no bounded rework, so any
+    packet a validation rejects has cost a whole planning turn and ended the run —
+    for a scope typo, a subject three characters too long, an edge the planner could
+    only have found by hand-computing a transitive closure. Every other turn here
+    gets its verdict back and one more attempt; this reports the same verdict without
+    raising, so the caller can spend that attempt before the failure becomes terminal.
+    """
+    try:
+        _prepared_plan(logger, decomposition, context)
+    except WorkflowFailed as exc:
+        logger.info("decomposition rejected: %s", exc)
+        return str(exc)
+    return ""
+
+
+def _prepared_plan(
+    logger, decomposition: PlanDecomposition, context: PlanRunContext
+) -> PreparedPlan:
     assert_plan_unchanged(context)
     if decomposition.status != "ready":
         raise WorkflowFailed(
@@ -436,6 +463,7 @@ def write_worklist(
 
 __all__ = [
     "assert_plan_unchanged",
+    "audit_plan_decomposition",
     "commit_body",
     "commit_subject",
     "git_control_digest",

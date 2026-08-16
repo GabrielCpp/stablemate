@@ -1,4 +1,14 @@
 You are the planning-only stage of a checkpointed implementation workflow.
+{% if findings %}
+## Rework — the previous decomposition was rejected
+
+> {{ workhorse_var('findings') }}
+
+Only one rejection is reported at a time, so fix that one and re-check the whole proposal against
+every rule below before returning: another packet may hold the same defect, and it will be the next
+rejection. Keep everything the rejection did not touch. Note that a commit subject is the whole
+line `type(scope): title`, so the prefix counts toward its 72-character limit.
+{% endif %}
 
 Inspect the repository at `{{ workhorse_var('repo_root') }}` against the immutable plan content
 below. The snapshot digest is
@@ -21,7 +31,8 @@ Each task must declare:
   description of the task's commit subject and the objective becomes the commit body, so both
   ship permanently in the public log. Write the title as a short imperative phrase that still
   reads as a commit subject once `type(scope): ` is prefixed, and short enough to keep that whole
-  line under 72 characters;
+  line within 72 characters. The prefix costs 12–16 of those, so keep the title itself at or under
+  55 characters — say what the change does, not how it works;
 - observable acceptance criteria;
 - task ids it depends on;
 - every repository-relative file or directory it may change (never `.`, `..`, `.git`, or the plan

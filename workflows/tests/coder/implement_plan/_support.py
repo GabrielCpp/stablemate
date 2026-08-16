@@ -87,6 +87,7 @@ class _Agent:
         repo: Path,
         decomposition: dict[str, Any],
         *,
+        reworked: list[dict[str, Any]] | None = None,
         edits: dict[str, dict[str, str]] | None = None,
         repair_edits: dict[str, dict[str, str]] | None = None,
         planning_edits: dict[str, str] | None = None,
@@ -96,7 +97,10 @@ class _Agent:
         reviews: list[dict[str, Any]] | None = None,
     ) -> None:
         self.repo = repo
-        self.decomposition = decomposition
+        # Each planning turn consumes the next proposal, so a rejected decomposition can
+        # be followed by its correction; the last one repeats for every further turn.
+        self.decompositions = [decomposition, *(reworked or [])]
+        self.decomposition_index = 0
         self.edits = edits or {}
         self.repair_edits = repair_edits or {}
         self.planning_edits = planning_edits or {}
@@ -114,7 +118,9 @@ class _Agent:
         self.turn_args.append((node.id, data))
         if node.id == "decompose-implementation-plan":
             self._write(self.planning_edits)
-            reply = self.decomposition
+            index = min(self.decomposition_index, len(self.decompositions) - 1)
+            self.decomposition_index += 1
+            reply = self.decompositions[index]
         elif node.id == "review-plan-implementation":
             reply = self.reviews[min(self.review_index, len(self.reviews) - 1)]
             self.review_index += 1

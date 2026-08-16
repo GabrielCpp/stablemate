@@ -99,6 +99,62 @@ def test_docs_packet_reaching_into_a_source_file_is_allowed(
     assert plan.tasks[0].commit_type == "docs"
 
 
+def test_rejected_decomposition_is_reworked_rather_than_ending_the_run(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The one turn here with no rework is the one whose failure costs the whole run.
+
+    A packet three characters over the subject limit, or carrying a scope typo, ended
+    a planning turn that was otherwise correct. It gets its verdict back and one more
+    attempt, as every other turn in this flow already does.
+    """
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Reworked decomposition\n", encoding="utf-8")
+    rejected = _decomposition(_task("bad", "src/value.txt") | {"commit_scope": "not-a-package"})
+    accepted = _decomposition(_task("good", "src/value.txt"))
+    agent = _Agent(
+        repo,
+        rejected,
+        reworked=[accepted],
+        edits={"good": {"src/value.txt": "good\n"}},
+    )
+
+    result = drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
+
+    assert result.status == "complete"
+    assert agent.calls.count("decompose-implementation-plan") == 2
+    findings = [
+        data["findings"]
+        for node_id, data in agent.turn_args
+        if node_id == "decompose-implementation-plan"
+    ]
+    assert findings[0] == ""
+    assert "invalid commit scope" in findings[1]
+
+
+def test_decomposition_rework_is_bounded(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A planner that keeps returning the same defect must not loop forever."""
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Unfixable decomposition\n", encoding="utf-8")
+    rejected = _decomposition(_task("bad", "src/value.txt") | {"commit_scope": "not-a-package"})
+    agent = _Agent(repo, rejected)
+
+    with pytest.raises(WorkflowFailed, match="invalid commit scope"):
+        drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
+
+    assert agent.calls.count("decompose-implementation-plan") == 3
+
+
 def test_final_gate_failure_does_not_publish_last_packet(
     tmp_path: Path,
     repo: Path,
