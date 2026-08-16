@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Copy ``core/stablemate_core`` into each tool that carries it, or check the copies.
 
-``stablemate-core`` is not published. workhorse and farrier each ship a byte-identical
-copy under their own ``_vendor/``, so an install of either tool resolves one package
-rather than two, and neither can be installed against a core it was never tested with.
+``stablemate-core`` is not published. workhorse, farrier and ostler each ship a
+byte-identical copy under their own ``_vendor/``, so an install of any one tool resolves
+one package rather than two, and none can be installed against a core it was never
+tested with.
 
 Vendoring is a *committed* copy rather than something the wheel build synthesizes, for a
 release reason: release-please decides which distribution to bump from the paths a commit
 touched. A fix committed only under ``core/`` touches no released package and would ship
 to nobody — the copies are what make it visible. Run ``make vendor`` in the same commit
-as the core change and both tools bump.
+as the core change and every tool that carries it bumps.
 
     make vendor         write the copies
     make check-vendor   fail if they have drifted (runs as part of `make test`)
@@ -34,6 +35,7 @@ SOURCE = REPO / "core" / "stablemate_core"
 DESTINATIONS = (
     REPO / "farrier" / "farrier" / "_vendor" / "stablemate_core",
     REPO / "workhorse" / "workhorse" / "_vendor" / "stablemate_core",
+    REPO / "ostler" / "ostler" / "_vendor" / "stablemate_core",
 )
 
 VENDOR_INIT = '''"""Third-party and shared code copied in, not depended on.

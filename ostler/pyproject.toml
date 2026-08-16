@@ -18,6 +18,11 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
+  # platformdirs and tomli-w are ostler._vendor.stablemate_core's, not ostler's own: the
+  # shared config file, base-library discovery and the cache directory are vendored in
+  # rather than depended on (see core/README.md), so their requirements land here.
+  "platformdirs>=4",
+  "tomli-w>=1.0",
   "pyyaml>=6.0",
   "jsonschema>=4.0",
   "markdown-it-py>=3.0",
