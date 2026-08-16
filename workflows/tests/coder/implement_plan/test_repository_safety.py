@@ -55,6 +55,45 @@ def test_git_hook_configuration_mutation_is_detected(
         check_planning_turn(logger, context)
 
 
+def test_another_branchs_tracking_config_is_not_tampering(
+    tmp_path: Path,
+    repo: Path,
+    logger: Any,
+) -> None:
+    """A sibling worktree's `git push -u` must not kill a run mid-packet.
+
+    Worktrees share one `.git/config`, so every branch's tracking keys land in the
+    file this run fingerprints — including branches it never touches.
+    """
+    context = _context(tmp_path, repo, logger)
+    subprocess.run(
+        ["git", "config", "--local", "branch.some-other-branch.remote", "origin"],
+        cwd=repo,
+        check=True,
+    )
+
+    check_planning_turn(logger, context)
+
+
+def test_the_running_branchs_own_tracking_config_is_still_watched(
+    tmp_path: Path,
+    repo: Path,
+    git: Callable[..., subprocess.CompletedProcess],
+    logger: Any,
+) -> None:
+    """Only *other* branches drop out — this run's own settings stay in the digest."""
+    context = _context(tmp_path, repo, logger)
+    active = git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    subprocess.run(
+        ["git", "config", "--local", f"branch.{active}.pushRemote", "elsewhere"],
+        cwd=repo,
+        check=True,
+    )
+
+    with pytest.raises(WorkflowFailed, match="Git configuration"):
+        check_planning_turn(logger, context)
+
+
 def test_active_replacement_refs_are_refused_before_planning(
     tmp_path: Path,
     repo: Path,
