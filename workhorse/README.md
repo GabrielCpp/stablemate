@@ -114,7 +114,7 @@ Key flags (run `workhorse-<name> --help` for the full list):
 | `--profile <name>` | Which named `[profiles.<name>]` set of models this run uses (see [Naming a set of models](#naming-a-set-of-models-profiles)) |
 | `--config <path>` | Use this config file instead of the discovered one, for this run and everything it spawns |
 | `--params '<json>'` / `--params-file <path>` | Set the workflow's declared inputs on a fresh start |
-| `--dry-run` | Check the workflow and exit without running a node (see [Checking a workflow before you run it](#checking-a-workflow-before-you-run-it---dry-run)) |
+| `--dry-run` | Check the workflow and exit without running a node (see [Checking and diagramming a workflow](#checking-and-diagramming-a-workflow)) |
 | `--resume-run <path-or-id>` / `--resume-latest` | Manually resume a checkpointed run |
 
 ### Running a workflow (`workhorse-<name> run`)
@@ -152,7 +152,7 @@ The package must be installed **unpacked** (any pip/uv wheel is): the prompt ren
 a filesystem template loader rooted at the workflow's own directory, so a zip-imported
 package is refused at startup rather than failing later as a missing template.
 
-The three subcommands each command carries are `run`, [`dot`](#diagramming-a-workflow-workhorse-name-dot)
+The three subcommands each command carries are `run`, [`dot`](#checking-and-diagramming-a-workflow)
 and `version` — what the author of a workflow needs: run it, draw it, say which engine
 version drew it.
 
@@ -163,66 +163,13 @@ must live in *that* environment (`pipx inject workhorse-agent ostler`), not mere
 The skill and prompt *content* those prompts reference is separate, and separately
 configured — see [Initial setup](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/BACKENDS.md#initial-setup).
 
-The skill and prompt references its prompts make are checked in the same breath. A
-`{{ instruction_ref("story-docs") }}` that resolves against nothing does not fail — it
-renders the sentence `generated story-docs instruction file when installed` into a live
-agent prompt, and the agent is left to find the skill itself. Before the first state,
-workhorse parses the workflow's `prompts/**/*.md`, resolves every constant reference
-against the loaded context manifest, and prints the ones that will not resolve, with the
-fix (add them to the repo's `agents.yml` selection and re-run `make agent-install`). It is
-a warning, not an error: the run is degraded, not impossible. A run carrying **no**
-manifest at all (`hello-world`, most tests) is skipped — there, unresolved is the normal
-state. References built from a computed argument can't be seen statically; those log a
-`[template] ⚠` line when they render instead.
-
-Only *required* references are reported. A prompt that enumerates the skills for every
-stack a workflow has ever met is naming a menu, not a dependency — a Go repo must not be
-told to read a Flutter skill, and must not fail preflight for not having one. Three ways
-to say so:
-
-```jinja
-{# by capability: whichever skills carry ALL of these tags, whatever they are called #}
-{%- set web_tests = find_by_tags("web", "tests") %}
-{%- if web_tests %}
-- How this repo writes web tests: {{ web_tests }}
-{%- endif %}
-
-{# plural: render whichever of these the repo installed, drop the rest #}
-{%- set web = instruction_refs("react-router", "react-router-qa", "flutter", "pulumi") %}
-{%- if web %}
-- Instruction files for this layer: {{ web }}
-{%- endif %}
-
-{# or guard a whole branch on one skill #}
-{% if isUsingInstruction("flutter") %}{{ instruction_ref("flutter-testing") }}{% endif %}
-```
-
-`find_by_tags(...)` takes **tags**, not names: each installed skill's `tags:` front matter
-rides the manifest, and a skill matches only if it carries every tag asked for (AND — a
-second tag narrows). It renders the matches the same way `instruction_refs` renders its
-survivors, sorted so a regenerated manifest doesn't reshuffle the prompt, and returns the
-**empty string** when nothing matches or nothing is asked. Asking is what a workflow that
-ships to unknown repos can honestly do: the name of the skill teaching a subject is the
-repo's business, the subject is not. Its arguments are never preflight findings either —
-they name a capability, not a file, so "absent" is an answer rather than a defect.
-
-`instruction_refs(...)` (aliases `instruction_files`/`skill_files`, and `prompt_refs`/
-`prompt_files` for prompts) takes any number of names — or one list — resolves each,
-renders the survivors as a backtick-quoted comma-separated list deduplicated by path, and
-returns the **empty string** when none resolve, so `{% if %}` can drop the sentence rather
-than leave a dangling "e.g.". Its arguments are never preflight findings, and neither are
-references inside an `isUsingInstruction` branch (its `{% else %}` and `{% elif %}` are
-judged on their own, since they render precisely when the guard did not hold).
-
-`skill_load_ref("name", fallback_path)` is the imperative one: where `instruction_ref`
-yields a path for a prompt to cite, this yields the instruction that *loads* the skill in
-whatever harness is running — a `/slash-command` on Claude Code, `Read \`<path>\` and
-follow its instructions` elsewhere. Both spellings are derived from the one resolved
-path, because farrier installs a skill under the consuming repo's prefix
-(`ostler-documentation` → `<repo>-ostler-documentation`) and the registered command is
-that installed name, not the one the prompt asked for. Its first argument **is** a
-required reference and is preflighted like any other; the second is only where an
-uninstalled skill would have lived, and is never checked.
+The skill and prompt references those prompts make are checked before the first state, and
+the ones that will not resolve are printed with the fix. It is a warning, not an error — an
+unresolved reference degrades a prompt rather than stopping the run — and `--dry-run` is
+what turns it into an exit code. Which references count as *required*, and the Jinja
+helpers (`find_by_tags`, `instruction_refs`, `skill_load_ref`) a workflow shipping to
+unknown repos uses to ask for a skill without demanding it, are in
+[docs/CHECKING.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/CHECKING.md).
 
 > **Running unattended in a container?** The source repo ships a Docker harness
 > (image + compose) for fully isolated, week-long runs with credential seeding
