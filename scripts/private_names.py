@@ -7,6 +7,8 @@ tree at all. It is read, in order, from:
 
   1. ``$STABLEMATE_PRIVATE_NAMES`` — comma- or whitespace-separated.
   2. ``$GIT_DIR/private-names``   — one name per line; ``#`` starts a comment.
+     ``$GIT_DIR`` here is the repo's *main* ``.git``, so a list installed once is
+     found from every linked worktree as well.
 
 Both are untracked by construction: an env var is not a file, and ``.git/`` is
 never part of a commit. A maintainer with the overlay drops the names in one of
@@ -31,10 +33,18 @@ GIT_FILE = "private-names"
 
 
 def _git_dir() -> Path | None:
-    """The repo's ``.git`` directory, or None outside a work tree."""
+    """The repo's main ``.git`` directory, or None outside a work tree.
+
+    ``--git-common-dir`` rather than ``--absolute-git-dir`` because of linked
+    worktrees: inside one, the latter returns ``.git/worktrees/<name>/``, which
+    has no ``private-names`` in it. The guard would then find no list and fall
+    through to the public-contributor case — silently inert in exactly the tree
+    an agent was given to work in alone. The common dir is the same path from
+    every worktree, so one list installed once covers all of them.
+    """
     try:
         out = subprocess.run(
-            ["git", "rev-parse", "--absolute-git-dir"],
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
             capture_output=True,
             text=True,
             check=True,
