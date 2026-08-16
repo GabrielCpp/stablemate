@@ -69,7 +69,7 @@ def check_agent_turn(
     repository.assert_remote(context, expected_head)
     if repository.head(context) != expected_head:
         raise WorkflowFailed(f"task {task.id} agent turn moved HEAD")
-    repository.assert_owned(Path(context.repo_root), task, require_changes=require_changes)
+    repository.assert_owned(context, task, require_changes=require_changes)
     logger.info("task %s agent turn stayed within its repository boundary", task.id)
 
 
@@ -125,7 +125,7 @@ def commit_plan_task(
             raise WorkflowFailed("cannot recover task commit with a dirty worktree")
         repository.validate_task_commit(context, task, expected_head, head)
         return CommitResult(committed=True, commit_sha=head)
-    repository.assert_owned(root, task, require_changes=True)
+    repository.assert_owned(context, task, require_changes=True)
     commit_sha = repository.create_task_commit(context, task)
     repository.validate_task_commit(context, task, expected_head, commit_sha)
     if repository.changed_paths(root):

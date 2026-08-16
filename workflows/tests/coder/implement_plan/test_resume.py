@@ -51,8 +51,11 @@ def test_recovered_commit_requires_expected_parent_and_owned_diff(
 ) -> None:
     context = _context(tmp_path, repo, logger)
     task = _prepared(context, logger, _task("recover", "src/owned.txt")).tasks[0]
-    (repo / "outside.txt").write_text("no\n", encoding="utf-8")
-    git(repo, "add", "outside.txt")
+    # An *existing* tracked file: a file the commit creates belongs to nobody and is
+    # adopted, so only a pre-existing one still proves the recovered commit's diff is
+    # held to the packet's ownership.
+    (repo / "README.md").write_text("no\n", encoding="utf-8")
+    git(repo, "add", "README.md")
     git(
         repo,
         "commit",

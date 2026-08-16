@@ -53,12 +53,13 @@ def head(context: PlanRunContext) -> str:
         raise WorkflowFailed(f"cannot inspect HEAD at {context.repo_root}: {exc}") from exc
 
 
-def changed_paths(root: Path) -> list[str]:
+def worktree_changes(root: Path) -> list[tuple[str, str]]:
+    """Every differing path with its porcelain status code, renames as both names."""
     try:
         output = open_repo(root).git.status("--porcelain=v1", "-z", "--untracked-files=all")
     except GitError as exc:
         raise WorkflowFailed(f"cannot inspect worktree changes at {root}: {exc}") from exc
-    changed: list[str] = []
+    changes: list[tuple[str, str]] = []
     records = output.split("\0")
     index = 0
     while index < len(records):
@@ -66,12 +67,17 @@ def changed_paths(root: Path) -> list[str]:
         index += 1
         if not record:
             continue
+        code = record[:2]
         paths = [record[3:]]
-        if any(kind in record[:2] for kind in "RC") and index < len(records):
+        if any(kind in code for kind in "RC") and index < len(records):
             paths.append(records[index])
             index += 1
-        changed.extend(path.replace("\\", "/") for path in paths)
-    return sorted(set(changed))
+        changes.extend((code, path.replace("\\", "/")) for path in paths)
+    return changes
+
+
+def changed_paths(root: Path) -> list[str]:
+    return sorted({path for _, path in worktree_changes(root)})
 
 
 def owned(path: str, scopes: list[str]) -> bool:
@@ -82,9 +88,55 @@ def owned(path: str, scopes: list[str]) -> bool:
     )
 
 
-def assert_owned(root: Path, task: PlanTask, *, require_changes: bool = False) -> list[str]:
+def plan_snapshot_path(context: PlanRunContext) -> str:
+    """The plan's own repository-relative path, or "" when it lives outside the repo."""
+    try:
+        return Path(context.source_path).relative_to(Path(context.repo_root)).as_posix()
+    except ValueError:
+        return ""
+
+
+def adoptable(code: str, path: str, snapshot: str) -> bool:
+    """Whether a change is a brand-new file the packet may take ownership of.
+
+    A packet declares its paths in the planning turn, before a line of the work
+    exists, so it routinely misses one file the work genuinely needs — most often
+    the test file the tests-first turn has to create, whose home follows the
+    repository's layout rather than the planner's guess. Killing the run there is
+    the wrong trade: a file that did not exist belongs to nobody, so adopting it
+    keeps everything the ownership check is *for* — no packet quietly edits
+    another packet's files, and each commit holds one packet's work — while the
+    run continues. A change to a file that already existed is still a violation:
+    that is the case where two packets can collide, and it stays refused.
+    """
+    if not (code == "??" or code.startswith("A")):
+        return False
+    if PurePosixPath(path).parts[0] in {".agents", ".git"}:
+        return False
+    return path != snapshot
+
+
+def adopted_paths(context: PlanRunContext, task: PlanTask) -> list[str]:
+    """New, undeclared files the turn created, which this task now also owns."""
+    snapshot = plan_snapshot_path(context)
+    return sorted(
+        {
+            path
+            for code, path in worktree_changes(Path(context.repo_root))
+            if not owned(path, task.paths) and adoptable(code, path, snapshot)
+        }
+    )
+
+
+def assert_owned(
+    context: PlanRunContext, task: PlanTask, *, require_changes: bool = False
+) -> list[str]:
+    root = Path(context.repo_root)
     changed = changed_paths(root)
-    outside = [path for path in changed if not owned(path, task.paths)]
+    adopted = set(adopted_paths(context, task))
+    outside = [
+        path for path in changed if not owned(path, task.paths) and path not in adopted
+    ]
     if outside:
         raise WorkflowFailed(f"task {task.id} changed paths it does not own: {', '.join(outside)}")
     if require_changes and not changed:
@@ -153,14 +205,23 @@ def commit_message(context: PlanRunContext, task: PlanTask) -> str:
     return "\n\n".join(blocks)
 
 
-def commit_paths(context: PlanRunContext, parent: str, commit: str) -> list[str]:
+def commit_changes(context: PlanRunContext, parent: str, commit: str) -> list[tuple[str, str]]:
+    """Each path the commit touched, with its diff status code against ``parent``."""
     try:
         output = raw_git(context).diff(
-            "--name-only", "--no-renames", "-z", parent, commit, "--"
+            "--name-status", "--no-renames", "-z", parent, commit, "--"
         )
     except GitError as exc:
         raise WorkflowFailed(f"cannot inspect recovered commit {commit[:12]}: {exc}") from exc
-    return sorted(path.replace("\\", "/") for path in output.split("\0") if path)
+    fields = [field for field in output.split("\0") if field]
+    return [
+        (fields[index], fields[index + 1].replace("\\", "/"))
+        for index in range(0, len(fields) - 1, 2)
+    ]
+
+
+def commit_paths(context: PlanRunContext, parent: str, commit: str) -> list[str]:
+    return sorted(path for _, path in commit_changes(context, parent, commit))
 
 
 def validate_task_commit(
@@ -176,8 +237,14 @@ def validate_task_commit(
         raise WorkflowFailed(f"task {task.id} commit does not descend directly from expected HEAD")
     if message != commit_message(context, task):
         raise WorkflowFailed(f"task {task.id} commit message does not match its packet")
-    paths = commit_paths(context, expected_parent, commit_sha)
-    if not paths or any(not owned(path, task.paths) for path in paths):
+    changes = commit_changes(context, expected_parent, commit_sha)
+    snapshot = plan_snapshot_path(context)
+    outside = [
+        path
+        for code, path in changes
+        if not owned(path, task.paths) and not adoptable(code, path, snapshot)
+    ]
+    if not changes or outside:
         raise WorkflowFailed(f"task {task.id} commit contains missing or out-of-scope paths")
 
 
@@ -324,8 +391,9 @@ def create_task_commit(context: PlanRunContext, task: PlanTask) -> str:
                 encoding="utf-8",
             )
             wrapper.chmod(0o700)
-        repo.git.add(*task.paths)
-        scope = ["--", *task.paths]
+        committed_paths = [*task.paths, *adopted_paths(context, task)]
+        repo.git.add(*committed_paths)
+        scope = ["--", *committed_paths]
         try:
             repo.git.diff("--cached", "--quiet", *scope)
             raise WorkflowFailed(f"task {task.id} produced no staged changes")
