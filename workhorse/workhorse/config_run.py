@@ -21,6 +21,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from workhorse import onfail
 from workhorse.runner import transcript
 from workhorse.runner.backends import AgentBackend
 from workhorse.runner.backends.null import NullBackend
@@ -272,6 +273,15 @@ class RunConfig:
     #: for the pathological turn, and a capture that hits it is truncated with a marker
     #: line rather than dropped.
     transcript_max_bytes: int = transcript.DEFAULT_MAX_BYTES
+    #: Shell command run when this run ends *failed* (WORKHORSE_ON_FAIL, ``--on-fail``);
+    #: "" disables it. A run that dies unattended is otherwise invisible until somebody
+    #: thinks to look — `groom status` lists only live runs — so this is how the operator
+    #: finds out at 03:00 instead of at 09:00. See :mod:`workhorse.onfail`.
+    on_fail: str = ""
+    #: PID of an existing terminal-attached process to print the failure on
+    #: (WORKHORSE_ON_FAIL_PID, ``--on-fail-pid``); 0 disables it. Independent of
+    #: ``on_fail`` and attempted alongside it.
+    on_fail_pid: int = 0
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> RunConfig:
@@ -288,6 +298,11 @@ class RunConfig:
             transcript_max_bytes=_positive_int(
                 e, "WORKHORSE_TRANSCRIPT_MAX_BYTES", transcript.DEFAULT_MAX_BYTES
             ),
+            on_fail=(e.get(onfail.ON_FAIL_ENV) or "").strip(),
+            # A negative or unparseable PID is read as "no terminal" rather than as an
+            # error: this is a notification channel, and refusing to start a week-long
+            # run over a typo in how it would have been announced is the wrong trade.
+            on_fail_pid=max(0, _int(e, onfail.ON_FAIL_PID_ENV, 0)),
         )
 
 

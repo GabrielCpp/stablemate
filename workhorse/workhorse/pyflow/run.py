@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import logging
 import os
 import shutil
 import sys
@@ -24,7 +25,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from workhorse._vendor.stablemate_core.config import CONFIG_PATH_ENV
-from workhorse import control, gitstate, logsetup, otel, reload
+from workhorse import control, gitstate, logsetup, onfail, otel, reload
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.manifest import ManifestContext
@@ -304,6 +305,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
                       f"--resume-run {writer.run_dir}")
                 otel.end_run("fail", error=str(exc), error_class=type(exc).__name__,
                              error_kind="fatal")
+                _announce_failure(exc, writer=writer, config=config, name=name)
                 return 1
             if dry_run and isinstance(exc, WorkflowFailed) and not registry.agent_stubs:
                 # …with one exception, and only while the workflow declares no
@@ -328,6 +330,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
             writer.finish(terminal="fail")
             otel.end_run("fail", error=str(exc), error_class=type(exc).__name__,
                              error_kind="fatal")
+            _announce_failure(exc, writer=writer, config=config, name=name)
             return 1
         except BackendInvocationError as exc:
             # The agent CLI failed past every rung of the ladder — most often a binary
@@ -342,6 +345,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
                   f"--resume-run {writer.run_dir}")
             otel.end_run("fail", error=str(exc), error_class=type(exc).__name__,
                          error_kind="fatal")
+            _announce_failure(exc, writer=writer, config=config, name=name)
             return 1
         except Exception as exc:  # noqa: BLE001 — a smoke test reports, it does not raise
             # Only under `--dry-run`, and only because the stand-in values nodes
@@ -720,6 +724,47 @@ def _instantiate(workflow_cls: type[Workflow], inputs: dict[str, Any]) -> Workfl
         raise WorkflowFailed(
             f"{workflow_cls.__name__} cannot be built from the given parameters:\n{exc}"
         ) from exc
+
+
+def _announce_failure(
+    exc: BaseException,
+    *,
+    writer: ArtifactWriter,
+    config: RunConfig,
+    name: str,
+) -> None:
+    """Tell whoever the operator nominated that this run is ending failed.
+
+    Called from the failure branches that mean *the run is over and a person has to do
+    something* — never from the dry-run ones, where reaching a fail terminal is a check
+    reporting its result and waking somebody would be noise that teaches them to ignore
+    the channel.
+
+    Best-effort, like everything else on a failure path: :func:`onfail.notify_failure`
+    swallows its own errors, and this adds the guarantee that building the message cannot
+    raise either. The run's own diagnosis is already printed by the caller; nothing here
+    is allowed to replace it with a diagnosis of the notifier.
+    """
+    if not config.on_fail and config.on_fail_pid <= 0:
+        return
+    try:
+        onfail.notify_failure(
+            onfail.Failure(
+                run_id=writer.run_id,
+                run_dir=str(writer.run_dir),
+                workflow=name,
+                repo=config.workspace or os.getcwd(),
+                node=_state_of(writer),
+                error=str(exc),
+                error_class=type(exc).__name__,
+                resume_cmd=f"workhorse-{name} run --resume-run {writer.run_dir}",
+            ),
+            logging.getLogger("workhorse.onfail"),
+            command=config.on_fail,
+            pid=config.on_fail_pid,
+        )
+    except Exception as hook_exc:  # noqa: BLE001 — see the docstring
+        print(f"[workhorse] WARNING: on-fail notification failed: {hook_exc!r}")
 
 
 def _state_of(writer: ArtifactWriter) -> str:

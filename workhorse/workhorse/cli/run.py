@@ -130,6 +130,27 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "$STABLEMATE_CONFIG, which in turn overrides $WORKHORSE_CONFIG.",
     )
     parser.add_argument(
+        "--on-fail",
+        default=None,
+        metavar="COMMAND",
+        help="Shell command to run if this run ends FAILED. Overrides "
+        "$WORKHORSE_ON_FAIL. Spawned detached with the failure in its environment "
+        "($WORKHORSE_RUN_ID, _RUN_DIR, _WORKFLOW, _REPO, _NODE, _ERROR, _ERROR_CLASS, "
+        "_RESUME_CMD) — it cannot delay or fail the run, and $WORKHORSE_ON_FAIL is "
+        "stripped from it so a hook that starts another run cannot recurse.",
+    )
+    parser.add_argument(
+        "--on-fail-pid",
+        default=None,
+        type=int,
+        metavar="PID",
+        help="Print the failure on the terminal this PID is attached to, instead of "
+        "(or as well as) --on-fail. Overrides $WORKHORSE_ON_FAIL_PID. Use it to be "
+        "told in a shell you already have open — including over SSH, where a hook "
+        "that opens a window has nowhere to open it. It WRITES to that terminal; it "
+        "cannot type into whatever is running there.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Check the workflow without running it, and exit non-zero if anything "
@@ -260,10 +281,29 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         # Read last, after `--cli` and the repo-dir default above have had their say,
         # so what the run is given is the environment as the CLI finally settled it.
         config=replace(
-            RunConfig.from_env(os.environ), backend=backend, profile=profile_name
+            RunConfig.from_env(os.environ),
+            backend=backend,
+            profile=profile_name,
+            **_on_fail_overrides(args),
         ),
         telemetry=otel.TelemetryHost(otel.OtelSettings.from_env(os.environ)),
     )
+
+
+def _on_fail_overrides(args: argparse.Namespace) -> dict[str, Any]:
+    """The failure-notification flags, as `replace` kwargs — only the ones actually given.
+
+    An absent flag is left out of the dict entirely rather than passed as its default,
+    so `--on-fail` unset means "whatever $WORKHORSE_ON_FAIL said" and not "nothing". The
+    distinction is the whole point of the ladder: the env var is how a supervisor arms
+    every run it launches, and a flag the operator did not type must not disarm it.
+    """
+    overrides: dict[str, Any] = {}
+    if args.on_fail is not None:
+        overrides["on_fail"] = args.on_fail.strip()
+    if args.on_fail_pid is not None:
+        overrides["on_fail_pid"] = max(0, args.on_fail_pid)
+    return overrides
 
 
 def _configured_default_cli(cfg: dict[str, Any], profile: dict[str, Any]) -> str:
