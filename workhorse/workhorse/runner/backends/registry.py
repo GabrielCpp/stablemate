@@ -30,6 +30,16 @@ _REGISTRY: dict[str, type[AgentBackend]] = {
 _CACHE: dict[str, AgentBackend] = {}
 
 
+def backend_names() -> list[str]:
+    """Every selectable backend name, sorted. The set a configured name is checked against.
+
+    Exposed because core stores backend-keyed tables (``[power.<tier>.<backend>]``, and
+    now the same inside a profile) without knowing what a real backend is called, so the
+    boundary that validates them has to be able to ask.
+    """
+    return sorted(_REGISTRY)
+
+
 def get_backend(name: str | None = None) -> AgentBackend:
     """Resolve the active backend: explicit ``name`` → ``AGENT_CLI`` → config → built-in.
 

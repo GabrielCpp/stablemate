@@ -19,9 +19,21 @@ import os
 import sys
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from workhorse import otel
-from workhorse._vendor.stablemate_core.config import CONFIG_PATH_ENV, resolve_default_cli
+from workhorse._vendor.stablemate_core.config import (
+    CONFIG_PATH_ENV,
+    DEFAULT_CLI_KEY,
+    UnknownProfileError,
+    config_path,
+    get_config_value,
+    load_config,
+    profile_backends,
+    profile_has_backend,
+    resolve_default_cli,
+    select_profile,
+)
 from workhorse.cli.params import load_params
 from workhorse.config_run import RunConfig
 # Bound under its historical private name, which is also what lets a test patch the
@@ -34,7 +46,7 @@ from workhorse.pyflow.run import RunInvocation, run_pyflow
 # `rundir` so the driver can obey them without importing this module.
 from workhorse.rundir import find_latest_resumable as _find_latest_resumable
 from workhorse.rundir import resolve_run_dir
-from workhorse.runner.backends.registry import get_backend
+from workhorse.runner.backends.registry import backend_names, get_backend
 
 NAME = "run"
 HELP = "Execute a workflow (default)"
@@ -94,6 +106,15 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "shared config's `default_cli` (claude when that is unset too). Selection is "
         "per-run, not per-node. To run on an OpenRouter model, use an OpenRouter-"
         "native backend (cline/opencode) and give nodes an 'openrouter/<slug>' model.",
+    )
+    parser.add_argument(
+        "--profile",
+        default=None,
+        metavar="NAME",
+        help="Resolve this run's models from the config's [profiles.<NAME>] tables "
+        "instead of its top-level ones. A profile REPLACES them — nothing outside it "
+        "is inherited — and is independent of --cli, which chooses whose entries in it "
+        "apply. Its `default_cli` is only the default value of --cli.",
     )
     parser.add_argument(
         "--config",
@@ -169,7 +190,22 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     # and template layers ask the environment for the active CLI at their own edges,
     # and a config default that only `get_backend` knew about would have them
     # projecting a Claude manifest for an opencode run.
-    resolved_cli = (args.cli or os.environ.get("AGENT_CLI") or resolve_default_cli()).strip().lower()
+    # The profile is selected before the CLI is, because it holds one rung of the
+    # ladder: --cli > AGENT_CLI > the profile's default_cli > the top-level one > claude.
+    # The two are independent axes — the profile holds a mapping keyed by backend, and
+    # --cli chooses whose entries in it apply — so a profile can carry a default without
+    # dictating the backend.
+    profile_name = (getattr(args, "profile", None) or "").strip()
+    cfg = load_config()
+    try:
+        profile = select_profile(cfg, profile_name)
+    except UnknownProfileError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    resolved_cli = (
+        args.cli or os.environ.get("AGENT_CLI") or _configured_default_cli(cfg, profile)
+    ).strip().lower()
     os.environ["AGENT_CLI"] = resolved_cli
 
     # Resolve the active backend now so an unknown name fails fast with a clear
@@ -181,6 +217,8 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
+
+    _check_profile_resolves(profile_name, profile, backend.name)
 
     if args.runs_dir:
         runs_dir = Path(args.runs_dir).resolve()
@@ -212,9 +250,63 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         context_manifest=_load_context_manifest(args.context_file),
         # Read last, after `--cli` and the repo-dir default above have had their say,
         # so what the run is given is the environment as the CLI finally settled it.
-        config=replace(RunConfig.from_env(os.environ), backend=backend),
+        config=replace(
+            RunConfig.from_env(os.environ), backend=backend, profile=profile_name
+        ),
         telemetry=otel.TelemetryHost(otel.OtelSettings.from_env(os.environ)),
     )
+
+
+def _configured_default_cli(cfg: dict[str, Any], profile: dict[str, Any]) -> str:
+    """The file-sourced rungs of the CLI ladder: the profile's `default_cli`, then the
+    top-level one, then the built-in.
+
+    Two calls rather than one because `resolve_default_cli` answers with the built-in
+    when it finds nothing — which cannot be told from a profile that really says
+    `default_cli = "claude"`. Asking for the raw key first is what keeps a profile that
+    names no CLI from erasing the machine's answer.
+    """
+    named = get_config_value(DEFAULT_CLI_KEY, profile)
+    if isinstance(named, str) and named.strip():
+        return resolve_default_cli(profile)
+    return resolve_default_cli(cfg)
+
+
+def _check_profile_resolves(name: str, profile: dict[str, Any], backend: str) -> None:
+    """Refuse a selected profile that cannot map a model for the backend in play.
+
+    Both failures below resolve to an empty mapping at every node and are therefore
+    invisible: the run does not fail, it spends however many days it has on the harness's
+    own default model. That is precisely the "typo found at hour 30" `--dry-run` exists
+    for, so these run before the first state on a dry run too.
+
+    An otherwise-empty profile that carries only `default_cli` stays legal — it selects a
+    CLI and claims nothing about models, which is a coherent thing to want.
+    """
+    if not name:
+        return
+    consulted = f"(in {config_path()})"
+
+    unknown = [n for n in profile_backends(profile) if n not in backend_names()]
+    if unknown:
+        print(
+            f"error: profile {name!r} keys models by unknown CLI backend(s) "
+            f"{', '.join(repr(n) for n in unknown)} {consulted}; known backends are: "
+            f"{', '.join(backend_names())}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    carries_models = bool(profile.get("power")) or bool(profile.get("default"))
+    if carries_models and not profile_has_backend(profile, backend):
+        print(
+            f"error: profile {name!r} has no entries for CLI backend {backend!r} "
+            f"{consulted}; it maps: {', '.join(profile_backends(profile)) or 'nothing'}. "
+            f"--profile and --cli are independent axes — pick a backend the profile "
+            f"maps, or give the profile a [power.<tier>.default] fallback.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 def _apply_config_path(raw: str | None) -> None:

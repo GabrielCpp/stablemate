@@ -144,6 +144,114 @@ def test_an_unresolvable_resume_names_what_was_asked_for(capsys):
     assert "'nope'" in err and "runs" in err, err
 
 
+# ── --profile: selected, validated, and threaded to the turn ────────────────
+
+_PROFILES = """\
+default_cli = "claude"
+
+[profiles.local]
+default_cli = "opencode"
+
+[profiles.local.power.high.opencode]
+model = "qwen"
+
+[profiles.typo.power.high.openocde]
+model = "qwen"
+
+[profiles.cli-only]
+default_cli = "codex"
+"""
+
+
+def _run_profiled(argv: list[str], config: Path) -> dict:
+    """Drive `run` against a config file, capturing what the invocation carried."""
+    captured: dict = {}
+
+    def fake_run_pyflow(invocation):
+        captured["profile"] = invocation.config.profile
+        captured["backend"] = invocation.config.backend.name
+        return 0
+
+    with tempfile.TemporaryDirectory() as tmp:
+        launch = Path(tmp) / "repo"
+        launch.mkdir()
+        env = {k: v for k, v in os.environ.items() if k != "AGENT_CLI"}
+        with patch.dict(os.environ, env, clear=True), patch.object(
+            run_cmd, "run_pyflow", fake_run_pyflow
+        ), patch.object(run_cmd.Path, "cwd", staticmethod(lambda: launch)):
+            _main(["run", "--config", str(config), *argv])
+    return captured
+
+
+def _profiles_config(tmp_path: Path) -> Path:
+    path = tmp_path / "config.toml"
+    path.write_text(_PROFILES)
+    return path
+
+
+def test_profile_travels_to_the_run_and_carries_its_default_cli(tmp_path):
+    """The profile's `default_cli` is one rung of the CLI ladder, below AGENT_CLI."""
+    captured = _run_profiled(["--profile", "local"], _profiles_config(tmp_path))
+
+    assert captured["profile"] == "local"
+    assert captured["backend"] == "opencode"
+
+
+def test_cli_flag_still_wins_over_a_profiles_default(tmp_path):
+    """Independent axes: the profile holds the mapping, --cli picks whose entries apply."""
+    config = _profiles_config(tmp_path)
+    (tmp_path / "both.toml").write_text(
+        _PROFILES + '\n[profiles.local.power.high.claude]\nmodel = "opus"\n'
+    )
+    captured = _run_profiled(["--profile", "local", "--cli", "claude"], tmp_path / "both.toml")
+
+    assert (captured["profile"], captured["backend"]) == ("local", "claude")
+    assert config.is_file()
+
+
+def test_no_profile_leaves_the_top_level_default_cli_in_charge(tmp_path):
+    captured = _run_profiled([], _profiles_config(tmp_path))
+
+    assert (captured["profile"], captured["backend"]) == ("", "claude")
+
+
+def test_an_unknown_profile_is_refused_before_the_first_state(tmp_path, capsys):
+    _run_profiled(["--profile", "locl"], _profiles_config(tmp_path))
+
+    err = capsys.readouterr().err
+    assert "locl" in err and "local" in err, err
+
+
+def test_a_misspelled_backend_inside_a_profile_is_refused(tmp_path, capsys):
+    """It would otherwise resolve to an empty mapping and spend the run on defaults."""
+    _run_profiled(["--profile", "typo", "--cli", "opencode"], _profiles_config(tmp_path))
+
+    err = capsys.readouterr().err
+    assert "openocde" in err and "opencode" in err, err
+
+
+def test_a_profile_with_nothing_for_the_chosen_backend_is_refused(tmp_path, capsys):
+    """The easy misuse of two independent axes, and the same silent-default class."""
+    _run_profiled(["--profile", "local", "--cli", "claude"], _profiles_config(tmp_path))
+
+    err = capsys.readouterr().err
+    assert "'claude'" in err and "local" in err, err
+
+
+def test_a_profile_that_only_names_a_cli_stays_legal(tmp_path):
+    """It claims nothing about models, which is a coherent thing to want."""
+    captured = _run_profiled(["--profile", "cli-only"], _profiles_config(tmp_path))
+
+    assert (captured["profile"], captured["backend"]) == ("cli-only", "codex")
+
+
+def test_the_checks_run_on_a_dry_run_too(tmp_path, capsys):
+    """`--dry-run` exists to catch the typo found at hour 30; a profile name is one."""
+    _run_profiled(["--profile", "locl", "--dry-run"], _profiles_config(tmp_path))
+
+    assert "locl" in capsys.readouterr().err
+
+
 # ── --config points the whole process at one config file ────────────────────
 
 def _run_with_config(argv: list[str]) -> None:

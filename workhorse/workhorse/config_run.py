@@ -249,6 +249,12 @@ class RunConfig:
     #: an implementation of the port, so nothing downstream branches on it and
     #: ``AgentRunner.backend`` can honestly claim to hold an ``AgentBackend``.
     backend: AgentBackend = field(default_factory=NullBackend)
+    #: The named model set this run resolves its models from (``--profile``), or "" for
+    #: the config's top-level tables. Like ``backend``, it comes from the flag rather
+    #: than from :meth:`from_env`: it is a run policy the CLI boundary decides and
+    #: validates, not an environment reading. What it selects is re-read per turn, so
+    #: editing the profile mid-run still moves the run — only the *name* is fixed here.
+    profile: str = ""
     #: The working tree this run operates on (AGENT_REPO_DIR), or "" for the process
     #: cwd. Only a path — the driver makes no claim that it is a repository, and
     #: :mod:`workhorse.gitstate` observes it rather than assuming. Read here for the

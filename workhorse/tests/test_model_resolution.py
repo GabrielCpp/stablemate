@@ -12,10 +12,12 @@ Runnable:
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
+import io
+from contextlib import contextmanager, redirect_stdout
 from unittest.mock import patch
 
 from workhorse._vendor.stablemate_core.config import resolve_backend_default, resolve_power
+from workhorse.runner import ladder
 from workhorse.runner.ladder import _resolve_power_settings
 
 
@@ -43,8 +45,10 @@ def _config(cfg):
         patch("workhorse.runner.ladder.resolve_power") as power,
         patch("workhorse.runner.ladder.resolve_backend_default") as default,
     ):
-        power.side_effect = lambda p, b: resolve_power(p, b, cfg)
-        default.side_effect = lambda b: resolve_backend_default(b, cfg)
+        # Three-arg, because the ladder now hands the resolvers the config it selected:
+        # None for "no profile" (this fixture's `cfg`), the narrowed table otherwise.
+        power.side_effect = lambda p, b, c=None: resolve_power(p, b, cfg if c is None else c)
+        default.side_effect = lambda b, c=None: resolve_backend_default(b, cfg if c is None else c)
         yield
 
 
@@ -113,6 +117,56 @@ def test_resolve_backend_default_ignores_malformed_tables():
     assert resolve_backend_default("opencode", {}) == resolve_backend_default("opencode", {"default": "nope"})
     assert resolve_backend_default("opencode", {"default": {"opencode": "nope"}}).model is None
     assert resolve_backend_default("opencode", {"default": {"opencode": {"model": ""}}}).model is None
+
+
+# ── --profile narrows which config the two resolvers read ───────────────────
+
+_PROFILED = {
+    "power": {"high": {"claude": {"model": "opus"}}},
+    "default": {"claude": {"model": "sonnet"}},
+    "profiles": {
+        "local": {
+            "power": {"high": {"opencode": {"model": "qwen", "effort": "high"}}},
+            "default": {"opencode": {"model": "qwen-small"}},
+        }
+    },
+}
+
+
+@contextmanager
+def _file(cfg):
+    """Stand in for the config on disk, which the ladder re-reads every turn."""
+    with patch("workhorse.runner.ladder.load_config", lambda: cfg):
+        yield
+
+
+def test_a_profile_replaces_the_top_level_tables():
+    with _file(_PROFILED):
+        assert _resolve_power_settings("high", "opencode", None, "local") == ("qwen", "high")
+        # The machine's [power.high.claude] is not inherited: the profile is the whole
+        # answer, so claude resolves to nothing rather than to "opus".
+        assert _resolve_power_settings("high", "claude", None, "local") == (None, None)
+        assert _resolve_power_settings(None, "opencode", None, "local") == ("qwen-small", None)
+
+
+def test_without_a_profile_nothing_is_narrowed():
+    """No profile hands the resolvers None, i.e. "read the config yourself" — which is
+    what every test above exercises, and what keeps the un-profiled path unchanged."""
+    with patch("workhorse.runner.ladder.load_config") as load:
+        assert ladder._profile_config("") is None
+        assert not load.called
+
+
+def test_a_profile_deleted_mid_run_resolves_empty_rather_than_raising():
+    """Fail-soft: a config read must never be what ends a week-long run — and falling
+    back to the top level would silently move the run onto the machine's model set."""
+    ladder._warned_missing_profile.discard("gone")
+    noise = io.StringIO()
+    with _file(_PROFILED), redirect_stdout(noise):
+        assert _resolve_power_settings("high", "claude", None, "gone") == (None, None)
+        # Warned once per name, not once per turn: this runs for every agent node.
+        assert _resolve_power_settings("high", "claude", None, "gone") == (None, None)
+    assert noise.getvalue().count("gone") == 1, noise.getvalue()
 
 
 if __name__ == "__main__":  # parity with the other tests' dual-run style

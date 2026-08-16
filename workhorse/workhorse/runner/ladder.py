@@ -7,7 +7,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from workhorse._vendor.stablemate_core.config import resolve_backend_default, resolve_power
+from workhorse._vendor.stablemate_core.config import (
+    UnknownProfileError,
+    load_config,
+    resolve_backend_default,
+    resolve_power,
+    select_profile,
+)
 from workhorse import control, otel, reload
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
@@ -52,10 +58,40 @@ def _print_prompt_path(node_id: str, prompt_path: Path) -> None:
     print(f"[{node_id}] prompt: {prompt_path}", flush=True)
 
 
+# Warned about once per name, not once per turn: this resolves for every agent node of a
+# run that may last a week, and a profile deleted from the config would otherwise bury the
+# log in one identical line per turn.
+_warned_missing_profile: set[str] = set()
+
+
+def _profile_config(profile: str) -> dict[str, Any] | None:
+    """The config the resolvers below read: narrowed to ``profile``, or the whole file.
+
+    Loaded per turn on purpose — the "fix the config and let the run pick it up" story
+    depends on a running process observing a changed file, and a profile is no different.
+
+    A profile that has *disappeared* from the config mid-run is warned about and resolves
+    as empty rather than raising: a config read must never be what ends an unattended run,
+    and the check that this profile exists already ran at the boundary. Empty rather than
+    the top-level tables, because a run silently moving onto the machine's global model
+    set is the substitution profiles exist to prevent.
+    """
+    if not profile:
+        return None
+    try:
+        return select_profile(load_config(), profile)
+    except UnknownProfileError as exc:
+        if profile not in _warned_missing_profile:
+            _warned_missing_profile.add(profile)
+            print(f"[workhorse] WARNING: {exc}; resolving no models from it", flush=True)
+        return {}
+
+
 def _resolve_power_settings(
     power: str | None,
     backend_name: str,
     model_override: str | None,
+    profile: str = "",
 ) -> tuple[str | None, str | None]:
     """Resolve a node's abstract ``power`` into concrete backend settings.
 
@@ -64,9 +100,14 @@ def _resolve_power_settings(
     CLI boundary and handed down), then the config's ``[default.<backend>]`` table;
     effort falls through to that table directly (it has no override). Anything still
     unset stays None so the harness default applies.
+
+    ``profile`` narrows *which* config those two tables are read from, and narrowing is
+    the whole mechanism: a selected profile replaces the top level rather than layering
+    over it, so neither resolver has to know profiles exist.
     """
-    mapped = resolve_power(power, backend_name)
-    fallback = resolve_backend_default(backend_name)
+    cfg = _profile_config(profile)
+    mapped = resolve_power(power, backend_name, cfg)
+    fallback = resolve_backend_default(backend_name, cfg)
     model = mapped.model or model_override or fallback.model
     return model, mapped.effort or fallback.effort
 
@@ -91,6 +132,9 @@ class AgentRunner:
     print_prompt: bool = True
     #: Run-level model override, already resolved from the environment.
     model_override: str | None = None
+    #: The named model set this run resolves its models from, or "" for the config's
+    #: top-level tables. The name only — what it selects is re-read every turn.
+    profile: str = ""
 
     @classmethod
     def from_config(cls, config: RunConfig, *, clock: Clock = SYSTEM_CLOCK) -> AgentRunner:
@@ -106,6 +150,7 @@ class AgentRunner:
             clock=clock,
             print_prompt=config.print_prompt,
             model_override=config.model_override,
+            profile=config.profile,
         )
 
     def run(
@@ -248,7 +293,7 @@ class AgentRunner:
         # model/effort for the active backend. Missing config falls back to the run's
         # override then the backend's defaults, preserving harness behavior.
         model, node_effort = _resolve_power_settings(
-            node.power, self.backend.name, self.model_override
+            node.power, self.backend.name, self.model_override, self.profile
         )
         model = model or self.backend.default_model
 
