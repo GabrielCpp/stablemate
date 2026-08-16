@@ -68,6 +68,18 @@ CONFIG_VERSION_KEY = "config_version"
 DEFAULT_CLI_KEY = "default_cli"
 BUILTIN_DEFAULT_CLI = "claude"
 
+# The namespace of named model sets: `[profiles.<name>]`, each carrying its own `power`,
+# `default` and `default_cli`. Plural where its siblings are singular, because it is a
+# namespace of named things rather than one table. Additive, so it does not bump
+# CONFIG_VERSION either: an older reader has no flag that could select one, and
+# `write_config_key` serializes with a real TOML writer, so its `set-base` preserves a
+# `[profiles]` table it does not understand.
+PROFILES_KEY = "profiles"
+
+# The per-tier fallback key inside a `[power.<tier>]` table: the entry used when the tier
+# names no table for the active backend. Not a backend name.
+BACKEND_FALLBACK_KEY = "default"
+
 # Steps that carry a config forward one schema version: _MIGRATIONS[n] takes a v(n)
 # config and returns a v(n+1) one. Empty while CONFIG_VERSION is 1 — there is no older
 # schema to come from. When v2 lands, add the v1->v2 step here and a row above; the walk
@@ -290,6 +302,101 @@ def _migrate_forward(cfg: dict[str, Any], from_version: int, path: Path) -> dict
     return data
 
 
+class UnknownProfileError(LookupError):
+    """``--profile <name>`` named a profile the config does not define.
+
+    A hard failure on purpose, and only ever raised where failing is safe: selecting a
+    profile is a startup decision, and the alternative — falling back to the top-level
+    tables — spends a week of unattended run on the wrong set of models with nothing in
+    the log to say so.
+    """
+
+
+def _profiles_table(cfg: dict[str, Any]) -> dict[str, Any]:
+    table = cfg.get(PROFILES_KEY)
+    return table if isinstance(table, dict) else {}
+
+
+def profile_names(cfg: dict[str, Any] | None = None) -> list[str]:
+    """The names `[profiles.<name>]` defines, sorted. Empty when there are none."""
+    data = cfg if cfg is not None else load_config()
+    return sorted(name for name in _profiles_table(data) if isinstance(name, str))
+
+
+def select_profile(cfg: dict[str, Any] | None, name: str) -> dict[str, Any]:
+    """Narrow ``cfg`` to the named profile: the config every model resolver then reads.
+
+    A profile **replaces** the top-level tables rather than layering over them, and this
+    function is what makes that structurally true: it hands back the profile's own table,
+    so :func:`resolve_power` and :func:`resolve_backend_default` need no notion of
+    profiles at all — their ``cfg`` parameter was already the seam. ``[harness.*]`` stays
+    outside for free, because it is resolved from the *unnarrowed* config.
+
+    Inheriting the top level was rejected because power tiers are opaque strings: no
+    schema says which tiers exist, so "the profile did not mention ``smart``, therefore it
+    means the machine's ``smart``" is a guess the config cannot state and the operator
+    cannot see.
+
+    An empty ``name`` means "no profile" and returns the config unchanged, so a caller
+    threading an unset selector needs no branch of its own.
+    """
+    data = cfg if cfg is not None else load_config()
+    if not name:
+        return data
+    profile = _profiles_table(data).get(name)
+    if not isinstance(profile, dict):
+        known = profile_names(data)
+        listed = ", ".join(known) if known else "none defined"
+        raise UnknownProfileError(
+            f"unknown profile {name!r} in {config_path()} (known: {listed})"
+        )
+    return profile
+
+
+def profile_backends(profile: dict[str, Any]) -> list[str]:
+    """Every backend name a narrowed config keys its model tables by, sorted.
+
+    The per-tier ``default`` fallback is not one — it is the "whatever harness" entry, not
+    a harness. **Nothing here is validated**: core knows no backend registry, so a
+    misspelling is reported where every other bad backend name already is, at the boundary
+    that resolves the adapter. This function only says which names were used.
+    """
+    names: set[str] = set()
+    power_table = profile.get("power")
+    if isinstance(power_table, dict):
+        for level_table in power_table.values():
+            if isinstance(level_table, dict):
+                names.update(
+                    key
+                    for key in level_table
+                    if isinstance(key, str) and key != BACKEND_FALLBACK_KEY
+                )
+    default_table = profile.get("default")
+    if isinstance(default_table, dict):
+        names.update(key for key in default_table if isinstance(key, str))
+    return sorted(names)
+
+
+def profile_has_backend(profile: dict[str, Any], backend: str) -> bool:
+    """Whether a narrowed config resolves any model at all for ``backend``.
+
+    True when some tier names that backend, when some tier carries the ``default``
+    fallback, or when ``[default.<backend>]`` does — the three ways a mapping can be
+    found. False is the two-independent-axes misuse: an opencode-only profile selected
+    with ``--cli claude`` resolves nothing and the run quietly spends a week on the
+    harness's own default model.
+    """
+    power_table = profile.get("power")
+    if isinstance(power_table, dict):
+        for level_table in power_table.values():
+            if isinstance(level_table, dict) and (
+                backend in level_table or BACKEND_FALLBACK_KEY in level_table
+            ):
+                return True
+    default_table = profile.get("default")
+    return isinstance(default_table, dict) and backend in default_table
+
+
 def _mapping_from_table(table: dict[str, Any]) -> PowerMapping:
     model = table.get("model")
     effort = table.get("effort")
@@ -309,7 +416,7 @@ def resolve_power(power: str | None, backend: str, cfg: dict[str, Any] | None = 
     level_table = power_table.get(power)
     if not isinstance(level_table, dict):
         return PowerMapping()
-    backend_table = level_table.get(backend) or level_table.get("default")
+    backend_table = level_table.get(backend) or level_table.get(BACKEND_FALLBACK_KEY)
     if not isinstance(backend_table, dict):
         return PowerMapping()
     return _mapping_from_table(backend_table)
