@@ -65,6 +65,15 @@ still shows the subcommand listing.
     [AgentBackend](concepts/agent-backend.md) implementation via
     [get_backend](concepts/get-backend.md); `<name>` ∈ `claude` (default) · `codex` ·
     `copilot` · `cline` · `opencode`. Per run, not per state.
+  - `--profile <name>` — resolve this run's models from the config's
+    [`[profiles.<name>]`](concepts/config.md#profiles) tables instead of its top-level ones. A
+    profile **replaces** them — nothing outside it is inherited — and is an axis independent of
+    `--cli`, which chooses whose entries in it apply. Per run, not per state; recorded in
+    [`run.json`](run-artifacts.md#runjson) so a flagless `--resume-run` re-applies it.
+  - `--config <path>` — read the [shared config file](concepts/config.md) from this path instead
+    of the discovered one. Means what `$STABLEMATE_CONFIG` means — *this* file, entirely, with no
+    merge against the machine's — so it must itself carry `library_dir`/`base_dir`/`stablemate_dir`
+    if the run needs them. Overrides `$STABLEMATE_CONFIG`, which overrides `$WORKHORSE_CONFIG`.
   - `--runs-dir <dir>` — where run artifacts are written (default `<cwd>/.agents/runs`).
   - `--run-id <id>` — name the stable run dir (`<workflow>-<id>`). Default: a digest of
     `--params`, so distinct params get distinct dirs and never collide on one run; with no
@@ -91,13 +100,35 @@ still shows the subcommand listing.
   - run: pin `AGENT_REPO_DIR` to the launch directory (`Path.cwd()`) when unset, so a
     node resolves the consuming repo rather than the directory the installed workflow
     package happens to sit in
+  - run: `--config`, if given, is written back to `$STABLEMATE_CONFIG`
+    ([`CONFIG_PATH_ENV`](concepts/config.md#location)) before anything reads the file — the
+    config is re-read per node and by every subprocess the run spawns, each through its own
+    `config_path()`, so a flag that only reached the resolver here would name one file while
+    the per-node re-read named another. A path that is not a file exits `1` rather than
+    reading as an empty config; with the flag absent nothing is written back, since stamping
+    the *discovered* path would suppress `load_config`'s legacy per-tool merge on a machine
+    nobody asked to migrate
+  - run: select the [profile](concepts/config.md#profiles) — `--profile`, else the name
+    recorded in the resumed run's [`run.json`](run-artifacts.md#runjson) (which is why the
+    resume dir is resolved first). A resume is a continuation, not a new decision: re-resolving
+    the same nodes against the machine's global model set is a substitution nothing in the
+    output would show, so the recorded name is re-applied unless this command line overrides
+    it. `select_profile` narrows the loaded config; an undefined name prints
+    `UnknownProfileError` (which lists the known ones) and exits `1`
   - run: `--cli` (else `AGENT_CLI`, else the config's
-    [`default_cli`](concepts/config.md#resolve_default_cli), else `claude`) sets `AGENT_CLI` for
+    [`default_cli`](concepts/config.md#resolve_default_cli) — the **profile's** first, then the
+    top level's, which is why the profile is selected first — else `claude`) sets `AGENT_CLI` for
     the run — the resolved name is written back, so every later reader of that variable answers
     with the CLI actually chosen rather than re-deriving it; select and
     eagerly validate the [AgentBackend](concepts/agent-backend.md) via
     [get_backend](concepts/get-backend.md) — an unknown name prints to stderr and exits `1`
     before any state runs, rather than failing mid-run
+  - run: refuse a profile that maps no model for the backend just chosen — `--profile` and
+    `--cli` are independent axes, so an opencode-only profile run with `--cli claude` would
+    otherwise spend the whole run on the harness's own default model with nothing to say so.
+    Checked with [`profile_has_backend`](concepts/config.md#profiles), and a profile keying a
+    backend name no registry knows is reported the same way a typo'd `--cli` is; both exit `1`.
+    It runs under `--dry-run` too, that being the check's point
   - run: resolve `runs_dir` (`--runs-dir`, else `<cwd>/.agents/runs`)
   - run: load `--params`/`--params-file` into a starting-params dict via
     `load_params` (`workhorse/workhorse/cli/params.py::load_params`):
@@ -163,6 +194,12 @@ still shows the subcommand listing.
     - **interrupt** — `Ctrl-C` terminates the active agent, records the interrupt against
       the state in flight, prints the `--resume-run` command, and exits `130`
 - code: `workhorse/workhorse/cli/run.py::run`
+- verify: `workhorse/tests/test_run_options.py::test_profile_travels_to_the_run_and_carries_its_default_cli`,
+  `workhorse/tests/test_run_options.py::test_cli_flag_still_wins_over_a_profiles_default`,
+  `workhorse/tests/test_run_options.py::test_an_unknown_profile_is_refused_before_the_first_state`,
+  `workhorse/tests/test_run_options.py::test_a_profile_with_nothing_for_the_chosen_backend_is_refused`,
+  `workhorse/tests/test_run_options.py::test_a_flagless_resume_re_applies_the_recorded_profile`,
+  `workhorse/tests/test_run_options.py::test_an_explicit_profile_overrides_the_recorded_one`
 - verify: `workhorse/tests/test_console_script.py::test_every_flag_reaches_the_engine`,
   `workhorse/tests/test_console_script.py::test_the_cli_reports_the_zip_failure_and_exits`,
   `workhorse/tests/test_resume_auto.py::test_find_latest_resumable_picks_newest_of_several_unfinished`,
@@ -221,8 +258,9 @@ End-to-end journeys across these commands:
   `tests/*.py` that substitute the node index and drive them with plain `pytest`; the
   declared stand-ins are shared with `run --dry-run`.
 - [Choose the agent CLI backend and power tier](flows/workhorse-choose-backend-and-power.md)
-  — point `run --cli` at a different harness and set its power tier in the [shared config
-  file](concepts/config.md).
+  — point `run --cli` at a different harness, set its power tier in the [shared config
+  file](concepts/config.md), and select a whole named set of models for one run with
+  `--profile`.
 - [Crash and resume in place](flows/workhorse-crash-resume.md) — an unattended `run` dies
   mid-machine and is re-launched with the identical command to resume from its last
   checkpoint.

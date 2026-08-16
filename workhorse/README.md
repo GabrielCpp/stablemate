@@ -111,6 +111,8 @@ Key flags (run `workhorse-<name> --help` for the full list):
 | `--runs-dir <dir>` | Where to write run artifacts (default: `<cwd>/.agents/runs`) |
 | `--run-id <id>` | Name the stable run dir (`<workflow>-<id>`); default: a digest of `--params`, else `default` |
 | `--cli {claude,codex,copilot,cline,opencode}` | Which agent CLI drives the run (or `AGENT_CLI`, else the config's `default_cli`, else `claude`) |
+| `--profile <name>` | Which named `[profiles.<name>]` set of models this run uses (see [Naming a set of models](#naming-a-set-of-models-profiles)) |
+| `--config <path>` | Use this config file instead of the discovered one, for this run and everything it spawns |
 | `--params '<json>'` / `--params-file <path>` | Set the workflow's declared inputs on a fresh start |
 | `--dry-run` | Check the workflow and exit without running a node (see [Checking a workflow before you run it](#checking-a-workflow-before-you-run-it---dry-run)) |
 | `--resume-run <path-or-id>` / `--resume-latest` | Manually resume a checkpointed run |
@@ -345,6 +347,48 @@ model = "opus"
 effort = "high"
 ```
 
+### Naming a set of models (profiles)
+
+Editing those tables moves **every** run on the machine, including the six-day one already
+going, and leaves no record of what a finished run actually bought. A `[profiles.<name>]`
+table holds its own `power`, `default` and `default_cli` under one name, picked per run:
+
+```toml
+[profiles.cheap.power.high.claude]
+model = "sonnet"
+
+[profiles.cheap.default.claude]
+model = "haiku"
+```
+
+```bash
+workhorse-<name> run --profile cheap
+workhorse-<name> run --config ./experiment.toml   # a different config file entirely
+farrier config show --profile cheap               # read one back, one dotted line per leaf
+```
+
+A profile **replaces** the top-level `power` / `default` tables rather than layering over
+them — nothing outside it is inherited. Power tiers are opaque strings, so "the profile did
+not mention `smart`, so it means the machine's `smart`" is a guess the config cannot state.
+What is not a model set stays outside a profile and still applies: `[harness.<backend>].env`,
+`library_dir`, `base_dir`, `stablemate_dir`.
+
+`--profile` and `--cli` are independent axes. A profile may carry its own `default_cli`, so
+the profile is selected first and the ladder is `--cli` > `AGENT_CLI` > the profile's
+`default_cli` > the top level's > `claude`. A profile that maps no model at all for the
+chosen backend is refused at startup — including under `--dry-run`, that being the point —
+as are an unknown profile name and a `--config` path that is not a file.
+
+`--config <path>` swaps the whole file rather than one table: the resolved path is written
+into `$STABLEMATE_CONFIG`, so every later reader and every subprocess resolves the same one.
+It is a `run` flag only; `control` talks to a run that already knows its config.
+
+The chosen profile is recorded in the run's `run.json` (with an informational
+`profile_config` snapshot of what it resolved to) and stamped on the run's root span as
+`workhorse.profile`. So a flagless `--resume-run` re-applies the same set instead of
+silently falling back to the top level, and a finished run can still answer which models it
+bought after the config has moved on.
+
 The full reference — the `power` and `[default.<backend>]` tables, per-harness
 environment variables, where the config file lives and how its schema version keeps
 workhorse and farrier in step, initial setup, codex config profiles, and running
@@ -484,6 +528,24 @@ to the run, so re-importing the workflow package could not move a live run onto 
 agent however plainly the request asked. What comes back is the same run re-entering the
 same checkpointed state, with `--cli <name>` appended to the resume argv — the one thing a
 resume cannot read off the checkpoint, because it was never in it.
+
+**Moving a run onto another set of models (`control switch-profile`).** The other axis —
+the run is fine, it is just spending more than it is worth — needs no reload at all:
+
+```bash
+workhorse-coder control --run <id> switch-profile cheap
+```
+
+The runner re-loads and re-narrows the config on **every** turn, so a new profile name
+reaches the next turn by itself. It applies at the next node boundary in the same process:
+same pid, same root span, same run dir, same wall-clock budget — so `workhorse.profile` on
+the root span names the profile the run *finished* on, the honest single answer for a run
+that was moved mid-flight.
+
+`run.json` still records the profile the run was **launched** with, which is why a later
+`--core` reload (a `switch-cli`, say) carries the live profile in its re-exec argv: without
+that the new image would read the record and silently resolve from the set the operator
+switched away from.
 
 The checkpoint is written *before* the state runs, so nothing durable is lost. If the
 pushed code renamed or retyped a workflow field the checkpoint still holds, the run stops

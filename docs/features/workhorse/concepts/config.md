@@ -8,7 +8,9 @@ title: stablemate config file
 The toolchain's small persistent settings file — **one** TOML file at
 `~/.config/stablemate/config.toml`, shared by workhorse and farrier, holding `library_dir`,
 `stablemate_dir`, `base_dir`, `default_cli`, a `[power.<tier>.<backend>]` model/effort table, a per-backend
-`[default.<backend>]` fallback table, and a per-harness `[harness.<backend>].env` table. Read and
+`[default.<backend>]` fallback table, a per-harness `[harness.<backend>].env` table, and any number of
+named [`[profiles.<name>]`](#profiles) tables carrying a whole alternative set of the model
+ones. Read and
 written by [farrier config](../../farrier/farrier.md#config) — workhorse is a library and ships no
 command of its own; the `power` table is consumed at run time by
 `resolve_power` to satisfy a node's [`power`](../workflow-format.md#power) tier, and the `default`
@@ -26,8 +28,14 @@ the unified one is absent; the first write migrates them.
 
 `config_path()` resolves the file's path:
 
-- **`$STABLEMATE_CONFIG`** env var, if set (expanded via `Path.expanduser()`) — an explicit
-  override.
+- **`$STABLEMATE_CONFIG`** env var (`CONFIG_PATH_ENV`), if set (expanded via
+  `Path.expanduser()`) — an explicit override.
+  [`workhorse-<name> run --config PATH`](../workhorse.md#run) and
+  [`farrier --config PATH config`](../../farrier/farrier.md#config) set it rather than
+  threading a path: every reader and every writer resolves the file through `config_path()`
+  itself, so one assignment moves all of them together, and a subprocess (a re-exec after a
+  `control reload`, a tool the command shells out to) inherits the same answer instead of
+  quietly reading the machine's own file.
 - otherwise **`$WORKHORSE_CONFIG`**, still honoured so an existing override does not have to be
   renamed in lockstep with the unification.
 - otherwise the platform-appropriate default via `platformdirs.user_config_dir("stablemate")`:
@@ -105,6 +113,70 @@ typed helpers `write_library_dir`, `write_stablemate_dir` and `write_base_dir` t
 
 - code: `core/stablemate_core/config.py::write_config_key`
 
+## profiles
+
+A `[profiles.<name>]` table holds a whole alternative set of the model tables — its own
+`power`, `default` and `default_cli` — under one name, so "which set of models this run
+buys" is a persistent object selected per run
+([`run --profile <name>`](../workhorse.md#run)) rather than an edit to the one file every
+run on the machine shares. Editing that file to make one run cheaper moved *every* run,
+including the six-day one already going, and left no record of what the finished run
+actually bought.
+
+A profile **replaces** the top-level tables; it does not layer over them. Inheriting was
+rejected because power tiers are opaque strings: no schema says which tiers exist, so "the
+profile did not mention `smart`, therefore it means the machine's `smart`" is a guess the
+config cannot state and the operator cannot see. What stays outside a profile stays outside
+for free — `[harness.<backend>].env`, `library_dir`, `stablemate_dir` and `base_dir` are
+resolved from the *unnarrowed* config, because they are properties of the machine, not of
+a model set.
+
+```toml
+[profiles.cheap.power.high.claude]
+model = "sonnet"
+
+[profiles.cheap.default.claude]
+model = "haiku"
+```
+
+- `PROFILES_KEY` — `"profiles"`, the top-level key.
+- `profile_names(cfg=None) -> list[str]` — the names defined, sorted; empty when there are
+  none.
+- `select_profile(cfg, name) -> dict` — narrows `cfg` to that profile's own table, which is
+  what makes replace-not-overlay structurally true:
+  [`resolve_power`](#resolve_power) and [`resolve_backend_default`](#resolve_backend_default)
+  need no notion of profiles at all, since their `cfg` parameter was already the seam. An
+  empty `name` means "no profile" and returns the config unchanged, so a caller threading an
+  unset selector needs no branch. An undefined name raises `UnknownProfileError` naming the
+  known ones — a hard failure on purpose, and only ever raised at startup where failing is
+  safe, because falling back to the top-level tables would spend a week of unattended run on
+  the wrong models with nothing in the log to say so.
+- `profile_backends(profile) -> list[str]` — every backend name the narrowed config keys its
+  model tables by, sorted (the per-tier `default` fallback is not one). **Nothing is
+  validated here**: core knows no backend registry, so a misspelling is reported at the
+  boundary that resolves the adapter, where every other bad backend name already is.
+- `profile_has_backend(profile, backend) -> bool` — whether the narrowed config resolves any
+  model at all for that backend: some tier names it, some tier carries the `default`
+  fallback, or `[default.<backend>]` does. False is the two-independent-axes misuse — an
+  opencode-only profile selected with `--cli claude` — which
+  [`run`](../workhorse.md#run) refuses at the boundary rather than letting the run spend a
+  week on the harness's own default model.
+
+There is **no writer**. A profile is a nested table and
+[`write_config_key`](#write_config_key) sets one top-level key, so profiles are authored by
+editing the file; [`farrier config show --profile <name>`](../../farrier/farrier.md#config)
+reads one back.
+
+- code: `core/stablemate_core/config.py::select_profile`
+- code: `core/stablemate_core/config.py::profile_names`
+- code: `core/stablemate_core/config.py::profile_backends`
+- code: `core/stablemate_core/config.py::profile_has_backend`
+- verify: `core/tests/test_config_profiles.py::test_selected_profile_replaces_the_top_level_tables`,
+  `core/tests/test_config_profiles.py::test_harness_env_is_not_part_of_a_profile`,
+  `core/tests/test_config_profiles.py::test_no_profile_leaves_the_config_untouched`,
+  `core/tests/test_config_profiles.py::test_an_unknown_profile_raises_and_names_the_alternatives`,
+  `core/tests/test_config_profiles.py::test_a_profile_with_no_entries_for_the_backend_is_visible`
+
 ## resolve_power
 
 Resolves a node's abstract [`power`](../workflow-format.md#power) tier (`high`/`medium`/`low`) plus
@@ -115,7 +187,9 @@ way (no `power` table, no such tier, no matching backend/default table) yields a
 rather than an error — an unconfigured tier leaves the node's model/effort unset so the backend's
 own default applies.
 
-- **Input:** `power: str | None`, `backend: str`, `cfg: dict | None` (defaults to `load_config()`).
+- **Input:** `power: str | None`, `backend: str`, `cfg: dict | None` (defaults to
+  `load_config()`; under a [profile](#profiles) the caller passes the narrowed table
+  instead, which is why this function knows nothing about profiles).
 - **Output:** `PowerMapping(model, effort)` — each field `None` unless the config supplies a
   non-empty string.
 - code: `core/stablemate_core/config.py::resolve_power`
@@ -136,8 +210,9 @@ rather than an error.
 
 ## resolve_default_cli
 
-Resolves the top-level `default_cli` key — the agent CLI a run drives when neither `--cli` nor
-`AGENT_CLI` names one — to a normalised (`strip().lower()`) backend name, or `BUILTIN_DEFAULT_CLI`
+Resolves the `default_cli` key — the agent CLI a run drives when neither `--cli` nor
+`AGENT_CLI` names one, read from the selected [profile](#profiles) first and from the top
+level after it — to a normalised (`strip().lower()`) backend name, or `BUILTIN_DEFAULT_CLI`
 (`"claude"`) when the key is absent, empty, or not a string. It is the third rung of
 [get_backend](get-backend.md)'s resolution order, and the reason the built-in default is a
 *fallback* rather than the only answer: a flag's default is reachable only by editing workhorse, so
@@ -188,8 +263,14 @@ combination is a no-op override, not an error.
 ## Consumers
 
 - [`farrier config`](../../farrier/farrier.md#config) — `show`/`set-*`, the one command that reads and
-  writes this file. The `power` table has no writer subcommand; it is edited by hand.
-- [`AgentRunner.run`](run-agent.md) — `resolve_power` and `resolve_backend_default` per agent turn.
+  writes this file. The `power` and `profiles` tables have no writer subcommand; they are
+  edited by hand, and `show --profile <name>` reads one back.
+- [`AgentRunner.run`](run-agent.md) — `resolve_power` and `resolve_backend_default` per agent turn,
+  against the config re-loaded and re-narrowed to the run's [profile](#profiles) each turn, so
+  a `control switch-profile` reaches the next turn without a reload.
+- [`workhorse-<name> run --profile`](../workhorse.md#run) — `select_profile` once at the
+  boundary, plus `profile_backends`/`profile_has_backend` to refuse a profile that maps no
+  model for the chosen `--cli`.
 - [`get_backend`](get-backend.md) — `resolve_default_cli`, the rung under `AGENT_CLI`; and
   [`workhorse-<name> run`](../workhorse.md#run), which resolves the name once and writes it back to
   `AGENT_CLI` so the manifest and template layers read the same answer.

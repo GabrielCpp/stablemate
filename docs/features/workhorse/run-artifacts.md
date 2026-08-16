@@ -105,6 +105,16 @@ state changes:
   reached a terminal. Cleared by a resume, exactly as `ended_at` is. Only written at a terminal:
   every other write of this file happens while the run is still going, where an "end" would be
   overwritten by the next one anyway.
+- `profile` — type `string` — default `""`; the [config profile](concepts/config.md#profiles) this
+  run resolves its models through (`run --profile`), empty for the config's top-level tables.
+  **Load-bearing**, unlike the copy below: a [resume](workhorse.md#run) that names no `--profile`
+  re-applies this one, so a run started on a cheap model set does not silently continue on the
+  machine's default one — and that is also what carries a run's models across a `switch-cli`,
+  whose re-exec is exactly a flagless resume.
+- `profile_config` — type `object` — default `{}`; what that profile held when the run started,
+  copied verbatim. **Informational only** — behavior comes from re-reading the config file every
+  turn, so this is never read back into the run. It is what answers "which model was at `high`
+  when this ran" once the config has moved on, which the profile *name* alone cannot.
 
 #### Repo state
 

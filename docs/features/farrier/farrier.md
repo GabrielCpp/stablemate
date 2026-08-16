@@ -132,7 +132,23 @@ the pruned starting point, and the two are kept consistent by hand.
 - verify: `farrier/tests/test_base_fetch_on_install.py::test_check_fetches_but_does_not_refresh`
 
 ### config
-- usage: `farrier config <set-library|set-stablemate|set-base|show> [args]`
+- usage: `farrier config [--config PATH] <set-library|set-stablemate|set-base|show> [args]`
+- flags:
+  - `--config <path>` — goes **before** the action (`farrier config --config ./c.toml show`):
+    the [shared config file](../workhorse/concepts/config.md)
+    every config verb reads and writes, instead of the discovered one. It is written back to
+    `$STABLEMATE_CONFIG` rather than threaded, because `read_config` and all four writers resolve
+    the path themselves — one assignment moves them together. It lets the question be asked of a
+    config that is not this machine's home one (a CI file, the copy a container was launched with).
+  - `show --profile <name>` — print one [`[profiles.<name>]`](../workhorse/concepts/config.md#profiles)
+    table instead of the top level, flattened to one dotted line per leaf
+    (`power.high.claude.model=haiku`). A profile **replaces** the top-level tables rather than
+    layering over them, so what it prints is the whole config that run resolves from, and two
+    profiles diff against each other line by line — that flattening is what `cat` cannot do, since
+    a profile is three tables deep. A `key` given alongside it is looked up among those dotted keys
+    (`show power.high.claude.model --profile cheap`). An undefined name exits with
+    `UnknownProfileError`, which lists the ones the file does define. There is **no setter**: a
+    profile is a nested table and `set-library`-style flat assignment cannot express one.
 - args:
   - `set-library <path>` — record `path` as `library_dir` in the home config file; errors unless
     `path` contains both a `library/` and a `packs/` directory.
@@ -154,15 +170,22 @@ the pruned starting point, and the two are kept consistent by hand.
   - run (`set-base`): resolve `path` to an absolute path, validate it with `is_library_dir`,
     persist it as `base_dir` in the [home config file](home-config.md) via `write_base_dir`, and
     print `base_dir=<path>`
-  - run (`show`): read the [home config file](home-config.md) via `read_config`; with a `key`,
-    print its bare value (`SystemExit` if unset); without one, print every stored key as
-    `key=value`
+  - run (any action): `--config`, if given, is written into `$STABLEMATE_CONFIG` before dispatch
+  - run (`show`): read the [home config file](home-config.md) via `read_config`; with `--profile`,
+    narrow it with `select_profile` and flatten to dotted leaves first; with a `key`,
+    print its bare value (`SystemExit` if unset, naming the profile when one was given); without
+    one, print every entry as `key=value`
 - code: `farrier/farrier/cli.py::_run_config`
+- verify: `farrier/tests/test_config_profiles_cli.py::test_the_config_flag_reads_the_file_it_names`,
+  `farrier/tests/test_config_profiles_cli.py::test_a_profile_is_shown_flattened_to_dotted_keys`,
+  `farrier/tests/test_config_profiles_cli.py::test_the_profile_replaces_the_top_level_rather_than_layering_over_it`,
+  `farrier/tests/test_config_profiles_cli.py::test_an_unknown_profile_exits_cleanly_and_lists_the_ones_there_are`
 
 The one command that reads and writes the [shared config file](../workhorse/concepts/config.md):
 workhorse is a library and ships no `config` of its own, so `agents.mk` and other scripts go
-through farrier for every shared setting. The nested `[power.<tier>.<backend>]` table has no
-writer subcommand — it is edited by hand.
+through farrier for every shared setting. The nested `[power.<tier>.<backend>]` and
+[`[profiles.<name>]`](../workhorse/concepts/config.md#profiles) tables have no writer subcommand
+— they are edited by hand, and read back with `show --profile`.
 
 ### source
 - usage: `farrier source <file> [--library DIR]`
