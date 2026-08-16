@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ostler import graph
+from ostler import graph, links
 from ostler.model import load
 
 from conftest import write
@@ -89,6 +89,48 @@ def test_graph_scopes_by_type_and_surface(repo: Path):
     concepts = graph.build(g, etype="concept")
     assert concepts["nodes"] and all(n["type"] == "concept" for n in concepts["nodes"])
     assert graph.build(g, surface="nope")["nodes"] == []
+
+
+def _count_resolvers(monkeypatch) -> list:
+    """Record every ``LinkResolver`` constructed, wherever it is constructed from."""
+    made: list = []
+    real_init = links.LinkResolver.__init__
+
+    def spy_init(self, graph_, *args, **kwargs) -> None:
+        real_init(self, graph_, *args, **kwargs)
+        made.append(self)
+
+    monkeypatch.setattr(links.LinkResolver, "__init__", spy_init)
+    return made
+
+
+def test_build_resolves_links_with_the_resolver_it_is_handed(repo: Path, monkeypatch):
+    """A caller that already has a resolver keeps its anchor memo.
+
+    The memo is per instance, so a build that ignored the argument and made its own would
+    re-read and re-parse every link target the caller had already parsed.
+    """
+    g = _repo(repo)
+    resolver = links.LinkResolver(g)
+    made = _count_resolvers(monkeypatch)
+
+    data = graph.build(g, resolver=resolver)
+
+    assert not made, f"build constructed {len(made)} resolvers of its own, want 0"
+    # The handed-in instance is the one that did the work: its memo now holds the targets.
+    assert resolver._anchors, "the handed-in resolver never resolved anything"
+    assert any(e["resolves"] for e in data["edges"])
+
+
+def test_build_owns_one_resolver_when_handed_none(repo: Path, monkeypatch):
+    """The standalone caller is unchanged — one resolver for the build's own lifetime."""
+    g = _repo(repo)
+    made = _count_resolvers(monkeypatch)
+
+    data = graph.build(g)
+
+    assert len(made) == 1, f"{len(made)} resolvers built for one build, want 1"
+    assert any(e["resolves"] for e in data["edges"])
 
 
 NESTED = """\

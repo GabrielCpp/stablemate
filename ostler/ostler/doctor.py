@@ -73,10 +73,15 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
     report = Report(org=graph.org_name, profile=graph.profile)
     f = report.findings
 
-    _check_ui(graph, f)
+    # One resolver, shared. The UI checks and the graph build resolve the same links against the
+    # same target files, and a resolver's anchor memo is per instance — two of them means every
+    # link target is read and parsed twice for one run's worth of answers.
+    resolver = links_mod.LinkResolver(graph)
+
+    _check_ui(graph, f, resolver)
     # One build, shared. Each of these needs the resolved node/edge dump, and on a large book a
     # rebuild costs more than every other check in this function put together.
-    ui_data = _ui_graph(graph)
+    ui_data = _ui_graph(graph, resolver)
     if ui_data is not None:
         _check_reachability(ui_data, f)
         _check_locators(ui_data, f)
@@ -728,14 +733,14 @@ def _rubber_stamp(call: checks.CheckCall) -> str:
     return ""
 
 
-def _ui_graph(graph: Graph) -> dict | None:
+def _ui_graph(graph: Graph, resolver: links_mod.LinkResolver) -> dict | None:
     """The resolved node/edge dump, or None when it will not build.
 
     A graph that cannot be assembled is already reported by the checks above, so the UI-profile
     checks stay silent rather than reporting the same breakage in a second vocabulary.
     """
     try:
-        return graph_mod.build(graph)
+        return graph_mod.build(graph, resolver=resolver)
     except (OSError, ValueError, RuntimeError, KeyError):
         return None
 
@@ -857,15 +862,23 @@ def _check_placement(node, rel: str, f: list[Finding]) -> None:
                 suggestion="- placement: width 60-100%, x 0-20%"))
 
 
-def _check_ui(graph: Graph, f: list[Finding]) -> None:
+def _check_ui(graph: Graph, f: list[Finding],
+              resolver: links_mod.LinkResolver | None = None) -> None:
+    """The UI-profile per-file and per-node checks.
+
+    A caller that also resolves the same links — ``doctor.run``, which builds the graph right
+    after — passes its ``resolver`` in, so the anchors of a link target are computed once for the
+    run instead of once per resolver. Left None, these checks own a resolver for their own
+    lifetime, which is what a standalone caller wants.
+    """
+    if resolver is None:
+        resolver = links_mod.LinkResolver(graph)
     froot = graph.doc_roots.get("features")
     if froot is not None and froot.is_dir():
         for path in sorted(froot.rglob("*.md")):
             if path.is_file() and path.name not in registry.RESERVED_FILES:
                 _check_ui_file(graph, path, f)
     _check_code_grounding(graph, f)
-
-    resolver = links_mod.LinkResolver(graph)
 
     # required-bullet checks stay per-node — they need the node's declared type + schema.
     for node in graph.ui_nodes:

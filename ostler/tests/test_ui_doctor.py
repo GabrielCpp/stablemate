@@ -6,9 +6,10 @@ file+line location. The convergence contract: scaffolding then fmt'ing a node cl
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from ostler import doctor, fmt, scaffold
+from ostler import doctor, fmt, links, scaffold
 from ostler.model import load
 
 from conftest import write
@@ -465,3 +466,175 @@ def test_code_and_tests_not_grounded_at_author_time(repo: Path):
     assert "dangling-link" not in codes(report)
     assert "unresolved-relation" not in codes(report)
     assert "unparsed-check" not in codes(report)
+
+
+# ---------------------------------------------------------------------------
+# one LinkResolver per doctor run (plan: increment 0 — "share one link resolver")
+# ---------------------------------------------------------------------------
+LINKED_SCREEN = """\
+---
+type: screen
+slug: changes-view
+title: Changes view
+---
+# Changes view
+
+- route: /changes
+- requires: none
+- params: none
+- entry: the app root
+
+Presents the [diff](../../concepts/diff.md) concept and a [gone](./gone.md) one.
+
+## Components
+
+### changes-file-row
+- selector: `.tree-file`
+- role: button
+- name: Row
+- extends: [tree-node](../components/design-system.md#tree-node)
+- keyboard: Enter activates
+
+## Interactions
+
+### click-file
+- on: [changes-file-row](#changes-file-row)
+- trigger: click
+- role: button
+- name: Row
+- keyboard: Enter
+- verify: visible(locator=".tree-file", text="marked")
+- does:
+  - state: mark row
+"""
+
+LINKED_DS = """\
+---
+type: feature
+slug: design-system
+title: DS
+---
+# DS
+
+## Components
+
+### tree-node
+- selector: `.tree-file`
+- role: button
+- name: Node
+- keyboard: Enter activates
+"""
+
+LINKED_DIFF = """\
+---
+type: concept
+slug: diff
+title: Diff
+---
+# Diff
+
+A unified diff. See [ghost](./diff.md#nope).
+"""
+
+# The whole report this book produces, serialized. `org` is dropped because it is the
+# tmp directory's name; everything else is fixed. Sharing one resolver changes what is
+# *computed* and nothing about what is *reported*, so this equality is the complete
+# correctness gate for that change — both findings below come from link resolution,
+# which is exactly the machinery being shared.
+LINKED_REPORT_JSON = """\
+{
+  "epics": [],
+  "errors": 2,
+  "findings": [
+    {
+      "code": "missing-anchor",
+      "epic": "",
+      "fixable": true,
+      "line": 8,
+      "message": "docs/features/groom/concepts/diff.md: link './diff.md#nope' — file exists but `#nope` heading not found",
+      "path": "docs/features/groom/concepts/diff.md",
+      "ref": "./diff.md#nope",
+      "severity": "error",
+      "suggestion": "",
+      "waived": false
+    },
+    {
+      "code": "dangling-link",
+      "epic": "",
+      "fixable": true,
+      "line": 13,
+      "message": "docs/features/groom/gui/screens/changes-view.md: link './gone.md' target file does not exist",
+      "path": "docs/features/groom/gui/screens/changes-view.md",
+      "ref": "./gone.md",
+      "severity": "error",
+      "suggestion": "",
+      "waived": false
+    }
+  ],
+  "profile": "exploration",
+  "warnings": 0
+}"""
+
+
+def _linked_book(root: Path) -> Path:
+    """A book whose only findings come from link resolution — the machinery being shared."""
+    write(root / "docs/features/groom/gui/screens/changes-view.md", LINKED_SCREEN)
+    write(root / "docs/features/groom/gui/components/design-system.md", LINKED_DS)
+    write(root / "docs/features/groom/concepts/diff.md", LINKED_DIFF)
+    return root
+
+
+def _watch_resolvers(monkeypatch) -> tuple[list, list]:
+    """Record every ``LinkResolver`` constructed and every anchor set computed.
+
+    Patched onto the class itself rather than onto one module's name for it, so the
+    count is of real constructions wherever they happen — which is the assertion.
+    """
+    made: list[links.LinkResolver] = []
+    computed: list[Path] = []
+    real_init = links.LinkResolver.__init__
+    real_compute = links.LinkResolver._compute_anchors
+
+    def spy_init(self, graph, *args, **kwargs) -> None:
+        real_init(self, graph, *args, **kwargs)
+        made.append(self)
+
+    def spy_compute(self, path: Path) -> set[str]:
+        computed.append(path)
+        return real_compute(self, path)
+
+    monkeypatch.setattr(links.LinkResolver, "__init__", spy_init)
+    monkeypatch.setattr(links.LinkResolver, "_compute_anchors", spy_compute)
+    return made, computed
+
+
+def test_a_doctor_run_constructs_exactly_one_link_resolver(repo: Path, monkeypatch):
+    """The graph build and the UI checks share one resolver.
+
+    Each resolver memoizes a target file's heading anchors per instance, so a second
+    instance re-reads and re-parses every link target — on a large book the single most
+    expensive thing doctor does, paid twice for one run's worth of answers.
+    """
+    _linked_book(repo)
+    made, _ = _watch_resolvers(monkeypatch)
+    doctor.run(load(repo))
+    assert len(made) == 1, f"{len(made)} LinkResolvers built in one doctor run, want 1"
+
+
+def test_a_doctor_run_computes_a_target_file_anchor_set_once(repo: Path, monkeypatch):
+    _linked_book(repo)
+    _, computed = _watch_resolvers(monkeypatch)
+    doctor.run(load(repo))
+    assert computed, "no anchor set computed at all — the fixture stopped exercising links"
+    twice = sorted({str(p) for p in computed if computed.count(p) > 1})
+    assert not twice, f"anchors recomputed for {twice}"
+
+
+def test_sharing_the_resolver_leaves_the_report_byte_identical(tmp_path: Path, monkeypatch):
+    made, _ = _watch_resolvers(monkeypatch)
+    report = doctor.run(load(_linked_book(tmp_path)))
+    payload = report.as_dict()
+    payload.pop("org")
+    assert json.dumps(payload, indent=2, sort_keys=True,
+                      ensure_ascii=False) == LINKED_REPORT_JSON
+    assert len(made) == 1, f"{len(made)} LinkResolvers built in one doctor run, want 1"
