@@ -1,0 +1,91 @@
+# What this repo declares to the check scripts its skills ship.
+#
+# Each of `check-skills`, `check-parsers`, `check-portability` and `check-no-env` is the
+# mechanical half of a base-library skill, and installs beside that skill's `SKILL.md`
+# under `scripts/`. So the script travels to every repo the skill is installed into, and
+# nothing repo-shaped may live inside it — the paths it scans and the sites it excuses
+# are this repo's, not the rule's.
+#
+# A table absent here means the check has nothing to scan and says so; only the
+# exemptions need a reason, because a reason is what a reviewer weighs.
+
+[check-skills]
+skills = "base-library/library/skills"
+prompts = "base-library/library/prompts"
+
+# ---------------------------------------------------------------------------------------
+
+[check-parsers]
+# History, not code: these modules declare themselves superseded and nothing imports or
+# runs them. Rewriting a frozen artifact to satisfy a check makes it a worse record.
+exclude = ["docs/plans"]
+
+[check-parsers.allow."ostler/ostler/qa/context.py"]
+lang-decl = """
+the last-resort line scan for a language *no* grammar reads — `.rb`, `.java`, `.rs`. Every \
+language `ostler.syntax` knows is parsed (`inventory.extents`) and never reaches this; \
+attributing a changed hunk to the nearest declaration-shaped line above it is worse than a \
+parse and better than reporting the diff touched nothing"""
+html-comment = """
+`<!--` here is one of five comment syntaxes (`//`, `#`, `/*`, `--`, `<!--`) in the generated-file \
+marker every code generator copies from Go. That is a sentence to find in a source file of any \
+language, not an HTML block in a markdown document"""
+
+[check-parsers.allow."workhorse/workhorse/gates.py"]
+key-line = """
+the `STATUS:` / `SCOPE:` gate header — our own two-line protocol, not a format with a grammar, so \
+regex is right. This module exists so there is exactly one copy of it: the pattern used to be \
+retyped on both sides of the same file (a workflow writes the header, groom's UI reads and \
+rewrites it), where a divergence is a gate that never opens"""
+
+[check-parsers.allow."groom/groom/gates.py"]
+md-heading = """
+locating the `## Questions from the agent` section of a gate file for a *preview* in the UI. \
+Best-effort by construction — it falls back to a truncated dump of the whole file — and it reads \
+a file this codebase wrote, not a document a user authored"""
+
+# ---------------------------------------------------------------------------------------
+
+[check-portability]
+# Tier 1 — shipped to PyPI, so a user's platform is not ours to choose. Each entry is the
+# package's import root; tests are excluded, which keeps this a source rule.
+tier1 = [
+  "core/stablemate_core",
+  "farrier/farrier",
+  "ostler/ostler",
+  "groom/groom",
+  "saddlebag/saddlebag",
+  "workhorse/workhorse",
+  "workflows/src/workhorse_workflows",
+]
+
+[check-portability.allow]
+"workhorse/workhorse/runner/process.py" = """
+tier 2 — spawns each agent-CLI turn in its own process group so a wedged turn can be killed as a \
+tree. Windows has no process groups to kill."""
+"workhorse/workhorse/stack.py" = """
+tier 2 — owns a long-lived dev stack across nodes; bringing one up detached and reaping it later \
+is killpg by construction."""
+"workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py" = """
+tier 2 — the walkthrough's browser/server stack, same lifecycle as workhorse.stack."""
+"ostler/ostler/qa/session.py" = """
+tier 2 — QA daemons are spawned detached and torn down by group; this is the module whose \
+Linux/macOS killpg difference the portability skill uses as its example."""
+"ostler/ostler/qa/drivers.py" = """
+tier 2 — runs one scenario per subprocess in its own group, so a scenario that wedges is killed \
+as a tree and cannot leave a browser or a server behind. Same lifecycle as session.py above, on \
+the executing side of it."""
+"ostler/ostler/qa/sandbox.py" = """
+tier 3 — the sandbox drives Linux containers, so its /tmp paths name locations *inside* the image \
+(the tmpfs home, the X socket dir) whatever the host is, and getuid/getgid map the invoking user \
+into `docker run --user` so bind-mounted artifacts stay deletable — a mapping only the Linux \
+docker daemon needs."""
+
+# ---------------------------------------------------------------------------------------
+
+[check-no-env]
+package = "workflows/src/workhorse_workflows"
+
+[check-no-env.allow]
+"kit/credentials.py" = """
+the single credential seam: a token must not become a checkpointed --param"""

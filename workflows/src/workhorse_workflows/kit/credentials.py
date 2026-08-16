@@ -10,7 +10,7 @@ telemetry, so routing a token through one would publish it. So a token stays in 
 process environment, is read here and nowhere else, and is passed to the client that
 needs it as an ordinary argument — never stored, never checkpointed, never logged.
 
-`scripts/check_no_env.py` enforces the rule and exempts this file by name, so the
+`make check-no-env` enforces the rule and exempts this file by name, so the
 exception is one auditable module rather than a habit.
 """
 from __future__ import annotations

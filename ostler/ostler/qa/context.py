@@ -20,7 +20,7 @@ from ostler.model import Graph, _parse_ui_nodes, load
 
 #: The last-resort declaration shape, for a language with no parser and no entry in
 #: `inventory` — and for a Python file `ast` could not read. Declared in
-#: `scripts/check_parsers.py` for that reason: it is the fallback, never the first answer.
+#: `.agent-checks.toml` for that reason: it is the fallback, never the first answer.
 _SYMBOL_RE = re.compile(
     r"^\s*(?:async\s+)?(?:def|class|function|func|fn)\s+([A-Za-z_$][\w$]*)"
     r"|^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*="

@@ -149,7 +149,10 @@ process that must outlive its node has to be started detached and owned explicit
 `os.environ`, `os.getenv` and their kin are **prohibited** anywhere under
 `src/workhorse_workflows/`. Everything a node or a state needs is an argument, or a field
 on the `Workflow` subclass (settable with `--param`). `make check-no-env` enforces it, and
-it runs as part of `make test`.
+it runs as part of `make test`. What that target runs is
+**[scripts/check_no_env.py](scripts/check_no_env.py)**, installed beside this skill so the
+rule travels with the guard; point it at another workflow repo by declaring that repo's
+package under `[check-no-env]` in its `.agent-checks.toml`.
 
 The reason is the checkpoint. A run's inputs are recorded there, so a resume days later on
 another machine replays what the run actually started with; a value read from the

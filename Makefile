@@ -94,21 +94,21 @@ check-public: ## Guard the public/private split (no private names; the base stan
 check-no-env: ## Guard the no-environment rule (a workflow's inputs are parameters)
 	# A value read from os.environ is in no checkpoint and no telemetry, so a resume
 	# silently takes a different one and nobody can tell what the run worked on.
-	uv run python scripts/check_no_env.py
+	uv run python base-library/library/skills/stablemate/workhorse-scripting/scripts/check_no_env.py
 
 .PHONY: check-parsers
 check-parsers: ## Guard the parse-don't-match rule (a format with a grammar gets its parser)
 	# A regex over a structured document is that format's parser rewritten without its
 	# cases, and it fails silently in both directions — a `//` inside a JSON string read
 	# as a comment, a link matched inside a fenced code block.
-	uv run python scripts/check_parsers.py
+	uv run python base-library/library/skills/stablemate/structured-parsing/scripts/check_parsers.py
 
 .PHONY: check-portability
 check-portability: ## Guard the portability tiers (a shipped package runs on the user's OS, not ours)
 	# The container is Ubuntu and CI is ubuntu-latest, so a POSIX-only call in a package
 	# someone pip-installs fails for the first person on a Mac or Windows and for nobody
 	# here. Process supervision genuinely needs those calls and declares itself.
-	uv run python scripts/check_portability.py
+	uv run python base-library/library/skills/stablemate/portability/scripts/check_portability.py
 
 .PHONY: check-library
 check-library: ## Guard the base library's front matter (a broken fence loses tags in silence)
@@ -126,7 +126,7 @@ check-skills: ## Guard the base library's writing doctrine (sprawl, dead disclos
 	# SKILL.md long enough that the agent attends to all of it only on some runs, a
 	# bundled reference nothing links to (installed everywhere, read nowhere), and a skill
 	# firing a prompt — inverting a human entry point into an autonomous one.
-	uv run python scripts/check_skills.py
+	uv run python base-library/library/skills/stablemate/agent-writing/scripts/check_skills.py
 
 .PHONY: vendor
 vendor: ## Copy core/stablemate_core into workhorse and farrier (run it with any core change)

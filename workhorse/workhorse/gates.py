@@ -8,8 +8,8 @@ each a keyword and a token:
     SCOPE: epic
 
 It is a line protocol, not a format with a grammar, so a regex is the right tool here (the
-`stablemate-structured-parsing` skill draws that boundary, and `scripts/check_parsers.py`
-declares this module as the reason). What was wrong was having **five** of them: the same
+`stablemate-structured-parsing` skill draws that boundary, and `.agent-checks.toml`
+declares this module with the reason). What was wrong was having **five** of them: the same
 pattern was retyped in `groom.gates`, in three workflow node modules, and once more in a
 superseded design artifact, each with its own reader and its own rewrite. Nothing made
 them agree; a fix to one — tolerating a tab, or a status the writer lower-cased — reached

@@ -94,11 +94,17 @@ nobody portably "fixes" it, and keep it out of the import path of anything in ti
 
 ## Declaring a site
 
-`scripts/check_portability.py` flags the non-portable APIs above inside tier-1 source. A
-genuine tier-2/3 site is declared in its `ALLOWED` map with the reason, and the reason is
-printed on any failure — same shape as `check_parsers.py`. If you are adding a POSIX call
-to a package a user pip-installs, the declaration is the moment to ask whether the code
-belongs there at all.
+**[scripts/check_portability.py](scripts/check_portability.py)** flags the non-portable APIs
+above inside tier-1 source, and installs here so it travels with the skill — a repo that
+takes this doctrine takes the guard that makes it hold.
+
+Which import roots are tier 1, and which sites earned their POSIX call, are the repo's to
+state in `[check-portability]` of its `.agent-checks.toml`; a repo that declares no tier 1
+publishes nothing and the check passes. A genuine tier-2/3 site goes in `allow` with its
+reason, and the reason is printed on any failure — same shape as `check_parsers.py`. The
+entry is checked for staleness too: once a module stops making the call, the exemption that
+excuses it is a finding. If you are adding a POSIX call to a package a user pip-installs, the
+declaration is the moment to ask whether the code belongs there at all.
 
 ## The boundary
 

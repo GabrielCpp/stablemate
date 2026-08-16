@@ -1,6 +1,6 @@
 ---
 name: structured-parsing
-description: "Parse, don't match — a format with a grammar (Markdown, YAML frontmatter, JSON/JSONC, Python, Go/TypeScript/PHP/Twig source, a unified diff) is read with its parser, never with a regex over its raw text. Covers the parser-per-format table, the ostler.markdown query API (sections, bullets, tables, links, frontmatter), where regex is still correct (log lines, slugifiers, identifier validators, our own line protocols), and how to declare an exemption in scripts/check_parsers.py. Load when writing or reviewing code that reads a document, extracts a symbol, scrapes an agent reply, or reaches for `re`."
+description: "Parse, don't match — a format with a grammar (Markdown, YAML frontmatter, JSON/JSONC, Python, Go/TypeScript/PHP/Twig source, a unified diff) is read with its parser, never with a regex over its raw text. Covers the parser-per-format table, the ostler.markdown query API (sections, bullets, tables, links, frontmatter), where regex is still correct (log lines, slugifiers, identifier validators, our own line protocols), and how to declare an exemption to its check_parsers guard. Load when writing or reviewing code that reads a document, extracts a symbol, scrapes an agent reply, or reaches for `re`."
 applyTo: "**/*.py"
 tags: [standards, backend]
 ---
@@ -139,23 +139,25 @@ of a YAML list. Reach for the library, including for something as small as a fen
 
 ## The check, and how to declare an exemption
 
-`make check-parsers` (in `make test`) walks every `.py` — tracked or not yet added — and
-flags regex pattern literals whose text encodes a known format's grammar, naming the parser
-to use instead. It is a pattern-shape denylist, not semantic analysis: it catches the shapes
-known to have gone wrong, and cannot prove an arbitrary regex is innocent.
+**[scripts/check_parsers.py](scripts/check_parsers.py)** — `make check-parsers` here, and
+installed beside this skill so it travels into any repo that takes the doctrine — walks every
+`.py` (tracked or not yet added) and flags regex pattern literals whose text encodes a known
+format's grammar, naming the parser to use instead. It is a pattern-shape denylist, not
+semantic analysis: it catches the shapes known to have gone wrong, and cannot prove an
+arbitrary regex is innocent. It needs no configuration to hold — only the exceptions do.
 
 When a format genuinely has no parser available — Make, a `.rb`/`.java`/`.rs` source no
-grammar in `ostler.syntax` reads — declare the site in `ALLOWED` in
-`scripts/check_parsers.py`, keyed by `(path, shape)`, with a reason that says *why this one
-is right*:
+grammar in `ostler.syntax` reads — declare the site under `[check-parsers.allow]` in the
+repo's `.agent-checks.toml`, keyed by path and then shape, with a reason that says *why this
+one is right*:
 
-```python
-    ("ostler/ostler/qa/context.py", "lang-decl"): (
-        "the last-resort line scan for a language *no* grammar reads — `.rb`, `.java`, `.rs`. "
-        "Every language `ostler.syntax` knows is parsed (`inventory.extents`) and never reaches "
-        "this; attributing a changed hunk to the nearest declaration-shaped line above it is "
-        "worse than a parse and better than reporting the diff touched nothing"
-    ),
+```toml
+[check-parsers.allow."ostler/ostler/qa/context.py"]
+lang-decl = """
+the last-resort line scan for a language *no* grammar reads — `.rb`, `.java`, `.rs`. Every \
+language `ostler.syntax` knows is parsed (`inventory.extents`) and never reaches this; \
+attributing a changed hunk to the nearest declaration-shaped line above it is worse than a \
+parse and better than reporting the diff touched nothing"""
 ```
 
 The reason is printed on every failure, so the next person sees the standard before adding

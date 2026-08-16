@@ -186,6 +186,13 @@ make check-skills        # sprawl budget, disclosure reachable, no skill driving
 make check-library       # the frontmatter fence still parses (a broken one loses tags silently)
 ```
 
+**[scripts/check_skills.py](scripts/check_skills.py)** is what the first one runs, and it
+installs here so it travels with the doctrine — a repo that takes this skill takes the guard
+that makes it hold. Run it directly (`python …/check_skills.py --root .`) in a repo with no
+such target; with no `.agent-checks.toml` it sweeps the whole tree for `SKILL.md`, which is
+the right default for a library repo. Reach for it when wiring this doctrine into a repo that
+has none, or when a skill's exemption needs declaring.
+
 Then read it top to bottom once and ask of every line: does this change behaviour versus the
 default? Anything that fails goes to its rung on the hierarchy, or goes away.
 
