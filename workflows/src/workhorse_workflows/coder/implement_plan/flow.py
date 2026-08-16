@@ -18,7 +18,11 @@ from workhorse_workflows.coder.implement_plan.execution import (
     verify_committed_task,
     verify_plan_task,
 )
-from workhorse_workflows.coder.implement_plan.inventory import prepare_plan, snapshot_plan
+from workhorse_workflows.coder.implement_plan.inventory import (
+    audit_plan_decomposition,
+    prepare_plan,
+    snapshot_plan,
+)
 from workhorse_workflows.coder.implement_plan.review import (
     check_review_turn,
     prepare_review_issues,
@@ -49,9 +53,10 @@ class ImplementPlan(Workflow):
     plan_path: str
 
     injects: ClassVar[tuple[str, ...]] = ("repo_dir",)
-    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("repair", "tests_rework")
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("repair", "tests_rework", "decomposition_rework")
     MAX_REPAIRS: ClassVar[int] = 2
     MAX_TESTS_REWORKS: ClassVar[int] = 2
+    MAX_DECOMPOSITION_REWORKS: ClassVar[int] = 2
     MAX_REVIEW_FIX_CYCLES: ClassVar[int] = 3
 
     def setup(self) -> PlanRunContext:
@@ -66,6 +71,10 @@ class ImplementPlan(Workflow):
         return self.labels() | counter_labels(params, "implement-plan", self.BUDGET_LABELS)
 
     def start(self) -> Continue:
+        return Continue(None, self.decompose, findings="", decomposition_rework=0)
+
+    def decompose(self, findings: str, decomposition_rework: int) -> Continue:
+        """Propose the packet DAG; on rework, the rejection rides in as context."""
         decomposition = self.agent(
             "prompts/decompose-implementation-plan.md",
             returns=PlanDecomposition,
@@ -75,12 +84,35 @@ class ImplementPlan(Workflow):
                 "plan_text": self.ctx.plan_text,
                 "plan_digest": self.ctx.plan_digest,
                 "repo_root": self.ctx.repo_root,
+                "findings": findings,
             },
         )
-        return Continue(decomposition, self.prepare, decomposition=decomposition)
+        return Continue(
+            decomposition,
+            self.prepare,
+            decomposition=decomposition,
+            decomposition_rework=decomposition_rework,
+        )
 
-    def prepare(self, decomposition: PlanDecomposition) -> Continue:
+    def prepare(
+        self, decomposition: PlanDecomposition, decomposition_rework: int = 0
+    ) -> Continue:
+        """Admit the proposal as checkpoint authority, or spend one rework on it.
+
+        The audit reports the same verdict `prepare_plan` would raise, so a proposal
+        that is one packet away from valid is corrected rather than ending the run.
+        Past the bound the validation raises as before: a subject over 72 characters
+        would only be refused again by the commit-msg hook, so it must stay fatal.
+        """
         self.call(check_planning_turn, self.ctx)
+        findings = self.call(audit_plan_decomposition, decomposition, self.ctx)
+        if findings and decomposition_rework < self.MAX_DECOMPOSITION_REWORKS:
+            return Continue(
+                findings,
+                self.decompose,
+                findings=findings,
+                decomposition_rework=decomposition_rework + 1,
+            )
         plan = self.call(prepare_plan, decomposition, self.ctx)
         self.call(project_plan_progress, self.ctx, plan, 0, [])
         return Continue(
