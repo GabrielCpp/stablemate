@@ -144,6 +144,56 @@ def test_an_unresolvable_resume_names_what_was_asked_for(capsys):
     assert "'nope'" in err and "runs" in err, err
 
 
+# ── --config points the whole process at one config file ────────────────────
+
+def _run_with_config(argv: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        launch = Path(tmp) / "repo"
+        launch.mkdir()
+        with patch.object(run_cmd, "run_pyflow", lambda invocation: 0), patch.object(
+            run_cmd.Path, "cwd", staticmethod(lambda: launch)
+        ):
+            _main(["run", *argv])
+
+
+def test_config_flag_is_written_back_to_the_environment(tmp_path):
+    """The config is re-read per node and by every subprocess, each through its own
+    `config_path()` — so the flag has to move the environment, not just this frame."""
+    named = tmp_path / "bench.toml"
+    named.write_text('default_cli = "claude"\n')
+
+    with patch.dict(os.environ, {}, clear=False):
+        _run_with_config(["--config", str(named)])
+        assert os.environ[run_cmd.CONFIG_PATH_ENV] == str(named.resolve())
+
+
+def test_config_flag_wins_over_the_environment(tmp_path):
+    named = tmp_path / "bench.toml"
+    named.write_text("")
+
+    with patch.dict(os.environ, {run_cmd.CONFIG_PATH_ENV: "/elsewhere.toml"}):
+        _run_with_config(["--config", str(named)])
+        assert os.environ[run_cmd.CONFIG_PATH_ENV] == str(named.resolve())
+
+
+def test_without_the_flag_discovery_is_left_alone(tmp_path):
+    """Stamping the *discovered* path would make it explicit — and an explicit path
+    suppresses the legacy per-tool merge, so a machine still on the old files would
+    silently lose them to a flag nobody passed."""
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop(run_cmd.CONFIG_PATH_ENV, None)
+        _run_with_config([])
+        assert run_cmd.CONFIG_PATH_ENV not in os.environ
+
+
+def test_a_config_that_is_not_there_fails_at_the_boundary(capsys):
+    """Read as an empty config instead, the typo costs a week of default models."""
+    with patch.dict(os.environ, {}, clear=False):
+        _run_with_config(["--config", "/no/such/config.toml"])
+    err = capsys.readouterr().err
+    assert "--config" in err and "/no/such/config.toml" in err, err
+
+
 if __name__ == "__main__":
     import sys
 

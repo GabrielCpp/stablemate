@@ -21,7 +21,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from workhorse import otel
-from workhorse._vendor.stablemate_core.config import resolve_default_cli
+from workhorse._vendor.stablemate_core.config import CONFIG_PATH_ENV, resolve_default_cli
 from workhorse.cli.params import load_params
 from workhorse.config_run import RunConfig
 # Bound under its historical private name, which is also what lets a test patch the
@@ -96,6 +96,16 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "native backend (cline/opencode) and give nodes an 'openrouter/<slug>' model.",
     )
     parser.add_argument(
+        "--config",
+        default=None,
+        metavar="PATH",
+        help="Read the shared stablemate config from this file instead of the "
+        "discovered one. Means what $STABLEMATE_CONFIG means: THIS file, entirely — "
+        "no merge with the machine's config, so it must itself carry library_dir / "
+        "base_dir / stablemate_dir if the run needs them. Overrides "
+        "$STABLEMATE_CONFIG, which in turn overrides $WORKHORSE_CONFIG.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Check the workflow without running it, and exit non-zero if anything "
@@ -141,6 +151,8 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
     flow = args.flow
+
+    _apply_config_path(getattr(args, "config", None))
 
     # The consuming repo is the directory workhorse is launched in — same <cwd> rule
     # as the runs-dir default below. Pin AGENT_REPO_DIR to the launch dir when the
@@ -203,6 +215,33 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         config=replace(RunConfig.from_env(os.environ), backend=backend),
         telemetry=otel.TelemetryHost(otel.OtelSettings.from_env(os.environ)),
     )
+
+
+def _apply_config_path(raw: str | None) -> None:
+    """Point the whole process at the config `--config` named, or leave discovery alone.
+
+    Written back into $STABLEMATE_CONFIG rather than carried on the invocation, exactly
+    as `--cli` is written back into $AGENT_CLI, and for the same reason: the config is
+    re-read per node and by every subprocess this run spawns, each through its own
+    `config_path()`. A flag that only reached the resolver here would name one file while
+    the per-node re-read named another — a divergence with no visible symptom.
+
+    Nothing is written back when the flag is absent: stamping the *discovered* path would
+    make it explicit, and an explicitly named path suppresses the legacy per-tool merge in
+    `load_config` — so a machine still on the pre-unification files would silently lose
+    them to a flag nobody passed.
+
+    A path that is not a file is refused here rather than read as an empty config. `run`
+    is the boundary where failing is safe, and the alternative is a week-long run on
+    default models because the file was named with a typo.
+    """
+    if not raw:
+        return
+    path = Path(raw).expanduser()
+    if not path.is_file():
+        print(f"error: --config {raw}: no such file", file=sys.stderr)
+        sys.exit(1)
+    os.environ[CONFIG_PATH_ENV] = str(path.resolve())
 
 
 def _resume_run_dir(
