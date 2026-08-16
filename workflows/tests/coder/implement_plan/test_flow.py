@@ -153,10 +153,42 @@ def test_out_of_scope_edit_fails_before_commit(
     plan = tmp_path / "plan.md"
     plan.write_text("# Scoped edit\n", encoding="utf-8")
     task = _task("scoped", "src/owned.txt")
-    agent = _Agent(repo, _decomposition(task), edits={"scoped": {"outside.txt": "no\n"}})
+    # An *existing* file: the case where two packets can collide, and the one the
+    # ownership check refuses. A file the turn creates is adopted instead.
+    agent = _Agent(repo, _decomposition(task), edits={"scoped": {"README.md": "no\n"}})
 
     with pytest.raises(WorkflowFailed, match="does not own"):
         drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
+
+
+def test_new_file_the_packet_did_not_declare_is_adopted_and_committed(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    git: Callable[..., subprocess.CompletedProcess],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The planning turn cannot foresee every file; a new one belongs to nobody else.
+
+    Without this the tests-first turn kills the run whenever the packet's declared
+    paths miss the home the repository's layout dictates for its test file.
+    """
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Undeclared companion file\n", encoding="utf-8")
+    task = _task("declared", "src/owned.txt")
+    agent = _Agent(
+        repo,
+        _decomposition(task),
+        edits={"declared": {"src/owned.txt": "declared\n", "tests/test_owned.py": "x = 1\n"}},
+    )
+
+    result = drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
+
+    assert result.status == "complete"
+    committed = git(repo, "show", "--name-only", "--format=", "HEAD").stdout.split()
+    assert sorted(committed) == ["src/owned.txt", "tests/test_owned.py"]
+    assert git(repo, "status", "--porcelain").stdout == ""
 
 
 def test_blocked_agent_result_stops_before_verification(
@@ -467,7 +499,9 @@ def test_review_fix_may_not_edit_outside_issue_ownership(
         _decomposition(task),
         edits={
             "initial": {"src/value.txt": "initial\n"},
-            "review-1-scoped": {"outside.txt": "not owned\n"},
+            # A tracked file: the collision case ownership exists to refuse. A file the
+            # fix turn creates belonged to nobody, and is adopted instead.
+            "review-1-scoped": {"README.md": "not owned\n"},
         },
         reviews=[_review(issue)],
     )
