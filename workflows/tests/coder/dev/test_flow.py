@@ -214,8 +214,9 @@ class _Agent:
     so the tests turn can write a real test file into the real worktree the gate diffs,
     `impure` makes the first N tests turns leave a production file behind, `make_green` is
     the marker the code turn writes — the seam a real red suite checks for —
-    `regression_only` makes every plan write carry the planner's escape marker, and
-    `qa_only` makes every plan's scenario list entirely QA-only.
+    `regression_only` makes every plan write carry the planner's escape marker, `qa_only`
+    makes every plan's scenario list entirely QA-only, and `tests_blocked` makes every tests
+    turn report `blocked` instead of `done`.
     """
 
     def __init__(
@@ -235,6 +236,7 @@ class _Agent:
         impure: int = 0,
         regression_only: bool = False,
         qa_only: bool = False,
+        tests_blocked: bool = False,
     ) -> None:
         self.docs = docs
         self.services = services if services is not None else SERVICES
@@ -250,6 +252,7 @@ class _Agent:
         self.impure = impure
         self.regression_only = regression_only
         self.qa_only = qa_only
+        self.tests_blocked = tests_blocked
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         #: Plan turns of either prompt, so `blocked` and `bad_paths` count the *writes*
@@ -353,6 +356,8 @@ class _Agent:
         The `impure` laps also leave a production file behind, and the rework that follows
         removes it: the same repair the prompt's rework section demands.
         """
+        if self.tests_blocked:
+            return {"status": "blocked", "notes": "every scenario in the plan is QA-only"}
         repo = Path(data["plan_file"]).stem.removeprefix("plan-")
         path = self.repos.get(repo)
         if path is not None:
@@ -1063,6 +1068,47 @@ def test_a_wholly_qa_only_plan_takes_the_classic_single_turn(
     assert result.status == "ready", result
     assert agent.counts()["implement-plan"] == 2, agent.counts()
     assert agent.counts()["implement-plan-tests"] == 0, agent.counts()
+
+
+def test_a_blocked_tests_turn_that_wrote_nothing_skips_its_remaining_reworks(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`no_tests` over an empty diff from a turn that said `blocked` is not worth re-asking.
+
+    The turn stated it had nothing it was permitted to write and left the worktree
+    untouched, which is a refusal rather than a botched attempt: two more laps at the
+    authoring tier buy two more identical refusals. One turn per layer, then the code turn.
+    """
+    agent = _Agent(docs, tests_blocked=True)
+
+    result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["implement-plan-tests"] == 2, agent.counts()
+    assert agent.counts()["implement-plan-code"] == 2, agent.counts()
+
+
+def test_a_blocked_tests_turn_that_wrote_files_is_still_reworked(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Both halves of the backstop are required: a partial attempt is worth another lap.
+
+    `impure=99` makes every tests turn leave a production file behind, so the diff is never
+    empty and the verdict is `impure` rather than `no_tests` — the turn tried and got it
+    wrong, which is exactly what the rework budget is for.
+    """
+    agent = _Agent(docs, repos=workspace, impure=99)
+
+    result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["implement-plan-tests"] == 6, agent.counts()
 
 
 def test_a_docs_layer_never_enters_the_split(

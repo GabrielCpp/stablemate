@@ -500,12 +500,13 @@ class Dev(Workflow):
 
         The first half of the split. The prompt is told the exact command the gate will run
         and, on a rework lap, why the gate rejected the previous attempt. Its own `done` is
-        not branched on: the red gate downstream is the verdict.
+        not branched on: the red gate downstream is the verdict. Its `blocked` *is* carried
+        forward, and only as a second condition — see `red_gate`.
         """
         layer = self._layer
         arm = self.output(arm_red_gate)
         impl = self.output(resolve_impl_context)
-        self.agent(
+        tests = self.agent(
             "prompts/implement-plan-tests.md",
             returns=TestsResult,
             # high: translating acceptance criteria into tests that can genuinely fail is
@@ -524,9 +525,17 @@ class Dev(Workflow):
                 "gate_feedback": gate_feedback,
             },
         )
-        return Continue(None, self.red_gate, index=index, tests_rework=tests_rework)
+        return Continue(
+            None,
+            self.red_gate,
+            index=index,
+            tests_rework=tests_rework,
+            tests_blocked=tests.status == "blocked",
+        )
 
-    def red_gate(self, index: int, tests_rework: int = 0) -> Continue:
+    def red_gate(
+        self, index: int, tests_rework: int = 0, tests_blocked: bool = False
+    ) -> Continue:
         """Hold the tests turn to its contract: a pure diff, observed genuinely red.
 
         Deterministic, like the lint gate, and fail-open the same way: `red` and `skipped`
@@ -534,6 +543,15 @@ class Dev(Workflow):
         `unattributed_red` loop back to the tests turn with the reason as its brief — until
         the budget is spent, at which point the layer proceeds anyway and the reviewer's
         coverage audit is what catches it.
+
+        One rejection is not reworked: a `no_tests` over an *empty* diff from a turn that
+        itself reported `blocked`. That conjunction is the turn saying "there is nothing
+        here I am permitted to write", and it is right often enough — a plan whose whole
+        scenario list is QA-only, a layer whose acceptance is a live browser — that
+        re-asking it twice more only buys two identical refusals at high power. Both
+        conditions are required: a `blocked` turn that *did* write files is a partial
+        attempt worth reworking, and an empty diff from a turn claiming `done` is a turn
+        that did nothing and should be asked again.
         """
         layer = self._layer
         arm = self.output(arm_red_gate)
@@ -547,7 +565,15 @@ class Dev(Workflow):
             arm.signatures,
         )
         rejected = outcome.status in {"all_green", "impure", "no_tests", "unattributed_red"}
-        if rejected and tests_rework < self.max_tests_reworks:
+        futile = (
+            outcome.status == "no_tests" and not outcome.changed_files and tests_blocked
+        )
+        if futile:
+            self.logger.warning(
+                "tests turn reported blocked and wrote nothing — skipping the remaining "
+                "rework(s) and proceeding to the code turn"
+            )
+        if rejected and not futile and tests_rework < self.max_tests_reworks:
             return Continue(
                 outcome,
                 self.implement_tests,
@@ -555,7 +581,7 @@ class Dev(Workflow):
                 tests_rework=tests_rework + 1,
                 gate_feedback=f"[{outcome.status}] {outcome.reason}",
             )
-        if rejected:
+        if rejected and not futile:
             self.logger.warning(
                 "red gate still %s after %d rework(s) — proceeding fail-open",
                 outcome.status,
