@@ -45,9 +45,15 @@ prompts:
   - agent-library/update-skill-from-conversation
 
 # The root AGENTS.md is generated, not hand-written: house rules first, then the
-# two procedures every change lands under. Those two are library prompts, so the
-# text is written once and every repo that wants it always-loaded aggregates the
-# same file instead of maintaining its own copy of the cadence.
+# one procedure every change lands under. It is a library prompt, so the text is
+# written once and every repo that wants it always-loaded aggregates the same file
+# instead of maintaining its own copy of the cadence.
+#
+# Only `commit` is aggregated. `reload-runs` and `push-recovery` are branches the
+# commit procedure names — a live run holding the code you just fixed, a transport
+# that hung — and inlining a branch most turns never take spends every turn's
+# context on it. They stay `/stablemate-*` commands, reachable by name and by path
+# under `.claude/commands/`.
 #
 # The aggregated text lands in AGENTS.md — the name every harness reads — and
 # CLAUDE.md is generated beside it as the `@AGENTS.md` pointer. `includeReadme:
@@ -58,7 +64,6 @@ localInstructions:
       - stablemate-repo
     prompts:
       - stablemate-commit
-      - stablemate-reload-runs
     paths:
       - "."
     includeReadme: false

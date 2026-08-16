@@ -107,35 +107,13 @@ is information: fetch, rebase onto the new tip, re-run the gate, push again.
 `--force` onto a shared branch discards whatever moved it, which in a repo
 several agents push to is somebody else's committed work.
 
-### When an SSH push hangs instead of failing
-
-An `ssh://` or `git@` remote can block forever: a passphrase prompt with no
-terminal to answer it, an unknown host key waiting on a `yes`, an agent socket
-not forwarded into the container. Make it fail in seconds instead:
-
-```bash
-GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new' \
-  timeout 60 git push
-```
-
-When that errors out, push over HTTPS with a GitHub token:
-
-```bash
-gh auth setup-git && timeout 60 git push          # preferred: gh owns the credential
-```
-
-Without `gh`, pass the token to that one push and let it disappear:
-
-```bash
-timeout 60 git push "https://x-access-token:${GITHUB_TOKEN}@github.com/<org>/<repo>.git" HEAD
-```
-
-**Never persist that URL.** `git remote set-url` with a token in it writes the
-secret into `.git/config`, where it survives the session and shows up in any
-diagnostic that dumps the remote. Do not echo the token, and never paste a push
-command containing one into a commit message, an issue, or a PR body. If no token
-is available, say so and leave the commit local — an unpushed commit the user
-knows about is recoverable; a pushed secret is not.
+**A push that hangs is not a push that failed.** An `ssh://` remote blocks forever
+on a passphrase prompt or an unknown host key, so bound it —
+`GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes' timeout 60 git push`
+— and when it errors out, recover over HTTPS. That ladder, down to leaving the
+commit local and saying so, is the `push-recovery` command. Whichever transport
+you reach for, a token belongs in the one push that uses it and never in
+`.git/config`, a commit message or a PR body.
 
 ## 8. If the change touches code a live run is holding
 

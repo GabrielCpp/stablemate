@@ -219,103 +219,16 @@ is information: fetch, rebase onto the new tip, re-run the gate, push again.
 `--force` onto a shared branch discards whatever moved it, which in a repo
 several agents push to is somebody else's committed work.
 
-### When an SSH push hangs instead of failing
-
-An `ssh://` or `git@` remote can block forever: a passphrase prompt with no
-terminal to answer it, an unknown host key waiting on a `yes`, an agent socket
-not forwarded into the container. Make it fail in seconds instead:
-
-```bash
-GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new' \
-  timeout 60 git push
-```
-
-When that errors out, push over HTTPS with a GitHub token:
-
-```bash
-gh auth setup-git && timeout 60 git push          # preferred: gh owns the credential
-```
-
-Without `gh`, pass the token to that one push and let it disappear:
-
-```bash
-timeout 60 git push "https://x-access-token:${GITHUB_TOKEN}@github.com/<org>/<repo>.git" HEAD
-```
-
-**Never persist that URL.** `git remote set-url` with a token in it writes the
-secret into `.git/config`, where it survives the session and shows up in any
-diagnostic that dumps the remote. Do not echo the token, and never paste a push
-command containing one into a commit message, an issue, or a PR body. If no token
-is available, say so and leave the commit local — an unpushed commit the user
-knows about is recoverable; a pushed secret is not.
+**A push that hangs is not a push that failed.** An `ssh://` remote blocks forever
+on a passphrase prompt or an unknown host key, so bound it —
+`GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes' timeout 60 git push`
+— and when it errors out, recover over HTTPS. That ladder, down to leaving the
+commit local and saying so, is the `push-recovery` command. Whichever transport
+you reach for, a token belongs in the one push that uses it and never in
+`.git/config`, a commit message or a PR body.
 
 ## 8. If the change touches code a live run is holding
 
 A push does not reach a run that is already going. If you changed anything under
 `workflows/` or `workhorse/` and a run is in flight, the commit is not the last
 step — reload each run that holds the old copy. See the `reload-runs` command.
-
----
-
-# Reload the runs already holding the old code
-
-A push does not reach a run that is already going. Its process imported the
-workflow modules when it started, and a Python process does not notice that a
-file on disk changed — so a live run keeps spending real money executing the
-exact code you just fixed, and keeps doing it for however many hours or days it
-has left.
-
-
-## 1. Find the live runs
-
-```bash
-.venv/bin/groom status                        # which runs are live, and where
-workhorse-<name> control status --run <id>    # is this process really serving that run dir
-```
-
-## 2. Check the run resolves your source tree, not a wheel
-
-This is the way a reload silently reports success over code it did not load. A
-reload replaces the entry package plus every top-level package installed from a
-source tree; a wheel in `site-packages` is deliberately left alone.
-
-```bash
-<run's venv>/bin/python -c "import workhorse_workflows as w; print(w.__file__)"
-```
-
-If that prints a `site-packages` path, reloading will change nothing — reinstall
-editable, or restart the run knowingly.
-
-## 3. Reload
-
-```bash
-workhorse-<name> control reload --run <id> --at-boundary
-```
-
-This is a message on the run's control socket, not a restart. The run unwinds to
-the outermost frame, re-imports the workflow package, and re-enters from the
-checkpoint it just wrote — **same process, same pid, same root span, same run
-dir, same wall-clock budget.** Restarting instead costs the in-flight turn and
-opens a second run generation that groom reads as a failure.
-
-Two choices to make deliberately:
-
-- **`--at-boundary`, or cut the turn.** The default cuts the streaming turn
-  within about a second, which is right when that turn *is* the waste you are
-  stopping. Pass `--at-boundary` when the turn is doing legitimate work your fix
-  does not change — throwing it away buys nothing.
-- **`--core` only for the engine.** A plain reload replaces the workflow package
-  and anything else editable. `workhorse` itself is on the stack doing the
-  reload, so changing *it* needs `--core`, which costs a process image. Do not
-  reach for it for a `workflows/` change.
-
-## 4. Confirm it landed
-
-An `--at-boundary` request is acknowledged (`{'ok': True, 'cut': False}`) and
-then **held** until the current state finishes — so the acknowledgement is not
-the reload. Watch the run's `events.jsonl` for the re-entry, and check the pid is
-unchanged. Do not block on a long poll: if the turn is still streaming, say the
-reload is pending and move on.
-
-Full mechanics — what closes, what the spans are stamped with, what a `--core`
-reload re-execs — are in stablemate's `workhorse/docs/RELOAD.md`.

@@ -4,7 +4,6 @@ Edits here are overwritten by `make agent-install` (or: farrier --repo .).
 Edit the library source(s) instead, then regenerate:
   library/skills/stablemate/stablemate-repo/SKILL.md
   library/prompts/stablemate/commit.md
-  library/prompts/stablemate/reload-runs.md
 Editable paths on this machine: `farrier source CLAUDE.md`
 Skill→path mapping: agents.yml → localInstructions
 -->
