@@ -25,8 +25,9 @@ Your CWD is the repo containing the service above. The service root is `{{ workh
 What each rejection means:
 
 - `all_green` — the suite passed with the behavior still unimplemented. The tests exercise nothing missing: they assert on existing behavior, mock away the thing under test, or never call the new code path. Rewrite them to genuinely depend on the missing behavior.
-- `impure` — the diff touched files that are not test files. Revert every non-test change (the listed files) and express the setup inside test files instead. If a non-test edit is truly unavoidable (see Rules), it belongs to the code turn, not this one.
-- `no_tests` — the worktree did not change. Write the tests; if something genuinely blocks you, return `status: "blocked"` naming it instead of doing nothing.
+- `impure` — the diff contained **production code**: a source, markup, style, SQL or terraform file that is not test code. Revert every listed file and express the setup inside test files instead. Fixtures, data files, docs and config are *not* impure — only code the code turn owes is.
+- `no_tests` — you wrote no test file. Write the tests; if something genuinely blocks you, return `status: "blocked"` naming it instead of doing nothing.
+- `unattributed_red` — the suite failed, but no reported failure named any file you wrote: the red belongs to something already broken, not to your tests. Make the scenarios actually run (a skipped, uncollected or never-imported test proves nothing) and confirm your own test names appear in the failure output.
 {% endif %}
 
 ## Step 1 — Read and Prepare
@@ -55,13 +56,13 @@ For each Test Scenario in scope:
 
 Run the test command above (or, if it is blank, the touched area's test command from the layer's instruction files). **Confirm the new tests fail and the failures are the meaningful kind** — an assertion about the missing behavior, not a setup error. Pre-existing tests must still pass; if your additions broke an unrelated test's collection or build, fix the test code until only the intended failures remain.
 
-A deterministic gate re-runs this command after your turn and inspects the diff. It loops the work back to you when the suite exits green, when the diff contains non-test files, or when nothing changed — so the fastest path through is a pure, genuinely-red diff.
+A deterministic gate re-runs this command after your turn and inspects the diff. It loops the work back to you when the suite exits green, when the diff contains production code, when no test file was written, or when the failures it sees name none of your files — so the fastest path through is a pure diff that is red **on your tests**.
 
 ## Rules
 
 **Never do this:**
 
-- Create or edit **any production file** — no source, no config, no build files, no generated code. The gate judges purity from the diff; a single non-test file loops the whole turn back.
+- Create or edit **any production code file** — no source, no markup, no styles, no SQL, no terraform, no generated code. Fixtures, test data and test-local config are yours; the implementation is the code turn's.
 - Write a test that passes against the current code. Red is the deliverable.
 - Stub or mock the very behavior under test so the test can pass without it.
 - Delete or weaken existing tests to make room.

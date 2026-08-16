@@ -276,14 +276,14 @@ def test_impure_tests_turn_is_reworked_even_without_a_test_command(
     plan = tmp_path / "plan.md"
     plan.write_text("# Purity\n", encoding="utf-8")
     task = _task("value", "src/value.txt")
-    task["paths"].extend(["tests/test_value.py", "src/stray.txt"])
+    task["paths"].extend(["tests/test_value.py", "src/stray.py"])
     agent = _Agent(
         repo,
         _decomposition(task),
         test_edits={
             "value": {
                 "tests/test_value.py": "def test_value(): assert False\n",
-                "src/stray.txt": "not a test\n",
+                "src/stray.py": "def stray(): return 1\n",
             }
         },
         edits={"value": {"src/value.txt": "value\n"}},
@@ -295,7 +295,42 @@ def test_impure_tests_turn_is_reworked_even_without_a_test_command(
     assert agent.count("implement-plan-task-tests") == 1 + ImplementPlan.MAX_TESTS_REWORKS
     feedback = [args["gate_feedback"] for args in agent.args_for("implement-plan-task-tests")]
     assert "impure" in feedback[1]
-    assert "src/stray.txt" in feedback[1]
+    assert "src/stray.py" in feedback[1]
+
+
+def test_a_fixture_beside_the_tests_is_not_impure(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Purity forbids production code, not everything that is not a test.
+
+    A tests turn that writes a fixture, a golden file or a note alongside its scenarios has
+    deferred the implementation, which is the whole point of the split — charging it a
+    rework lap for the fixture buys nothing and costs a turn.
+    """
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Fixtures\n", encoding="utf-8")
+    task = _task("value", "src/value.txt")
+    task["paths"].extend(["tests/test_value.py", "fixtures/seed.json"])
+    agent = _Agent(
+        repo,
+        _decomposition(task),
+        test_edits={
+            "value": {
+                "tests/test_value.py": "def test_value(): assert False\n",
+                "fixtures/seed.json": '{"seed": []}\n',
+            }
+        },
+        edits={"value": {"src/value.txt": "value\n"}},
+    )
+
+    result = drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
+
+    assert result.status == "complete"
+    assert agent.count("implement-plan-task-tests") == 1
 
 
 def test_regression_only_plan_keeps_the_single_implementation_turn(

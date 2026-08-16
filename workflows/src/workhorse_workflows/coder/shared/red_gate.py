@@ -8,10 +8,21 @@ tooling between them that makes the split *enforced* rather than requested. Two 
   paths (so the gate can later diff what that turn alone touched), resolves the test command
   the gate will run, resolves the test-file signatures purity is judged by, and reads the
   plan for the planner's `Test scenarios: regression-only` escape.
-* `run_red_gate` runs **after** the tests turn. It checks the turn's diff is pure (test
-  files only, by signature), then runs the suite and demands a genuine failure: the tests
-  must be red *because the behavior is missing* before the code turn is allowed to start.
-  A green suite, an impure diff or an empty diff routes back to the tests turn.
+* `run_red_gate` runs **after** the tests turn. It checks the turn's diff is pure — no
+  production *code* — then runs the suite and demands a genuine failure **attributable to
+  the new tests**: they must be red *because the behavior is missing* before the code turn
+  is allowed to start. A green suite, an impure diff, an empty diff or a red the new tests
+  did not cause routes back to the tests turn.
+
+Purity is judged against production code, not against everything that is not a test.
+A tests turn legitimately touches fixtures, golden files, a `package.json` script, a
+`.gitignore`, a note in the spec dir — none of those are the implementation the split
+exists to defer, so only a changed file whose suffix is in `CODE_SUFFIXES` and whose path
+is not test code makes the diff impure. The agent CLI's own state (`.opencode/`,
+`.claude/`, `.agents/` and friends) is filtered out of the diff entirely rather than
+merely permitted: a harness that rewrites its session file every turn would otherwise be
+charged to the agent as an impure change, and — worse — would make a turn that wrote no
+tests at all look like it had produced a diff.
 
 Command resolution is the lint gate's convention-plus-override, applied to `test`: an
 explicit `agents.yml` entry (`test:` or `workflow.test:`, keyed by service name or cwd
@@ -56,6 +67,37 @@ DEFAULT_TEST_SIGNATURES = (
 #: fixtures, helpers, golden files all legitimately live beside the tests.
 TEST_DIR_SEGMENTS = {"tests", "__tests__", "test", "spec"}
 
+#: Suffixes that carry an implementation. Only a changed file with one of these — and not
+#: recognised as test code — makes the tests turn's diff impure; everything else (docs,
+#: fixtures, JSON/YAML data, lockfiles, dotfiles) is a legitimate thing for that turn to
+#: touch. Markup, styles, SQL and terraform are deliberately *in*: for a story whose
+#: deliverable is a stylesheet or a migration, that file is the production change.
+CODE_SUFFIXES = {
+    ".c", ".cc", ".cjs", ".cpp", ".cs", ".css", ".dart", ".ex", ".exs", ".go", ".h",
+    ".hpp", ".htm", ".html", ".java", ".js", ".jsx", ".kt", ".kts", ".less", ".m",
+    ".mjs", ".mm", ".php", ".py", ".rb", ".rs", ".sass", ".scala", ".scss", ".sql",
+    ".svelte", ".swift", ".tf", ".ts", ".tsx", ".twig", ".vue",
+}
+
+#: Top-level directory segments owned by an agent CLI or by workhorse itself. Anything
+#: under one of these is the harness's own bookkeeping — opencode rewrites a session JSON
+#: on every turn, workhorse writes run artifacts under `.agents/runs` — and is subtracted
+#: from the diff before the gate judges it. Observed in the wild: a tracked
+#: `.opencode/opencode-loop/ses_*.json` failed the purity check on every lap of every
+#: packet, so the gate could never pass on that backend.
+HARNESS_PATH_SEGMENTS = {
+    ".agents", ".aider", ".claude", ".codex", ".copilot", ".crush", ".cursor",
+    ".gemini", ".opencode", ".workhorse",
+}
+
+#: Substrings that mark a line of suite output as reporting a failure. Used to attribute
+#: the red: a non-zero exit is only the *new* tests' red if one of them is named on such a
+#: line. Deliberately broad across pytest, go test, jest/vitest, dart and TAP.
+FAILURE_LINE_MARKERS = ("FAIL", "ERROR", "✕", "✗", "×", "not ok", "panic:")
+
+#: A path-ish token — anything with a dotted extension — inside a failure line.
+FAILURE_PATH_TOKEN = re.compile(r"[\w./\\-]+\.[A-Za-z]\w*")
+
 #: Seconds the red run gets before the gate stands aside rather than blocking the layer.
 RED_GATE_TIMEOUT = 600
 
@@ -76,6 +118,9 @@ def _worktree_changes(cwd: Path) -> list[str] | None:
     A rename is charged to its new path. `-uall` lists untracked files individually —
     without it a brand-new `tests/` directory collapses to one `tests/` entry, which the
     purity check would misjudge as a non-test path.
+
+    Harness-owned paths are dropped here, so the baseline and the post-turn snapshot are
+    both blind to them and no caller has to remember the exclusion.
     """
     try:
         result = subprocess.run(
@@ -96,7 +141,10 @@ def _worktree_changes(cwd: Path) -> list[str] | None:
         path = line[3:]
         if " -> " in path:
             path = path.split(" -> ", 1)[1]
-        changes.append(path.strip().strip('"'))
+        cleaned = path.strip().strip('"')
+        if _is_harness_path(cleaned):
+            continue
+        changes.append(cleaned)
     return changes
 
 
@@ -155,6 +203,44 @@ def _is_test_path(path: str, signatures: list[str]) -> bool:
         return True
     name = parts[-1] if parts else path
     return any(fnmatch.fnmatch(name, pattern) for pattern in signatures)
+
+
+def _is_harness_path(path: str) -> bool:
+    """Whether a changed path belongs to an agent CLI's or workhorse's own bookkeeping."""
+    return any(part in HARNESS_PATH_SEGMENTS for part in Path(path).parts)
+
+
+def _is_production_code(path: str, signatures: list[str]) -> bool:
+    """Whether a changed path is implementation the tests turn had no business writing.
+
+    Purity forbids *code*, not everything that is not a test: a fixture, a golden file, a
+    `package.json`, a plan note are all fair game for a tests turn, and rejecting them
+    spends a rework lap on nothing. So a path is impure only when its suffix carries an
+    implementation and it is not itself test code.
+    """
+    if _is_test_path(path, signatures):
+        return False
+    return Path(path).suffix.lower() in CODE_SUFFIXES
+
+
+def _failure_lines(output: str) -> list[str]:
+    """The lines of suite output that report a failure, by any of the stacks' spellings."""
+    return [line for line in output.splitlines() if any(m in line for m in FAILURE_LINE_MARKERS)]
+
+
+def _attributed_failures(lines: list[str], test_files: list[str]) -> list[str]:
+    """Which of `test_files` are named on a failure line.
+
+    Matched on basename, because the suite reports paths relative to whatever directory it
+    ran in while the gate holds paths relative to the repo root. Two same-named test files
+    in different packages can therefore cross-attribute — a false *pass* of the gate, which
+    is the direction this module errs in everywhere else too.
+    """
+    named: set[str] = set()
+    for line in lines:
+        for token in FAILURE_PATH_TOKEN.findall(line):
+            named.add(Path(token).name)
+    return [path for path in test_files if Path(path).name in named]
 
 
 def _plans_declare_regression_only(spec_abs: Path | None, plan_file: str) -> bool:
@@ -247,12 +333,21 @@ def run_red_gate(
 ) -> RedGateOutcome:
     """Judge the tests turn: a pure, genuinely red diff proceeds; anything else loops back.
 
-    Purity first, and unconditionally — it needs only git. Then the suite: a non-zero exit
-    is the red observation the code turn is entitled to trust; exit 0 means the new tests
-    exercise nothing that is missing, which is the exact failure mode the split exists to
-    catch. No test command resolved, or a command that never returns, is `skipped` — the
-    gate stands aside rather than falsely failing a service that has not adopted it, the
-    same fail-open contract as the lint gate.
+    Purity first, and unconditionally — it needs only git. It forbids production *code*
+    outside the test signatures, not every non-test path, and it never sees the harness's
+    own files (`_worktree_changes` drops them).
+
+    Then the suite. A non-zero exit is necessary but not sufficient: the failure has to be
+    *attributable* to the files this turn wrote, or the gate is satisfied by a suite that
+    was already broken for unrelated reasons — observed in the wild, where a pre-existing
+    failure in another package supplied the red for a packet whose own tests were never
+    run. Exit 0 means the new tests exercise nothing missing, which is the exact failure
+    mode the split exists to catch.
+
+    No test command resolved, or a command that never returns, is `skipped` — the gate
+    stands aside rather than falsely failing a service that has not adopted it, the same
+    fail-open contract as the lint gate. Output the marker scan cannot read at all is the
+    same kind of silence, and takes the same arm: `red`, with a warning.
     """
     if not cwd:
         return RedGateOutcome(status="skipped", reason="no cwd given")
@@ -272,16 +367,17 @@ def run_red_gate(
     known = set(baseline or [])
     changed = [path for path in current if path not in known]
     patterns = list(signatures or DEFAULT_TEST_SIGNATURES)
-    non_test = [path for path in changed if not _is_test_path(path, patterns)]
+    non_test = [path for path in changed if _is_production_code(path, patterns)]
     if non_test:
-        logger.warning("tests turn touched non-test files: %s", ", ".join(non_test[:10]))
+        logger.warning("tests turn touched production code: %s", ", ".join(non_test[:10]))
         return RedGateOutcome(
             status="impure",
             command=test_command,
             changed_files=changed,
             non_test_files=non_test,
-            reason="the tests turn changed non-test files: " + ", ".join(non_test[:10]),
+            reason="the tests turn changed production code: " + ", ".join(non_test[:10]),
         )
+    test_files = [path for path in changed if _is_test_path(path, patterns)]
 
     if not test_command:
         return RedGateOutcome(
@@ -289,11 +385,12 @@ def run_red_gate(
             changed_files=changed,
             reason=f"no test command resolved for {service_dir} — red run skipped",
         )
-    if not changed:
+    if not test_files:
         return RedGateOutcome(
             status="no_tests",
             command=test_command,
-            reason="the tests turn changed no files — there is nothing to observe red",
+            changed_files=changed,
+            reason="the tests turn wrote no test files — there is nothing to observe red",
         )
 
     try:
@@ -348,11 +445,45 @@ def run_red_gate(
             reason="the suite passed — the new tests fail on nothing",
         )
 
-    logger.info("red observed for %s (exit %s)", service_dir, returncode)
+    lines = _failure_lines(output)
+    attributed = _attributed_failures(lines, test_files)
+    if lines and not attributed:
+        logger.warning(
+            "suite exited %s but no failure names any of the new tests (%s)",
+            returncode,
+            ", ".join(test_files[:10]),
+        )
+        return RedGateOutcome(
+            status="unattributed_red",
+            command=test_command,
+            changed_files=changed,
+            failing_files=[],
+            log_path=log_path,
+            reason=(
+                f"the suite exited {returncode}, but no reported failure names any of the "
+                "new tests — the red comes from somewhere else. Make the scenarios run and "
+                "fail, or narrow the test command to the files this turn wrote: "
+                + ", ".join(test_files[:10])
+            ),
+        )
+    if not lines:
+        logger.warning(
+            "suite exited %s but its output reports no failure this gate can read — "
+            "accepting the red unattributed",
+            returncode,
+        )
+
+    logger.info(
+        "red observed for %s (exit %s), attributed to %s",
+        service_dir,
+        returncode,
+        ", ".join(attributed) or "the suite as a whole",
+    )
     return RedGateOutcome(
         status="red",
         command=test_command,
         changed_files=changed,
+        failing_files=attributed,
         log_path=log_path,
         reason=f"suite exited {returncode} with the new tests in place",
     )

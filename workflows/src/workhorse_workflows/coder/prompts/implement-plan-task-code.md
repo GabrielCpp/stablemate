@@ -5,6 +5,7 @@ Implement the worklist packet below and **make the observed-red tests green**. T
 - Packet: `{{ workhorse_var('task') }}`
 - Red gate status: `{{ workhorse_var('red_status') }}`
 - Red gate log: `{{ workhorse_var('red_log_path') }}`
+- Tests observed failing: `{{ workhorse_var('red_failing_files') }}`
 
 ```markdown
 {{ workhorse_var('plan_text') }}
@@ -16,7 +17,7 @@ The red gate's status above says what the gate observed after the tests turn:
 
 - `red` — the suite genuinely failed. Read the log at the path above: those failures are your contract. **Done means exactly those tests pass** — plus everything else this prompt requires.
 - `skipped` (or blank) — the gate could not run the suite (no resolved test command, or the run never returned). The tests still exist in the worktree; run them yourself with the touched area's test command, observe what fails, and proceed with those failures as the contract.
-- `all_green` / `impure` / `no_tests` — the tests turn exhausted its reworks and the gate let the packet proceed. Treat the tests in the worktree as a starting point, not a contract: audit them against the packet's acceptance criteria, repair or add what is missing, then implement.
+- `all_green` / `impure` / `no_tests` / `unattributed_red` — the tests turn exhausted its reworks and the gate let the packet proceed. `unattributed_red` in particular means the suite failed on something that is *not* these tests, so do not assume any of them run at all. Treat the tests in the worktree as a starting point, not a contract: audit them against the packet's acceptance criteria, repair or add what is missing, then implement.
 
 **The failing tests are the specification of done, not an obstacle.** Editing a test is allowed only when the test itself is wrong — asserting something the plan contradicts, or broken as code — and every such edit must be declared in your result `notes` with the reason. Weakening an assertion so it passes is the failure mode the review gate audits for.
 

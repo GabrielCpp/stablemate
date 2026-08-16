@@ -234,7 +234,7 @@ class ImplementPlan(Workflow):
             arm.test_command,
             arm.signatures,
         )
-        rejected = outcome.status in {"all_green", "impure", "no_tests"}
+        rejected = outcome.status in {"all_green", "impure", "no_tests", "unattributed_red"}
         if rejected and tests_rework < self.MAX_TESTS_REWORKS:
             return Continue(
                 outcome,
@@ -276,6 +276,7 @@ class ImplementPlan(Workflow):
         args = self._task_args(task)
         args["red_status"] = outcome.status
         args["red_log_path"] = outcome.log_path
+        args["red_failing_files"] = ", ".join(outcome.failing_files)
         result = self.agent(
             "prompts/implement-plan-task-code.md",
             returns=ImplementationResult,
