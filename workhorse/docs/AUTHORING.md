@@ -24,7 +24,7 @@ only the first. Before it drives anything it reads your states' own source and f
 prompt path that does not resolve, a state unreachable from the start state, a transition
 naming something that is not a state, and a machine no state can end. That is the
 branch-independent half of correctness, and one run down one path cannot cover it.
-[Checking a workflow before you run it](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/README.md#checking-a-workflow-before-you-run-it---dry-run)
+[CHECKING.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/CHECKING.md)
 is what each finding means, and when reaching a failure terminal is one.
 [README.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/README.md) covers
 install and the CLI in full. The resilience knobs the failure paths below land in are
