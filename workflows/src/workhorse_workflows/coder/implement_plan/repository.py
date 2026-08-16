@@ -16,6 +16,8 @@ from workhorse.pyflow import WorkflowFailed
 
 from workhorse_workflows.coder.implement_plan.inventory import (
     assert_plan_unchanged,
+    commit_body,
+    commit_subject,
     git_control_digest,
     origin_digest,
     task_key,
@@ -143,8 +145,12 @@ def assert_clean_at(context: PlanRunContext, expected_head: str, expected_remote
 
 
 def commit_message(context: PlanRunContext, task: PlanTask) -> str:
-    subject = task.commit_type + (f"({task.commit_scope})" if task.commit_scope else "")
-    return f"{subject}: implement planned change\n\nPlan-Task: {task_key(context, task.id)}"
+    blocks = [commit_subject(task)]
+    body = commit_body(task)
+    if body:
+        blocks.append(body)
+    blocks.append(f"Plan-Task: {task_key(context, task.id)}")
+    return "\n\n".join(blocks)
 
 
 def commit_paths(context: PlanRunContext, parent: str, commit: str) -> list[str]:

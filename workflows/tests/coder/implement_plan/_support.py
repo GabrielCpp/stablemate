@@ -27,7 +27,7 @@ def _task(
 ) -> dict[str, Any]:
     return {
         "id": task_id,
-        "title": task_id.replace("-", " ").title(),
+        "title": f"Implement {task_id.replace('-', ' ')}",
         "objective": f"Implement {task_id}.",
         "acceptance": [f"{path} contains {task_id}."],
         "depends_on": depends_on or [],

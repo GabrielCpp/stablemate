@@ -57,7 +57,7 @@ def test_recovered_commit_requires_expected_parent_and_owned_diff(
         repo,
         "commit",
         "-qm",
-        f"feat: implement planned change\n\nPlan-Task: {task_key(context, task.id)}",
+        f"feat: implement recover\n\nImplement recover.\n\nPlan-Task: {task_key(context, task.id)}",
     )
 
     with pytest.raises(WorkflowFailed, match="out-of-scope"):
