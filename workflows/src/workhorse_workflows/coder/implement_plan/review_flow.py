@@ -9,6 +9,7 @@ from workhorse_workflows.coder.implement_plan.execution import (
     check_agent_turn,
     commit_plan_task,
     decide_task_entry,
+    extend_task_paths,
     publish_plan_task,
     retract_task_commit,
     verify_committed_task,
@@ -169,7 +170,17 @@ class ReviewIssues(Workflow):
         expected_head: str,
         repair: int,
         findings: str,
+        export_repair: bool = False,
     ) -> Continue:
+        """Same bargain as the parent flow's repair arm.
+
+        Only the arm reached from the committed-tree gate may widen the issue's declared
+        paths, because only that gate's finding is routinely about the declaration itself.
+        The widened issue rides on in the state; `self.plan` is an input to this workflow
+        rather than a state kwarg, so a resume that re-enters `select` picks the original
+        scope back up and validates the commit against it — a loud failure, not a silent
+        publication, and the run is recoverable by re-running the issue.
+        """
         args = self._issue_args(issue)
         args["findings"] = findings
         args["repair"] = repair + 1
@@ -180,6 +191,8 @@ class ReviewIssues(Workflow):
             cwd=self.ctx.repo_root,
             args=args,
         )
+        if export_repair:
+            issue = self.call(extend_task_paths, self.ctx, self.plan, index, issue)
         self.call(check_agent_turn, self.ctx, issue, expected_head)
         self._require_done(result, issue)
         return Continue(
@@ -259,6 +272,7 @@ class ReviewIssues(Workflow):
                 expected_head=expected_parent,
                 repair=repair,
                 findings=result.findings,
+                export_repair=True,
             )
         if index + 1 == len(self.plan.tasks):
             return Continue(

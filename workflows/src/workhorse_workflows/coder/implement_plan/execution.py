@@ -89,6 +89,50 @@ def check_agent_turn(
 
 
 @blueprint.node
+def extend_task_paths(
+    logger,
+    context: PlanRunContext,
+    plan: PreparedPlan,
+    index: int,
+    task: PlanTask,
+) -> PlanTask:
+    """Grow a packet to cover what its committed-tree repair had to touch.
+
+    A committed-tree failure is, by construction, often a finding *about the declared
+    paths*: the export carries only the committed files, so a command that passes in the
+    worktree and fails there is frequently failing over something the packet edited and
+    never declared. The repair turn is told exactly that — and ownership then refuses to
+    let it act on the diagnosis. The one arm where the path set is the defect was the one
+    arm that could not change the path set, which ended the run over a correct repair.
+
+    So widen the packet here, from what the turn actually touched. The invariant kept is
+    the one that matters: a packet may not reach into work that is already published, so a
+    path owned by a completed packet is still a hard failure — adopting one would mean
+    silently re-editing a commit that is already at origin. A path a *later* packet
+    declares is fine; overlap ordering already put this one first, and the packet's commit
+    message does not depend on its paths, so the deterministic-commit contract is untouched.
+    """
+    root = Path(context.repo_root)
+    adopted = set(repository.adopted_paths(context, task))
+    outside = [
+        path
+        for path in repository.changed_paths(root)
+        if not repository.owned(path, task.paths) and path not in adopted
+    ]
+    if not outside:
+        return task
+    published = sorted({scope for earlier in plan.tasks[:index] for scope in earlier.paths})
+    trespass = [path for path in outside if repository.owned(path, published)]
+    if trespass:
+        raise WorkflowFailed(
+            f"task {task.id} repair changed paths owned by an already published packet: "
+            + ", ".join(trespass)
+        )
+    logger.info("task %s extended to cover %s", task.id, ", ".join(outside))
+    return task.model_copy(update={"paths": sorted({*task.paths, *outside})})
+
+
+@blueprint.node
 def verify_plan_task(
     logger, context: PlanRunContext, task: PlanTask, expected_head: str
 ) -> VerificationResult:
