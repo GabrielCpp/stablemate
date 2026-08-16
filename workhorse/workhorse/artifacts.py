@@ -106,6 +106,10 @@ class ArtifactWriter:
         # artifact from an earlier loop visit" (must re-run).
         self._seq = 0
         self._repo_start = _observe_repo()
+        # Set by `record_profile` once the driver knows which one the CLI selected; the
+        # run dir exists before that, so the first write of run.json carries neither.
+        self._profile = ""
+        self._profile_config: dict[str, Any] = {}
         self._write_run_json(terminal=None)
 
     @property
@@ -148,6 +152,12 @@ class ArtifactWriter:
         # different fact and belongs to this generation's spans. A run dir written before
         # this existed has none, and observing then is the honest fallback.
         self._repo_start = record.repo_start or _observe_repo()
+        # Carried rather than cleared: the resuming process states its own profile through
+        # `record_profile`, and one that states none has not *unset* the run's — it is
+        # resuming the run as it was, which is exactly what re-writing this file empty
+        # would erase.
+        self._profile = record.profile
+        self._profile_config = dict(record.profile_config)
         # Re-mark the run as in-progress (terminal=None) until it finishes.
         self._write_run_json(terminal=None)
         return self
@@ -178,6 +188,8 @@ class ArtifactWriter:
         self._run_id = run_id
         self._seq = 0
         self._repo_start = _observe_repo()
+        self._profile = ""
+        self._profile_config = {}
         self._write_run_json(terminal=None)
         return self
 
@@ -478,6 +490,20 @@ class ArtifactWriter:
         self._append_event(node_id=node_id, phase="error", error=error)
         self._write_run_json(terminal=None, error=error)
 
+    def record_profile(self, profile: str, tables: dict[str, Any] | None = None) -> None:
+        """Record which config profile this run's models come from, and what it held.
+
+        Written to ``run.json`` rather than to the checkpoint, because it is not state the
+        run resumes *into*: the profile is re-read from the config file every turn, so a
+        copy the run consulted would be the one thing an operator's edit could not reach.
+        What the record buys is the two things the live re-read cannot give — a resume
+        that knows which profile the run was launched under, and, weeks later, the model
+        set as it stood at the start rather than as the file reads today.
+        """
+        self._profile = profile
+        self._profile_config = dict(tables or {})
+        self._write_run_json(terminal=None)
+
     def finish(self, terminal: str) -> None:
         (self.run_dir / "context.json").write_text("{}")  # overwritten by controller
         self._write_run_json(terminal=terminal)
@@ -503,5 +529,7 @@ class ArtifactWriter:
             # overwritten by the next one anyway — a walk of the tree per transition
             # bought nothing.
             repo_end=_observe_repo() if terminal else None,
+            profile=self._profile,
+            profile_config=self._profile_config,
         )
         (self.run_dir / "run.json").write_text(record.model_dump_json(indent=2))

@@ -21,6 +21,8 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from workhorse import otel
 from workhorse._vendor.stablemate_core.config import (
     CONFIG_PATH_ENV,
@@ -42,6 +44,7 @@ from workhorse.manifest import load_context_manifest as _load_context_manifest
 from workhorse.packaged import PackagedWorkflowError
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.run import RunInvocation, run_pyflow
+from workhorse.records import parse_run_record
 # Re-imported under its historical private name: the run-identity rules live in
 # `rundir` so the driver can obey them without importing this module.
 from workhorse.rundir import find_latest_resumable as _find_latest_resumable
@@ -195,7 +198,18 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     # The two are independent axes — the profile holds a mapping keyed by backend, and
     # --cli chooses whose entries in it apply — so a profile can carry a default without
     # dictating the backend.
+    if args.runs_dir:
+        runs_dir = Path(args.runs_dir).resolve()
+    else:
+        runs_dir = (Path.cwd() / ".agents" / "runs").resolve()
+    # Resolved before the profile below, and only because the profile may come *from* it:
+    # a run being resumed already chose a model set, and the flag it chose with is not on
+    # this command line.
+    resume_run_dir = _resume_run_dir(args, runs_dir, registry.name)
+
     profile_name = (getattr(args, "profile", None) or "").strip()
+    if not profile_name and resume_run_dir is not None:
+        profile_name = _recorded_profile(resume_run_dir)
     cfg = load_config()
     try:
         profile = select_profile(cfg, profile_name)
@@ -220,11 +234,6 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
 
     _check_profile_resolves(profile_name, profile, backend.name)
 
-    if args.runs_dir:
-        runs_dir = Path(args.runs_dir).resolve()
-    else:
-        runs_dir = (Path.cwd() / ".agents" / "runs").resolve()
-
     # Default behavior is auto: a single stable run dir per program that is resumed
     # in place (continuing the same session/context), or started fresh in that dir
     # if absent. The explicit --resume-run/--resume-latest flags below are manual
@@ -244,7 +253,7 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         flow=flow,
         run_id=args.run_id,
         params=params,
-        resume_run_dir=_resume_run_dir(args, runs_dir, registry.name),
+        resume_run_dir=resume_run_dir,
         no_cache=getattr(args, "no_cache", False),
         dry_run=getattr(args, "dry_run", False),
         context_manifest=_load_context_manifest(args.context_file),
@@ -334,6 +343,26 @@ def _apply_config_path(raw: str | None) -> None:
         print(f"error: --config {raw}: no such file", file=sys.stderr)
         sys.exit(1)
     os.environ[CONFIG_PATH_ENV] = str(path.resolve())
+
+
+def _recorded_profile(run_dir: Path) -> str:
+    """The profile a run was started under, read back off its `run.json`.
+
+    A resume is a continuation, not a new decision: the operator who typed `--profile
+    cheap` a week ago is rarely the one typing `--resume-run` now, and re-resolving the
+    same nodes against the machine's global model set is a substitution nothing in the
+    output would show. So the recorded name is re-applied unless this command line names
+    one, which overrides it — that being the only way to *move* a run onto another set.
+    It is also what carries a run's models across a `switch-cli`, whose re-exec is exactly
+    this flagless resume.
+
+    Best-effort: a run dir with no readable record simply has no profile to re-apply, and
+    the run proceeds on the top-level tables as it always did.
+    """
+    try:
+        return parse_run_record((run_dir / "run.json").read_text()).profile
+    except (OSError, ValidationError):
+        return ""
 
 
 def _resume_run_dir(

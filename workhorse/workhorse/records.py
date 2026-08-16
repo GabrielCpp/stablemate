@@ -137,6 +137,16 @@ class RunRecord(BaseModel):
     #: …and as it was when the run reached a terminal. Cleared by a resume, exactly as
     #: ``ended_at`` is: a run that picked back up has no end yet.
     repo_end: RepoObservation | None = None
+    #: The config profile this run resolves its models through (`--profile`), empty for
+    #: the config's top-level tables. Load-bearing, unlike the copy below: a resume with
+    #: no `--profile` re-applies this one, so a run that started on a cheap model set
+    #: does not silently continue on the machine's default one.
+    profile: str = ""
+    #: …and what that profile held when the run started, copied verbatim. Informational
+    #: only — behavior comes from re-reading the file every turn, so this is never read
+    #: back into the run. It is what answers "which model was at `high` in March" once
+    #: the config has moved on, which the profile *name* alone cannot.
+    profile_config: dict[str, Any] = Field(default_factory=dict)
 
 
 def parse_run_record(text: str) -> RunRecord:

@@ -39,6 +39,7 @@ from workhorse.rundir import auto_resolve, derive_run_id, runtime_deadline
 from workhorse.runner import process as agent_process
 from workhorse.runner import transcript
 from workhorse.runner.failure import BackendInvocationError
+from workhorse.runner.ladder import resolved_profile
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +149,13 @@ def run_pyflow(invocation: RunInvocation) -> int:
     writer, resume = _open_run(
         name, runs_dir, resume_run_dir, run_id=run_id, params=params, no_cache=no_cache
     )
+
+    # Which profile the models come from, on the run rather than only in the shell history
+    # that launched it. A resume with no `--profile` reads it back off this file, so a run
+    # relaunched by an operator — or by a `--core` reload's own re-exec — keeps the model
+    # set it was started under instead of falling back to the machine's.
+    if config.profile:
+        writer.record_profile(config.profile, resolved_profile(config.profile))
 
     # Now that there is a run dir to write into. Bound here, at the boundary, because the
     # two writers that use it are a stream callback several layers below the run and a

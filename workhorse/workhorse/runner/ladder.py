@@ -87,6 +87,16 @@ def _profile_config(profile: str) -> dict[str, Any] | None:
         return {}
 
 
+def resolved_profile(profile: str) -> dict[str, Any]:
+    """What ``profile`` holds right now, for the record rather than for a resolution.
+
+    Same read the turns take, exposed once so the copy `run.json` keeps is literally the
+    tables this run resolves against — a second reader of the config could disagree with
+    the first, and a provenance record that disagrees is worse than none.
+    """
+    return _profile_config(profile) or {}
+
+
 def _resolve_power_settings(
     power: str | None,
     backend_name: str,

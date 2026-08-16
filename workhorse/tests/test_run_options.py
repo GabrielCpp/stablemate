@@ -252,6 +252,54 @@ def test_the_checks_run_on_a_dry_run_too(tmp_path, capsys):
     assert "locl" in capsys.readouterr().err
 
 
+# ── a resume re-applies the profile the run was started under ───────────────
+
+def _resume_profiled(argv: list[str], recorded: str, config: Path) -> dict:
+    """Drive a `--resume-run` against a run dir whose run.json names `recorded`."""
+    captured: dict = {}
+
+    def fake_run_pyflow(invocation):
+        captured["profile"] = invocation.config.profile
+        captured["backend"] = invocation.config.backend.name
+        return 0
+
+    with tempfile.TemporaryDirectory() as tmp:
+        launch = Path(tmp) / "repo"
+        run_dir = launch / ".agents" / "runs" / "acme-flow-shakedown"
+        run_dir.mkdir(parents=True)
+        (run_dir / "run.json").write_text(
+            f'{{"workflow": "acme-flow", "run_id": "shakedown", "profile": "{recorded}"}}'
+        )
+        env = {k: v for k, v in os.environ.items() if k != "AGENT_CLI"}
+        with patch.dict(os.environ, env, clear=True), patch.object(
+            run_cmd, "run_pyflow", fake_run_pyflow
+        ), patch.object(run_cmd.Path, "cwd", staticmethod(lambda: launch)):
+            _main(["run", "--config", str(config), "--resume-run", "shakedown", *argv])
+    return captured
+
+
+def test_a_flagless_resume_re_applies_the_recorded_profile(tmp_path):
+    """The operator resuming a week-old run is rarely the one who chose its models, and
+    re-resolving those nodes against the machine's global set is a substitution nothing
+    in the output would show."""
+    captured = _resume_profiled([], "local", _profiles_config(tmp_path))
+
+    assert (captured["profile"], captured["backend"]) == ("local", "opencode")
+
+
+def test_an_explicit_profile_overrides_the_recorded_one(tmp_path):
+    """Which is the only way to *move* a run onto another model set."""
+    captured = _resume_profiled(["--profile", "cli-only"], "local", _profiles_config(tmp_path))
+
+    assert (captured["profile"], captured["backend"]) == ("cli-only", "codex")
+
+
+def test_a_resume_of_a_run_that_had_no_profile_is_unchanged(tmp_path):
+    captured = _resume_profiled([], "", _profiles_config(tmp_path))
+
+    assert (captured["profile"], captured["backend"]) == ("", "claude")
+
+
 # ── --config points the whole process at one config file ────────────────────
 
 def _run_with_config(argv: list[str]) -> None:

@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 import workhorse.artifacts as artifacts
 from workhorse.artifacts import ArtifactWriter
+from workhorse.records import parse_run_record
 
 
 def _leftovers(run_dir: Path, node_id: str = "flag_qa_failure") -> None:
@@ -129,6 +130,43 @@ def test_an_unremovable_run_dir_costs_the_wipe_but_not_the_run():
         assert not (writer.run_dir / ArtifactWriter.EVENTS_FILE).exists()
         # The node dir is what could not be removed — the run continues regardless.
         assert (writer.run_dir / "flag_qa_failure").exists()
+
+
+def _recorded(run_dir: Path):
+    return parse_run_record((run_dir / "run.json").read_text())
+
+
+def test_the_profile_and_what_it_held_are_recorded_on_the_run():
+    """The name is what a resume re-applies; the tables are what answers "which model was
+    at `high`" once the config file has moved on, which the name alone cannot."""
+    with tempfile.TemporaryDirectory() as tmp:
+        writer = ArtifactWriter("coder", Path(tmp) / "runs", run_id="t")
+        assert _recorded(writer.run_dir).profile == ""
+
+        writer.record_profile("cheap", {"power": {"high": {"claude": {"model": "sonnet"}}}})
+
+        record = _recorded(writer.run_dir)
+        assert record.profile == "cheap"
+        assert record.profile_config["power"]["high"]["claude"]["model"] == "sonnet"
+
+
+def test_a_resume_carries_the_recorded_profile_rather_than_clearing_it():
+    """`resume()` rewrites run.json before the driver has said anything about a profile,
+    so a carried-over value is the difference between a record and a file that forgets
+    what the run is running on every time it picks back up."""
+    with tempfile.TemporaryDirectory() as tmp:
+        run_dir = Path(tmp) / "runs" / "coder-t"
+        started = ArtifactWriter("coder", run_dir.parent, run_id="t")
+        started.record_profile("cheap", {"default": {"claude": {"model": "haiku"}}})
+
+        resumed = ArtifactWriter.resume(run_dir)
+
+        record = _recorded(resumed.run_dir)
+        assert record.profile == "cheap"
+        assert record.profile_config == {"default": {"claude": {"model": "haiku"}}}
+        # …and a run that finishes keeps it, rather than dropping it at the terminal.
+        resumed.finish(terminal="done")
+        assert _recorded(resumed.run_dir).profile == "cheap"
 
 
 if __name__ == "__main__":
