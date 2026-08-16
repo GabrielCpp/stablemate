@@ -1802,6 +1802,7 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "hvac" },
+    { name = "ostler" },
     { name = "pillow" },
     { name = "playwright" },
     { name = "pytest" },
@@ -1816,6 +1817,7 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "hvac", specifier = ">=2.0" },
+    { name = "ostler", editable = "ostler" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "pytest", specifier = ">=9.0.3" },
