@@ -281,9 +281,10 @@ def test_a_suite_that_stops_before_the_packet_tests_reports_an_unattributed_red(
 
     A suite that walks several subprojects halts at the first one that fails, which can be
     well before the packet's new tests are collected — and a bare non-zero exit was taken
-    as proof they failed. The packet still proceeds, because it is not at fault for a
-    repository that was broken before it, but the code turn is told the gate observed
-    nothing and must run the packet's own tests itself.
+    as proof they failed. That is a rejected verdict like any other: the tests turn gets
+    its bounded reworks to make the scenarios actually run and fail, and only past the
+    bound does the packet proceed — with the code turn told the gate observed nothing and
+    that it must run the packet's own tests itself.
     """
     plan = tmp_path / "plan.md"
     plan.write_text("# Unattributable red\n", encoding="utf-8")
@@ -292,7 +293,7 @@ def test_a_suite_that_stops_before_the_packet_tests_reports_an_unattributed_red(
         git,
         {
             "agents.yml": f"test:\n  {repo.name}: sh tests.sh\n",
-            "tests.sh": "echo 'other-package: 1 failed'; exit 1\n",
+            "tests.sh": "echo 'FAILED other_package/test_other.py::test_x'; exit 1\n",
         },
     )
     task = _task("value", "src/value.txt")
@@ -307,9 +308,13 @@ def test_a_suite_that_stops_before_the_packet_tests_reports_an_unattributed_red(
     result = drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
 
     assert result.status == "complete"
-    # Proceeding, not looping: an unattributable failure spends no tests-turn rework.
-    assert agent.count("implement-plan-task-tests") == 1
-    assert agent.args_for("implement-plan-task-code")[0]["red_status"] == "unattributed"
+    assert agent.count("implement-plan-task-tests") == 1 + ImplementPlan.MAX_TESTS_REWORKS
+    feedback = [args["gate_feedback"] for args in agent.args_for("implement-plan-task-tests")]
+    assert all(entry.startswith("[unattributed_red]") for entry in feedback[1:])
+    code_args = agent.args_for("implement-plan-task-code")[0]
+    assert code_args["red_status"] == "unattributed_red"
+    # Nothing was attributed, so the code turn is handed no contract to trust.
+    assert code_args["red_failing_files"] == ""
 
 
 def test_all_green_tests_turn_gets_bounded_rework_then_fails_open(
@@ -353,14 +358,16 @@ def test_impure_tests_turn_is_reworked_even_without_a_test_command(
     plan = tmp_path / "plan.md"
     plan.write_text("# Purity\n", encoding="utf-8")
     task = _task("value", "src/value.txt")
-    task["paths"].extend(["tests/test_value.py", "src/stray.txt"])
+    task["paths"].extend(["tests/test_value.py", "src/stray.py"])
     agent = _Agent(
         repo,
         _decomposition(task),
+        # `.py` outside the test signatures is production code; a `.txt` beside it would
+        # be a fixture, which the tests turn is entitled to write.
         test_edits={
             "value": {
                 "tests/test_value.py": "def test_value(): assert False\n",
-                "src/stray.txt": "not a test\n",
+                "src/stray.py": "STRAY = 1\n",
             }
         },
         edits={"value": {"src/value.txt": "value\n"}},
@@ -372,7 +379,7 @@ def test_impure_tests_turn_is_reworked_even_without_a_test_command(
     assert agent.count("implement-plan-task-tests") == 1 + ImplementPlan.MAX_TESTS_REWORKS
     feedback = [args["gate_feedback"] for args in agent.args_for("implement-plan-task-tests")]
     assert "impure" in feedback[1]
-    assert "src/stray.txt" in feedback[1]
+    assert "src/stray.py" in feedback[1]
 
 
 def test_regression_only_plan_keeps_the_single_implementation_turn(

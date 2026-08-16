@@ -935,21 +935,25 @@ def test_a_failure_that_never_reaches_the_new_tests_is_not_a_red_observation(
     several steps before the new tests are collected at all — and the gate would then
     certify a red it never observed, letting a code turn take an unrelated failure as its
     contract. The script here fails on something else entirely and never names the test
-    file, so the verdict is `unattributed`: the run still proceeds, because the tests turn
-    is not at fault for a repository that was already broken, but the code turn is told the
-    gate proved nothing and must observe the failure itself.
+    file, so the verdict is `unattributed_red` — a rejected verdict, which spends the tests
+    turn's reworks trying to make the new scenarios actually run and fail. Past the bound
+    the run proceeds anyway, because the tests turn is not at fault for a repository that
+    was already broken, but the code turn is told the gate proved nothing and must observe
+    the failure itself.
     """
     write(docs / "agents.yml", "test:\n  api: sh tests.sh\n")
-    write(workspace["api"] / "tests.sh", "echo 'other_package: build failed'; exit 2\n")
+    write(workspace["api"] / "tests.sh", "echo 'FAILED other_package/test_other.py'; exit 2\n")
     agent = _Agent(docs, repos=workspace)
 
     result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
     code_args = agent.args_for("implement-plan-code")
-    assert code_args[0]["red_status"] == "unattributed", code_args[0]
-    # Proceeding, not looping: an unattributable failure spends no tests-turn rework.
-    assert agent.counts()["implement-plan-tests"] == 2, agent.counts()
+    assert code_args[0]["red_status"] == "unattributed_red", code_args[0]
+    # Nothing was attributed, so the code turn is handed no reds to trust.
+    assert code_args[0]["red_failing_files"] == "", code_args[0]
+    # api spends both reworks before failing open; web resolves no command and takes one.
+    assert agent.counts()["implement-plan-tests"] == 4, agent.counts()
 
 
 def test_a_green_suite_loops_the_tests_turn_back_and_then_fails_open(

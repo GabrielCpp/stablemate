@@ -131,7 +131,8 @@ class Dev(Workflow):
     #: Plan-level code-reuse rework passes before implementation proceeds anyway.
     max_reuse_reworks: int = 2
     #: Per-layer trips back to the tests turn when the red gate rejects it (a green suite,
-    #: an impure diff, an empty diff). Spent, the layer proceeds fail-open: the reviewer's
+    #: production code in the diff, no test file written, or a red the new tests did not
+    #: cause). Spent, the layer proceeds fail-open: the reviewer's
     #: coverage audit is the binding check, and a gate must not dead-end the loop.
     max_tests_reworks: int = 2
 
@@ -528,10 +529,10 @@ class Dev(Workflow):
         """Hold the tests turn to its contract: a pure diff, observed genuinely red.
 
         Deterministic, like the lint gate, and fail-open the same way: `red` and `skipped`
-        (and a blank) proceed to the code turn, while `all_green`, `impure` and `no_tests`
-        loop back to the tests turn with the reason as its brief — until the budget is
-        spent, at which point the layer proceeds anyway and the reviewer's coverage audit
-        is what catches it.
+        (and a blank) proceed to the code turn, while `all_green`, `impure`, `no_tests` and
+        `unattributed_red` loop back to the tests turn with the reason as its brief — until
+        the budget is spent, at which point the layer proceeds anyway and the reviewer's
+        coverage audit is what catches it.
         """
         layer = self._layer
         arm = self.output(arm_red_gate)
@@ -544,7 +545,7 @@ class Dev(Workflow):
             arm.test_command,
             arm.signatures,
         )
-        rejected = outcome.status in {"all_green", "impure", "no_tests"}
+        rejected = outcome.status in {"all_green", "impure", "no_tests", "unattributed_red"}
         if rejected and tests_rework < self.max_tests_reworks:
             return Continue(
                 outcome,
@@ -597,6 +598,7 @@ class Dev(Workflow):
                 "qa_stack": impl.qa_stack,
                 "red_status": outcome.status,
                 "red_log_path": outcome.log_path,
+                "red_failing_files": ", ".join(outcome.failing_files),
             },
         )
         return Continue(None, self.lint, index=index)
