@@ -348,6 +348,16 @@ story changes no observable behavior (a pure refactor, a rename, a dependency bu
 The implementation then skips the tests-first pass and the red gate, and the existing suite
 is the safety net. If any new behavior exists, this escape does not apply.
 
+**QA-only escape (same rule, different reason):** if — having written the list honestly —
+*every* scenario in it came out `Level: QA-only`, add the line `Test scenarios: qa-only`
+above the list and keep the list. The tests-first pass has nothing it is permitted to write
+in that case, so the implementation takes a single turn and the red gate stands aside; the
+scenarios are handed to the QA plan as its obligations, which is where they will actually be
+verified. This is not a way to avoid writing tests: it costs the story every automated
+guarantee, and one scenario at any other level means the escape does not apply and the whole
+list goes through the gate as usual. If you find yourself reaching for it, first check
+whether a `component` scenario could cover the same AC.
+
 ### 6. Verification Commands (CRITICAL)
 
 Copy the exact commands from the layer's instruction files → **"Verification Commands"** section where present. Do not invent commands when the instruction files define them.
