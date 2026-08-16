@@ -83,6 +83,7 @@ workhorse/                     # this directory, inside the stablemate workspace
 ├── CLAUDE.md                  # Agent entry point; imports docs/GUARDRAILS.md
 └── docs/
     ├── GUARDRAILS.md          # The resilience/error-recovery design and env-var reference
+    ├── RUNS.md                # The run dir: identity, resume, and every file a run writes
     ├── CHECKING.md            # Reading a workflow without running it: `--dry-run`, `dot`
     ├── TELEMETRY.md           # Spans, metrics and logs: enabling it, and reading it
     ├── RELOAD.md              # The control channel into a run that is already going
@@ -179,7 +180,8 @@ carries the artifact assertions (`assert_file`, `assert_file_contains`,
   `GUARDRAILS.md` (resilience design + env-var reference), `BACKENDS.md` (CLI backends,
   the power→model config, profiles), `RELOAD.md` (the control channel into a live run),
   `TELEMETRY.md` (enabling telemetry, what is emitted, and how to read it),
-  `CHECKING.md` (`--dry-run` and `dot`), `AUTHORING.md` (writing a workflow),
+  `CHECKING.md` (`--dry-run` and `dot`), `RUNS.md` (run identity, resume, artifacts),
+  `AUTHORING.md` (writing a workflow),
   `DEVELOPMENT.md` (this file), `DOCKER.md` (the harness). Add new reference and design
   docs here, not at the root, and leave a one- or two-sentence summary in the README
   beside the link.
