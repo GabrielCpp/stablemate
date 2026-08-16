@@ -490,6 +490,60 @@ under the target's interpreter and reads the declarations back, so it catches:
 
 ---
 
+## `--sandbox`: taking the repository away (experimental)
+
+QA is meant to prove that the product behaves, not that its test suite passes. The rule saying so
+has always been prose in a prompt, and prose cannot filter prose — audits keep finding plans whose
+acceptance criteria rest on a unit suite's exit code.
+
+`ostler qa run --sandbox` replaces the rule with the absence of the capability. Each scenario runs
+in its own container holding an interpreter, the QA harness and its own spec directory, and nothing
+else: `go test ./...` fails on a missing directory, `npx vitest` fails on a missing command, and a
+jsdom overclaim is impossible because there is no source to import. What still works is everything
+that was behavioral evidence in the first place — HTTP against the running system, a real browser, a
+screen recording, `qa vet`.
+
+Paths are identical on both sides. The spec directory is bind-mounted at its own absolute path and
+an empty tmpfs covers the repository root, so a screenshot the scenario writes is at that same path
+on the host and every existing check — the manifest's containment rule, the vetter's sidecar lookup,
+`ffprobe` on the video — keeps working with no translation layer.
+
+Everything environment-specific is declared by the repository under test, in `qa-stack.yml`, never
+defaulted by ostler:
+
+```yaml
+sandbox:
+  network: acme_default              # the compose network the containers join
+  forward:                           # loopback port in the container -> what it reaches
+    8090: api-service:8090           # so a plan's hardcoded http://localhost:8090 still resolves
+    5173: host-gateway:5173          # a host process rather than a compose service
+  images:
+    base: ostler-qa-sandbox:base
+    browser: ostler-qa-sandbox:browser
+  gateway:
+    allow: []                        # default-deny; see below
+```
+
+Build the images from the `ostler/` package directory:
+
+```bash
+docker build -f docker/sandbox/Dockerfile --target base    -t ostler-qa-sandbox:base    .
+docker build -f docker/sandbox/Dockerfile --target browser -t ostler-qa-sandbox:browser .
+```
+
+Some legitimate evidence genuinely needs the host — a device the container has no path to, a tool
+licensed to the machine. That door is a **verb list, not a shell**: the repository declares the exact
+argv of each thing a scenario may ask for, a scenario names a verb and appends arguments, and
+anything undeclared is refused with a reason. The list is empty unless someone widened it, so the
+default posture is that nothing reaches the host. Every request, allowed or denied, is appended to
+the run ledger — a denial that leaves no trace is an attempt that looks like it never happened.
+
+**Two holes this does not close, named rather than hidden.** `describe` still imports the plan
+module on the host with the repository present, so import-time code in a `qa_plan.py` is still
+governed by policy rather than by capability. And `background:` / `ready_check:` commands are host
+shell by design, so a background entry that runs a test suite is a sanctioned host-side rerun. Both
+need their own answer before `--sandbox` becomes the default.
+
 ## Integration with `qa-evidence.json` and the workflow gate
 
 The existing `qa-evidence.json` artifact (validated by `ostler artifact vet qa-evidence`) is

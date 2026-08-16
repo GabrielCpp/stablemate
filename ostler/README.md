@@ -226,156 +226,47 @@ command rather than in a reviewer's instructions.
 
 #### `--sandbox`: taking the repository away (experimental)
 
-QA is meant to prove that the product behaves, not that its test suite passes. The rule saying so
-has always been prose in a prompt, and prose cannot filter prose — audits keep finding plans whose
-acceptance criteria rest on a unit suite's exit code.
+QA is meant to prove that the product behaves, not that its test suite passes — and prose in
+a prompt cannot filter prose. `ostler qa run --sandbox` replaces the rule with the absence of
+the capability: each scenario runs in its own container holding an interpreter, the QA harness
+and its own spec directory, and no source tree, so a unit suite has nothing to run against
+while HTTP, a real browser, a screen recording and `qa vet` all still work. Paths are identical
+on both sides, so every existing containment and sidecar check keeps working untranslated. The
+repository under test declares the containers' network, port forwards, images and the
+verb-list (never a shell) host escape in `qa-stack.yml`; ostler defaults none of it.
 
-`ostler qa run --sandbox` replaces the rule with the absence of the capability. Each scenario runs
-in its own container holding an interpreter, the QA harness and its own spec directory, and nothing
-else: `go test ./...` fails on a missing directory, `npx vitest` fails on a missing command, and a
-jsdom overclaim is impossible because there is no source to import. What still works is everything
-that was behavioral evidence in the first place — HTTP against the running system, a real browser, a
-screen recording, `qa vet`.
-
-Paths are identical on both sides. The spec directory is bind-mounted at its own absolute path and
-an empty tmpfs covers the repository root, so a screenshot the scenario writes is at that same path
-on the host and every existing check — the manifest's containment rule, the vetter's sidecar lookup,
-`ffprobe` on the video — keeps working with no translation layer.
-
-Everything environment-specific is declared by the repository under test, in `qa-stack.yml`, never
-defaulted by ostler:
-
-```yaml
-sandbox:
-  network: acme_default              # the compose network the containers join
-  forward:                           # loopback port in the container -> what it reaches
-    8090: api-service:8090           # so a plan's hardcoded http://localhost:8090 still resolves
-    5173: host-gateway:5173          # a host process rather than a compose service
-  images:
-    base: ostler-qa-sandbox:base
-    browser: ostler-qa-sandbox:browser
-  gateway:
-    allow: []                        # default-deny; see below
-```
-
-Build the images from the `ostler/` package directory:
-
-```bash
-docker build -f docker/sandbox/Dockerfile --target base    -t ostler-qa-sandbox:base    .
-docker build -f docker/sandbox/Dockerfile --target browser -t ostler-qa-sandbox:browser .
-```
-
-Some legitimate evidence genuinely needs the host — a device the container has no path to, a tool
-licensed to the machine. That door is a **verb list, not a shell**: the repository declares the exact
-argv of each thing a scenario may ask for, a scenario names a verb and appends arguments, and
-anything undeclared is refused with a reason. The list is empty unless someone widened it, so the
-default posture is that nothing reaches the host. Every request, allowed or denied, is appended to
-the run ledger — a denial that leaves no trace is an attempt that looks like it never happened.
-
-**Two holes this does not close, named rather than hidden.** `describe` still imports the plan
-module on the host with the repository present, so import-time code in a `qa_plan.py` is still
-governed by policy rather than by capability. And `background:` / `ready_check:` commands are host
-shell by design, so a background entry that runs a test suite is a sanctioned host-side rerun. Both
-need their own answer before `--sandbox` becomes the default.
-
-The run contract is in
-[docs/QA-RUN.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/QA-RUN.md), the
-artifact contracts in
+The run contract — and with it the `sandbox:` keys, the two image builds and the two holes
+this does not yet close — is in
+[docs/QA-RUN.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/QA-RUN.md); the
+artifact contracts are in
 [docs/ARTIFACT-CONTRACTS.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/ARTIFACT-CONTRACTS.md).
 
 ## Python API
 
-Everything the CLI does is available in-process through the `Ostler` facade — the
-library face of the tool (the analog of GitPython's `Repo` or PyGithub's `Github`).
-Prefer it over spawning the CLI and parsing its JSON when you're calling ostler from
-Python: you load the graph once and get back plain objects (`dict`/`list`/`str`, a
-`Result`, an `EditPlan`, a `QaOutcome`) instead of a subprocess and a stdout scrape.
+Everything the CLI does is available in-process through the `Ostler` facade — the library
+face of the tool (the analog of GitPython's `Repo` or PyGithub's `Github`). Prefer it over
+spawning the CLI and parsing its JSON: you load the graph once and get back plain objects
+instead of a subprocess and a stdout scrape.
 
 ```python
 from ostler import Ostler
 
-okf = Ostler("path/to/repo")          # graph root discovered upward, like `-C DIR`; None ⇒ cwd
-scoped = Ostler("path/to/repo", doc_roots={"epics": "product/epics"})
-
-okf.todo()                            # ["checkout-flow", …]        (ostler todo list)
-okf.list("story", epic="checkout-flow")   # [{"slug","status",…}]  (ostler list --type story)
-okf.next_story("checkout-flow")       # {"slug": …} | None          (ostler next-story)
-okf.spec_path("01-cart")              # "docs/specs/01-cart"        (ostler path spec)
-okf.doctor()                          # {...} referential-integrity report (ostler doctor --json)
-
-res = okf.create_story("checkout-flow", "02-pay", "Payment", covers=["seed-1"])
-res.ok, res.entity_id                 # a Result, not parsed JSON   (ostler create story)
-okf.update_story("02-pay", title="Payment", covers=["seed-1"], depends=["01-cart"])
-item = okf.create_backlog_item("Ship checkout parity", section="Scope")
-milestone = okf.create_milestone("checkout-mvp", "Checkout MVP", [item.entity_id])
-okf.set_milestone_source_items("checkout-mvp", [item.entity_id])
-okf.backlog_adopt("docs/backlog.md")  # name direct unnamed work bullets in place
-okf.delete_story("02-pay")             # same mutation surface as `ostler delete story`
-okf.delete_epic("checkout-flow")        # also removes milestone and legacy queue references
-okf.set_status("01-cart", "QA passed")
+okf = Ostler("path/to/repo")              # graph root discovered upward, like `-C DIR`
+okf.next_story("checkout-flow")           # {"slug": …} | None
+okf.create_story("checkout-flow", "02-pay", "Payment", covers=["seed-1"])
+okf.doctor()                              # referential-integrity report
 ```
 
-`doc_roots` overrides configured roots for that facade's reads and mutations; relative values
-resolve from the discovered repository root. The loaded graph is a **snapshot**: reads reuse one cached load; a mutation
-(`create_*`/`update_story`/`delete_*`/`add_seed`/`set_status`/`backlog_*`/
-`set_milestone_*`/`todo_*`/`settle_review`) applies
-against a fresh load and invalidates the cache, so the next read reflects it
-(`reload()` forces a refresh). A read never returns `None` — an unloadable graph
-*raises*. The QA/artifact/edit surface is on the same object
-(`qa_context`/`qa_validate`/`qa_run`/`qa_context_validate`, `artifact_vet`,
-`settle_review`), lazy-imported so a read-only caller never loads the QA/vet
-machinery. `from ostler import load` returns the bare `Graph` if you want the
-functional core directly.
+Two public modules come with it, and they are the reason nothing here reads a document with
+a regex: **`ostler.markdown`** is the one markdown parser (frontmatter, sections, bullets,
+GFM tables, links — never one inside a fence), and **`ostler.syntax`** is the tree-sitter
+front end for Go, TypeScript/TSX, PHP and Twig that grounds `code:` citations and the
+coverage join. The rule they serve is the `structured-parsing` skill in the base library,
+enforced by `make check-parsers`.
 
-### `ostler.markdown` — the markdown parser everything reads through
-
-The graph is markdown, so `ostler.markdown` is the one parser for it, and it is a public
-module: workhorse workflows, benchmarks and any other caller query documents through it
-rather than matching their own regexes. `split(text)` returns a `MarkdownDoc` carrying the
-parsed `frontmatter` (a real front-matter token, not a fence regex) alongside a byte-exact
-`body` — `render()` round-trips a document a human wrote without reflowing it.
-
-```python
-from ostler import markdown
-
-doc = markdown.split(path.read_text(encoding="utf-8"))
-doc.frontmatter["type"]                    # YAML decided the types, not a line split
-doc.find_section("Stories").bullets        # Bullet.label / .value / .bracketed
-doc.find_bullet("status").value            # `- **Status**: Done` → "Done"
-for table in doc.walk_tables():            # GFM pipe tables: .headers / .rows
-    table.records                          # rows keyed by header; also .column("Type")
-for label, href, line in markdown.iter_links(text):
-    ...                                    # never a link inside a fence or code span
-```
-
-A heading, bullet, table row or link inside a fenced code block is not one — that falls
-out of the token stream rather than being approximated. Line numbers on `Section` and
-`Table` are 0-indexed and body-relative; `doc.body_offset` converts to a file line. The
-rule this serves, and the parser for every other format, is the
-`structured-parsing` skill in the base library; `make check-parsers` enforces
-it.
-
-### `ostler.syntax` — the same rule, for source code
-
-The code side of the graph gets the same treatment: `ostler.inventory` answers "what does
-this file declare?" for the coverage join, `doctor`'s `code:` citation grounding and the QA
-diff mapper, and all three read a **parse**, never a line match. Python goes through the
-stdlib `ast`; Go, TypeScript/TSX, PHP and Twig go through `ostler.syntax`, which is
-tree-sitter behind a four-function surface (`parse` / `walk` / `text_of` / `lines_of`).
-
-tree-sitter rather than the target language's own toolchain, deliberately: ostler runs in
-agent containers and CI against repos it never builds, and `okf-builder` reads working trees
-mid-edit. A `go build`-shaped parser would need Go installed and the tree compiling, and the
-fallback that absence forces is a second grammar disagreeing with the first — the exact
-failure this module exists to end. tree-sitter is a prebuilt wheel, needs nothing from the
-repo it reads, and recovers from a syntax error instead of refusing the file.
-
-What that buys, concretely: a commented-out `export function` is no longer a unit the book
-owes coverage for, a name inside a template literal no longer grounds a citation, and the
-shapes no pattern spelled — `export abstract class`, `export const {a, b} = …`, Go's grouped
-`type (…)` — are visible, so a correct citation stops failing with no way to fix it. Where a
-file is mid-edit, the region the parser could not read grounds any name it mentions;
-everywhere else stays exact.
+The facade's snapshot semantics, the full call surface, and why the code side is tree-sitter
+rather than each language's own toolchain are in
+[docs/PYTHON-API.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/PYTHON-API.md).
 
 ## The coverage model
 
