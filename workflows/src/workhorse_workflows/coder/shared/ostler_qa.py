@@ -13,9 +13,9 @@ YAML engine's way of getting a fresh `ostler` into a subprocess per node — is 
 now, because nodes run in the engine's process and there is nothing to purge.
 
 Library code, not nodes: `qa_context` and `qa_context_validate` back `shared/okf.py`, which
-`docs` and `qa` share; `qa_validate` and `qa_run` back the QA flow's plan gate and runner;
-`artifact_vet` backs the evidence gate, which is the only caller that roots ostler at the
-repo rather than the docs tree.
+`docs` and `qa` share; `qa_lint`, `qa_validate` and `qa_run` back the QA flow's plan gate and
+runner; `artifact_vet` backs the evidence gate, which is the only caller that roots ostler at
+the repo rather than the docs tree.
 """
 from __future__ import annotations
 
@@ -90,6 +90,17 @@ def qa_context_validate(
     return (0 if not problems else 1), payload, ""
 
 
+def qa_lint(
+    plan: str, spec_dir: str, *, docs_root: Path | None = None
+) -> tuple[int, dict[str, Any], str]:
+    """`ostler qa lint` → the outcome data; rc=0 iff the plan's AST passes the allowlist."""
+    try:
+        outcome = okf(docs_root).qa_lint(plan, spec=spec_dir)
+    except (OSError, ValueError, RuntimeError) as exc:
+        return 1, {"status": "invalid"}, str(exc)
+    return (0 if outcome.ok else 1), outcome.data, "" if outcome.ok else outcome.message
+
+
 def qa_validate(
     plan: str, spec_dir: str, *, docs_root: Path | None = None
 ) -> tuple[int, dict[str, Any], str]:
@@ -101,17 +112,21 @@ def qa_validate(
     return (0 if outcome.ok else 1), outcome.data, "" if outcome.ok else outcome.message
 
 
-def qa_run(
-    plan: str, spec_dir: str, *, docs_root: Path | None = None, sandboxed: bool = False
-) -> tuple[int, dict[str, Any], str]:
-    """`ostler qa run` → the four-state outcome data; rc=0 iff the run passed.
-
-    `sandboxed` is `--sandbox`: every scenario executes in a container with no repository
-    on disk, so a scenario cannot rerun a unit suite and file the exit code as behavioral
-    evidence. It needs a `sandbox:` block in the repo's `qa-stack.yml`.
-    """
+def qa_tools_catalog(*, docs_root: Path | None = None) -> tuple[int, dict[str, Any], str]:
+    """`ostler qa tools list` → `{tools, errors}`; rc=1 when any opted-in tool fails to resolve."""
     try:
-        outcome = okf(docs_root).qa_run(plan, spec=spec_dir, sandboxed=sandboxed)
+        payload = okf(docs_root).qa_tools_catalog()
+    except (OSError, ValueError, RuntimeError) as exc:
+        return 1, {"tools": [], "errors": [str(exc)]}, str(exc)
+    return (1 if payload.get("errors") else 0), payload, ""
+
+
+def qa_run(
+    plan: str, spec_dir: str, *, docs_root: Path | None = None
+) -> tuple[int, dict[str, Any], str]:
+    """`ostler qa run` → the four-state outcome data; rc=0 iff the run passed."""
+    try:
+        outcome = okf(docs_root).qa_run(plan, spec=spec_dir)
     except (OSError, ValueError, RuntimeError) as exc:
         return 1, {"status": "invalid"}, str(exc)
     return (0 if outcome.ok else 1), outcome.data, "" if outcome.ok else outcome.message
@@ -156,6 +171,8 @@ __all__ = [
     "parse_source_roots",
     "qa_context",
     "qa_context_validate",
+    "qa_lint",
     "qa_run",
+    "qa_tools_catalog",
     "qa_validate",
 ]

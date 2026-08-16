@@ -219,9 +219,6 @@ class _Ostler:
         self.plan_invalid_passes = plan_invalid_passes
         self.vet_problems = vet_problems or []
         self.runs = 0
-        #: `sandboxed` as each run received it — the only record that the workflow's
-        #: `sandbox` param reached the runner, since the fake is where the CLI would be.
-        self.sandboxed: list[bool] = []
         self.contexts = 0
         self.context_validations = 0
         self.plan_validations = 0
@@ -303,10 +300,8 @@ class _Ostler:
         spec_dir: str,
         *,
         docs_root: Path | None = None,
-        sandboxed: bool = False,
     ) -> tuple[int, dict[str, Any], str]:
         self.runs += 1
-        self.sandboxed.append(sandboxed)
         if self.runs <= self.block_runs:
             return 1, {
                 "status": "blocked",
@@ -734,6 +729,9 @@ def test_a_gate_that_passed_hands_the_plan_turn_no_diagnostics(
         plan_args[key] == ""
         for key in ("plan_validation_notes", "run_assessment_notes", "audit_notes")
     ), plan_args
+    # No repo in this fixture opts a tool into `agents.yml`, so the catalog resolves empty
+    # rather than failing the plan turn.
+    assert plan_args["qa_tools"] == [], plan_args
 
 
 def test_the_context_repair_loop_is_bounded_at_three(
@@ -2252,51 +2250,3 @@ def test_the_lane_runs_standalone_with_no_plan_context(
     assert result.status == "passed", result
     assert agent.planned() == 1, agent.counts()
 
-
-# --------------------------------------------------------------------------- the sandbox
-
-
-def test_the_sandbox_param_is_what_the_runner_executes_under(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """`Qa.sandbox` reaches `ostler qa run --sandbox`, and the plan turn is told which it is.
-
-    The two halves are one fact and have to move together. The sandbox decides what evidence
-    is even *reachable* — a scenario in a container with no repository cannot rerun a unit
-    suite and file the exit code as proof — so a plan rehearsed on the host against a scored
-    run in a container is verified somewhere the run will never be. `plan-qa.md` renders the
-    `--sandbox` flag off `qa_sandboxed` for exactly that, and nothing else pins the wiring:
-    the runner is a fake here, so its recorded argument is the whole observation.
-    """
-    okf = ostler()
-    agent = _Agent(docs)
-
-    result = drive_flow(Qa(story=STORY, sandbox=True), env(), agent)
-
-    assert result.status == "passed", result
-    assert okf.sandboxed == [True], okf.sandboxed
-    assert agent.args_for("plan-qa")[0]["qa_sandboxed"] is True, agent.args_for("plan-qa")
-
-
-def test_an_unsandboxed_lane_is_the_default_and_says_so(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """A repo with no `sandbox:` block in its stack manifest cannot run that way at all.
-
-    So the default is off, and the brief must not show the planner a `--sandbox` rehearsal
-    the runner would refuse.
-    """
-    okf = ostler()
-    agent = _Agent(docs)
-
-    result = drive_flow(Qa(story=STORY), env(), agent)
-
-    assert result.status == "passed", result
-    assert okf.sandboxed == [False], okf.sandboxed
-    assert agent.args_for("plan-qa")[0]["qa_sandboxed"] is False, agent.args_for("plan-qa")

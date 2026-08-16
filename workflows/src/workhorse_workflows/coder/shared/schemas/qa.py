@@ -72,6 +72,20 @@ class QaPlanValidation(CoderResult):
     ostler: dict[str, Any] = {}
 
 
+class QaToolCatalog(CoderResult):
+    """`ostler qa tools list` — the tools this repo opted into, resolved for this host.
+
+    A node output rather than a value `_plan_args` reads straight off `agents.yml`,
+    because it crosses the same host boundary `qa_plan_validation` does: which tools
+    resolve, and whether their binaries are on `PATH`, is a fact about *this* machine,
+    and a resumed run must see the catalog it was checkpointed with, not one re-derived
+    against whatever the host looks like when the resume happens to run.
+    """
+
+    tools: list[dict[str, Any]] = []
+    errors: list[str] = []
+
+
 class QaCleared(CoderResult):
     """`clear-qa-evidence.py` — the stale `qa/` outputs and root verdict are gone.
 
@@ -751,6 +765,7 @@ __all__ = [
     "QaReport",
     "QaResult",
     "QaRunResult",
+    "QaToolCatalog",
     "QaTriage",
     "RegressionFix",
     "RegressionPlatform",

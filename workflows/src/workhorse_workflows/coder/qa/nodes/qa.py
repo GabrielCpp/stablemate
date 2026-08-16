@@ -34,6 +34,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     QaGiveupRecord,
     QaPlanValidation,
     QaRunResult,
+    QaToolCatalog,
     StackStatus,
 )
 
@@ -208,6 +209,14 @@ def ensure_stack(
         return StackStatus(failed_step="manifest", notes=f"Unreadable stack manifest: {exc}")
     if not isinstance(manifest, dict):
         return StackStatus(failed_step="manifest", notes="Stack manifest is not a mapping.")
+    if "sandbox" in manifest:
+        return StackStatus(
+            failed_step="manifest",
+            notes=(
+                f"{manifest_rel} has a top-level `sandbox:` key, which no longer does "
+                "anything — QA's docker sandbox was removed. Delete the key."
+            ),
+        )
 
     result = stack.ensure_stack(_absolutize(manifest, root), repo_root=str(root), logger=logger)
     common = {
@@ -235,6 +244,47 @@ def ensure_stack(
         ),
         **common,
     )
+
+
+@blueprint.node
+def lint_qa_plan(
+    logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
+) -> QaPlanValidation:
+    """`ostler qa lint` on `<spec_dir>/qa_plan.py` — is this plan's AST safe to import?
+
+    Runs ahead of `validate_qa_plan`, which imports the plan to check it: a plan that
+    reaches for `subprocess`/`eval`/a dunder escape should never get as far as import,
+    since import is where it would run.
+    """
+    plan = str(Path(spec_dir) / QA_PLAN_FILE)
+    docs_root = find_docs_root(docs_path, repo_dir)
+    returncode, payload, stderr = ostler_qa.qa_lint(plan, spec_dir, docs_root=docs_root)
+    cli_status = str(payload.get("status", "invalid")).lower()
+    status = "passed" if returncode == 0 and cli_status == "passed" else "invalid"
+    notes = ostler_qa.notes_for(
+        payload, stderr, "QA plan lint passed." if status == "passed" else "QA plan lint failed."
+    )
+    logger.info("qa lint for %s returned status=%s", spec_dir, status)
+    return QaPlanValidation(status=status, notes=notes, ostler=payload)
+
+
+@blueprint.node
+def qa_tools_catalog(
+    logger: logging.Logger, docs_path: str = "", repo_dir: str = ""
+) -> QaToolCatalog:
+    """`ostler qa tools list` — the tools this repo opted into, resolved for this host.
+
+    A node rather than a plain call from `_plan_args`: which tools resolve, and whether
+    their binaries are on `PATH`, is a fact about *this* machine, and a resumed run must
+    see the catalog it was checkpointed with, not one re-derived against whatever the
+    host looks like when the resume happens to run.
+    """
+    docs_root = find_docs_root(docs_path, repo_dir)
+    _returncode, payload, _stderr = ostler_qa.qa_tools_catalog(docs_root=docs_root)
+    tools = payload.get("tools", [])
+    errors = payload.get("errors", [])
+    logger.info("qa tools catalog resolved %d tool(s), %d error(s)", len(tools), len(errors))
+    return QaToolCatalog(tools=tools, errors=errors)
 
 
 @blueprint.node
@@ -267,7 +317,6 @@ def run_qa_plan(
     logger: logging.Logger,
     spec_dir: str = "",
     docs_path: str = "",
-    sandbox: bool = False,
     repo_dir: str = "",
 ) -> QaRunResult:
     """Execute the QA plan through ostler and normalize its four-state outcome.
@@ -275,17 +324,10 @@ def run_qa_plan(
     The returncode is deliberately ignored: `failed` and `blocked` are answers the runner
     is *supposed* to give, and both exit non-zero. The status comes off the payload, and
     only an unrecognized one becomes `invalid`.
-
-    `sandbox` is the runner's `--sandbox`: each scenario executes in a container holding no
-    repository, which is what makes "live evidence" a property of the environment rather
-    than of the plan's good behaviour. It arrives as a workflow `--param` and never from
-    the environment, so a resumed run executes the configuration its checkpoint records.
     """
     plan = str(Path(spec_dir) / QA_PLAN_FILE)
     docs_root = find_docs_root(docs_path, repo_dir)
-    _returncode, payload, stderr = ostler_qa.qa_run(
-        plan, spec_dir, docs_root=docs_root, sandboxed=sandbox
-    )
+    _returncode, payload, stderr = ostler_qa.qa_run(plan, spec_dir, docs_root=docs_root)
     status = str(payload.get("status", "invalid")).lower()
     if status not in RUN_STATUSES:
         status = "invalid"
@@ -294,4 +336,11 @@ def run_qa_plan(
     return QaRunResult(status=status, notes=notes, ostler=payload)
 
 
-__all__ = ["clear_qa_evidence", "ensure_stack", "run_qa_plan", "validate_qa_plan"]
+__all__ = [
+    "clear_qa_evidence",
+    "ensure_stack",
+    "lint_qa_plan",
+    "qa_tools_catalog",
+    "run_qa_plan",
+    "validate_qa_plan",
+]

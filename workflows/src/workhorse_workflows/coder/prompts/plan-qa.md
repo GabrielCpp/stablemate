@@ -203,6 +203,32 @@ dashes, so the function name is the id — no separate uniqueness bookkeeping to
 | `qa.diagnostics.layout()` | where the page put its content: the viewport, and each region's box as a share of it |
 | `qa.maestro.flow([...])` / `qa.maestro.run(flow)` | build and run a Maestro flow; the result is yours to assert on |
 
+### QA tools
+
+`{{ repo.name }}` has opted the following tools into `agents.yml`, resolved for this host
+(`ostler qa tools list`):
+
+{% if qa_tools %}
+| tool | command | on this host |
+| --- | --- | --- |
+{% for tool in qa_tools -%}
+| `{{ tool.name }}` | `{{ tool.command }}` | {{ "available" if tool.available else "NOT on PATH" }} |
+{% endfor %}
+{%- else %}
+None. This repo's `agents.yml` declares no `qa: {tools: [...]}` opt-in.
+{% endif %}
+
+`qa.tesseract.ocr(image)` and `qa.convert.resize(image, width, height)` are typed wrappers over
+the two built-ins; call anything else opted in above with `qa.tool("name").run(*args)`. A tool
+not in this table is not reachable — `qa.tool("whatever")` raises before it runs anything.
+
+**There is no other way to shell out.** `ostler qa lint` statically allowlists the plan's AST
+before it is ever imported: `subprocess`, `os.system`, `os.popen`, and any other module not on
+that allowlist fail lint, whether or not the command they would have run is one of the tools
+above. A tool this story needs and that is missing from the table is a gap in this repo's
+`agents.yml` opt-in (or the host's `~/.config/stablemate/config.toml` if it is not a built-in),
+not something to route around with a raw call.
+
 `qa.verify` is `qa.check`'s stronger sibling and the one to reach for whenever the obligation
 declares a check — see "Implement Each Obligation's Declared Checks" below. Everything true of
 `qa.check`'s ledger record is true of it.
@@ -423,14 +449,8 @@ resolves. After authoring a scenario, execute it on its own:
 
 ```bash
 ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> \
-  --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}{% if qa_sandboxed %} --sandbox{% endif %}
+  --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}
 ```
-{% if qa_sandboxed %}
-`--sandbox` is not optional here: the scored run uses it, so a rehearsal without it executes
-somewhere else. In the container there is no repository on disk and the product is reachable
-only through the forwarded ports — a scenario that resolves a repo path, or shells out to a
-tool the gateway does not allow, passes the dry run on the host and fails the run that counts.
-{% endif %}
 `--out-dir` keeps the artifacts out of `{{ workhorse_var('qa_dir') }}`, which is the scored
 ledger the evidence gate reads — a scenario tuned until it passed must not be able to leave its
 own proof. Fix what does not resolve and run it again. This is what one call answers and no

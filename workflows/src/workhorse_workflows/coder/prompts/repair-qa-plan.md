@@ -156,6 +156,26 @@ trip over:
   actually present in that screenshot. Do not turn a required state-specific vet into a
   whole-screen vet that fails on components the state correctly omits.
 - The heavyweight stack is not the plan's to start. Only per-run `background(...)` daemons are.
+- **There is no `subprocess` escape hatch, and a repair does not get one either.** `ostler qa
+  lint` statically allowlists the plan's AST before it is ever imported — `subprocess`,
+  `os.system`, `os.popen` and anything else outside that allowlist fail lint regardless of what
+  they would have run. If a finding needs a CLI, reach for a tool this repo already opted into
+  in `agents.yml`: `qa.tesseract.ocr(image)`, `qa.convert.resize(image, width, height)`, or
+  `qa.tool("name").run(*args)` for anything else in the table below. `{{ repo.name }}` has
+  opted into:
+
+{% if qa_tools %}
+  | tool | command | on this host |
+  | --- | --- | --- |
+  {% for tool in qa_tools -%}
+  | `{{ tool.name }}` | `{{ tool.command }}` | {{ "available" if tool.available else "NOT on PATH" }} |
+  {% endfor %}
+{%- else %}
+  None. This repo's `agents.yml` declares no `qa: {tools: [...]}` opt-in.
+{% endif %}
+
+  A tool the repair needs and does not see above is a gap in the opt-in, not something to
+  route around with a raw call — `qa.tool("whatever")` raises before it runs anything.
 
 Keep `qa-plan.md` in step with what you changed: the AC/obligation-to-scenario map has to
 still describe the module. Do not rewrite sections whose scenarios you did not touch.
@@ -197,14 +217,8 @@ The stack is already up. Before returning, execute each scenario you changed on 
 
 ```bash
 ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> \
-  --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}{% if qa_sandboxed %} --sandbox{% endif %}
+  --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}
 ```
-{% if qa_sandboxed %}
-`--sandbox` is not optional here: the scored run uses it, so a rehearsal without it executes
-somewhere else — no repository on disk, the product reachable only through the forwarded
-ports. A repair verified on the host and broken in the container costs the lap it was meant
-to save.
-{% endif %}
 `--out-dir` keeps the artifacts out of `{{ workhorse_var('qa_dir') }}`, the scored ledger the
 evidence gate reads — a scenario tuned until it passed must not be able to leave its own proof.
 Fix what does not resolve and run it again. One call settles what no amount of re-reading does:

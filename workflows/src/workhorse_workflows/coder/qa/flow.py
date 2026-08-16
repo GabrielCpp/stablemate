@@ -85,6 +85,8 @@ from workhorse_workflows.coder.qa.nodes.qa import (
     QA_SCRATCH_DIRNAME,
     clear_qa_evidence,
     ensure_stack,
+    lint_qa_plan,
+    qa_tools_catalog,
     record_qa_giveup,
     run_qa_plan,
     validate_qa_plan,
@@ -296,13 +298,6 @@ class Qa(Workflow):
     #: Repo-relative stack manifest `ensure_stack` reads. Passed rather than assumed: a
     #: fixer that authors it at the root while the run reads `<service>/qa-stack.yml` loops.
     qa_stack_manifest: str = "qa-stack.yml"
-    #: Execute every scenario in a container with no repository on disk (`ostler qa run
-    #: --sandbox`). A `--param` rather than a read of the environment: the sandbox decides
-    #: what evidence is even reachable — an unsandboxed scenario can rerun a unit suite and
-    #: file the exit code as behavioral proof — so a resume that silently flipped it would
-    #: change what the run is allowed to prove. Needs a `sandbox:` block in the repo's
-    #: `qa_stack_manifest`; off by default, because a repo without one cannot run this way.
-    sandbox: bool = False
     #: The parent's rescope budget, seeded in and handed back bumped. The one piece of loop
     #: state this isolated flow does not own.
     triage_scope_count: int = 0
@@ -567,8 +562,8 @@ class Qa(Workflow):
     def plan(self, loop: QaLoop) -> Continue | Await | Done:
         """Author the QA plan, forget every previous gate's findings, and parse the result.
 
-        `plan_qa` + `clear_qa_gate_state` + `stamp_specs_qa_plan` + `validate_qa_plan` +
-        `decide_qa_plan_validation`.
+        `plan_qa` + `clear_qa_gate_state` + `stamp_specs_qa_plan` + `lint_qa_plan` +
+        `validate_qa_plan` + `decide_qa_plan_validation`.
 
         The plan turn is handed every diagnostic the loop collected — the packet's status,
         the last validation, the last run assessment, the last audit, the last evidence
@@ -679,16 +674,12 @@ class Qa(Workflow):
         scenario tuned until it passed must not be able to leave its own admissible evidence.
         """
         impl = self.output(resolve_impl_context)
+        tools = self.call(qa_tools_catalog, self.docs_path)
         return {
             "story_path": self.ctx.story_path,
             "spec_dir": self.ctx.spec_dir,
             "qa_dir": self.ctx.qa_dir,
             "qa_scratch_dir": QA_SCRATCH_DIRNAME,
-            # Whether the *scored* run will be sandboxed, so the rehearsal is the same
-            # execution. A dry run on the host proves reachability the scored run does not
-            # have — the scenario resolves against a repo the container will not hold — and
-            # that discrepancy surfaces as a failure the author already "verified".
-            "qa_sandboxed": self.sandbox,
             "docs_path": self.docs_path,
             "target_env": self.target_env,
             "qa_stack": impl.qa_stack,
@@ -699,6 +690,7 @@ class Qa(Workflow):
             "run_assessment_notes": loop.assessment_notes,
             "audit_notes": loop.audit_notes,
             "evidence_notes": loop.qa.notes,
+            "qa_tools": tools.tools,
         }
 
     def _validated(self, loop: QaLoop, overran: str = "") -> Continue | Await | Done:
@@ -706,12 +698,13 @@ class Qa(Workflow):
 
         A plan that parses goes straight to the runner. There is no semantic pre-run gate
         any more: what the reviewer used to judge — does this plan actually test the story —
-        is now decided by the book. Every obligation carries the `verify:` check the node
-        declared, `ostler qa validate` refuses a plan that claims an obligation without
-        invoking that call with those arguments, and `ostler qa evidence-map` reports the
-        deficit after the run. A `power="high"` turn re-deriving that by reading is the most
-        expensive node in the lane and, per the corpus replay, accounted for 78 of its 79
-        blocking findings from checks the machine now performs.
+        is now decided by the book. `ostler qa lint` runs first and rejects a plan whose AST
+        reaches outside the allowlist before anything imports it; every obligation carries the
+        `verify:` check the node declared, `ostler qa validate` refuses a plan that claims an
+        obligation without invoking that call with those arguments, and `ostler qa
+        evidence-map` reports the deficit after the run. A `power="high"` turn re-deriving
+        that by reading is the most expensive node in the lane and, per the corpus replay,
+        accounted for 78 of its 79 blocking findings from checks the machine now performs.
 
         `overran` is set when the turn that just ran was cut at its wall-clock cap. It is
         prepended to the validation notes so the repair turn is *told* the file is a draft
@@ -722,6 +715,13 @@ class Qa(Workflow):
         """
         loop = loop.cleared()
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
+        lint = self.call(lint_qa_plan, self.ctx.spec_dir, self.docs_path)
+        if lint.status != "passed":
+            notes = lint.notes
+            if overran:
+                notes = f"{overran}\n\n{notes}".strip()
+            loop = loop.update(plan_validation_notes=_finding(False, notes))
+            return self._guard_plan_validation(lint, loop)
         validation = self.call(validate_qa_plan, self.ctx.spec_dir, self.docs_path)
         notes = validation.notes
         if overran:
@@ -799,7 +799,7 @@ class Qa(Workflow):
         handed. See `QaLoop.repaired_failures`.
         """
         self.logger.info("running the QA plan", extra={"activity": True})
-        result = self.call(run_qa_plan, self.ctx.spec_dir, self.docs_path, self.sandbox)
+        result = self.call(run_qa_plan, self.ctx.spec_dir, self.docs_path)
         return Continue(
             result,
             self.assess,
