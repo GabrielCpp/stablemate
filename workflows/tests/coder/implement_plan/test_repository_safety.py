@@ -13,6 +13,7 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse_workflows.coder.implement_plan.execution import (
     check_planning_turn, commit_plan_task, extend_task_paths, verify_committed_task,
 )
+from workhorse_workflows.coder.implement_plan import repository
 from workhorse_workflows.coder.implement_plan.flow import ImplementPlan
 from workhorse_workflows.coder.implement_plan.inventory import snapshot_plan
 from coder.implement_plan._support import (
@@ -187,10 +188,11 @@ def test_clean_committed_tree_must_pass_packet_verification(
             _command("from pathlib import Path; assert Path('src/value.txt').read_text() == 'safe\\n'")
         ],
     )
-    task = _prepared(context, logger, task_data).tasks[0]
+    plan = _prepared(context, logger, task_data)
+    task = plan.tasks[0]
     (repo / "src").mkdir()
     (repo / "src" / "value.txt").write_text("different\n", encoding="utf-8")
-    committed = commit_plan_task(logger, context, task, context.base_commit)
+    committed = commit_plan_task(logger, context, plan, task, context.base_commit)
 
     result = verify_committed_task(
         logger, context, task, context.base_commit, committed.commit_sha
@@ -356,10 +358,11 @@ def test_clean_filter_cannot_hide_different_committed_bytes(
             _command("from pathlib import Path; assert Path('src/value.txt').read_text() == 'safe\\n'")
         ],
     )
-    task = _prepared(context, logger, task_data).tasks[0]
+    plan = _prepared(context, logger, task_data)
+    task = plan.tasks[0]
     (repo / "src").mkdir()
     (repo / "src" / "value.txt").write_text("safe\n", encoding="utf-8")
-    committed = commit_plan_task(logger, context, task, context.base_commit)
+    committed = commit_plan_task(logger, context, plan, task, context.base_commit)
 
     with pytest.raises(WorkflowFailed, match="committed bytes differ"):
         verify_committed_task(
@@ -383,9 +386,10 @@ def test_unchanged_filtered_baseline_cannot_differ_from_candidate_tree(
     git(repo, "commit", "-qm", "test: configure baseline filter")
     git(repo, "push", "-q", "origin", "main")
     context = _context(tmp_path, repo, logger)
-    task = _prepared(context, logger, _task("other", "src/other.txt")).tasks[0]
+    plan = _prepared(context, logger, _task("other", "src/other.txt"))
+    task = plan.tasks[0]
     (repo / "src" / "other.txt").write_text("other\n", encoding="utf-8")
-    committed = commit_plan_task(logger, context, task, context.base_commit)
+    committed = commit_plan_task(logger, context, plan, task, context.base_commit)
 
     with pytest.raises(WorkflowFailed, match="committed bytes differ"):
         verify_committed_task(
@@ -408,12 +412,78 @@ def test_committed_mode_must_match_the_verified_worktree(
     git(repo, "push", "-q", "origin", "main")
     git(repo, "config", "core.fileMode", "false")
     context = _context(tmp_path, repo, logger)
-    task = _prepared(context, logger, _task("mode", "src/run.sh")).tasks[0]
+    plan = _prepared(context, logger, _task("mode", "src/run.sh"))
+    task = plan.tasks[0]
     script.write_text("#!/bin/sh\nprintf changed\n", encoding="utf-8")
     script.chmod(0o755)
-    committed = commit_plan_task(logger, context, task, context.base_commit)
+    committed = commit_plan_task(logger, context, plan, task, context.base_commit)
 
     with pytest.raises(WorkflowFailed, match="committed mode differs"):
         verify_committed_task(
             logger, context, task, context.base_commit, committed.commit_sha
+        )
+
+
+def test_a_packet_may_change_the_paths_of_a_packet_it_depends_on(
+    tmp_path: Path,
+    repo: Path,
+    logger: Any,
+) -> None:
+    """A declared dependency edge is a licence for the change to travel along it.
+
+    The planner writes `paths` before a line of the work exists, so it cannot see the
+    call sites a later packet will have to move when it changes a signature underneath
+    them — and the dependant's own verification runs the dependency's tests, so refusing
+    the edit fails the packet for doing the only thing that could make it pass.
+    """
+    context = _context(tmp_path, repo, logger)
+    plan = _prepared(
+        context,
+        logger,
+        _task("base", "src/base.txt"),
+        _task("dependant", "src/dependant.txt", depends_on=["base"]),
+    )
+    base, dependant = plan.tasks
+
+    assert repository.task_scopes(plan.tasks, dependant) == [
+        "src/base.txt",
+        "src/dependant.txt",
+    ]
+    # The edge points one way: the dependency itself gains nothing from its dependant.
+    assert repository.task_scopes(plan.tasks, base) == ["src/base.txt"]
+
+
+def test_a_packet_may_not_change_the_paths_of_an_unrelated_packet(
+    tmp_path: Path,
+    repo: Path,
+    git: Callable[..., subprocess.CompletedProcess],
+    logger: Any,
+) -> None:
+    """Two packets with no edge between them are the collision the check is for.
+
+    Nothing orders them, so both may be in flight against the same file, and the second
+    commit would silently carry away the first's work.
+    """
+    # Tracked before the run, so touching it is a modification: a file that did not
+    # exist belongs to nobody and is adopted, which is the case this is not.
+    (repo / "src").mkdir(exist_ok=True)
+    (repo / "src" / "sibling.txt").write_text("published\n", encoding="utf-8")
+    git(repo, "add", "src/sibling.txt")
+    git(repo, "commit", "-qm", "chore: add sibling")
+    context = _context(tmp_path, repo, logger)
+    plan = _prepared(
+        context,
+        logger,
+        _task("sibling", "src/sibling.txt"),
+        _task("other", "src/other.txt"),
+    )
+
+    assert repository.task_scopes(plan.tasks, plan.tasks[1]) == ["src/other.txt"]
+
+    (repo / "src" / "sibling.txt").write_text("trespass\n", encoding="utf-8")
+    with pytest.raises(WorkflowFailed, match="changed paths it does not own"):
+        repository.assert_owned(
+            context,
+            plan.tasks[1],
+            scopes=repository.task_scopes(plan.tasks, plan.tasks[1]),
         )

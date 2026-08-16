@@ -183,7 +183,7 @@ class ImplementPlan(Workflow):
         disk — a plan edited mid-run must not flip the route between packets.
         """
         if REGRESSION_ONLY_MARKER in self.ctx.plan_text.lower():
-            result = self._implement_classic(task, expected_head)
+            result = self._implement_classic(plan, task, expected_head)
             return Continue(
                 result,
                 self.verify,
@@ -230,7 +230,7 @@ class ImplementPlan(Workflow):
             cwd=self.ctx.repo_root,
             args=args,
         )
-        self.call(check_agent_turn, self.ctx, task, expected_head, False)
+        self.call(check_agent_turn, self.ctx, plan, task, expected_head, False)
         self._require_agent_done(result, task)
         return Continue(
             result,
@@ -318,7 +318,7 @@ class ImplementPlan(Workflow):
             cwd=self.ctx.repo_root,
             args=args,
         )
-        self.call(check_agent_turn, self.ctx, task, expected_head)
+        self.call(check_agent_turn, self.ctx, plan, task, expected_head)
         self._require_agent_done(result, task)
         return Continue(
             result,
@@ -330,7 +330,9 @@ class ImplementPlan(Workflow):
             expected_head=expected_head,
         )
 
-    def _implement_classic(self, task: PlanTask, expected_head: str) -> ImplementationResult:
+    def _implement_classic(
+        self, plan: PreparedPlan, task: PlanTask, expected_head: str
+    ) -> ImplementationResult:
         result = self.agent(
             "prompts/implement-plan-task.md",
             returns=ImplementationResult,
@@ -338,7 +340,7 @@ class ImplementPlan(Workflow):
             cwd=self.ctx.repo_root,
             args=self._task_args(task),
         )
-        self.call(check_agent_turn, self.ctx, task, expected_head)
+        self.call(check_agent_turn, self.ctx, plan, task, expected_head)
         self._require_agent_done(result, task)
         return result
 
@@ -351,7 +353,7 @@ class ImplementPlan(Workflow):
         expected_head: str,
         repair: int = 0,
     ) -> Continue:
-        result = self.call(verify_plan_task, self.ctx, task, expected_head)
+        result = self.call(verify_plan_task, self.ctx, plan, task, expected_head)
         if result.passed:
             return Continue(
                 result,
@@ -423,7 +425,7 @@ class ImplementPlan(Workflow):
             plan = plan.model_copy(
                 update={"tasks": [*plan.tasks[:index], task, *plan.tasks[index + 1 :]]}
             )
-        self.call(check_agent_turn, self.ctx, task, expected_head)
+        self.call(check_agent_turn, self.ctx, plan, task, expected_head)
         self._require_agent_done(result, task)
         return Continue(
             result,
@@ -445,7 +447,7 @@ class ImplementPlan(Workflow):
         expected_head: str,
         repair: int = 0,
     ) -> Continue:
-        result = self.call(commit_plan_task, self.ctx, task, expected_head)
+        result = self.call(commit_plan_task, self.ctx, plan, task, expected_head)
         return Continue(
             result,
             self.verify_committed,

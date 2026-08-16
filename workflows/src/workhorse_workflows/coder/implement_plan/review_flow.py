@@ -107,7 +107,7 @@ class ReviewIssues(Workflow):
             cwd=self.ctx.repo_root,
             args=self._issue_args(issue),
         )
-        self.call(check_agent_turn, self.ctx, issue, expected_head)
+        self.call(check_agent_turn, self.ctx, self.plan, issue, expected_head)
         self._require_done(result, issue)
         return Continue(
             result,
@@ -126,7 +126,7 @@ class ReviewIssues(Workflow):
         expected_head: str,
         repair: int = 0,
     ) -> Continue:
-        result = self.call(verify_plan_task, self.ctx, issue, expected_head)
+        result = self.call(verify_plan_task, self.ctx, self.plan, issue, expected_head)
         if result.passed:
             return Continue(
                 result,
@@ -193,7 +193,7 @@ class ReviewIssues(Workflow):
         )
         if export_repair:
             issue = self.call(extend_task_paths, self.ctx, self.plan, index, issue)
-        self.call(check_agent_turn, self.ctx, issue, expected_head)
+        self.call(check_agent_turn, self.ctx, self.plan, issue, expected_head)
         self._require_done(result, issue)
         return Continue(
             result,
@@ -213,7 +213,7 @@ class ReviewIssues(Workflow):
         expected_head: str,
         repair: int = 0,
     ) -> Continue:
-        result = self.call(commit_plan_task, self.ctx, issue, expected_head)
+        result = self.call(commit_plan_task, self.ctx, self.plan, issue, expected_head)
         return Continue(
             result,
             self.verify_committed,
