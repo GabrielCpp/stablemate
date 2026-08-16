@@ -50,7 +50,8 @@ def test_recovered_commit_requires_expected_parent_and_owned_diff(
     logger: Any,
 ) -> None:
     context = _context(tmp_path, repo, logger)
-    task = _prepared(context, logger, _task("recover", "src/owned.txt")).tasks[0]
+    plan = _prepared(context, logger, _task("recover", "src/owned.txt"))
+    task = plan.tasks[0]
     # An *existing* tracked file: a file the commit creates belongs to nobody and is
     # adopted, so only a pre-existing one still proves the recovered commit's diff is
     # held to the packet's ownership.
@@ -75,10 +76,11 @@ def test_valid_commit_crash_window_is_recovered_without_reimplementation(
     logger: Any,
 ) -> None:
     context = _context(tmp_path, repo, logger)
-    task = _prepared(context, logger, _task("recover", "src/owned.txt")).tasks[0]
+    plan = _prepared(context, logger, _task("recover", "src/owned.txt"))
+    task = plan.tasks[0]
     (repo / "src").mkdir()
     (repo / "src" / "owned.txt").write_text("recover\n", encoding="utf-8")
-    committed = commit_plan_task(logger, context, task, context.base_commit)
+    committed = commit_plan_task(logger, context, plan, task, context.base_commit)
 
     decision = decide_task_entry(logger, context, task, context.base_commit)
 
@@ -93,10 +95,11 @@ def test_publish_is_idempotent_after_the_push_crash_window(
     logger: Any,
 ) -> None:
     context = _context(tmp_path, repo, logger)
-    task = _prepared(context, logger, _task("publish", "src/publish.txt")).tasks[0]
+    plan = _prepared(context, logger, _task("publish", "src/publish.txt"))
+    task = plan.tasks[0]
     (repo / "src").mkdir()
     (repo / "src" / "publish.txt").write_text("publish\n", encoding="utf-8")
-    committed = commit_plan_task(logger, context, task, context.base_commit)
+    committed = commit_plan_task(logger, context, plan, task, context.base_commit)
 
     first = publish_plan_task(
         logger, context, task, context.base_commit, committed.commit_sha
@@ -122,12 +125,13 @@ def test_verification_may_not_rewrite_an_owned_file(
             _command("from pathlib import Path; Path('src/value.txt').write_text('changed\\n')")
         ],
     )
-    task = _prepared(context, logger, task_data).tasks[0]
+    plan = _prepared(context, logger, task_data)
+    task = plan.tasks[0]
     (repo / "src").mkdir()
     (repo / "src" / "value.txt").write_text("before\n", encoding="utf-8")
 
     with pytest.raises(WorkflowFailed, match="verification changed"):
-        verify_plan_task(logger, context, task, context.base_commit)
+        verify_plan_task(logger, context, plan, task, context.base_commit)
 
 
 def test_real_checkpoint_resumes_committed_task_without_reimplementation(

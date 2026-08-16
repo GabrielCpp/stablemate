@@ -7,7 +7,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 
@@ -88,6 +88,32 @@ def owned(path: str, scopes: list[str]) -> bool:
     )
 
 
+def task_scopes(tasks: Sequence[PlanTask], task: PlanTask) -> list[str]:
+    """Everything a packet may change: its own declared paths, plus its dependencies'.
+
+    A packet that declares `depends_on` is stating that it builds on that packet's
+    work, and a change routinely has to travel along that edge — this packet alters a
+    signature, and the call site belongs to the packet underneath it. The planner
+    declares `paths` before a line of the work exists, so it cannot see those call
+    sites; refusing the propagation ends the run over an edit that is not only correct
+    but required, since the packet's own verification runs the dependency's tests.
+
+    Following a declared edge is not the collision this check exists to catch. That is
+    a packet reaching into work it never said it depended on — an unordered sibling,
+    where two turns really can overwrite each other — and it stays refused. The edge is
+    only ever followed one step: the plan orders dependants after dependencies, so the
+    dependency is already committed and verified at its own commit, and a later packet
+    building on it is what the ordering is *for*.
+    """
+    by_id = {other.id: other for other in tasks}
+    scopes = {*task.paths}
+    for dependency in task.depends_on:
+        upstream = by_id.get(dependency)
+        if upstream is not None:
+            scopes.update(upstream.paths)
+    return sorted(scopes)
+
+
 def plan_snapshot_path(context: PlanRunContext) -> str:
     """The plan's own repository-relative path, or "" when it lives outside the repo."""
     try:
@@ -116,27 +142,33 @@ def adoptable(code: str, path: str, snapshot: str) -> bool:
     return path != snapshot
 
 
-def adopted_paths(context: PlanRunContext, task: PlanTask) -> list[str]:
+def adopted_paths(
+    context: PlanRunContext, task: PlanTask, scopes: Sequence[str] | None = None
+) -> list[str]:
     """New, undeclared files the turn created, which this task now also owns."""
     snapshot = plan_snapshot_path(context)
+    reach = list(scopes) if scopes is not None else task.paths
     return sorted(
         {
             path
             for code, path in worktree_changes(Path(context.repo_root))
-            if not owned(path, task.paths) and adoptable(code, path, snapshot)
+            if not owned(path, reach) and adoptable(code, path, snapshot)
         }
     )
 
 
 def assert_owned(
-    context: PlanRunContext, task: PlanTask, *, require_changes: bool = False
+    context: PlanRunContext,
+    task: PlanTask,
+    *,
+    scopes: Sequence[str] | None = None,
+    require_changes: bool = False,
 ) -> list[str]:
     root = Path(context.repo_root)
+    reach = list(scopes) if scopes is not None else task.paths
     changed = changed_paths(root)
-    adopted = set(adopted_paths(context, task))
-    outside = [
-        path for path in changed if not owned(path, task.paths) and path not in adopted
-    ]
+    adopted = set(adopted_paths(context, task, reach))
+    outside = [path for path in changed if not owned(path, reach) and path not in adopted]
     if outside:
         raise WorkflowFailed(f"task {task.id} changed paths it does not own: {', '.join(outside)}")
     if require_changes and not changed:
@@ -380,7 +412,9 @@ def worktree_fingerprint(root: Path) -> str:
     return digest.hexdigest()
 
 
-def create_task_commit(context: PlanRunContext, task: PlanTask) -> str:
+def create_task_commit(
+    context: PlanRunContext, task: PlanTask, scopes: Sequence[str] | None = None
+) -> str:
     filtered_hooks = Path(context.worklist_path).with_name("commit-hooks")
     shutil.rmtree(filtered_hooks, ignore_errors=True)
     filtered_hooks.mkdir(parents=True)
@@ -399,7 +433,8 @@ def create_task_commit(context: PlanRunContext, task: PlanTask) -> str:
                 encoding="utf-8",
             )
             wrapper.chmod(0o700)
-        committed_paths = [*task.paths, *adopted_paths(context, task)]
+        reach = list(scopes) if scopes is not None else task.paths
+        committed_paths = [*reach, *adopted_paths(context, task, reach)]
         repo.git.add(*committed_paths)
         scope = ["--", *committed_paths]
         try:
@@ -418,6 +453,7 @@ def create_task_commit(context: PlanRunContext, task: PlanTask) -> str:
 __all__ = [
     "assert_clean_at",
     "assert_owned",
+    "task_scopes",
     "assert_remote",
     "assert_repository_identity",
     "assert_tree_matches_worktree",

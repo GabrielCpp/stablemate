@@ -71,6 +71,7 @@ def decide_task_entry(
 def check_agent_turn(
     logger,
     context: PlanRunContext,
+    plan: PreparedPlan,
     task: PlanTask,
     expected_head: str,
     require_changes: bool = True,
@@ -84,7 +85,12 @@ def check_agent_turn(
     repository.assert_remote(context, expected_head)
     if repository.head(context) != expected_head:
         raise WorkflowFailed(f"task {task.id} agent turn moved HEAD")
-    repository.assert_owned(context, task, require_changes=require_changes)
+    repository.assert_owned(
+        context,
+        task,
+        scopes=repository.task_scopes(plan.tasks, task),
+        require_changes=require_changes,
+    )
     logger.info("task %s agent turn stayed within its repository boundary", task.id)
 
 
@@ -113,11 +119,12 @@ def extend_task_paths(
     message does not depend on its paths, so the deterministic-commit contract is untouched.
     """
     root = Path(context.repo_root)
-    adopted = set(repository.adopted_paths(context, task))
+    reach = repository.task_scopes(plan.tasks, task)
+    adopted = set(repository.adopted_paths(context, task, reach))
     outside = [
         path
         for path in repository.changed_paths(root)
-        if not repository.owned(path, task.paths) and path not in adopted
+        if not repository.owned(path, reach) and path not in adopted
     ]
     if not outside:
         return task
@@ -134,10 +141,10 @@ def extend_task_paths(
 
 @blueprint.node
 def verify_plan_task(
-    logger, context: PlanRunContext, task: PlanTask, expected_head: str
+    logger, context: PlanRunContext, plan: PreparedPlan, task: PlanTask, expected_head: str
 ) -> VerificationResult:
     root = Path(context.repo_root)
-    check_agent_turn(logger, context, task, expected_head)
+    check_agent_turn(logger, context, plan, task, expected_head)
     before = repository.worktree_fingerprint(root)
     result = repository.run_commands(root, task.verification)
     repository.assert_repository_identity(context)
@@ -209,7 +216,7 @@ def retract_task_commit(
 
 @blueprint.node
 def commit_plan_task(
-    logger, context: PlanRunContext, task: PlanTask, expected_head: str
+    logger, context: PlanRunContext, plan: PreparedPlan, task: PlanTask, expected_head: str
 ) -> CommitResult:
     root = Path(context.repo_root)
     repository.assert_repository_identity(context)
@@ -220,8 +227,9 @@ def commit_plan_task(
             raise WorkflowFailed("cannot recover task commit with a dirty worktree")
         repository.validate_task_commit(context, task, expected_head, head)
         return CommitResult(committed=True, commit_sha=head)
-    repository.assert_owned(context, task, require_changes=True)
-    commit_sha = repository.create_task_commit(context, task)
+    reach = repository.task_scopes(plan.tasks, task)
+    repository.assert_owned(context, task, scopes=reach, require_changes=True)
+    commit_sha = repository.create_task_commit(context, task, reach)
     repository.validate_task_commit(context, task, expected_head, commit_sha)
     if repository.changed_paths(root):
         raise WorkflowFailed(f"task {task.id} left uncommitted work after its scoped commit")
