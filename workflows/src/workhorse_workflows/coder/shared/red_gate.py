@@ -246,6 +246,17 @@ def _attributed_failures(lines: list[str], test_files: list[str]) -> list[str]:
     return [path for path in test_files if Path(path).name in named]
 
 
+def _ran_any(output: str, test_files: list[str]) -> bool:
+    """Whether the suite output mentions any of the new test files at all.
+
+    Not "did they fail" — `_attributed_failures` answers that — but "did the suite get as
+    far as reporting on them". A run that collects, passes or errors a file names it
+    somewhere; a run that aborted in an earlier package never does. Basename matching, for
+    the same reason and with the same cross-attribution trade as `_attributed_failures`.
+    """
+    return any(Path(path).name in output for path in test_files)
+
+
 def _sanitize_label(label: str) -> str:
     """Turn a service name into a safe filename component."""
     return re.sub(r"[^a-zA-Z0-9_-]", "-", label).strip("-")
@@ -341,6 +352,13 @@ def run_red_gate(
     failure in another package supplied the red for a packet whose own tests were never
     run. Exit 0 means the new tests exercise nothing missing, which is the exact failure
     mode the split exists to catch.
+
+    Unattributable splits in two, on whether the suite reported on the new tests at all. If
+    it did, the turn wrote tests that pass while something else fails, and a rework is the
+    right answer. If it never named them, the suite stopped upstream — in a package this
+    layer did not write — and there is no verdict to give: `unreached`, stand aside. The
+    difference matters because the second case is not the agent's to fix, and charging it a
+    rework only invites it to narrow its own test command until the red attributes.
 
     No test command resolved, or a command that never returns, is `skipped` — the gate
     stands aside rather than falsely failing a service that has not adopted it, the same
@@ -445,6 +463,25 @@ def run_red_gate(
 
     lines = _failure_lines(output)
     attributed = _attributed_failures(lines, test_files)
+    if lines and not attributed and not _ran_any(output, test_files):
+        logger.warning(
+            "suite exited %s without ever reporting on %s — it stopped in an earlier "
+            "package, so the gate has nothing to judge and stands aside",
+            returncode,
+            ", ".join(test_files[:10]),
+        )
+        return RedGateOutcome(
+            status="unreached",
+            command=test_command,
+            changed_files=changed,
+            log_path=log_path,
+            reason=(
+                f"'{test_command}' exited {returncode} without running "
+                + ", ".join(test_files[:10])
+                + " at all — it stopped on an unrelated failure first. The gate cannot "
+                "observe these tests and stands aside; the red they owe is unproven."
+            ),
+        )
     if lines and not attributed:
         logger.warning(
             "suite exited %s but no failure names any of the new tests (%s)",

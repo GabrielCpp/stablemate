@@ -105,15 +105,22 @@ class RedGateArm(CoderResult):
 class RedGateOutcome(CoderResult):
     """`run_red_gate` — the deterministic verdict between the tests turn and the code turn.
 
-    `status` is one of six: `red` (the suite failed and a reported failure names one of the
-    new tests — proceed to the code turn), `all_green` (exit 0 — the tests exercise nothing
-    missing, loop back), `impure` (the tests turn wrote production code, loop back),
+    `status` is one of seven: `red` (the suite failed and a reported failure names one of
+    the new tests — proceed to the code turn), `all_green` (exit 0 — the tests exercise
+    nothing missing, loop back), `impure` (the tests turn wrote production code, loop back),
     `no_tests` (the turn wrote no test file, loop back), `unattributed_red` (the suite
     failed, but on something other than the new tests — the red is somebody else's, loop
-    back), or `skipped` (no cwd, no test command, or the command never returned — the gate
-    stands aside rather than falsely failing, the same fail-open shape as the lint gate's
-    `skipped`). A blank status takes the proceed arm, because a gate that cannot speak is
-    not evidence against the tests.
+    back), `unreached` (the suite stopped in an earlier package and never reported on the
+    new tests at all — nothing to judge, stand aside), or `skipped` (no cwd, no test
+    command, or the command never returned — the gate stands aside rather than falsely
+    failing, the same fail-open shape as the lint gate's `skipped`). A blank status takes
+    the proceed arm, because a gate that cannot speak is not evidence against the tests.
+
+    `unreached` is deliberately *not* rejecting. A rework cannot help: the failure that
+    stopped the suite is in code this layer did not write and its agent may not touch, so
+    looping back only spends turns and pressures the tests turn into narrowing its own
+    command to manufacture attribution. The engine already fails open once the reworks are
+    exhausted, so this reaches the same end state without paying for it.
 
     `changed_files` is what the tests turn touched with the harness's own state subtracted;
     `non_test_files` is the production code among it, which is what `impure` reports; and

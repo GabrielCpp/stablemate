@@ -950,11 +950,10 @@ def test_a_failure_that_never_reaches_the_new_tests_is_not_a_red_observation(
     several steps before the new tests are collected at all — and the gate would then
     certify a red it never observed, letting a code turn take an unrelated failure as its
     contract. The script here fails on something else entirely and never names the test
-    file, so the verdict is `unattributed_red` — a rejected verdict, which spends the tests
-    turn's reworks trying to make the new scenarios actually run and fail. Past the bound
-    the run proceeds anyway, because the tests turn is not at fault for a repository that
-    was already broken, but the code turn is told the gate proved nothing and must observe
-    the failure itself.
+    file, so the gate has nothing to judge: `unreached`, which stands aside on the first
+    pass rather than spending reworks the tests turn cannot win — the failure is in a
+    package it did not write, and the run would fail open at the bound regardless. The code
+    turn is still told the gate proved nothing and must observe the failure itself.
     """
     write(docs / "agents.yml", "test:\n  api: sh tests.sh\n")
     write(workspace["api"] / "tests.sh", "echo 'FAILED other_package/test_other.py'; exit 2\n")
@@ -964,11 +963,11 @@ def test_a_failure_that_never_reaches_the_new_tests_is_not_a_red_observation(
 
     assert result.status == "ready", result
     code_args = agent.args_for("implement-plan-code")
-    assert code_args[0]["red_status"] == "unattributed_red", code_args[0]
+    assert code_args[0]["red_status"] == "unreached", code_args[0]
     # Nothing was attributed, so the code turn is handed no reds to trust.
     assert code_args[0]["red_failing_files"] == "", code_args[0]
-    # api spends both reworks before failing open; web resolves no command and takes one.
-    assert agent.counts()["implement-plan-tests"] == 4, agent.counts()
+    # No rework is charged: one tests turn for api, one for web (which resolves no command).
+    assert agent.counts()["implement-plan-tests"] == 2, agent.counts()
 
 
 def test_a_green_suite_loops_the_tests_turn_back_and_then_fails_open(
