@@ -155,7 +155,7 @@ standard usage/error path.
   - Prints `no telemetry found for that run.` in text mode, or JSON `null` in
     JSON mode, when neither spans nor metrics exist for the selected run.
 - code: groom/groom/cli.py::profile
-- detail: [retained-run profiler](../../../groom/README.md#what-occupied-the-wall-clock-groom-profile)
+- detail: [retained-run profiler](../../../groom/docs/STORE.md#what-occupied-the-wall-clock-groom-profile)
 - errors:
   - Missing `--run`, unknown flags, extra positional arguments, and malformed
     command lines are parser errors; argparse writes usage/error text and exits
@@ -208,7 +208,7 @@ standard usage/error path.
     names are sanitized into single path components, so neither can write outside
     `--by-node`.
 - code: groom/groom/cli.py::transcript_ls
-- detail: [the turn record](../../../groom/README.md#what-the-node-actually-said-groom-transcript)
+- detail: [the turn record](../../../groom/docs/STORE.md#what-the-node-actually-said-groom-transcript)
 - errors:
   - Unknown verbs, unknown flags and a missing `--session` on `show` are parser
     errors; argparse writes usage text and exits with status 2.
