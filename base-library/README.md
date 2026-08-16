@@ -40,7 +40,7 @@ the commit is recorded, so what lands is documents rather than a repository.
 base is fetched if absent and brought up to `main` if stale. Every other caller — every
 lookup, and every workhorse resume — reads it frozen, so a run cannot resume into a
 different library than it started with. See the
-[monorepo README](../README.md#finding-the-base-library).
+[docs/INSTALL.md](../docs/INSTALL.md#finding-the-base-library).
 
 A directory counts as a library if it holds `library/`. That is the whole contract;
 `stablemate_core.layout.is_library_dir` is the one implementation of it.

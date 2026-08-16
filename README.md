@@ -71,7 +71,7 @@ its own clock; the tools a workflow needs are declared by the workflow's own pac
 
 Install the engines. **The base library is not something you install** — it is content,
 and a tool fetches it on demand (see
-[Finding the base library](#finding-the-base-library)).
+[What the install resolves against](#what-the-install-resolves-against)).
 
 Everything a workflow needs travels with the workflow package. `workhorse-workflows`
 declares the engine and the tools its workflows import — `workhorse-agent`, `ostler` — as
@@ -98,7 +98,7 @@ That "inside the workflows venv" part is not incidental. Workflow code runs **in
 workhorse's own interpreter** and imports its tools in-process, so `ostler` on your `PATH`
 from some other venv is not enough — it has to be importable *there*. Declaring it a
 dependency of `workhorse-workflows` is what makes the venv that runs a workflow the same
-venv that has it. See [Tools a workflow needs](#tools-a-workflow-needs).
+venv that has it. See [What the install resolves against](#what-the-install-resolves-against).
 
 **Working on stablemate itself** wants a checkout instead — one venv with every member
 installed from source, and the git hooks this repo depends on:
@@ -117,102 +117,29 @@ neither is on PyPI: the name `groom` on the index belongs to an unrelated projec
 and `farrier` each carry a copy of it, so an install resolves from the index alone with
 nothing built locally first.
 
-### Finding the base library
+### What the install resolves against
 
-Tools resolve the base in this order, highest precedence first — the cache is last, so a
-fetched copy can never shadow a checkout you are editing:
+**The base library is content, not a package.** Tools look for it in four places — an
+explicit `$STABLEMATE_BASE_DIR`, a persisted `<tool> config set-base <path>`, a configured
+`stablemate_dir` checkout, and last the shared cache at `~/.cache/stablemate/library` — so
+a fetched copy can never shadow a checkout you are editing. `farrier install` is the one
+command that populates or updates that cache; nothing else refreshes it on a timer, because
+a library moving under a week-long run could resume it into a different library than it
+started with.
 
-1. `$STABLEMATE_BASE_DIR` — an explicit path to the content on disk.
-2. `<tool> config set-base <path>` — the persisted form of that path.
-3. a configured `stablemate_dir` checkout (`<checkout>/base-library`).
-4. the shared cache at `~/.cache/stablemate/library`.
+**A workflow's tools travel with the workflow.** They are ordinary
+`[project.dependencies]` on `workhorse-workflows`, not a second manifest — which is why the
+install above names the workflows rather than the engine. Workflow code runs in workhorse's
+own interpreter and imports its tools in-process, so `ostler` on your `PATH` from some other
+venv is not enough; it has to be importable *there*.
 
-A checkout install gets route 3 for free. Under `pipx`, where each tool is its own venv
-and the base is data with no package to import, route 4 is what makes it reachable
-without configuring anything.
+**Every tool reads one config file**, `~/.config/stablemate/config.toml` (override with
+`$STABLEMATE_CONFIG`), carrying a `config_version` that keeps independently-versioned tools
+honest with each other: a tool refuses to write a config newer than it understands, migrates
+an older one forward on first write, and never *fails* a read.
 
-**`farrier install` populates and updates the cache.** It is the one command that does.
-On install the base is fetched if absent and brought up to `main` if present, so a `pipx`
-user gets a working base library by running the command they were going to run anyway:
-
-```bash
-farrier init              # once per repo: writes a starter agents.yml (start with packs: [stablemate])
-farrier --repo .          # fetches the base if absent, updates it if stale, then renders
-farrier --repo . --check  # fetches if absent, but never updates — see below
-```
-
-What lands is a sparse checkout of `base-library/` alone, with `.git` dropped once the
-commit is recorded into a `.commit` sidecar. `STABLEMATE_FETCH_BASE=0` forbids the network
-entirely (air-gapped hosts), and `STABLEMATE_CACHE_DIR` relocates the cache. An update
-first asks the remote for the head of `main` — a few hundred bytes — so an already-current
-cache costs one round-trip rather than a re-clone.
-
-**Everything else freezes, and that is deliberate.** No lookup, no resume and no
-background timer refreshes the cache; `farrier install` is the automated form of the
-`rm -rf ~/.cache/stablemate` that used to be the only upgrade path, not a new polling
-behaviour. A workhorse run is meant to survive a week unattended and to resume into a
-checkpointed state machine after a crash, and a cache tracking `main` live could resume a
-run into a different library than it started with. The corollary worth knowing: running
-`farrier install` while a long run is in flight on the same machine can move the library
-out from under its next resume.
-
-`--check` fetches but does not update, because it writes nothing and runs in CI — a
-library moving underneath the comparison would make a drift report depend on the hour the
-job ran rather than on the commit it ran against.
-
-Failure is soft, and in the direction of keeping what works: an unreachable remote, a
-refused fetch or a broken clone each leave the existing cache in place, so `farrier
-install` on a plane renders the library the machine already has. Nothing fetched is
-executable either: markdown and YAML, no `.py` anywhere, so code still reaches you only as
-a wheel from an index under whatever supply-chain posture you already apply to `pip`/`uv`.
-
-A base you named yourself is never fetched over. Routes 1–3 win outright — not even the
-remote probe fires — so a checkout you are editing cannot have a download appear
-underneath it.
-
-Either way the cache is a **mirror, not a workspace**: never edit it in place. Overlay
-authoring belongs in a `library_dir` (below).
-
-### Tools a workflow needs
-
-The base library declares **no dependencies** — it is content, and importing it pulls in
-nothing. The tools its workflows need are a property of *running* a workflow, not of
-having the library, and a workflow is a distribution now, so they are ordinary
-`[project.dependencies]` on `workhorse-workflows`. Installing that distribution installs
-them with it; there is no second manifest to satisfy, and none that can disagree with
-what is actually importable.
-
-Which is the whole reason the workflows must land in workhorse's own venv rather than
-beside it — and why the install above names `workhorse-workflows` rather than
-`workhorse-agent`. Installing the workflows pulls the engine in as *their* dependency, so
-the venv the resolver builds is by construction the venv that runs them. Installing the
-engine first and adding workflows to it is the same venv reached backwards, and only if
-you remember the second step. `make sync` arranges the same thing for a checkout.
-
-### Config
-
-Every tool reads and writes one file, `~/.config/stablemate/config.toml` (override with
-`$STABLEMATE_CONFIG`), so `library_dir` / `stablemate_dir` / `base_dir` mean the same
-thing to each. Per-tool files (`~/.config/workhorse`, `~/.config/farrier`) are still read
-when it is absent, and the first write folds them in.
-
-The file carries a `config_version`, and **that** is what keeps the tools honest with each
-other. They install separately and version independently — `pipx install farrier` and
-`pipx install ostler` are two venvs, each with its own copy of the config code — while
-the config path is per *user*, not per venv. So no packaging arrangement can make
-them agree; the guard has to live on the file:
-
-- a tool **refuses to write** a config newer than it understands, rather than serializing
-  back a schema it cannot represent and dropping the keys it does not know;
-- a newer tool **migrates** an older config forward on its first write (keeping a
-  `config.toml.v<n>.bak`), which closes the door behind it;
-- **reads never fail** on a newer config — they warn. `resolve_power` re-reads per node,
-  and a week-long unattended run must not die because another tool was upgraded.
-
-If a tool refuses, upgrade it — that is the mechanism working, not a bug.
-
-An overlay library shadows the base name-for-name via `farrier config set-library`, or
-`$FARRIER_LIBRARY_DIR` for a one-off.
+The four routes in full, the fetch and failure behaviour, and the config-version rules are
+in [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Your first run
 
@@ -320,18 +247,13 @@ published from a laptop. See each package's README for details, and
 ## Releasing
 
 A release is **proposed in a pull request and shipped by merging it**. Two things follow
-from that, and both are the point:
-
-- **The version is reviewable before it exists.** [release-please](https://github.com/googleapis/release-please)
-  reads the [Conventional-Commit](https://www.conventionalcommits.org) history since each
-  package's last tag and opens one PR carrying the computed version bumps and the
-  generated `CHANGELOG.md` files. You read what would ship before it ships.
-- **There is no PyPI token anywhere.** The upload runs in
-  [`.github/workflows/release.yml`](.github/workflows/release.yml) under
-  [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/): GitHub mints a
-  short-lived OIDC token that PyPI verifies against a publisher registered as
-  *(GabrielCpp, stablemate, `release.yml`, environment `pypi`)*. No long-lived secret
-  exists to leak, in the repo or in a dotfile.
+from that, and both are the point: the version is reviewable before it exists —
+[release-please](https://github.com/googleapis/release-please) reads the
+[Conventional-Commit](https://www.conventionalcommits.org) history since each package's
+last tag and opens one PR carrying the computed bumps and the generated changelogs — and
+there is no PyPI token anywhere, because the upload runs under
+[Trusted Publishing](https://docs.pypi.org/trusted-publishers/) on a short-lived OIDC
+token.
 
 ```bash
 make release        # dispatch the workflow; a release PR appears in ~30s
@@ -339,71 +261,14 @@ gh pr list --label 'autorelease: pending'
 # …review it, then merge it. Merging is what publishes.
 ```
 
-`make release` builds nothing and uploads nothing — it only dispatches. The workflow does
-not run on ordinary pushes to `main`, so a release happens when you ask for one and never
-by accident.
+`make release` builds nothing and uploads nothing. The workflow does not run on ordinary
+pushes to `main`, so a release happens when you ask for one and never by accident. The one
+rule that bites: a commit type outside `feat:` / `fix:` / `perf:` / `refactor:` bumps
+nothing at all, so an unparseable subject releases to nobody. If `make release` returns an
+empty PR, that is why.
 
-### What merging does
-
-Merging the release PR re-triggers the same workflow, which then creates the tags
-(`<dist-name>-v<version>`, e.g. `farrier-v1.5.1`) and GitHub releases, runs `make test`
-against the merged tree, builds every candidate, and installs the Workflows wheel against
-the sibling candidate wheels before uploading anything. That isolated install is
-load-bearing: the workspace lock replaces sibling constraints with editable sources, so a
-local `uv sync` can pass while the published dependency range is impossible to resolve.
-Only after that smoke test do uploads proceed in dependency order:
-
-```
-ostler → workhorse-agent → farrier → workhorse-workflows
-```
-
-`stablemate-core` is not in that chain and never will be: it is vendored, not published
-(see [`core/README.md`](core/README.md)). A change to it is committed together with the
-copies `make vendor` writes under `workhorse/` and `farrier/`, which is what makes
-release-please bump both tools — it decides what to ship from the paths a commit touched,
-so a fix committed only under `core/` would reach nobody.
-
-`groom` and `saddlebag` are versioned and get changelogs but have no upload step: the name
-`groom` on PyPI belongs to an unrelated project, and `saddlebag` is not in scope yet.
-Adding either means registering its trusted publisher on PyPI and adding its two steps to
-the workflow.
-
-| Commit since last tag | Bump |
-| --- | --- |
-| `feat!:` / `fix(x)!:` / `BREAKING CHANGE:` in body | major |
-| `feat:` | minor |
-| `fix:` / `perf:` / `refactor:` | patch |
-| `docs:` / `test:` / `build:` / `ci:` / `chore:` / anything unparseable | **none — no release** |
-
-`refactor:` is in the patch row only because `changelog-sections` in
-[`.release-please-config.json`](.release-please-config.json) puts it there. Release-please
-hides that type by default, and a hidden type bumps nothing — so before that section
-existed, a commit that rewrote a package shipped to nobody while reading as though it had
-released. The section is written out in full because declaring it replaces the defaults
-rather than extending them: a type left off the list is a type that silently stops
-releasing.
-
-That last row is the change of consequence. Under the old shell scripts a
-non-conventional subject still produced a patch bump, so *any* commit released. Now the
-commit message is what decides whether a package is released at all, and a
-`Restructure the workflows` subject bumps nothing. If `make release` returns an empty PR,
-that is why.
-
-Baselines live in [`.release-please-manifest.json`](.release-please-manifest.json) and the
-package map in [`.release-please-config.json`](.release-please-config.json); a new
-distribution is one entry in each, plus its build/publish steps in the workflow.
-
-### One-time setup (not in the repo)
-
-1. On PyPI, add a trusted publisher to each project — owner `GabrielCpp`, repository
-   `stablemate`, workflow `release.yml`, environment `pypi`. A distribution that does
-   not exist on the index yet gets a **pending** publisher, which its first upload
-   converts into the project.
-2. Create the `pypi` [environment](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment)
-   in the repository settings. Adding yourself as a required reviewer turns the merge into
-   an explicit "approve the upload", which is the cheapest safety net available.
-3. Settings → Actions → General → **Allow GitHub Actions to create and approve pull
-   requests**, or release-please cannot open the PR with the default token.
+What merging does, the upload order and the isolated smoke test in front of it, the full
+type→bump table, and the one-time PyPI setup are in [docs/RELEASING.md](docs/RELEASING.md).
 
 ## License
 
