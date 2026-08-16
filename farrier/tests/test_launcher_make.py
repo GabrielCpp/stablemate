@@ -103,6 +103,40 @@ def test_an_unrelated_target_never_pays_for_discovery(launcher: Path):
     assert "agent-install" in result.stdout
 
 
+def test_a_profile_reaches_the_container_with_a_config_to_look_it_up_in(launcher: Path):
+    """A profile is a name; without the file it names it resolves to nothing and the
+    run takes the harness defaults instead. So the launch stages the config too, and
+    hands the container the pair."""
+    result = _make(launcher, "-n", "agent-run-coder", "PROFILE=cheap",
+                   "AGENT_REPO=/repos/acme")
+    assert result.returncode == 0, result.stderr
+    recipe = result.stdout
+    assert 'AGENT_PROFILE="cheap"' in recipe
+    # A copy, not the operator's own file: the config is re-read every turn, so a live
+    # bind would let an edit move the models of every run already going.
+    assert 'install -m 644 "$config_src" "$run_config"' in recipe
+    assert 'run_config="$worktree_root/stablemate-config.toml"' in recipe
+    # Bound at its own path, so one string means the same file on both sides.
+    assert 'AGENT_CONFIG_FILE="$run_config"' in recipe
+    assert 'AGENT_CONFIG="$run_config"' in recipe
+
+
+def test_a_launch_that_names_no_profile_selects_nothing(launcher: Path):
+    """The behavior every run had before profiles existed: models resolve from the
+    config's top-level tables, and an empty AGENT_PROFILE adds no flag."""
+    result = _make(launcher, "-n", "agent-run-coder")
+    assert result.returncode == 0, result.stderr
+    assert 'AGENT_PROFILE=""' in result.stdout
+
+
+def test_a_config_that_cannot_be_read_stops_the_launch(launcher: Path):
+    """Falling back to the machine's config would run a CI or benchmark launch on
+    models nobody chose — and report success."""
+    result = _make(launcher, "-n", "agent-run-coder", "CONFIG=/nope/config.toml")
+    assert result.returncode == 0, result.stderr
+    assert "is not readable" in result.stdout
+
+
 def test_an_operating_target_without_RUN_says_which_one_to_pass(launcher: Path):
     for target in ("agent-logs", "agent-stop", "agent-clean"):
         result = _make(launcher, target)
