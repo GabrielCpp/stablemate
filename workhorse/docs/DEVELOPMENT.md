@@ -83,6 +83,8 @@ workhorse/                     # this directory, inside the stablemate workspace
 ├── CLAUDE.md                  # Agent entry point; imports docs/GUARDRAILS.md
 └── docs/
     ├── GUARDRAILS.md          # The resilience/error-recovery design and env-var reference
+    ├── TELEMETRY.md           # Spans, metrics and logs: enabling it, and reading it
+    ├── RELOAD.md              # The control channel into a run that is already going
     ├── BACKENDS.md            # Agent CLI backends, power→model mapping, the config file
     ├── AUTHORING.md           # Writing a workflow: states, nodes, transitions, checkpoints
     ├── DEVELOPMENT.md         # This file — working on the controller itself
@@ -175,9 +177,10 @@ carries the artifact assertions (`assert_file`, `assert_file_contains`,
 - **Everything long-form** → `docs/`, one topic per file, `SCREAMING-KEBAB.md`:
   `GUARDRAILS.md` (resilience design + env-var reference), `BACKENDS.md` (CLI backends,
   the power→model config, profiles), `RELOAD.md` (the control channel into a live run),
-  `TELEMETRY.md` (what is emitted and how to read it), `AUTHORING.md` (writing a
-  workflow), `DEVELOPMENT.md` (this file), `DOCKER.md` (the harness). Add new reference and design docs here, not at the
-  root, and leave a one- or two-sentence summary in the README beside the link.
+  `TELEMETRY.md` (enabling telemetry, what is emitted, and how to read it),
+  `AUTHORING.md` (writing a workflow), `DEVELOPMENT.md` (this file), `DOCKER.md` (the
+  harness). Add new reference and design docs here, not at the root, and leave a one- or
+  two-sentence summary in the README beside the link.
 - **`CLAUDE.md`** (root) is the agent entry point and stays at the root so Claude
   Code auto-loads it. It is a standing instruction file loaded on every turn in this
   subtree, so it carries rules an agent would get wrong by default and nothing else; it
