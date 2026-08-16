@@ -40,12 +40,58 @@ def _atomic_json(path: Path, payload: object) -> None:
     temporary.replace(path)
 
 
+#: `branch.<name>.<setting>`, as `git config --list` spells it.
+_BRANCH_SETTING = re.compile(r"^branch\.(?P<name>.+)\.[^.]+$")
+
+
+def _config_records(raw: str) -> list[tuple[str, str]]:
+    """`git config --list --show-origin -z` as (origin, `key\\nvalue`) pairs.
+
+    The `-z` form emits each entry as two NUL-terminated fields, so a value that
+    itself contains a newline — the reason `-z` is asked for — cannot be mistaken
+    for the start of the next entry.
+    """
+    fields = raw.split("\0")
+    return [(fields[i], fields[i + 1]) for i in range(0, len(fields) - 1, 2)]
+
+
+def _foreign_branch_setting(entry: str, active: str) -> bool:
+    """Whether an entry is another branch's bookkeeping in the shared config file.
+
+    A linked worktree gets no config file of its own: `branch.<name>.remote` and
+    `.merge` for *every* branch in the repository live in the one `.git/config`
+    that all worktrees share. So a `git push -u`, `git branch --track` or
+    `git checkout -b` run in a sibling worktree — by a person, by another agent —
+    rewrites this run's fingerprint without touching this run, and the identity
+    assertion kills it mid-packet.
+
+    Those keys cannot change what this run does. It commits on the branch it has
+    already asserted separately, and pushes to `origin` by name, whose URL carries
+    its own digest. The *active* branch's settings stay in the fingerprint; only
+    the other branches' drop out. It is the same trade the ref fingerprint makes
+    in `assert_repository_identity`: refusing sibling churn breaks precisely the
+    dedicated-worktree isolation the check exists to protect.
+    """
+    setting = _BRANCH_SETTING.match(entry.split("\n", 1)[0])
+    return setting is not None and setting.group("name") != active
+
+
 def git_control_digest(root: Path) -> str:
     """Identity of Git controls that can change add/commit/push behavior invisibly."""
     digest = hashlib.sha256()
     try:
         repo = open_repo(root)
-        digest.update(repo.git.config("--list", "--show-origin", "-z").encode())
+        try:
+            active = repo.active_branch.name
+        except (GitError, TypeError):
+            active = ""
+        for origin, entry in _config_records(repo.git.config("--list", "--show-origin", "-z")):
+            if _foreign_branch_setting(entry, active):
+                continue
+            digest.update(origin.encode())
+            digest.update(b"\0")
+            digest.update(entry.encode())
+            digest.update(b"\0")
         controls: list[Path] = []
         for name in (
             "hooks",
