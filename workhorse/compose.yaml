@@ -59,6 +59,16 @@ services:
       # means "let workhorse decide", i.e. the pre-concurrency behavior.
       AGENT_RUN_ID: ${AGENT_RUN_ID:-}
 
+      # ── Which models this run buys ────────────────────────────────────────────
+      # AGENT_PROFILE names a [profiles.<name>] table; AGENT_CONFIG is the container
+      # path of the file that table lives in — the staged copy bound below at its own
+      # path, so this is also the host path the launcher staged. The image ships no config at all, so a profile
+      # named without the file behind it would resolve to nothing and the run would
+      # quietly fall back to the harness defaults; supervisor.py passes them on as
+      # `--config` / `--profile` only when set, which is the pre-profiles behavior.
+      AGENT_PROFILE: ${AGENT_PROFILE:-}
+      AGENT_CONFIG: ${AGENT_CONFIG:-}
+
       # ── Where this run's working tree comes from ──────────────────────────────
       # `clone` (the default) makes a disposable copy in the container's own volume
       # and resets it to the remote on restart. `worktree` gives this run its own
@@ -148,6 +158,23 @@ services:
       - type: bind
         source: ${AGENT_REPO_HOST_DIR:-.}
         target: ${AGENT_REPO_HOST_DIR:-/mnt/unused-host-repo}
+
+      # This run's stablemate config — the [profiles.<name>] tables `--profile` reads.
+      #
+      # A per-run COPY, staged by the launcher beside the run's worktree, not the
+      # operator's own file bound live: the config is re-read every turn, so a live
+      # bind would mean an edit on the host silently moving the models of every
+      # container already going — the global mutation profiles exist to end.
+      #
+      # Bound AT ITS OWN PATH, like the repo above, so AGENT_CONFIG can name one
+      # string that means the same file on both sides. Unset it binds the compose
+      # file's own directory somewhere unused, because a compose bind cannot be
+      # conditional and a source that does not exist would fail the launch on every
+      # machine that keeps no config.
+      - type: bind
+        source: ${AGENT_CONFIG_FILE:-.}
+        target: ${AGENT_CONFIG_FILE:-/mnt/unused-host-config}
+        read_only: true
 
       # No /workflow mount. A workflow is an installed Python package with its own
       # console script, baked into the image — not a directory of yaml and prompts

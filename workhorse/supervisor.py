@@ -334,6 +334,18 @@ def run_command(
     # one run dir, and the second resumes or deletes the first.
     if env.get("AGENT_RUN_ID"):
         cmd += ["--run-id", env["AGENT_RUN_ID"]]
+    # Which config file, and which named model set inside it. Translated here rather
+    # than read by the run, because this is the process boundary: past it both are
+    # flags on a command the checkpoint records, so a resume buys the same models
+    # rather than whatever the environment happens to say the second time.
+    #
+    # The path is the container's, not the host's — the launcher stages a copy of the
+    # operator's config and binds it at /mnt/stablemate-config.toml, so an edit on the
+    # host cannot move a run that is already going.
+    if env.get("AGENT_CONFIG"):
+        cmd += ["--config", env["AGENT_CONFIG"]]
+    if env.get("AGENT_PROFILE"):
+        cmd += ["--profile", env["AGENT_PROFILE"]]
     cmd += ["--params-file", str(params_file)]
     return cmd + list(extra)
 

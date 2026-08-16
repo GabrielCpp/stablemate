@@ -402,6 +402,36 @@ def test_no_run_id_flag_when_the_launcher_minted_none(tmp_path: Path):
     assert "--run-id" not in cmd
 
 
+def test_the_profile_and_its_config_file_cross_the_boundary_as_flags(tmp_path: Path):
+    """Translated once, here, into flags the checkpoint records — so a `docker
+    restart` of this container resumes onto the same models rather than onto whatever
+    the environment says the second time."""
+    cmd = supervisor.run_command(
+        {
+            "WORKFLOW": "coder",
+            "AGENT_CONFIG": "/host/path/.agents/worktrees/abc/stablemate-config.toml",
+            "AGENT_PROFILE": "cheap",
+        },
+        Path("/p.json"),
+        [],
+        bin_dir=_bin_with(tmp_path, "workhorse-coder"),
+    )
+    assert cmd[cmd.index("--profile") + 1] == "cheap"
+    assert cmd[cmd.index("--config") + 1].endswith("stablemate-config.toml")
+
+
+def test_no_profile_flags_when_the_launcher_selected_none(tmp_path: Path):
+    """The pre-profiles behavior, which is what every existing run gets: no flag at
+    all rather than an empty one, which argparse would take as a profile named ''."""
+    cmd = supervisor.run_command(
+        {"WORKFLOW": "coder", "AGENT_PROFILE": "", "AGENT_CONFIG": ""},
+        Path("/p.json"),
+        [],
+        bin_dir=_bin_with(tmp_path, "workhorse-coder"),
+    )
+    assert "--profile" not in cmd and "--config" not in cmd
+
+
 def test_checkout_reads_the_workspace_file_from_the_params_not_a_second_variable(
     monkeypatch,
 ):
