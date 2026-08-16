@@ -502,6 +502,30 @@ def test_a_node_the_workflow_says_nothing_about_carries_no_span_kind():
     assert "workhorse.span_kind" not in tracer.by_name("plan").attrs
 
 
+def test_a_run_level_fact_lands_on_the_root_span_and_the_last_write_wins():
+    """`workhorse.profile` is the caller this exists for, and a `control switch-profile`
+    means it can be written twice. The root exports when the run ends, so the second
+    write is not a lost update — it is the profile the run actually finished on."""
+    t, tracer, _, _ = _telemetry()
+
+    t.run_attribute("workhorse.profile", "cheap")
+    assert tracer.by_name("run:wf").attrs["workhorse.profile"] == "cheap"
+
+    t.run_attribute("workhorse.profile", "local")
+    assert tracer.by_name("run:wf").attrs["workhorse.profile"] == "local"
+
+    # And after the run is over there is no root to stamp — a late write is dropped
+    # rather than raising, like every other signal here.
+    t.end_run("terminal")
+    t.run_attribute("workhorse.profile", "too-late")
+
+
+def test_a_run_level_fact_is_inert_with_telemetry_off():
+    """The facade path: nothing installs a host in a test process, so this is what
+    every call site really executes on a machine with no collector."""
+    otel.run_attribute("workhorse.profile", "cheap")
+
+
 def test_resume_generation_counts_starts_of_one_run_directory():
     """A resume reuses the run_id and opens a fresh root span, so without this a gap
     between two spans cannot be told apart from a process that sat waiting."""

@@ -18,10 +18,11 @@ from dataclasses import replace
 from unittest.mock import patch
 
 from workhorse._vendor.stablemate_core.config import resolve_backend_default, resolve_power
+from workhorse import otel
 from workhorse.runner import ladder
 from workhorse.runner.ladder import _resolve_power_settings
 
-from _fakes import FakeBackend, FakeClock
+from _fakes import FakeBackend, FakeClock, RecordingTelemetry
 
 
 CONFIG = {
@@ -199,6 +200,23 @@ def test_a_switch_is_one_assignment_that_the_next_turn_reads():
         assert _resolve_power_settings("high", "fake", None, runner.profile.name) == (
             "haiku", None
         )
+
+
+def test_a_switch_re_stamps_the_run_span_so_telemetry_says_what_it_spent_on():
+    """The root span closes with the run, so a switch at hour two of a hundred is not a
+    lost update — it is the correction that keeps a cross-run comparison honest."""
+    runner = _runner()
+    fake = RecordingTelemetry()
+    previous = otel.install(otel.TelemetryHost(active=fake))
+    try:
+        with _file(_SWITCHABLE):
+            ladder.switch_profile(runner, "cheap")
+            # A refusal changes no models, so it must leave the attribute alone too.
+            ladder.switch_profile(runner, "nosuch")
+    finally:
+        otel.install(previous)
+
+    assert fake.run_attributes == [("workhorse.profile", "cheap")]
 
 
 def test_the_box_is_shared_so_a_sub_flow_cannot_put_the_parent_back():

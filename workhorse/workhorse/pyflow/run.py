@@ -224,6 +224,13 @@ def run_pyflow(invocation: RunInvocation) -> int:
     # the invocation, like every other setting.
     otel.install(invocation.telemetry)
     otel.start_run(name, writer.run_id, str(writer.run_dir))
+    if config.profile:
+        # The axis every cross-run comparison groups by — "did this profile finish
+        # cheaper, and did it finish at all" is a question about runs, so it belongs on
+        # the run's span rather than only in `run.json` on one host's disk. Stamped only
+        # when there is one: an unset attribute reads as the default profile, whereas a
+        # literal "" or "default" would invent a name the config file does not have.
+        otel.run_attribute("workhorse.profile", config.profile)
     # From here on the run is reachable. Armed after telemetry rather than before, so the
     # first thing a cut turn does — record `reload_kill` on its own span — has somewhere
     # to land. A dry run is left unarmed: it runs no agent turn to cut, and its stubbed

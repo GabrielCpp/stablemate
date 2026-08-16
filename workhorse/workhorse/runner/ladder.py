@@ -148,6 +148,10 @@ def switch_profile(runner: "AgentRunner | None", name: str) -> dict[str, object]
     # after having been deleted deserves to be complained about again if it goes missing a
     # second time, and the set is what would otherwise swallow that.
     _warned_missing_profile.discard(name)
+    # The root span has not exported yet — it closes with the run — so re-stamping it is
+    # what keeps telemetry saying which models the run actually spent on. Last write wins,
+    # which for a run moved at hour two of a hundred is the answer worth having.
+    otel.run_attribute("workhorse.profile", name)
     return {"ok": True, "profile": name, "was": was}
 
 

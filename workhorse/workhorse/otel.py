@@ -327,6 +327,7 @@ class Telemetry(Protocol):
 
     def enabled(self) -> bool: ...
     def record_event(self, event: NodeEvent) -> None: ...
+    def run_attribute(self, name: str, value: str) -> None: ...
     def state_start(self, state: str, seq: int) -> None: ...
     def state_end(
         self, state: str, seq: int, next_state: str | None = None, cut: str = ""
@@ -376,6 +377,7 @@ class _NullTelemetry:
         return False
 
     def record_event(self, event: NodeEvent) -> None: ...
+    def run_attribute(self, name: str, value: str) -> None: ...
     def state_start(self, state: str, seq: int) -> None: ...
     def state_end(
         self, state: str, seq: int, next_state: str | None = None, cut: str = ""
@@ -740,6 +742,11 @@ def record_event(event: NodeEvent) -> None:
     _host.active.record_event(event)
 
 
+def run_attribute(name: str, value: str) -> None:
+    """Stamp a run-level fact on the root span. See :meth:`_Telemetry.run_attribute`."""
+    _host.active.run_attribute(name, value)
+
+
 def state_start(state: str, seq: int) -> None:
     """Open the span for one state-body execution.
 
@@ -1022,6 +1029,20 @@ class _Telemetry:
             self._root = self._tracer.start_span(
                 f"run:{workflow}", attributes=_head_attrs("git.head.start", refresh=True)
             )
+
+    @_failsoft(None)
+    def run_attribute(self, name: str, value: str) -> None:
+        """Stamp one run-level fact on the root span.
+
+        A span's attributes are read at export, and the root exports when the run ends,
+        so a value set later — or set twice — is not lost: last write wins. That is the
+        right rule for the one caller there is today (`workhorse.profile`), where a
+        `control switch-profile` means the profile the run *finished* on is the honest
+        answer to "which models did this cost buy".
+        """
+        with self._lock:
+            if self._root is not None:
+                self._root.set_attribute(name, value)
 
     def start_heartbeat(self) -> None:
         """Begin proving the run's process is alive, independent of node type.

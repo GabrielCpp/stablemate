@@ -139,6 +139,10 @@ class RecordingTelemetry(otel._NullTelemetry):
         #: Run finalizations: the status each ``end_run`` published, in order. The host
         #: makes the first one win, so a second entry means a test called it itself.
         self.ended: list[str] = []
+        #: Run-level facts stamped on the root span: (name, value), in order. A list
+        #: rather than a dict because the order of two writes to one name is the
+        #: assertion — last write is what the root exports.
+        self.run_attributes: list[tuple[str, str]] = []
         self._wait_token = 0
 
     def enabled(self) -> bool:
@@ -149,6 +153,9 @@ class RecordingTelemetry(otel._NullTelemetry):
 
     def set_labels(self, labels: dict[str, str]) -> None:
         self.labels.append(dict(labels))
+
+    def run_attribute(self, name: str, value: str) -> None:
+        self.run_attributes.append((name, value))
 
     def turn_event(self, name: str, error: bool, attrs: dict[str, Any]) -> None:
         self.events.append((name, error, dict(attrs)))
