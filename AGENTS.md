@@ -318,5 +318,4 @@ unchanged. Do not block on a long poll: if the turn is still streaming, say the
 reload is pending and move on.
 
 Full mechanics — what closes, what the spans are stamped with, what a `--core`
-reload re-execs — are in stablemate's `workhorse/README.md`, under "Pushing a fix
-into a run that is already going".
+reload re-execs — are in stablemate's `workhorse/docs/RELOAD.md`.
