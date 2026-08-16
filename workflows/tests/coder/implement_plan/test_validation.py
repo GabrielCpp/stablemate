@@ -147,17 +147,45 @@ def test_cycle_is_rejected_before_implementation(
         prepare_plan(logger, PlanDecomposition.model_validate(_decomposition(first, second)), context)
 
 
-def test_overlapping_ownership_requires_dependency(
+def test_overlapping_ownership_is_ordered_by_the_emitted_sequence(
     tmp_path: Path,
     repo: Path,
     logger: Any,
 ) -> None:
+    """Sharing a file demands an order, and the planner's own sequence already is one.
+
+    Declaring every implied edge is a transitive closure done by hand, so the missing
+    one is recorded rather than fatal — the pair is still ordered, and the order is the
+    one the decomposition itself emitted.
+    """
     context = _context(tmp_path, repo, logger)
     broad = _task("broad", "src")
     narrow = _task("narrow", "src/narrow.txt")
 
-    with pytest.raises(WorkflowFailed, match="overlapping path ownership"):
-        prepare_plan(logger, PlanDecomposition.model_validate(_decomposition(broad, narrow)), context)
+    plan = prepare_plan(
+        logger, PlanDecomposition.model_validate(_decomposition(broad, narrow)), context
+    )
+
+    assert [task.id for task in plan.tasks] == ["broad", "narrow"]
+    assert plan.tasks[1].depends_on == ["broad"]
+
+
+def test_ordering_a_shared_file_never_contradicts_a_declared_dependency(
+    tmp_path: Path,
+    repo: Path,
+    logger: Any,
+) -> None:
+    """The declared edge wins: the implied one is only ever added forwards."""
+    context = _context(tmp_path, repo, logger)
+    broad = _task("broad", "src", depends_on=["narrow"])
+    narrow = _task("narrow", "src/narrow.txt")
+
+    plan = prepare_plan(
+        logger, PlanDecomposition.model_validate(_decomposition(broad, narrow)), context
+    )
+
+    assert [task.id for task in plan.tasks] == ["narrow", "broad"]
+    assert plan.tasks[1].depends_on == ["narrow"]
 
 
 def test_packet_cannot_own_an_ignored_source_plan(

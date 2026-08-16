@@ -235,7 +235,7 @@ def _validate_task(task: PlanTask, context: PlanRunContext) -> PlanTask:
     return task
 
 
-def _topological(tasks: list[PlanTask]) -> list[PlanTask]:
+def _topological(logger, tasks: list[PlanTask]) -> list[PlanTask]:
     by_id = {task.id: task for task in tasks}
     if len(by_id) != len(tasks):
         raise WorkflowFailed("plan decomposition contains duplicate task ids")
@@ -270,18 +270,35 @@ def _topological(tasks: list[PlanTask]) -> list[PlanTask]:
         ancestors[task.id] = set(task.depends_on)
         for dependency in task.depends_on:
             ancestors[task.id].update(ancestors[dependency])
-    for index, left in enumerate(tasks):
-        for right in tasks[index + 1 :]:
+    # Two packets that own a file in common must be ordered against each other, so that
+    # the later one is written against the earlier one's committed result rather than
+    # against a file it is about to contradict. That order already exists: execution is
+    # sequential, and the sort above is a total order the planner itself determined by
+    # the sequence it emitted. What can be missing is the *statement* of it — declaring
+    # every implied edge across eight packets sharing four files is a transitive closure
+    # done by hand, and the one that gets forgotten is between two branches that do not
+    # converge until much later. Record the implied edge instead of killing the run for
+    # it: the invariant is that the pair is ordered and that the order is in the
+    # checkpoint, and both hold. Every added edge runs forwards along `ordered`, so no
+    # edge can create a cycle or change the sequence it was derived from.
+    for index, right in enumerate(ordered):
+        for left in ordered[:index]:
+            if left.id in ancestors[right.id]:
+                continue
             overlap = any(
                 _path_owned(left_path, [right_path]) or _path_owned(right_path, [left_path])
                 for left_path in left.paths
                 for right_path in right.paths
             )
-            unordered = left.id not in ancestors[right.id] and right.id not in ancestors[left.id]
-            if overlap and unordered:
-                raise WorkflowFailed(
-                    f"tasks {left.id} and {right.id} have overlapping path ownership but no dependency"
-                )
+            if not overlap:
+                continue
+            right.depends_on.append(left.id)
+            ancestors[right.id].update({left.id, *ancestors[left.id]})
+            logger.info(
+                "ordered %s after %s: shared path ownership, no declared dependency",
+                right.id,
+                left.id,
+            )
     return ordered
 
 
@@ -363,7 +380,7 @@ def prepare_plan(
         )
     if not decomposition.tasks:
         raise WorkflowFailed("plan decomposition produced no implementation tasks")
-    tasks = _topological([_validate_task(task, context) for task in decomposition.tasks])
+    tasks = _topological(logger, [_validate_task(task, context) for task in decomposition.tasks])
     final = [
         validate_command(command, owner="final gate")
         for command in decomposition.final_verification
