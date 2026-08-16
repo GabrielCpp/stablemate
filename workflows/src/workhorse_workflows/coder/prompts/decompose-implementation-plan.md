@@ -17,16 +17,24 @@ plan phase.
 Each task must declare:
 
 - a stable lowercase kebab-case `id` that contains no private/client name;
-- a concise public-safe title and objective;
+- a concise public-safe title and objective. These are not internal labels: the title becomes the
+  description of the task's commit subject and the objective becomes the commit body, so both
+  ship permanently in the public log. Write the title as a short imperative phrase that still
+  reads as a commit subject once `type(scope): ` is prefixed, and short enough to keep that whole
+  line under 72 characters;
 - observable acceptance criteria;
 - task ids it depends on;
 - every repository-relative file or directory it may change (never `.`, `..`, `.git`, or the plan
   snapshot); make shared-file ownership explicit and order overlapping owners. Implementation runs
   tests-first, so the paths must also include the test files or directories the task's acceptance
-  criteria need — a tests-only turn can create files solely inside this ownership;
+  criteria need — a tests-only turn can create files solely inside this ownership. A file that
+  does not exist yet and that no other task declares is adopted by whichever task creates it, so
+  a missed new path is recoverable; a file that already exists is not, and editing one outside
+  the declared paths fails the task;
 - deterministic verification commands as argv arrays, with repository-relative cwd and timeout;
 - one Conventional Commit type and tracked top-level package scope where applicable. The workflow
-  builds a neutral public subject; no title, objective, task id, or plan quotation enters it.
+  assembles the message itself from these plus the title and objective; nothing else — no task id
+  beyond the trailer, no plan quotation — enters it.
 
 Also declare a final repository-wide verification gate. For this Python workspace, preserve the
 plan's targeted tests and use the repository's documented root gates; do not invent unavailable
@@ -42,7 +50,7 @@ Return this JSON object as the last thing in your response:
   "tasks": [
     {
       "id": "lifecycle-model",
-      "title": "Lifecycle model",
+      "title": "give every execution its own identity and outcome",
       "objective": "Introduce explicit execution identities and outcomes.",
       "acceptance": ["Repeated calls have distinct identities."],
       "depends_on": [],
