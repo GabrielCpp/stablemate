@@ -174,8 +174,9 @@ carries the artifact assertions (`assert_file`, `assert_file_contains`,
   a relative one 404s on PyPI.
 - **Everything long-form** → `docs/`, one topic per file, `SCREAMING-KEBAB.md`:
   `GUARDRAILS.md` (resilience design + env-var reference), `BACKENDS.md` (CLI backends,
-  the power→model config), `AUTHORING.md` (writing a workflow), `DEVELOPMENT.md` (this
-  file), `DOCKER.md` (the harness). Add new reference and design docs here, not at the
+  the power→model config, profiles), `RELOAD.md` (the control channel into a live run),
+  `TELEMETRY.md` (what is emitted and how to read it), `AUTHORING.md` (writing a
+  workflow), `DEVELOPMENT.md` (this file), `DOCKER.md` (the harness). Add new reference and design docs here, not at the
   root, and leave a one- or two-sentence summary in the README beside the link.
 - **`CLAUDE.md`** (root) is the agent entry point and stays at the root so Claude
   Code auto-loads it. It is a standing instruction file loaded on every turn in this

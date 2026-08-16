@@ -51,8 +51,8 @@ of real names, not quietly at the first agent node.
 
 A live run can be moved to another CLI without losing its place —
 `workhorse-<name> control switch-cli <cli> --run <id>` re-enters the current checkpoint
-on the named CLI (see [README.md](../README.md), "Pushing a fix into a run that is
-already going"). That is a per-run override too: it does not touch `default_cli`.
+on the named CLI (see [RELOAD.md](RELOAD.md)). That is a per-run override too: it does not
+touch `default_cli`.
 
 The backend default model is overridable per run with the `AGENT_MODEL` env var.
 Workflows can request an abstract `power` tier per agent turn; your user-wide config
@@ -265,6 +265,48 @@ farrier config show
 # library_dir=/Users/you/path/to/prompt-library
 # stablemate_dir=/Users/you/path/to/stablemate
 ```
+
+### Naming a set of models (profiles)
+
+Editing the `power` and `[default.<backend>]` tables above moves **every** run on the
+machine, including the six-day one already going, and leaves no record of what a finished run actually bought. A `[profiles.<name>]`
+table holds its own `power`, `default` and `default_cli` under one name, picked per run:
+
+```toml
+[profiles.cheap.power.high.claude]
+model = "sonnet"
+
+[profiles.cheap.default.claude]
+model = "haiku"
+```
+
+```bash
+workhorse-<name> run --profile cheap
+workhorse-<name> run --config ./experiment.toml   # a different config file entirely
+farrier config show --profile cheap               # read one back, one dotted line per leaf
+```
+
+A profile **replaces** the top-level `power` / `default` tables rather than layering over
+them — nothing outside it is inherited. Power tiers are opaque strings, so "the profile did
+not mention `smart`, so it means the machine's `smart`" is a guess the config cannot state.
+What is not a model set stays outside a profile and still applies: `[harness.<backend>].env`,
+`library_dir`, `base_dir`, `stablemate_dir`.
+
+`--profile` and `--cli` are independent axes. A profile may carry its own `default_cli`, so
+the profile is selected first and the ladder is `--cli` > `AGENT_CLI` > the profile's
+`default_cli` > the top level's > `claude`. A profile that maps no model at all for the
+chosen backend is refused at startup — including under `--dry-run`, that being the point —
+as are an unknown profile name and a `--config` path that is not a file.
+
+`--config <path>` swaps the whole file rather than one table: the resolved path is written
+into `$STABLEMATE_CONFIG`, so every later reader and every subprocess resolves the same one.
+It is a `run` flag only; `control` talks to a run that already knows its config.
+
+The chosen profile is recorded in the run's `run.json` (with an informational
+`profile_config` snapshot of what it resolved to) and stamped on the run's root span as
+`workhorse.profile`. So a flagless `--resume-run` re-applies the same set instead of
+silently falling back to the top level, and a finished run can still answer which models it
+bought after the config has moved on.
 
 ### Codex config profiles (`<profile>@<model-slug>`)
 
