@@ -34,7 +34,11 @@ Each task must declare:
 - deterministic verification commands as argv arrays, with repository-relative cwd and timeout;
 - one Conventional Commit type and tracked top-level package scope where applicable. The workflow
   assembles the message itself from these plus the title and objective; nothing else — no task id
-  beyond the trailer, no plan quotation — enters it.
+  beyond the trailer, no plan quotation — enters it. Choose the type by what the task's change
+  *is*, not by where it sits in the sequence: release tooling reads it, and `feat` `fix` `perf`
+  `refactor` release a version while `docs` `test` `build` `ci` `chore` release nothing at all.
+  A speedup is `perf` even when the plan calls it groundwork; `docs` belongs only to a task whose
+  work is the documentation itself.
 
 Also declare a final repository-wide verification gate. For this Python workspace, preserve the
 plan's targeted tests and use the repository's documented root gates; do not invent unavailable

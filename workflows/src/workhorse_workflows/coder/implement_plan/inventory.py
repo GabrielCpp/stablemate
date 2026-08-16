@@ -30,6 +30,7 @@ _SCOPE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 _COMMIT_TYPES = frozenset(
     {"feat", "fix", "perf", "refactor", "docs", "test", "build", "ci", "chore", "revert"}
 )
+_DOC_SUFFIXES = frozenset({".md", ".rst", ".txt", ".adoc"})
 
 
 def _atomic_json(path: Path, payload: object) -> None:
@@ -168,6 +169,11 @@ def _path_owned(path: str, scopes: list[str]) -> bool:
     )
 
 
+def _documentation(path: str) -> bool:
+    candidate = PurePosixPath(path)
+    return candidate.suffix.lower() in _DOC_SUFFIXES or "docs" in candidate.parts
+
+
 def _valid_commit_scopes(root: Path) -> set[str]:
     try:
         tracked = open_repo(root).git.ls_files("-z").split("\0")
@@ -212,6 +218,17 @@ def _validate_task(task: PlanTask, context: PlanRunContext) -> PlanTask:
         not _SCOPE.fullmatch(task.commit_scope) or task.commit_scope not in valid_scopes
     ):
         raise WorkflowFailed(f"task {task.id} has invalid commit scope {task.commit_scope!r}")
+    # Vocabulary is not choice. `docs` is the type most often applied to a packet that
+    # is nothing of the kind — the release tooling reads it and ships the work to
+    # nobody, and the omission only surfaces weeks later as a bug report against a
+    # version that never contained the change. A packet touching no documentation at
+    # all is the one case where that is mechanically provable; a packet that does
+    # touch some is left alone, because a documentation change may legitimately reach
+    # into a source file for a docstring.
+    if task.commit_type == "docs" and not any(_documentation(path) for path in task.paths):
+        raise WorkflowFailed(
+            f"task {task.id} is typed docs but owns no documentation: {', '.join(task.paths)}"
+        )
     if len(commit_subject(task)) > 72:
         raise WorkflowFailed(f"task {task.id} commit subject exceeds 72 characters")
     task.depends_on = list(dict.fromkeys(task.depends_on))

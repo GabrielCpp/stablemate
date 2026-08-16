@@ -65,6 +65,40 @@ def test_ignored_top_level_directory_is_not_a_valid_package_scope(
         prepare_plan(logger, PlanDecomposition.model_validate(_decomposition(task)), context)
 
 
+def test_code_packet_typed_docs_is_rejected(
+    tmp_path: Path,
+    repo: Path,
+    logger: Any,
+) -> None:
+    """A valid type can still be the wrong one, and this one ships the work to nobody.
+
+    Release tooling reads the type: a speedup labelled `docs` releases no version, and
+    the omission surfaces weeks later as a bug against a version that never had it.
+    """
+    context = _context(tmp_path, repo, logger)
+    task = _task("mislabelled", "src/cache.py") | {"commit_type": "docs"}
+
+    with pytest.raises(WorkflowFailed, match="owns no documentation"):
+        prepare_plan(logger, PlanDecomposition.model_validate(_decomposition(task)), context)
+
+
+def test_docs_packet_reaching_into_a_source_file_is_allowed(
+    tmp_path: Path,
+    repo: Path,
+    logger: Any,
+) -> None:
+    """A genuine documentation task may still touch code — a docstring lives there."""
+    context = _context(tmp_path, repo, logger)
+    task = _task("real-docs", "README.md") | {
+        "commit_type": "docs",
+        "paths": ["README.md", "src/cache.py"],
+    }
+
+    plan = prepare_plan(logger, PlanDecomposition.model_validate(_decomposition(task)), context)
+
+    assert plan.tasks[0].commit_type == "docs"
+
+
 def test_final_gate_failure_does_not_publish_last_packet(
     tmp_path: Path,
     repo: Path,
