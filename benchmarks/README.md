@@ -225,185 +225,42 @@ diffs each result against a frozen Claude Code reference — which is how you an
 should we actually buy?* rather than *is this good?*
 
 ```bash
-uv run python benchmarks/matrix.py sets                    # what is defined, and its tags
-uv run python benchmarks/matrix.py gold --task link-shortener   # freeze the reference
-uv run python benchmarks/matrix.py run --tag quick         # every set × the cheap tasks
-uv run python benchmarks/matrix.py run                     # every set × EVERY task — days
+uv run python benchmarks/matrix.py sets                          # what is defined, and its tags
+uv run python benchmarks/matrix.py gold --task link-shortener    # freeze the reference
+uv run python benchmarks/matrix.py run --tag quick               # every set × the cheap tasks
 uv run python benchmarks/matrix.py report --task link-shortener --write
 ```
 
-`--task` names one task; `--tag` names a shape and takes as many as you like, narrowing
-(AND) rather than widening. A bare `run` is every set × every task including `todo-app`,
-which is a days-long commitment — `--tag quick` is the one to reach for first. A tag no
-task carries is refused rather than run as an empty matrix, because a typo and "nothing to
-do" produce the same silent second of wall clock.
+A **set** is not a model: one `coder` run makes 41 agent turns across three power tiers, and
+a set may point each tier at a different model on a different backend, so results are keyed
+by the set's label and the tier→model mapping travels inside every scorecard. That is what
+makes a single-tier ablation the natural experiment. Two things are pinned so a delta means
+something — the judge (`judge:` in `sets.yml` outranks the ambient backend) and the gold
+reference (produced once per task, and a matrix against a stale one is refused rather than
+warned about). Cells are sequential and resumable, and land in the gitignored `data/`.
 
-### A set is not a model
-
-One `coder` run makes 41 agent turns — 34 at `power="high"`, 12 at `medium`, 2 at `low` —
-and a set may point each tier at a different model on a different backend. So "the Qwen
-result" names nothing. Results are keyed by the set's **label**, and the full tier→model
-mapping travels inside every scorecard and manifest. "Which model was at `high`?" is then
-a question you ask of the manifests afterwards, rather than one the directory layout had
-to anticipate.
-
-That is also what makes single-tier ablations the natural experiment. `local-cheap-high`
-differs from `local-mixed` in one tier, and 34 of coder's 41 turns move with it: if the
-score holds, the dense model at `high` is not earning its VRAM.
-
-```yaml
-sets:
-  - label: local-mixed
-    cli: opencode
-    power:
-      high:   {opencode: {model: qwen/qwen3.6-27b, effort: high}}
-      medium: {opencode: {model: qwen/qwen3.6-35b-a3b}}
-      low:    {opencode: {model: qwen/qwen3-coder-30b-a3b-instruct}}
-```
-
-A set's `power` is *overlaid* on the spec's, so a task spec that pins a cheap tier for
-budget reasons still loses to the set. The spec is the benchmark; the set is the
-experiment.
-
-### The judge is pinned, and that is load-bearing
-
-Levels 2 and 3 are behavioral claims made by an agent reading the repo, so the judge is a
-measuring instrument. It used to be built from `get_backend()`, which falls back to
-`$AGENT_CLI` — meaning it would have switched backends in step with the set it was
-grading. Every set would have been scored by a different grader and no delta would have
-carried information about either. `judge:` in `sets.yml` now outranks the ambient value
-and applies to every set including gold, and is recorded in each manifest so a score that
-moved *because the judge changed* can be told apart from one that moved because a model
-did.
-
-### Gold is frozen, not re-run
-
-Two Claude Code runs over one backlog do not produce the same repo. A reference that moves
-would mix its own run-to-run variance into every delta, so gold is produced once per task,
-bundled, and stamped with the workflow sha, backlog hash and judge it ran under. A matrix
-against a different one is **refused**, not warned about:
-
-```
-error: gold for 'link-shortener' ran on workflow 9c1058c, HEAD is 4b2e991
-       — re-run: matrix.py gold --task link-shortener
-```
-
-### Where the results go
-
-`data/` at the repo root, gitignored — and `matrix.py` re-checks that at runtime, because
-every cell holds a repo with its own `.git` and a nested working tree the outer repo can
-see is how a produced app ends up committed into the harness that produced it. This tree
-ships publicly.
-
-```
-data/
-  <set-label>/<task>/
-    repo/            the produced code — its own git repo
-    repo.bundle      full history in one file, for archival
-    .runs/           artifacts, config.toml, scorecard.json
-    manifest.json    set + workflow sha + spec hash + per-phase rc and wall-clock
-    matrix.log       every phase's stdout
-  reports/<task>.md  per-bullet delta, every set beside gold
-```
-
-Runs are **sequential**: wall-clock is one of the outputs, and two sets running at once
-contend for the same GPU or rate limit, which makes both readings fiction. Cells are
-resumable — a completed cell is skipped, so a matrix that dies in hour six resumes rather
-than restarts, and `--redo` is the only way to discard a result.
-
-A cell whose `coder` phase failed is still **scored and kept**. A partial build is the
-measurement that hour bought, and re-running it throws that away.
-
-### Reading the report
-
-The headline percentage is reported but is not the interesting column. Two sets can tie at
-55% having failed on disjoint bullets, and *which* bullets a configuration drops is what
-distinguishes a reasoning weakness from a tool-use one. So the report is per bullet:
-
-```
-| bullet          | gold | local-mixed | hosted-cheap |
-| `link-create`   |    3 |      3      |     2 (-1)   |
-| `link-redirect` |    3 |    2 (-1)   |     3        |
-```
+Set definition and overlay, the reasoning behind both pins, the `data/` layout and how to
+read the per-bullet report are in [docs/MATRIX.md](docs/MATRIX.md).
 
 ## Iterating on a workflow (`evals.py`) — designed, not built
 
 > **Status: not implemented.** `evals.py`, `evals/<workflow>.yml` and the fixture store do
-> not exist in this tree; only `.gitignore` entries for their output do. What follows is the
-> design the harness is meant to satisfy, kept here because the constraints are the hard
-> part and they are settled. `bench.py` above is the harness that *does* exist.
+> not exist in this tree; only `.gitignore` entries for their output do.
 
-`bench.py` answers *is the workflow good?* — once, over hours, as a single sample. That
-makes it a regression gate and a poor instrument: a prompt edit worth 15 points of node
-success rate is invisible in one end-to-end run, and one lucky run "proves" a change that
-did nothing.
+`bench.py` answers *is the workflow good?* once, over hours, as a single sample — a fine
+regression gate and a poor instrument. `evals.py` would measure the other way round: **one
+node, many samples, frozen input**, over three pieces of pure data — a *fixture* (a node's
+real entry context, harvested from run artifacts), a *variant* (the change under test, as an
+overlay on the workflow package, so a state-machine edit is as testable as a reworded
+prompt), and a *grader* (the workflow's own deterministic gate, never a rubric).
 
-`evals.py` would measure the other way round: **one node, many samples, frozen input.**
-
-```bash
-evals.py harvest --run ~/runs/author-default   # freeze real node entries as fixtures
-evals.py list                                  # what's in the store
-evals.py run --node write_story                # baseline pass rate
-evals.py compare --node write_story --b candidate-prompt.md
-```
-
-Three pieces, all data:
-
-- **fixture** — the exact context a node was entered with in a real run, plus the repo
-  commit it read. Harvested from run artifacts, never hand-written, so the distribution
-  is the real one.
-- **variant** — the change under test, as an *overlay on the workflow package*: a bare
-  file replaces the node's prompt, a directory is mirrored over the whole workflow. So an
-  edit to the state machine itself, or a stricter validator, is as testable as a reworded
-  prompt — which matters, because those are the **stronger** fixes and the tooling should
-  not make the weakest one the easiest to try.
-- **grader** — the workflow's *own* deterministic gate, named by node id in
-  `evals/<workflow>.yml`. `write_story` is graded by `validate_story` and
-  `check_story_grounding`, the same two scripts production runs. Not a rubric, not a
-  judge: tightening `validate_story` tightens the eval in the same commit, and the two
-  can never drift into different opinions of "done".
-
-### What makes the number trustworthy
-
-- **An unanswered node is a failure.** The ladder never fabricates a node's outputs — it
-  stops the run instead — so the resilience that keeps unattended runs alive cannot
-  quietly score as a pass.
-- **The verdict needs two bars.** A change is accepted only when a paired randomization
-  test clears `--alpha` *and* the mean per-fixture gain clears `--min-effect` (10 points
-  by default). Significance alone is buyable with sample count.
-- **Fixtures are split tune/holdout** (deterministically, by id hash). The tune split has
-  to show the gain; the holdout only has to not contradict it. Requiring significance
-  twice on a small store would reject every real improvement.
-- **Too many harness errors means no verdict.** Above 20% crashed samples the run isn't a
-  measurement, and it says so instead of printing a number.
-- **Replay never touches the harvested repo.** Each sample gets a `git worktree` at the
-  fixture's commit and every path in the context is rebased into it.
-
-### Limits worth knowing before you trust a result
-
-- **Graders check well-formedness, not quality.** A prompt can be tuned to satisfy
-  `section_gaps` while writing worse stories. That is what `bench.py score`'s judged
-  backlog satisfaction is for — iterate here, gate there.
-- **Only a node's last visit is harvestable.** `context_after.json` is overwritten per
-  visit, so a node that looped eleven times yields one fixture. Breadth comes from more
-  runs, not deeper mining of one.
-- **Fixtures carry real run content**, so the store (`.fixtures/`) is gitignored and
-  `$STABLEMATE_EVAL_FIXTURES` moves it off the tree entirely when harvesting from a
-  private repo. This directory ships publicly — see the root `CLAUDE.md`.
-
-### Adding a node
-
-Declare it in `evals/<workflow>.yml` with the downstream script node that grades it. A
-node qualifies when its input is recoverable from artifacts, its output is graded by a
-deterministic node *in the same graph*, and failing that gate is a real defect. If a node
-has no deterministic gate, add one to the workflow first — that fix is stronger than
-anything the eval would have measured.
+The design — what makes the number trustworthy, the limits worth knowing before trusting a
+result, and when a node qualifies — is in [docs/EVALS.md](docs/EVALS.md).
 
 ## Measuring one flow instead of the whole chain (`replay.py`)
 
 `bench.py` moves every variable at once over hours, so it cannot attribute a difference to
-the one prompt you edited. `replay.py` replays **one flow, one story** against a frozen app
-— `workhorse-coder run qa` / `run docs`, both first-class entry points taking a story slug —
+the one prompt you edited. `replay.py` replays **one flow, one story** against a frozen app,
 so everything else about the tree is byte-identical between trials.
 
 ```bash
@@ -412,61 +269,15 @@ replay.py report before                                           # the loop tab
 replay.py --fixture seat-booking score                            # detection + convergence
 ```
 
-Trials record into groom's telemetry like any other run, and `report` reads
-`groom.store.loop_convergence` — the same function behind `groom loops`. `--label` names the
-configuration, which is what makes a before/after comparison a comparison.
+Laps and dollars are the wrong half to optimise alone — a flow that approves everything
+converges in one lap — so `score` answers *did QA catch what was actually wrong?* against an
+app whose defects are known in advance ([`apps/`](apps/README.md)), and prints both numbers
+together: `caught 6/8  missed 2  false 1 | plan-qa 2.1 laps ~$0.94`.
 
-### Convergence is half a measurement
-
-Laps and dollars are the wrong half to optimise alone: a flow that approves everything
-converges in one lap. `score` supplies the other half — **did QA catch what was actually
-wrong?** — and that needs an app whose defects are known in advance, which is what
-[`apps/`](apps/README.md) is. A scored round runs a clean control plus one trial per row of
-`defects.yml` and prints both numbers together:
-
-```
-caught 6/8  missed 2  false 1 | plan-qa 2.1 laps ~$0.94
-```
-
-Detection is scored off machine-readable state, not off reading the QA report: the
-obligation's status in the computed evidence map, or an audit refutation citing it. Three
-distinctions the verdicts keep:
-
-- **`uncovered` is not a catch.** Nothing was asserted, so nothing was detected. It scores
-  `inconclusive`, and so does a missing evidence map or an obligation this trial never owed —
-  a harness failure must never arrive as either a catch or a miss.
-- **A clean control that refutes is a fixture bug**, not a finding, and shows up as a false
-  alarm.
-- **`caught_by` is recorded, not scored.** Whether a defect surfaces from a failing scenario
-  or from the auditor is the plan's choice, and the plan is the thing under measurement.
-- **A repaired defect is a catch, not a miss.** QA does not only observe: it triages a
-  failing observation as a code failure and fixes the product, after which the terminal
-  evidence map is computed over a fixed app and correctly reads `covered`. The seeded file
-  is what tells that apart from a run that never noticed — it was planted by a whole-file
-  overwrite, so a trial ending with it no longer byte-equal to the variant detected the
-  defect. A miss needs all three: a published pass, the obligation covered, *and* the
-  defect still in place.
-
-The money is the harness's own where it reports any, and `groom.prices`' rate card —
-printed `~$2.37` — where it does not. The default backend is `opencode`, which reports a
-literal `$0` over millions of tokens; a headline printing `$0.00` there would say the round
-was free. `$?` means neither exists, i.e. the model has no line in `prices.toml` yet.
-
-```bash
-replay.py --fixture seat-booking score                 # the whole key, plus one control per story
-replay.py --fixture seat-booking score --defect D1     # one row
-replay.py --fixture seat-booking score --sandbox       # score the sandboxed configuration
-```
-
-Trials drive **`opencode`** unless `--cli` says otherwise, and the backend is recorded on
-every row of the ledger. Both halves of that are deliberate: a full round is a control per
-story plus a run per defect — a dozen QA flows for one number, which on the default backend
-is a benchmark nobody re-runs — and a label whose trials silently inherited `$AGENT_CLI` is
-not a configuration anyone can compare against. Same reasoning as `bench.py`'s pinned judge.
-
-`--sandbox` is a workflow param threaded to `ostler qa run --sandbox`, never an environment
-read — a value outside the checkpoint means a resumed trial silently measures a different
-configuration.
+How detection is scored off machine-readable state rather than off reading the QA report,
+the four verdict distinctions that keep a harness failure from arriving as a catch or a
+miss, where the money figure comes from, and why the backend is pinned, are in
+[docs/REPLAY.md](docs/REPLAY.md).
 
 ## Adding a benchmark app
 
@@ -485,6 +296,7 @@ apps/                 finished apps with an answer key — input to *measuring* 
 evals.py              the node-replay harness: A/B one change, many samples   (PLANNED)
 evals/author.yml      which author nodes are evaluable, and what grades each  (PLANNED)
 rubric.md             the judge's prompt — the file to tune when scores feel wrong
+docs/                 MATRIX.md, EVALS.md, REPLAY.md — one per harness above
 tests/                the properties the score rests on
 suites/               every benchmark, one directory each
   README.md           which suite catches what, and the tag vocabulary
