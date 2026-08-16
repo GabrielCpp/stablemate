@@ -236,12 +236,9 @@ __marimo__/
 # but its contents never ship.
 docs/plans/*
 !docs/plans/.gitkeep
-
-
-
 progress.md
-.opencode
 docs/specs
+.opencode/opencode-loop
 
 .agents/runs/
 .agents/worktrees/
