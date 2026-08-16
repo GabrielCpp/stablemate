@@ -18,7 +18,9 @@ paths and rerun its complete verification list.
 {{ workhorse_var('findings') }}
 
 Inspect and preserve valid partial work. Do not commit, push, modify the source plan, touch run
-artifacts, change refs/remotes/Git configuration, or edit outside the issue paths.
+artifacts, change refs/remotes/Git configuration, or edit outside the issue paths — unless the
+findings say the fix left something out of its declared paths, in which case edit the missing file
+too, and the workflow widens the declaration to whatever this repair touched.
 
 Return exactly one JSON object as the final response:
 

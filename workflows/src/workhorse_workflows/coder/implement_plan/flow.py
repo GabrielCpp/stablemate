@@ -12,6 +12,7 @@ from workhorse_workflows.coder.implement_plan.execution import (
     check_planning_turn,
     commit_plan_task,
     decide_task_entry,
+    extend_task_paths,
     project_plan_progress,
     publish_plan_task,
     retract_task_commit,
@@ -395,7 +396,15 @@ class ImplementPlan(Workflow):
         expected_head: str,
         repair: int,
         findings: str,
+        export_repair: bool = False,
     ) -> Continue:
+        """Hand the packet back to the agent, then re-assert its repository boundary.
+
+        `export_repair` marks the arm reached from the committed-tree gate, and only that
+        arm may widen the packet's declared paths — that gate's finding is routinely
+        *about* the declaration, so refusing the widening there would refuse the correct
+        fix. Every other repair keeps the packet exactly as scoped.
+        """
         args = self._task_args(task)
         args["findings"] = findings
         args["repair"] = repair + 1
@@ -406,6 +415,14 @@ class ImplementPlan(Workflow):
             cwd=self.ctx.repo_root,
             args=args,
         )
+        if export_repair:
+            task = self.call(extend_task_paths, self.ctx, plan, index, task)
+            # The widened packet rides on in the plan as well as in the state, so a resume
+            # that re-enters `select` validates the commit against the paths it was
+            # actually made from rather than the ones it was proposed with.
+            plan = plan.model_copy(
+                update={"tasks": [*plan.tasks[:index], task, *plan.tasks[index + 1 :]]}
+            )
         self.call(check_agent_turn, self.ctx, task, expected_head)
         self._require_agent_done(result, task)
         return Continue(
@@ -492,6 +509,7 @@ class ImplementPlan(Workflow):
                 expected_head=expected_parent,
                 repair=repair,
                 findings=result.findings,
+                export_repair=True,
             )
         if index + 1 == len(plan.tasks):
             return Continue(

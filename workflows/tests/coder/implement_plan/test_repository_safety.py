@@ -11,7 +11,7 @@ from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow.engine import RunEnv
 
 from workhorse_workflows.coder.implement_plan.execution import (
-    check_planning_turn, commit_plan_task, verify_committed_task,
+    check_planning_turn, commit_plan_task, extend_task_paths, verify_committed_task,
 )
 from workhorse_workflows.coder.implement_plan.flow import ImplementPlan
 from workhorse_workflows.coder.implement_plan.inventory import snapshot_plan
@@ -247,6 +247,92 @@ def test_committed_tree_failure_is_repaired_rather_than_ending_the_run(
     # One packet is still one commit: the retracted attempt left no history behind it.
     assert git(repo, "rev-parse", "HEAD").stdout == git(origin, "rev-parse", "main").stdout
     assert git(repo, "rev-list", "--count", "HEAD").stdout.strip() == "2"
+
+
+def test_export_repair_may_add_the_path_the_packet_left_out(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    git: Callable[..., subprocess.CompletedProcess],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The one repair arm whose finding is about the declaration may change it.
+
+    A committed-tree failure is routinely the report that the packet edited something it
+    never declared — only committed files reach the export, so an undeclared edit is
+    exactly what goes missing there. Telling the repair turn that and then refusing the
+    file it names ended the run over a correct diagnosis. The declaration is widened from
+    what the turn touched, and the packet publishes one commit carrying both paths.
+    """
+    # Tracked and published before the run, so the repair's edit to it is a modification
+    # rather than a creation: a created file is already adopted, and adoption is what this
+    # is not. It lands before the hook, which must only ever see the workflow's commits.
+    (repo / "config.txt").write_text("before\n", encoding="utf-8")
+    git(repo, "add", "config.txt")
+    git(repo, "commit", "-qm", "chore: add config")
+    git(repo, "push", "-q", "origin", "main")
+    marker = tmp_path / "only-the-first-commit"
+    sentinel = tmp_path / "commit-seen"
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.write_text(
+        f"#!/bin/sh\n[ -e {sentinel} ] || {{ touch {marker}; touch {sentinel}; }}\n",
+        encoding="utf-8",
+    )
+    hook.chmod(0o755)
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Widen a packet\n", encoding="utf-8")
+    task = _task(
+        "undeclared-path",
+        "src/value.txt",
+        verification=[
+            _command(f"from pathlib import Path; assert not Path({str(marker)!r}).exists()")
+        ],
+    )
+    agent = _Agent(
+        repo,
+        _decomposition(task),
+        edits={"undeclared-path": {"src/value.txt": "done\n"}},
+        repair_edits={"undeclared-path": {"config.txt": "after\n"}},
+        repair_removes=[str(marker)],
+    )
+
+    result = drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
+
+    assert result.status == "complete"
+    assert agent.count("repair-plan-task") == 1
+    committed = git(repo, "show", "--name-only", "--format=", "HEAD").stdout.split()
+    assert sorted(committed) == ["config.txt", "src/value.txt"]
+    assert git(repo, "rev-parse", "HEAD").stdout == git(origin, "rev-parse", "main").stdout
+
+
+def test_export_repair_may_not_reach_into_an_already_published_packet(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    git: Callable[..., subprocess.CompletedProcess],
+    logger: Any,
+) -> None:
+    """Widening stops at work that is already at origin.
+
+    Adopting a path an earlier packet declared would mean this commit quietly re-edits
+    one that has already been published, which no later verification can undo.
+    """
+    context = _context(tmp_path, repo, logger)
+    plan = _prepared(
+        context,
+        logger,
+        _task("first", "src/first.txt"),
+        _task("second", "src/second.txt"),
+    )
+    (repo / "src").mkdir()
+    (repo / "src" / "first.txt").write_text("published\n", encoding="utf-8")
+    git(repo, "add", "src/first.txt")
+    git(repo, "commit", "-qm", "feat: first")
+    (repo / "src" / "first.txt").write_text("meddled\n", encoding="utf-8")
+
+    with pytest.raises(WorkflowFailed, match="already published packet"):
+        extend_task_paths(logger, context, plan, 1, plan.tasks[1])
 
 
 def test_clean_filter_cannot_hide_different_committed_bytes(
