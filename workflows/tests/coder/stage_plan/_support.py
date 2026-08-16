@@ -122,12 +122,18 @@ class Agent:
         phases: dict[str, dict[str, Any]],
         edits: dict[str, dict[str, str]],
         skip_edit_for: str = "",
+        repair_removes: list[str] | None = None,
     ) -> None:
         self.repo = repo
         self.proposal = proposal
         self.phases = phases
         self.edits = edits
         self.skip_edit_for = skip_edit_for
+        # Absolute paths a repair turn deletes. A committed-tree failure now buys a repair
+        # rather than ending the run, so a fixture that fails only after a commit needs the
+        # repair turn to undo what the commit created — otherwise the next *worktree*
+        # verification fails too, and the run stops at a gate the fixture never meant.
+        self.repair_removes = [Path(path) for path in repair_removes or []]
         self.calls: list[str] = []
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
@@ -144,6 +150,9 @@ class Agent:
             reply = {"status": "done", "notes": f"tests for {task_id}"}
         else:
             task_id = data["task"]["id"]
+            if node.id == "repair-plan-task":
+                for target in self.repair_removes:
+                    target.unlink(missing_ok=True)
             if task_id != self.skip_edit_for:
                 for relative, content in self.edits.get(task_id, {}).items():
                     target = self.repo / relative

@@ -183,7 +183,10 @@ def test_a_resume_re_enters_the_unfinished_phase(
 
     The pre-commit hook is how the failure lands *after* the phase's own edit turn: the
     worktree verification passes, the marker appears with the commit, and the committed
-    tree fails — which is the same shape as a kill between commit and verification.
+    tree fails — which is the same shape as a kill between commit and verification. The
+    hook re-arms on every commit and the repair turn clears it, so the packet fails that
+    gate once per attempt and halts there only after spending its whole repair budget,
+    rather than dragging the failure back into the worktree verification.
     """
     marker = tmp_path / "stop-after-commit"
     hook = repo / ".git" / "hooks" / "pre-commit"
@@ -195,7 +198,7 @@ def test_a_resume_re_enters_the_unfinished_phase(
         encoding="utf-8",
     )
     hook.chmod(0o755)
-    agent = _agent(repo)
+    agent = _agent(repo, repair_removes=[str(marker)])
     agent.phases[SECOND]["tasks"][0]["verification"] = [
         exists("src/second.txt"),
         command(f"from pathlib import Path; assert not Path({str(marker)!r}).exists()"),
