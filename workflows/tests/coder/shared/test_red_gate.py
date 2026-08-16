@@ -154,16 +154,37 @@ def test_a_failure_naming_the_new_test_is_the_red(repo: Path) -> None:
 def test_someone_elses_red_does_not_satisfy_the_gate(repo: Path) -> None:
     """The failure this replaces: a broken test in another package supplied the exit code.
 
-    On a live run the suite exited 2 on `test_console_script.py`, a test unrelated to the
-    packet and failing only under the run's worktree layout, while the packet's own new
-    tests were never reported at all — and the code turn was handed that as its contract.
+    The suite *did* report on the new tests here — they were collected and passed — so the
+    red is somebody else's and the turn owes a rework: its scenarios exercise nothing
+    missing. That the run also failed elsewhere does not certify them.
+    """
+    (repo / "tests" / "test_new.py").write_text("def test_new():\n    assert False\n", encoding="utf-8")
+    output = (
+        "tests/test_new.py .                                                      [ 50%]\n"
+        "FAILED tests/test_console_script.py::test_every_flag - AssertionError\n1 failed"
+    )
+
+    outcome = _gate(repo, command=_suite(repo, output, 2))
+
+    assert outcome.status == "unattributed_red"
+    assert outcome.failing_files == []
+    assert "tests/test_new.py" in outcome.reason
+
+
+def test_a_suite_that_never_reached_the_new_tests_stands_aside(repo: Path) -> None:
+    """The live incident: `make test` walks the subprojects and halts at the first failure.
+
+    `test_console_script.py` fails only under the run's own worktree layout, in a package
+    several steps before the packet's, so the new tests are never collected — the output
+    does not mention them at all. There is no verdict to give, and no rework the tests turn
+    could perform would change that, so the gate stands aside instead of charging one.
     """
     (repo / "tests" / "test_new.py").write_text("def test_new():\n    assert False\n", encoding="utf-8")
     output = "FAILED tests/test_console_script.py::test_every_flag - AssertionError\n1 failed"
 
     outcome = _gate(repo, command=_suite(repo, output, 2))
 
-    assert outcome.status == "unattributed_red"
+    assert outcome.status == "unreached", outcome.reason
     assert outcome.failing_files == []
     assert "tests/test_new.py" in outcome.reason
 
