@@ -2,8 +2,8 @@
 
 Shared plumbing for the [stablemate](https://github.com/GabrielCpp/stablemate) tools.
 
-`workhorse` and `farrier` are independent CLIs — neither imports the other — but they
-share runtime state, and they must agree about it:
+`workhorse`, `farrier` and `ostler` are independent CLIs — none imports another — but
+they share runtime state, and they must agree about it:
 
 - **the home config** (`~/.config/stablemate/config.toml`) — `library_dir`,
   `stablemate_dir` and `base_dir` only mean anything if every tool reads the same value;
@@ -34,9 +34,10 @@ What this package buys is therefore ordinary: one implementation to fix bugs in,
 resolution order to reason about. Useful, but not the thing standing between you and a
 corrupted config.
 
-It depends on nothing else in the workspace and must not: `workhorse → core` and
-`farrier → core`, never back. It knows no workflow's vocabulary, no node types, and
-nothing about library content — only where files live and how they are read.
+It depends on nothing else in the workspace and must not: `workhorse → core`,
+`farrier → core` and `ostler → core`, never back. It knows no workflow's vocabulary, no
+node types, and nothing about library content — only where files live and how they are
+read.
 
 ## It is vendored, not published
 
@@ -46,12 +47,13 @@ distribution. `make vendor` copies this directory into each tool that needs it:
 ```
 core/stablemate_core  →  farrier/farrier/_vendor/stablemate_core
                       →  workhorse/workhorse/_vendor/stablemate_core
+                      →  ostler/ostler/_vendor/stablemate_core
 ```
 
 The copies are committed rather than synthesized during the wheel build, for a release
 reason: release-please decides which package to bump from the paths a commit touched, so
 a fix committed only under `core/` touches no released package and would ship to nobody.
-Running `make vendor` in the same commit is what makes both tools release it. Editing a
+Running `make vendor` in the same commit is what makes every tool release it. Editing a
 copy directly is caught by `make check-vendor`, which runs as part of `make test`.
 
 Two consequences to keep in mind when changing anything here:

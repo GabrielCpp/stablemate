@@ -26,6 +26,9 @@ dependencies = [
   "tree-sitter>=0.25",
   "tree-sitter-language-pack>=1.14",
   "unidiff>=0.7",
+  # For _vendor/stablemate_core (reading ~/.config/stablemate/config.toml's [qa_tools.*]).
+  "platformdirs>=4.0",
+  "tomli-w>=1.0",
 ]
 
 [project.optional-dependencies]
