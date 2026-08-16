@@ -1,0 +1,21 @@
+# Generated and vendored material, declared as such.
+#
+# `linguist-generated` collapses the file in a pull request diff and drops it from the
+# repository's language stats; `-diff` keeps `git diff` from printing the body at all.
+# The set mirrors `.ignore`, which is the same declaration aimed at ripgrep — together
+# they keep machine-written bytes out of a reviewer's diff and a search's results.
+
+groom/groom/assets/*.min.js      linguist-generated=true -diff
+groom/groom/assets/*.min.css     linguist-generated=true -diff
+groom/groom/assets/htm-preact.js linguist-generated=true -diff
+groom/tests/vendor/axe.min.js    linguist-generated=true -diff
+
+# Copies written by `make vendor`; the source is core/stablemate_core.
+workhorse/workhorse/_vendor/**   linguist-generated=true
+farrier/farrier/_vendor/**       linguist-generated=true
+
+# release-please writes these; the commits are the source of truth.
+**/CHANGELOG.md                  linguist-generated=true
+
+# Resolved by `uv lock`, never by hand.
+uv.lock                          linguist-generated=true -diff
