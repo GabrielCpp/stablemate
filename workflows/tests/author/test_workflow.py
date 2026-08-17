@@ -396,6 +396,9 @@ class _Agent:
     def _grill_brief(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"brief": "no open questions"}
 
+    def _refactor_backlog(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        return {"summary": "no changes needed"}
+
     # -- the epic split ---------------------------------------------------
 
     def _decompose_epics(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -741,6 +744,7 @@ def test_epic_mode_authors_the_backlog_and_commits_it(
 
     assert agent.counts() == {
         "grill-brief": 1,
+        "refactor-backlog": 1,
         "decompose-epics": 1,
         "review-epics": 1,
         "write-epic": 1,
@@ -773,10 +777,14 @@ def test_epic_mode_authors_the_backlog_and_commits_it(
     assert set(agent.cwds) == {str(backlogged)}
 
 
-def test_the_grill_briefs_the_operator_before_the_backlog_is_split(
+def test_the_grill_briefs_the_operator_then_refactor_backlog_continues_the_run(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """The grill fires first, unconditionally, and its note carries the trigger and brief."""
+    """The grill fires first, unconditionally, and its note carries the trigger and brief.
+
+    `refactor_backlog` then reads that same context file and hands the run on into
+    `split_epics` — a state of its own, not folded back into the gate that produced it.
+    """
     agent = _Agent(backlogged)
     _drive(_env(tmp_path), agent)
 
@@ -784,7 +792,7 @@ def test_the_grill_briefs_the_operator_before_the_backlog_is_split(
     assert "/stablemate-grill" in note, note
     assert "grill this backlog before it is split into epics" in note, note
     assert "no open questions" in note, note
-    assert agent.calls[0] == "grill-brief", agent.calls
+    assert agent.calls[:2] == ["grill-brief", "refactor-backlog"], agent.calls
     assert agent.counts()["decompose-epics"] == 1, agent.counts()
 
 

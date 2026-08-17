@@ -31,6 +31,7 @@ from workhorse_workflows.author.shared.schemas.edit import (
 from workhorse_workflows.author.shared.schemas.main import (
     AuditFinding,
     AuditResult,
+    BacklogRefactor,
     Branches,
     Committed,
     Config,
@@ -79,6 +80,7 @@ __all__ = [
     "AuditResult",
     "AppliedEpicEdit",
     "AuthorResult",
+    "BacklogRefactor",
     "Branches",
     "Committed",
     "Config",

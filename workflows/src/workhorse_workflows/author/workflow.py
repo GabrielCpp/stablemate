@@ -83,6 +83,7 @@ from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.schemas import (
     AuditFinding,
     AuditResult,
+    BacklogRefactor,
     CoverageReview,
     DecomposeResult,
     EpicReview,
@@ -452,7 +453,25 @@ class Author(Workflow):
         )
         trigger = self.call(resolve_grill_trigger)
         notes = f"Run {trigger} to grill this backlog before it is split into epics.\n\n{brief.brief}"
-        return Await(self._abs(self._author_context()), notes, self.split_epics)
+        return Await(self._abs(self._author_context()), notes, self.refactor_backlog)
+
+    def refactor_backlog(self) -> Continue:
+        """Fold the operator's settled decisions into the backlog, then split it.
+
+        Its own state — re-runnable and visible in telemetry, rather than buried
+        inside the grill's `Await` resume.
+        """
+        result = self.agent(
+            "prompts/refactor-backlog.md",
+            returns=BacklogRefactor,
+            power="high",
+            cwd=self.ctx.repo_root,
+            args={
+                "backlog": self.ctx.backlog_path,
+                "context_path": self._author_context(),
+            },
+        )
+        return Continue(result, self.split_epics)
 
     # --- 1. epic split --------------------------------------------------------
 

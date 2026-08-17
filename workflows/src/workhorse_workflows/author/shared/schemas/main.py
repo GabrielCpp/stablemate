@@ -208,6 +208,12 @@ class GrillBrief(AuthorResult):
     brief: str = ""
 
 
+class BacklogRefactor(AuthorResult):
+    """`prompts/refactor-backlog.md` — the backlog rewritten from the grill's decisions."""
+
+    summary: str = ""
+
+
 class WriteEpicResult(AuthorResult):
     """`prompts/write-epic.md` — one epic's `epic.md` written from its seeds."""
 
