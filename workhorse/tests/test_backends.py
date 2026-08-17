@@ -26,6 +26,7 @@ from _fakes import FakeClock
 from workhorse._vendor.stablemate_core import config
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
+from workhorse import sessions
 from workhorse.runner import failure, ladder, process
 from workhorse.runner.backends import (
     AgentBackend,
@@ -617,6 +618,31 @@ def test_classify_turn_records_node_to_session_manifest():
     # vocabulary it is in, and the two are not interchangeable when the transcript is
     # fetched later.
     assert [r["backend"] for r in rows] == ["opencode", "opencode"]
+
+
+def test_classify_turn_creates_the_sessions_dir_for_a_chains_first_lap():
+    """A chain's session id lives under `.sessions/<key>`, and a chain's first-ever
+    lap is exactly when that directory does not exist yet — `write_text` does not
+    make parent directories, so the first lap of every chain used to crash here."""
+    run_dir = Path(tempfile.mkdtemp())
+    chain = sessions.chain_path(run_dir, "docs-repair:S-1")
+    assert not chain.parent.exists()
+
+    assert (
+        failure.classify_turn(
+            "opencode",
+            "repair",
+            result_text="ok",
+            diagnostics="",
+            timed_out=False,
+            returncode=0,
+            timeout=TIMEOUT,
+            session_id="ses_first",
+            session_id_path=chain,
+        )
+        == "ok"
+    )
+    assert chain.read_text() == "ses_first"
 
 
 def test_classify_turn_without_session_writes_no_manifest():

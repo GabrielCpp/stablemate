@@ -405,6 +405,7 @@ def classify_turn(
         )
     if is_context_overflow(diagnostics):
         if session_id_path and session_id:
+            session_id_path.parent.mkdir(parents=True, exist_ok=True)
             session_id_path.write_text(session_id)
             record_session_map(session_id_path, node_id, session_id, backend_name)
         raise BackendInvocationError(
@@ -425,6 +426,7 @@ def classify_turn(
             reset_at=cap_reset_at,
         )
     if session_id_path and session_id:
+        session_id_path.parent.mkdir(parents=True, exist_ok=True)
         session_id_path.write_text(session_id)
         record_session_map(session_id_path, node_id, session_id, backend_name)
     return result_text
