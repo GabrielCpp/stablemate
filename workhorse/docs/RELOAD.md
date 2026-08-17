@@ -117,7 +117,19 @@ switched away from.
 The checkpoint is written *before* the state runs, so nothing durable is lost. If the
 pushed code renamed or retyped a workflow field the checkpoint still holds, the run stops
 at that checkpoint with pydantic naming the field, which is the honest outcome of an
-incompatible edit.
+incompatible edit — the stored value is meaningful, and mapping it onto the new contract
+is a judgement only you can make.
+
+A field the pushed code **deleted** is not that case, and is dropped rather than fatal:
+nothing left in the workflow can read it, so carrying the value forward and discarding it
+are the same run. The reload logs the names it dropped. Failing there would be worse than
+useless, because `--resume-run` rebuilds the workflow from the same stored `inputs` — a
+run killed by a deletion would hit the identical error on every resume after it, and the
+only recovery would be hand-editing `inputs` out of `checkpoint.json`. A week-long run
+should not be lost to a field removal that costs it nothing.
+
+The relaxation is for **checkpoints only**. An unknown key in `--params` on a fresh run is
+still rejected by name: there it is a typo you just typed, and catching it is the point.
 
 ## What "the pushed code" covers
 

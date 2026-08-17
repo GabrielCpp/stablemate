@@ -184,8 +184,19 @@ def run_pyflow(invocation: RunInvocation) -> int:
         )
         return 1
 
+    if resume:
+        inputs, retired = _drop_retired_inputs(workflow_cls, resume.inputs)
+        if retired:
+            print(
+                f"[workhorse] resume → dropping {', '.join(retired)}: "
+                f"{workflow_cls.__name__} no longer declares "
+                f"{'them' if len(retired) > 1 else 'it'}",
+            )
+    else:
+        inputs = params
+
     try:
-        wf = _instantiate(workflow_cls, resume.inputs if resume else params)
+        wf = _instantiate(workflow_cls, inputs)
     except WorkflowFailed as exc:
         print(f"[workhorse] ERROR: {exc}")
         return 1
@@ -451,10 +462,20 @@ def _drive_reloadable(
             # The checkpoint names its own flow, so a reload lands back in the sub-flow's
             # *parent* state and the handoff re-adopts the child checkpoint itself.
             workflow_cls = registry.class_named(resume.flow) or registry.flow(None)
-            # A `WorkflowFailed` here is the honest outcome of an incompatible edit: the
-            # pushed code renamed or retyped a workflow field the checkpoint still holds.
-            # The run stops at a resumable checkpoint with pydantic naming the field.
-            wf = _instantiate(workflow_cls, resume.inputs)
+            # A field the pushed code *deleted* is surplus, not an incompatibility — it
+            # is dropped, because failing here would brick every later `--resume-run`
+            # too. A `WorkflowFailed` is still the honest outcome of an edit that
+            # renamed or retyped a field the checkpoint holds: the run stops at a
+            # resumable checkpoint with pydantic naming the field.
+            inputs, retired = _drop_retired_inputs(workflow_cls, resume.inputs)
+            if retired:
+                env.log.info(
+                    "[workhorse] reload: dropping %s — %s no longer declares %s",
+                    ", ".join(retired),
+                    workflow_cls.__name__,
+                    "them" if len(retired) > 1 else "it",
+                )
+            wf = _instantiate(workflow_cls, inputs)
             otel.turn_event(
                 "reload",
                 state=resume.state,
@@ -720,6 +741,34 @@ def _instantiate(workflow_cls: type[Workflow], inputs: dict[str, Any]) -> Workfl
         raise WorkflowFailed(
             f"{workflow_cls.__name__} cannot be built from the given parameters:\n{exc}"
         ) from exc
+
+
+def _drop_retired_inputs(
+    workflow_cls: type[Workflow], inputs: dict[str, Any]
+) -> tuple[dict[str, Any], tuple[str, ...]]:
+    """Strip stored inputs naming a field the workflow no longer declares.
+
+    Only for inputs read back off a **checkpoint**, never for `--params`: an unknown
+    key an operator just typed is a typo, and `extra="forbid"` catching it by name is
+    the contract. An unknown key a *checkpoint* holds is different in kind — the run
+    was launched against a class that had the field, and the field has since been
+    deleted from under it. The value is surplus by construction: nothing left in the
+    workflow can read it, so carrying it forward and dropping it are the same run.
+
+    Failing instead is not a safe default, because the failure is unrecoverable by the
+    documented recovery action. `_instantiate` runs on the resume path too, so a run
+    killed this way hits the identical error on every subsequent `--resume-run` — the
+    checkpoint is "resumable" only to an operator who knows to hand-edit its `inputs`.
+    A week-long run can lose days to a field deletion that costs it nothing.
+
+    A *renamed* or *retyped* field is deliberately still fatal: there the stored value
+    is meaningful and the mapping onto the new contract is a judgement only a human
+    can make, so pydantic naming the field is the honest outcome.
+    """
+    retired = tuple(sorted(set(inputs) - set(workflow_cls.model_fields)))
+    if not retired:
+        return inputs, ()
+    return {k: v for k, v in inputs.items() if k not in retired}, retired
 
 
 def _state_of(writer: ArtifactWriter) -> str:
