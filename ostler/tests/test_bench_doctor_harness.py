@@ -267,8 +267,14 @@ def _tree_digest(root: Path) -> str:
 
 
 def _doctor_json(book: Path, capsys) -> str:
+    # `--no-index`, because what this compares is the *verdict*. The report also carries the
+    # parse index's hit/miss counters, and those are a measurement of the run rather than a
+    # statement about the book: the second call here is warm by construction — the harness
+    # between the two calls loads the book — so an indexed second run differs from the first
+    # in exactly the way a working cache is supposed to. Uncached, both runs are cold and any
+    # difference left is the harness perturbing what it times, which is the property under test.
     capsys.readouterr()
-    ostler_main(["-C", str(book), "doctor", "--json"])
+    ostler_main(["-C", str(book), "doctor", "--json", "--no-index"])
     return capsys.readouterr().out
 
 

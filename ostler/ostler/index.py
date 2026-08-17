@@ -7,12 +7,17 @@ what a stat-keyed cache serves stale. What that cache lacks is survival — ever
 invocation is a fresh process, so its 24 seconds of saved work are thrown away at exit.
 This module is that cache, persisted and generalised.
 
-**No parse product is served from it yet.** The store ships ahead of its consumers so its
-key and its validity rules can be reviewed on their own, and ahead of them the *controls*
-land: an off switch (:attr:`IndexStore.enabled`), an explicit directory, a hit/miss count
-a caller can print, an eviction entry point (:func:`clean`) and an ambient
-:func:`session` the serving increment plugs into. A cache that is on by default and has
-none of those is a cache nobody can bisect against, which is why they come first.
+What it serves is :func:`ostler.model.read_doc` — the read-only document accessor. A
+document's frontmatter, sections, bullets, links and tables are a **pure function of its
+bytes**, which is why they can be stored under a content key with no invalidation rule
+beyond the epoch below. Writers do not come through here at all: they call
+``markdown.split`` and get a document of their own, because ``replace_body`` mutates in
+place and a shared instance handed to a writer would be a live bug.
+
+The controls landed ahead of the serving: an off switch (:attr:`IndexStore.enabled`), an
+explicit directory, a hit/miss count a caller can print, an eviction entry point
+(:func:`clean`) and an ambient :func:`session`. A cache that is on by default and has none
+of those is a cache nobody can bisect against, which is why they came first.
 
 Three rules carry the whole design.
 
@@ -112,6 +117,17 @@ def _sha(*chunks: bytes) -> str:
         digest.update(len(chunk).to_bytes(8, "big"))
         digest.update(chunk)
     return digest.hexdigest()
+
+
+def content_sha(data: bytes) -> str:
+    """The store's digest of a file's bytes, for a caller that has already read them.
+
+    :func:`IndexStore.key` will read the file itself when it has to, but the document
+    accessor has the bytes in hand — it read them to decide whether its own in-process memo
+    is still current — and re-reading the whole book once per lookup is exactly the kind of
+    cost this store exists to remove.
+    """
+    return _sha(data)
 
 
 def _file_sha(path: Path) -> str | None:
@@ -318,9 +334,13 @@ class IndexStore:
             return str(target)
         return f"{self.root.resolve().name}/{relative.as_posix()}"
 
-    def key(self, path: Path) -> str | None:
-        """The entry key for *path*, or ``None`` when its bytes cannot be read."""
-        content = _file_sha(Path(path))
+    def key(self, path: Path, *, sha: str | None = None) -> str | None:
+        """The entry key for *path*, or ``None`` when its bytes cannot be read.
+
+        *sha* is :func:`content_sha` of the file's bytes, for a caller that has already read
+        them; omitted, the file is read here.
+        """
+        content = sha if sha is not None else _file_sha(Path(path))
         if content is None:
             return None
         return _sha(
@@ -335,7 +355,7 @@ class IndexStore:
         return self.directory / key[:2] / key
 
     # -- reads and writes ---------------------------------------------------
-    def get(self, path: Path) -> Any | None:
+    def get(self, path: Path, *, sha: str | None = None) -> Any | None:
         """The stored value for *path*, or ``None`` for any kind of miss.
 
         Every failure mode collapses to ``None`` on purpose: an unreadable file, a
@@ -348,15 +368,15 @@ class IndexStore:
         """
         if not self.enabled:
             return None
-        value = self._read(path)
+        value = self._read(path, sha=sha)
         if value is None:
             self.misses += 1
         else:
             self.hits += 1
         return value
 
-    def _read(self, path: Path) -> Any | None:
-        key = self.key(path)
+    def _read(self, path: Path, *, sha: str | None = None) -> Any | None:
+        key = self.key(path, sha=sha)
         if key is None:
             return None
         try:
@@ -379,7 +399,7 @@ class IndexStore:
             return None
         return payload.get(_PAYLOAD_KEY)
 
-    def put(self, path: Path, value: Any) -> None:
+    def put(self, path: Path, value: Any, *, sha: str | None = None) -> None:
         """Store *value* for *path*, pruning past the age bound first.
 
         Never raises: a store that cannot write is a store that gives no speedup, not a
@@ -388,7 +408,7 @@ class IndexStore:
         """
         if not self.enabled:
             return
-        key = self.key(path)
+        key = self.key(path, sha=sha)
         if key is None:
             return
         self.prune()

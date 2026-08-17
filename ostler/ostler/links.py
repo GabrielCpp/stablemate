@@ -15,8 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from ostler import markdown
-from ostler.model import Graph, anchor_of
+from ostler.model import Graph, anchor_of, read_doc
 
 _SKIP_PREFIXES = ("http://", "https://", "mailto:", "tel:", "ftp://")
 
@@ -44,7 +43,13 @@ def is_doc_link(href: str) -> bool:
 
 
 class LinkResolver:
-    """Resolves links, caching each target file's heading-anchor set for the run."""
+    """Resolves links, caching each target file's heading-anchor set for the run.
+
+    The anchor set costs a full parse of the target file, and on a real book the 386 link
+    targets were the single largest consumer of a `doctor` run's wall clock. The parse now
+    comes from the shared read-only accessor, so a target that some other check has already
+    read is free here — and, with the index warm, so is one nothing has read yet.
+    """
 
     def __init__(self, graph: Graph) -> None:
         self.graph = graph
@@ -57,7 +62,7 @@ class LinkResolver:
 
     def _compute_anchors(self, path: Path) -> set[str]:
         try:
-            doc = markdown.split(path.read_text(encoding="utf-8"))
+            doc = read_doc(path)
         except OSError:
             return set()
         return {anchor_of(s.title) for s in doc.walk_sections() if s.title.strip()}
