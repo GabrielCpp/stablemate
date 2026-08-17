@@ -44,6 +44,7 @@ from ostler import coverage as coverage_mod
 from ostler import crud, doctor
 from ostler import fmt as fmt_mod
 from ostler import ids as ids_mod
+from ostler import index as index_mod
 from ostler import path as path_mod
 from ostler import query as query_mod
 from ostler import registry, select, todo as todo_mod
@@ -70,6 +71,10 @@ class Ostler:
 
     :param root: any path inside the repo (the graph root is discovered upward,
         as the CLI's ``-C`` does); ``None`` uses the current working directory.
+    :param use_index: consult the persistent parse index (the library face of
+        ``--no-index``; ``False`` forces the uncached path both ways).
+    :param index_dir: an explicit index directory, overriding the resolved one
+        (the library face of ``--index-dir``).
     """
 
     def __init__(
@@ -77,17 +82,48 @@ class Ostler:
         root: str | Path | None = None,
         *,
         doc_roots: Mapping[str, str | Path] | None = None,
+        use_index: bool = True,
+        index_dir: str | Path | None = None,
     ) -> None:
         self._root = Path(root) if root is not None else None
         self._doc_roots = dict(doc_roots or {})
         self._graph: Graph | None = None
+        self._use_index = use_index
+        self._index_dir = index_dir
+        self._index: index_mod.IndexStore | None = None
+
+    # -- the parse index ----------------------------------------------------
+    @property
+    def index(self) -> index_mod.IndexStore:
+        """The store this instance loads through, resolved on first access.
+
+        One store for the object's whole life rather than one per load, so the hit/miss
+        counts read as this caller's totals — an in-process caller reloads many times, and
+        per-load counts would answer a question nobody asked.
+        """
+        if self._index is None:
+            self._index = index_mod.IndexStore(
+                find_root(self._root if self._root is not None else Path.cwd()),
+                directory=self._index_dir,
+                enabled=self._use_index,
+            )
+        return self._index
+
+    def index_stats(self) -> dict:
+        """The hit/miss line, in the shape ``doctor --json`` prints under ``index``."""
+        return self.index.stats()
+
+    def _load(self) -> Graph:
+        """Read the graph from disk with this instance's store active."""
+        with index_mod.use(self.index):
+            return load(self._root, root_overrides=self._doc_roots)
 
     # -- graph lifecycle ----------------------------------------------------
     @property
     def graph(self) -> Graph:
         """The cached graph snapshot, loaded on first access."""
         if self._graph is None:
-            self._graph = load(self._root, root_overrides=self._doc_roots)
+            self._graph = self._load()
         return self._graph
 
     @property
@@ -103,7 +139,7 @@ class Ostler:
 
     def _fresh(self) -> Graph:
         """A freshly loaded graph for a mutation to read current state from."""
-        self._graph = load(self._root, root_overrides=self._doc_roots)
+        self._graph = self._load()
         return self._graph
 
     def _doc_root(self, kind: str) -> Path:
