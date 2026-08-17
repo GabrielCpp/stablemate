@@ -19,12 +19,33 @@ duration of one extra run, and the ``_check_ui`` components from timing the line
 ``_check_ui``'s own frame for one more — both restored afterwards, both on throwaway
 finding lists whose contents are discarded.
 
-**What "cold" and "warm" mean here.** Cold is the first call in this process, warm is the
-second: that is the distinction the plan's numbers were taken under, and it is the one the
-cache increments move. The per-check split and the ``_check_ui`` components are measured
-after that pair, so they describe a warm process — and the components additionally carry
-line-tracing overhead, so they are for comparing an increment against a baseline taken the
-same way, not against the phase totals above them.
+**Two independent axes, and they are not the same axis.** *Cold* and *warm* are within one
+process: the first call and the second, the distinction the plan's original numbers were
+taken under. *Index state* is across processes, and it is the one the persistent cache
+actually moves — every ``ostler`` invocation is a fresh process, so the number an operator
+feels is a first call in a new process against an index somebody else's run filled. The
+harness reports three index states, each measured with every process-lifetime cache cleared
+first:
+
+``no-index``
+    The session disabled. The pre-cache baseline, and what ``--no-index`` costs today.
+``cold-index``
+    An empty index directory. Pays every parse *and* the writes — the price of being first.
+``warm-index``
+    The same directory, now filled by the ``cold-index`` pass. **This is the acceptance
+    gate's speed half:** the plan's "each ~0 warm" and "total <5s" targets are about this
+    column, and a harness that never opened a session could not report it. Measuring only
+    within-process warmth would have described a cache the plan is not about.
+
+The per-check split and the ``_check_ui`` components are measured under ``warm-index``,
+after that pair, so they describe a warm process against a filled index — and the
+components additionally carry line-tracing overhead, so they are for comparing an increment
+against a baseline taken the same way, not against the phase totals above them.
+
+**The index directory is a throwaway.** A benchmark that filled the operator's real cache
+would change the machine it was measuring and make the next run's ``cold`` a fiction, so
+each invocation builds its own directory under a temporary root unless ``--index-dir`` says
+otherwise.
 """
 from __future__ import annotations
 
@@ -33,6 +54,7 @@ import ast
 import inspect
 import json
 import sys
+import tempfile
 import time
 from collections import defaultdict
 from collections.abc import Callable, Iterator
@@ -41,7 +63,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ostler import doctor, links, markdown, model
+from ostler import doctor, index, inventory, links, markdown, model
+
+#: The index states each phase is measured under, in the order they must run: ``cold-index``
+#: fills the directory ``warm-index`` then reads. ``no-index`` is first because it is the
+#: baseline the other two are read against.
+NO_INDEX = "no-index"
+COLD_INDEX = "cold-index"
+WARM_INDEX = "warm-index"
+INDEX_STATES = (NO_INDEX, COLD_INDEX, WARM_INDEX)
 
 #: The check functions ``doctor.run`` calls, in the spelling the plan's table uses. A check
 #: that the profile or the book never reaches reports 0.0 with zero calls beside it, rather
@@ -92,14 +122,31 @@ def _stopwatch(record: Callable[[float], None]) -> Iterator[None]:
         record(time.perf_counter() - start)
 
 
+def _drop_process_caches() -> None:
+    """Empty every process-lifetime cache, so the next call is cold in the sense meant.
+
+    There are three, and a harness that clears one is measuring the other two. They are
+    listed exhaustively rather than discovered, because a cache this misses does not fail
+    the run — it quietly reports somebody else's warm number as this pass's cold one, which
+    is the failure mode that makes a benchmark worse than no benchmark.
+
+    - ``model._FEATURE_DOC_CACHE`` — per-path frontmatter and UI nodes.
+    - ``model._DOC_CACHE`` — the parsed document memo in front of the index.
+    - ``inventory._SYMBOL_MEMO`` — per-file declaration sets for code grounding.
+    """
+    model._FEATURE_DOC_CACHE.clear()
+    model._DOC_CACHE.clear()
+    inventory._SYMBOL_MEMO.clear()
+
+
 def _cold(book: Path) -> model.Graph:
     """Load the book with every process-lifetime cache emptied first.
 
-    ``model._FEATURE_DOC_CACHE`` survives for the life of the process, so the *second*
-    load in a harness that measured naively would be the only honest cold number it ever
-    took. Clearing it is what makes "cold" mean cold rather than "first".
+    Those caches survive for the life of the process, so the *second* load in a harness
+    that measured naively would be the only honest cold number it ever took. Clearing them
+    is what makes "cold" mean cold rather than "first".
     """
-    model._FEATURE_DOC_CACHE.clear()
+    _drop_process_caches()
     return model.load(book)
 
 
@@ -275,7 +322,13 @@ def ui_components(graph: model.Graph) -> Timings:
 
 # ---- the measurement --------------------------------------------------------------
 
-def measure(book: Path) -> dict[str, Any]:
+def _phases_under(book: Path) -> tuple[model.Graph, dict[str, float]]:
+    """One index state's four phase timings, and the graph they were taken against.
+
+    The caller has already opened — or declined to open — the session, so this is only the
+    stopwatch work. Keeping the session out of here is what makes the three states
+    comparable: they differ in exactly one thing, and it is the thing being measured.
+    """
     phases = Timings()
 
     with _stopwatch(lambda s: phases.add("model.load cold", s)):
@@ -288,20 +341,43 @@ def measure(book: Path) -> dict[str, Any]:
     with _stopwatch(lambda s: phases.add("doctor.run warm", s)):
         doctor.run(graph)
 
-    checks = per_check(graph)
-    components = ui_components(graph)
+    return graph, {
+        "model_load_cold_seconds": round(phases.seconds["model.load cold"], 6),
+        "model_load_warm_seconds": round(phases.seconds["model.load warm"], 6),
+        "doctor_run_cold_seconds": round(phases.seconds["doctor.run cold"], 6),
+        "doctor_run_warm_seconds": round(phases.seconds["doctor.run warm"], 6),
+    }
+
+
+def measure(book: Path, index_dir: Path) -> dict[str, Any]:
+    """Every measurement, taken under each of the three index states.
+
+    The states run in the order :data:`INDEX_STATES` gives and that order is load-bearing:
+    ``cold-index`` is what fills the directory ``warm-index`` then reads. Running them
+    apart, or against a directory some earlier invocation left populated, reports a warm
+    number for a pass labelled cold.
+
+    The per-check split and the ``_check_ui`` components are taken under ``warm-index``,
+    because that is the state the plan's per-increment targets are written against.
+    """
+    by_state: dict[str, dict[str, float]] = {}
+    for state in INDEX_STATES:
+        with index.session(book, directory=index_dir, enabled=state != NO_INDEX):
+            graph, by_state[state] = _phases_under(book)
+            if state == WARM_INDEX:
+                warm_shape = shape(book, graph)
+                checks = per_check(graph)
+                components = ui_components(graph)
 
     return {
         "book": str(book),
         "python": sys.version.split()[0],
-        "cold_warm": "cold is the first call in this process, warm the second",
-        "shape": shape(book, graph),
-        "phases": {
-            "model_load_cold_seconds": round(phases.seconds["model.load cold"], 6),
-            "model_load_warm_seconds": round(phases.seconds["model.load warm"], 6),
-            "doctor_run_cold_seconds": round(phases.seconds["doctor.run cold"], 6),
-            "doctor_run_warm_seconds": round(phases.seconds["doctor.run warm"], 6),
-        },
+        "index_dir": str(index_dir),
+        "cold_warm": "cold is the first call in this process, warm the second; the index "
+                     "states are across processes and are the separate axis",
+        "shape": warm_shape,
+        "phases": by_state[WARM_INDEX],
+        "phases_by_index_state": by_state,
         "checks": checks.as_dict(CHECKS),
         "check_ui_components": {
             "_check_ui_file_loop_seconds": round(components.seconds[UI_FILE_LOOP], 6),
@@ -333,7 +409,7 @@ def render(report: dict[str, Any]) -> str:
              f"{shape_counts['link_targets']} ({shape_counts['link_targets_existing']} exist)"),
         _row("epics", str(shape_counts["epics"])),
         "",
-        "  phase                                     cold           warm",
+        "  phase, under warm-index                   cold           warm",
         _row("model.load",
              f"{phases['model_load_cold_seconds']:>10.3f}s "
              f"{phases['model_load_warm_seconds']:>9.3f}s"),
@@ -341,7 +417,19 @@ def render(report: dict[str, Any]) -> str:
              f"{phases['doctor_run_cold_seconds']:>10.3f}s "
              f"{phases['doctor_run_warm_seconds']:>9.3f}s"),
         "",
-        "  per-check split (one warm doctor.run)",
+        "  by index state (process caches dropped before each; cold call, then warm)",
+    ]
+    for state in INDEX_STATES:
+        entry = report["phases_by_index_state"][state]
+        total_cold = entry["model_load_cold_seconds"] + entry["doctor_run_cold_seconds"]
+        lines.append(_row(
+            state,
+            f"{total_cold:>10.3f}s "
+            f"{entry['model_load_warm_seconds'] + entry['doctor_run_warm_seconds']:>9.3f}s",
+        ))
+    lines += [
+        "",
+        "  per-check split (one warm doctor.run under warm-index)",
     ]
     for name in CHECKS:
         entry = report["checks"][name]
@@ -371,16 +459,21 @@ def main(argv: list[str] | None = None) -> int:
                         help="path to the repo holding the book (DOCS= in `make bench-doctor`)")
     parser.add_argument("--json", action="store_true",
                         help="emit the same measurements as one JSON object, for diffing runs")
+    parser.add_argument("--index-dir", type=Path, default=None, dest="index_dir",
+                        help="index directory to measure against; the default is a fresh "
+                             "temporary one, so a run never fills the operator's real cache")
     args = parser.parse_args(argv)
 
     book = args.docs.resolve()
     if not book.is_dir():
         parser.error(f"DOCS: {book} is not a directory")
 
-    # ostler is a library here, not a command, but a stray print from anything it loads
-    # would land in the middle of the JSON object. Nothing it writes is a measurement.
-    with redirect_stdout(sys.stderr):
-        report = measure(book)
+    with tempfile.TemporaryDirectory(prefix="bench-ostler-index-") as scratch:
+        index_dir = args.index_dir.resolve() if args.index_dir is not None else Path(scratch)
+        # ostler is a library here, not a command, but a stray print from anything it loads
+        # would land in the middle of the JSON object. Nothing it writes is a measurement.
+        with redirect_stdout(sys.stderr):
+            report = measure(book, index_dir)
 
     if args.json:
         print(json.dumps(report, indent=2))
