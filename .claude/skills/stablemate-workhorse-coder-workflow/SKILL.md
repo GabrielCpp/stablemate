@@ -57,8 +57,8 @@ workhorse-coder run --params '{"mode":"story","story":"CASE-1234"}'
 
 ### Standalone flow invocation
 
-Nine sub-flows are registered by name on the registry (`Registry("coder").add_flows(...)`),
-and any of them is independently launchable. The eight story-oriented flows resolve
+Eight sub-flows are registered by name on the registry (`Registry("coder").add_flows(...)`),
+and any of them is independently launchable. All of them are story-oriented: they resolve
 `story_path`/`spec_dir` from the story slug via ostler in their own first state, so only the
 minimal params are needed:
 
@@ -68,9 +68,6 @@ workhorse-coder run qa --params '{"story":"CASE-1234","target_env":"dev"}'
 
 # Dev (plan + implement) only
 workhorse-coder run dev --params '{"story":"CASE-1234"}'
-
-# An already-reviewed prose plan, split into verified commits
-workhorse-coder run implement-plan --params '{"plan_path":"/absolute/path/to/plan.md"}'
 ```
 
 `docs_path` and `epic` are optional (empty string = derive from CWD / ostler defaults).
@@ -78,13 +75,8 @@ Standalone QA clears both the disposable `qa/` tree and the stale root `qa-evide
 then regenerates context. `plan-context.json` is not required; source-root resolution
 degrades to the standalone repository.
 
-`genesis`, `dream`, `fix`, and `implement-plan` exist as names *because* they are entered
-directly; the other five are also reached by `self.handoff(...)` from the main machine.
-`implement-plan` is the exception to the story-input convention: it snapshots `plan_path`,
-validates a typed dependency worklist, and owns scoped verification, commit, and push. Completion
-also requires an independent semantic review with no actionable findings. Findings become a second
-checkpoint-authoritative review worklist; its scoped fixes must pass the same deterministic Git and
-verification gates, then survive a fresh review, before the flow returns `complete`.
+`genesis`, `dream` and `fix` exist as names *because* they are entered directly; the other
+five are also reached by `self.handoff(...)` from the main machine.
 
 ---
 

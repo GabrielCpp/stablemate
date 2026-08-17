@@ -13,7 +13,7 @@ reading either:
 * `workflow.py` — the main machine, the `Coder` class, and only that class
 * `nodes/` — the non-agent work only that machine calls; here it is `pr` alone, because
   the epic's PR boundary is the one subject no sub-flow touches
-* `dev/`, `docs/`, `dream/`, `fix/`, `fix_ci/`, `genesis/`, `implement_plan/`, `qa/`, `review/` — one
+* `dev/`, `docs/`, `dream/`, `fix/`, `fix_ci/`, `genesis/`, `qa/`, `review/` — one
   directory per registered Python sub-flow: each `flow.py` beside the nodes only it calls
 * `shared/` — what a second machine also reaches: `paths`, `schemas`, `contract`,
   `blueprint`, `stubs`, and the node subjects more than one graph runs (`story`, `dev`,
@@ -21,15 +21,13 @@ reading either:
 * `prompts/` — every agent turn's Markdown, at the package root because a sub-flow's
   prompt path resolves against the *parent* package directory
 
-**Four registered sub-graphs are never handed off to.** `genesis`, `dream`, `fix`, and
-`implement-plan`
+**Three registered sub-graphs are never handed off to.** `genesis`, `dream` and `fix`
 are packages here because each is a standalone machine, and none is sequenced by the
 main loop: `genesis` produces the preconditions the main loop *assumes*, `dream` runs
 after the work like sleep so that reflection never gates a story, and `fix` is a
 standalone drain of the backlog the main loop also drains inline, on its own copy of the
-same nodes. `implement-plan` turns an arbitrary reviewed plan into a durable sequence of
-verified commits. All four are registered flows on the coder `Registry` and entered directly,
-as `workhorse-coder run genesis` or `workhorse-coder run implement-plan`.
+same nodes. All three are registered flows on the coder `Registry` and entered directly,
+as `workhorse-coder run genesis`.
 
 The other five are reached with `self.handoff(...)`, and the caller names the class at the
 callsite::

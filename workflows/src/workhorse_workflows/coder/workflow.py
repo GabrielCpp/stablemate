@@ -74,7 +74,6 @@ from workhorse_workflows.coder.dream import Dream
 from workhorse_workflows.coder.fix import BLOCKED_NOTE, Fix
 from workhorse_workflows.coder.fix_ci import FixCi
 from workhorse_workflows.coder.genesis import Genesis
-from workhorse_workflows.coder.implement_plan import ImplementPlan
 from workhorse_workflows.coder.qa import Qa
 from workhorse_workflows.coder.review import Review
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -121,7 +120,6 @@ from workhorse_workflows.coder.shared.schemas.pr import MergeFixResult
 from workhorse_workflows.coder.shared.schemas.qa import QaResult
 from workhorse_workflows.coder.shared.schemas.queue import ReplanResult
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
-from workhorse_workflows.coder.stage_plan import StagePlan
 
 
 _QA_RETRY_ARTIFACTS = {
@@ -1086,9 +1084,9 @@ class Coder(Workflow):
 workflow = (
     Registry("coder")
     .add_blueprints(blueprint)
-    # The ten registered Python sub-flows, by the name `workhorse-coder run <name>`
-    # takes. Six are reached by `handoff` — `implement-plan` both ways, directly and
-    # from `stage-plan`; `genesis`, `dream`, `fix` and `stage-plan` are entered directly.
+    # The eight registered Python sub-flows, by the name `workhorse-coder run <name>`
+    # takes. Five are reached by `handoff`; `genesis`, `dream` and `fix` are entered
+    # directly.
     .add_flows(
         genesis=Genesis,
         dev=Dev,
@@ -1098,7 +1096,6 @@ workflow = (
         fix=Fix,
         fix_ci=FixCi,
         dream=Dream,
-        **{"implement-plan": ImplementPlan, "stage-plan": StagePlan},
     )
     .stub_agents(
         {
@@ -1132,7 +1129,6 @@ workflow = (
             "apply-genesis-conventions": {"status": "complete"},
             "fix-genesis": {"status": "complete"},
             "dream-reflect": {"status": "complete"},
-            "review-plan-implementation": {"status": "approved", "summary": "dry-run"},
         }
     )
 )
