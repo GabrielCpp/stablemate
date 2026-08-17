@@ -25,7 +25,8 @@ The seam under test:
   content sha, so one entry serves every worktree and every container while the same bytes
   at a different path stay distinct. Payloads are pickle stamped with
   ``index.SCHEMA_VERSION``, rejected in both directions. A write prunes past
-  ``max_age_s``. Anything unreadable is a miss, never an error the caller has to handle.
+  ``max_age_s``, at most once per ``index.PRUNE_INTERVAL_S`` per directory. Anything
+  unreadable is a miss, never an error the caller has to handle.
 
 ``epoch_inputs`` is monkeypatched through the module (``ostler.index.epoch_inputs``) where a
 label's material cannot be moved on disk, so the implementation must call it through the
@@ -342,6 +343,89 @@ def test_a_write_keeps_entries_inside_the_age_bound(tmp_path):
     store(root, directory, max_age_s=bound).put(other, PAYLOAD)
 
     assert store(root, directory, max_age_s=bound).get(kept) == PAYLOAD
+
+
+def test_a_write_sweeps_at_most_once_per_interval(tmp_path):
+    """The bound is an age, and an age does not need checking once per written entry.
+
+    The sweep is a full ``rglob`` plus a ``stat`` per file, so running it on every ``put``
+    made storing a book cost time quadratic in the size of the cache — the thing that made
+    a cold fill against the index nine times slower than no index at all. What is asserted
+    here is the throttle itself: with the stamp fresh, a second write past the bound leaves
+    a stale entry alone.
+    """
+    root = make_repo(tmp_path / "acme")
+    stale = root / "docs/features/area/rec.md"
+    fresh = root / "docs/features/area/rec2.md"
+    write(fresh, "two\n")
+    directory = tmp_path / "index"
+    bound = 3600.0
+
+    store(root, directory, max_age_s=bound).put(stale, PAYLOAD)  # stamps the directory
+    for path in entry_files(directory):
+        if path.name != index.PRUNE_STAMP_NAME:
+            os.utime(path, (time.time() - bound * 2, time.time() - bound * 2))
+    store(root, directory, max_age_s=bound).put(fresh, PAYLOAD)
+
+    assert store(root, directory, max_age_s=bound).get(stale) == PAYLOAD, (
+        "a sweep ran on a write minutes after the last one")
+
+
+def test_a_stale_stamp_lets_the_next_write_sweep_again(tmp_path):
+    """The throttle defers a sweep; it does not cancel it. The other half of the bound."""
+    root = make_repo(tmp_path / "acme")
+    stale = root / "docs/features/area/rec.md"
+    fresh = root / "docs/features/area/rec2.md"
+    write(fresh, "two\n")
+    directory = tmp_path / "index"
+    bound = 3600.0
+
+    store(root, directory, max_age_s=bound).put(stale, PAYLOAD)
+    age_everything(directory, index.PRUNE_INTERVAL_S + bound * 2)  # entries and stamp alike
+    store(root, directory, max_age_s=bound).put(fresh, PAYLOAD)
+
+    assert store(root, directory, max_age_s=bound).get(stale) is None
+    assert store(root, directory, max_age_s=bound).get(fresh) == PAYLOAD
+
+
+def test_the_stamp_is_not_an_entry(tmp_path):
+    """Neither mode of `clean` counts or removes it.
+
+    Reporting it to an operator would overstate what was evicted by one, and removing it
+    under ``--all`` would hand the next writer a directory that looks never swept — which
+    is the one state that makes a sweep run on the very next write.
+    """
+    root = make_repo(tmp_path / "acme")
+    doc = root / "docs/features/area/rec.md"
+    directory = tmp_path / "index"
+
+    store(root, directory).put(doc, PAYLOAD)
+    stamp = directory / index.PRUNE_STAMP_NAME
+    assert stamp.is_file(), "a write that pruned never recorded that it had"
+
+    assert index.clean(directory, everything=True) == 1, "the stamp was counted as an entry"
+    assert stamp.is_file(), "--all removed the sweep's own bookkeeping"
+
+
+def test_a_directory_that_cannot_be_stamped_does_not_sweep_on_every_write(tmp_path):
+    """No stamp means no throttle, and a store with no throttle is the quadratic one.
+
+    A read-only cache directory is the realistic way to get there. Reporting not-due is the
+    safe answer: the entries still age out under ``ostler cache clean``, and no write pays
+    for a directory walk it cannot record having done.
+    """
+    root = make_repo(tmp_path / "acme")
+    directory = tmp_path / "index"
+    directory.mkdir()
+    store_ = store(root, directory, max_age_s=3600.0)
+
+    def refuse(*_args, **_kwargs):
+        raise OSError("read-only file system")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(Path, "touch", refuse)
+        assert store_.prune() == 0
+        assert store_.prune() == 0
 
 
 def test_the_age_bound_has_a_default_a_caller_need_not_supply(tmp_path):

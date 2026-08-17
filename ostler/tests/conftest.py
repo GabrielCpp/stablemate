@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from ostler import index
+
 
 def present[T](value: T | None) -> T:
     """``value`` with its ``None`` ruled out — for a lookup the test arranged to hit.
@@ -181,10 +183,16 @@ def index_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def entry_files(directory: Path) -> list[Path]:
-    """Every entry the store has written under *directory* — none, when it was never created."""
+    """Every entry the store has written under *directory* — none, when it was never created.
+
+    The prune stamp is not an entry and is left out. Counting it would let "the index is not
+    empty" hold for a directory a store had only ever swept, which is the exact thing several
+    of these assertions exist to rule out.
+    """
     if not directory.exists():
         return []
-    return sorted(p for p in directory.rglob("*") if p.is_file())
+    return sorted(p for p in directory.rglob("*")
+                  if p.is_file() and p.name != index.PRUNE_STAMP_NAME)
 
 
 def report_of(capsys) -> dict:

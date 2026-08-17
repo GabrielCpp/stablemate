@@ -77,10 +77,33 @@ INDEX_DIR_NAME = "ostler-index"
 #: free and this only has to guard the file layout itself.
 SCHEMA_VERSION = 1
 
-#: How long an entry may go untouched before the next write prunes it. Two weeks: long
-#: enough that an occasional book survives a quiet fortnight, short enough that an
-#: unattended machine cannot grow the cache without limit.
+#: How long an entry may go unwritten before a prune removes it. Two weeks: long enough
+#: that an occasional book survives a quiet fortnight, short enough that an unattended
+#: machine cannot grow the cache without limit.
+#:
+#: *Unwritten*, not *unread*: an entry's age is its ``st_mtime``, and a read does not
+#: refresh it. That is the right bound for a content-addressed store, where a key names
+#: the exact bytes it was computed from — an entry still being read is one whose content
+#: has not moved in a fortnight, and evicting it costs the single recomputation that
+#: writes it back. Refreshing on read would buy nothing for that and would put a write
+#: syscall on every hit of the path this cache exists to make fast.
 DEFAULT_MAX_AGE_S = 14 * 24 * 60 * 60.0
+
+#: How often a prune may actually sweep, regardless of how many entries are written.
+#:
+#: The sweep is a full ``rglob`` plus a ``stat`` per file, so running it on every write
+#: made a store cost more the fuller it got: measured on a 1,200-file book, a cold fill
+#: took 55.16s against 6.05s with the sweep stubbed out, and 5.57s with no index at all.
+#: The bound this enforces is an *age* bound, and an age bound does not need to be checked
+#: at write granularity — an entry a few hours past the cutoff is not a different outcome
+#: from one evicted the instant it crossed. Stamped on disk rather than held per process,
+#: because every ``ostler`` invocation is a fresh process and a per-process guard would
+#: still sweep once per command.
+PRUNE_INTERVAL_S = 60 * 60.0
+
+#: The stamp recording when this directory was last swept. Skipped by :func:`clean` itself:
+#: it is the sweep's own bookkeeping, not an entry, so it is neither counted nor evicted.
+PRUNE_STAMP_NAME = ".last-prune"
 
 #: The config files ``model._load_config`` reads, in its order. Mirrored rather than
 #: imported because ``model`` exposes no constant for them; the epoch only needs their
@@ -423,7 +446,7 @@ class IndexStore:
         return payload.get(_PAYLOAD_KEY)
 
     def put(self, path: Path, value: Any, *, sha: str | None = None) -> None:
-        """Store *value* for *path*, pruning past the age bound first.
+        """Store *value* for *path*, pruning past the age bound when a prune is due.
 
         Never raises: a store that cannot write is a store that gives no speedup, not a
         command that fails. A disabled store writes nothing at all — ``--no-index`` has to
@@ -453,16 +476,48 @@ class IndexStore:
 
     # -- self-bounding ------------------------------------------------------
     def prune(self, now: float | None = None) -> int:
-        """Delete entries untouched for longer than ``max_age_s``; return how many.
+        """Delete entries unwritten for longer than ``max_age_s``; return how many.
 
         A bound, not a sweep: an entry inside the bound survives every write. Runs on the
         write path rather than as a command, so an unattended machine bounds itself
         without anyone remembering to. ``ostler cache clean`` is the same sweep asked for
         explicitly, which is why both go through :func:`clean`.
+
+        Rate-limited to once per :data:`PRUNE_INTERVAL_S` per directory. The write path is
+        the only place this can run from, and a fill writes an entry per file, so without
+        the limit the cost of storing a book was quadratic in the size of the cache — the
+        measurements are on :data:`PRUNE_INTERVAL_S`. Returning 0 when the stamp is fresh
+        is not a failure to prune; it is the sweep having already run recently enough that
+        nothing is meaningfully past the bound.
         """
         if self.max_age_s <= 0:
             return 0
+        if not self._prune_is_due(now):
+            return 0
         return clean(self.directory, max_age_s=self.max_age_s, now=now)
+
+    def _prune_is_due(self, now: float | None = None) -> bool:
+        """Whether a sweep may run, stamping the directory when it may.
+
+        The stamp is written *before* the sweep rather than after, so a crash mid-sweep
+        costs one deferred prune instead of putting every process into a sweep loop. A
+        directory that cannot be stamped — read-only, or not yet created — reports not-due:
+        a store that cannot record having pruned must not sweep on every write instead.
+        """
+        moment = time.time() if now is None else now
+        stamp = self.directory / PRUNE_STAMP_NAME
+        try:
+            if moment - stamp.stat().st_mtime < PRUNE_INTERVAL_S:
+                return False
+        except OSError:
+            pass  # No stamp yet: the first write to a directory is due a sweep.
+        try:
+            self.directory.mkdir(parents=True, exist_ok=True)
+            stamp.touch()
+            os.utime(stamp, (moment, moment))
+        except OSError:
+            return False
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -477,10 +532,17 @@ def clean(
 ) -> int:
     """Delete index entries under *directory* and return how many went.
 
-    Aged-out entries by default, every entry under *everything*. A directory that is not
-    there is the normal state of a fresh machine, not a failure: it removes nothing,
-    reports nothing removed, and is *not* created on the way past — an eviction command
-    that leaves a directory behind has done the opposite of its job.
+    Entries whose *write* is older than ``max_age_s`` by default — a read does not refresh
+    an entry's age, for the reason on :data:`DEFAULT_MAX_AGE_S` — and every entry under
+    *everything*. A directory that is not there is the normal state of a fresh machine, not
+    a failure: it removes nothing, reports nothing removed, and is *not* created on the way
+    past — an eviction command that leaves a directory behind has done the opposite of its
+    job.
+
+    :data:`PRUNE_STAMP_NAME` is passed over by both modes. It records when this directory
+    was last swept, so counting it would inflate the number reported to an operator and
+    removing it under ``--all`` would hand the next writer a directory that looks never
+    swept.
     """
     root = Path(directory).expanduser()
     cutoff = (time.time() if now is None else now) - max_age_s
@@ -492,6 +554,8 @@ def clean(
     for candidate in candidates:
         try:
             if not candidate.is_file():
+                continue
+            if candidate.name == PRUNE_STAMP_NAME:
                 continue
             if not everything and candidate.stat().st_mtime >= cutoff:
                 continue

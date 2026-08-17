@@ -281,7 +281,7 @@ entry rather than each warming a partition of their own.
 ostler doctor --no-index                 # off for this run; the index is on by default
 ostler doctor --index-dir /tmp/ix        # somewhere else for this run
 ostler doctor --verify-index             # run both ways and diff the reports
-ostler cache clean                       # evict entries untouched for 14 days
+ostler cache clean                       # evict entries not written for 14 days
 ostler cache clean --all                 # remove everything, aged out or not
 ostler cache clean --max-age-days 2 --json
 ```
@@ -291,7 +291,12 @@ gate — it runs doctor **with the index and without it in one command and diffs
 exiting non-zero on any disagreement, so "cached and uncached agree" is something CI asserts
 rather than something a README promises. Eviction has both paths: the explicit `cache clean`
 above (`--all` removes every entry, not only the aged-out ones), and automatic age-based pruning
-on write, so an unattended machine cannot grow the cache without limit.
+on write, so an unattended machine cannot grow the cache without limit. An entry's age is when it
+was last **written**, not last read — a key names the exact bytes it was computed from, so an
+entry still being read is one whose content has not moved, and evicting it costs the single
+recomputation that writes it back. The sweep is a full directory walk, so it runs at most hourly
+per index directory rather than on every write; the bound is an age, and an age bound does not
+need checking at write granularity.
 
 `doctor --json` reports what the index did, added to the report rather than substituted for any
 of it:

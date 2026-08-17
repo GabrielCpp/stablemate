@@ -747,7 +747,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     cac.add_argument(
         "--max-age-days", type=float, default=_DEFAULT_MAX_AGE_DAYS, dest="max_age_days",
-        metavar="N", help="how long an entry may go untouched before it ages out "
+        metavar="N", help="how long an entry may go unwritten before it ages out "
                           f"(default: {_DEFAULT_MAX_AGE_DAYS:g})",
     )
     cac.add_argument("--json", action="store_true")
