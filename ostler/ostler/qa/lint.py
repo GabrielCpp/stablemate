@@ -29,6 +29,7 @@ ALLOWED_IMPORT_MODULES = frozenset({
     "enum",
     "textwrap",
     "pathlib",
+    "hashlib",
     "ostler",
     "ostler.qa",
     "ostler_qa",
