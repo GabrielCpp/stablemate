@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler import checks
+from ostler.qa.session import QA_DIRNAME, scratch_dirname
 from ostler.util import is_mapping
 
 VERSION = 1
@@ -117,15 +118,20 @@ def _call_text(name: str, args: Any) -> str | None:
     return None if isinstance(bound, str) else bound.text()
 
 
-def build_evidence_map(spec_dir: Path, *, qa_dirname: str = "qa") -> dict[str, Any]:
+def build_evidence_map(spec_dir: Path, *, label: str | None = None) -> dict[str, Any]:
     """Join the four run artifacts into one row per obligation.
 
     Raises :class:`EvidenceMapError` when an input is absent or unreadable. That is a
     refusal, not an empty map: a map computed over a missing log would report every
     obligation `uncovered`, which is indistinguishable from a run that genuinely asserted
     nothing and is the more likely reading of the two.
+
+    ``label`` reads a dry run's ledger under ``<spec>/qa/<label>/`` instead of the scored
+    one, and must be the same label that run was given;
+    :class:`ostler.qa.session.ScratchLabelError` for one that could never have named a
+    ledger.
     """
-    qa_dir = spec_dir / qa_dirname
+    qa_dir = spec_dir / (QA_DIRNAME if label is None else scratch_dirname(label))
     context = _read_json(spec_dir / "qa-okf-context.json", what="the context packet")
     log = _read_log(qa_dir / "qa-run.ndjson")
     manifest = _read_json(qa_dir / "run-manifest.json", what="the run manifest")

@@ -642,11 +642,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     qa_run.add_argument(
         "--out-dir",
-        default="qa",
+        default=None,
         dest="out_dir",
-        metavar="NAME",
-        help="spec-relative directory for the ledger; anything but 'qa' is a dry run "
-             "and writes no qa-evidence.json",
+        metavar="LABEL",
+        help="make this a dry run into <spec>/qa/LABEL/, writing no qa-evidence.json; "
+             "LABEL is one name, not a path. Omit for the scored ledger",
     )
     qa_run.add_argument("--json", action="store_true")
 
@@ -709,10 +709,11 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_evidence_map.add_argument("--spec", default=None, type=Path)
     qa_evidence_map.add_argument(
         "--out-dir",
-        default="qa",
+        default=None,
         dest="out_dir",
-        metavar="NAME",
-        help="spec-relative directory holding the ledger to read; must match the run's",
+        metavar="LABEL",
+        help="read the dry-run ledger at <spec>/qa/LABEL/ instead of the scored one; "
+             "must be the label that run was given",
     )
     qa_evidence_map.add_argument(
         "--status",
@@ -728,6 +729,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="also write the map as JSON here",
     )
     qa_evidence_map.add_argument("--json", action="store_true")
+
+    qa_clean = qas.add_parser(
+        "clean",
+        help="list (and with --yes, delete) the legacy qa-* scratch directories the old "
+             "sibling layout left beside the spec",
+    )
+    qa_clean.add_argument(
+        "--spec", required=True, type=Path,
+        help="a spec directory, or any directory above one — it is searched recursively",
+    )
+    qa_clean.add_argument(
+        "--yes", action="store_true", dest="apply",
+        help="actually delete them; without it nothing is removed",
+    )
+    qa_clean.add_argument("--json", action="store_true")
 
     # ---- cache -------------------------------------------------------------
     ca = sub.add_parser("cache", help="the persistent parse index: evict what it holds")
@@ -1164,7 +1180,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             spec_dir,
             stop_on_fail=args.stop_on_fail,
             only=args.scenarios,
-            out_dir=args.out_dir,
+            label=args.out_dir,
             root=root,
         )
         if getattr(args, "json", False):
@@ -1256,8 +1272,8 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
     if op == "evidence-map":
         spec_dir = _resolve_spec(args.spec)
         try:
-            data = qa_mod.build_evidence_map(spec_dir, qa_dirname=args.out_dir)
-        except qa_mod.EvidenceMapError as exc:
+            data = qa_mod.build_evidence_map(spec_dir, label=args.out_dir)
+        except (qa_mod.EvidenceMapError, qa_mod.ScratchLabelError) as exc:
             _out(json.dumps({"status": "invalid", "message": str(exc)}, indent=2)
                  if args.json else f"error: {exc}")
             return 1
@@ -1271,6 +1287,14 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         # parsing it. `contradicted` and `uncovered` are both blocking and both mean the
         # published evidence does not describe the run.
         return 0 if data["counts"]["covered"] == len(data["obligations"]) else 1
+
+    if op == "clean":
+        result = qa_mod.cmd_clean(_resolve_spec(args.spec), apply=args.apply)
+        if args.json:
+            _out(json.dumps(result.data, indent=2))
+        else:
+            _out(result.message)
+        return 0 if result.ok else 1
 
     return 2
 

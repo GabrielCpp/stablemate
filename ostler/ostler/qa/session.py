@@ -28,8 +28,64 @@ QA_DIRNAME = "qa"
 SESSION_FILE = "qa-session.json"
 RUN_LOG = "qa-run.ndjson"
 
+#: Directory names the scored run itself owns under `qa/` — `steps/` and `asserts/` are
+#: created by `QaSession.create`, the other three by the browser harness. A scratch label
+#: is refused if it collides with one, because a dry run writing into `qa/traces/` would
+#: be indistinguishable from the scored run's own trace directory. `qa` is here for a
+#: different reason: it used to be the way to ask for the scored ledger, and silently
+#: reading it as a label would put that run in `qa/qa/`.
+RESERVED_LABELS = frozenset({QA_DIRNAME, "steps", "asserts", "traces", "videos", "screenshots"})
+
+#: What a label may be made of. Deliberately narrower than "a legal filename": a label
+#: names a scenario or a session, and every caller today already passes something in this
+#: alphabet. Separators are absent from it, which is what makes `../` unrepresentable.
+_LABEL_RE = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+
 #: See `qa/plan.py::MECHANISMS` for why `synthetic` is not here.
 _MECHS = {"live", "fixture"}
+
+
+class ScratchLabelError(ValueError):
+    """A dry run was asked for under a name that cannot be a scratch directory."""
+
+
+def scratch_dirname(label: str) -> str:
+    """The spec-relative ledger directory for a dry run called ``label``: ``qa/<label>``.
+
+    A dry run's artifacts nest *inside* the evidence directory rather than beside it. The
+    old sibling layout (`qa-dry-run/`) separated them by name, which reads well and does
+    nothing: a repo ignores its QA evidence by naming the `qa` directory, so every
+    rehearsal landed outside the ignore and shipped in the commit — hundreds of megabytes
+    of traces and video in the case that motivated this. One ignored subtree is the only
+    arrangement a hand-maintained `.gitignore` cannot drift off.
+
+    Nesting is safe because the evidence gate reads `qa/qa-run.ndjson` and
+    `qa/run-manifest.json` by exact path, and a scored run rmtrees `qa/` before it writes
+    — so scratch cannot launder itself into a verdict, and starting a scored run destroys
+    it, which is what the old `clear_qa_evidence` did to both directories anyway.
+
+    ``label`` is a single path component, not a path: traversal, an absolute path and the
+    repo-relative form that used to be joined onto the spec directory (producing a
+    committed `docs/specs/x/docs/specs/x/…`) are all unrepresentable rather than
+    validated against.
+    """
+    name = label.strip()
+    if not name:
+        raise ScratchLabelError("a dry-run label cannot be empty")
+    if name in RESERVED_LABELS:
+        hint = (
+            " — the scored ledger is what you get by omitting the flag"
+            if name == QA_DIRNAME
+            else f" — the scored run writes {QA_DIRNAME}/{name}/ itself"
+        )
+        raise ScratchLabelError(f"`{name}` is a reserved directory name{hint}")
+    if not _LABEL_RE.match(name):
+        raise ScratchLabelError(
+            f"`{label}` is not a dry-run label. A label is one path component of letters, "
+            "digits, `.`, `_` and `-` — not a path: it always resolves to "
+            f"{QA_DIRNAME}/<label>/ inside the spec directory."
+        )
+    return f"{QA_DIRNAME}/{name}"
 
 
 # ---------------------------------------------------------------------------
@@ -58,10 +114,11 @@ class QaSession:
 
     def __init__(self, spec_dir: Path, qa_dirname: str = QA_DIRNAME) -> None:
         self.spec_dir = spec_dir
-        #: Which directory under the spec the ledger, captures and artifacts land in. Always
-        #: `qa/` for a scored run — `clear_qa_evidence` wipes it and the evidence gate reads
-        #: it. A dry run names something else so that a plan tuned until it passed cannot
-        #: become its own admissible evidence.
+        #: Which directory under the spec the ledger, captures and artifacts land in, as a
+        #: spec-relative path. `qa` for a scored run — `clear_qa_evidence` wipes it and the
+        #: evidence gate reads it. A dry run is `qa/<label>` (see `scratch_dirname`): still
+        #: inside the ignored subtree, still not a path the evidence gate ever reads, so a
+        #: plan tuned until it passed cannot become its own admissible evidence.
         self.qa_dirname = qa_dirname
         self.qa_dir = spec_dir / qa_dirname
         self._session_path = self.qa_dir / SESSION_FILE
@@ -798,10 +855,18 @@ def _resolve_out(out_path: str, spec_dir: Path, qa_dir: Path) -> Path:
     way and mean "the evidence directory" rather than that literal name. A dry run redirected
     elsewhere must honour the meaning, or its steps write into the scored run's directory
     while everything else it produces stays out.
+
+    Substituting `qa_dir` whole, not `qa_dir.name`: the name alone was only ever right while
+    a dry run's directory was a direct child of the spec. Now that it is `qa/<label>`, the
+    name is `<label>` and the rewrite would send the step to `<spec>/<label>/…` — a stray
+    sibling of the ledger, outside the directory the repo ignores, which is the exact class
+    of escape this layout exists to close.
     """
     p = Path(out_path)
     if not p.is_absolute() and p.parts and p.parts[0] == QA_DIRNAME:
-        p = Path(qa_dir.name, *p.parts[1:])
+        # Resolved, so the join below never re-anchors an already spec-relative `qa_dir`
+        # against the spec directory a second time.
+        p = qa_dir.resolve().joinpath(*p.parts[1:])
     resolved = (p if p.is_absolute() else spec_dir / p).resolve()
     try:
         resolved.relative_to(spec_dir.resolve())

@@ -24,11 +24,16 @@ def run_plan(
     """Execute a validated plan and return ``(status, message, summary)``.
 
     ``only`` runs just the named scenarios — the rest of the plan is skipped, and so are the
-    targets none of them use. ``qa_dirname`` puts the ledger somewhere other than ``qa/``.
+    targets none of them use. ``qa_dirname`` is the spec-relative ledger directory: ``qa``
+    for a scored run, ``qa/<label>`` for a dry run. Build the latter with
+    :func:`ostler.qa.session.scratch_dirname` and never by hand — this function joins what
+    it is given onto the spec directory and validates nothing.
+
     Together they are the dry run a planner uses to find out whether a scenario it just wrote
     actually resolves, without paying for the whole plan and without leaving anything the
-    evidence gate would later read as a result: outside ``qa/`` no ``qa-evidence.json`` is
-    written at all, so a plan tuned until it passed cannot become its own proof.
+    evidence gate would later read as a result: anywhere but ``qa`` itself no
+    ``qa-evidence.json`` is written at all, so a plan tuned until it passed cannot become its
+    own proof.
     """
     plan = document.data
     spec_dir = document.spec_dir

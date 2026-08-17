@@ -599,11 +599,14 @@ class Ostler:
                             self._resolve(spec) if spec else None, root=self.root)
 
     def qa_run(self, plan_file: str | Path, *, spec: str | Path | None = None,
-               stop_on_fail: bool = False) -> QaOutcome:
-        """Execute a ``qa_plan.py`` in batch mode (``ostler qa run``)."""
+               stop_on_fail: bool = False, label: str | None = None) -> QaOutcome:
+        """Execute a ``qa_plan.py`` in batch mode (``ostler qa run``).
+
+        ``label`` makes it a dry run into ``<spec>/qa/<label>/`` that publishes no
+        ``qa-evidence.json`` — what ``--out-dir`` does on the CLI."""
 
         return cmd_run(Path(plan_file), self._resolve(spec) if spec else None,
-                       stop_on_fail=stop_on_fail, root=self.root)
+                       stop_on_fail=stop_on_fail, label=label, root=self.root)
 
     def qa_tools_catalog(self) -> QaOutcome:
         """This repo's opted-in QA tools, resolved against the machine's stablemate

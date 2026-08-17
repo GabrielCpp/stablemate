@@ -401,6 +401,7 @@ class _Session(Ostler):
         *,
         spec: str | Path | None = None,
         stop_on_fail: bool = False,
+        label: str | None = None,
     ) -> QaOutcome:
         script = self.script
         script.runs += 1

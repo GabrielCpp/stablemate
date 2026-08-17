@@ -296,18 +296,18 @@ def second(qa: Qa) -> None:
     scored.mkdir()
     (scored / "keep.txt").write_text("a scored run's ledger", encoding="utf-8")
 
-    outcome = cmd_run(module, root=tmp_path, only=["api-contract"], out_dir="qa-dry")
+    outcome = cmd_run(module, root=tmp_path, only=["api-contract"], label="dry")
 
     assert outcome.status == "passed", outcome.message
     # The failing scenario was not selected, so it neither ran nor sank the verdict.
     assert set(outcome.data["scenarios"]) == {"api-contract"}
-    assert (spec / "qa-dry/qa-run.ndjson").is_file()
+    assert (spec / "qa/dry/qa-run.ndjson").is_file()
     assert not (spec / "qa-evidence.json").exists()
     assert (scored / "keep.txt").read_text(encoding="utf-8") == "a scored run's ledger"
     assert not (scored / "qa-run.ndjson").exists()
 
     # A name it cannot run is a stated error, not a silently empty run reported as passing.
-    missing = cmd_run(module, root=tmp_path, only=["typo"], out_dir="qa-dry")
+    missing = cmd_run(module, root=tmp_path, only=["typo"], label="dry")
     assert missing.status == "invalid"
     assert "typo" in missing.message
 

@@ -270,15 +270,30 @@ ostler qa replay [--spec <spec-dir>]
     valid shell script a human can run in a fresh terminal to reproduce the run.
     Does not re-execute anything.
 
-ostler qa run <plan-file> [--spec <spec-dir>] [--scenario <id>] [--out-dir <name>]
+ostler qa run <plan-file> [--spec <spec-dir>] [--scenario <id>] [--out-dir <label>]
     Batch mode. Read a qa_plan.py module and execute its scenarios, opening the
     session, starting the declared daemons and writing the ledger around them. The
     plan is written by the agent before any live commands are issued; ostler owns
     all execution. This is the preferred invocation mode — a human can review the
     plan before it runs. See "Run plan format" below.
-    --scenario runs a subset, --out-dir redirects the whole ledger; together they
-    are the dry run an author uses while writing the plan, and the redirect is
-    what keeps a rehearsal out of the evidence the scored run is judged on.
+    --scenario runs a subset, --out-dir makes it a dry run; together they are what
+    an author uses while writing the plan, and the redirect is what keeps a
+    rehearsal out of the evidence the scored run is judged on.
+    --out-dir is a *label*, not a path: it always resolves to <spec>/qa/<label>/,
+    one path component, no separators, and not one of the directories the scored
+    run owns (steps, asserts, traces, videos, screenshots). Scratch nests inside
+    the evidence directory because that is the one directory a repo ignores — the
+    old sibling layout put every rehearsal outside the ignore, and it shipped.
+    A dry run writes no qa-evidence.json, and a scored run rmtrees qa/ before it
+    writes, so no rehearsal survives into the run it was rehearsing for.
+
+ostler qa clean --spec <dir> [--yes]
+    List the legacy qa-* scratch directories the old sibling layout left beside a
+    spec — qa-dry-run/, qa-fix-*/, qa-operator-*/ — and, with --yes, delete them.
+    <dir> is searched recursively, so it may be a spec directory or a whole docs
+    tree. qa-inputs/ is never touched: it holds a plan's tracked `inputs:`
+    fixtures, which is why this is an explicit command and not a wider sweep
+    inside the scored run's own cleanup.
 ```
 
 ---
@@ -345,7 +360,7 @@ explicit attribute here, and the two that used to cost the most are the first tw
 
 | Attribute                          | What it is                                                              |
 | ---------------------------------- | ----------------------------------------------------------------------- |
-| `qa.dir`                           | the evidence directory, already resolved against `--out-dir` — one spelling, a `Path` |
+| `qa.dir`                           | this run's ledger directory, already resolved against `--out-dir` — one spelling, a `Path` |
 | `qa.root`, `qa.spec_dir`           | the repo root and the story's spec directory                            |
 | `qa.http`                          | a session bound to the target's `base_url`; `.get/.post/.put/.patch/.delete`, each returning a `Response` with `.status`, `.text()`, `.json()` |
 | `qa.check(label, condition, …)`    | record one claim; returns the verdict, never raises                     |

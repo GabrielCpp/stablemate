@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 
 from ostler.qa.run import cmd_start, cmd_step
-from ostler.qa.session import QaSession
+from ostler.qa.session import QaSession, scratch_dirname
 
 
 def _spec(tmp_path: Path) -> Path:
@@ -146,10 +146,12 @@ def test_qa_dir_is_exported_to_commands_and_follows_the_ledger_directory(
     literal spelling — `<spec>/qa/steps/…`, or an interpolated `qa_dir` — names the *scored*
     ledger whichever directory the run was pointed at. So a dry run writes into the evidence
     the scored run is later judged on. Observed live: ten dry runs of a six-scenario plan
-    left ~30 artifacts in `qa/steps/` and produced an empty `qa-dry-run/`.
+    left ~30 artifacts in `qa/steps/` and produced an empty scratch directory.
     """
     spec = _spec(tmp_path)
-    session = QaSession.create(spec, "qa-run-1", "story-1", {}, qa_dirname="qa-dry-run")
+    session = QaSession.create(
+        spec, "qa-run-1", "story-1", {}, qa_dirname=scratch_dirname("dry")
+    )
     session.write_session_start()
 
     record = session.run_step(
@@ -161,7 +163,7 @@ def test_qa_dir_is_exported_to_commands_and_follows_the_ledger_directory(
     )
 
     assert record["exit_code"] == 0
-    assert (spec / "qa-dry-run/steps/body.txt").read_text(encoding="utf-8") == "ok"
+    assert (spec / "qa/dry/steps/body.txt").read_text(encoding="utf-8") == "ok"
     assert not (spec / "qa/steps").exists(), "a dry run reached the scored ledger"
 
 

@@ -11,7 +11,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from ostler.qa.session import QaSession, RUN_LOG
+from ostler.qa.session import QA_DIRNAME, QaSession, RUN_LOG, ScratchLabelError, scratch_dirname
 from ostler.qa.plan import load_plan, resolve_spec_dir, validate_v2
 from ostler.qa.v2 import run_plan as run_v2_plan
 from ostler.qa import lint as lint_mod
@@ -356,7 +356,7 @@ def cmd_run(
     *,
     stop_on_fail: bool = False,
     only: list[str] | None = None,
-    out_dir: str = "qa",
+    label: str | None = None,
     root: Path,
 ) -> QaOutcome:
     """Execute a `qa_plan.py` in batch mode.
@@ -364,9 +364,21 @@ def cmd_run(
     The plan is validated first, then executed: start → scenarios → stop. Returns a
     PASS/FAIL verdict.
 
-    ``only`` and ``out_dir`` are the dry run: a subset of the scenarios, written somewhere
-    other than ``qa/`` and producing no ``qa-evidence.json``.
+    ``only`` and ``label`` are the dry run: a subset of the scenarios, written to
+    ``<spec>/qa/<label>/`` and producing no ``qa-evidence.json``. ``label`` is a name, not
+    a path — see :func:`ostler.qa.session.scratch_dirname` for what it may be and why the
+    directory nests inside the ledger rather than beside it. ``None`` is the scored run.
     """
+    if label is None:
+        qa_dirname = QA_DIRNAME
+    else:
+        try:
+            qa_dirname = scratch_dirname(label)
+        except ScratchLabelError as exc:
+            return QaOutcome(
+                ok=False, message=f"error: {exc}", data={"problems": [str(exc)]},
+                status="invalid",
+            )
     resolved_plan = plan_file if plan_file.is_absolute() else root / plan_file
     resolved_spec = resolve_spec_dir(resolved_plan, spec_dir, root)
     validate_result = cmd_validate(resolved_plan, resolved_spec, root=root)
@@ -386,7 +398,7 @@ def cmd_run(
         root=root,
         stop_on_fail=stop_on_fail,
         only=only,
-        qa_dirname=out_dir,
+        qa_dirname=qa_dirname,
     )
     return QaOutcome(
         ok=status == "passed",
