@@ -26,7 +26,10 @@ dependencies = [
   "tree-sitter>=0.25",
   "tree-sitter-language-pack>=1.14",
   "unidiff>=0.7",
-  # For _vendor/stablemate_core (reading ~/.config/stablemate/config.toml's [qa_tools.*]).
+  # platformdirs and tomli-w are ostler._vendor.stablemate_core's requirements, not
+  # ostler's own: the shared config file (whose [qa_tools.*] table the tool registry
+  # reads), base-library discovery and the cache directory are vendored in rather than
+  # depended on (see core/README.md), so their floors land here.
   "platformdirs>=4.0",
   "tomli-w>=1.0",
 ]
