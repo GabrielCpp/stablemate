@@ -663,7 +663,12 @@ def test_the_aggregate_gate_still_ends_the_run_once_repairs_are_spent(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The second chance is bounded — a repair turn that never fixes it still stops."""
+    """The second chance is bounded — a repair turn that never fixes it still stops.
+
+    The bound is the *finding*, not the attempt count: this repair writes nothing new,
+    so the gate reports the identical failure it already handed out, and that repeat is
+    what ends the run.
+    """
     plan_path = tmp_path / "plan.md"
     plan_path.write_text("# Aggregate\n", encoding="utf-8")
     task = _task("only", "src/value.txt")
@@ -677,5 +682,56 @@ def test_the_aggregate_gate_still_ends_the_run_once_repairs_are_spent(
         repair_edits={"only": {"src/value.txt": "value\n"}},
     )
 
-    with pytest.raises(WorkflowFailed, match="final plan verification failed"):
+    with pytest.raises(WorkflowFailed, match="the same finding survived its repair turn"):
         drive_flow(ImplementPlan(plan_path=str(plan_path), repo_dir=str(repo)), env(), agent)
+
+
+def test_the_aggregate_gate_keeps_going_while_each_repair_uncovers_a_new_defect(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Three distinct findings in a row are three repairs, not a spent budget.
+
+    This gate is the run's first repo-wide command, so it reports a queue of
+    independent pre-existing defects rather than one packet's mistake. Metering it by
+    attempts ended the run on the third finding while every repair so far had been
+    correct; metering it by *repeated* findings lets the queue drain and still stops the
+    moment a repair fails to move it.
+    """
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text("# Aggregate\n", encoding="utf-8")
+    task = _task("only", "src/value.txt")
+    kept = {"src/value.txt": "value\n"}
+    agent = _Agent(
+        repo,
+        _decomposition(
+            task,
+            final=[
+                _command(
+                    "from pathlib import Path; "
+                    "missing = [n for n in ('a.txt', 'b.txt', 'c.txt') if not Path(n).is_file()]; "
+                    "assert not missing, missing"
+                )
+            ],
+        ),
+        edits={"only": kept},
+        # Cumulative, and each pass leaves a *different* file missing, so the gate
+        # reports a finding it has not seen before every time.
+        repair_steps={
+            "only": [
+                {**kept, "a.txt": "a\n"},
+                {**kept, "a.txt": "a\n", "b.txt": "b\n"},
+                {**kept, "a.txt": "a\n", "b.txt": "b\n", "c.txt": "c\n"},
+            ]
+        },
+    )
+
+    result = drive_flow(ImplementPlan(plan_path=str(plan_path), repo_dir=str(repo)), env(), agent)
+
+    assert result.status == "complete"
+    # Three repairs — one more than MAX_REPAIRS, which is the point.
+    assert agent.count("repair-plan-task") == 3
+    assert all((repo / name).is_file() for name in ("a.txt", "b.txt", "c.txt"))
