@@ -74,7 +74,7 @@ from pathlib import Path
 from typing import Any, ClassVar, NamedTuple
 
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow
-from workhorse_workflows.coder.shared import ostler_qa, paths
+from workhorse_workflows.coder.shared import paths, qa_support
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
 from workhorse_workflows.coder.shared.docs import detect_okf_docs
@@ -779,7 +779,7 @@ class Qa(Workflow):
         tools = self.call(qa_tools_catalog, self.docs_path)
         spec_abs = Path(self.ctx.spec_dir) if self.ctx.spec_dir else None
         failed_assertions = (
-            ostler_qa.failed_assertions(ostler_qa.scored_run_log(spec_abs))
+            qa_support.failed_assertions(qa_support.scored_run_log(spec_abs))
             if spec_abs and loop.failed_scenarios
             else {}
         )
@@ -1457,8 +1457,8 @@ class Qa(Workflow):
                 "stack_manifest": self.qa_stack_manifest,
                 "qa_run_plan": impl.qa_run_plan,
                 "qa_stack": impl.qa_stack,
-                # The interpreter the QA runner's pre-flight actually checks: `shared/ostler_qa`
-                # imports the runner as a library, so a requirement like "requires the Playwright
+                # The interpreter the QA runner's pre-flight actually checks: the QA nodes
+                # import the runner as a library, so a requirement like "requires the Playwright
                 # Python package" is a statement about *this* process. A fixer told only to
                 # install the package repairs whichever copy `pip`/`uv tool` happens to reach,
                 # reports `ready`, and the next run comes back blocked on the same bundle.

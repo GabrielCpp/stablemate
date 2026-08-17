@@ -1,9 +1,9 @@
 """The QA flow's deterministic spine: clear evidence, bring the stack up, validate, run.
 
 Ports `clear-qa-evidence.py`, `ensure-stack.py`, `validate-qa-plan.py` and
-`run-qa-plan.py`. The two ostler-backed nodes are the same adapter shape `shared/okf.py`
-already uses — `ostler_qa` returns `(returncode, payload, stderr)` and the node turns it
-into a status by its own rule — and they resolve their docs root the same way, through
+`run-qa-plan.py`. The ostler-backed nodes call `Ostler` directly and read the `QaOutcome`
+it answers with — each turns it into a status by its own rule, which is why there is no
+adapter between them and the API — and they resolve their docs root the same way, through
 `find_docs_root(docs_path, repo_dir)` rather than a per-node cwd the driver does not have.
 
 `clear-qa-gate-state.py` has no node here, deliberately. It blanked five run-context keys
@@ -23,12 +23,16 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from ostler import registry
+from ostler import Ostler, registry
 from workhorse import stack
 from workhorse_workflows.kit import find_docs_root
-from workhorse_workflows.coder.shared import ostler_qa
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.ostler_qa import QA_PLAN_FILE, QA_RUN_LOG
+from workhorse_workflows.coder.shared.qa_support import (
+    QA_PLAN_FILE,
+    QA_RUN_LOG,
+    assert_records,
+    notes_for,
+)
 from workhorse_workflows.coder.shared.schemas.qa import (
     DryRunGate,
     QaCleared,
@@ -258,14 +262,13 @@ def lint_qa_plan(
     """
     plan = str(Path(spec_dir) / QA_PLAN_FILE)
     docs_root = find_docs_root(docs_path, repo_dir)
-    returncode, payload, stderr = ostler_qa.qa_lint(plan, spec_dir, docs_root=docs_root)
-    cli_status = str(payload.get("status", "invalid")).lower()
-    status = "passed" if returncode == 0 and cli_status == "passed" else "invalid"
-    notes = ostler_qa.notes_for(
-        payload, stderr, "QA plan lint passed." if status == "passed" else "QA plan lint failed."
+    outcome = Ostler(docs_root).qa_lint(plan, spec=spec_dir)
+    status = "passed" if outcome.ok else "invalid"
+    notes = notes_for(
+        outcome, "QA plan lint passed." if status == "passed" else "QA plan lint failed."
     )
     logger.info("qa lint for %s returned status=%s", spec_dir, status)
-    return QaPlanValidation(status=status, notes=notes, ostler=payload)
+    return QaPlanValidation(status=status, notes=notes, ostler=outcome.data)
 
 
 @blueprint.node
@@ -280,9 +283,9 @@ def qa_tools_catalog(
     host looks like when the resume happens to run.
     """
     docs_root = find_docs_root(docs_path, repo_dir)
-    _returncode, payload, _stderr = ostler_qa.qa_tools_catalog(docs_root=docs_root)
-    tools = payload.get("tools", [])
-    errors = payload.get("errors", [])
+    outcome = Ostler(docs_root).qa_tools_catalog()
+    tools = outcome.data.get("tools", [])
+    errors = outcome.data.get("errors", [])
     logger.info("qa tools catalog resolved %d tool(s), %d error(s)", len(tools), len(errors))
     return QaToolCatalog(tools=tools, errors=errors)
 
@@ -302,14 +305,13 @@ def validate_qa_plan(
     """
     plan = str(Path(spec_dir) / QA_PLAN_FILE)
     docs_root = find_docs_root(docs_path, repo_dir)
-    returncode, payload, stderr = ostler_qa.qa_validate(plan, spec_dir, docs_root=docs_root)
-    cli_status = str(payload.get("status", "invalid")).lower()
-    status = "passed" if returncode == 0 and cli_status == "passed" else "invalid"
-    notes = ostler_qa.notes_for(
-        payload, stderr, "QA plan is valid." if status == "passed" else "QA plan is invalid."
+    outcome = Ostler(docs_root).qa_validate(plan, spec=spec_dir)
+    status = "passed" if outcome.ok else "invalid"
+    notes = notes_for(
+        outcome, "QA plan is valid." if status == "passed" else "QA plan is invalid."
     )
     logger.info("qa validate for %s returned status=%s", spec_dir, status)
-    return QaPlanValidation(status=status, notes=notes, ostler=payload)
+    return QaPlanValidation(status=status, notes=notes, ostler=outcome.data)
 
 
 @blueprint.node
@@ -364,7 +366,7 @@ def verify_qa_dry_run(
         # out-dir names the scenario, so an unlabelled assert in it is that scenario's.
         mine = [
             r
-            for r in ostler_qa.assert_records(log_path)
+            for r in assert_records(log_path)
             if str(r.get("scenario", "")).strip() in ("", scenario)
         ]
         if not mine:
@@ -421,13 +423,13 @@ def run_qa_plan(
     """
     plan = str(Path(spec_dir) / QA_PLAN_FILE)
     docs_root = find_docs_root(docs_path, repo_dir)
-    _returncode, payload, stderr = ostler_qa.qa_run(plan, spec_dir, docs_root=docs_root)
-    status = str(payload.get("status", "invalid")).lower()
+    outcome = Ostler(docs_root).qa_run(plan, spec=spec_dir)
+    status = outcome.status.lower()
     if status not in RUN_STATUSES:
         status = "invalid"
-    notes = ostler_qa.notes_for(payload, stderr, f"Ostler QA run returned {status}.")
+    notes = notes_for(outcome, f"Ostler QA run returned {status}.")
     logger.info("ostler qa run for %s returned status=%s", spec_dir, status)
-    return QaRunResult(status=status, notes=notes, ostler=payload)
+    return QaRunResult(status=status, notes=notes, ostler=outcome.data)
 
 
 __all__ = [

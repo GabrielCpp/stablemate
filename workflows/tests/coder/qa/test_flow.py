@@ -21,7 +21,7 @@ import json
 import logging
 import subprocess
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -38,13 +38,19 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 from workhorse.runner.failure import BackendInvocationError
 
-from workhorse_workflows.coder.shared import ostler_qa
+from ostler import Ostler
+from ostler.qa import QaOutcome
+
 from workhorse_workflows.coder.qa.flow import Qa
+from workhorse_workflows.coder.qa.nodes import evidence as evidence_nodes
+from workhorse_workflows.coder.qa.nodes import qa as qa_nodes
 from workhorse_workflows.coder.qa.nodes import regression as regression_nodes
 from workhorse_workflows.coder.qa.nodes.qa import (
     QA_SCRATCH_DIRNAME,
     record_qa_giveup,
 )
+from workhorse_workflows.coder.shared import okf as okf_nodes
+from workhorse_workflows.coder.shared import qa_support
 from workhorse_workflows.coder.shared.dev import resolve_impl_context
 
 STORY = "STORY-1"
@@ -237,106 +243,29 @@ class _Ostler:
         self.context_args: list[dict[str, Any]] = []
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> _Ostler:
-        for name in (
-            "qa_context",
-            "qa_context_validate",
-            "qa_validate",
-            "qa_run",
-            "artifact_vet",
-        ):
-            monkeypatch.setattr(ostler_qa, name, getattr(self, name))
+        """Stand in for the `Ostler` the nodes construct, in all three modules that do.
+
+        A session subclasses the real facade rather than replacing it, so the methods this
+        script says nothing about — `qa_lint`, `qa_tools_catalog` — still run for real
+        against the repo under test, and a signature that drifts from the API fails at
+        type-check rather than passing a test that no longer describes anything.
+        """
+        for module in (okf_nodes, qa_nodes, evidence_nodes):
+            monkeypatch.setattr(module, "Ostler", self._session)
         return self
 
-    # -- the packet -------------------------------------------------------
+    def _session(self, root: Path | str | None = None, **kwargs: Any) -> _Session:
+        return _Session(self, root, **kwargs)
 
-    def qa_context(
-        self,
-        spec_dir: str,
-        *,
-        base: str,
-        head: str,
-        features_root: str,
-        story_file: str,
-        source_roots: list[str],
-        docs_root: Path | None = None,
-        exclude_paths: list[str] | None = None,
-    ) -> tuple[int, dict[str, Any], str]:
-        self.contexts += 1
-        self.context_args.append(
-            {
-                "base": base,
-                "head": head,
-                "story_file": story_file,
-                "source_roots": source_roots,
-                "exclude_paths": list(exclude_paths or []),
-            }
+    def _blocked(self, problems: list[str]) -> QaOutcome:
+        return QaOutcome(
+            ok=False,
+            message="QA run blocked",
+            status="blocked",
+            data={"status": "blocked", "problems": problems, "notes": "QA run blocked"},
         )
-        spec = Path(spec_dir)
-        spec.mkdir(parents=True, exist_ok=True)
-        (spec / "qa-okf-context.json").write_text(
-            json.dumps({"status": "passed", "obligations": [], "verificationIndex": []}),
-            encoding="utf-8",
-        )
-        return 0, {"status": "passed"}, ""
 
-    def qa_context_validate(
-        self, spec_dir: str, *, docs_root: Path | None = None
-    ) -> tuple[int, dict[str, Any], str]:
-        self.context_validations += 1
-        if self.context_validations <= self.context_invalid:
-            return 1, {"status": "invalid", "notes": "two changed files map to no feature node"}, ""
-        return 0, {"status": "passed"}, ""
-
-    # -- the plan ---------------------------------------------------------
-
-    def qa_validate(
-        self, plan: str, spec_dir: str, *, docs_root: Path | None = None
-    ) -> tuple[int, dict[str, Any], str]:
-        self.plan_validations += 1
-        # The plan turn is supposed to have written this; validating a file that is not
-        # there would make every plan-gate test pass for the wrong reason.
-        assert Path(plan).is_file(), f"the plan turn wrote no {plan}"
-        if (
-            self.plan_validations <= self.plan_invalid
-            or self.plan_validations in self.plan_invalid_passes
-        ):
-            return 1, {"status": "invalid", "notes": "step 3 names no assertion"}, ""
-        return 0, {"status": "passed"}, ""
-
-    # -- the run ----------------------------------------------------------
-
-    def qa_run(
-        self,
-        plan: str,
-        spec_dir: str,
-        *,
-        docs_root: Path | None = None,
-    ) -> tuple[int, dict[str, Any], str]:
-        self.runs += 1
-        if self.runs <= self.block_runs:
-            return 1, {
-                "status": "blocked",
-                "problems": ["target 'web' requires the Playwright Python package"],
-                "notes": "QA run blocked",
-            }, ""
-        if self.blocked_problems is not None:
-            # A blocked run writes nothing: it never executed a scenario.
-            return 1, {
-                "status": "blocked",
-                "problems": list(self.blocked_problems),
-                "notes": "QA run blocked",
-            }, ""
-        status = "failed" if self.runs <= self.fail_runs else "passed"
-        self._write_run(Path(spec_dir), status)
-        payload: dict[str, Any] = {
-            "status": status,
-            "notes": f"run {self.runs} reported {status}",
-        }
-        if self.scenarios:
-            payload["scenarios"] = self.scenarios[min(self.runs, len(self.scenarios)) - 1]
-        return (0 if status == "passed" else 1), payload, ""
-
-    def _write_run(self, spec: Path, status: str) -> None:
+    def write_run(self, spec: Path, status: str) -> None:
         """The artifacts `ostler qa run` leaves behind, which the evidence gate reads.
 
         An un-modeled surface: no OKF criteria and no obligations, proving itself on the run
@@ -390,13 +319,119 @@ class _Ostler:
             for n in range(1, int(outcome.get("assertions", 1)) + 1)
         ]
 
+
+
+class _Session(Ostler):
+    """One `Ostler(...)` a node constructed, answering out of the script it was given."""
+
+    def __init__(self, script: _Ostler, root: Path | str | None = None, **kwargs: Any) -> None:
+        super().__init__(root, **kwargs)
+        self.script = script
+
+    # -- the packet -------------------------------------------------------
+
+    def qa_context(
+        self,
+        *,
+        base: str,
+        spec: str | Path,
+        head: str = "WORKTREE",
+        source_roots: dict[str, list[str]] | None = None,
+        features_root: str = "",
+        story_file: str | Path | None = None,
+        exclude_paths: Iterable[str] = (),
+    ) -> QaOutcome:
+        self.script.contexts += 1
+        self.script.context_args.append(
+            {
+                "base": base,
+                "head": head,
+                "story_file": str(story_file or ""),
+                "source_roots": dict(source_roots or {}),
+                "exclude_paths": list(exclude_paths),
+            }
+        )
+        # The nodes pass an absolute spec dir, so this skips the real `_resolve` — which
+        # would load the graph just to join a path that is already anchored.
+        spec_dir = Path(spec)
+        spec_dir.mkdir(parents=True, exist_ok=True)
+        (spec_dir / "qa-okf-context.json").write_text(
+            json.dumps({"status": "passed", "obligations": [], "verificationIndex": []}),
+            encoding="utf-8",
+        )
+        return QaOutcome(ok=True, message=f"wrote {spec_dir}", data={"status": "passed"})
+
+    def qa_context_validate(self, *, spec: str | Path) -> QaOutcome:
+        self.script.context_validations += 1
+        if self.script.context_validations <= self.script.context_invalid:
+            return QaOutcome(
+                ok=False,
+                message="context is invalid",
+                status="invalid",
+                data={"notes": "two changed files map to no feature node"},
+            )
+        return QaOutcome(ok=True, message="Context is valid.", data={"problems": []})
+
+    # -- the plan ---------------------------------------------------------
+
+    def qa_validate(
+        self, plan_file: str | Path, *, spec: str | Path | None = None
+    ) -> QaOutcome:
+        self.script.plan_validations += 1
+        # The plan turn is supposed to have written this; validating a file that is not
+        # there would make every plan-gate test pass for the wrong reason.
+        assert Path(plan_file).is_file(), f"the plan turn wrote no {plan_file}"
+        if (
+            self.script.plan_validations <= self.script.plan_invalid
+            or self.script.plan_validations in self.script.plan_invalid_passes
+        ):
+            return QaOutcome(
+                ok=False,
+                message="plan is invalid",
+                status="invalid",
+                data={"notes": "step 3 names no assertion"},
+            )
+        return QaOutcome(ok=True, message="Plan is valid.", data={})
+
+    # -- the run ----------------------------------------------------------
+
+    def qa_run(
+        self,
+        plan_file: str | Path,
+        *,
+        spec: str | Path | None = None,
+        stop_on_fail: bool = False,
+    ) -> QaOutcome:
+        script = self.script
+        script.runs += 1
+        if script.runs <= script.block_runs:
+            return script._blocked(["target 'web' requires the Playwright Python package"])
+        if script.blocked_problems is not None:
+            # A blocked run writes nothing: it never executed a scenario.
+            return script._blocked(list(script.blocked_problems))
+        status = "failed" if script.runs <= script.fail_runs else "passed"
+        script.write_run(Path(str(spec)), status)
+        data: dict[str, Any] = {
+            "status": status,
+            "notes": f"run {script.runs} reported {status}",
+        }
+        if script.scenarios:
+            data["scenarios"] = script.scenarios[min(script.runs, len(script.scenarios)) - 1]
+        return QaOutcome(ok=status == "passed", message=str(data["notes"]), data=data,
+                         status=status)
+
     # -- the artifact contract --------------------------------------------
 
-    def artifact_vet(
-        self, kind: str, spec_dir: str, *, root: Path
-    ) -> tuple[int, dict[str, Any], str]:
-        self.vets += 1
-        return (1 if self.vet_problems else 0), {"problems": list(self.vet_problems)}, ""
+    def artifact_vet(self, kind: str, spec: str | Path) -> QaOutcome:
+        self.script.vets += 1
+        problems = list(self.script.vet_problems)
+        status = "problems" if problems else "clean"
+        return QaOutcome(
+            ok=not problems,
+            message="\n".join(problems) or f"{kind}: clean",
+            status=status,
+            data={"kind": kind, "path": str(spec), "status": status, "problems": problems},
+        )
 
 
 @pytest.fixture
@@ -568,7 +603,7 @@ class _Agent:
                         "FAIL" if self.dry_run == "failed" else "PASS"
                     )}
                 ]
-                (out / ostler_qa.QA_RUN_LOG).write_text(
+                (out / qa_support.QA_RUN_LOG).write_text(
                     "".join(json.dumps(r) + "\n" for r in records), encoding="utf-8"
                 )
         return {**answer, "repaired_scenarios": scenarios}

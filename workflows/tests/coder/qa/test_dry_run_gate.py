@@ -17,7 +17,7 @@ import logging
 from pathlib import Path
 
 from workhorse_workflows.coder.qa.nodes.qa import QA_SCRATCH_DIRNAME, verify_qa_dry_run
-from workhorse_workflows.coder.shared.ostler_qa import QA_RUN_LOG
+from workhorse_workflows.coder.shared.qa_support import QA_RUN_LOG
 
 LOGGER = logging.getLogger("test.dry-run-gate")
 

@@ -48,7 +48,7 @@ dependencies = [
   # which is the only place this cross-package constraint is actually exercised.
   #
   # The `[qa]` extra is not optional here despite its name. The coder's QA stage does not
-  # shell out to the `ostler` on PATH — `coder/shared/ostler_qa.py` imports the library and
+  # shell out to the `ostler` on PATH — the coder's QA nodes import the library and
   # runs the plan in *this* interpreter — so a browser target needs Playwright installed
   # beside this package, not beside some other copy of ostler. Without it the run blocks on
   # "target 'web' requires the Playwright Python package", and the repair the setup-fix node

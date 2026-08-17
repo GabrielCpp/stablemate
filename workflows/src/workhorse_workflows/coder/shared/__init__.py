@@ -14,7 +14,8 @@ The plumbing every graph stands on:
 * `stubs` — the `--dry-run` stand-ins, which have to sit beside neither caller
 * `contract` — the assertions `genesis` has to *establish* and the main loop *assumes*,
   in one implementation so the two cannot drift apart silently
-* `ostler_qa` — the diff-to-obligation bridge `okf` and the QA nodes both call
+* `qa_support` — the run-log parse and routing notes the QA nodes need around an
+  `Ostler` call, which answers in `QaOutcome` and needs no adapter of its own
 * `story_status` — how a story's state is read back off disk
 
 The node subjects a second graph runs:

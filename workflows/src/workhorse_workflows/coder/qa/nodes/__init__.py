@@ -11,9 +11,9 @@ subject per module, and `evidence` alone is over five hundred lines.
 Every node here registers on the same `blueprint` as the rest of the distribution — being
 reached by exactly one flow is what puts it beside that flow rather than in
 [`shared/`](../../shared). The QA graph's shared middle — the story spine, the review
-context, the OKF obligation packet — is in that package instead, and `ostler_qa`, the
-diff-to-obligation bridge two of these modules read, is there for the same reason:
-`shared/okf.py` reads it too.
+context, the OKF obligation packet — is in that package instead, and `qa_support`, the
+run-log parse two of these modules read, is there for the same reason: the dry-run gate
+and the evidence gate both read it.
 """
 from __future__ import annotations
 

@@ -23,9 +23,10 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from ostler import Ostler
 from workhorse_workflows.kit import find_docs_root
-from workhorse_workflows.coder.shared import ostler_qa
 from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.shared.qa_support import notes_for, parse_source_roots
 from workhorse_workflows.coder.shared.schemas.okf import OkfContextResult
 from workhorse_workflows.coder.shared.worktree import untouched_since
 
@@ -65,24 +66,22 @@ def build_okf_context(
             len(inherited),
             ", ".join(inherited),
         )
-    returncode, payload, stderr = ostler_qa.qa_context(
-        spec_dir,
+    outcome = Ostler(docs_root).qa_context(
         base=base,
         head=head,
+        spec=spec_dir,
+        source_roots=parse_source_roots(list(source_roots)),
         features_root=features_root,
-        story_file=story_file,
-        source_roots=list(source_roots),
-        docs_root=docs_root,
+        story_file=story_file or None,
         exclude_paths=inherited,
     )
-    status = "passed" if returncode == 0 and payload.get("status") != "invalid" else "invalid"
+    status = "passed" if outcome.ok else "invalid"
     logger.info("qa context build for spec_dir=%s: status=%s", spec_dir, status)
-    notes = ostler_qa.notes_for(
-        payload,
-        stderr,
+    notes = notes_for(
+        outcome,
         "QA OKF context generated." if status == "passed" else "QA OKF context generation failed.",
     )
-    return OkfContextResult(status=status, notes=notes, ostler=payload)
+    return OkfContextResult(status=status, notes=notes, ostler=outcome.data)
 
 
 @blueprint.node
@@ -100,20 +99,14 @@ def validate_okf_context(
     packet can validate cleanly and still have been generated from a failed run.
     """
     docs_root = find_docs_root(docs_path, repo_dir)
-    returncode, payload, stderr = ostler_qa.qa_context_validate(spec_dir, docs_root=docs_root)
-    cli_status = str(payload.get("status", "invalid")).lower()
-    status = (
-        "passed"
-        if returncode == 0 and build_status == "passed" and cli_status == "passed"
-        else "invalid"
-    )
-    notes = ostler_qa.notes_for(
-        payload,
-        stderr,
+    outcome = Ostler(docs_root).qa_context_validate(spec=spec_dir)
+    status = "passed" if outcome.ok and build_status == "passed" else "invalid"
+    notes = notes_for(
+        outcome,
         "QA OKF context is valid." if status == "passed" else "QA OKF context is invalid.",
     )
     logger.info("qa context-validate for %s returned status=%s", spec_dir, status)
-    return OkfContextResult(status=status, notes=notes, ostler=payload)
+    return OkfContextResult(status=status, notes=notes, ostler=outcome.data)
 
 
 __all__ = ["build_okf_context", "validate_okf_context"]

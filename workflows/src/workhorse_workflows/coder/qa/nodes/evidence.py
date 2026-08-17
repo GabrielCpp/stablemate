@@ -18,11 +18,10 @@ Two properties are worth naming because they are easy to break by tidying:
   peeling them off one per pass. The helpers below are split for legibility only and are
   called in the script's original order, because that order is the order of the note.
 
-The one shape that changes is the ostler call. `Ostler(root).artifact_vet(...)` and its
-`except` moved behind `ostler_qa.artifact_vet`, which returns the same
-`(returncode, payload, stderr)` triple as its four siblings; the node still turns a
-non-empty `stderr` into the `[ostler] … could not run` problem itself, since "the contract
-could not be evaluated" is a verdict about the *gate*, not about ostler.
+The one shape that changes is the ostler call. `Ostler(root).artifact_vet(...)` answers in
+a `QaOutcome` whose `status` distinguishes `clean` from `problems` from `error`; the node
+turns `error` into the `[ostler] … could not run` problem itself, since "the contract could
+not be evaluated" is a verdict about the *gate*, not about ostler.
 """
 from __future__ import annotations
 
@@ -32,10 +31,14 @@ import os
 from pathlib import Path
 from typing import Any
 
+from ostler import Ostler
 from workhorse_workflows.kit import find_repo_root
-from workhorse_workflows.coder.shared import ostler_qa
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.ostler_qa import QA_PLAN_FILE
+from workhorse_workflows.coder.shared.qa_support import (
+    QA_PLAN_FILE,
+    failed_assertions,
+    scored_run_log,
+)
 from workhorse_workflows.coder.shared.schemas.qa import QaResult
 
 #: The runner-written proof, relative to the story's spec dir.
@@ -319,7 +322,7 @@ def _unsupported_pass_problems(criteria: list, spec_dir: Path) -> list[str]:
     assertion that failed inside it is evidence *against* the criterion the scenario covers,
     whether or not the citation acknowledges it.
     """
-    failures = ostler_qa.failed_assertions(ostler_qa.scored_run_log(spec_dir))
+    failures = failed_assertions(scored_run_log(spec_dir))
     if not failures:
         return []
     problems: list[str] = []
@@ -558,11 +561,12 @@ def verify_qa_evidence(
     # validates hashes, exact manifest paths, terminal ledger records and passing assertion
     # refs. A contract that cannot be evaluated cannot validate a pass, so a failure to run
     # it is itself a problem.
-    _returncode, vetted, error = ostler_qa.artifact_vet("qa-evidence", spec_dir, root=root)
-    if error:
-        problems.append(f"[ostler] qa-evidence validation could not run ({error}).")
-    else:
-        problems.extend(f"[ostler] {problem}" for problem in vetted.get("problems", []))
+    vetted = Ostler(root).artifact_vet("qa-evidence", spec_dir)
+    if vetted.data.get("error"):
+        problems.append(
+            f"[ostler] qa-evidence validation could not run ({vetted.data['error']})."
+        )
+    problems.extend(f"[ostler] {problem}" for problem in vetted.data.get("problems", []))
 
     overall = str(data.get("overall", "")).strip().lower()
     if overall and overall != "pass":

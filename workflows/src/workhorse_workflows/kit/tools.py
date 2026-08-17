@@ -2,7 +2,7 @@
 
 Git, GitHub and ostler each have a richer in-process facade of their own
 (:mod:`~workhorse_workflows.kit.git`, :mod:`~workhorse_workflows.kit.github`,
-``coder.shared.ostler_qa``); this is for the CLI that has none.
+``ostler.Ostler``); this is for the CLI that has none.
 """
 from __future__ import annotations
 
