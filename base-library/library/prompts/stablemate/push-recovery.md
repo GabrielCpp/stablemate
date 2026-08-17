@@ -1,5 +1,5 @@
 ---
-description: Get a stuck `git push` to land — bound an SSH remote that hangs instead of failing, then fall back to HTTPS with a token that never outlives the push
+description: Get a stuck `git push` to land — push through `gh` over HTTPS rather than the human's SSH key, and keep every token inside the one push that uses it
 argument-hint: "[what the push did — hung, refused, asked for a password]"
 ---
 
@@ -11,24 +11,21 @@ that works.
 
 $ARGUMENTS
 
-## 1. Make an SSH remote fail in seconds
+## 1. Push over HTTPS with `gh` holding the credential
 
-An `ssh://` or `git@` remote can block forever: a passphrase prompt with no
-terminal to answer it, an unknown host key waiting on a `yes`, an agent socket
-not forwarded into the container. None of those ever time out on their own.
-
-```bash
-GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new' \
-  timeout 60 git push
-```
-
-## 2. When that errors out, push over HTTPS
+This is the first thing to try, not the fallback. `gh` is already authenticated
+for this account, and it needs nothing from the human at push time.
 
 ```bash
-gh auth setup-git && timeout 60 git push          # preferred: gh owns the credential
+GIT_TERMINAL_PROMPT=0 timeout 120 git -c credential.helper='!gh auth git-credential' \
+  push "https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner).git" \
+  "HEAD:refs/heads/$(git branch --show-current)"
 ```
 
-Without `gh`, pass the token to that one push and let it disappear:
+The remote is left as it is. `gh auth setup-git` does nothing for a `git@` remote,
+so naming the `https://` URL explicitly is what actually changes the transport.
+
+Without `gh`, pass a token to that one push and let it disappear:
 
 ```bash
 timeout 60 git push "https://x-access-token:${GITHUB_TOKEN}@github.com/<org>/<repo>.git" HEAD
@@ -38,6 +35,19 @@ timeout 60 git push "https://x-access-token:${GITHUB_TOKEN}@github.com/<org>/<re
 secret into `.git/config`, where it survives the session and shows up in any
 diagnostic that dumps the remote. Do not echo the token, and never paste a push
 command containing one into a commit message, an issue, or a PR body.
+
+## 2. Do not fall back to the SSH remote
+
+An agent reaching for `git@` is spending the human's key. It is usually
+passphrase-protected, so it blocks forever on a prompt with no terminal to answer
+it, an unknown host key waiting on a `yes`, or an agent socket not forwarded into
+the container — none of which ever time out on their own. If a human asks for it
+anyway, bound it so it fails in seconds rather than hanging:
+
+```bash
+GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new' \
+  timeout 60 git push
+```
 
 ## 3. When no transport works, stop and say so
 

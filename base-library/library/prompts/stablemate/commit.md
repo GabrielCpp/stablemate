@@ -86,10 +86,12 @@ a way to get a commit in; it is a way to get an unreleasable commit in.
 Do not create a branch, switch branches, or open a PR unless you were asked to.
 The work goes onto whatever branch is checked out.
 
-## 7. Push it now
+## 7. Push it now — over HTTPS, with `gh` holding the credential
 
 ```bash
-git push
+GIT_TERMINAL_PROMPT=0 timeout 120 git -c credential.helper='!gh auth git-credential' \
+  push "https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner).git" \
+  "HEAD:refs/heads/$(git branch --show-current)"
 ```
 
 Right after the commit, before starting the next concern. A local commit is still
@@ -97,18 +99,29 @@ invisible to review, to CI and to release-please, and it still dies with the
 machine — which for an agent run in a throwaway container is the normal ending,
 not the unlucky one.
 
+**Do not push over the remote's `git@` URL.** The SSH key is the human's, it is
+usually passphrase-protected, and an agent that reaches for it either hangs on a
+prompt nobody can answer or spends the user's key on its own behalf. `gh` is
+already authenticated for this account, so the explicit `https://` URL above is
+what an agent pushes with — the remote itself is left alone, and the token lives
+in the one push that uses it. It never goes into `.git/config`, a commit message
+or a PR body, and `git remote set-url` with a token in it is how it gets there.
+
+`git push -u` cannot set upstream through an ad-hoc URL. Do it once, separately,
+so `git status` still reports ahead/behind:
+
+```bash
+git branch --set-upstream-to="origin/$(git branch --show-current)"
+```
+
 **When the push is rejected, reconcile — do not force.** The remote moved, which
 is information: fetch, rebase onto the new tip, re-run the gate, push again.
 `--force` onto a shared branch discards whatever moved it, which in a repo
 several agents push to is somebody else's committed work.
 
-**A push that hangs is not a push that failed.** An `ssh://` remote blocks forever
-on a passphrase prompt or an unknown host key, so bound it —
-`GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes' timeout 60 git push`
-— and when it errors out, recover over HTTPS. That ladder, down to leaving the
-commit local and saying so, is the `push-recovery` command. Whichever transport
-you reach for, a token belongs in the one push that uses it and never in
-`.git/config`, a commit message or a PR body.
+**A push that hangs is not a push that failed.** Bound every one of them with
+`timeout`, and when a transport errors out rather than landing, the ladder down to
+leaving the commit local and saying so is the `push-recovery` command.
 
 ## 8. If the change touches code a live run is holding
 

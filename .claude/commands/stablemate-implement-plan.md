@@ -112,9 +112,11 @@ complete, commit it on this branch — one concern per commit, staged by explici
 subject in the repo's convention. That is the `commit` command, and it applies here
 unchanged.
 
-Push the branch when the first commit lands (`git push -u origin <branch>`), then keep
-pushing as you go. A branch that exists only in a worktree on one machine is invisible
-to review and to CI, and it dies with the machine.
+Push the branch when the first commit lands, then keep pushing as you go. A branch that
+exists only in a worktree on one machine is invisible to review and to CI, and it dies
+with the machine. Push the way the `commit` command says to — over HTTPS with `gh`
+holding the credential, never the remote's `git@` URL, which is the human's SSH key and
+hangs on a passphrase prompt no agent can answer.
 
 Verify against the definition of done from step 1 — the real checks, not a plausible
 argument that it should work. When a step turns out to be blocked, finish everything
