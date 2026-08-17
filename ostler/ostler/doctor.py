@@ -582,8 +582,8 @@ def _check_ui_file(graph: Graph, path, f: list[Finding]) -> None:
                              suggestion=f"## {spec.heading}", fixable=(problem == "missing")))
 
 
-def _declares(path: Path, text: str, symbol: str) -> bool:
-    """Whether *text* declares *symbol* — `ostler.inventory`'s grammar, not a second one.
+def _declares(path: Path, symbol: str) -> bool:
+    """Whether the file at *path* declares *symbol* — `inventory`'s grammar, not a second one.
 
     This delegates on purpose. It used to ask whether every part of the symbol appeared as a
     *word* in the file, which is not the same question and answered it wrong in the one
@@ -591,8 +591,12 @@ def _declares(path: Path, text: str, symbol: str) -> bool:
     Renderer``) still contains the word, so a citation whose definition had moved away stayed
     green — the drift this check exists to catch. The inventory already knew how to read a
     declaration; grounding just wasn't asking it.
+
+    It delegates to the *indexed* accessor rather than reading the file here, which is what
+    makes a hot file's symbol table cost one extraction per run rather than one per citation —
+    and nothing per run at all once a previous process has left it on disk.
     """
-    return inventory.declares(path, text, symbol)
+    return inventory.declares_at(path, symbol)
 
 
 def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
@@ -633,10 +637,13 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
                 # about grammar, the book wins.
                 continue
             try:
-                text = target.read_text(encoding="utf-8")
+                grounded = _declares(target, symbol)
             except (OSError, UnicodeDecodeError):
+                # A file that exists but cannot be read tells us nothing about the citation, and
+                # silence about a file is not evidence against the book — same reading the text
+                # read gave it when this check did its own `read_text`.
                 continue
-            if not _declares(target, text, symbol):
+            if not grounded:
                 f.append(Finding(
                     "error", "missing-code-symbol",
                     f"{node.id}: `code:` target '{ref}' — '{target_path}' does not declare "

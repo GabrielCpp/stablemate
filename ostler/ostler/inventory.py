@@ -39,9 +39,10 @@ from __future__ import annotations
 
 import ast
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
-from ostler import syntax
+from ostler import index, syntax
 from tree_sitter import Node
 
 # The languages the front end can read. A source tree containing NONE of these is an error, not
@@ -456,9 +457,127 @@ def declares(path: str | Path, text: str, symbol: str) -> bool:
     """
     if Path(path).suffix not in SOURCE_SUFFIXES:
         return True
-    names = declared_names(path, text)
+    return _grounds(declared_names(path, text), symbol)
+
+
+def _grounds(names: set[str] | frozenset[str], symbol: str) -> bool:
     parts = SYMBOL_PART.findall(symbol)
     return bool(parts) and all(part in names for part in parts)
+
+
+# ── the second cached product: a file's symbol table, keyed on its bytes and its grammar ──
+#
+# After the document parses come off the index, extracting these is the large majority of what a
+# `doctor` run still spends, and it spends it answering the same question repeatedly: every
+# citation into a file asks that file what it declares, and a book cites a hot file dozens of
+# times. The answer is a pure function of two inputs, so it is exactly what a content-addressed
+# store is for.
+#
+# Two layers, as `model.read_doc` has two: a memo for the life of the process, and the store for
+# the life of the machine. The memo is what makes a book that cites one hot file forty times pay
+# one extraction even with no index at all — `--no-index`, and any caller using ostler as a
+# library, still gets it.
+#
+# What is *not* like `read_doc`: a memo entry only answers the store it was computed under.
+# `read_doc` serves a cached document across stores and writes it into whichever one has not seen
+# it, which is right for a product no store can disagree about. Here the whole point of
+# `--verify-index` is to run the indexed and the uncached path in one process and compare them,
+# and a memo spanning both would let the uncached half read work the indexed half did — hiding
+# exactly the disagreement the mode exists to find. So the store is part of the memo's identity,
+# and outside a session (`None`) the memo simply spans the process.
+
+
+@dataclass(frozen=True)
+class _SymbolTable:
+    """An index entry's payload: one file's declaration set, and nothing else.
+
+    A class rather than a bare `frozenset` for the reason `model._DocProducts` is one — the shape
+    check on the way back in is a single `isinstance`, and a payload from a build that named the
+    class differently fails to unpickle, which the store already reads as the miss it is.
+    """
+
+    names: frozenset[str]
+
+
+#: The namespace label separating this product's keys from every other one's. Bump the suffix
+#: when the *payload* changes shape in a way an older reader would get wrong; the grammar
+#: version and the epoch cover the two ways the *answer* can move.
+_SYMBOLS_NAMESPACE = "symbols/1"
+
+#: One extraction, and the store it was made under. Keyed on the path as well as the content and
+#: the grammar, because the path is what a repeated citation repeats — two paths holding the same
+#: bytes are one *entry* in the store below and two entries here, and the second of them costs a
+#: store read rather than an extraction.
+_SYMBOL_MEMO: dict[tuple[Path, str, str], tuple[frozenset[str], index.IndexStore | None]] = {}
+
+
+def _symbol_key(store: index.IndexStore, digest: str) -> str:
+    """The entry key for a symbol table: the content sha and the grammar that will read it.
+
+    `syntax.grammar_version` is looked up on the module at call time on purpose. It is the one
+    input to this key with no file behind it, so substituting the attribute is the only way a
+    test — or an operator bisecting a grammar upgrade — can move it.
+    """
+    return store.content_key(_SYMBOLS_NAMESPACE, syntax.grammar_version(), digest)
+
+
+def declared_names_at(path: str | Path) -> frozenset[str]:
+    """Every name the file at *path* declares, extracted once per (content sha, grammar version).
+
+    The indexed counterpart of :func:`declared_names`, and the accessor a *reader* asking about a
+    file on disk goes through. It reads the bytes itself because it has to hash them anyway, and
+    because a caller holding the text has already paid the read this exists to make worth paying.
+
+    Which files reach here is discovered while checking, as documents point at them — so the
+    cache fills opportunistically over a run, a miss costs the one extraction it asked for, and a
+    file nothing cites is never opened. There is no sweep to pre-warm it with: the set of code
+    files a book grounds against is not enumerable before the check that discovers it runs, and
+    it is a small fraction of any real source tree.
+
+    Raises ``OSError`` or ``UnicodeDecodeError`` when the file cannot be read, as the ``read_text``
+    it replaced did — an unreadable file is the caller's finding to make, not this function's.
+    """
+    target = Path(path)
+    if target.suffix not in SOURCE_SUFFIXES:
+        return frozenset()
+    data = target.read_bytes()
+    digest = index.content_sha(data)
+    store = index.active()
+    memo_key = (target, digest, syntax.grammar_version())
+    memoed = _SYMBOL_MEMO.get(memo_key)
+    if memoed is not None and memoed[1] is store:
+        return memoed[0]
+    names = _extracted(target, data, digest, store)
+    _SYMBOL_MEMO[memo_key] = (names, store)
+    return names
+
+
+def _extracted(target: Path, data: bytes, digest: str,
+               store: index.IndexStore | None) -> frozenset[str]:
+    """*target*'s declaration set, from the store when it has it and from the parser otherwise.
+
+    Outside a session *store* is ``None`` and this is the cold path every time, which is the
+    right reading: a caller that opened no index has no index, and that is never an error.
+    """
+    if store is not None:
+        payload = store.get_key(_symbol_key(store, digest))
+        if isinstance(payload, _SymbolTable):
+            return payload.names
+    names = frozenset(declared_names(target, data.decode("utf-8")))
+    if store is not None:
+        store.put_key(_symbol_key(store, digest), _SymbolTable(names))
+    return names
+
+
+def declares_at(path: str | Path, symbol: str) -> bool:
+    """Whether the file at *path* declares *symbol* — :func:`declares`, served from the index.
+
+    Same answer, same tolerances; the only difference is where the declaration set comes from.
+    A language the front end cannot read grounds anything, and says so without opening the file.
+    """
+    if Path(path).suffix not in SOURCE_SUFFIXES:
+        return True
+    return _grounds(declared_names_at(path), symbol)
 
 
 def extents(path: str | Path, text: str,

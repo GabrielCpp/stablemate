@@ -23,10 +23,17 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from functools import lru_cache
+from importlib import metadata
 from pathlib import Path
 
 from tree_sitter import Node, Parser, Tree
 from tree_sitter_language_pack import get_parser
+
+#: The distributions whose contents decide what a parse of the same bytes yields — the runtime
+#: and the compiled grammars it loads. Both, because either one moving can change an answer:
+#: the language pack ships the grammars, and the runtime decides how their queries and error
+#: recovery behave.
+GRAMMAR_DISTRIBUTIONS = ("tree-sitter", "tree-sitter-language-pack")
 
 #: The grammar each suffix is read with. Wider than `inventory.SOURCE_SUFFIXES` on purpose:
 #: the QA diff mapper attributes changed lines in `.js`/`.jsx` too, while the coverage
@@ -50,6 +57,32 @@ def _parser(language: str) -> Parser:
     """One parser per grammar, kept for the process. Loading a grammar is not free, and the
     coverage join asks for the same handful of languages once per file across a whole tree."""
     return get_parser(language)
+
+
+@lru_cache(maxsize=1)
+def grammar_version() -> str:
+    """What the grammars in this environment are, as one string a caller can put in a key.
+
+    Everything this module answers is a function of two things: the source, and the grammars
+    that read it. Upgrade the language pack and `export abstract class` may start parsing where
+    it did not — the same bytes, a different declaration set — so a symbol table cached on a
+    file's content alone would outlive the parse that produced it. This is the other half of
+    that key, and the first thing ostler caches on that is not document content.
+
+    Named for what is *installed* rather than for when it was asked, so it is stable within a
+    process and across every process on one environment; a version that moved with the clock
+    would invalidate the cache continuously and cache nothing. An absent distribution reads as
+    ``unknown`` rather than raising — a source checkout with no metadata still has to run, and
+    it degrades to "one bucket for every unmeasurable install", never to an error.
+    """
+    return " ".join(_distribution_version(name) for name in GRAMMAR_DISTRIBUTIONS)
+
+
+def _distribution_version(name: str) -> str:
+    try:
+        return f"{name}={metadata.version(name)}"
+    except metadata.PackageNotFoundError:  # pragma: no cover - source checkout
+        return f"{name}=unknown"
 
 
 def language_for(path: str | Path) -> str | None:

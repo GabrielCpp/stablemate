@@ -7,7 +7,7 @@ blind to exactly the refactor §4.4 exists to catch.
 """
 from __future__ import annotations
 
-from ostler import inventory
+from ostler import inventory, syntax
 
 
 # ── grounding must read declarations, not words ───────────────────────────────────────
@@ -450,3 +450,26 @@ def test_a_typescript_method_is_named_for_its_class():
     """As PHP already spells one, and for the same reason: `render` alone is not addressable."""
     source = "export class View {\n  render() {\n    return null\n  }\n}\n"
     assert inventory.extents("x.ts", source) == [(1, 5, "View"), (2, 4, "View.render")]
+
+
+# ── the grammar is an input to every answer above ─────────────────────────────────────
+
+def test_the_front_end_states_the_grammar_version_its_answers_came_from():
+    """A symbol table cached on a file's bytes alone would outlive the grammar that read it.
+
+    Every declaration set here is a function of two things: the source, and the tree-sitter
+    grammars that parsed it. Upgrade the language pack and `export abstract class` may start
+    parsing where it did not — the same bytes, a different answer — so the version has to be
+    something a caller can put in a key. Stable within a process, because it names what is
+    installed rather than when it was asked.
+
+    Reached by attribute rather than imported: the seam does not exist yet, and naming it
+    directly would fail `ty` — and so `make lint`, and so the whole suite — before a single
+    test ran. This way its absence is one red, here, at the seam.
+    """
+    stated = getattr(syntax, "grammar_version", None)
+    assert callable(stated), "the source front end states no grammar version"
+
+    version = stated()
+    assert isinstance(version, str) and version.strip()
+    assert version == stated()
