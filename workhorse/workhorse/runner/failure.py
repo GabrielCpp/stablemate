@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from workhorse import gitstate, otel, turnkey
+from workhorse import gitstate, otel, sessions, turnkey
 from workhorse.runner import transcript
 
 # A subscription "cap" is a transient failure that recovers on a SCHEDULE — the
@@ -115,6 +115,23 @@ _CONTEXT_OVERFLOW_MARKERS = (
 )
 
 
+# Substrings (case-insensitive) that mark a `--resume` the CLI would not honour: the
+# session id we handed it names no conversation it can find. This is neither transient
+# (the id will never come back) nor a reason to reframe (nothing is wrong with the
+# prompt) — the only repair is to forget the id and start the chain over, which the
+# ladder does before it spends any budget. It happens for ordinary reasons: a chain
+# whose session aged out of the CLI's store, a run directory copied to another machine,
+# a backend swapped mid-run.
+_UNRESUMABLE_SESSION_MARKERS = (
+    "no conversation found",
+    "session not found",
+    "no session found",
+    "invalid session id",
+    "could not resume",
+    "failed to resume",
+)
+
+
 class OutputParseError(RuntimeError):
     """The agent's response could not be parsed into the node's declared outputs.
 
@@ -208,6 +225,17 @@ def is_context_overflow(diagnostics: str) -> bool:
     return any(marker in low for marker in _CONTEXT_OVERFLOW_MARKERS)
 
 
+def is_unresumable_session(diagnostics: str) -> bool:
+    """The CLI refused the session id it was asked to resume.
+
+    Recovered by dropping the id and re-running the same prompt on a fresh session —
+    not by retrying (the id stays dead) and not by reframing (the prompt was never
+    the problem), so it costs no budget of either kind.
+    """
+    low = diagnostics.lower()
+    return any(marker in low for marker in _UNRESUMABLE_SESSION_MARKERS)
+
+
 def rate_limit_info(event: dict) -> tuple[bool, float | None]:
     """Read a ``rate_limit_event`` → ``(blocked, reset_at_epoch)``.
 
@@ -286,7 +314,9 @@ def record_session_map(
     if head:
         row["head"] = head
     try:
-        manifest = session_id_path.parent / "sessions.jsonl"
+        # `run_dir_of`, not `.parent`: a session chain's id lives one level deeper
+        # (`<run_dir>/.sessions/<key>`), and the manifest is per run, not per chain.
+        manifest = sessions.run_dir_of(session_id_path) / "sessions.jsonl"
         with manifest.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(row) + "\n")
     except OSError:

@@ -48,6 +48,11 @@ class VisitKey:
     generation: int
     seq: int
     node: str
+    #: The session chain this visit ran on, or "" for the usual clean context. It is
+    #: deliberately not part of `slug`: the visit is still one visit, and putting a
+    #: chain key in the filename would rename every artifact of a node on the day its
+    #: loop joins a chain, breaking every path a reader had written down.
+    chain: str = ""
 
     @property
     def slug(self) -> str:
@@ -56,7 +61,14 @@ class VisitKey:
 
     def attributes(self) -> dict[str, int | str]:
         """The same identity as record fields, for a JSONL line or a span."""
-        return {"generation": self.generation, "seq": self.seq, "node": self.node}
+        fields: dict[str, int | str] = {
+            "generation": self.generation,
+            "seq": self.seq,
+            "node": self.node,
+        }
+        if self.chain:
+            fields["chain"] = self.chain
+        return fields
 
 
 _lock = threading.Lock()
@@ -100,16 +112,21 @@ def _next_seq(run_dir: Path | None) -> int:
     return seq
 
 
-def begin(run_dir: Path | None, node_id: str) -> VisitKey:
+def begin(run_dir: Path | None, node_id: str, *, chain: str = "") -> VisitKey:
     """Mint the key for a visit to ``node_id`` and make it the current one.
 
     ``run_dir`` is the run's own directory — the one holding ``sessions.jsonl`` — so a
     nested flow's visits are numbered in the same sequence as its parent's rather than
     restarting inside the sub-scope.
+
+    ``chain`` is the session chain the visit runs on (:mod:`workhorse.sessions`), or ""
+    for the usual clean context. It rides on the key because the three writers that
+    describe a visit are exactly the three places a reader would have to join to find
+    out whether two laps shared a conversation.
     """
     global _current
     with _lock:
-        key = VisitKey(read_generation(run_dir), _next_seq(run_dir), node_id)
+        key = VisitKey(read_generation(run_dir), _next_seq(run_dir), node_id, chain)
         _current = key
         return key
 

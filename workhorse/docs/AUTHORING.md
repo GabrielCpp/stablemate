@@ -192,7 +192,7 @@ type) and raises when the node has not run.
 
 ## Where an agent turn runs (`cwd` / `add_dirs`)
 
-`self.agent` takes five optional keywords beyond the prompt, all defaulting to "whatever
+`self.agent` takes six optional keywords beyond the prompt, all defaulting to "whatever
 the engine defaults to", so a state that says nothing behaves as before:
 
 ```python
@@ -238,6 +238,69 @@ return Continue(None, self.validate)      # …which the next state reads and re
 These are **real values, not templates**: the state computes the path in Python and
 passes it. (They are still Jinja-rendered on the way through, so a literal path is a
 no-op render and a template string would also work — but nothing needs one.)
+
+## Session chains (`session=`), for a loop that repairs its own work
+
+The default is one clean context per turn: the engine unlinks `.session_id` before each
+node, so a reviewer never inherits the author's reasoning and a node re-entered after a
+resume opens on the state as it is, not as the last attempt imagined it. That default is
+right almost everywhere, and this keyword is the deliberate exception.
+
+A **repair loop** — verify, repair, verify again — breaks under it. Lap two is handed the
+same worklist as lap one and has to re-derive everything lap one already found before it
+can do any new work: the file it edited, the fix it tried, the hypothesis it eliminated.
+That is a full turn of reading bought to end up with a worse copy of the context the
+model had a minute ago, and it is why such a loop can run its budget out without
+converging.
+
+Naming a **chain** keeps those laps in one conversation:
+
+```python
+self.agent(
+    "prompts/repair.md",
+    returns=Repair,
+    session=f"docs-repair:{story.slug}",   # laps share one conversation
+)
+```
+
+Turns sharing a key resume each other. The id lives in `<run_dir>/.sessions/<key>` rather
+than `.session_id`, so a chain and the ordinary clean-context nodes cannot overwrite one
+another, and a chain survives the other nodes running between its laps.
+
+**Key it per worklist, not per node and not per run.** `docs-repair:STORY-4` is right;
+`docs-repair` is not — two stories repaired in one run would share a conversation, and
+story two would open on story one's diff.
+
+End a chain explicitly when the conversation stops being an asset:
+
+```python
+self.reset_session(f"docs-repair:{story.slug}")   # next turn on this key starts fresh
+```
+
+The rules that matter, all of them cases where continuing costs more than it saves:
+
+- **On entering and leaving the flow** — so a re-entered flow does not resume a
+  conversation about a version of the work that no longer exists.
+- **When the loop stalls** — two laps that changed nothing mean the conversation has
+  talked itself into a corner, and a fresh context is the cheapest way out.
+- **After a few laps** (four is the number the coder workflow uses) — a chain that long
+  is mostly compaction, and its remaining value is smaller than its cost.
+- **When the worklist is rebuilt from scratch** — the context describes the old one.
+
+What does *not* get a chain: planning, drafting, reviewing, and any node whose whole
+point is an independent judgement. A reviewer that remembers arguing for the change it
+is reviewing is not a reviewer.
+
+Two things are handled for you. A chain whose session the CLI will not resume — expired,
+pruned, or copied in from another machine — is dropped and re-run once on a fresh
+session, logged as `chain <key>: session not resumable, starting fresh`; it costs no
+retry and no reframe, because nothing about the node was wrong. And a chain's laps
+compact rather than restart, so the context-overflow layer of the ladder applies to the
+conversation as a whole.
+
+The chain is in the telemetry too: the node's `enter` record carries `chain` and the
+`resumed_session` it continued, so a reader can tell a lap that resumed from one that
+started over without joining three files by hand.
 
 ## A stack that outlives the turn (`workhorse.stack`)
 

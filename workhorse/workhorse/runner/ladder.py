@@ -26,6 +26,7 @@ from workhorse.runner.failure import (
     OutputParseError,
     error_kind,
     is_cap,
+    is_unresumable_session,
 )
 from workhorse.runner.reframe import (
     rephrase_prompt,
@@ -230,6 +231,7 @@ class AgentRunner:
         session_id_path: Path | None = None,
         *,
         resume_session: bool = False,
+        session_chain: str = "",
         run_dir: Path | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Run one node with cumulative recovery waits that nested retries cannot renew."""
@@ -241,6 +243,7 @@ class AgentRunner:
                 workflow_dir,
                 session_id_path,
                 resume_session=resume_session,
+                session_chain=session_chain,
                 run_dir=run_dir,
             )
 
@@ -252,6 +255,7 @@ class AgentRunner:
         session_id_path: Path | None = None,
         *,
         resume_session: bool = False,
+        session_chain: str = "",
         run_dir: Path | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """
@@ -286,10 +290,19 @@ class AgentRunner:
         **Sessions.** Each node is a fresh prompt and starts from a *clean context* —
         we do NOT chain one node's conversation into the next. The persisted agent
         session is resumed only when ``resume_session`` is True, which the controller
-        sets solely to continue *this same node* after an interruption (a crash mid
-        node). A normal forward move to a new node always starts clean. (The
+        sets to continue *this same node* after an interruption (a crash mid node) and
+        the engine sets for a **session chain** — a node that named
+        ``self.agent(..., session=key)``, whose session file is its own under
+        ``.sessions/`` and whose laps are deliberately one conversation
+        (:mod:`workhorse.sessions`); ``session_chain`` is that key, carried only so the
+        log can name it. A normal forward move to a new node always starts clean. (The
         compact-and-continue layer above also resumes the session, but only within
         this same call, to recover the node it is already running.)
+
+        A chain whose session the CLI will not resume — expired, pruned, or from
+        another machine — is **not** a failure of the node: the session is dropped and
+        the same prompt runs once more on a fresh one. Reframing it instead would
+        spend a rephrase budget simplifying a prompt that was never the problem.
 
         **The backend is injected, never resolved here.** ``AGENT_CLI`` is read once at
         the CLI boundary and the chosen adapter is handed down, so the ladder names no
@@ -407,6 +420,28 @@ class AgentRunner:
                 )
                 return rendered_prompt, outputs
             except (BackendInvocationError, OutputParseError) as exc:
+                # Layer 0: the session this turn was asked to resume no longer exists.
+                # Nothing about the node is wrong, so this consumes no budget of any
+                # kind: drop the dead id and run the same prompt on a fresh session.
+                # Bounded by the file — once unlinked the condition cannot recur, so
+                # this cannot loop.
+                if (
+                    isinstance(exc, BackendInvocationError)
+                    and is_unresumable_session(str(exc))
+                    and session_id_path
+                    and session_id_path.exists()
+                ):
+                    session_id_path.unlink()
+                    label = f"chain {session_chain}" if session_chain else "session"
+                    print(
+                        f"[{node_id}] ⚠ {label}: session not resumable, starting fresh",
+                        flush=True,
+                    )
+                    otel.turn_event(
+                        "session_unresumable", node=node_id, chain=session_chain
+                    )
+                    continue
+
                 # Layer 2: context window exhausted → compact this session and retry the
                 # SAME prompt on it, keeping the node's progress. Only when compaction
                 # is unavailable/ineffective do we fall through to a (lossy) reframe.

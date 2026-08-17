@@ -39,6 +39,7 @@ workhorse/                     # this directory, inside the stablemate workspace
 │   ├── logsetup.py            # Logging configuration for the driver and node functions
 │   ├── stack.py               # ensure_stack / teardown_stack: a long-lived stack across nodes
 │   ├── worklist.py            # A resumable work queue (WorkItem / WorkCounts / WorkSnapshot)
+│   ├── sessions.py            # Where a run keeps its session ids, and what a chain is
 │   ├── testing.py             # make_git_repo + the artifact assertions a workflow test uses
 │   ├── pyflow/                # The Python state-machine driver
 │   │   ├── workflow.py        # The `Workflow` base class: state discovery, freezing, self.ctx
@@ -123,6 +124,16 @@ same turn that was interrupted.** When the controller resumes from a checkpoint 
 re-enters the state that was killed mid-run, that turn calls
 `AgentRunner.run(..., resume_session=True)` so Claude picks up where it left off; every turn
 the run then reaches starts clean again.
+
+**Named chains are the one deliberate exception.** A state that asks for
+`self.agent(..., session="docs-repair:STORY-4")` files that turn's session id under
+`<run_dir>/.sessions/<key>` (`workhorse/sessions.py` owns the layout) and asks the ladder
+to resume it, so the laps of a repair loop are one conversation instead of one
+re-derivation per lap. Everything else keeps the clean context above — `.session_id` is
+untouched by a chain, and a chain the CLI will not resume is dropped and re-run once on a
+fresh session, costing no retry and no reframe. The authoring rules, including when to
+`self.reset_session(key)`, are in
+[docs/AUTHORING.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md).
 
 **Context overflow → compact & continue.** If a turn exhausts the model's
 context window mid-run (the headless CLI returns instead of auto-compacting),

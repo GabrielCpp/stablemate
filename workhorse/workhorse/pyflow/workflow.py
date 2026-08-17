@@ -298,6 +298,7 @@ class Workflow(BaseModel):
         retries: int | None = None,
         cwd: str | Path | None = None,
         add_dirs: Sequence[str | Path] | None = None,
+        session: str | None = None,
     ) -> T:
         """Render `prompt`, run an agent turn, and validate the reply into `returns`.
 
@@ -325,6 +326,14 @@ class Workflow(BaseModel):
         `add_dirs` is a `Sequence`, not a `list`, because it is only read here: a
         `list[str]` — what a state that collects plain paths naturally holds — is not a
         `list[str | Path]`, since a mutable list is invariant in its element type.
+
+        `session` names a **chain**: turns sharing a key are one conversation, resumed
+        rather than restarted. The default of None is one clean context per turn, which
+        is what almost every node wants — a reviewer who inherited the author's session
+        is reviewing their own reasoning. Use a chain for a repair loop whose laps share
+        one worklist, key it per worklist (a story, not a run), and reset it with
+        `reset_session` when the worklist changes or the laps stop converging;
+        `docs/AUTHORING.md` has the rules.
         """
         return self._require_engine().agent(
             prompt,
@@ -335,7 +344,16 @@ class Workflow(BaseModel):
             retries=retries,
             cwd=cwd,
             add_dirs=add_dirs,
+            session=session,
         )
+
+    def reset_session(self, key: str) -> None:
+        """End session chain `key`, so the next turn on it starts a fresh conversation.
+
+        A no-op when the chain never ran, so a state may reset on the way into a loop
+        without first asking whether there is anything to reset.
+        """
+        self._require_engine().reset_session(key)
 
     def handoff(self, wf: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> Any:
         """Drive another workflow to completion in a sub-scope; return its result.

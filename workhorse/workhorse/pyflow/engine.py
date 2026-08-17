@@ -25,7 +25,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from workhorse import otel, turnkey
+from workhorse import otel, sessions, turnkey
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.context import WorkflowContext
@@ -338,17 +338,35 @@ class Engine:
         retries: int | None = None,
         cwd: str | Path | None = None,
         add_dirs: Sequence[str | Path] | None = None,
+        session: str | None = None,
     ) -> Any:
         node_id = Path(prompt).stem or "agent"
         writer = self.env.writer
         declared = node_id in (self.env.agent_stubs or {})
+        # A named chain files this turn's session id under its own name and asks the
+        # ladder to resume it; the default (session=None) keeps the per-node clean
+        # context, which is `.session_id` unlinked before the turn.
+        session_path = self.env.session_id_path
+        resumed = ""
+        if session and session_path is not None:
+            session_path = sessions.chain_path(session_path.parent, session)
+            if session_path.exists():
+                resumed = session_path.read_text(encoding="utf-8").strip()
         # The `enter` below opens this node's span and only `write_step` closes it.
         # A turn that raises never reaches that line, so the scope opened *before*
         # the enter is what closes it — at the frame that opened it, carrying the
         # error, rather than leaving it for the end of the run to sweep.
         with otel.scope():
             writer.record_node(
-                node_id, "enter", prompt=prompt, **_stand_in(self.env.dry_run, declared)
+                node_id,
+                "enter",
+                prompt=prompt,
+                # Only when there is one: an `enter` carrying `chain: ""` would say a
+                # chainless turn had been considered for one, and every node has these
+                # events. With it, a reader of `events.jsonl` can tell lap 4 of one
+                # conversation from lap 4 of four — the whole thing a chain changes.
+                **({"chain": session, "resumed_session": resumed} if session else {}),
+                **_stand_in(self.env.dry_run, declared),
             )
 
             if self.env.dry_run:
@@ -392,8 +410,11 @@ class Engine:
             turnkey.begin(
                 self.env.session_id_path.parent if self.env.session_id_path else None,
                 node_id,
+                chain=session or "",
             )
-            self.env.log.info("[workhorse] agent  → %s", node_id)
+            self.env.log.info(
+                "[workhorse] agent  → %s%s", node_id, f" (chain {session})" if session else ""
+            )
             # Never None: `RunEnv.__post_init__` resolves the field, so the ladder this run
             # uses is the ladder this run was built with — not one this call constructs from
             # configuration it would have to re-read.
@@ -409,7 +430,11 @@ class Engine:
                         {**self.env.manifest.as_context(), **jsonable(args)}
                     ),
                     self.env.workflow_dir,
-                    self.env.session_id_path,
+                    session_path,
+                    # A chain is resumed by definition; without this the ladder unlinks
+                    # the file it was just handed and every lap starts fresh.
+                    resume_session=bool(session),
+                    session_chain=session or "",
                     run_dir=writer.run_dir,
                 )
             except BackendInvocationError as exc:
@@ -422,6 +447,21 @@ class Engine:
                 raise AgentTimeout(str(exc)) from exc
             writer.write_step(node_id, rendered, raw, {}, next_node=None)
             return _coerce(raw, returns, node_id)
+
+    def reset_session(self, key: str) -> None:
+        """End chain ``key``: the next turn on it opens a fresh conversation.
+
+        A no-op when the chain has no session yet, which is the common case — a loop
+        resets its chain on the way in without knowing whether it ever ran.
+        """
+        if not key or self.env.session_id_path is None:
+            return
+        path = sessions.chain_path(self.env.session_id_path.parent, key)
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            return
+        self.env.log.info("[workhorse] chain %s: reset", key)
 
     def _agent_stub(self, node_id: str, returns: type, args: dict[str, Any]) -> Any:
         """The reply a dry run uses for one prompt.
