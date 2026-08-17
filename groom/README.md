@@ -37,6 +37,20 @@ a container has genuinely stopped.
   the run list is additionally re-rendered and broadcast every `GROOM_LIVE_TICK_S`
   (5s), skipped entirely when no tab is connected. That is what makes the dashboard
   safe to leave open and read without refreshing.
+- That same tick reads **local-host evidence that a native run has ended**, so a dead
+  run stops looking alive without waiting out the silence window. A native run shares
+  groom's host by definition, which makes two facts directly observable that no export
+  can be relied on to deliver: the `terminal` the run wrote into its own `run.json`
+  (on disk the instant it stops, whereas the root span only lands if the dying process
+  got its exporter flushed), and whether the run's pid still exists (the only witness
+  left after a SIGKILL, an OOM, or a segfaulting extension, where nothing is written
+  at all — reported as `died`, rather than borrowing a word the run never reached).
+  Without this the remaining signal is silence, and silence is deliberately slow
+  (`GROOM_LIVE_AFTER_S`, 180s): three minutes of a green *running / alive* row on
+  exactly the failure an operator is watching for. The verdict stamps the same
+  `terminal` a root span would, so the dot and the liveness chip cannot disagree, and
+  it clears itself on the next newer signal — a `--resume-run` re-writes `run.json`
+  with a null terminal before it does anything, so a resumed run goes back to green.
   Gate questions render as Markdown (`marked`, sanitized with
   `DOMPurify` before insertion since the content is LLM-authored) and each
   workflow row can expand a `git diff` of its working tree (rendered with

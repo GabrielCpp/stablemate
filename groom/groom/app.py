@@ -251,6 +251,41 @@ def _native_gate(run: RunTelemetry) -> GateInfo | None:
     )
 
 
+def _native_ending(run: RunTelemetry) -> str:
+    """Local-host evidence that a native run has ENDED, when telemetry has not said so.
+
+    Liveness is otherwise a telemetry question, and for a containerized run it has to
+    be. But a native run shares groom's host, which makes two facts directly
+    observable that no export can be relied on to deliver:
+
+    * ``run.json``'s terminal — written by the run itself as it stops, and on disk
+      whether or not the exporter got its last flush out;
+    * whether the run's pid still exists — the answer for a run that never got to
+      write anything, the SIGKILL/OOM/segfault class the engine documents as taking
+      the driver down with it.
+
+    Without this the only remaining signal is silence, and silence is deliberately
+    slow: ``LIVE_AFTER_S`` is three minutes, because a healthy run must not flicker.
+    So a native run that died stayed on the dashboard as *running / alive* for
+    minutes — a false green on precisely the event an operator is watching for. Both
+    facts here are same-host reads costing a stat and a signal, so the row can be
+    corrected on the very next tick instead.
+
+    The verdict names the current session only and is self-clearing: a resume rewrites
+    ``run.json`` with a null terminal and exports under a new pid, and the caller
+    stamps ``terminal_ts`` so ``alerts._clear_stale_terminal`` drops it the moment any
+    newer signal lands.
+    """
+    ending = localfs.run_terminal(run.run_dir)
+    if ending:
+        return ending
+    if run.pid and not localfs.pid_alive(run.pid):
+        # Dead with no account of itself — say so plainly rather than borrowing a
+        # word ("done", "fail") the run never actually reached.
+        return "died"
+    return ""
+
+
 def _sync_native_row(run: RunTelemetry) -> bool:
     """Project a run's telemetry hot-cache entry onto a dashboard row when the run
     is **native** — i.e. its dir exists on groom's own host, which is both the test
@@ -267,6 +302,8 @@ def _sync_native_row(run: RunTelemetry) -> bool:
     The row's state is the same recency verdict the liveness chip shows
     (:func:`groom.projection.is_live`) rather than a separate reading of the run's
     history, so the dot and the chip cannot disagree about whether the run is up.
+    :func:`_native_ending` feeds that one verdict rather than competing with it: it
+    stamps the telemetry entry's ``terminal``, which both readers already honour.
     """
     if run.native is None:
         run.native = localfs.is_local_dir(run.run_dir) or localfs.is_local_dir(
@@ -274,6 +311,11 @@ def _sync_native_row(run: RunTelemetry) -> bool:
         )
     if not run.native:
         return False
+    if not run.terminal:
+        ending = _native_ending(run)
+        if ending:
+            run.terminal = ending
+            run.terminal_ts = time.time()
     before = state.WORKFLOWS.get(run.run_id)
     prev = (
         (before.state, before.current_node, before.activity, tuple(before.gates))

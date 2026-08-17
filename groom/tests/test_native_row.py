@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -46,9 +47,12 @@ def test_native_run_becomes_a_row(tmp_path):
     run_dir = tmp_path / "coder-run"
     run_dir.mkdir()
     alerts.ingest_metrics([
+        # A live pid: this row is about a RUNNING run, and a native run's liveness
+        # now reads the pid directly (see _native_ending), so a made-up one would
+        # correctly retire the row before the assertions below.
         _metric("R1", "workhorse.node.active", 1, run_dir=str(run_dir),
-                workspace=str(tmp_path), pid=4242, node="plan",
-                **{"activity": "planning PRED-1"}),
+                workspace=str(tmp_path), pid=os.getpid(), node="plan",
+                **{"activity": "planning ACME-1"}),
     ])
     run = state.RUNS["R1"]
     assert groom_app._sync_native_row(run) is True
@@ -56,8 +60,8 @@ def test_native_run_becomes_a_row(tmp_path):
     assert wf.native is True
     assert wf.state == WorkflowState.RUNNING
     assert wf.current_node == "plan"
-    assert wf.activity == "planning PRED-1"
-    assert wf.pid == 4242
+    assert wf.activity == "planning ACME-1"
+    assert wf.pid == os.getpid()
     assert wf.workspace_volume == str(tmp_path)
 
 
@@ -137,6 +141,89 @@ def test_a_run_that_goes_silent_stops_reading_as_running(tmp_path):
     run.last_heartbeat_ts = run.first_seen_ts = run.last_span_ts = stale
     groom_app._sync_native_row(run)
     assert state.WORKFLOWS["R5"].state == WorkflowState.FINISHED
+
+
+# --------------------------------------------------------------------------- #
+# Local-host evidence that a native run ended
+# --------------------------------------------------------------------------- #
+def test_run_json_terminal_retires_the_row_without_waiting_for_silence(tmp_path):
+    """The root span only reaches the collector if the dying process got its
+    exporter flushed; ``run.json`` is on disk either way. Without reading it, a run
+    that died kept its green *running / alive* row until the silence window expired
+    minutes later — a false green on exactly the event being watched for."""
+    _reset()
+    run_dir = tmp_path / "coder-r6"
+    run_dir.mkdir()
+    alerts.ingest_metrics([_metric("R6", "workhorse.run.heartbeat", 1,
+                                   run_dir=str(run_dir), pid=os.getpid())])
+    groom_app._sync_native_row(state.RUNS["R6"])
+    assert state.WORKFLOWS["R6"].state == WorkflowState.RUNNING
+
+    (run_dir / "run.json").write_text(json.dumps({"terminal": "fail"}))
+    run = state.RUNS["R6"]
+    groom_app._sync_native_row(run)
+    # Still beating by the clock — the row is retired on the record, not on silence.
+    assert run.terminal == "fail"
+    assert state.WORKFLOWS["R6"].state == WorkflowState.FINISHED
+
+
+def test_a_vanished_pid_retires_a_run_that_never_recorded_an_ending(tmp_path):
+    """SIGKILL, an OOM, a segfaulting C extension — the engine documents this class
+    as taking the driver down with it, losing the checkpoint write and the telemetry
+    flush alike. Nothing is written anywhere, so the pid is the only witness left."""
+    _reset()
+    run_dir = tmp_path / "coder-r7"
+    run_dir.mkdir()
+    # A genuinely dead pid, not a made-up number: spawn and reap, so the id is free
+    # here rather than merely unlikely to be in use.
+    dead = subprocess.Popen(["true"])
+    dead.wait()
+    alerts.ingest_metrics([_metric("R7", "workhorse.run.heartbeat", 1,
+                                   run_dir=str(run_dir), pid=dead.pid)])
+    run = state.RUNS["R7"]
+    groom_app._sync_native_row(run)
+    assert run.terminal == "died"  # not borrowing a word the run never reached
+    assert state.WORKFLOWS["R7"].state == WorkflowState.FINISHED
+
+
+def test_a_live_pid_with_no_record_stays_running(tmp_path):
+    """The other direction, and the one that must not regress: a healthy run has no
+    terminal in ``run.json`` and a pid that exists. A false red here would be worse
+    than the false green — it retires a run that is still working."""
+    _reset()
+    run_dir = tmp_path / "coder-r8"
+    run_dir.mkdir()
+    (run_dir / "run.json").write_text(json.dumps({"terminal": None}))
+    alerts.ingest_metrics([_metric("R8", "workhorse.run.heartbeat", 1,
+                                   run_dir=str(run_dir), pid=os.getpid())])
+    run = state.RUNS["R8"]
+    groom_app._sync_native_row(run)
+    assert run.terminal == ""
+    assert state.WORKFLOWS["R8"].state == WorkflowState.RUNNING
+
+
+def test_a_locally_stamped_ending_is_cleared_by_the_resumed_session(tmp_path):
+    """``--resume-run`` reuses the run dir and its id, and re-writes ``run.json``
+    with a null terminal before it does anything. The locally stamped verdict has to
+    clear on the next signal exactly like a root span's would, or the resumed run
+    stays dead on the dashboard for the life of the groom process."""
+    _reset()
+    run_dir = tmp_path / "coder-r9"
+    run_dir.mkdir()
+    (run_dir / "run.json").write_text(json.dumps({"terminal": "fail"}))
+    alerts.ingest_metrics([_metric("R9", "workhorse.run.heartbeat", 1,
+                                   run_dir=str(run_dir))])
+    run = state.RUNS["R9"]
+    groom_app._sync_native_row(run)
+    assert state.WORKFLOWS["R9"].state == WorkflowState.FINISHED
+
+    (run_dir / "run.json").write_text(json.dumps({"terminal": None}))
+    beat = _metric("R9", "workhorse.run.heartbeat", 1, run_dir=str(run_dir))
+    beat["ts"] = run.terminal_ts + 1.0
+    alerts.ingest_metrics([beat])
+    assert run.terminal == ""
+    groom_app._sync_native_row(run)
+    assert state.WORKFLOWS["R9"].state == WorkflowState.RUNNING
 
 
 def test_native_rows_survive_the_docker_prune(tmp_path):

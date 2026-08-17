@@ -19,6 +19,7 @@ raise — because a diff/tree panel is a nice-to-have, not on any critical path.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -43,6 +44,49 @@ def is_local_dir(path: str) -> bool:
     """Whether ``path`` is a directory on groom's own host — the signal that a
     telemetry run is native and can be served from local disk."""
     return bool(path) and Path(path).is_dir()
+
+
+def run_terminal(run_dir: str, /) -> str:
+    """The terminal state a native run wrote into its own ``run.json``, or "" while it
+    is still in progress (and on any unreadable/missing file).
+
+    This is the run's own account of how it ended, and it is on disk the instant the
+    run stops — unlike the root span, which only reaches the collector if the dying
+    process got its exporter flushed. That gap is the whole reason to read it: a run
+    that died mid-flush is exactly the one an operator most needs to see stop.
+
+    It reports the CURRENT session only. ``--resume-run`` re-writes the record with a
+    null terminal before it does anything (``ArtifactWriter.resume``), so a stale
+    ending from a previous session cannot make a live resume read as finished.
+    """
+    if not run_dir:
+        return ""
+    try:
+        record = json.loads((Path(run_dir) / "run.json").read_text())
+    except (OSError, ValueError):
+        return ""
+    return str(record.get("terminal") or "") if isinstance(record, dict) else ""
+
+
+def pid_alive(pid: int) -> bool:
+    """Whether a process with this pid exists on groom's host.
+
+    Only meaningful for a native run, which by definition shares groom's host and
+    therefore its pid namespace. Signal 0 checks for existence without delivering
+    anything; ``EPERM`` means the process is there and owned by someone else, which
+    for this question is a yes.
+    """
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return True
+    return True
 
 
 def list_files(base: str, /, repo_dir: str = "") -> list[str]:
