@@ -17,6 +17,7 @@ from ostler import graph as graph_mod
 from ostler import checks as checks_mod
 from ostler import inventory, markdown, path as path_mod, refs as refs_mod, registry, syntax
 from ostler.model import Graph, _parse_ui_nodes, load
+from ostler.qa.outcome import QaOutcome
 
 #: The last-resort declaration shape, for a language with no parser and no entry in
 #: `inventory` — and for a Python file `ast` could not read. Declared in
@@ -556,6 +557,67 @@ def validate_context(packet: Any) -> list[str]:
             problems.append(f"duplicate obligation id '{item['id']}'")
         seen.add(item["id"])
     return problems
+
+
+def cmd_context(
+    root: Path,
+    spec_dir: Path,
+    *,
+    base: str,
+    head: str = "WORKTREE",
+    source_roots: dict[str, list[str]] | None = None,
+    features_root: str = "",
+    story_file: Path | None = None,
+    exclude_paths: Iterable[str] = (),
+) -> QaOutcome:
+    """Build the obligation packet, write it into *spec_dir*, and report the outcome.
+
+    Every failure that reaches this is data-shaped: a diff git cannot produce, a book
+    that will not load, a spec directory that cannot be written. Catching it here rather
+    than in each caller is the whole point of the function — `cli.py` and the coder
+    workflow had hand-copied the identical `except` around `build_context`.
+    """
+    try:
+        packet = build_context(
+            root,
+            base=base,
+            head=head,
+            source_roots=source_roots or {},
+            features_root=features_root,
+            story_file=story_file,
+            exclude_paths=exclude_paths,
+        )
+        json_path, md_path = write_context(packet, spec_dir)
+    except (OSError, RuntimeError, ValueError) as exc:
+        return QaOutcome(ok=False, message=str(exc), status="invalid",
+                         data={"status": "invalid", "message": str(exc)})
+    ok = not any(f.get("severity") == "error" for f in packet.get("healthFindings", []))
+    return QaOutcome(ok=ok, message=f"wrote {json_path} and {md_path}", data=packet)
+
+
+def cmd_context_validate(spec_dir: Path) -> QaOutcome:
+    """Read `qa-okf-context.json` out of *spec_dir* and validate it.
+
+    An unreadable or unparseable file is one more entry in `problems` rather than a
+    raise: to the caller asking "does this packet hold", a file that is not there and a
+    packet that is malformed are the same answer.
+    """
+    context_file = spec_dir / "qa-okf-context.json"
+    try:
+        packet = json.loads(context_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        problems = [str(exc)]
+    else:
+        problems = validate_context(packet)
+    status = "passed" if not problems else "invalid"
+    return QaOutcome(
+        ok=not problems,
+        message=("Context is valid." if not problems
+                 else "Context validation failed:\n"
+                      + "\n".join(f"  - {p}" for p in problems)),
+        status=status,
+        data={"status": status, "problems": problems},
+    )
 
 
 def _graph_at_revision(root: Path, revision: str, features_root: str) -> Graph:

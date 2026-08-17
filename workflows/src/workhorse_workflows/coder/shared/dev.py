@@ -128,12 +128,15 @@ def validate_plan_context(
     # Producer-contract pre-check: `ostler artifact vet plan-context` applies the structural
     # contract (services shape, plan_file existence, order refs) the planner was told to
     # self-check against; workspace-specific repo resolution stays below, because ostler has
-    # no workspace context. Ostler being absent never blocks validation itself.
-    try:
-        vetted = Ostler(root).artifact_vet("plan-context", spec_dir)
-        errors.extend(f"[ostler] {p}" for p in vetted.get("problems", []))
-    except (OSError, ValueError, RuntimeError):
-        pass
+    # no workspace context.
+    #
+    # `status == "error"` means the contract could not be evaluated at all, which is not
+    # the same answer as "no problems" — it is reported rather than swallowed, so a plan
+    # never passes on a check that never ran.
+    vetted = Ostler(root).artifact_vet("plan-context", spec_dir)
+    if vetted.data.get("error"):
+        errors.append(f"[ostler] plan-context could not be vetted ({vetted.data['error']}).")
+    errors.extend(f"[ostler] {p}" for p in vetted.data.get("problems", []))
 
     # Case-insensitive lookup of the real workspace keys. The planner tends to emit the
     # human-facing project name ("Acme") while the workspace key is the folder name

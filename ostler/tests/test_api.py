@@ -155,10 +155,12 @@ def test_create_milestone_is_visible_to_the_next_read(repo: Path):
 
 # -- QA / artifact / edit subsystem facades ---------------------------------
 def test_artifact_vet_reports_missing_artifact(repo: Path):
-    out = Ostler(repo).artifact_vet("plan-context", "spec")
-    assert out["kind"] == "plan-context"
-    assert out["status"] == "error"
-    assert "scaffold" in out["error"]
+    outcome = Ostler(repo).artifact_vet("plan-context", "spec")
+    assert outcome.ok is False
+    assert outcome.status == "error"
+    assert outcome.data["kind"] == "plan-context"
+    assert "scaffold" in outcome.data["error"]
+    assert "scaffold" in outcome.message
 
 
 def test_qa_validate_missing_plan_is_invalid(repo: Path):
@@ -171,8 +173,10 @@ def test_qa_context_validate_flags_a_bad_packet(repo: Path):
     spec = repo / "spec"
     spec.mkdir()
     (spec / "qa-okf-context.json").write_text("{}", encoding="utf-8")
-    problems = Ostler(repo).qa_context_validate(spec=spec)
-    assert problems  # a `{}` packet is not a valid context
+    outcome = Ostler(repo).qa_context_validate(spec=spec)
+    assert outcome.ok is False  # a `{}` packet is not a valid context
+    assert outcome.status == "invalid"
+    assert outcome.data["problems"]
 
 
 def test_settle_review_errors_without_a_verdict(repo: Path):

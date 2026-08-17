@@ -1174,26 +1174,16 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         return 0 if result.ok else 1
 
     if op == "tools":
-        specs, errors = qa_mod.tools.catalog(root)
-        rows = [
-            {
-                "name": spec.name,
-                "command": spec.command,
-                "description": spec.description,
-                "builtin": spec.builtin,
-                "available": spec.available,
-            }
-            for spec in specs.values()
-        ]
+        result = qa_mod.tools.cmd_catalog(root)
         if args.json:
-            _out(json.dumps({"tools": rows, "errors": errors}, indent=2))
+            _out(json.dumps(result.data, indent=2))
         else:
-            for row in rows:
+            for row in result.data["tools"]:
                 mark = "ok" if row["available"] else "MISSING"
                 _out(f"{row['name']} ({row['command']}) [{mark}] - {row['description']}")
-            for error in errors:
+            for error in result.data["errors"]:
                 _out(f"error: {error}")
-        return 0 if not errors and all(row["available"] for row in rows) else 1
+        return 0 if result.ok else 1
 
     if op == "context":
         spec_dir = _resolve_spec(args.spec)
@@ -1207,25 +1197,21 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         story_file = args.story_file
         if story_file is not None and not story_file.is_absolute():
             story_file = root / story_file
-        try:
-            packet = qa_mod.build_context(
-                root,
-                base=args.base,
-                head=args.head,
-                source_roots=source_roots,
-                features_root=args.features_root,
-                story_file=story_file,
-            )
-            paths = qa_mod.write_context(packet, spec_dir)
-        except (OSError, RuntimeError, ValueError) as exc:
-            output = {"status": "invalid", "message": str(exc)}
-            _out(json.dumps(output, indent=2) if args.json else f"error: {exc}")
+        result = qa_mod.cmd_context(
+            root,
+            spec_dir,
+            base=args.base,
+            head=args.head,
+            source_roots=source_roots,
+            features_root=args.features_root,
+            story_file=story_file,
+        )
+        if result.status == "invalid":
+            # The packet was never built — `data` carries the failure, not a graph.
+            _out(json.dumps(result.data, indent=2) if args.json else f"error: {result.message}")
             return 1
-        if args.json:
-            _out(json.dumps(packet, indent=2))
-        else:
-            _out(f"wrote {paths[0]} and {paths[1]}")
-        return 0 if not any(f.get("severity") == "error" for f in packet["healthFindings"]) else 1
+        _out(json.dumps(result.data, indent=2) if args.json else result.message)
+        return 0 if result.ok else 1
 
     if op == "context-show":
         spec_dir = _resolve_spec(args.spec)
@@ -1260,18 +1246,12 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
 
     if op == "context-validate":
         spec_dir = _resolve_spec(args.spec)
-        context_file = spec_dir / "qa-okf-context.json"
-        try:
-            packet = json.loads(context_file.read_text(encoding="utf-8"))
-            problems = qa_mod.validate_context(packet)
-        except (OSError, json.JSONDecodeError) as exc:
-            problems = [str(exc)]
-        output = {"status": "invalid" if problems else "passed", "problems": problems}
+        result = qa_mod.cmd_context_validate(spec_dir)
         if args.json:
-            _out(json.dumps(output, indent=2))
+            _out(json.dumps(result.data, indent=2))
         else:
-            _out("Context is valid." if not problems else "Context validation failed:\n" + "\n".join(f"  - {p}" for p in problems))
-        return 1 if problems else 0
+            _out(result.message)
+        return 0 if result.ok else 1
 
     if op == "evidence-map":
         spec_dir = _resolve_spec(args.spec)

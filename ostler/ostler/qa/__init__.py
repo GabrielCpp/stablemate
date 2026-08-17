@@ -27,6 +27,8 @@ from ostler.qa.evidence_map import (
 )
 from ostler.qa.context import (
     build_context,
+    cmd_context,
+    cmd_context_validate,
     render_context,
     render_obligations,
     select_obligations,
@@ -46,6 +48,8 @@ __all__ = [
     "cmd_run",
     "cmd_lint",
     "cmd_validate",
+    "cmd_context",
+    "cmd_context_validate",
     "build_context",
     "write_context",
     "render_context",

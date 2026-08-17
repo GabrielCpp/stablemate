@@ -34,7 +34,6 @@ from __future__ import annotations
 # checker. Naming the builtin through `builtins` is what makes them mean what they read
 # as. The method keeps its name: it is the public API spelling of the CLI verb.
 import builtins
-import json
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -52,13 +51,12 @@ from ostler import waivers as waivers_mod
 from ostler.crud import Result
 from ostler.qa import (
     QaOutcome,
-    build_context,
+    cmd_context,
+    cmd_context_validate,
     cmd_lint,
     cmd_run,
     cmd_validate,
     tools as qa_tools_mod,
-    validate_context,
-    write_context,
 )
 from ostler.model import Graph, find_root, load
 
@@ -515,28 +513,31 @@ class Ostler:
                    source_roots: dict[str, builtins.list[str]] | None = None,
                    features_root: str = "",
                    story_file: str | Path | None = None,
-                   exclude_paths: Iterable[str] = ()) -> dict:
+                   exclude_paths: Iterable[str] = ()) -> QaOutcome:
         """Build the base/head changed-code→OKF obligation packet and write it into
-        ``spec`` (``ostler qa context``); returns the packet.
+        ``spec`` (``ostler qa context``); ``data`` is the packet.
+
+        ``ok`` is false when the packet carries a ``severity: error`` health finding, and
+        when the build itself failed — an unreadable book or a diff git could not produce
+        come back as ``status="invalid"`` rather than as a raise.
 
         ``exclude_paths`` drops repo-relative paths from the diff before it is mapped —
         for a ``head="WORKTREE"`` caller that knows some of the dirt is not its own."""
 
-        packet = build_context(
-            self.root, base=base, head=head, source_roots=source_roots or {},
-            features_root=features_root,
+        return cmd_context(
+            self.root, self._resolve(spec), base=base, head=head,
+            source_roots=source_roots or {}, features_root=features_root,
             story_file=self._resolve(story_file) if story_file else None,
             exclude_paths=exclude_paths)
-        write_context(packet, self._resolve(spec))
-        return packet
 
-    def qa_context_validate(self, *, spec: str | Path) -> builtins.list[str]:
-        """Validate ``qa-okf-context.json`` in ``spec``; returns problem strings, empty
-        if valid (``ostler qa context-validate``)."""
+    def qa_context_validate(self, *, spec: str | Path) -> QaOutcome:
+        """Validate ``qa-okf-context.json`` in ``spec`` (``ostler qa context-validate``);
+        ``data["problems"]`` holds the problem strings and is empty when it is valid.
 
-        context_file = self._resolve(spec) / "qa-okf-context.json"
-        packet = json.loads(context_file.read_text(encoding="utf-8"))
-        return validate_context(packet)
+        A missing or unparseable file is one of those problems rather than a raise: the
+        question asked is "does this packet hold", and both answers are "no"."""
+
+        return cmd_context_validate(self._resolve(spec))
 
     def qa_lint(self, plan_file: str | Path, *, spec: str | Path | None = None) -> QaOutcome:
         """Statically lint a ``qa_plan.py``'s AST without importing or executing it
@@ -558,31 +559,25 @@ class Ostler:
         return cmd_run(Path(plan_file), self._resolve(spec) if spec else None,
                        stop_on_fail=stop_on_fail, root=self.root)
 
-    def qa_tools_catalog(self) -> dict:
+    def qa_tools_catalog(self) -> QaOutcome:
         """This repo's opted-in QA tools, resolved against the machine's stablemate
-        config (``ostler qa tools list``); same ``{"tools": [...], "errors": [...]}``
-        shape the CLI prints."""
+        config (``ostler qa tools list``). ``data`` is the same
+        ``{"tools": [...], "errors": [...]}`` shape the CLI prints; ``ok`` is false when
+        a name failed to resolve or a resolved command is not on PATH."""
 
-        specs, errors = qa_tools_mod.catalog(self.root)
-        rows = [
-            {
-                "name": spec.name,
-                "command": spec.command,
-                "description": spec.description,
-                "builtin": spec.builtin,
-                "available": spec.available,
-            }
-            for spec in specs.values()
-        ]
-        return {"tools": rows, "errors": errors}
+        return qa_tools_mod.cmd_catalog(self.root)
 
     # -- schema-checked artifacts (ostler ``artifact …``) -------------------
-    def artifact_vet(self, kind: str, spec: str | Path) -> dict:
-        """Validate a workflow artifact against its contract; returns the outcome dict
-        (``{"kind","path","status",["problems"],["error"]}`` — ``ostler artifact vet``)."""
-        from ostler.artifact import vet
+    def artifact_vet(self, kind: str, spec: str | Path) -> QaOutcome:
+        """Validate a workflow artifact against its contract (``ostler artifact vet``).
 
-        return vet(kind, self._resolve(spec), self.root).to_dict()
+        ``data`` is the outcome dict (``{"kind","path","status",["problems"],["error"]}``)
+        and ``status`` keeps the artifact vocabulary — ``clean`` / ``problems`` / ``error``,
+        where ``error`` means the contract could not be evaluated at all, which is not the
+        same answer as "no problems"."""
+        from ostler.artifact import cmd_vet
+
+        return cmd_vet(kind, self._resolve(spec), self.root)
 
     # -- structured edits (ostler ``edit …``) -------------------------------
     def settle_review(self, slug: str, *, write: bool = False) -> EditPlan:

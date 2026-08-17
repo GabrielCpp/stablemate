@@ -32,6 +32,7 @@ from typing import Any
 import yaml
 
 from ostler._vendor.stablemate_core.config import load_config
+from ostler.qa.outcome import QaOutcome
 
 #: Tools the harness ships a typed wrapper for (`qa.tesseract`, `qa.convert`). Their
 #: command name needs no `[qa_tools.<name>]` entry unless a repo wants to override it —
@@ -127,6 +128,36 @@ def catalog(root: Path, *, cfg: dict[str, Any] | None = None) -> tuple[dict[str,
                 "~/.config/stablemate/config.toml"
             )
     return specs, errors
+
+
+def cmd_catalog(root: Path, *, cfg: dict[str, Any] | None = None) -> QaOutcome:
+    """The catalog as the rows the CLI prints and the coder workflow reads.
+
+    `ok` is the predicate the CLI's exit code has always used: nothing failed to resolve
+    *and* every resolved command is on PATH. An unreadable or malformed opt-in file is
+    one more catalog error rather than a raise — a repo whose `agents.yml` cannot be
+    parsed has no usable tools, which is what an error entry already says.
+    """
+    try:
+        specs, errors = catalog(root, cfg=cfg)
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        specs, errors = {}, [str(exc)]
+    rows = [
+        {
+            "name": spec.name,
+            "command": spec.command,
+            "description": spec.description,
+            "builtin": spec.builtin,
+            "available": spec.available,
+        }
+        for spec in specs.values()
+    ]
+    missing = [str(row["name"]) for row in rows if not row["available"]]
+    ok = not errors and not missing
+    message = "\n".join(
+        [*errors, *(f"qa tool {name!r} is not on PATH" for name in missing)]
+    ) or f"{len(rows)} qa tool(s) available"
+    return QaOutcome(ok=ok, message=message, data={"tools": rows, "errors": errors})
 
 
 def preflight_errors(root: Path, *, cfg: dict[str, Any] | None = None) -> list[str]:

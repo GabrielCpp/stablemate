@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ostler.artifact.kinds import KINDS, get_kind
+from ostler.qa.outcome import QaOutcome
 
 
 @dataclass
@@ -67,6 +68,28 @@ def vet(kind_name: str, spec: Path, root: Path) -> ArtifactOutcome:
     except Exception as exc:  # noqa: BLE001 — any parse error is a vet problem
         return ArtifactOutcome(kind_name, str(target), "problems",
                                problems=[f"not valid JSON: {exc}"])
-    problems = kind.vet(data, spec_dir, root)
+    try:
+        problems = kind.vet(data, spec_dir, root)
+    except (OSError, ValueError, RuntimeError, KeyError) as exc:
+        # A contract is evaluated against files beside the artifact — a manifest, a run
+        # log, hashes of both — so an unreadable or wrongly-shaped one lands here. It is
+        # a failure to *evaluate*, not a clean bill: reporting it as `error` is what stops
+        # a caller reading "no problems" off a check that never ran.
+        return ArtifactOutcome(kind_name, str(target), "error",
+                               error=f"{type(exc).__name__}: {exc}")
     return ArtifactOutcome(kind_name, str(target),
                            "problems" if problems else "clean", problems=problems)
+
+
+def cmd_vet(kind_name: str, spec: Path, root: Path) -> QaOutcome:
+    """`vet`, in the outcome shape every other `ostler` command answers in.
+
+    `data` is the same `{"kind","path","status",["problems"],["error"]}` dict the CLI
+    prints under `--json`, and `status` keeps the artifact vocabulary
+    (`clean`/`problems`/`error`) rather than being flattened to passed/failed — the three
+    are distinguishable and a caller acts differently on each.
+    """
+    outcome = vet(kind_name, spec, root)
+    message = outcome.error or "\n".join(outcome.problems) or f"{outcome.kind}: clean"
+    return QaOutcome(ok=outcome.status == "clean", message=message,
+                     data=outcome.to_dict(), status=outcome.status)

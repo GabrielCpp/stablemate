@@ -62,32 +62,24 @@ def qa_context(
     `exclude_paths` are repo-relative paths the caller has established are not part of the
     change under examination — see `shared/worktree.py` for the only thing that populates it.
     """
-    try:
-        packet = okf(docs_root).qa_context(
-            base=base,
-            head=head,
-            spec=spec_dir,
-            source_roots=parse_source_roots(source_roots),
-            features_root=features_root,
-            story_file=story_file or None,
-            exclude_paths=exclude_paths or (),
-        )
-    except (OSError, RuntimeError, ValueError) as exc:
-        return 1, {}, str(exc)
-    has_error = any(f.get("severity") == "error" for f in packet.get("healthFindings", []))
-    return (1 if has_error else 0), packet, ""
+    outcome = okf(docs_root).qa_context(
+        base=base,
+        head=head,
+        spec=spec_dir,
+        source_roots=parse_source_roots(source_roots),
+        features_root=features_root,
+        story_file=story_file or None,
+        exclude_paths=exclude_paths or (),
+    )
+    return (0 if outcome.ok else 1), outcome.data, "" if outcome.ok else outcome.message
 
 
 def qa_context_validate(
     spec_dir: str, *, docs_root: Path | None = None
 ) -> tuple[int, dict[str, Any], str]:
     """`ostler qa context-validate` → `{status, problems}`; rc=1 when problems exist."""
-    try:
-        problems = okf(docs_root).qa_context_validate(spec=spec_dir)
-    except (OSError, ValueError, RuntimeError) as exc:
-        return 1, {"status": "invalid", "problems": [str(exc)]}, str(exc)
-    payload = {"status": "passed" if not problems else "invalid", "problems": problems}
-    return (0 if not problems else 1), payload, ""
+    outcome = okf(docs_root).qa_context_validate(spec=spec_dir)
+    return (0 if outcome.ok else 1), outcome.data, "" if outcome.ok else outcome.message
 
 
 def qa_lint(
@@ -114,11 +106,8 @@ def qa_validate(
 
 def qa_tools_catalog(*, docs_root: Path | None = None) -> tuple[int, dict[str, Any], str]:
     """`ostler qa tools list` → `{tools, errors}`; rc=1 when any opted-in tool fails to resolve."""
-    try:
-        payload = okf(docs_root).qa_tools_catalog()
-    except (OSError, ValueError, RuntimeError) as exc:
-        return 1, {"tools": [], "errors": [str(exc)]}, str(exc)
-    return (1 if payload.get("errors") else 0), payload, ""
+    outcome = okf(docs_root).qa_tools_catalog()
+    return (0 if outcome.ok else 1), outcome.data, "" if outcome.ok else outcome.message
 
 
 def qa_run(
@@ -146,11 +135,8 @@ def artifact_vet(
     A contract that cannot be evaluated cannot validate a pass, so the caller treats a
     non-empty `stderr` as a problem in its own right rather than as an absence of problems.
     """
-    try:
-        vetted = okf(root).artifact_vet(kind, spec_dir)
-    except (OSError, ValueError, RuntimeError, KeyError) as exc:
-        return 1, {}, str(exc)
-    return (1 if vetted.get("problems") else 0), vetted, ""
+    outcome = okf(root).artifact_vet(kind, spec_dir)
+    return (0 if outcome.ok else 1), outcome.data, outcome.data.get("error", "")
 
 
 #: The runner's per-assertion log, relative to whichever directory the run wrote into —

@@ -51,4 +51,5 @@ def test_tools_list_empty_with_no_opt_in(tmp_path: Path, capsys: pytest.CaptureF
 
     assert code == 0
     payload = json.loads(out)
-    assert payload == {"tools": [], "errors": []}
+    # `status` comes from the shared `QaOutcome` envelope every qa command answers in.
+    assert payload == {"tools": [], "errors": [], "status": "passed"}
