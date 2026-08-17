@@ -16,6 +16,7 @@ from litestar.testing import TestClient
 from groom import app as groom_app
 from groom import discovery, sidecar_hub, state
 from groom.models import AnswerResult, GateInfo, WorkflowContainer, WorkflowState
+from workhorse import inbox
 
 
 def _reset() -> None:
@@ -764,6 +765,170 @@ def test_outbox_post_for_an_unknown_run_id_is_an_error_not_a_500():
         client.__exit__(None, None, None)
 
     assert resp.json() == {"ok": False, "message": "no such run"}
+
+
+def test_inbox_get_on_a_native_run_reads_outstanding_messages_by_default(tmp_path):
+    _reset()
+    run_dir = tmp_path / "run-9"
+    run_dir.mkdir()
+    inbox.append(run_dir / "inbox.jsonl", id="m1", body="hold off", at="t0")
+    inbox.append(run_dir / "inbox.jsonl", id="m2", body="go ahead", at="t1")
+    inbox.reply(run_dir / "inbox.jsonl", "m2", "done", at="t2")
+    wf = WorkflowContainer(container_id="run-9", name="w", run_id="run-9", native=True, runs_volume=str(run_dir))
+    state.WORKFLOWS["run-9"] = wf
+
+    client = _hermetic_client()
+    try:
+        resp = client.get("/api/run/run-9/inbox")
+    finally:
+        client.__exit__(None, None, None)
+
+    ids = [m["id"] for m in resp.json()["messages"]]
+    assert ids == ["m1"]
+
+
+def test_inbox_get_include_all_returns_replied_messages_too(tmp_path):
+    _reset()
+    run_dir = tmp_path / "run-9"
+    run_dir.mkdir()
+    inbox.append(run_dir / "inbox.jsonl", id="m1", body="go ahead", at="t0")
+    inbox.reply(run_dir / "inbox.jsonl", "m1", "done", at="t1")
+    wf = WorkflowContainer(container_id="run-9", name="w", run_id="run-9", native=True, runs_volume=str(run_dir))
+    state.WORKFLOWS["run-9"] = wf
+
+    client = _hermetic_client()
+    try:
+        resp = client.get("/api/run/run-9/inbox", params={"include_all": "true"})
+    finally:
+        client.__exit__(None, None, None)
+
+    messages = resp.json()["messages"]
+    assert len(messages) == 1
+    assert messages[0]["reply"] == "done"
+
+
+def test_inbox_get_for_an_unknown_run_id_is_empty_not_an_error():
+    _reset()
+
+    client = _hermetic_client()
+    try:
+        resp = client.get("/api/run/no-such-run/inbox")
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.json() == {"messages": []}
+
+
+def test_inbox_post_on_a_native_run_appends_and_is_read_back(tmp_path):
+    _reset()
+    run_dir = tmp_path / "run-9"
+    run_dir.mkdir()
+    wf = WorkflowContainer(container_id="run-9", name="w", run_id="run-9", native=True, runs_volume=str(run_dir))
+    state.WORKFLOWS["run-9"] = wf
+
+    client = _hermetic_client()
+    try:
+        resp = client.post("/api/run/run-9/inbox", json={"body": "hold off on the migration"})
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.json()["ok"] is True
+    assert resp.json()["message"]["body"] == "hold off on the migration"
+    stored = inbox.all_messages(run_dir / "inbox.jsonl")
+    assert len(stored) == 1
+    assert stored[0].body == "hold off on the migration"
+
+
+def test_inbox_post_with_no_body_is_an_error(tmp_path):
+    _reset()
+    wf = WorkflowContainer(container_id="run-9", name="w", run_id="run-9", native=True, runs_volume=str(tmp_path))
+    state.WORKFLOWS["run-9"] = wf
+
+    client = _hermetic_client()
+    try:
+        resp = client.post("/api/run/run-9/inbox", json={"body": ""})
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.json() == {"ok": False, "message": "message body is required"}
+
+
+def test_inbox_post_for_an_unknown_run_id_is_an_error_not_a_500():
+    _reset()
+
+    client = _hermetic_client()
+    try:
+        resp = client.post("/api/run/no-such-run/inbox", json={"body": "go ahead"})
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.json() == {"ok": False, "message": "no such run"}
+
+
+def test_inbox_get_on_a_docker_backed_run_reads_through_docker_io():
+    _reset()
+    wf = WorkflowContainer(container_id="abc123", name="w", run_id="run-9", runs_volume="runs-vol")
+    state.WORKFLOWS["abc123"] = wf
+
+    with (
+        patch.object(groom_app.docker_io, "list_run_dirs", return_value=["demo-20260101-000000"]),
+        patch.object(
+            groom_app.docker_io,
+            "read_file",
+            return_value='{"id": "m1", "body": "go ahead", "at": "t0", "reply": "", "replied_at": ""}\n',
+        ),
+    ):
+        client = _hermetic_client()
+        try:
+            resp = client.get("/api/run/run-9/inbox")
+        finally:
+            client.__exit__(None, None, None)
+
+    assert [m["id"] for m in resp.json()["messages"]] == ["m1"]
+
+
+def test_inbox_post_on_a_docker_backed_run_writes_through_docker_io():
+    _reset()
+    wf = WorkflowContainer(container_id="abc123", name="w", run_id="run-9", runs_volume="runs-vol")
+    state.WORKFLOWS["abc123"] = wf
+    written = {}
+
+    def _fake_write_file(volume, rel_path, content):
+        written["volume"] = volume
+        written["rel_path"] = rel_path
+        written["content"] = content
+        return True
+
+    with (
+        patch.object(groom_app.docker_io, "list_run_dirs", return_value=["demo-20260101-000000"]),
+        patch.object(groom_app.docker_io, "read_file", return_value=""),
+        patch.object(groom_app.docker_io, "write_file", _fake_write_file),
+    ):
+        client = _hermetic_client()
+        try:
+            resp = client.post("/api/run/run-9/inbox", json={"body": "go ahead"})
+        finally:
+            client.__exit__(None, None, None)
+
+    assert resp.json()["ok"] is True
+    assert written["volume"] == "runs-vol"
+    assert written["rel_path"] == "demo-20260101-000000/inbox.jsonl"
+    assert "go ahead" in written["content"]
+
+
+def test_inbox_post_on_a_docker_run_with_no_run_dir_yet_is_an_error():
+    _reset()
+    wf = WorkflowContainer(container_id="abc123", name="w", run_id="run-9", runs_volume="runs-vol")
+    state.WORKFLOWS["abc123"] = wf
+
+    with patch.object(groom_app.docker_io, "list_run_dirs", return_value=[]):
+        client = _hermetic_client()
+        try:
+            resp = client.post("/api/run/run-9/inbox", json={"body": "go ahead"})
+        finally:
+            client.__exit__(None, None, None)
+
+    assert resp.json() == {"ok": False, "message": "no run directory yet"}
 
 
 # ---- startup only *schedules* discovery; it must not block on the scan ----

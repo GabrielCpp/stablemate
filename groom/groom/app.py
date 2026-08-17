@@ -18,6 +18,8 @@ import json
 import os
 import re
 import time
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 from litestar import Litestar, Request, Response, get, post, websocket
@@ -43,6 +45,7 @@ from groom import (
 )
 from groom.gates import AWAITING, answer_gate, extract_question, status_of
 from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
+from workhorse import inbox
 
 ASSETS_DIR = Path(__file__).parent / "assets"
 
@@ -604,6 +607,40 @@ async def outbox_post(run_id: str, data: dict) -> dict:
     return {"ok": result.ok, "message": result.message}
 
 
+@get("/api/run/{run_id:str}/inbox", include_in_schema=False)
+async def inbox_get(run_id: str, include_all: bool = False) -> dict:
+    """This run's inbox — outstanding messages by default, every message
+    (replied or not) when ``?include_all=true`` — mirroring the CLI's ``read``.
+    """
+    wf = _workflow_by_run_id(run_id)
+    if wf is None:
+        return {"messages": []}
+    messages = await asyncio.to_thread(_inbox_messages, wf)
+    if not include_all:
+        messages = [m for m in messages if not m.reply]
+    return {"messages": [m.model_dump() for m in messages]}
+
+
+@post("/api/run/{run_id:str}/inbox", include_in_schema=False)
+async def inbox_post(run_id: str, data: dict) -> dict:
+    """Append an operator message to this run's inbox — the ``ask`` verb,
+    reachable over HTTP rather than only the CLI so a browser tab (or a
+    babysitting session without shell access to the run dir) can leave one.
+    """
+    wf = _workflow_by_run_id(run_id)
+    if wf is None:
+        return {"ok": False, "message": "no such run"}
+    body = str(data.get("body", ""))
+    if not body:
+        return {"ok": False, "message": "message body is required"}
+    message_id = str(data.get("id") or uuid.uuid4().hex[:12])
+    at = datetime.now(UTC).isoformat()
+    message = await asyncio.to_thread(_inbox_append, wf, message_id=message_id, body=body, at=at)
+    if message is None:
+        return {"ok": False, "message": "no run directory yet"}
+    return {"ok": True, "message": message.model_dump()}
+
+
 async def _reconcile() -> int:
     """One discovery pass: upsert every found workflow, then prune the ones
     whose container is gone (skipping the prune when docker is unreachable so a
@@ -902,6 +939,55 @@ def _workflow_by_run_id(run_id: str) -> WorkflowContainer | None:
         if candidate.run_id == run_id:
             return candidate
     return None
+
+
+_INBOX_FILE = "inbox.jsonl"
+
+
+def _docker_inbox_rel_path(runs_volume: str) -> str | None:
+    """The volume-relative path to the latest run's inbox file, or ``None``
+    when the volume has no run directory yet — mirrors how
+    ``discovery._current_run_state`` finds the live run inside a runs volume.
+    """
+    dirs = docker_io.list_run_dirs(runs_volume)
+    if not dirs:
+        return None
+    return f"{dirs[-1]}/{_INBOX_FILE}"
+
+
+def _inbox_messages(wf: WorkflowContainer) -> list[inbox.Message]:
+    """Every message in this run's inbox, oldest first — a plain read over
+    :mod:`workhorse.inbox` for a native run, whose ``runs_volume`` is a real
+    host path. A docker-backed run has no host path to hand that module, so
+    its raw text is read through the same docker volume plumbing
+    ``answer_gate`` uses and parsed with the shared :class:`inbox.Message`.
+    """
+    if not wf.runs_volume:
+        return []
+    if wf.native:
+        return inbox.all_messages(Path(wf.runs_volume) / _INBOX_FILE)
+    rel_path = _docker_inbox_rel_path(wf.runs_volume)
+    if rel_path is None:
+        return []
+    raw = docker_io.read_file(wf.runs_volume, rel_path)
+    if not raw:
+        return []
+    return [inbox.Message.model_validate_json(line) for line in raw.splitlines() if line.strip()]
+
+
+def _inbox_append(wf: WorkflowContainer, *, message_id: str, body: str, at: str) -> inbox.Message | None:
+    """Append one operator message and return it, or ``None`` when the run
+    has no directory yet to append into (a docker run whose first run dir
+    hasn't been created)."""
+    if wf.native:
+        return inbox.append(Path(wf.runs_volume) / _INBOX_FILE, id=message_id, body=body, at=at)
+    rel_path = _docker_inbox_rel_path(wf.runs_volume)
+    if rel_path is None:
+        return None
+    message = inbox.Message.model_validate({"id": message_id, "body": body, "at": at})
+    existing = docker_io.read_file(wf.runs_volume, rel_path) or ""
+    ok = docker_io.write_file(wf.runs_volume, rel_path, existing + message.model_dump_json() + "\n")
+    return message if ok else None
 
 
 async def _handle_command(data: dict, queue: asyncio.Queue | None = None) -> None:
@@ -1256,6 +1342,8 @@ def create_app() -> Litestar:
             diff,
             outbox_get,
             outbox_post,
+            inbox_get,
+            inbox_post,
             refresh,
             push_progress,
             push_blocked,
