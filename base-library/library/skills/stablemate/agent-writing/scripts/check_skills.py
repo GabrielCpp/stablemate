@@ -29,7 +29,7 @@ mechanics reference does exactly that).
 The rule and the vocabulary live in the `agent-writing` skill (base-library).
 
 Run:
-    uv run python scripts/check_skills.py
+    uv run python base-library/library/skills/stablemate/agent-writing/scripts/check_skills.py
 """
 
 from __future__ import annotations
@@ -39,7 +39,22 @@ from pathlib import Path
 
 from ostler import markdown
 
-REPO = Path(__file__).resolve().parents[1]
+
+def _repo_root() -> Path:
+    """The repo being checked, found by ascent rather than by a fixed depth.
+
+    This script installs beside its skill, so how deep it sits under the repo is the
+    library's layout and not this rule's — a `parents[N]` was true only while it lived in
+    `<repo>/scripts/`, and went silently wrong the moment the skill carried it elsewhere.
+    Ascending to the working copy's own marker is the one form that survives the move.
+    """
+    for candidate in Path(__file__).resolve().parents:
+        if (candidate / ".git").exists():
+            return candidate
+    return Path.cwd()
+
+
+REPO = _repo_root()
 SKILLS = REPO / "base-library" / "library" / "skills"
 PROMPTS = REPO / "base-library" / "library" / "prompts"
 

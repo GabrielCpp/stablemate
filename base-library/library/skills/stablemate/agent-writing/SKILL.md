@@ -181,6 +181,10 @@ make check-skills        # sprawl budget, disclosure reachable, no skill driving
 make check-library       # the frontmatter fence still parses (a broken one loses tags silently)
 ```
 
+**[scripts/check_skills.py](scripts/check_skills.py)** is what the first one runs, and it
+installs here so it travels with the doctrine — a repo that takes this skill takes the guard
+that makes it hold.
+
 Then read it top to bottom once and ask of every line: does this change behaviour versus the
 default? Anything that fails goes to its rung on the hierarchy, or goes away.
 

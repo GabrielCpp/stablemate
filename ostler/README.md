@@ -283,6 +283,115 @@ The run contract is in
 artifact contracts in
 [docs/ARTIFACT-CONTRACTS.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/ARTIFACT-CONTRACTS.md).
 
+## The parse index
+
+`ostler doctor` re-reads and re-parses the same files on every invocation, and an agent that
+checks its work often pays that cost dozens of times an hour. The parse index is a persistent,
+content-addressed store that removes the repetition. **It is on by default**, and everything
+about it is designed so that the worst thing a wrong index can do is be slow.
+
+### What is cached, and what deliberately is not
+
+Two products, and only two:
+
+| Product | Key |
+|---|---|
+| **Parse products** — a document's frontmatter, sections, bullets, links and tables | the repo-name-qualified repo-relative path + the file's content sha |
+| **Code-grounding symbol tables** — the symbol set extracted from a source file | the code file's content sha + the tree-sitter grammar version |
+
+Both are pure functions of bytes, which is what lets them be stored under a content key with
+no invalidation rule beyond a single *epoch* hash over the global inputs (ostler's version, the
+bundled schemas, the dynamic kind registry, the config files, the waiver file, the freeze
+manifest). Change any of those and every entry is invalidated at once.
+
+**Doctor's findings are not cached.** Nothing that a check *concluded* is ever served from the
+index — only the parse products a check reads. And the **graph-global checks are always
+recomputed**, on every run, never cached: reachability, the cross-epic seed and dependency
+constraints, milestones, locators and the frozen-story check together cost around 0.06s, so
+there is nothing to win by caching them and a whole class of transitive invalidation to lose.
+The hard half of the invalidation problem is the half that had nothing to gain.
+
+Writers stay uncached on purpose: the index serves the read-only document accessor, while the
+commands that mutate a document parse it themselves. A shared parsed document handed to a
+writer would be a live bug, not a cache hit.
+
+### Where it lives, and how that is resolved
+
+The directory is resolved in this order, first one wins:
+
+1. `--index-dir DIR` — an explicit path on any command, including `ostler cache clean`;
+2. `$OSTLER_INDEX_DIR` — the environment override, which is how a container points every tool
+   in it at a cache copied in from the host;
+3. `ostler_index_dir` in ostler's shared config;
+4. the default: `ostler-index` under the shared stablemate cache (`~/.cache/stablemate/`).
+
+The entry key holds the repo-relative path *qualified by the repo name*, not an absolute one,
+so two worktrees of the same repo — and the same repo mounted into a container — share every
+entry rather than each warming a partition of their own.
+
+### Controls
+
+```bash
+ostler doctor --no-index                 # off for this run; the index is on by default
+ostler doctor --index-dir /tmp/ix        # somewhere else for this run
+ostler doctor --verify-index             # run both ways and diff the reports
+ostler cache clean                       # evict entries untouched for 14 days
+ostler cache clean --all                 # remove everything, aged out or not
+ostler cache clean --max-age-days 2 --json
+```
+
+`--no-index` is the escape hatch, present on every command; `--verify-index` is the correctness
+gate — it runs doctor **with the index and without it in one command and diffs the two reports**,
+exiting non-zero on any disagreement, so "cached and uncached agree" is something CI asserts
+rather than something a README promises. Eviction has both paths: the explicit `cache clean`
+above (`--all` removes every entry, not only the aged-out ones), and automatic age-based pruning
+on write, so an unattended machine cannot grow the cache without limit.
+
+`doctor --json` reports what the index did, added to the report rather than substituted for any
+of it:
+
+```json
+{ "…": "…",
+  "index": { "dir": "/home/you/.cache/stablemate/ostler-index",
+             "enabled": true, "hits": 1382, "misses": 0 } }
+```
+
+That is the line a disagreement between two runs is diagnosed from without instrumenting
+anything: the same **hits**/**misses** against different directories is a different fault from
+different counts against the same one. Under `--no-index` both counts read zero.
+
+### It is content-keyed, so it is allowed to go stale
+
+A host cache is refreshed by whatever happens to run ostler on the host; there is no warming
+command and no freshness protocol, and a container never writes back to the cache it was given.
+The consequence is worth stating plainly: **because every entry is content-keyed, a stale index
+costs time and never correctness.** An entry either matches the bytes in front of it or it is
+not consulted at all, so the failure mode of decay is a run that pays close to the cold price —
+never a run that answers from an out-of-date parse. Deleting the whole directory at any moment
+is safe for the same reason.
+
+This is also why **every command that loads a graph populates the index, including the
+read-only ones** (`graph`, `list`, `trace`, `reach`, `coverage`, …). Incidental use is the only
+thing keeping a host cache warm between refreshes, and a read-only command that left it cold
+would make the next `doctor` pay full price for no reason.
+
+### Reproducing the timings
+
+A speed claim nobody can re-derive is not evidence, so the profiling that steered this work is
+committed as a harness:
+
+```bash
+make bench-doctor DOCS=/path/to/repo-holding-the-book        # human table
+make bench-doctor DOCS=/path/to/repo-holding-the-book JSON=1 # a before/after diff
+```
+
+`DOCS=` names the repo holding the book and is **required — there is no default**: the measured
+book lives outside this repo, and a baked-in path would measure whatever happened to be
+underfoot. The harness reports cold and warm `model.load` and `doctor.run`, the per-check split,
+the components inside `_check_ui`, and the book's shape (file count, bytes, UI nodes, feature
+docs, link targets) alongside them, because a timing without the shape it was taken against is
+not comparable to anything.
+
 ## Python API
 
 Everything the CLI does is available in-process through the `Ostler` facade — the

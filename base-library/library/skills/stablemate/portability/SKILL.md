@@ -90,7 +90,9 @@ nobody portably "fixes" it, and keep it out of the import path of anything in ti
 
 ## Declaring a site
 
-`scripts/check_portability.py` flags the non-portable APIs above inside tier-1 source. A
+**[scripts/check_portability.py](scripts/check_portability.py)** flags the non-portable APIs
+above inside tier-1 source, and installs beside this skill so it travels with the doctrine — a
+repo that takes the rule takes the guard that makes it hold. A
 genuine tier-2/3 site is declared in its `ALLOWED` map with the reason, and the reason is
 printed on any failure — same shape as `check_parsers.py`. If you are adding a POSIX call
 to a package a user pip-installs, the declaration is the moment to ask whether the code

@@ -19,7 +19,7 @@ which is precisely what a token must not be. Keeping that in one auditable modul
 point; a second module doing it quietly is the thing this check exists to catch.
 
 Run:
-    uv run python scripts/check_no_env.py
+    uv run python base-library/library/skills/stablemate/workhorse-scripting/scripts/check_no_env.py
 """
 
 from __future__ import annotations
@@ -28,7 +28,22 @@ import ast
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
+
+def _repo_root() -> Path:
+    """The repo being checked, found by ascent rather than by a fixed depth.
+
+    This script installs beside its skill, so how deep it sits under the repo is the
+    library's layout and not this rule's — a `parents[N]` was true only while it lived in
+    `<repo>/scripts/`, and went silently wrong the moment the skill carried it elsewhere.
+    Ascending to the working copy's own marker is the one form that survives the move.
+    """
+    for candidate in Path(__file__).resolve().parents:
+        if (candidate / ".git").exists():
+            return candidate
+    return Path.cwd()
+
+
+REPO = _repo_root()
 PACKAGE = REPO / "workflows" / "src" / "workhorse_workflows"
 
 #: The one module allowed to read the environment, and why (printed on a violation).

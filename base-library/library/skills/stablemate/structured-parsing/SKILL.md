@@ -139,8 +139,10 @@ of a YAML list. Reach for the library, including for something as small as a fen
 
 ## The check, and how to declare an exemption
 
-`make check-parsers` (in `make test`) walks every `.py` — tracked or not yet added — and
-flags regex pattern literals whose text encodes a known format's grammar, naming the parser
+`make check-parsers` (in `make test`) runs
+**[scripts/check_parsers.py](scripts/check_parsers.py)**, installed beside this skill so it
+travels into any repo that takes the doctrine. It walks every `.py` — tracked or not yet
+added — and flags regex pattern literals whose text encodes a known format's grammar, naming the parser
 to use instead. It is a pattern-shape denylist, not semantic analysis: it catches the shapes
 known to have gone wrong, and cannot prove an arbitrary regex is innocent.
 

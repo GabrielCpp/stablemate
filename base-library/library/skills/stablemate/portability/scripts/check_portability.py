@@ -19,7 +19,7 @@ that have gone wrong. The only proof is running the suite on the platform, and n
 here does that yet.
 
 Run:
-    uv run python scripts/check_portability.py
+    uv run python base-library/library/skills/stablemate/portability/scripts/check_portability.py
 """
 
 from __future__ import annotations
@@ -28,7 +28,22 @@ import ast
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
+
+def _repo_root() -> Path:
+    """The repo being checked, found by ascent rather than by a fixed depth.
+
+    This script installs beside its skill, so how deep it sits under the repo is the
+    library's layout and not this rule's — a `parents[N]` was true only while it lived in
+    `<repo>/scripts/`, and went silently wrong the moment the skill carried it elsewhere.
+    Ascending to the working copy's own marker is the one form that survives the move.
+    """
+    for candidate in Path(__file__).resolve().parents:
+        if (candidate / ".git").exists():
+            return candidate
+    return Path.cwd()
+
+
+REPO = _repo_root()
 
 #: Tier 1 — shipped to PyPI, so a user's platform is not ours to choose. Each entry is
 #: the package's import root; tests are excluded (a test for a tier-2 module is
