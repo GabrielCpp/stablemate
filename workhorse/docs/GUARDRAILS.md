@@ -172,57 +172,7 @@ same CLI configuration as the conversation it is compacting.
 | `WORKHORSE_LOG_LEVEL` | INFO | Root log level for workhorse and the node functions it calls. |
 | `WORKHORSE_AWAIT_POLL_S` | 15 | How often an `Await` re-checks the file it is waiting on. A portable polling loop rather than an inotify watch, so it behaves the same in a container, over NFS, and on a laptop that sleeps. |
 | `WORKHORSE_MAX_TRANSITIONS` | 1000 | How many state transitions a run may make before it is declared stuck. The gas tank bounds node *work*; this bounds the state machine itself, so a two-state ping-pong that burns no gas still ends. A workflow class that sets `max_transitions` knows its own shape and overrides this for its runs. A zero or negative setting is read as a typo and falls back to the default — a budget of zero is not "no budget", it is a run that ends before its first transition. |
-| `WORKHORSE_ON_FAIL` | unset (disabled) | Shell command run when a run ends **failed** (`--on-fail` overrides it). See "Being told the run died" below. |
-| `WORKHORSE_ON_FAIL_PID` | unset (disabled) | PID of a process whose terminal the failure is printed on (`--on-fail-pid` overrides it). |
 | `WORKHORSE_MAX_RUNTIME_S` | unset (disabled) | Absolute wall-clock ceiling for the whole run, counted from the run's ORIGINAL start so it survives `--resume`. Checked between states, *after* the checkpoint for the state it is about to run — so the transition that finished last is on disk and the resume picks up from it, rather than replaying an already-run state with the arguments it held on entry. Trips as `RunBudgetExceeded` (exit 1, run dir left resumable). Complements the transition budget: that catches a loop that never progresses, this catches a run that progresses (or crawls) forever. |
-
-### Being told the run died
-
-A run that stops is recoverable; a run that stopped six hours ago and nobody noticed has
-still cost six hours. Nothing announces it on its own — `groom status` lists only *live*
-runs, so an ended run is simply absent from it, and the evidence that it ended badly
-(`workhorse.terminal="fail"`, `error.class` on the root span) is only found by a poller
-that already suspected something. Two flags close that gap. Either may be used, or both:
-
-```bash
-# Print it on a terminal you already have open. `echo $$` in that shell gives the PID.
-workhorse-coder run --on-fail-pid 40213
-
-# Or run something. Anything: a desktop notification, a webhook, a repair run.
-workhorse-coder run --on-fail 'notify-send "workhorse: $WORKHORSE_RUN_ID failed"'
-```
-
-**`--on-fail-pid` writes to that terminal; it does not type into what is running there.**
-The ioctl that pushed characters into another terminal's input queue is refused by any
-current kernel (`dev.tty.legacy_tiocsti=0` since Linux 6.2), so a shell or an agent
-sitting at that terminal sees the text appear and is *not* prompted by it. That makes it
-the right channel for waking a human, or an agent whose loop already reads that pane —
-and the wrong one for expecting an answer. Its advantage over spawning a window is that
-the terminal is the operator's rather than the run's: it survives over SSH, and it does
-not die with a desktop session.
-
-`--on-fail` is spawned detached, in its own session, with its stdio closed and the failure
-in its environment:
-
-| Variable | |
-|---|---|
-| `WORKHORSE_RUN_ID` / `WORKHORSE_RUN_DIR` | which run, and where its checkpoint is |
-| `WORKHORSE_WORKFLOW` / `WORKHORSE_REPO` | which workflow, on which working tree |
-| `WORKHORSE_NODE` | the state it stopped in |
-| `WORKHORSE_ERROR` / `WORKHORSE_ERROR_CLASS` | the message, and `WorkflowFailed` vs `RunBudgetExceeded` vs `BackendInvocationError` |
-| `WORKHORSE_RESUME_CMD` | what to type next |
-
-Three things hold regardless of what the command is, because in each case the alternative
-is worse than not being notified: it **cannot fail the run** (a broken hook would replace
-the workflow's diagnosis with a diagnosis of the hook), it **cannot delay the exit** (the
-process is finalizing telemetry), and it **cannot recurse** — `WORKHORSE_ON_FAIL` is
-stripped from the child, so a hook that starts another run cannot arm the same hook again.
-
-Both fire on the three endings that mean *a person has to do something*: a workflow that
-raised `WorkflowFailed`, a `RunBudgetExceeded` wall-clock stop, and a
-`BackendInvocationError` the ladder could not get past. Neither fires under `--dry-run`,
-where reaching a fail terminal is a check reporting its result — waking somebody for that
-teaches them to ignore the channel.
 
 ### Node functions run in the driver's own process (and what that costs)
 
