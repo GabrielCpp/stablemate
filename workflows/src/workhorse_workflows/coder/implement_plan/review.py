@@ -8,7 +8,10 @@ from workhorse import worklist as wl
 from workhorse.pyflow import WorkflowFailed
 
 from workhorse_workflows.coder.implement_plan import repository
-from workhorse_workflows.coder.implement_plan.inventory import prepare_plan
+from workhorse_workflows.coder.implement_plan.inventory import (
+    audit_plan_decomposition,
+    prepare_plan,
+)
 from workhorse_workflows.coder.implement_plan.schemas import (
     PlanDecomposition,
     PlanReview,
@@ -50,18 +53,10 @@ def validate_review_report(logger, review: PlanReview) -> None:
     logger.info("implementation review returned %s", review.status)
 
 
-@blueprint.node
-def prepare_review_issues(
-    logger,
-    review: PlanReview,
-    context: PlanRunContext,
-    root_plan: PreparedPlan,
-    cycle: int,
-) -> PreparedPlan:
-    """Turn one review's findings into a uniquely identified validated packet batch."""
-    validate_review_report(logger, review)
-    if review.status != "issues":
-        raise WorkflowFailed("cannot prepare a review worklist from an approved review")
+def _review_decomposition(
+    review: PlanReview, root_plan: PreparedPlan, cycle: int
+) -> PlanDecomposition:
+    """The review worklist as a decomposition, so one validator covers both paths."""
     prefix = f"review-{cycle + 1}-"
     original_ids = {issue.id for issue in review.issues}
     rewritten = []
@@ -83,16 +78,53 @@ def prepare_review_issues(
                 }
             )
         )
-    return prepare_plan(
-        logger,
-        PlanDecomposition(
-            status="ready",
-            summary=review.summary,
-            tasks=rewritten,
-            final_verification=root_plan.final_verification,
-        ),
-        context,
+    return PlanDecomposition(
+        status="ready",
+        summary=review.summary,
+        tasks=rewritten,
+        final_verification=root_plan.final_verification,
     )
+
+
+@blueprint.node
+def audit_review_issues(
+    logger,
+    review: PlanReview,
+    context: PlanRunContext,
+    root_plan: PreparedPlan,
+    cycle: int,
+) -> str:
+    """Why this review worklist cannot become checkpoint authority, or "" if it can.
+
+    The decomposition turn already gets its rejection back and one more attempt, for the
+    reason recorded on `audit_plan_decomposition`: the validations reject a *proposal*,
+    and a proposal is the one thing an agent can be asked to correct. The review turn
+    produces a proposal in exactly the same shape and, until this existed, got no such
+    chance — a title three characters too long ended a run whose packets were all landed
+    and gate-green, and ended it after the most expensive turn in the flow. Reporting the
+    verdict without raising lets the caller spend a bounded rework before it is terminal.
+    """
+    try:
+        decomposition = _review_decomposition(review, root_plan, cycle)
+    except WorkflowFailed as exc:
+        logger.info("review worklist rejected: %s", exc)
+        return str(exc)
+    return audit_plan_decomposition(logger, decomposition, context)
+
+
+@blueprint.node
+def prepare_review_issues(
+    logger,
+    review: PlanReview,
+    context: PlanRunContext,
+    root_plan: PreparedPlan,
+    cycle: int,
+) -> PreparedPlan:
+    """Turn one review's findings into a uniquely identified validated packet batch."""
+    validate_review_report(logger, review)
+    if review.status != "issues":
+        raise WorkflowFailed("cannot prepare a review worklist from an approved review")
+    return prepare_plan(logger, _review_decomposition(review, root_plan, cycle), context)
 
 
 @blueprint.node
@@ -189,6 +221,7 @@ def complete_review_issues(
 
 
 __all__ = [
+    "audit_review_issues",
     "check_review_turn",
     "complete_review_issues",
     "prepare_review_issues",

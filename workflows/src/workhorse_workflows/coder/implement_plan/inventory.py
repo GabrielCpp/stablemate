@@ -275,8 +275,16 @@ def _validate_task(task: PlanTask, context: PlanRunContext) -> PlanTask:
         raise WorkflowFailed(
             f"task {task.id} is typed docs but owns no documentation: {', '.join(task.paths)}"
         )
-    if len(commit_subject(task)) > 72:
-        raise WorkflowFailed(f"task {task.id} commit subject exceeds 72 characters")
+    # Name the subject and its length. The rejection is handed back to the turn that
+    # wrote it, and the id it is keyed on is not the thing that is too long — the title
+    # is, and the type and scope prefix count against it. Reporting only the id asks the
+    # rework to guess which of the three to shorten, and by how much.
+    subject = commit_subject(task)
+    if len(subject) > 72:
+        raise WorkflowFailed(
+            f"task {task.id} commit subject is {len(subject)} characters, "
+            f"over the 72-character limit: {subject!r}"
+        )
     task.depends_on = list(dict.fromkeys(task.depends_on))
     return task
 

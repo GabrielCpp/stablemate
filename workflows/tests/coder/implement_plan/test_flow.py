@@ -523,6 +523,55 @@ def test_review_issues_become_fixed_worklist_before_completion(
     assert completion["review"]["resolved_issues"][0]["id"] == "review-1-missing-edge"
 
 
+def test_a_malformed_review_worklist_buys_a_rework_instead_of_ending_the_run(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A review's worklist is a proposal, so a rejected one is handed back.
+
+    Every packet is landed and gate-green by the time this turn runs, and the turn is
+    the most expensive in the flow. Raising on a title three characters too long threw
+    all of that away for a defect the reviewer could have corrected on sight — which is
+    exactly why the decomposition turn already gets its verdict back and one more try.
+    """
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text("# Review rework\n", encoding="utf-8")
+    task = _task("initial", "src/value.txt")
+    overlong = _issue("missing-edge", "src/value.txt", finding="The edge case is absent.") | {
+        "title": "Correct the absent edge case in the value module and its regression tests",
+    }
+    agent = _Agent(
+        repo,
+        _decomposition(task),
+        edits={
+            "initial": {"src/value.txt": "initial\n"},
+            "review-1-missing-edge": {"src/value.txt": "fixed\n"},
+        },
+        reviews=[
+            _review(overlong),
+            _review(_issue("missing-edge", "src/value.txt", finding="The edge case is absent.")),
+            _review(summary="all blocking issues resolved"),
+        ],
+    )
+
+    result = drive_flow(ImplementPlan(plan_path=str(plan_path), repo_dir=str(repo)), env(), agent)
+
+    assert result.status == "complete"
+    assert result.review_issue_count == 1
+    # Three review turns: the rejected one, its rework, and the approval.
+    assert agent.count("review-plan-implementation") == 3
+    reviews = agent.args_for("review-plan-implementation")
+    assert not reviews[0]["findings"]
+    # The rejection names the subject and its length, not just the issue id.
+    assert "72-character limit" in reviews[1]["findings"]
+    assert "fix: correct the absent edge case" in reviews[1]["findings"]
+    # A new cycle starts with a clean rework budget.
+    assert not reviews[2]["findings"]
+
+
 def test_failed_post_review_gate_leaves_no_approved_review_worklist(
     tmp_path: Path,
     repo: Path,
