@@ -17,14 +17,16 @@ import os
 import shutil
 import sys
 import sysconfig
+import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
 from workhorse._vendor.stablemate_core.config import CONFIG_PATH_ENV
-from workhorse import control, gitstate, logsetup, otel, reload
+from workhorse import control, gitstate, inbox, logsetup, otel, reload
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.manifest import ManifestContext
@@ -336,6 +338,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
                 otel.end_run("terminal")
                 return 0
             print(f"[workhorse] ERROR: {exc}")
+            _record_failure_handoff(writer, exc)
             writer.finish(terminal="fail")
             otel.end_run("fail", error=str(exc), error_class=type(exc).__name__,
                              error_kind="fatal")
@@ -791,6 +794,37 @@ def _record_interrupt(writer: ArtifactWriter) -> None:
     Ctrl-C, where a second traceback would bury the resume hint.
     """
     writer.record_interrupt(_state_of(writer), "KeyboardInterrupt")
+
+
+def _record_failure_handoff(writer: ArtifactWriter, exc: PyflowError) -> None:
+    """Diagnose the stop into the run's outbox, so it reaches whoever is watching it.
+
+    Every `WorkflowFailed` raise site lands in this one catch — see
+    `workhorse.inbox`'s module docstring for why the entry is `kind="failure"` rather
+    than a new channel. Best-effort like `_record_interrupt`: this already runs on a
+    failure path, and a second exception here must not bury the first.
+    """
+    state = _state_of(writer)
+    body = "\n".join(
+        [
+            f"failure_class: {type(exc).__name__}",
+            f"node: {state}",
+            f"error: {exc}",
+            f"run_dir: {writer.run_dir}",
+            f"checkpoint: {writer.run_dir / ArtifactWriter.CHECKPOINT_FILE}",
+            f"turns: {writer.run_dir / ArtifactWriter.TURNS_DIR}",
+        ]
+    )
+    try:
+        inbox.append(
+            writer.run_dir / "inbox.jsonl",
+            id=uuid.uuid4().hex,
+            body=body,
+            at=datetime.now(timezone.utc).isoformat(),
+            kind="failure",
+        )
+    except Exception as inbox_exc:  # noqa: BLE001 — diagnosis must not bury the failure
+        print(f"[workhorse] WARNING: could not write failure handoff to outbox: {inbox_exc}")
 
 
 __all__ = ["RunInvocation", "run_pyflow"]
