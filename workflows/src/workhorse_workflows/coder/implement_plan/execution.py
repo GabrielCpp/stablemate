@@ -105,7 +105,7 @@ def extend_task_paths(
     index: int,
     task: PlanTask,
 ) -> PlanTask:
-    """Grow a packet to cover what its committed-tree repair had to touch.
+    """Grow a packet to cover what its edit turn had to touch that nobody owns.
 
     A committed-tree failure is, by construction, often a finding *about the declared
     paths*: the export carries only the committed files, so a command that passes in the
@@ -113,6 +113,12 @@ def extend_task_paths(
     never declared. The repair turn is told exactly that — and ownership then refuses to
     let it act on the diagnosis. The one arm where the path set is the defect was the one
     arm that could not change the path set, which ended the run over a correct repair.
+
+    The same gap opens on the ordinary edit turns, which is why they run this too. The
+    planner writes `paths` per packet, so a file that belongs to the *suite* rather than
+    to any one packet — a shared `conftest.py`, a fixture module — is declared by nobody,
+    and the first packet whose tests need it dies for touching it. No turn can repair
+    that: reverting the edit removes what the packet's own tests are built on.
 
     So widen the packet here, from what the turn actually touched. The invariant kept is
     the one that matters: a packet may not reach into work that is already published, so a
