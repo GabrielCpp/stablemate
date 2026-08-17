@@ -20,6 +20,11 @@ from groom.models import AnswerResult, GateInfo, WorkflowContainer, WorkflowStat
 
 def _reset() -> None:
     state.WORKFLOWS.clear()
+    # The telemetry cache is upstream of the rows: `_live_loop` re-syncs a native row
+    # from every entry in RUNS on each tick, so a run another file left here is
+    # re-materialized into WORKFLOWS *after* this reset and shows up in the broadcast.
+    # Clearing the rows alone makes the fleet cases order-dependent.
+    state.RUNS.clear()
     state._gate_locks.clear()
     state.CLIENTS.clear()
     state.WATCHING.clear()
