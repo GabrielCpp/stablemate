@@ -7,8 +7,12 @@ what a stat-keyed cache serves stale. What that cache lacks is survival — ever
 invocation is a fresh process, so its 24 seconds of saved work are thrown away at exit.
 This module is that cache, persisted and generalised.
 
-**Nothing in ostler consults it yet.** It ships alone so its key and its validity rules
-can be reviewed on their own, before a caller makes either hard to change.
+**No parse product is served from it yet.** The store ships ahead of its consumers so its
+key and its validity rules can be reviewed on their own, and ahead of them the *controls*
+land: an off switch (:attr:`IndexStore.enabled`), an explicit directory, a hit/miss count
+a caller can print, an eviction entry point (:func:`clean`) and an ambient
+:func:`session` the serving increment plugs into. A cache that is on by default and has
+none of those is a cache nobody can bisect against, which is why they come first.
 
 Three rules carry the whole design.
 
@@ -42,6 +46,8 @@ import json
 import os
 import pickle
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from importlib import metadata
 from importlib.resources import files
 from pathlib import Path
@@ -265,11 +271,32 @@ class IndexStore:
         *,
         directory: Path | str | None = None,
         max_age_s: float = DEFAULT_MAX_AGE_S,
+        enabled: bool = True,
     ) -> None:
         self.root = Path(root)
         self.directory = index_dir(directory)
         self.max_age_s = max_age_s
+        # On by default; `--no-index` is the escape hatch, not the switch. A disabled store
+        # is still constructed and still resolves its directory, so the run can *report*
+        # which index it would have used while touching none of it.
+        self.enabled = enabled
+        self.hits = 0
+        self.misses = 0
         self._epoch: str | None = None
+
+    def stats(self) -> dict:
+        """The hit/miss line, as it appears under ``index`` in ``--json`` output.
+
+        The effective directory travels with the counts because that is the pair a
+        disagreement between two runs is diagnosed from: the same counts against different
+        directories is a different fault from different counts against the same one.
+        """
+        return {
+            "dir": str(self.directory),
+            "enabled": self.enabled,
+            "hits": self.hits,
+            "misses": self.misses,
+        }
 
     # -- keys ---------------------------------------------------------------
     @property
@@ -314,7 +341,21 @@ class IndexStore:
         Every failure mode collapses to ``None`` on purpose: an unreadable file, a
         truncated pickle, a payload from another schema version and a directory that is
         not a directory are all "recompute it", and none of them is the caller's problem.
+
+        A disabled store answers ``None`` without counting: under ``--no-index`` the
+        counts must read zero, because a run whose misses climb is a run that consulted
+        an index it was told not to.
         """
+        if not self.enabled:
+            return None
+        value = self._read(path)
+        if value is None:
+            self.misses += 1
+        else:
+            self.hits += 1
+        return value
+
+    def _read(self, path: Path) -> Any | None:
         key = self.key(path)
         if key is None:
             return None
@@ -342,8 +383,11 @@ class IndexStore:
         """Store *value* for *path*, pruning past the age bound first.
 
         Never raises: a store that cannot write is a store that gives no speedup, not a
-        command that fails.
+        command that fails. A disabled store writes nothing at all — ``--no-index`` has to
+        leave the directory it was pointed at untouched, not merely unread.
         """
+        if not self.enabled:
+            return
         key = self.key(path)
         if key is None:
             return
@@ -367,24 +411,109 @@ class IndexStore:
 
         A bound, not a sweep: an entry inside the bound survives every write. Runs on the
         write path rather than as a command, so an unattended machine bounds itself
-        without anyone remembering to.
+        without anyone remembering to. ``ostler cache clean`` is the same sweep asked for
+        explicitly, which is why both go through :func:`clean`.
         """
         if self.max_age_s <= 0:
             return 0
-        cutoff = (time.time() if now is None else now) - self.max_age_s
-        removed = 0
+        return clean(self.directory, max_age_s=self.max_age_s, now=now)
+
+
+# ---------------------------------------------------------------------------
+# Eviction
+# ---------------------------------------------------------------------------
+def clean(
+    directory: Path | str,
+    *,
+    everything: bool = False,
+    max_age_s: float = DEFAULT_MAX_AGE_S,
+    now: float | None = None,
+) -> int:
+    """Delete index entries under *directory* and return how many went.
+
+    Aged-out entries by default, every entry under *everything*. A directory that is not
+    there is the normal state of a fresh machine, not a failure: it removes nothing,
+    reports nothing removed, and is *not* created on the way past — an eviction command
+    that leaves a directory behind has done the opposite of its job.
+    """
+    root = Path(directory).expanduser()
+    cutoff = (time.time() if now is None else now) - max_age_s
+    removed = 0
+    try:
+        candidates = sorted(root.rglob("*"))
+    except OSError:
+        return 0
+    for candidate in candidates:
         try:
-            candidates = list(self.directory.rglob("*"))
-        except OSError:
-            return 0
-        for candidate in candidates:
-            try:
-                if not candidate.is_file() or candidate.stat().st_mtime >= cutoff:
-                    continue
-                candidate.unlink()
-            except OSError:
-                # Another process pruning the same shared cache is expected, not an
-                # error: it wins the race and the entry is gone either way.
+            if not candidate.is_file():
                 continue
-            removed += 1
-        return removed
+            if not everything and candidate.stat().st_mtime >= cutoff:
+                continue
+            candidate.unlink()
+        except OSError:
+            # Another process cleaning the same shared cache is expected, not an error:
+            # it wins the race and the entry is gone either way.
+            continue
+        removed += 1
+    # The shard directories are an implementation detail of the key, so an emptied one is
+    # litter rather than state. Walking deepest-first empties a nested shard before its
+    # parent is considered.
+    for candidate in sorted(candidates, reverse=True):
+        try:
+            if candidate.is_dir():
+                candidate.rmdir()
+        except OSError:
+            continue
+    return removed
+
+
+# ---------------------------------------------------------------------------
+# The ambient store for one command
+# ---------------------------------------------------------------------------
+#: The store the running command opened, or ``None`` outside one. Ambient rather than
+#: threaded because the read-only accessors that will consult it — the document accessor,
+#: the anchor computation — are reached through call chains (``model.load``,
+#: ``LinkResolver``) that no caller of ``doctor.run`` constructs or can pass through.
+_ACTIVE: IndexStore | None = None
+
+
+def active() -> IndexStore | None:
+    """The store the enclosing :func:`session` opened, or ``None``.
+
+    A consumer that gets ``None`` recomputes — outside a session there is no index, and
+    that must read as a cold path rather than as an error.
+    """
+    return _ACTIVE
+
+
+@contextmanager
+def use(store: IndexStore) -> Iterator[IndexStore]:
+    """Make an already-constructed *store* :func:`active` for the duration of a block.
+
+    Restores whatever was active before rather than clearing it, so two sessions can nest
+    — ``--verify-index`` runs one indexed and one not inside a single process — without
+    the inner one leaving the outer's store dangling on the way out.
+
+    Separate from :func:`session` because a long-lived caller (:class:`ostler.Ostler`)
+    keeps one store across many loads and needs its counts to accumulate, rather than a
+    fresh store per load.
+    """
+    global _ACTIVE
+    previous = _ACTIVE
+    _ACTIVE = store
+    try:
+        yield store
+    finally:
+        _ACTIVE = previous
+
+
+@contextmanager
+def session(
+    root: Path,
+    *,
+    directory: Path | str | None = None,
+    enabled: bool = True,
+) -> Iterator[IndexStore]:
+    """Open a store for the duration of one command and make it :func:`active`."""
+    with use(IndexStore(root, directory=directory, enabled=enabled)) as store:
+        yield store

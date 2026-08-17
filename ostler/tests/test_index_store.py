@@ -411,19 +411,31 @@ def test_a_missing_file_is_a_miss(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Nothing consumes it yet
+# No parse product is served from it yet
 # ---------------------------------------------------------------------------
-def test_nothing_else_in_ostler_consults_the_store():
-    """This commit ships the key and the validity rules alone, so they can be reviewed alone."""
+#: The modules that own a parse product — the read-only document accessor, the anchor
+#: computation, the markdown parse and the graph build. The increment that starts serving
+#: from the store is the one that lets the store into these; until then, a reference here
+#: means a product is being cached ahead of the controls that gate it.
+PRODUCT_MODULES = ("model.py", "links.py", "markdown.py", "graph.py")
+
+
+def test_no_parse_product_is_served_from_the_store_yet():
+    """The store's key and validity rules ship ahead of any consumer of them.
+
+    The command layer (`cli.py`, `doctor.py`'s verify mode) is exempt: the controls —
+    `--no-index`, `--index-dir`, the hit/miss line, `cache clean`, `--verify-index` — are
+    what gate the serving increments, and `test_index_cli.py` is where they are pinned.
+    """
     package = REPO_ROOT / "ostler" / "ostler"
     markers = ("IndexStore", "from ostler.index", "from ostler import index", "ostler.index")
 
     consumers = [
         f"{path.relative_to(package)}: {marker}"
         for path in package.rglob("*.py")
-        if path.name != "index.py" and "_vendor" not in path.relative_to(package).parts
+        if path.name in PRODUCT_MODULES
         for marker in markers
         if marker in path.read_text(encoding="utf-8")
     ]
 
-    assert not consumers, f"nothing may consult the index store in this commit: {consumers}"
+    assert not consumers, f"no parse product may be served from the store yet: {consumers}"

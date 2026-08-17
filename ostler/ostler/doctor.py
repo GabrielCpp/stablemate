@@ -6,6 +6,8 @@ missing story files, and dangling dependencies.
 
 from __future__ import annotations
 
+import difflib
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -57,6 +59,33 @@ class Report:
             "warnings": self.warnings,
             "findings": [vars(f) for f in self.findings],
         }
+
+
+def diff_reports(indexed: Report, uncached: Report, *, context: int = 2) -> list[str]:
+    """The unified diff between two runs' reports, empty when they agree.
+
+    This is the correctness half of the index's acceptance gate (Q13): the cached path and
+    the uncached one are the same computation, so their reports are compared *whole*
+    rather than by error count. An equal count over different findings is exactly the
+    disagreement a count-only comparison cannot see.
+
+    The reports are rendered as sorted-key JSON so the diff is stable and the line a
+    reader lands on names the field that moved.
+    """
+    left = json.dumps(indexed.as_dict(), indent=2, sort_keys=True, default=str)
+    right = json.dumps(uncached.as_dict(), indent=2, sort_keys=True, default=str)
+    if left == right:
+        return []
+    return list(
+        difflib.unified_diff(
+            left.splitlines(),
+            right.splitlines(),
+            fromfile="doctor (index)",
+            tofile="doctor (--no-index)",
+            lineterm="",
+            n=context,
+        )
+    )
 
 
 def _epic_matches(epic: Epic, epic_filter: str) -> bool:

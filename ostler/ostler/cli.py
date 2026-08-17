@@ -16,13 +16,69 @@ from ostler import checks as checks_mod
 from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
-from ostler.model import load
+from ostler import index as index_mod
+from ostler.model import find_root, load
 
 _TYPES = (
     tuple(t.name for t in registry.REGISTRY)
     + ("seed",)
     + tuple(t.name for t in registry.UI_TYPES)
 )
+
+
+#: The subcommands that answer without loading a graph, and so have no index to control.
+#: `checks` prints a vocabulary that is a property of ostler rather than of a book;
+#: `cache` operates *on* the index and carries its own `--index-dir` instead.
+_INDEXLESS_COMMANDS = frozenset({"checks", "cache"})
+
+#: Days, the unit `cache clean` takes its age bound in. The seconds live in `index`.
+_DEFAULT_MAX_AGE_DAYS = index_mod.DEFAULT_MAX_AGE_S / (24 * 60 * 60)
+
+
+def _add_index_controls(parser: argparse.ArgumentParser) -> None:
+    """Give *parser* the two index controls, defaulting to *silence*.
+
+    ``argparse.SUPPRESS`` rather than a real default, exactly as ``write_parent`` does it:
+    a subparser applies its own defaults into the shared namespace, so a concrete default
+    here would let ``ostler create --no-index epic …`` be overwritten by the ``epic``
+    parser's ``False`` on the way past. Suppressed, a parser that did not see the flag
+    contributes nothing and the one value :func:`_build_parser` sets stands.
+    """
+    parser.add_argument(
+        "--no-index", action="store_true", dest="no_index", default=argparse.SUPPRESS,
+        help="force the uncached path: read nothing from the parse index and write nothing to it",
+    )
+    parser.add_argument(
+        "--index-dir", metavar="DIR", dest="index_dir", default=argparse.SUPPRESS,
+        help=f"the parse index directory, overriding ${index_mod.INDEX_DIR_ENV}, "
+             "ostler's config and the shared stablemate cache",
+    )
+
+
+def _install_index_controls(parser: argparse.ArgumentParser) -> None:
+    """Add the index controls to every subcommand of *parser* that loads a graph.
+
+    Walked rather than spelled out at each ``add_parser`` call, because "every command
+    that loads a graph" is nearly every command ostler has, and a list of sixty would be
+    wrong the first time somebody adds the sixty-first. The recursion reaches nested
+    subcommands (``create epic``, ``qa run``) so the flag is accepted after the leaf verb
+    as well as before it.
+
+    argparse offers no public accessor for the subparsers it has registered, so this reads
+    ``_actions``. The alternative is threading a parent parser through every one of those
+    call sites and still missing the next one.
+    """
+    for action in parser._actions:
+        if not isinstance(action, argparse._SubParsersAction):
+            continue
+        for name, sub in action.choices.items():
+            # `choices` is declared as a mapping to `object`, and an alias registers the
+            # same parser twice; the isinstance both narrows the type and would skip
+            # anything that is not a parser rather than crashing on it.
+            if name in _INDEXLESS_COMMANDS or not isinstance(sub, argparse.ArgumentParser):
+                continue
+            _add_index_controls(sub)
+            _install_index_controls(sub)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -49,6 +105,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     d.add_argument(
         "--no-schema", action="store_true", help="skip JSON Schema validation"
+    )
+    d.add_argument(
+        "--verify-index", action="store_true", dest="verify_index",
+        help="run doctor with the index and without it and diff the two reports; "
+             "exit non-zero on any disagreement (one command, for CI)",
     )
 
     ck = sub.add_parser("checks", help="the `verify:` check vocabulary and its signatures")
@@ -664,6 +725,34 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     qa_evidence_map.add_argument("--json", action="store_true")
 
+    # ---- cache -------------------------------------------------------------
+    ca = sub.add_parser("cache", help="the persistent parse index: evict what it holds")
+    cas = ca.add_subparsers(dest="op", required=True)
+    cac = cas.add_parser(
+        "clean",
+        help="delete aged-out index entries (--all: every entry)",
+    )
+    cac.add_argument(
+        "--index-dir", metavar="DIR", dest="index_dir", default=argparse.SUPPRESS,
+        help=f"the index directory to clean, overriding ${index_mod.INDEX_DIR_ENV}, "
+             "ostler's config and the shared stablemate cache",
+    )
+    cac.add_argument(
+        "--all", action="store_true", dest="everything",
+        help="remove every entry, not only the aged-out ones",
+    )
+    cac.add_argument(
+        "--max-age-days", type=float, default=_DEFAULT_MAX_AGE_DAYS, dest="max_age_days",
+        metavar="N", help="how long an entry may go untouched before it ages out "
+                          f"(default: {_DEFAULT_MAX_AGE_DAYS:g})",
+    )
+    cac.add_argument("--json", action="store_true")
+
+    # One value for the whole run, set here so a suppressed flag on any subparser leaves
+    # it standing. On by default from the first commit: `--no-index` is the escape hatch.
+    p.set_defaults(no_index=False, index_dir=None)
+    _add_index_controls(p)
+    _install_index_controls(p)
     return p
 
 
@@ -762,10 +851,14 @@ def _cmd_locators(graph, args) -> int:
     return 1 if broken else 0
 
 
-def _cmd_doctor(graph, args) -> int:
+def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
     report = doctor.run(graph, epic_filter=args.epic, check_schema=not args.no_schema)
     if args.json:
-        _out(json.dumps(report.as_dict(), indent=2))
+        # The hit/miss line is *added* to the report, never substituted for it: a caller
+        # that gates on `errors` must not have to learn a new shape to keep doing so.
+        payload = report.as_dict()
+        payload["index"] = store.stats()
+        _out(json.dumps(payload, indent=2))
         return 1 if report.errors else 0
     _out(f"org: {report.org}   profile: {report.profile}")
     for facts in report.epics:
@@ -785,6 +878,64 @@ def _cmd_doctor(graph, args) -> int:
             _out(f"  {mark} {fnd.code}: {scope}{fnd.message}")
     _out(f"\n{report.errors} error(s), {report.warnings} warning(s)")
     return 1 if report.errors else 0
+
+
+def _cmd_verify_index(cwd: Path | None, args) -> int:
+    """Run doctor both ways and diff the two reports — the correctness half of the gate.
+
+    One command rather than a flag pair, because CI has to be able to run it without
+    knowing how to compare two invocations' output itself. Both loads happen in this
+    process and each gets its own index session, so the indexed run is the one that reads
+    and writes entries and the other is the cold path it must agree with.
+
+    ``--no-index`` is deliberately ignored here: a mode whose whole job is to run both
+    ways has nothing to do with an escape hatch from one of them.
+
+    Until a parse product is actually served from the store the two runs are the same
+    computation and this passes trivially — which is the correct result, and the point of
+    landing the gate green before anything starts depending on it.
+    """
+    root = find_root(cwd if cwd is not None else Path.cwd())
+    reports: list[doctor.Report] = []
+    for enabled in (True, False):
+        with index_mod.session(root, directory=args.index_dir, enabled=enabled):
+            reports.append(
+                doctor.run(
+                    load(cwd), epic_filter=args.epic, check_schema=not args.no_schema
+                )
+            )
+    diff = doctor.diff_reports(reports[0], reports[1])
+    if not diff:
+        _out(
+            f"verify-index: the indexed and uncached reports agree "
+            f"({reports[0].errors} error(s), {reports[0].warnings} warning(s))"
+        )
+        return 0
+    _out("verify-index: the indexed and uncached reports disagree")
+    for line in diff:
+        _out(line)
+    return 1
+
+
+def _cmd_cache(args) -> int:
+    """``ostler cache clean`` — the eviction `IndexStore.prune` runs automatically.
+
+    Exits zero against a directory that is not there: a fresh machine has no index, and a
+    clean that fails because there was nothing to clean is a clean that cannot be put in a
+    setup script.
+    """
+    directory = index_mod.index_dir(args.index_dir)
+    removed = index_mod.clean(
+        directory,
+        everything=args.everything,
+        max_age_s=args.max_age_days * 24 * 60 * 60,
+    )
+    if args.json:
+        _out(json.dumps({"dir": str(directory), "removed": removed}, indent=2))
+    else:
+        scope = "entries" if args.everything else "aged-out entries"
+        _out(f"removed {removed} {scope} from {directory}")
+    return 0
 
 
 def _cmd_fmt(graph, args) -> int:
@@ -1170,19 +1321,37 @@ def _cmd_checks(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: C901 — flat command dispatch
+def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     cwd = Path(args.chdir) if args.chdir else None
     # Before the graph: the vocabulary is a property of ostler, not of a book, and an author
     # who needs to look a signature up is often standing somewhere there is no book to load.
     if args.command == "checks":
         return _cmd_checks(args)
-    graph = load(cwd)
-    _use_handles(graph, args)
+    # Also before the graph, for the opposite reason: `cache clean` acts on the index, and
+    # a machine whose book will not load is exactly one somebody wants to clean the cache on.
+    if args.command == "cache":
+        return _cmd_cache(args)
+    if args.command == "doctor" and args.verify_index:
+        return _cmd_verify_index(cwd, args)
+    # The session wraps the load as well as the dispatch: the parse products the next
+    # increment serves are read during `load`, so a session opened after it would cover
+    # the cheap half of the run and miss the expensive one.
+    with index_mod.session(
+        find_root(cwd if cwd is not None else Path.cwd()),
+        directory=args.index_dir,
+        enabled=not args.no_index,
+    ) as store:
+        graph = load(cwd)
+        _use_handles(graph, args)
+        return _dispatch(graph, args, store)
+
+
+def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 — flat command dispatch
     c = args.command
 
     if c == "doctor":
-        return _cmd_doctor(graph, args)
+        return _cmd_doctor(graph, args, store)
     if c == "trace":
         lines, found = trace.run(graph, ids_mod.resolve(graph, args.token))
         _out("\n".join(lines))
