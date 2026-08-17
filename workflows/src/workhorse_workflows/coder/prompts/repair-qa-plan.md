@@ -11,11 +11,14 @@ per-scenario dry run described below is the one execution this turn owns.
 ## Time budget — {{ node_timeout_min }} minutes
 
 This turn is stopped at its budget ("unbounded" = no cap), and what survives is the file on
-disk rather than this turn's reply. Apply the repairs **one at a time, saving after each**,
-so a turn that runs out has landed every edit it finished. Take the worklist in the order it
-is given; if you cannot reach the end of it, a plan carrying most of the cited repairs is
-worth more than one carrying none. Re-authoring the plan is out of budget as well as out of
-scope — it is the single fastest way to lose this turn's work.
+disk rather than this turn's reply. Being cut is **not** a failure. Apply the repairs **one
+at a time, saving after each**, and dry-run each one as you finish it rather than batching
+every execution at the end — the budget covers both the edits and the scenario runs, and a
+run is the slow half. Take the worklist in the order it is given; if you cannot reach the end
+of it, a plan carrying most of the cited repairs is worth more than one carrying none. If you
+are cut, the next turn continues this same conversation and is told so: it picks up your
+worklist where you left it, so do not re-apply an edit that already landed, and never
+re-author the plan — that is the single fastest way to lose this turn's work.
 
 ## Inputs
 

@@ -31,6 +31,7 @@ from unittest.mock import patch
 import pytest
 from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import WorkflowFailed
+from workhorse.runner.failure import BackendInvocationError
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
@@ -174,7 +175,9 @@ class _Agent:
     `findings_per_pass` varies the reviewer's worklist across passes — the axis a
     *progress* verdict is measured on, where every other axis here is measured per pass.
     `explode_after` picks *which* pass dies, so a kill can be staged after a loop has
-    already accumulated a baseline rather than only on the first turn.
+    already accumulated a baseline rather than only on the first turn. `cut`/`cut_pass` are
+    the softer ending: the named prompt is stopped at its wall-clock budget on exactly that
+    pass, which is a turn that wrote something and never replied.
 
     The three `resolver_*` knobs script the author's say on a block: whether it decides at
     all, what it decided, and whether the decision is this story's or the whole epic's. The
@@ -196,6 +199,8 @@ class _Agent:
         findings_per_pass: list[list[dict[str, Any]]] | None = None,
         explode: set[str] | None = None,
         explode_after: int = 1,
+        cut: set[str] | None = None,
+        cut_pass: int = 1,
         resolver_decision: str = "escalated",
         resolver_answer: str = "",
         resolver_scope: str = "story",
@@ -211,6 +216,8 @@ class _Agent:
         self.findings_per_pass = findings_per_pass
         self.explode = explode or set()
         self.explode_after = explode_after
+        self.cut = cut or set()
+        self.cut_pass = cut_pass
         self.resolver_decision = resolver_decision
         self.resolver_answer = resolver_answer
         self.resolver_scope = resolver_scope
@@ -232,7 +239,13 @@ class _Agent:
         if stem in self.explode and nth >= self.explode_after:
             raise RuntimeError(f"killed during {stem}")
         handler = getattr(self, f"_{stem.replace('-', '_')}")
-        return f"(scripted) {node.prompt}", handler(data, nth)
+        answer = handler(data, nth)
+        if stem in self.cut and nth == self.cut_pass:
+            # The transport-level signal, not the pyflow one: raising `AgentTimeout` here
+            # would skip the engine's translation. `retries=0` on the node is what makes
+            # this the first and only invocation.
+            raise BackendInvocationError(f"timed out after {node.timeout}s", timed_out=True)
+        return f"(scripted) {node.prompt}", answer
 
     def counts(self) -> Counter[str]:
         return Counter(self.calls)
@@ -515,6 +528,33 @@ def test_a_documented_claim_naming_no_nodes_is_sent_back(
     assert agent.counts()["review-story-documentation"] == 1, agent.counts()
     # And the second author pass was told exactly what was wrong with the first.
     assert "did not identify affected OKF nodes" in agent.author_args()[1]["gate_notes"]
+
+
+def test_a_repair_turn_cut_at_its_budget_is_gated_rather_than_failing_the_run(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """An overrun `repair-documentation` goes straight to the gate, because the book is a file.
+
+    The turn's reply is discarded either way — what the gate reads is the graph on disk. So a
+    turn stopped at its forty-five-minute cap has still landed the edits it finished, and
+    doctor over those is worth more than a dead run. The next lap continues the same session,
+    so all it needs is to be told that its own worklist is half-applied.
+    """
+    agent = _Agent(nodes_after=3, cut={"repair-documentation"}, cut_pass=2)
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.authored() == 3, agent.counts()
+    # The cut turn was not retried, and the pass after it was told why the errors repeat.
+    assert agent.counts()["repair-documentation"] == 2, agent.counts()
+    brief = agent.author_args()[2]["gate_notes"]
+    assert brief.startswith("Your previous turn was stopped at its wall-clock budget"), brief
+    # And the gate's own findings are still under it — the prefix explains them, not replaces.
+    assert "did not identify affected OKF nodes" in brief, brief
 
 
 def test_a_repair_lap_with_nothing_left_to_edit_keeps_the_nodes_already_named(

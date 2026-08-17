@@ -718,10 +718,12 @@ class Qa(Workflow):
                 # the work that authoring the plan was, and paying the authoring tier for it
                 # is what tempted the turn to rewrite rather than repair.
                 power="low",
-                # 15 min. Applying a cited worklist averages five, and a repair turn that has
-                # run three times that is rewriting the file rather than editing it — which is
-                # the failure this node exists to prevent.
-                timeout=900,
+                # 45 min. The old 15 was sized for "apply a worklist", which averages five —
+                # but the turn now also drives the stack and dry-runs every failing scenario
+                # through `ostler qa run`, and one browser scenario alone can spend minutes.
+                # Cutting it at 15 stopped the turn between the edit and the evidence, which
+                # is the one place its work is worth least.
+                timeout=2700,
                 # Same reasoning as `plan`: the file on disk is the deliverable, and a repair
                 # that got halfway is a better starting point than a fresh session that has
                 # to re-read the worklist from the top. `MAX_PLAN_VALIDATION_REWORKS` and

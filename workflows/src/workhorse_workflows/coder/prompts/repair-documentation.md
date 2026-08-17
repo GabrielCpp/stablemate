@@ -10,6 +10,15 @@ return and sends back whatever is still red, so **iterate `ostler doctor` yourse
 reports zero errors for the affected nodes** before returning. One turn that converges costs
 less than ten laps that each close a batch.
 
+## Time budget — {{ node_timeout_min }} minutes
+
+This turn is stopped at its budget ("unbounded" = no cap), and what survives is the book on
+disk rather than this turn's reply. Being cut is **not** a failure: edit one node at a time,
+saving as you go, and a turn that ran out having closed most of the findings is worth far
+more than one that batched them and landed none. If it happens, the next turn continues this
+same conversation with the still-red errors — it is told the budget stopped you, so do not
+start the book over and do not re-close what is already closed.
+
 Load the skill and follow it: {{ skill_load_ref("ostler-documentation", skill_dir() + "/ostler-documentation/SKILL.md") }}
 It carries the node-type vocabulary, the bullet schema and the linter rules; obey them. The
 reference for the type table and bullets is the `ostler` skill it links to.

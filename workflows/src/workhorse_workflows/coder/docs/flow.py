@@ -48,7 +48,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
+from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
@@ -79,6 +79,15 @@ from workhorse_workflows.kit.telemetry import counter_labels, verdict_labels
 #: it is standing in for the accountable party, and cutting it off mid-decision buys a
 #: block back.
 UNBOUNDED = float("inf")
+
+#: What the next repair turn is told when the one before it was cut at its wall-clock cap.
+#: Prefixed to the gate notes by `verify`, in the wording the QA lane already uses for the
+#: same situation: a cut is not a defect in what landed, so the brief stays "continue", and
+#: the errors underneath it are whatever doctor still reports after the partial edits.
+_OVERRAN_REPAIR = (
+    "Your previous turn was stopped at its wall-clock budget; continue from where you "
+    "were — the errors below are what is still red."
+)
 
 
 def _prompt_note(note: str) -> str:
@@ -341,6 +350,14 @@ class Docs(Workflow):
         the context the model just had. The chain is dropped when it stops being an asset:
         after `MAX_CHAIN_LAPS`, and on a `stalled` gate verdict, which says the last laps
         changed nothing and the conversation has talked itself into a corner.
+
+        The turn is capped at 45 minutes. It iterates doctor itself over a worklist that can
+        be the whole story's ungrounded set, so it is not a turn that can be sized by its
+        instruction — but without a bound it inherits the run's watchdog and a single lap
+        can eat an hour. The cut is survivable for the same reason the QA lane's is: the
+        deliverable is the book on disk, not the reply, so `retries=0` and the gate below
+        re-runs doctor over whatever landed. The chain is what makes it cheap — the next lap
+        opens in the same session, prefixed with `_OVERRAN_REPAIR`.
         """
         self.logger.info("repairing the documentation for %s", self.ctx.story_slug,
                          extra={"activity": True})
@@ -350,18 +367,36 @@ class Docs(Workflow):
             self.reset_session(self._chain)
             laps = 0
         progress = progress.model_copy(update={"chain_laps": laps + 1})
-        result = self.agent(
-            "prompts/repair-documentation.md",
-            returns=DocumentationResult,
-            # low: applying a named list of edits to nodes that already exist. Paying the
-            # authoring tier for it is part of what tempted the turn to re-author.
-            power="low",
-            add_dirs=self._dirs(),
-            args=self._author_args(gate_notes, review_notes, obligations),
-            session=self._chain,
-        )
+        overran = ""
+        try:
+            result = self.agent(
+                "prompts/repair-documentation.md",
+                returns=DocumentationResult,
+                # low: applying a named list of edits to nodes that already exist. Paying the
+                # authoring tier for it is part of what tempted the turn to re-author.
+                power="low",
+                # 45 min, and `retries=0` — see the docstring. A retry would restart the turn
+                # against a book its own first attempt already edited.
+                timeout=2700,
+                retries=0,
+                add_dirs=self._dirs(),
+                args=self._author_args(gate_notes, review_notes, obligations),
+                session=self._chain,
+            )
+        except AgentTimeout:
+            self.logger.info(
+                "the documentation repair turn was stopped at its budget — gating what it "
+                "wrote",
+                extra={"activity": True},
+            )
+            overran = _OVERRAN_REPAIR
+            # Not a claim about the book: the nodes this pass touched are unknown, and the
+            # ones every earlier pass named are carried in `authored_nodes` regardless. The
+            # gate reads the graph, not this.
+            result = DocumentationResult(status="documented", notes=_OVERRAN_REPAIR)
         return self._authored(
             result,
+            overran=overran,
             rework=rework,
             review_rework=review_rework,
             gate_notes=gate_notes,
@@ -403,6 +438,7 @@ class Docs(Workflow):
         delta_refs: tuple[str, ...],
         authored_nodes: tuple[str, ...] = (),
         consulted: bool = False,
+        overran: str = "",
     ) -> Continue | Await | Done:
         """The tail both author turns share: the contract on the answer, then the gate.
 
@@ -444,6 +480,7 @@ class Docs(Workflow):
             delta_refs=delta_refs,
             authored_nodes=tuple(dict.fromkeys((*authored_nodes, *result.nodes))),
             consulted=consulted,
+            overran=overran,
         )
 
     def verify(
@@ -457,6 +494,7 @@ class Docs(Workflow):
         delta_refs: tuple[str, ...] = (),
         authored_nodes: tuple[str, ...] = (),
         consulted: bool = False,
+        overran: str = "",
     ) -> Continue:
         """Check the claim against the diff before any reviewer reads a word of it.
 
@@ -536,11 +574,15 @@ class Docs(Workflow):
             )
         # The `G:` identities are the still-ungrounded references, in the inventory's own
         # spelling — the same worklist `start` computed, minus what this pass closed.
+        # `overran` is set when the turn that just ran was cut at its budget rather than
+        # finishing. The findings below are still the findings — doctor read the book on
+        # disk — but the next turn has to be told that its own worklist is half-applied, or
+        # it reads the repeat as its edits having failed and starts over.
         return self._rework(
             gate,
             rework + 1,
             review_rework,
-            gate.notes,
+            f"{overran}\n\n{gate.notes}".strip() if overran else gate.notes,
             review_notes,
             progress,
             obligations=tuple(
