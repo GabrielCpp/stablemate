@@ -98,6 +98,13 @@ A third reference is neither face — it is the format ostler *executes*:
   decorator, everything a scenario reaches through `qa`, and the rules validation enforces. Read
   it when you are writing or repairing a QA plan.
 
+**[scripts/check_staged_files.py](scripts/check_staged_files.py)** is the `pre-commit` half of
+that format: a run writes traces, videos and a ledger under `<spec>/qa/`, and this refuses to
+commit them — any staged blob over 1.5 MB, and anything staged from a directory a run wrote.
+The repo that motivated it had committed 2,167 such files and 297 MB before anyone noticed. An
+exception is a path glob in `[check-staged-files] allow` of `.agent-checks.toml`, tracked so a
+reviewer sees it; farrier installs the hook and the `.gitignore` line together.
+
 **Short handles.** An id is `<PREFIX>-<26-char ULID>`; ostler abbreviates it git-style to the
 shortest unambiguous `<PREFIX>-<6+ chars>`. Human output prints handles, `--json` prints full
 ids, and a handle is accepted wherever a command takes an id. Never write a handle into a
