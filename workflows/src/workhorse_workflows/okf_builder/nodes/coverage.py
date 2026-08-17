@@ -13,8 +13,8 @@ Three divergences, all shape:
 * **`from ostler.inventory import …` sits with the other imports.** The script placed it
   mid-file under `# noqa: E402` so its long comment could sit next to it; the comment moved
   to the import block instead.
-* **The verdict is a `bool`.** `coverage_complete` was `"yes"`/`"no"`; `is_complete(result)`
-  already returns a bool and the string was only ever for a YAML branch to match on.
+* **The verdict is a `bool`.** `coverage_complete` was `"yes"`/`"no"`; the join's outcome
+  already answers `ok` and the string was only ever for a YAML branch to match on.
 """
 from __future__ import annotations
 
@@ -27,7 +27,6 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from ostler import Ostler, graph as graph_mod
-from ostler.coverage import is_complete, render
 # The symbol grammar lives in `ostler.inventory`, not here. Two callers need to know what a
 # file declares — this inventory (the join's source side) and `doctor`'s `code:` grounding —
 # and a grammar defined in two places is a grammar that drifts. It did: grounding used a
@@ -328,13 +327,17 @@ def compute_coverage(
             coverage_error="no source inventory path — nothing to join the book against",
         )
 
-    try:
-        okf = Ostler(repo_root)
-        result = okf.coverage(inventory=inventory_path, surface=service or None,
-                              waivers=waivers_path or None)
-    except (OSError, ValueError, RuntimeError, KeyError) as exc:
-        logger.warning("coverage join failed — verdict is 'no', not a pass: %s", exc)
-        return Coverage(rescan_round=rescan, coverage_error=f"coverage join failed: {exc}")
+    okf = Ostler(repo_root)
+    outcome = okf.coverage(inventory=inventory_path, surface=service or None,
+                           waivers=waivers_path or None)
+    if outcome.status == "invalid":
+        # The join never ran, so there is no `missing` list to adjudicate and no numbers to
+        # write into the book — the verdict is 'no', which is not the same as zero covered.
+        logger.warning("coverage join failed — verdict is 'no', not a pass: %s",
+                       outcome.message)
+        return Coverage(rescan_round=rescan,
+                        coverage_error=f"coverage join failed: {outcome.message}")
+    result = outcome.data
 
     try:
         screens = _screen_count(okf, service)
@@ -372,7 +375,7 @@ def compute_coverage(
             }, indent=2) + "\n", encoding="utf-8")
             coverage_path = str(out)
 
-    complete = is_complete(result)
+    complete = outcome.ok
     logger.info("coverage for %s: %d/%d units covered, %d waived, %d screens, %d missing "
                 "→ complete=%s", service or "(whole book)", result["covered"],
                 result["total"], result["waived"], screens, len(result["missing"]),
@@ -382,7 +385,7 @@ def compute_coverage(
         missing_count=len(result["missing"]),
         missing_path=missing_path,
         coverage_path=coverage_path,
-        coverage_summary=render(result),
+        coverage_summary=outcome.message,
         coverage_error="; ".join(result["errors"]),
         rescan_round=rescan,
     )

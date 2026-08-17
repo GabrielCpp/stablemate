@@ -59,15 +59,14 @@ def validate_coverage(
     epic = Path(epic_dir_rel).name
     okf = Ostler(survey_repo_root(repo_dir))
 
-    try:
-        report = okf.doctor(epic=epic)
-    except (OSError, ValueError, RuntimeError):
-        logger.warning("ostler doctor for epic %s could not run", epic)
+    outcome = okf.doctor(epic=epic)
+    if outcome.status == "invalid":
+        logger.warning("ostler doctor for epic %s could not run: %s", epic, outcome.message)
         return Defects(errors=f"ostler doctor for epic {epic} could not run")
 
     errors = [
         f"[{f.get('code')}] {f.get('message')}"
-        for f in report.get("findings", [])
+        for f in outcome.data.get("findings", [])
         if f.get("severity") == "error" and f.get("code") in _COVERAGE_CODES
     ]
 

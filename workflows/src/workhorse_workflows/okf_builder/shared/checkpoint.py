@@ -269,7 +269,7 @@ def checkpoint_book(
         logger.warning("no features root given — skipping ostler fmt; doctor findings are unscoped")
 
     try:
-        findings = scoped_findings(okf.doctor(), repo_root, features_root)
+        findings = scoped_findings(okf.doctor().data, repo_root, features_root)
         out = json.dumps(findings, indent=2)
     except (OSError, ValueError, RuntimeError) as exc:
         findings = [{"severity": "error", "message": str(exc), "path": features_root}]

@@ -150,12 +150,12 @@ def verify_integrity(
     """
     okf = Ostler(launch_repo_root(repo_dir), doc_roots={"epics": epics_dir} if epics_dir else {})
 
-    try:
-        report = okf.doctor(epic=epic.strip() or None)
-    except (OSError, ValueError, RuntimeError) as exc:
-        logger.warning("ostler doctor could not run (%s) — skipped", exc)
-        return VerifyReport(skipped=True, report=f"ostler doctor could not run ({exc}) — skipped")
+    outcome = okf.doctor(epic=epic.strip() or None)
+    if outcome.status == "invalid":
+        logger.warning("%s — skipped", outcome.message)
+        return VerifyReport(skipped=True, report=f"{outcome.message} — skipped")
 
+    report = outcome.data
     findings = report.get("findings", [])
     errors = [f for f in findings if f.get("severity") == "error"]
     warns = [f for f in findings if f.get("severity") == "warn"]

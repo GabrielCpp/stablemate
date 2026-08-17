@@ -758,7 +758,9 @@ def test_epic_mode_authors_the_backlog_and_commits_it(
     # Both stories authored, for real, as ostler reads them.
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
     # The whole-graph gate ran on a clean graph: no error-level findings left.
-    assert not [f for f in Ostler(backlogged).doctor()["findings"] if f["severity"] == "error"]
+    assert not [
+        f for f in Ostler(backlogged).doctor().data["findings"] if f["severity"] == "error"
+    ]
 
     # The coverage tail pruned both work items. Supporting context is prose, not a bullet.
     assert _bullets(backlogged) == []

@@ -538,27 +538,24 @@ def verify_story_documentation(
         # and are stable across passes, so comparing two passes' sets is exact here.
         failures.extend(f"G:{ref}" for ref in ungrounded)
 
-    okf: Ostler | None = None
-    try:
-        okf = Ostler(docs_root)
-        report = okf.doctor()
-    except (OSError, ValueError, RuntimeError) as exc:
-        report = {}
-        problems.append(f"ostler doctor could not run: {exc}")
+    okf = Ostler(docs_root)
+    outcome = okf.doctor()
+    report = outcome.data
+    if outcome.status == "invalid":
+        problems.append(f"ostler {outcome.message}")
         failures.append("S:doctor-unavailable")
     affected = _affected_doc_nodes(packet, nodes)
     touched = story_touched_lines(
         docs_root.resolve(), {node for node in affected if "#" not in node}, logger
     )
-    # `okf` is None only when its construction raised, and then `report` is empty and the
-    # comprehension never reaches the call — the guard below says so at the line itself.
+    # A book that would not load reports no findings, so the comprehension never reaches
+    # `okf.graph` — the one call below that would raise the failure a second time.
     doctor_errors = [
         finding
         for finding in report.get("findings", [])
         if isinstance(finding, dict)
         and finding.get("severity") == "error"
         and not (context_mode == "semantic" and finding.get("code") in SEMANTIC_SUPPRESSED)
-        and okf is not None
         and _finding_affects_nodes(okf.graph, finding, affected, touched)
     ]
     if doctor_errors:

@@ -210,6 +210,34 @@ def test_an_unreadable_inventory_raises_rather_than_reporting_zero(tmp_path: Pat
         raise AssertionError("an inventory with no `units` list must raise, not report 0/0")
 
 
+def test_cmd_coverage_reports_an_unreadable_inventory_as_a_failed_outcome(tmp_path: Path) -> None:
+    """The outcome face answers where `run` raises — and never with a clean zero.
+
+    `ok` is false for both shapes of "not complete", so a caller gating on it cannot pass on
+    a join that never ran; `status` is what tells the two apart.
+    """
+    bad = tmp_path / "bad.json"
+    bad.write_text('{"nope": 1}')
+
+    outcome = coverage.cmd_coverage(_book(tmp_path), surface="api", inventory=bad)
+
+    assert outcome.ok is False
+    assert outcome.status == "invalid"
+    assert "units" in outcome.message
+    assert "covered" not in outcome.data
+
+
+def test_cmd_coverage_carries_the_join_and_its_verdict(tmp_path: Path) -> None:
+    inv = _inventory(tmp_path, [_symbol("api/x.go", "Write")])
+
+    outcome = coverage.cmd_coverage(_book(tmp_path, "api/x.go::Write"), surface="api",
+                                    inventory=inv)
+
+    assert outcome.ok is True
+    assert outcome.data["covered"] == outcome.data["total"] == 1
+    assert outcome.message == coverage.render(outcome.data)
+
+
 # -- scoping ------------------------------------------------------------------------------
 
 def test_surface_scopes_the_citations_to_one_book(tmp_path: Path) -> None:

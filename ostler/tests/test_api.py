@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ostler import Ostler
 
 from conftest import present
@@ -35,10 +37,32 @@ def test_path_resolution(repo: Path):
     assert okf.branch("epic-a", epic=True) == "feat/epic-a"
 
 
-def test_doctor_returns_a_dict(repo: Path):
-    report = Ostler(repo).doctor()
-    assert isinstance(report, dict)
-    assert "epics" in report
+def test_doctor_returns_an_outcome_carrying_the_report(repo: Path):
+    outcome = Ostler(repo).doctor()
+    assert outcome.ok is True  # the fixture book has warnings, which do not fail it
+    assert "epics" in outcome.data
+
+
+def test_doctor_reports_an_unloadable_book_rather_than_raising(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A book that will not load is an answer — "this does not hold" — not an exception.
+
+    The load is forced at the seam rather than through a fixture, because the reader is
+    deliberately forgiving: a missing directory reads as an empty exploration book, so no
+    arrangement of files on disk reaches this path. Every caller wrapped the call in a
+    try/except anyway, and this is the contract that lets them all drop it.
+    """
+    def unreadable(_self):
+        raise OSError("book is on fire")
+
+    monkeypatch.setattr(Ostler, "graph", property(unreadable))
+    outcome = Ostler(repo).doctor()
+
+    assert outcome.ok is False
+    assert outcome.status == "invalid"
+    assert outcome.message == "doctor could not run: book is on fire"
+    assert outcome.data["message"] == outcome.message
 
 
 def test_graph_is_loaded_once_then_reused(repo: Path):

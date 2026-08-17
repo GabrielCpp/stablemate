@@ -1407,17 +1407,17 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
             _out(graph_mod.render_tree(sel))
         return 0
     if c == "coverage":
-        try:
-            res = coverage.run(graph, surface=args.surface, inventory=args.inventory,
-                               waivers=args.waivers)
-        except (OSError, ValueError, json.JSONDecodeError) as exc:
+        result = coverage.cmd_coverage(graph, surface=args.surface, inventory=args.inventory,
+                                       waivers=args.waivers)
+        if result.status == "invalid":
             # An unreadable inventory is a failure, never an empty one: zero units reads
-            # downstream as "everything is covered".
-            print(f"ostler coverage: {exc}", file=sys.stderr)
+            # downstream as "everything is covered". Its own exit code, because a caller
+            # that retries on an incomplete book must not retry on a broken inventory.
+            print(f"ostler coverage: {result.message}", file=sys.stderr)
             return 2
-        _out(json.dumps(res, indent=2) if args.json else coverage.render(res))
+        _out(json.dumps(result.data, indent=2) if args.json else result.message)
         # Exit non-zero on an incomplete book so a `make` target / CI check can gate on it.
-        return 0 if coverage.is_complete(res) else 1
+        return 0 if result.ok else 1
     if c in ("list", "search"):
         valid_types = _TYPES + tuple(k.name for k in graph.template_kinds)
         if args.etype is not None and args.etype not in valid_types:

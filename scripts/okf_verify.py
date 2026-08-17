@@ -25,7 +25,6 @@ import tempfile
 from pathlib import Path
 
 from ostler import Ostler, path as okf_path
-from ostler.coverage import is_complete, render
 from workhorse_workflows.okf_builder.nodes.coverage import inventory_source
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -75,13 +74,12 @@ def verify(book: str, services: dict, tmp: Path) -> tuple[bool, str]:
         repo_root=str(ROOT),
     )
 
-    try:
-        result = Ostler(ROOT).coverage(
-            inventory=out, surface=book,
-            waivers=okf_path.waivers_path_in(ROOT, book))
-    except (OSError, ValueError, RuntimeError) as exc:
-        return False, f"{book}: coverage could not be computed: {exc}"
-    return is_complete(result), render(result)
+    outcome = Ostler(ROOT).coverage(
+        inventory=out, surface=book,
+        waivers=okf_path.waivers_path_in(ROOT, book))
+    if outcome.status == "invalid":
+        return False, f"{book}: coverage could not be computed: {outcome.message}"
+    return outcome.ok, outcome.message
 
 
 def main() -> int:

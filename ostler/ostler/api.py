@@ -64,6 +64,20 @@ if TYPE_CHECKING:
     from ostler.edit import EditPlan
 
 
+
+def _unreadable(check: str, exc: Exception) -> QaOutcome:
+    """A book that would not load, as the failed outcome of the check that asked for it.
+
+    The graph is loaded lazily by the first method that needs it, so an unreadable book
+    surfaces at the call rather than at construction. For a check — `doctor`, `coverage` —
+    that is data-shaped: the answer to "does this book hold" is no, and every caller was
+    already wrapping the call in a try/except to say so in its own words.
+    """
+    message = f"{check} could not run: {exc}"
+    return QaOutcome(ok=False, message=message, status="invalid",
+                     data={"status": "invalid", "message": message})
+
+
 class Ostler:
     """A loaded OKF graph plus the operations the ``ostler`` CLI exposes.
 
@@ -217,10 +231,17 @@ class Ostler:
         """Backlog items as ``{"id", "text"}`` dicts (``ostler backlog list``)."""
         return [{"id": i, "text": t} for i, t in backlog_mod.items(self.graph)]
 
-    def doctor(self, *, epic: str | None = None, check_schema: bool = True) -> dict:
-        """The referential-integrity report as a dict (``ostler doctor --json``)."""
-        return doctor.run(self.graph, epic_filter=epic,
-                          check_schema=check_schema).as_dict()
+    def doctor(self, *, epic: str | None = None, check_schema: bool = True) -> QaOutcome:
+        """The referential-integrity check (``ostler doctor``); ``data`` is the report dict.
+
+        ``ok`` is false when the report carries an error-severity finding — the same verdict
+        the CLI's exit code gives. Warnings are findings doctor declined to make blocking.
+        """
+        try:
+            graph = self.graph
+        except (OSError, ValueError, RuntimeError) as exc:
+            return _unreadable("doctor", exc)
+        return doctor.cmd_doctor(graph, epic=epic, check_schema=check_schema)
 
     def fmt(self, *paths: str | Path, check: bool = False) -> builtins.list[str]:
         """Canonicalize the book's shape; the repo-relative paths that were not already so.
@@ -233,14 +254,20 @@ class Ostler:
         return [str(p.relative_to(self.graph.root)) for p in result.changed]
 
     def coverage(self, *, inventory: str | Path, surface: str | None = None,
-                 waivers: str | Path | None = None) -> dict:
-        """The coverage join as ``{covered, total, waived, missing, errors}``.
+                 waivers: str | Path | None = None) -> QaOutcome:
+        """The coverage join (``ostler coverage``); ``data`` is
+        ``{covered, total, waived, missing, errors, ...}``.
 
-        Raises on an unreadable inventory rather than reporting zero units — an empty unit
-        list reads downstream as "everything is covered" (``ostler coverage``).
+        ``ok`` is false for an incomplete book *and* for an unreadable inventory, which comes
+        back as ``status="invalid"`` rather than as a raise. Never as a clean zero: an empty
+        unit list reads downstream as "everything is covered".
         """
-        return coverage_mod.run(self.graph, surface=surface, inventory=inventory,
-                                waivers=waivers)
+        try:
+            graph = self.graph
+        except (OSError, ValueError, RuntimeError) as exc:
+            return _unreadable("coverage", exc)
+        return coverage_mod.cmd_coverage(graph, surface=surface, inventory=inventory,
+                                         waivers=waivers)
 
     # -- path resolution ----------------------------------------------------
     def spec_path(self, slug: str) -> str:

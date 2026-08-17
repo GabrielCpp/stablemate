@@ -38,6 +38,7 @@ from typing import Any
 from ostler import graph as graph_mod
 from ostler import refs as refs_mod
 from ostler.model import Graph
+from ostler.qa.outcome import QaOutcome
 from ostler.refs import normalize_ref
 
 
@@ -195,3 +196,24 @@ def render(result: dict) -> str:
     for miss in result["missing"]:
         lines.append(f"  missing {miss['kind']}: {miss['code']}")
     return "\n".join(lines)
+
+
+def cmd_coverage(graph: Graph, *, inventory: str | Path, surface: str | None = None,
+                 waivers: str | Path | None = None) -> QaOutcome:
+    """`ostler coverage` as an outcome: `ok` = complete, `data` = the join.
+
+    An unreadable inventory comes back as `status="invalid"` rather than as a raise. It is
+    a fact about the data, and the caller that has to tell it apart from an incomplete book
+    is the same caller either way — but only one of the two shapes it could otherwise get
+    (an exception) forces that caller to wrap the call to find out. `ok` stays false for
+    both, so a gate that only asks "is this complete" cannot pass on a read that failed.
+    """
+    try:
+        result = run(graph, surface=surface, inventory=inventory, waivers=waivers)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        # `str(exc)` rather than a type-prefixed line: the CLI prints this verbatim, and the
+        # messages these raises carry already name the file and what was wrong with it.
+        message = str(exc)
+        return QaOutcome(ok=False, message=message, status="invalid",
+                         data={"status": "invalid", "message": message})
+    return QaOutcome(ok=is_complete(result), message=render(result), data=result)

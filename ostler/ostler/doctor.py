@@ -19,6 +19,7 @@ from ostler.vet import placement as placement_mod
 from ostler import refs as refs_mod
 from ostler.refs import normalize_ref
 from ostler.model import Graph, Epic, read_doc, required_section_problems
+from ostler.qa.outcome import QaOutcome
 
 
 @dataclass
@@ -1085,3 +1086,16 @@ def _check_ui(graph: Graph, f: list[Finding],
                                      f"{rel}: link '{href}' — file exists but `#{target.anchor}` "
                                      f"heading not found", path=rel, line=line, ref=href,
                                      fixable=True))
+
+
+def cmd_doctor(graph: Graph, *, epic: str | None = None,
+               check_schema: bool = True) -> QaOutcome:
+    """`ostler doctor` as an outcome: `ok` = no error-severity finding, `data` = the report.
+
+    Warnings do not fail it. A warning is a finding doctor deliberately declined to make
+    blocking, and a caller that gates on `ok` should get the same verdict the CLI's exit
+    code gives — errors only.
+    """
+    report = run(graph, epic_filter=epic, check_schema=check_schema)
+    message = f"{report.errors} error(s), {report.warnings} warning(s)"
+    return QaOutcome(ok=not report.errors, message=message, data=report.as_dict())

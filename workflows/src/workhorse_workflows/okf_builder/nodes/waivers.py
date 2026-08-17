@@ -62,7 +62,7 @@ def auto_waive(
     warns, which are repaired in the book rather than owed in code.
     """
     okf = Ostler(repo_root)
-    report = okf.doctor()
+    report = okf.doctor().data
     standing = scoped_findings(report, repo_root, features_root)
     if not standing:
         # Nothing standing (a race, or all already waived): let the next checkpoint converge.

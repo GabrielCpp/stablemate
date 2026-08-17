@@ -58,7 +58,7 @@ def test_doctor_is_clean() -> None:
     """
     from ostler.api import Ostler  # noqa: PLC0415 - a heavy import only this test needs
 
-    report = Ostler(APP).doctor()
+    report = Ostler(APP).doctor().data
     assert report["errors"] == 0, report["findings"]
     assert report["warnings"] == 0, report["findings"]
 
