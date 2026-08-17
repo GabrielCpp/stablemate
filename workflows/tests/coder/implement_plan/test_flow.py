@@ -653,3 +653,62 @@ def test_review_must_converge_before_claiming_completion(
     assert review_worklist["status"] == "blocked"
     assert review_worklist["cycle"] == ImplementPlan.MAX_REVIEW_FIX_CYCLES + 1
     assert review_worklist["issues"][0]["id"].endswith("issue-4")
+
+
+def test_the_aggregate_gate_gets_a_repair_turn_instead_of_ending_the_run(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A defect only the aggregate gate can see is repaired, not fatal.
+
+    The packet gate passes and the plan-wide one does not, which is the shape of every
+    defect that lives between packets rather than inside one. Before, that finding
+    arrived after the last packet had been implemented, verified and committed, and
+    threw all of it away.
+    """
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text("# Aggregate\n", encoding="utf-8")
+    task = _task("only", "src/value.txt")
+    agent = _Agent(
+        repo,
+        _decomposition(
+            task,
+            final=[_command("from pathlib import Path; assert Path('shared.txt').is_file()")],
+        ),
+        edits={"only": {"src/value.txt": "value\n"}},
+        repair_edits={"only": {"src/value.txt": "value\n", "shared.txt": "shared\n"}},
+    )
+
+    result = drive_flow(ImplementPlan(plan_path=str(plan_path), repo_dir=str(repo)), env(), agent)
+
+    assert result.status == "complete"
+    assert agent.count("repair-plan-task") == 1
+    assert (repo / "shared.txt").is_file()
+
+
+def test_the_aggregate_gate_still_ends_the_run_once_repairs_are_spent(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The second chance is bounded — a repair turn that never fixes it still stops."""
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text("# Aggregate\n", encoding="utf-8")
+    task = _task("only", "src/value.txt")
+    agent = _Agent(
+        repo,
+        _decomposition(
+            task,
+            final=[_command("from pathlib import Path; assert Path('never.txt').is_file()")],
+        ),
+        edits={"only": {"src/value.txt": "value\n"}},
+        repair_edits={"only": {"src/value.txt": "value\n"}},
+    )
+
+    with pytest.raises(WorkflowFailed, match="final plan verification failed"):
+        drive_flow(ImplementPlan(plan_path=str(plan_path), repo_dir=str(repo)), env(), agent)

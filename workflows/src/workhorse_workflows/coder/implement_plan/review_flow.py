@@ -303,7 +303,7 @@ class ReviewIssues(Workflow):
         expected_parent: str,
         commit_sha: str,
     ) -> Continue:
-        self.call(
+        result = self.call(
             verify_final_candidate,
             self.ctx,
             self.plan,
@@ -311,6 +311,8 @@ class ReviewIssues(Workflow):
             commit_sha,
             expected_parent,
         )
+        if not result.passed:
+            raise WorkflowFailed(f"final review verification failed:\n{result.findings}")
         return Continue(
             None,
             self.publish,

@@ -525,6 +525,7 @@ class ImplementPlan(Workflow):
                 completed_commits=completed_commits,
                 expected_parent=expected_parent,
                 commit_sha=commit_sha,
+                repair=repair,
             )
         return Continue(
             result,
@@ -545,9 +546,29 @@ class ImplementPlan(Workflow):
         completed_commits: list[str],
         expected_parent: str,
         commit_sha: str,
+        repair: int = 0,
     ) -> Continue:
-        """Gate the fully committed candidate before its last packet reaches origin."""
-        self.call(
+        """Gate the fully committed candidate before its last packet reaches origin.
+
+        This gate runs commands no packet gate runs — the repo-wide lint, the whole
+        suite — so it is the first and only place the plan's parts are exercised
+        together, and it sits after every packet has been implemented, verified and
+        committed. Terminating here threw all of that away over findings that are
+        usually ordinary and local: a root command nobody had ever run outside an
+        already-provisioned worktree, two packets that type-check alone but not in
+        sequence. It now spends the same repair budget every other gate spends, and the
+        counter arrives from the commit for the same reason it does there — the packet
+        gets `MAX_REPAIRS` turns in total, so the two gates cannot hand it back and
+        forth forever.
+
+        The repair turn is aimed at the whole candidate rather than at the last packet.
+        The defect the aggregate gate finds is frequently not in that packet at all; it
+        is merely the packet whose commit happened to be on top when the gate first ran.
+        `extend_task_paths` is what makes that legitimate — the file the turn has to
+        touch to fix a repo-wide command is typically declared by no packet, so it is
+        adopted rather than trespassed upon.
+        """
+        result = self.call(
             verify_final_candidate,
             self.ctx,
             plan,
@@ -555,6 +576,30 @@ class ImplementPlan(Workflow):
             commit_sha,
             expected_parent,
         )
+        if not result.passed:
+            if repair >= self.MAX_REPAIRS:
+                self.call(
+                    project_plan_progress,
+                    self.ctx,
+                    plan,
+                    index,
+                    completed_commits,
+                    task.id,
+                )
+                raise WorkflowFailed(f"final plan verification failed:\n{result.findings}")
+            self.call(retract_task_commit, self.ctx, task, expected_parent, commit_sha)
+            return Continue(
+                result,
+                self.repair,
+                plan=plan,
+                index=index,
+                task=task,
+                completed_commits=completed_commits,
+                expected_head=expected_parent,
+                repair=repair,
+                findings=result.findings,
+                export_repair=True,
+            )
         return Continue(
             None,
             self.publish,
@@ -647,7 +692,10 @@ class ImplementPlan(Workflow):
         """Route one checkpointed review report into approval or its issue worklist."""
         self.call(validate_review_report, report)
         if report.status == "approved":
-            self.call(
+            # No repair arm here, unlike the packet-loop gate: an approval is not
+            # authority, and by this point there is no packet commit left to retract and
+            # hand to a repair turn. A failure is the run's answer.
+            result = self.call(
                 verify_final_candidate,
                 self.ctx,
                 plan,
@@ -655,6 +703,8 @@ class ImplementPlan(Workflow):
                 expected_head,
                 expected_head,
             )
+            if not result.passed:
+                raise WorkflowFailed(f"final plan verification failed:\n{result.findings}")
             self.call(
                 project_review_approval,
                 self.ctx,

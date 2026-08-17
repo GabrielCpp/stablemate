@@ -308,6 +308,17 @@ def verify_final_candidate(
     expected_head: str,
     expected_remote: str,
 ) -> VerificationResult:
+    """Run the aggregate gate over the fully committed candidate, and report the verdict.
+
+    A failure here is returned, not raised. The aggregate gate runs commands no packet
+    gate runs — a repo-wide `make lint`, the whole suite — so it is the first thing to
+    exercise the plan's parts together, and what it finds is usually a real and ordinary
+    defect: two packets that each type-check alone and not in sequence, a root command
+    that was never provisioned to run outside a developer's already-warm worktree.
+    Raising made the discovery terminal at the single most expensive moment in the run,
+    after every packet had been implemented, verified and committed. The caller decides,
+    and spends the same bounded repair budget the per-packet gates spend.
+    """
     repository.assert_clean_at(context, expected_head, expected_remote)
     if len(completed_commits) != len(plan.tasks):
         raise WorkflowFailed("final candidate gate reached without a commit for every task")
@@ -315,7 +326,8 @@ def verify_final_candidate(
         result = repository.run_commands(candidate, plan.final_verification)
     repository.assert_clean_at(context, expected_head, expected_remote)
     if not result.passed:
-        raise WorkflowFailed(f"final plan verification failed:\n{result.findings}")
+        logger.info("final candidate %s failed aggregate verification", expected_head[:12])
+        return result
     logger.info("final candidate %s passed aggregate verification", expected_head[:12])
     return result
 
