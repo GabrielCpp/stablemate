@@ -267,6 +267,54 @@ def test_red_tests_turn_passes_the_gate_once(
     assert code_args["red_log_path"] == str(log)
 
 
+def test_a_suite_that_stops_before_the_packet_tests_reports_an_unattributed_red(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    git: Callable[..., subprocess.CompletedProcess],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A repository already failing elsewhere cannot certify the packet's tests as red.
+
+    A suite that walks several subprojects halts at the first one that fails, which can be
+    well before the packet's new tests are collected — and a bare non-zero exit was taken
+    as proof they failed. That is a rejected verdict like any other: the tests turn gets
+    its bounded reworks to make the scenarios actually run and fail, and only past the
+    bound does the packet proceed — with the code turn told the gate observed nothing and
+    that it must run the packet's own tests itself.
+    """
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Unattributable red\n", encoding="utf-8")
+    _commit_fixture_files(
+        repo,
+        git,
+        {
+            "agents.yml": f"test:\n  {repo.name}: sh tests.sh\n",
+            "tests.sh": "echo 'FAILED other_package/test_other.py::test_x'; exit 1\n",
+        },
+    )
+    task = _task("value", "src/value.txt")
+    task["paths"].append("tests/test_value.py")
+    agent = _Agent(
+        repo,
+        _decomposition(task),
+        test_edits={"value": {"tests/test_value.py": "def test_value(): assert False\n"}},
+        edits={"value": {"src/value.txt": "value\n"}},
+    )
+
+    result = drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
+
+    assert result.status == "complete"
+    assert agent.count("implement-plan-task-tests") == 1 + ImplementPlan.MAX_TESTS_REWORKS
+    feedback = [args["gate_feedback"] for args in agent.args_for("implement-plan-task-tests")]
+    assert all(entry.startswith("[unattributed_red]") for entry in feedback[1:])
+    code_args = agent.args_for("implement-plan-task-code")[0]
+    assert code_args["red_status"] == "unattributed_red"
+    # Nothing was attributed, so the code turn is handed no contract to trust.
+    assert code_args["red_failing_files"] == ""
+
+
 def test_all_green_tests_turn_gets_bounded_rework_then_fails_open(
     tmp_path: Path,
     repo: Path,
@@ -312,6 +360,8 @@ def test_impure_tests_turn_is_reworked_even_without_a_test_command(
     agent = _Agent(
         repo,
         _decomposition(task),
+        # `.py` outside the test signatures is production code; a `.txt` beside it would
+        # be a fixture, which the tests turn is entitled to write.
         test_edits={
             "value": {
                 "tests/test_value.py": "def test_value(): assert False\n",
