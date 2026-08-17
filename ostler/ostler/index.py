@@ -349,6 +349,22 @@ class IndexStore:
             content.encode("utf-8"),
         )
 
+    def content_key(self, *material: str) -> str:
+        """An entry key built from *material* alone — for a product no path identifies.
+
+        The document products are keyed on where a file sits as well as what is in it, because
+        the same bytes at another path are a different document. A code file's **symbol set**
+        is not like that: it is a pure function of the bytes and of the grammar that read them,
+        so a vendored copy of a module declares exactly what the original does and should cost
+        one extraction between them. The path is therefore deliberately absent here, and what
+        takes its place is a namespace label the caller supplies, so two products cannot
+        collide on one key by agreeing about their material.
+
+        The epoch is still in it: ostler's own version is in the epoch, and a change to the
+        extractor changes the answer as surely as a change to the grammar does.
+        """
+        return _sha(self.epoch.encode("utf-8"), *(part.encode("utf-8") for part in material))
+
     def _entry_path(self, key: str) -> Path:
         # Sharded on the first two hex characters so one directory never holds every
         # entry of every repo this machine has ever seen.
@@ -366,17 +382,24 @@ class IndexStore:
         counts must read zero, because a run whose misses climb is a run that consulted
         an index it was told not to.
         """
+        return self.get_key(self.key(path, sha=sha))
+
+    def get_key(self, key: str | None) -> Any | None:
+        """The stored value under *key*, counted — for a caller that built its own key.
+
+        ``None`` for *key* is the caller's own miss (a file whose bytes it could not read), and
+        it counts as one: the run did want something the index could not give it.
+        """
         if not self.enabled:
             return None
-        value = self._read(path, sha=sha)
+        value = self._read(key)
         if value is None:
             self.misses += 1
         else:
             self.hits += 1
         return value
 
-    def _read(self, path: Path, *, sha: str | None = None) -> Any | None:
-        key = self.key(path, sha=sha)
+    def _read(self, key: str | None) -> Any | None:
         if key is None:
             return None
         try:
@@ -406,9 +429,12 @@ class IndexStore:
         command that fails. A disabled store writes nothing at all — ``--no-index`` has to
         leave the directory it was pointed at untouched, not merely unread.
         """
+        self.put_key(self.key(path, sha=sha), value)
+
+    def put_key(self, key: str | None, value: Any) -> None:
+        """Store *value* under *key* — for a caller that built its own key. Never raises."""
         if not self.enabled:
             return
-        key = self.key(path, sha=sha)
         if key is None:
             return
         self.prune()
