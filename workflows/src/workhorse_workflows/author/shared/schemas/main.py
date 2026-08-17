@@ -133,10 +133,11 @@ class VerifyReport(AuthorResult):
 
 
 class Feedback(AuthorResult):
-    """`check_story_feedback` — an operator note left in the story's `feedback.md`.
+    """`check_story_feedback` — an un-consumed operator note dropped into the run's inbox.
 
-    Reading it **consumes** it: the file's `STATUS:` line is flipped to `CONSUMED`
-    before the flow acts, so the same note cannot loop the story forever.
+    The non-blocking counterpart to the operator gate: it never halts and never asks.
+    Polling it is what consumes it — the oldest outstanding message is replied to on the
+    way out — so each dropped note buys exactly one rework pass.
     """
 
     present: bool = False

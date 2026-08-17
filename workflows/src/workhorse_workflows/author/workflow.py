@@ -1074,15 +1074,15 @@ class Author(Workflow):
         """The story holds. Poll for feedback a human dropped while the run was busy.
 
         `check_story_feedback` + `decide_story_feedback` + `decide_story_loop` +
-        `story_prune`. Never blocks: reading the inbox marks it `CONSUMED`, so one drop
-        reworks the story exactly once.
+        `story_prune`. Never blocks: polling the run's inbox replies to the oldest
+        outstanding message, so one drop reworks the story exactly once.
 
         Story mode ends here, and it ends **without committing** — `decide_story_loop`
         routed `story` to `story_prune`, whose `next` is the `done` terminal. See the
         progress ledger: the story arm of the commit-message builder is unreachable in
         the YAML, and the port reproduces that rather than quietly fixing it.
         """
-        feedback = self.call(check_story_feedback, paths.story_feedback(story_dir))
+        feedback = self.call(check_story_feedback, str(self.run_dir))
         story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks,
                             split_resolves, parked)
         if feedback.present:

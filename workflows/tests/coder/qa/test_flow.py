@@ -28,8 +28,10 @@ from unittest.mock import patch
 
 import pytest
 import yaml
+from workhorse import inbox
 from workhorse import stack as workhorse_stack
 from workhorse.artifacts import ArtifactWriter
+from workhorse.cli.inbox import INBOX_FILE
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
@@ -2112,10 +2114,16 @@ def test_a_dropped_operator_note_buys_exactly_one_re_qa(
 ) -> None:
     """Reading the inbox consumes it, so the second pass finds nothing and finishes."""
     okf = ostler()
-    write(docs / SPEC_REL / "feedback.md", "The empty state still says 'TODO'.\n")
+    run_env = env()
+    inbox.append(
+        run_env.writer.run_dir / INBOX_FILE,
+        id="note-1",
+        body="The empty state still says 'TODO'.",
+        at="2024-01-01T00:00:00+00:00",
+    )
     agent = _Agent(docs)
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    result = drive_flow(Qa(story=STORY), run_env, agent)
 
     assert result.status == "passed", result
     assert agent.counts()["apply-qa-fixes"] == 1, agent.counts()
@@ -2124,8 +2132,10 @@ def test_a_dropped_operator_note_buys_exactly_one_re_qa(
     assert result.qa_rework == 0
     assert result.docs_recheck_required is True
     assert "TODO" in agent.args_for("apply-qa-fixes")[0]["operator_feedback"]
-    # The inbox is stamped consumed, which is what stops the second pass looping.
-    assert "CONSUMED" in (docs / SPEC_REL / "feedback.md").read_text()
+    # The message is replied to, which is what stops the second pass looping.
+    messages = inbox.all_messages(run_env.writer.run_dir / INBOX_FILE)
+    assert len(messages) == 1, messages
+    assert messages[0].reply, messages
 
 
 # --------------------------------------------------------------------------- regression

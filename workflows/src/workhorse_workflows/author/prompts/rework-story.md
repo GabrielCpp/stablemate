@@ -58,10 +58,10 @@ Address every error or finding above. Common fixes:
 {% block repo_rework_rules %}{% endblock %}
 
 If **Operator feedback to apply** above is non-empty, the validator and reviewer may have nothing
-to flag — the feedback is mid-flight guidance a human dropped into `{{ workhorse_var('story_dir') }}/feedback.md`
-while the run was in progress. Treat it as **required changes for this pass**, within the epic's
-existing scope. If it asks for out-of-scope work or a product decision not present in the epic/seed,
-return `status: "blocked"` with the question rather than expanding scope.
+to flag — the feedback is mid-flight guidance a human dropped into the run's inbox while the run
+was in progress. Treat it as **required changes for this pass**, within the epic's existing scope.
+If it asks for out-of-scope work or a product decision not present in the epic/seed, return
+`status: "blocked"` with the question rather than expanding scope.
 
 Keep the parts that were already correct. Read `{{ workhorse_var('story_dir') }}/context.md` for
 any operator answer.

@@ -1077,12 +1077,13 @@ class Qa(Workflow):
     # ── the passing path: feedback, regression, sentinels ─────────────────────────────
 
     def feedback(self, loop: QaLoop) -> Continue:
-        """Poll the story's inbox once before believing the pass.
+        """Poll the run's inbox once before believing the pass.
 
-        `check_qa_feedback` + `decide_qa_feedback`. Never halts and never asks: reading the
-        inbox consumes it, so one dropped note buys exactly one re-QA.
+        `check_qa_feedback` + `decide_qa_feedback`. Never halts and never asks: polling the
+        inbox replies to the oldest outstanding message, so one dropped note buys exactly
+        one re-QA.
         """
-        note = self.call(check_feedback, f"{self.ctx.spec_dir}/feedback.md")
+        note = self.call(check_feedback, str(self.run_dir))
         if note.present:
             self.logger.info("operator feedback found — re-QA after applying it")
             return Continue(note, self.apply_feedback, loop=loop, content=note.content)

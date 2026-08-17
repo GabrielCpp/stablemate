@@ -1,12 +1,11 @@
 """The review flow's deterministic work: where to review, what settled, what a human dropped.
 
-Ports `resolve-review-context.py`, `verify-review-resolution.py` and `check_feedback.py`.
+Ports `resolve-review-context.py` and `verify-review-resolution.py`.
 
-`check_feedback.py` carried its own `_find_repo_root(repo_dir)` — a fourth copy of the repo-root
-/ cwd-if-root / ancestor-walk sequence, written out because the script was stdlib-only and
-could not import `workhorse.scriptutil`. A node has no such constraint, so it calls
-`paths.launch_repo_root(repo_dir)` like everything else in this package. The resolution order is the
-same one the script implemented.
+`check_feedback` used to poll a `feedback.md` in the story's spec dir, resolved through its
+own fourth copy of the repo-root walk. It now polls the run's own `inbox.jsonl`
+(`Workflow.run_dir`) through `workhorse_workflows.kit.poll_run_inbox`, so this module carries
+no repo-root resolution of its own for it.
 
 One divergence is *not* repaired here, and it is a finding rather than a preference:
 `verify_review_resolution` looks for the settlement sidecars at a hardcoded
@@ -20,29 +19,20 @@ import json
 import logging
 
 from ostler import Ostler
-from workhorse import gates
-from workhorse_workflows.kit import find_docs_root, load_json
-from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.dev import ImplResult
 from workhorse_workflows.coder.shared.schemas.review import Feedback, ReviewContext
-from workhorse_workflows.kit import get_affected_repos, resolve_workspace
+from workhorse_workflows.kit import (
+    find_docs_root,
+    get_affected_repos,
+    load_json,
+    poll_run_inbox,
+    resolve_workspace,
+)
 
 #: The agent's structured verdict, and the per-finding ledger ostler writes from it.
 RESOLUTION_FILE = "review-resolution.json"
 SETTLEMENT_FILE = "review-settlement.json"
-
-#: The two states the feedback inbox can be in. Reading `NEW` is what consumes it: the node
-#: stamps `CONSUMED` on the way out, so one dropped note buys exactly one rework pass rather
-#: than a loop. The `STATUS:`/`SCOPE:` header itself is read through `workhorse.gates` —
-#: these names are this inbox's vocabulary, which that reader deliberately does not know.
-NEW = "NEW"
-CONSUMED = "CONSUMED"
-
-
-def _scope_of(text: str) -> str:
-    """The inbox's `SCOPE:` line. Only `epic` is honoured; anything else is `story`."""
-    return "epic" if gates.scope_of(text) == "epic" else "story"
 
 
 @blueprint.node
@@ -203,51 +193,22 @@ def verify_review_resolution(
 
 
 @blueprint.node
-def check_feedback(
-    logger: logging.Logger, feedback_path: str = "", repo_dir: str = ""
-) -> Feedback:
-    """Poll the story's feedback inbox once, without ever halting or asking.
+def check_feedback(logger: logging.Logger, run_dir: str = "") -> Feedback:
+    """Poll the run's inbox once, without ever halting or asking.
 
-    The non-blocking counterpart to the operator gate: a human may drop notes into
-    `<spec_dir>/feedback.md` at any point while the run executes, and the flow checks at safe
-    points whether there are un-consumed ones to fold into a single rework pass. "No feedback"
-    is the common case, not an error.
-
-    A file with real content but no `STATUS:` line is treated as new — forgiving for a human
-    who pasted notes without the header — and stamped `CONSUMED` at the top. Whitespace-only
-    is nothing.
+    The non-blocking counterpart to the operator gate: a human may drop a note into the
+    run's inbox at any point while it executes, and the flow checks at safe points whether
+    there is an un-consumed one to fold into a single rework pass. "No feedback" is the
+    common case, not an error. Polling is what consumes a message — the oldest outstanding
+    one is replied to on the way out.
     """
-    if not feedback_path:
-        logger.info("no feedback_path given — nothing to poll")
+    polled = poll_run_inbox(run_dir, reply_text="folded into a rework pass")
+    if polled is None:
+        logger.info("no outstanding inbox messages")
         return Feedback()
-
-    # `root / path` yields `path` when it is absolute, so repo-relative and absolute inbox
-    # paths both work.
-    inbox = paths.launch_repo_root(repo_dir) / feedback_path
-    if not inbox.exists():
-        logger.info("no inbox file at %s — nothing to poll", inbox)
-        return Feedback()
-
-    current = inbox.read_text(encoding="utf-8")
-    state = gates.status_of(current)
-
-    if state == NEW:
-        inbox.write_text(gates.set_status(current, CONSUMED), encoding="utf-8")
-        logger.info("consumed NEW feedback from %s", inbox)
-        return Feedback(present=True, scope=_scope_of(current), content=current)
-
-    if state == "":
-        if current.strip():
-            # `set_status` prepends the header when the file has none, which is what a
-            # hand-dropped note without one needs: it too is consumed exactly once.
-            inbox.write_text(gates.set_status(current, CONSUMED), encoding="utf-8")
-            logger.info("no STATUS line but %s has content — treating as NEW", inbox)
-            return Feedback(present=True, scope=_scope_of(current), content=current)
-        logger.info("no STATUS line and %s is empty — nothing to do", inbox)
-        return Feedback()
-
-    logger.info("%s is %s — nothing new", inbox, state)
-    return Feedback()
+    content, scope = polled
+    logger.info("feedback present (scope=%s)", scope)
+    return Feedback(present=True, scope=scope, content=content)
 
 
 __all__ = [

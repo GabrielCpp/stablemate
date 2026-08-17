@@ -499,13 +499,14 @@ class Review(Workflow):
         review_rework: int,
         review_blocks: int = 0,
     ) -> Continue | Done:
-        """Did a human drop notes into the story's inbox while the run was busy?
+        """Did a human drop a note into the run's inbox while the run was busy?
 
-        `check_impl_feedback` + `decide_impl_feedback`. Never halts and never asks: reading
-        the inbox marks it consumed, so one drop buys exactly one rework pass. No feedback —
-        the common case — ends the flow and the caller proceeds to QA.
+        `check_impl_feedback` + `decide_impl_feedback`. Never halts and never asks: polling
+        the inbox replies to the oldest outstanding message, so one drop buys exactly one
+        rework pass. No feedback — the common case — ends the flow and the caller proceeds
+        to QA.
         """
-        feedback = self.call(check_feedback, f"{self.ctx.spec_dir}/feedback.md")
+        feedback = self.call(check_feedback, str(self.run_dir))
         if not feedback.present:
             return Done(ReviewResult())
         self.logger.info("operator feedback found — one rework pass", extra={"activity": True})

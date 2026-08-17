@@ -14,13 +14,13 @@ from pathlib import Path
 
 from ostler import Ostler, backlog as ostler_backlog, markdown, registry
 from ostler.model import required_section_problems, status_bullet
-from workhorse import gates
 from workhorse import worklist as wl
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.nodes._blueprint import blueprint
 from workhorse_workflows.author.nodes import _stubs
 from workhorse_workflows.author.shared import paths
-from workhorse_workflows.author.shared.paths import feedback_repo_root, survey_repo_root
+from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.kit import poll_run_inbox
 from workhorse_workflows.author.shared.schemas.edit import ResolvedBullet
 from workhorse_workflows.author.shared.schemas.main import (
     Defects,
@@ -637,57 +637,21 @@ def record_attempt(
     return Ledger(prior_attempts=updated.strip(), ledger=ledger_rel)
 
 
-def _scope_of(text: str) -> str:
-    """The inbox's `SCOPE:` line. Only `epic` is honoured; anything else reworks one story."""
-    return "epic" if gates.scope_of(text) == "epic" else "story"
-
-
 @blueprint.node
-def check_story_feedback(
-    logger: logging.Logger, feedback_path: str = "", repo_dir: str = ""
-) -> Feedback:
-    """Poll the operator's inbox for un-consumed feedback. Never blocks, never asks.
+def check_story_feedback(logger: logging.Logger, run_dir: str = "") -> Feedback:
+    """Poll the operator's run-scoped inbox for un-consumed feedback. Never blocks, never asks.
 
     The twin of an `Await`, and its opposite: a human may drop a note at any time while the
     run executes, and this reports whether there is one to fold into a single rework cycle.
-    Reading it **consumes** it — the `STATUS:` line is flipped to `CONSUMED` before the flow
-    acts — so the same note cannot loop the story forever. A file with real content but no
-    `STATUS:` line is treated as NEW, which is the forgiving reading of a human's first
-    attempt at the format.
-
-    The resolver here is `feedback_repo_root`, the one this script alone used; see
-    `shared/paths.py` on why the four are kept apart.
+    Replying to the message is what consumes it — the same note cannot loop the story forever.
     """
-    if not feedback_path:
-        logger.info("no feedback_path supplied")
+    polled = poll_run_inbox(run_dir, reply_text="folded into a story rework")
+    if polled is None:
+        logger.info("no outstanding inbox messages")
         return Feedback()
-
-    # `root / abs` == abs (pathlib), so an absolute path works too.
-    inbox = feedback_repo_root(repo_dir) / feedback_path
-    if not inbox.exists():
-        logger.info("no feedback inbox at %s", inbox)
-        return Feedback()
-
-    current = inbox.read_text()
-    state = gates.status_of(current)
-
-    if state == "NEW":
-        inbox.write_text(gates.set_status(current, "CONSUMED"))
-        logger.info("feedback present (scope=%s)", _scope_of(current))
-        return Feedback(present=True, scope=_scope_of(current), content=current)
-
-    if state == "":
-        if current.strip():
-            # `set_status` prepends the header when there is none — the same bytes this
-            # arm used to write by hand, now from the one implementation of the format.
-            inbox.write_text(gates.set_status(current, "CONSUMED"))
-            logger.info("untagged feedback content treated as NEW (scope=%s)", _scope_of(current))
-            return Feedback(present=True, scope=_scope_of(current), content=current)
-        logger.info("no unconsumed feedback")
-        return Feedback()
-
-    logger.info("no unconsumed feedback (state=%s)", state)
-    return Feedback()
+    content, scope = polled
+    logger.info("feedback present (scope=%s)", scope)
+    return Feedback(present=True, scope=scope, content=content)
 
 
 @blueprint.node

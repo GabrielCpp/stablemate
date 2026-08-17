@@ -73,10 +73,10 @@ class ReviewContext(CoderResult):
 
 
 class Feedback(CoderResult):
-    """`check_feedback.py` — un-consumed operator notes dropped into the story's inbox.
+    """`check_feedback` — an un-consumed operator note dropped into the run's inbox.
 
-    The non-blocking counterpart to the operator gate: it never halts and never asks. Reading
-    it is what consumes it — the node flips `STATUS: NEW` to `CONSUMED` on the way out — so
+    The non-blocking counterpart to the operator gate: it never halts and never asks. Polling
+    it is what consumes it — the oldest outstanding message is replied to on the way out — so
     each dropped note buys exactly one rework pass.
     """
 

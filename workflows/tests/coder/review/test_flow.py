@@ -30,7 +30,9 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from workhorse import inbox
 from workhorse.artifacts import ArtifactWriter
+from workhorse.cli.inbox import INBOX_FILE
 from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
@@ -659,10 +661,16 @@ def test_dropped_feedback_buys_exactly_one_rework_pass(
     The counter is carried rather than reset — the YAML's wiring — so the feedback pass
     re-enters the review loop with whatever allowance is left rather than a fresh one.
     """
-    write(docs / SPEC_REL / "feedback.md", "STATUS: NEW\n\nRename the endpoint.\n")
+    run_env = env()
+    inbox.append(
+        run_env.writer.run_dir / INBOX_FILE,
+        id="note-1",
+        body="Rename the endpoint.",
+        at="2024-01-01T00:00:00+00:00",
+    )
     agent = _Agent(docs)
 
-    result = drive_flow(Review(story=STORY), env(), agent)
+    result = drive_flow(Review(story=STORY), run_env, agent)
 
     assert result.status == "approved", result
     assert agent.counts()["review-implementation"] == 2, agent.counts()
@@ -671,8 +679,10 @@ def test_dropped_feedback_buys_exactly_one_rework_pass(
     pass_ = agent.args_for("apply-review")[0]
     assert pass_["review_notes"] == ""
     assert "Rename the endpoint" in pass_["operator_feedback"]
-    # And the inbox is stamped, so the second poll finds nothing new.
-    assert "STATUS: CONSUMED" in (docs / SPEC_REL / "feedback.md").read_text()
+    # And the message is replied to, so the second poll finds nothing new.
+    messages = inbox.all_messages(run_env.writer.run_dir / INBOX_FILE)
+    assert len(messages) == 1, messages
+    assert messages[0].reply, messages
 
 
 # --------------------------------------------------------------------------- resume

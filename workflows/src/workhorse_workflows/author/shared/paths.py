@@ -4,10 +4,10 @@ Two kinds of thing live here, and both are here for the same reason — they wer
 duplicated verbatim across the YAML workflow's scripts, once per file, and a derivation
 copied 30 times is a derivation nobody can change.
 
-**Four repo-root resolvers, deliberately.** The scripts did not agree on how to find the
+**Three repo-root resolvers, deliberately.** The scripts did not agree on how to find the
 consuming repo, and the disagreement is behavioral rather than cosmetic: a run launched
 from a subdirectory of a repo with no `agents.yml` resolves to a *different* root under
-each. So all four are kept, named for what they actually do, and each ported node calls
+each. So all three are kept, named for what they actually do, and each ported node calls
 the one its script called:
 
 Every one of them takes the run's `repo_dir` as its argument and reads no environment
@@ -29,12 +29,13 @@ variable.
   `agents.yml` or `.git`. Used by the three git/GitHub nodes (`branch_author`,
   `commit_author`, `open_author_pr`), and imported from the engine where it already
   lives rather than copied to a fourth spelling here.
-* `feedback_repo_root()` — `repo_dir`, else the current directory *if* it looks
-  like a repo, else the first ancestor with `agents.yml` or `.git`. `check_feedback.py`
-  alone resolved this way; `check_story_feedback` keeps it.
 
 Unifying them would be a narrowing, so it is a decision for the deletion loop and not
 something the port does silently.
+
+`check_story_feedback` no longer resolves a repo root at all: it polls the run's own
+`inbox.jsonl` (`Workflow.run_dir`), not a file inside the consuming repo, so the fourth
+resolver these scripts used (`feedback_repo_root`) has no caller left and is gone.
 
 **The derived paths are repo-relative strings**, matching the config models, which hold
 relative paths so a checkpoint survives a machine change. A node joins one onto a freshly
@@ -77,24 +78,6 @@ def launch_repo_root(repo_dir: str | Path = "") -> Path:
     if repo_dir:
         return Path(repo_dir).resolve()
     return Path.cwd().resolve()
-
-
-def feedback_repo_root(repo_dir: str | Path = "") -> Path:
-    """The consuming repo, as `check_feedback.py` alone resolved it.
-
-    The difference from `survey_repo_root` is the first step: the current directory is
-    accepted if it carries *any* of the three markers, and only then are its parents
-    walked, looking for the two git-ish ones.
-    """
-    if repo_dir:
-        return Path(repo_dir).resolve()
-    here = Path.cwd().resolve()
-    if (here / "docs" / "epics").is_dir() or (here / "agents.yml").exists() or (here / ".git").exists():
-        return here
-    for candidate in here.parents:
-        if (candidate / "agents.yml").exists() or (candidate / ".git").exists():
-            return candidate
-    return here
 
 
 # ── derived artifact paths, all repo-relative ───────────────────────────────
@@ -181,11 +164,6 @@ def story_context(story_dir_rel: str) -> str:
     return f"{story_dir_rel.rstrip('/')}/context.md"
 
 
-def story_feedback(story_dir_rel: str) -> str:
-    """Where an operator leaves a note for a story that is already written."""
-    return f"{story_dir_rel.rstrip('/')}/feedback.md"
-
-
 __all__ = [
     "author_context",
     "backlog_file",
@@ -193,10 +171,8 @@ __all__ = [
     "epic_dir",
     "epics_dir",
     "features_dir",
-    "feedback_repo_root",
     "launch_repo_root",
     "story_context",
     "story_dir",
-    "story_feedback",
     "survey_repo_root",
 ]

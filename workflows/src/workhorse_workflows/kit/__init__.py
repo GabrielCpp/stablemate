@@ -100,6 +100,8 @@ _NAMES: dict[str, str] = {
         "load_jsonc",
     )
 } | {
+    "poll_run_inbox": "workhorse_workflows.kit.inbox",
+} | {
     "run_tool": "workhorse_workflows.kit.tools",
 }
 
@@ -167,6 +169,7 @@ if TYPE_CHECKING:  # the names above, for a reader and a type checker
         find_docs_root,
         find_repo_root,
     )
+    from workhorse_workflows.kit.inbox import poll_run_inbox  # noqa: F401
     from workhorse_workflows.kit.tools import run_tool  # noqa: F401
     from workhorse_workflows.kit.workspace import (  # noqa: F401
         build_dispatch_list,

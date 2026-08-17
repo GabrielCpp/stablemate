@@ -48,7 +48,9 @@ from unittest.mock import patch
 import pytest
 from _fakes import StubRunner
 from ostler import Ostler, markdown
+from workhorse import inbox
 from workhorse.artifacts import ArtifactWriter
+from workhorse.cli.inbox import INBOX_FILE
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import activity as pyflow_activity
 from workhorse.pyflow import driver as pyflow_driver
@@ -330,8 +332,9 @@ class _Agent:
     gate's failing arm), `fail_audit` fails the auditor for named stories, `audit_replies` returns a
     verbatim audit reply for a named story,
     `coverage_verdicts` scripts the coverage reviewer, `feedback` drops an operator note
-    into a story's inbox mid-run, `escalate` makes the operator stand-in hand the block to
-    a human, and `explode` raises instead of writing a story — a run killed mid-turn.
+    into the run's inbox mid-run (requires `run_dir`), `escalate` makes the operator
+    stand-in hand the block to a human, and `explode` raises instead of writing a story —
+    a run killed mid-turn.
     """
 
     def __init__(
@@ -345,6 +348,7 @@ class _Agent:
         fail_audit: set[str] | None = None,
         audit_replies: dict[str, dict[str, Any]] | None = None,
         feedback: dict[str, str] | None = None,
+        run_dir: Path | None = None,
         escalate: bool = False,
         explode: set[str] | None = None,
         edit_plans: list[dict[str, Any]] | None = None,
@@ -352,6 +356,7 @@ class _Agent:
         backend_seeds: bool = False,
     ) -> None:
         self.repo = repo
+        self.run_dir = run_dir
         self.review_epics = review_epics or ["approved"]
         self.coverage_verdicts = coverage_verdicts or ["ok"]
         self.two_epics = two_epics
@@ -600,10 +605,14 @@ The running system is the source of truth.
         slug = str(data["story_slug"])
         note = self.feedback.pop(slug, "")
         if note:
-            # An operator dropped a note into the story's inbox while the run was busy.
-            inbox = self.repo / data["story_dir"] / "feedback.md"
-            inbox.parent.mkdir(parents=True, exist_ok=True)
-            inbox.write_text(f"STATUS: NEW\n\n{note}\n")
+            # An operator dropped a note into the run's inbox while the run was busy.
+            assert self.run_dir is not None, "feedback scripted without a run_dir"
+            inbox.append(
+                self.run_dir / INBOX_FILE,
+                id=f"{slug}-note",
+                body=note,
+                at="2024-01-01T00:00:00+00:00",
+            )
         if slug in self.audit_replies:
             return self.audit_replies[slug]
         if slug in self.fail_audit:
@@ -1009,19 +1018,25 @@ def test_an_operator_note_dropped_mid_run_reworks_the_story_once(
     """`check_story_feedback` never blocks, and consuming the inbox is what bounds it.
 
     The note is dropped while the auditor is running, so it is there when
-    `story_feedback` polls. Reading it marks the file `CONSUMED`, so the story is reworked
+    `story_feedback` polls. Replying to it is what consumes it, so the story is reworked
     exactly once no matter how many laps the loop takes afterwards.
     """
-    agent = _Agent(backlogged, feedback={"01-sign-in": "call it 'sign in', never 'log in'"})
-    _drive(_env(tmp_path), agent)
+    env = _env(tmp_path)
+    agent = _Agent(
+        backlogged,
+        feedback={"01-sign-in": "call it 'sign in', never 'log in'"},
+        run_dir=env.writer.run_dir,
+    )
+    _drive(env, agent)
 
     assert agent.counts()["rework-story"] == 1, agent.counts()
     note = agent.args_for("rework-story")[0]
     assert "never 'log in'" in note["operator_feedback"], note
     # The operator's note is the work; there is no validation failure to carry.
     assert note["validation_errors"] == "", note
-    inbox = (backlogged / EPIC_DIR / "stories/01-sign-in/feedback.md").read_text()
-    assert "STATUS: CONSUMED" in inbox, inbox
+    messages = inbox.all_messages(env.writer.run_dir / INBOX_FILE)
+    assert len(messages) == 1, messages
+    assert messages[0].reply, messages
     # Consumed, so the second pass through `story_feedback` found nothing.
     assert agent.counts()["audit-story"] == 3, agent.counts()
 
