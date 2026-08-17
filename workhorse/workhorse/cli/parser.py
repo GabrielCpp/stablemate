@@ -15,7 +15,7 @@ import argparse
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from workhorse.cli import control, dot, run, version
+from workhorse.cli import control, dot, inbox, run, version
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +34,7 @@ COMMANDS: tuple[Command, ...] = (
     Command(run.NAME, run.HELP, run.add_arguments, run.run),
     Command(dot.NAME, dot.HELP, dot.add_arguments, dot.run),
     Command(control.NAME, control.HELP, control.add_arguments, control.run),
+    Command(inbox.NAME, inbox.HELP, inbox.add_arguments, inbox.run),
     Command(version.NAME, version.HELP, version.add_arguments, version.run),
 )
 

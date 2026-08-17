@@ -311,9 +311,11 @@ def test_the_parser_is_named_after_the_command_and_the_workflow() -> None:
     assert "'demo'" in (parser.description or "")
 
 
-def test_the_command_table_is_run_dot_control_version() -> None:
+def test_the_command_table_is_run_dot_control_inbox_version() -> None:
     """A subcommand earns its place by being something the workflow's author needs."""
-    assert [c.name for c in parser_mod.COMMANDS] == ["run", "dot", "control", "version"]
+    assert [c.name for c in parser_mod.COMMANDS] == [
+        "run", "dot", "control", "inbox", "version",
+    ]
 
 
 # --------------------------------------------------------------------------------
