@@ -34,7 +34,7 @@ from pathlib import Path
 
 import pytest
 
-from ostler import index
+from ostler import index, markdown, model
 from ostler.cli import main
 
 from conftest import (UI_DASH_UNLINKED, entry_files, ostler_process, report_of, screen_md,
@@ -181,6 +181,39 @@ def test_verify_index_agrees_against_an_empty_index(ui_book: Path, tmp_path: Pat
 
     assert code == 0 and "agree" in printed
     assert entry_files(directory), "the indexed half of verify never wrote an entry"
+
+
+def test_verify_index_catches_a_store_that_round_trips_a_document_wrongly(
+    ui_book: Path, warm: Path, monkeypatch: pytest.MonkeyPatch, capsys
+):
+    """The mode's whole purpose, and for the document products it was inert until it wasn't.
+
+    `--verify-index` runs the indexed and the uncached path in one process, so the two halves
+    only disagree if the uncached one recomputes what the indexed one read. The document memo
+    used to serve a parsed document across both stores — on the argument that these products
+    are a pure function of the bytes and no store can disagree about them, which is precisely
+    the assumption this mode exists to test. A corrupt entry was therefore never read by the
+    half meant to catch it, and the gate reported "agree" and exited 0.
+
+    Corrupting the read side of the round trip is the smallest faithful stand-in for a store
+    that damages an entry: only a *hit* goes through `_doc_from_products`, so the uncached half
+    is untouched and the disagreement is exactly the one a real corruption would produce.
+    """
+    original = model._doc_from_products
+
+    def truncating(payload):
+        doc = original(payload)
+        return markdown.MarkdownDoc(frontmatter=doc.frontmatter,
+                                    raw_frontmatter=doc.raw_frontmatter,
+                                    body="", _sections=[])
+
+    monkeypatch.setattr(model, "_doc_from_products", truncating)
+
+    code = main(["-C", str(ui_book), "doctor", "--verify-index", "--index-dir", str(warm)])
+    printed = capsys.readouterr().out
+
+    assert code == 1, "verify-index passed while the store was handing back damaged documents"
+    assert "disagree" in printed
 
 
 def test_verify_index_agrees_against_a_partially_stale_index(ui_book: Path, warm: Path, capsys):

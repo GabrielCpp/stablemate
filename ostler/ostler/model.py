@@ -559,18 +559,25 @@ def _load_ids(graph: Graph) -> None:
 #: in front of the persistent index — a run reads the same file from four places and must not
 #: pay four lookups for it.
 #:
-#: The store is remembered because a memo hit must not *cost* the index an entry. One process
-#: can open more than one store — ``--verify-index`` opens two, and a long-lived
-#: :class:`ostler.Ostler` opens one per book — and a document already in memory would
-#: otherwise never be written to a store that does not yet have it, leaving that store cold
-#: for every process after this one.
+#: The store is part of the memo's identity: an entry only answers the store it was computed
+#: under, exactly as `inventory._SYMBOL_MEMO` does. One process can open more than one —
+#: ``--verify-index`` opens two, and a long-lived :class:`ostler.Ostler` opens one per book.
+#:
+#: Serving a document across stores looks safe, on the argument that these products are a pure
+#: function of the bytes and so no store can disagree about them. That argument is the one
+#: ``--verify-index`` exists to *test*, and assuming it is what made the mode inert: the mode
+#: runs the indexed and the uncached path in one process and diffs the reports, so a memo
+#: spanning both let the uncached half read the products the indexed half had already parsed.
+#: A store that round-trips a document wrongly was therefore never read on the half that was
+#: supposed to catch it, and the gate passed on a corrupted entry. The document is the largest
+#: product the index holds, which made it the largest hole in the gate.
 @dataclass
 class _Cached:
     """One path's read-only products, held for the life of the process."""
 
     digest: str
     doc: markdown.MarkdownDoc
-    store: index.IndexStore | None       # the store this content has been written to, if any
+    store: index.IndexStore | None       # the store this content was computed under, if any
     ui_nodes: list[UINode] | None        # stored form, straight off the entry; see `_DocProducts`
 
 
@@ -632,11 +639,7 @@ def read_doc(path: Path) -> markdown.MarkdownDoc:
     digest = index.content_sha(data)
     store = index.active()
     cached = _DOC_CACHE.get(target)
-    if cached is not None and cached.digest == digest:
-        if store is not None and store is not cached.store:
-            # A store this document has not been written to yet. Serving it out of memory would
-            # leave that store cold for every process after this one, so pay the write now.
-            _persist(store, target, cached)
+    if cached is not None and cached.digest == digest and cached.store is store:
         return cached.doc
     cached = _read_products(target, data, digest, store)
     _DOC_CACHE[target] = cached

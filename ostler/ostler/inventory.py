@@ -478,13 +478,11 @@ def _grounds(names: set[str] | frozenset[str], symbol: str) -> bool:
 # one extraction even with no index at all — `--no-index`, and any caller using ostler as a
 # library, still gets it.
 #
-# What is *not* like `read_doc`: a memo entry only answers the store it was computed under.
-# `read_doc` serves a cached document across stores and writes it into whichever one has not seen
-# it, which is right for a product no store can disagree about. Here the whole point of
-# `--verify-index` is to run the indexed and the uncached path in one process and compare them,
-# and a memo spanning both would let the uncached half read work the indexed half did — hiding
-# exactly the disagreement the mode exists to find. So the store is part of the memo's identity,
-# and outside a session (`None`) the memo simply spans the process.
+# As in `read_doc`, the store is part of the memo's identity: an entry only answers the store it
+# was computed under. The whole point of `--verify-index` is to run the indexed and the uncached
+# path in one process and compare them, and a memo spanning both would let the uncached half read
+# work the indexed half did — hiding exactly the disagreement the mode exists to find. Outside a
+# session (`None`) the memo simply spans the process.
 
 
 @dataclass(frozen=True)
