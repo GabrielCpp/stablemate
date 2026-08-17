@@ -1,6 +1,7 @@
 ---
 description: Interview me relentlessly about a plan, a design or an idea until the design tree has no unvisited branch — one round of numbered questions per frontier, each with your recommendation
 argument-hint: "[the plan, decision or idea to stress-test]"
+tags: [grill]
 ---
 
 # Grill

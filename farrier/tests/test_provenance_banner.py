@@ -169,6 +169,16 @@ def test_generated_command_passes_through_argument_hint(tmp_path):
     assert 'argument-hint: "<pr-number>"' in content.split("\n---\n", 1)[0]
 
 
+def test_generated_command_carries_tags_into_metadata(tmp_path):
+    source = _prompt_source(
+        tmp_path,
+        "---\ndescription: Check a PR\ntags: [grill]\n---\n\n# Check\n\nBody.\n",
+    )
+    content = _render_claude_command(tmp_path, source)
+    front_matter = content.split("\n---\n", 1)[0]
+    assert "  tags: [grill]" in front_matter
+
+
 def _overlay_skill(tmp_path: Path, name: str, body: str) -> Source:
     skill_file = tmp_path / "library" / "skills" / "go" / name / "SKILL.md"
     skill_file.parent.mkdir(parents=True)

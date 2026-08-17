@@ -571,7 +571,9 @@ class Renderer:
             if value:
                 lines.append(f"{key}: {yaml_quote(value)}")
         dest_rel = output_path.relative_to(self.repo).as_posix()
-        lines.append(skill_metadata_block(source, dest_rel).rstrip("\n"))
+        lines.append(
+            skill_metadata_block(source, dest_rel, self.skill_tags(source)).rstrip("\n")
+        )
         lines.append("---")
         return "\n".join(lines) + "\n\n" + f"{body}\n"
 
