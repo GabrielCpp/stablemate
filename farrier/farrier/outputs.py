@@ -15,6 +15,7 @@ from farrier.frontmatter import (
     mapping_prompt_names,
     mapping_skill_names,
 )
+from farrier.hooks import GATE_SCRIPT, ensure_qa_gitignore, install_hook
 from farrier.launcher import (
     LAUNCHER_AGENTS_MK,
     LAUNCHER_COMPOSE,
@@ -457,6 +458,14 @@ def install_outputs(repo: Path, outputs: dict[Path, str]) -> None:
     # block also covers the adapter directories rendered alongside it.
     if (repo / LAUNCHER_AGENTS_MK) in outputs and ensure_agents_gitignore(repo):
         print("Updated .agents .gitignore rules")
+    # The staged-files gate is text until something runs it, and the ignore line is what
+    # keeps the artifacts out of the index before the hook ever has to refuse them. Both
+    # are guarded on the gate script itself being among the outputs: a repo that did not
+    # select the ostler skill has not asked for either.
+    if any(path.name == Path(GATE_SCRIPT).name for path in outputs):
+        if ensure_qa_gitignore(repo):
+            print("Updated QA evidence .gitignore rules")
+        print(install_hook(repo))
     # When the repo already had a root Makefile, farrier left it untouched above —
     # wire the generated launcher into it so its agent targets are reachable.
     if (repo / LAUNCHER_AGENTS_MK) in outputs and ensure_makefile_include(repo):
