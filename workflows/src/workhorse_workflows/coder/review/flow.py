@@ -50,6 +50,7 @@ from typing import Any, ClassVar
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.dev import read_operator_context
+from workhorse_workflows.coder.shared.escalation import compose_escalation
 from workhorse_workflows.coder.shared.review import (
     check_feedback,
     clear_review_resolution,
@@ -61,7 +62,11 @@ from workhorse_workflows.coder.shared.story import (
     resolve_workspace_dirs,
     stamp_specs,
 )
-from workhorse_workflows.coder.shared.schemas.dev import ImplResult, OperatorResolution
+from workhorse_workflows.coder.shared.schemas.dev import (
+    ImplResult,
+    OperatorGate,
+    OperatorResolution,
+)
 from workhorse_workflows.coder.shared.schemas.review import (
     CodeReuseResult,
     CodeReviewResult,
@@ -368,7 +373,7 @@ class Review(Workflow):
         if self.operator_mode in {"human", "operator"}:
             return Await(
                 self._context,
-                notes,
+                self._escalation(notes, review_blocks).body,
                 self.read_operator,
                 notes=notes,
                 code_review=code_review,
@@ -425,11 +430,12 @@ class Review(Workflow):
                 code_reuse=code_reuse,
                 review_blocks=review_blocks,
             )
-        # No ask — see `dev.flow.resolve_plan`: the escalating resolver's note is already in
-        # this file, and `Await` writes its `questions` over the top of whatever is there.
+        # See `dev.flow.resolve_plan`: the escalating resolver's note is already in this
+        # file and `Await` writes over it, so the body handed here carries that note
+        # forward along with what the resolver tried.
         return Await(
             self._context,
-            "",
+            self._escalation(notes, review_blocks, result).body,
             self.read_operator,
             notes=notes,
             code_review=code_review,
@@ -572,6 +578,24 @@ class Review(Workflow):
     def _context(self) -> Path:
         """The file an `Await` writes its questions into: `<story-folder>/context.md`."""
         return paths.story_context_path(self.ctx.story_path)
+
+    def _escalation(
+        self, notes: str, review_blocks: int, result: OperatorResolution | None = None
+    ) -> OperatorGate:
+        """The gate body for a review block — see `coder.shared.escalation`."""
+        return self.call(
+            compose_escalation,
+            story_path=self.ctx.story_path,
+            story_slug=self.ctx.story_slug,
+            spec_dir=self.ctx.spec_dir,
+            run_dir=str(self.run_dir),
+            number=review_blocks,
+            block_kind="review",
+            block_notes=notes,
+            where="the implementation-review stage",
+            tried=list(result.tried) if result else [],
+            summary=result.summary if result else "",
+        )
 
     def _dirs(self) -> list[str]:
         """Every directory this run's agent turns may read."""

@@ -61,6 +61,12 @@ ESCALATION_NOTE = (
     "Please confirm which host the suite should dial.\n"
 )
 
+#: What that resolver reports it ruled out, which the composed gate publishes verbatim.
+RESOLVER_TRIED = (
+    "ran `ostler qa run --scenario SC-1` twice — identical connection refused",
+    "checked the emulator port in qa-stack.yml against the container — they match",
+)
+
 #: The epic index ostler parses to learn the story exists — same shape the `dev` suite uses.
 EPIC_MD = """---
 title: Epic One
@@ -613,7 +619,11 @@ class _Agent:
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if self.escalate:
             self._escalate()
-            return {"decision": "escalated", "summary": "only a person can decide this"}
+            return {
+                "decision": "escalated",
+                "summary": "only a person can decide this",
+                "tried": list(RESOLVER_TRIED),
+            }
         self._answer()
         return {"decision": "answered", "summary": "use the staging bucket"}
 
@@ -1523,7 +1533,9 @@ def test_a_fixer_that_reports_blocked_reaches_the_operator(
     counts = agent.counts()
     # The block is asked of the operator on the first fix, not swallowed.
     assert counts["resolve-operator"] == laps, counts
-    assert seen == [ESCALATION_NOTE] * laps, seen
+    # Each gate is the composed escalation body, numbered, carrying the resolver's note.
+    assert [f"**Escalation #{n} " in body for n, body in enumerate(seen, 1)] == [True] * laps, seen
+    assert all(ESCALATION_NOTE.strip() in body for body in seen), seen
     # And each lap that would have re-planned and re-run the whole suite is one the gate
     # took instead: half the full QA laps rather than one per fix.
     assert counts["qa-story"] == laps, counts
@@ -1552,10 +1564,14 @@ def test_an_escalating_resolver_hands_the_block_to_a_person(
 
     assert result.status == "passed", result
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
-    # The resolver's note, not `loop.block_notes`: the escalated `Await` waits on this file
-    # without rewriting it, so the human arrives to what the resolver already tried. See
-    # `dev`'s `test_an_escalating_resolver_leaves_its_note_for_the_human`.
-    assert seen == [ESCALATION_NOTE], seen
+    # The gate the human arrives at is the composed body: this story's escalation number,
+    # what blocked, what the resolver ruled out — and the resolver's own note, carried
+    # forward verbatim rather than overwritten. See `coder.shared.escalation`.
+    (gate,) = seen
+    assert "**Escalation #1 " in gate, gate
+    assert all(line in gate for line in RESOLVER_TRIED), gate
+    assert "only a person can decide this" in gate, gate
+    assert ESCALATION_NOTE.strip() in gate, gate
 
 
 # --------------------------------------------------------------------------- the two gates

@@ -160,6 +160,25 @@ class OperatorResolution(CoderResult):
     decision: str = ""
     summary: str = ""
 
+    #: What the resolver attempted and ruled out before it escalated, one line each. It is
+    #: the diagnosis so far, and without it the human who arrives at the gate re-runs every
+    #: dead end the resolver already paid for. Defaulted and never required: an older
+    #: transcript, and a resolver that answered rather than escalated, both parse with it
+    #: absent.
+    tried: list[str] = []
+
+
+class OperatorGate(CoderResult):
+    """The escalation body a flow hands to `Await` — see `coder.shared.escalation`.
+
+    `body` is a whole context file, `STATUS:` line included, so `gates.format_operator_gate`
+    passes it through untouched rather than wrapping it. `number` is the escalation's
+    ordinal for this story, carried out so a caller can log it without re-deriving it.
+    """
+
+    body: str = ""
+    number: int = 0
+
 
 class OperatorAnswer(CoderResult):
     """What `<story-folder>/context.md` said once the operator (or the resolver) answered.
@@ -317,6 +336,7 @@ __all__ = [
     "LayerPick",
     "LintOutcome",
     "OperatorAnswer",
+    "OperatorGate",
     "OperatorResolution",
     "PlanResult",
     "PlanValidation",

@@ -593,6 +593,14 @@ class QaLoop(CoderResult):
     #: context → repair → gate → resolve → apply forever.
     operator_consulted: bool = False
 
+    #: How many times this story has been handed to the operator gate, counting the one it
+    #: is being handed to now. `dev` and `review` already keep this as `plan_blocks` /
+    #: `review_blocks`; QA had no equivalent because nothing branched on it, and nothing
+    #: branches on it here either — it is what the escalation body puts at the top so a
+    #: reader can tell "this story blocked once" from "this story has blocked three times
+    #: and each answer bounced". Deliberately not a budget: see `coder.shared.escalation`.
+    escalations: int = 0
+
     #: The parent-owned rescope budget, threaded in and crossed back out on a rescope.
     triage_scope: int = 0
 

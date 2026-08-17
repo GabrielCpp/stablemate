@@ -119,7 +119,14 @@ Otherwise, resolve it. Do not escalate just because a decision is hard.
 End your turn with exactly this JSON and nothing after it:
 
 ```json
-{"decision": "answered", "summary": "<one line: what you decided/did>"}
+{"decision": "answered", "summary": "<one line: what you decided/did>", "tried": ["<one line per thing you attempted and what it showed>"]}
 ```
 
 Use `"decision": "escalated"` when you wrote `STATUS: AWAITING_OPERATOR`.
+
+`tried` is what you attempted and **ruled out** — one line each, concrete: the command you
+ran and what it printed, the file you read and what it said, the hypothesis you tested and
+why it was wrong. It is published verbatim in the gate a human reads, and it is the whole
+difference between an escalation and an interruption: without it the person answering
+re-runs every dead end you already paid for. Required when you escalate; on an `answered`
+turn give it anyway if you ruled anything out on the way.

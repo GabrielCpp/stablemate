@@ -60,6 +60,12 @@ ESCALATION_NOTE = (
     "Please confirm which bucket this story targets.\n"
 )
 
+#: What that resolver reports it ruled out, which the composed gate publishes verbatim.
+RESOLVER_TRIED = (
+    "listed both buckets with the workspace credentials — neither is reachable",
+    "grepped the epic and the plan for a bucket name — nothing names one",
+)
+
 #: The epic index ostler parses to learn the story exists. Without the `## Stories` heading
 #: and the `### <slug>` subsection the graph does not know the story at all, and
 #: `prepare_story`'s authored gate is skipped rather than satisfied — which would make every
@@ -343,7 +349,11 @@ class _Agent:
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if self.escalate:
             self._escalate()
-            return {"decision": "escalated", "summary": "needs a product call"}
+            return {
+                "decision": "escalated",
+                "summary": "needs a product call",
+                "tried": list(RESOLVER_TRIED),
+            }
         self._answer()
         return {"decision": "answered", "summary": "the bucket exists in staging"}
 
@@ -771,7 +781,10 @@ def test_an_escalating_resolver_leaves_its_note_for_the_human(
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
-    assert seen == [ESCALATION_NOTE], seen
+    (gate,) = seen
+    assert "**Escalation #1 " in gate, gate
+    assert all(line in gate for line in RESOLVER_TRIED), gate
+    assert ESCALATION_NOTE.strip() in gate, gate
 
 
 def test_a_plan_no_operator_can_unblock_fails_instead_of_looping(

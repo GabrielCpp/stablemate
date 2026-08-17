@@ -78,6 +78,7 @@ from workhorse_workflows.coder.shared import ostler_qa, paths
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
 from workhorse_workflows.coder.shared.docs import detect_okf_docs
+from workhorse_workflows.coder.shared.escalation import compose_escalation
 from workhorse_workflows.coder.qa.nodes.evidence import verify_qa_evidence
 from workhorse_workflows.coder.qa.nodes.hygiene import check_sentinel_ids, flush_root_screenshots
 from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
@@ -99,7 +100,7 @@ from workhorse_workflows.coder.qa.nodes.regression import (
 from workhorse_workflows.coder.shared.review import check_feedback
 from workhorse_workflows.coder.shared.scenarios import qa_only_scenarios
 from workhorse_workflows.coder.shared.story import prepare_story, stamp_specs
-from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
+from workhorse_workflows.coder.shared.schemas.dev import OperatorGate, OperatorResolution
 from workhorse_workflows.coder.shared.schemas.qa import (
     QaAssessment,
     QaAudit,
@@ -1510,9 +1511,11 @@ class Qa(Workflow):
             # that outcome now and let the queue keep draining.
             self.logger.info("the QA resolver escalated with nothing to answer — giving up")
             return self._give_up(loop, loop.giveup_reason)
-        # No ask — see `dev.flow.resolve_plan`: the escalating resolver's note is already in
-        # this file, and `Await` writes its `questions` over the top of whatever is there.
-        return Await(self._context, "", self.read_operator, loop=loop)
+        # `Await` writes its `questions` over this file with `write_text`, so the body it is
+        # handed has to *contain* the note the resolver just wrote there — which is what
+        # `_escalation` does, on top of saying what was tried and what would unblock it.
+        gate = self._escalation(loop, result)
+        return Await(self._context, gate.body, self.read_operator, loop=loop)
 
     def read_operator(self, loop: QaLoop) -> Continue | Done:
         """Consume the answer and route on the scope the answerer chose.
@@ -1862,10 +1865,38 @@ class Qa(Workflow):
         return self._guard_qa(result, loop)
 
     def _gate(self, result: object, loop: QaLoop) -> Continue | Await:
-        """`gate_qa`: hand the block to the auto-operator, or halt for a human."""
+        """`gate_qa`: hand the block to the auto-operator, or halt for a human.
+
+        The counter is bumped here rather than in `resolve_operator`, because this is the
+        one place both arms pass through — a `human`-mode gate is an escalation too, and
+        numbering only the auto ones would make the second block of a `human` run read as
+        the first.
+        """
+        loop = loop.update(escalations=loop.escalations + 1)
         if self.operator_mode in {"human", "operator"}:
-            return Await(self._context, loop.block_notes, self.read_operator, loop=loop)
+            gate = self._escalation(loop)
+            return Await(self._context, gate.body, self.read_operator, loop=loop)
         return Continue(result, self.resolve_operator, loop=loop)
+
+    def _escalation(self, loop: QaLoop, result: OperatorResolution | None = None) -> OperatorGate:
+        """The gate body for this block — see `coder.shared.escalation`."""
+        return self.call(
+            compose_escalation,
+            story_path=self.ctx.story_path,
+            story_slug=self.ctx.story_slug,
+            spec_dir=self.ctx.spec_dir,
+            run_dir=str(self.run_dir),
+            number=loop.escalations,
+            block_kind="qa",
+            block_notes=loop.block_notes,
+            where=(
+                f"last lap: {loop.repaired_lap or 'none'}; "
+                f"{loop.qa_rework} code rework, {loop.plan_rework} plan repair, "
+                f"{loop.context_rework} context repair, {loop.setup_rework} setup repair"
+            ),
+            tried=list(result.tried) if result else [],
+            summary=result.summary if result else "",
+        )
 
     def _note_lane_budget(self, loop: QaLoop) -> None:
         """Log a QA lane over its advisory wall-clock budget. Never decides anything.

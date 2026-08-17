@@ -77,6 +77,7 @@ from workhorse_workflows.coder.shared.dev import (
     select_next_layer,
     validate_plan_context,
 )
+from workhorse_workflows.coder.shared.escalation import compose_escalation
 from workhorse_workflows.coder.shared.red_gate import arm_red_gate, run_red_gate
 from workhorse_workflows.coder.shared.story import (
     prepare_story,
@@ -87,6 +88,7 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     DevResult,
     FixLintResult,
     ImplResult,
+    OperatorGate,
     OperatorResolution,
     PlanResult,
     ReuseResult,
@@ -238,8 +240,9 @@ class Dev(Workflow):
             )
         plan_blocks += 1
         if self.operator_mode in {"human", "operator"}:
+            gate = self._escalation(notes, plan_blocks)
             return Await(
-                self._context, notes, self.read_operator, notes=notes, plan_blocks=plan_blocks
+                self._context, gate.body, self.read_operator, notes=notes, plan_blocks=plan_blocks
             )
         return Continue(result, self.resolve_plan, notes=notes, plan_blocks=plan_blocks)
 
@@ -270,15 +273,15 @@ class Dev(Workflow):
         )
         if result.decision == "answered":
             return Continue(result, self.read_operator, notes=notes, plan_blocks=plan_blocks)
-        # No ask: an escalating resolver has already written `STATUS: AWAITING_OPERATOR`
-        # into this very file, with what it tried and what the human must supply. `Await`
-        # writes its `questions` with `write_text`, so passing `notes` here would replace
-        # that note with the producer's block summary — the human would arrive to the
-        # question rather than the investigation, and the resolver's own "did I answer this
-        # before?" loop guard would be erased along with it. See `_gate_plan`, which does
-        # pass `notes`: there no resolver ran, so nothing is on disk to preserve.
+        # An escalating resolver has already written `STATUS: AWAITING_OPERATOR` into this
+        # very file, with what it tried and what the human must supply — and `Await` writes
+        # its `questions` with `write_text`, so anything handed here replaces that note. The
+        # composed body carries it forward verbatim, which is what makes it safe to ask a
+        # question at this gate at all; passing `notes` alone would have left the human
+        # reading the block summary instead of the investigation.
+        gate = self._escalation(notes, plan_blocks, result)
         return Await(
-            self._context, "", self.read_operator, notes=notes, plan_blocks=plan_blocks
+            self._context, gate.body, self.read_operator, notes=notes, plan_blocks=plan_blocks
         )
 
     def read_operator(self, notes: str, plan_blocks: int = 0) -> Continue | Done:
@@ -732,6 +735,24 @@ class Dev(Workflow):
         change which layer is current.
         """
         return self.output(select_next_layer).layer
+
+    def _escalation(
+        self, notes: str, plan_blocks: int, result: OperatorResolution | None = None
+    ) -> OperatorGate:
+        """The gate body for a plan block — see `coder.shared.escalation`."""
+        return self.call(
+            compose_escalation,
+            story_path=self.ctx.story_path,
+            story_slug=self.ctx.story_slug,
+            spec_dir=self.ctx.spec_dir,
+            run_dir=str(self.run_dir),
+            number=plan_blocks,
+            block_kind="plan",
+            block_notes=notes,
+            where="the plan stage",
+            tried=list(result.tried) if result else [],
+            summary=result.summary if result else "",
+        )
 
     @property
     def _context(self) -> Path:

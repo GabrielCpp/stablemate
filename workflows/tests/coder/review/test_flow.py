@@ -56,6 +56,12 @@ ESCALATION_NOTE = (
     "Please pick which behaviour this story wants.\n"
 )
 
+#: What that resolver reports it ruled out, which the composed gate publishes verbatim.
+RESOLVER_TRIED = (
+    "implemented the bounded retry — the reviewer's second finding then contradicts it",
+    "read the epic for a stated retry policy — it states none",
+)
+
 #: The epic index ostler parses to learn the story exists — without it `prepare_story`'s
 #: authored gate is skipped rather than satisfied, and every test below would pass for the
 #: wrong reason.
@@ -260,7 +266,11 @@ class _Agent:
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if self.escalate:
             self._escalate()
-            return {"decision": "escalated", "summary": "needs a product call"}
+            return {
+                "decision": "escalated",
+                "summary": "needs a product call",
+                "tried": list(RESOLVER_TRIED),
+            }
         self._answer()
         return {"decision": "answered", "summary": "ship it without the retry"}
 
@@ -614,10 +624,12 @@ def test_an_escalating_resolver_falls_through_to_the_human(
 
     assert result.status == "approved", result
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
-    # The resolver's note, not the block summary: the escalated `Await` waits on this file
-    # without rewriting it, so the human arrives to what the resolver already tried. See
-    # `dev`'s `test_an_escalating_resolver_leaves_its_note_for_the_human`.
-    assert seen == [ESCALATION_NOTE], seen
+    # The composed gate, not the block summary alone: the human arrives to the escalation
+    # number, what the resolver ruled out, and the resolver's own note carried forward.
+    (gate,) = seen
+    assert "**Escalation #1 " in gate, gate
+    assert all(line in gate for line in RESOLVER_TRIED), gate
+    assert ESCALATION_NOTE.strip() in gate, gate
 
 
 def test_an_answered_resolution_never_waits(
