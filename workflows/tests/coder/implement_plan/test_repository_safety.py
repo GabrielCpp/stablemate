@@ -376,6 +376,34 @@ def test_export_repair_may_not_reach_into_an_already_published_packet(
         extend_task_paths(logger, context, plan, 1, plan.tasks[1])
 
 
+def test_a_shared_test_support_file_no_packet_owns_is_adopted(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    git: Callable[..., subprocess.CompletedProcess],
+    logger: Any,
+) -> None:
+    """A file that belongs to the suite rather than to a packet is declared by nobody.
+
+    The planner writes `paths` per packet, so a shared `conftest.py` has no owner, and
+    the first packet whose tests need it used to die for touching it — with no repair
+    possible, since reverting removes what its own tests are built on. It is not a
+    collision: nobody else claims it, so nobody else's work is at risk.
+    """
+    (repo / "tests").mkdir()
+    (repo / "tests" / "conftest.py").write_text("fixtures = 1\n", encoding="utf-8")
+    git(repo, "add", "tests/conftest.py")
+    git(repo, "commit", "-qm", "chore: add shared fixtures")
+    git(repo, "push", "-q", "origin", "main")
+    context = _context(tmp_path, repo, logger)
+    plan = _prepared(context, logger, _task("only", "tests/test_only.py"))
+    (repo / "tests" / "conftest.py").write_text("fixtures = 2\n", encoding="utf-8")
+
+    widened = extend_task_paths(logger, context, plan, 0, plan.tasks[0])
+
+    assert widened.paths == ["tests/conftest.py", "tests/test_only.py"]
+
+
 def test_clean_filter_cannot_hide_different_committed_bytes(
     tmp_path: Path,
     repo: Path,
@@ -490,6 +518,34 @@ def test_a_packet_may_change_the_paths_of_a_packet_it_depends_on(
     ]
     # The edge points one way: the dependency itself gains nothing from its dependant.
     assert repository.task_scopes(plan.tasks, base) == ["src/base.txt"]
+
+
+def test_the_reach_follows_dependency_edges_to_their_closure(
+    tmp_path: Path,
+    repo: Path,
+    logger: Any,
+) -> None:
+    """Distance along the chain is not what the guard is about.
+
+    Every packet in the closure is ordered before this one and already committed at its
+    own commit, so none can be edited concurrently — which is the entire content of the
+    check. Stopping at one step failed a packet for editing the store's tests while
+    letting it edit the CLI's, though the plan finished both before it started.
+    """
+    context = _context(tmp_path, repo, logger)
+    plan = _prepared(
+        context,
+        logger,
+        _task("store", "src/store.txt"),
+        _task("cli", "src/cli.txt", depends_on=["store"]),
+        _task("leaf", "src/leaf.txt", depends_on=["cli"]),
+    )
+
+    assert repository.task_scopes(plan.tasks, plan.tasks[2]) == [
+        "src/cli.txt",
+        "src/leaf.txt",
+        "src/store.txt",
+    ]
 
 
 def test_a_commit_along_a_dependency_edge_is_not_rejected_after_it_is_staged(

@@ -100,17 +100,29 @@ def task_scopes(tasks: Sequence[PlanTask], task: PlanTask) -> list[str]:
 
     Following a declared edge is not the collision this check exists to catch. That is
     a packet reaching into work it never said it depended on — an unordered sibling,
-    where two turns really can overwrite each other — and it stays refused. The edge is
-    only ever followed one step: the plan orders dependants after dependencies, so the
-    dependency is already committed and verified at its own commit, and a later packet
-    building on it is what the ordering is *for*.
+    where two turns really can overwrite each other — and it stays refused.
+
+    The edges are followed to their closure, not one step. The justification does not
+    weaken with distance: every packet in the closure is ordered before this one and
+    already committed and verified at its own commit, so none of them can be edited
+    concurrently, which is the whole content of the guard. Stopping at one step drew the
+    line somewhere the plan does not — a packet that depends on the CLI which depends on
+    the store could edit the CLI's tests but not the store's, though both were equally
+    finished and the second was equally required.
     """
     by_id = {other.id: other for other in tasks}
     scopes = {*task.paths}
-    for dependency in task.depends_on:
+    pending = list(task.depends_on)
+    seen: set[str] = set()
+    while pending:
+        dependency = pending.pop()
+        if dependency in seen:
+            continue
+        seen.add(dependency)
         upstream = by_id.get(dependency)
         if upstream is not None:
             scopes.update(upstream.paths)
+            pending.extend(upstream.depends_on)
     return sorted(scopes)
 
 

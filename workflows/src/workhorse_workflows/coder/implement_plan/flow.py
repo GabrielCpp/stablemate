@@ -229,6 +229,7 @@ class ImplementPlan(Workflow):
             cwd=self.ctx.repo_root,
             args=args,
         )
+        task = self.call(extend_task_paths, self.ctx, plan, index, task)
         self.call(check_agent_turn, self.ctx, plan, task, expected_head, False)
         self._require_agent_done(result, task)
         return Continue(
@@ -317,6 +318,7 @@ class ImplementPlan(Workflow):
             cwd=self.ctx.repo_root,
             args=args,
         )
+        task = self.call(extend_task_paths, self.ctx, plan, index, task)
         self.call(check_agent_turn, self.ctx, plan, task, expected_head)
         self._require_agent_done(result, task)
         return Continue(

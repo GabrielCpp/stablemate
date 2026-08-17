@@ -143,22 +143,34 @@ def test_implementation_turn_may_not_commit(
         drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
 
 
-def test_out_of_scope_edit_fails_before_commit(
+def test_an_edit_to_a_file_no_packet_owns_widens_the_packet(
     tmp_path: Path,
     repo: Path,
     origin: Path,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
+    """An *existing* file that no packet declares is not a collision, so it is adopted.
+
+    The check exists to keep two packets off the same file. A path nobody claims — the
+    shared `conftest.py` a packet's own tests are built on — puts no one's work at risk,
+    and failing the turn for it is unrepairable: reverting removes what the tests need.
+    Trespass into a packet that is already published is still refused, at
+    `extend_task_paths`.
+    """
     plan = tmp_path / "plan.md"
     plan.write_text("# Scoped edit\n", encoding="utf-8")
     task = _task("scoped", "src/owned.txt")
-    # An *existing* file: the case where two packets can collide, and the one the
-    # ownership check refuses. A file the turn creates is adopted instead.
-    agent = _Agent(repo, _decomposition(task), edits={"scoped": {"README.md": "no\n"}})
+    agent = _Agent(
+        repo,
+        _decomposition(task),
+        edits={"scoped": {"src/owned.txt": "owned\n", "README.md": "no\n"}},
+    )
 
-    with pytest.raises(WorkflowFailed, match="does not own"):
-        drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
+    result = drive_flow(ImplementPlan(plan_path=str(plan), repo_dir=str(repo)), env(), agent)
+
+    assert result.status == "complete"
+    assert (repo / "README.md").read_text(encoding="utf-8") == "no\n"
 
 
 def test_new_file_the_packet_did_not_declare_is_adopted_and_committed(
