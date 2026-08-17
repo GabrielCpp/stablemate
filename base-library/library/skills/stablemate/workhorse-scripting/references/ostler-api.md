@@ -40,8 +40,14 @@ an empty queue, a raise means unreadable.
 QA / artifact / edit subsystems live on the same facade, **lazy-imported** so the read path
 never loads the QA/vet machinery: `okf.qa_context(...)`, `okf.qa_validate(plan, spec=…)`,
 `okf.qa_run(plan, spec=…)`, `okf.qa_context_validate(spec=…)`, `okf.artifact_vet(kind, spec)`,
-`okf.settle_review(slug, write=True)`. The coder QA nodes route through the thin `qa_cli`
-helpers (`qa_run`/`qa_context`/`qa_validate`/`qa_context_validate`) that wrap these and
-normalize to `(returncode, payload, stderr)`. Full verb→method reference: the
+`okf.settle_review(slug, write=True)`.
+
+**A check answers, it does not raise.** Those methods — plus `okf.doctor()` and
+`okf.coverage(...)`, which report the book rather than a story — all return a `QaOutcome`:
+`.ok` (the verdict), `.status`, `.message` (the line the CLI prints), `.data` (the payload the
+CLI would `--json`, including an unloadable book). So a node calls the method and branches on
+a field; there is no adapter in between and nothing to wrap in
+`except (OSError, ValueError, RuntimeError)`. Branch on `status == "invalid"` where "the check
+never ran" must not read as "the check found nothing". Full verb→method reference: the
 `ostler` skill.
 

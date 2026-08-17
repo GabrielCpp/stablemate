@@ -23,7 +23,7 @@ okf.todo()                            # ["checkout-flow", …]        (ostler to
 okf.list("story", epic="checkout-flow")   # [{"slug","status",…}]  (ostler list --type story)
 okf.next_story("checkout-flow")       # {"slug": …} | None          (ostler next-story)
 okf.spec_path("01-cart")              # "docs/specs/01-cart"        (ostler path spec)
-okf.doctor()                          # {...} referential-integrity report (ostler doctor --json)
+okf.doctor()                          # QaOutcome; .data is the report (ostler doctor --json)
 
 res = okf.create_story("checkout-flow", "02-pay", "Payment", covers=["seed-1"])
 res.ok, res.entity_id                 # a Result, not parsed JSON   (ostler create story)
@@ -44,10 +44,39 @@ resolve from the discovered repository root. The loaded graph is a **snapshot**:
 against a fresh load and invalidates the cache, so the next read reflects it
 (`reload()` forces a refresh). A read never returns `None` — an unloadable graph
 *raises*. The QA/artifact/edit surface is on the same object
-(`qa_context`/`qa_validate`/`qa_run`/`qa_context_validate`, `artifact_vet`,
-`settle_review`), lazy-imported so a read-only caller never loads the QA/vet
+(`qa_context`/`qa_validate`/`qa_run`/`qa_context_validate`, `qa_tools_catalog`,
+`artifact_vet`, `settle_review`), lazy-imported so a read-only caller never loads the QA/vet
 machinery. `from ostler import load` returns the bare `Graph` if you want the
 functional core directly.
+
+## `QaOutcome` — the checks answer instead of raising
+
+Every check on the facade — the qa/artifact family above, plus `doctor` and `coverage` —
+returns a `QaOutcome` rather than a raw dict that raises on the way to producing one:
+
+```python
+outcome = okf.coverage(inventory="inventory.json")
+outcome.ok        # the verdict: the join is complete / the check holds
+outcome.status    # "passed" | "failed" | "invalid" | a status the check names itself
+outcome.message   # one line — the same text the CLI prints
+outcome.data      # the `--json` payload, always carrying a "status" key
+```
+
+A *data*-shaped failure is part of that answer: an unreadable inventory, a malformed plan, a
+context file that will not parse, a book that will not load. Each comes back as
+`ok=False, status="invalid"`, so no caller wraps the call in
+`except (OSError, ValueError, RuntimeError)` — which is what `cli.py` and the coder
+workflow's now-deleted `ostler_qa` adapter were each doing independently.
+
+`status == "invalid"` is worth its own branch wherever an empty result would otherwise read
+as a pass: zero uncovered units because the inventory would not parse is not "everything is
+covered", and the CLI keeps a distinct exit code (2) for it.
+
+A **call-site** mistake still raises, and should — an unknown `etype`, a `need` that is
+neither `"build"` nor `"author"`, a bad argument type is a bug where it was made, and an
+outcome would hide it. The name-taking reads (`list`/`search`/`query`, the `*_path`
+resolvers, `expand`/`handle`) have no data-shaped raises to convert: an unmatched name comes
+back as `[]`, `None`, or the name itself — already the answer.
 
 ## `ostler.markdown` — the markdown parser everything reads through
 

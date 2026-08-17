@@ -22,6 +22,25 @@ mutation invalidates it (exactly as the CLI reloads on every invocation). Read
 methods reuse one cached snapshot (the whole point over per-call subprocesses);
 mutation methods apply against a freshly reloaded graph and then invalidate the
 cache, so the next read re-loads. Call :meth:`reload` to force a refresh.
+
+Outcome contract — a *check* answers, it does not raise. :meth:`doctor`,
+:meth:`coverage` and the whole qa/artifact family return a
+:class:`~ostler.qa.QaOutcome` (``ok``/``status``/``message``/``data``), and a
+data-shaped failure is part of that answer: an unreadable inventory, a malformed
+plan, a context file that will not parse, a book that will not load all come back
+as ``ok=False, status="invalid"``. The normalization is here rather than in each
+caller because it *was* in every caller — ``cli.py`` and the coder workflow's
+``ostler_qa`` adapter each wrapped these calls in the same
+``except (OSError, ValueError, RuntimeError)``, and a translation two call sites
+reimplement belongs one layer down.
+
+A **call-site** mistake still raises, and should: an unknown ``etype``, a ``need``
+that is neither ``"build"`` nor ``"author"``, a bad argument type is a bug where it
+was made, and returning it as an outcome would hide it. The name-taking reads
+(:meth:`list`/:meth:`search`/:meth:`query`, the ``*_path`` resolvers,
+:meth:`expand`) have no data-shaped raises to convert at all — an unmatched name
+comes back as ``[]``, as ``None``, or as the name itself, which is already the
+answer an outcome would carry.
 """
 
 from __future__ import annotations

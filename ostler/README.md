@@ -356,8 +356,13 @@ from ostler import Ostler
 okf = Ostler("path/to/repo")              # graph root discovered upward, like `-C DIR`
 okf.next_story("checkout-flow")           # {"slug": …} | None
 okf.create_story("checkout-flow", "02-pay", "Payment", covers=["seed-1"])
-okf.doctor()                              # referential-integrity report
+okf.doctor()                              # a QaOutcome; .data is the integrity report
 ```
+
+Every check on the facade — `doctor`, `coverage`, and the whole qa/artifact family — answers
+in that same `QaOutcome` (`ok`, `status`, `message`, `data`) rather than raising: a data-shaped
+failure like an unreadable inventory or a book that will not load is *part of the answer*, not
+an exception each caller re-catches. A call-site mistake still raises.
 
 Two public modules come with it, and they are the reason nothing here reads a document with
 a regex: **`ostler.markdown`** is the one markdown parser (frontmatter, sections, bullets,

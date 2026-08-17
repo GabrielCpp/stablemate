@@ -23,14 +23,42 @@ okf = Ostler(root)          # root discovered upward, like `ostler -C DIR`; None
 | `search Q …` / `query NAME ARG` | `okf.search("Q", …)` / `okf.query("NAME", "ARG")` |
 | `next-epic` / `next-story E` | `okf.next_epic()` / `okf.next_story("E") -> dict\|None` |
 | `todo list` / `backlog list` | `okf.todo() -> list[str]` / `okf.backlog() -> list[dict]` |
-| `doctor [--epic E] --json` | `okf.doctor(epic=…) -> dict` (the report `.as_dict()`) |
+| `doctor [--epic E] --json` | `okf.doctor(epic=…) -> QaOutcome` (`.data` is the report `.as_dict()`) |
+| `coverage --inventory F [--surface S]` | `okf.coverage(inventory=…, surface=…, waivers=…) -> QaOutcome` (`.data` is the join) |
 | `path epic E` / `path spec S` / `path story E S` / `path branch S` | `okf.epic_path("E")` / `okf.spec_path("S")` / `okf.story_path("E","S")` / `okf.branch("S", epic=False)` |
 | `--handles` rendering | `okf.handle(id) -> str` / `okf.handles() -> dict[str, str]` · `okf.expand(token) -> str` |
 | `create epic/story` · `update story` · `delete epic/story` · `seed add` · `set-status` | `okf.create_epic(…)` / `okf.create_story(…)` · `okf.update_story(slug, title=…, covers=…, depends=…)` · `okf.delete_epic(…)` / `okf.delete_story(…)` · `okf.add_seed(epic, id, status=…, meta={…})` · `okf.set_status(slug, status)` → `Result` |
 | `backlog add/prune` · `todo add/prune/reorder` | `okf.backlog_add/backlog_prune` · `okf.todo_add/todo_prune/todo_reorder` → `Result` |
 | `qa context` · `qa context-validate` · `qa validate` · `qa run` | `okf.qa_context(base=…, spec=…, …)` · `okf.qa_context_validate(spec=…)` · `okf.qa_validate(plan, spec=…)` · `okf.qa_run(plan, spec=…)` |
-| `artifact vet KIND --spec DIR` | `okf.artifact_vet("KIND", spec) -> dict` |
+| `artifact vet KIND --spec DIR` | `okf.artifact_vet("KIND", spec) -> QaOutcome` |
+| `qa tools list` | `okf.qa_tools_catalog() -> QaOutcome` (`.data` = `{"tools": …, "errors": …}`) |
 | `edit settle-review SLUG --write` | `okf.settle_review(slug, write=True) -> EditPlan` (`.error`, per-finding ledger) |
+
+### `QaOutcome` — a check that answers instead of raising
+
+Every method in the table above that returns a `QaOutcome` — the whole qa/artifact family,
+plus `doctor` and `coverage` — answers a *data*-shaped failure rather than raising it. An
+unreadable inventory, a malformed plan, a context file that will not parse, a book that will
+not load: each comes back as a failed outcome, so a caller branches on fields instead of
+wrapping every call in `except (OSError, ValueError, RuntimeError)`.
+
+```python
+outcome = okf.coverage(inventory=path)
+outcome.ok        # the verdict — the join is complete / the check holds
+outcome.status    # "passed" | "failed" | "invalid" | whatever the check names
+outcome.message   # one line, the same text the CLI prints
+outcome.data      # the payload the CLI would `--json` — always carries "status"
+```
+
+`status == "invalid"` is the one worth branching on separately: it means the check never ran,
+which is not the same as running and finding nothing. Zero uncovered units because the
+inventory would not parse must not read as "everything is covered".
+
+A **call-site** mistake still raises, and should: an unknown `etype`, a `need` that is neither
+`"build"` nor `"author"`, a bad argument type. That is a bug where it was made, and returning
+it as an outcome would hide it. The reads that take a name — `list`/`search`/`query`, the
+`*_path` resolvers, `expand` — have no data-shaped raises at all: an unmatched name comes back
+as `[]`, as `None`, or as the name itself, already the answer an outcome would carry.
 
 ### `ostler.path` — path derivation without a graph
 

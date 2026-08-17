@@ -86,7 +86,7 @@ prepare_story -> clear_qa_evidence -> resolve_qa_context -> detect_qa_okf
 
 `qa_plan.py` is mandatory for command, browser, and mobile surfaces. Node functions call
 `okf.qa_context(...)`, `okf.qa_context_validate(...)`, `okf.qa_validate(...)` and
-`okf.qa_run(...)` on the `Ostler` facade (through the `qa_cli` helpers); no QA agent
+`okf.qa_run(...)` on the `Ostler` facade directly, reading the `QaOutcome` each returns; no QA agent
 drives Playwright/Maestro/commands or authors the run log, manifest, or evidence.
 `review_qa_plan` independently checks whether the valid plan can reach and observe its
 objectives. `assess_qa_run` constructively judges whether each completed run actually did
