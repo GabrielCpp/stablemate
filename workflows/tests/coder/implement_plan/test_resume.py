@@ -65,7 +65,7 @@ def test_recovered_commit_requires_expected_parent_and_owned_diff(
     )
 
     with pytest.raises(WorkflowFailed, match="out-of-scope"):
-        decide_task_entry(logger, context, task, context.base_commit)
+        decide_task_entry(logger, context, plan, task, context.base_commit)
 
 
 def test_valid_commit_crash_window_is_recovered_without_reimplementation(
@@ -82,7 +82,7 @@ def test_valid_commit_crash_window_is_recovered_without_reimplementation(
     (repo / "src" / "owned.txt").write_text("recover\n", encoding="utf-8")
     committed = commit_plan_task(logger, context, plan, task, context.base_commit)
 
-    decision = decide_task_entry(logger, context, task, context.base_commit)
+    decision = decide_task_entry(logger, context, plan, task, context.base_commit)
 
     assert decision.phase == "publish"
     assert decision.commit_sha == committed.commit_sha
@@ -102,10 +102,10 @@ def test_publish_is_idempotent_after_the_push_crash_window(
     committed = commit_plan_task(logger, context, plan, task, context.base_commit)
 
     first = publish_plan_task(
-        logger, context, task, context.base_commit, committed.commit_sha
+        logger, context, plan, task, context.base_commit, committed.commit_sha
     )
     second = publish_plan_task(
-        logger, context, task, context.base_commit, committed.commit_sha
+        logger, context, plan, task, context.base_commit, committed.commit_sha
     )
 
     assert first.commit_sha == second.commit_sha == committed.commit_sha

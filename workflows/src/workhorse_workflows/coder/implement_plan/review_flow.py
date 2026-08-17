@@ -73,7 +73,7 @@ class ReviewIssues(Workflow):
                 self.call(complete_review_issues, self.ctx, self.plan, commits, expected_head)
             )
         issue = self.plan.tasks[index]
-        decision = self.call(decide_task_entry, self.ctx, issue, expected_head)
+        decision = self.call(decide_task_entry, self.ctx, self.plan, issue, expected_head)
         if decision.phase == "publish":
             return Continue(
                 decision,
@@ -244,6 +244,7 @@ class ReviewIssues(Workflow):
         result = self.call(
             verify_committed_task,
             self.ctx,
+            self.plan,
             issue,
             expected_parent,
             commit_sha,
@@ -331,6 +332,7 @@ class ReviewIssues(Workflow):
         result = self.call(
             publish_plan_task,
             self.ctx,
+            self.plan,
             issue,
             expected_parent,
             commit_sha,

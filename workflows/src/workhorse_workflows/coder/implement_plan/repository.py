@@ -80,7 +80,7 @@ def changed_paths(root: Path) -> list[str]:
     return sorted({path for _, path in worktree_changes(root)})
 
 
-def owned(path: str, scopes: list[str]) -> bool:
+def owned(path: str, scopes: Sequence[str]) -> bool:
     candidate = PurePosixPath(path)
     return any(
         candidate == PurePosixPath(scope) or PurePosixPath(scope) in candidate.parents
@@ -265,8 +265,22 @@ def commit_paths(context: PlanRunContext, parent: str, commit: str) -> list[str]
 
 
 def validate_task_commit(
-    context: PlanRunContext, task: PlanTask, expected_parent: str, commit_sha: str
+    context: PlanRunContext,
+    task: PlanTask,
+    expected_parent: str,
+    commit_sha: str,
+    scopes: Sequence[str],
 ) -> None:
+    """Assert the commit is the packet's own: right parent, right message, right paths.
+
+    `scopes` is the packet's reach — `task_scopes`, its declared paths plus its
+    dependencies' — and not `task.paths`. The two must be the same set the turn was held
+    to, or the run rejects at commit an edit it authorised while the turn was running:
+    `assert_owned` admits the reach, `create_task_commit` stages the reach, and judging the
+    result by the narrower set failed a packet for following a dependency edge it declared.
+    Observed in the wild, on a packet whose dependency had published a `nothing consumes
+    this yet` guard that the packet existed to make untrue.
+    """
     try:
         raw = raw_git(context)
         parents = raw.show("-s", "--format=%P", commit_sha).strip().split()
@@ -282,7 +296,7 @@ def validate_task_commit(
     outside = [
         path
         for code, path in changes
-        if not owned(path, task.paths) and not adoptable(code, path, snapshot)
+        if not owned(path, scopes) and not adoptable(code, path, snapshot)
     ]
     if not changes or outside:
         raise WorkflowFailed(f"task {task.id} commit contains missing or out-of-scope paths")

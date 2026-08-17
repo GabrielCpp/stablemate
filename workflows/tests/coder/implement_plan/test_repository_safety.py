@@ -234,7 +234,7 @@ def test_clean_committed_tree_must_pass_packet_verification(
     committed = commit_plan_task(logger, context, plan, task, context.base_commit)
 
     result = verify_committed_task(
-        logger, context, task, context.base_commit, committed.commit_sha
+        logger, context, plan, task, context.base_commit, committed.commit_sha
     )
 
     # The verdict is reported rather than raised so the flow can spend a repair turn on
@@ -405,7 +405,7 @@ def test_clean_filter_cannot_hide_different_committed_bytes(
 
     with pytest.raises(WorkflowFailed, match="committed bytes differ"):
         verify_committed_task(
-            logger, context, task, context.base_commit, committed.commit_sha
+            logger, context, plan, task, context.base_commit, committed.commit_sha
         )
 
 
@@ -432,7 +432,7 @@ def test_unchanged_filtered_baseline_cannot_differ_from_candidate_tree(
 
     with pytest.raises(WorkflowFailed, match="committed bytes differ"):
         verify_committed_task(
-            logger, context, task, context.base_commit, committed.commit_sha
+            logger, context, plan, task, context.base_commit, committed.commit_sha
         )
 
 
@@ -459,7 +459,7 @@ def test_committed_mode_must_match_the_verified_worktree(
 
     with pytest.raises(WorkflowFailed, match="committed mode differs"):
         verify_committed_task(
-            logger, context, task, context.base_commit, committed.commit_sha
+            logger, context, plan, task, context.base_commit, committed.commit_sha
         )
 
 
@@ -490,6 +490,41 @@ def test_a_packet_may_change_the_paths_of_a_packet_it_depends_on(
     ]
     # The edge points one way: the dependency itself gains nothing from its dependant.
     assert repository.task_scopes(plan.tasks, base) == ["src/base.txt"]
+
+
+def test_a_commit_along_a_dependency_edge_is_not_rejected_after_it_is_staged(
+    tmp_path: Path,
+    repo: Path,
+    origin: Path,
+    git: Callable[..., subprocess.CompletedProcess],
+    logger: Any,
+) -> None:
+    """The commit is judged by the same reach the turn was authorised against.
+
+    `assert_owned` admits the packet's dependencies' paths and `create_task_commit` stages
+    them, so judging the result by `task.paths` alone rejected a commit the same function
+    had just made — a packet failed for following an edge it declared, and no turn could
+    fix it because the edit was correct.
+    """
+    (repo / "src").mkdir(exist_ok=True)
+    (repo / "src" / "base.txt").write_text("published\n", encoding="utf-8")
+    git(repo, "add", "src/base.txt")
+    git(repo, "commit", "-qm", "chore: add base")
+    git(repo, "push", "-q", "origin", "main")
+    context = _context(tmp_path, repo, logger)
+    plan = _prepared(
+        context,
+        logger,
+        _task("base", "src/base.txt"),
+        _task("dependant", "src/dependant.txt", depends_on=["base"]),
+    )
+    dependant = plan.tasks[1]
+    (repo / "src" / "dependant.txt").write_text("dependant\n", encoding="utf-8")
+    (repo / "src" / "base.txt").write_text("consumed\n", encoding="utf-8")
+
+    result = commit_plan_task(logger, context, plan, dependant, context.base_commit)
+
+    assert result.committed
 
 
 def test_a_packet_may_not_change_the_paths_of_an_unrelated_packet(
