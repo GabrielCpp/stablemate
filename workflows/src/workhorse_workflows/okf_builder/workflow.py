@@ -144,7 +144,9 @@ class OkfBuilder(Workflow):
             raise WorkflowFailed(
                 self.ctx.prepare_error
                 or "ostler could not load a graph at the docs root, so nothing this run "
-                "claimed about coverage could be checked"
+                "claimed about coverage could be checked",
+                failure_class="okf-builder-ostler-not-ok",
+                artifacts={"features_root": str(self.ctx.features_root)},
             )
         if self.recheck_only:
             self.logger.info("recheck-only: re-entering at the checkpoint, skipping discovery")
@@ -203,7 +205,9 @@ class OkfBuilder(Workflow):
             raise WorkflowFailed(
                 f"stopped at the {self.max_items}-item ceiling with {pick.pending_count} "
                 f"item(s) still pending — the book is partial, not converged. Re-run to "
-                f"resume with a fresh allowance."
+                f"resume with a fresh allowance.",
+                failure_class="okf-builder-item-ceiling",
+                artifacts={"features_root": str(self.ctx.features_root)},
             )
         if not pick.has_item:
             return Continue(
@@ -364,7 +368,9 @@ class OkfBuilder(Workflow):
             raise WorkflowFailed(
                 f"the coverage re-scan did not converge in {MAX_RESCAN_ROUNDS} rounds — "
                 f"the book is still short of its source inventory and this run gave up "
-                f"rather than loop. This is not a finished book."
+                f"rather than loop. This is not a finished book.",
+                failure_class="okf-builder-rescan-did-not-converge",
+                artifacts={"features_root": str(self.ctx.features_root)},
             )
         return Continue(result, self.rescan_coverage, rnd=result.round, rescan=rescan)
 
@@ -389,7 +395,9 @@ class OkfBuilder(Workflow):
         if result.has_unwaivable:
             raise WorkflowFailed(
                 "the fixup loop stalled on a finding that is neither doc-repairable nor "
-                f"auto-waivable, so doctor cannot be made clean: {result.note}"
+                f"auto-waivable, so doctor cannot be made clean: {result.note}",
+                failure_class="okf-builder-unwaivable-finding",
+                artifacts={"features_root": str(self.ctx.features_root)},
             )
         return Continue(
             result,

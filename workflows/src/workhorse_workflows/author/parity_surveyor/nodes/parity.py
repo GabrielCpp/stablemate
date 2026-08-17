@@ -76,10 +76,18 @@ def load_parity_config(
     epics = paths.epics_dir(root, epics)
     if not baseline or not (root / baseline).is_file():
         logger.warning("baseline inventory not found: %s", baseline or "(empty)")
-        raise WorkflowFailed(f"baseline inventory not found: {baseline or '(empty)'}")
+        raise WorkflowFailed(
+            f"baseline inventory not found: {baseline or '(empty)'}",
+            failure_class="parity-baseline-missing",
+            artifacts={"baseline": str(root / baseline)} if baseline else {},
+        )
     if not (root / target).is_dir():
         logger.warning("target feature book not found: %s", target)
-        raise WorkflowFailed(f"target feature book not found: {target}")
+        raise WorkflowFailed(
+            f"target feature book not found: {target}",
+            failure_class="parity-target-missing",
+            artifacts={"target": str(root / target)},
+        )
 
     logger.info(
         "config loaded: baseline=%s target=%s survey_dir=%s", baseline, target, survey_dir

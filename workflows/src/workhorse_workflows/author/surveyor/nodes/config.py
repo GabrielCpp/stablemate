@@ -45,7 +45,9 @@ def load_survey_config(
             f"Create {rubric} (a markdown document defining the cross-cutting concern being "
             f"surveyed: what counts as a finding, what 'clean' means, and which repo skills "
             f"the assessors should read) before running the surveyor workflow, or pass "
-            f"--params '{{\"rubric\":\"<path>\"}}'."
+            f"--params '{{\"rubric\":\"<path>\"}}'.",
+            failure_class="surveyor-rubric-missing",
+            artifacts={"rubric": str(rubric_path)},
         )
 
     logger.info(

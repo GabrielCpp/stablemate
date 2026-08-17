@@ -413,7 +413,9 @@ class Coder(Workflow):
         slug = self._story.story_slug
         raise WorkflowFailed(
             f"documentation was blocked for story {slug!r}, so the run cannot honestly "
-            f"continue: {notes or 'no reason given'}. Nothing was committed for this story."
+            f"continue: {notes or 'no reason given'}. Nothing was committed for this story.",
+            failure_class="docs-blocked",
+            artifacts={"spec_dir": str(self._story.spec_dir)},
         )
 
     def qa(self, epic: str = "", zero_diff: int = 0, triage: int = 0) -> Continue:
@@ -538,9 +540,14 @@ class Coder(Workflow):
         assessment = Path(self._story.spec_dir) / "qa.md"
         where = f" the failure class and the artifact paths are in {assessment};" \
             if assessment.is_file() else ""
+        artifacts = {"spec_dir": str(self._story.spec_dir)}
+        if assessment.is_file():
+            artifacts["qa"] = str(assessment)
         raise WorkflowFailed(
             f"QA never passed for story {self._story.story_slug!r} after {attempts} "
-            f"attempt(s);{where} nothing was committed for this story."
+            f"attempt(s);{where} nothing was committed for this story.",
+            failure_class="qa-give-up",
+            artifacts=artifacts,
         )
 
     # ── the backlog drain, nested inside the story ────────────────────────────────────
@@ -759,7 +766,9 @@ class Coder(Workflow):
         if zero_diff >= self.MAX_ZERO_DIFF_COMMITS:
             raise WorkflowFailed(
                 f"{zero_diff} stories in a row committed no changes — the loop is not "
-                "making progress; stopping rather than walking the rest of the epic."
+                "making progress; stopping rather than walking the rest of the epic.",
+                failure_class="zero-diff-streak",
+                artifacts={"spec_dir": str(story.spec_dir)},
             )
         return Continue(result, self.select_story, epic=epic, zero_diff=zero_diff)
 
@@ -1018,7 +1027,9 @@ class Coder(Workflow):
         if status not in ("passed", "not_applicable"):
             raise WorkflowFailed(
                 f"documenting the {what} {self._story.story_slug!r} failed: "
-                f"{getattr(result, 'notes', '') or 'no notes'}"
+                f"{getattr(result, 'notes', '') or 'no notes'}",
+                failure_class="docs-not-passed",
+                artifacts={"spec_dir": str(self._story.spec_dir)},
             )
 
     def _story_epic(self, epic: str) -> str:

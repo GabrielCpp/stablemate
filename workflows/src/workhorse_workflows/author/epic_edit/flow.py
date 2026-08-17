@@ -102,7 +102,10 @@ class EpicEdit(Workflow):
         intent = self.intent
         if not intent.epic:
             if not self.epic.strip() or not self.change.strip():
-                raise WorkflowFailed("epic-edit needs both 'epic' and 'change'")
+                raise WorkflowFailed(
+                    "epic-edit needs both 'epic' and 'change'",
+                    failure_class="epic-edit-missing-params",
+                )
             intent = EditIntent(kind="epic", epic=self.epic, change=self.change, force=self.force)
         snapshot = self.call(snapshot_epic, intent.epic, self.ctx.epics_dir)
         return Continue(snapshot, self.plan_edit, intent=intent, snapshot=snapshot)
@@ -126,7 +129,11 @@ class EpicEdit(Workflow):
     ) -> Continue | Await:
         report = self.call(validate_edit_plan, intent, snapshot, plan)
         if "[E_PLANNER_MUTATION]" in report.errors:
-            raise WorkflowFailed(report.errors)
+            raise WorkflowFailed(
+                report.errors,
+                failure_class="epic-edit-planner-mutation",
+                artifacts={"epic_dir": str(snapshot.epic_dir)},
+            )
         if report.ok:
             return Continue(
                 report,
@@ -228,7 +235,11 @@ class EpicEdit(Workflow):
         applied = self.call(apply_edit_plan, intent, snapshot, plan)
         report = self.call(validate_applied_edit, snapshot, plan, applied)
         if not report.ok:
-            raise WorkflowFailed(f"epic edit application drifted from its plan:\n{report.errors}")
+            raise WorkflowFailed(
+                f"epic edit application drifted from its plan:\n{report.errors}",
+                failure_class="epic-edit-application-drift",
+                artifacts={"epic_dir": str(snapshot.epic_dir)},
+            )
         if applied.deleted:
             return Continue(applied, self.finish, intent=intent, applied=applied)
         return Continue(
@@ -266,7 +277,9 @@ class EpicEdit(Workflow):
         graph_report = self.call(validate_applied_edit, snapshot, plan, applied)
         if not graph_report.ok:
             raise WorkflowFailed(
-                "epic prose rewrite changed the approved graph:\n" + graph_report.errors
+                "epic prose rewrite changed the approved graph:\n" + graph_report.errors,
+                failure_class="epic-edit-rewrite-graph-drift",
+                artifacts={"epic_dir": str(applied.epic_dir)},
             )
         if result.status == "complete" and report.ok:
             return Continue(
@@ -583,7 +596,11 @@ class EpicEdit(Workflow):
     def check_coverage(self, intent: EditIntent, applied: AppliedEpicEdit) -> Continue:
         report = self.call(validate_coverage, applied.epic_dir)
         if not report.ok:
-            raise WorkflowFailed(f"epic edit broke story coverage:\n{report.errors}")
+            raise WorkflowFailed(
+                f"epic edit broke story coverage:\n{report.errors}",
+                failure_class="epic-edit-coverage-broken",
+                artifacts={"epic_dir": str(applied.epic_dir)},
+            )
         review = self.agent(
             "prompts/review-coverage.md",
             returns=CoverageReview,
@@ -596,14 +613,22 @@ class EpicEdit(Workflow):
             },
         )
         if review.status != "ok":
-            raise WorkflowFailed(f"epic edit coverage review did not pass:\n{review.notes}")
+            raise WorkflowFailed(
+                f"epic edit coverage review did not pass:\n{review.notes}",
+                failure_class="epic-edit-coverage-review-failed",
+                artifacts={"epic_dir": str(applied.epic_dir)},
+            )
         return Continue(review, self.finish, intent=intent, applied=applied)
 
     def finish(self, intent: EditIntent, applied: AppliedEpicEdit) -> Done:
         report = self.call(verify_integrity, "", self.ctx.epics_dir)
         if not report.holds and not report.skipped:
             self.call(commit_author, "incomplete", applied.epic, intent.change)
-            raise WorkflowFailed(f"epic edit broke graph integrity:\n{report.errors}")
+            raise WorkflowFailed(
+                f"epic edit broke graph integrity:\n{report.errors}",
+                failure_class="epic-edit-graph-integrity-broken",
+                artifacts={"epic_dir": str(applied.epic_dir)},
+            )
         if intent.kind == "add-story" and intent.from_backlog:
             self.call(prune_bullet, self.backlog, intent.bullet_id, True)
         self.call(commit_author, "epic-edit", applied.epic, intent.change)
