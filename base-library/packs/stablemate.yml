@@ -1,5 +1,5 @@
 description: >
-  Stablemate toolchain skills — workhorse workflow authoring, farrier install/setup, ostler doc-graph CLI (incl. the OKF UI profile + modeling playbooks), groom's operator-gate dashboard plus the telemetry/transcript store behind it, the parse-don't-match standard for reading structured formats, the portability tiers a shipped package owes its users, the writing doctrine every document an agent reads is held to, and the vertical-slicing doctrine (tracer-bullet stories) the author workflow's planning queries load. Plus the diagnosis discipline a hard bug is held to (a loop that goes red before any hypothesis) and the seven commands: `commit` (commit-as-you-go, Conventional Commits, staged by path), `push-recovery` (a push that hangs or is refused), `reload-runs` (push a fix into a workhorse run already in flight), `grill` (interview a design until its frontier is empty), `brainstorm` (diverge into a wide field of options, then converge to a ranked shortlist) `babysit-run` (watch a run's outbox/inbox from this session; on a failure, diagnose, fix stablemate, reload and resume) and `implement-plan` (take a plan as the goal, cut a worktree for it under the configured `worktree_dir`, branch there and build it). (The stablemate repo itself additionally selects the UI a11y skills for groom's UI directly in its agents.yml.)
+  Stablemate toolchain skills — workhorse workflow authoring, farrier install/setup, ostler doc-graph CLI (incl. the OKF UI profile + modeling playbooks), groom's operator-gate dashboard plus the telemetry/transcript store behind it, the parse-don't-match standard for reading structured formats, the portability tiers a shipped package owes its users, the writing doctrine every document an agent reads is held to, and the vertical-slicing doctrine (tracer-bullet stories) the author workflow's planning queries load. Plus the diagnosis discipline a hard bug is held to (a loop that goes red before any hypothesis) and the six commands: `commit` (commit-as-you-go, Conventional Commits, staged by path), `reload-runs` (push a fix into a workhorse run already in flight), `grill` (interview a design until its frontier is empty), `brainstorm` (diverge into a wide field of options, then converge to a ranked shortlist) `babysit-run` (watch a run's outbox/inbox from this session; on a failure, diagnose, fix stablemate, reload and resume) and `implement-plan` (take a plan as the goal, cut a worktree for it under the configured `worktree_dir`, branch there and build it). (The stablemate repo itself additionally selects the UI a11y skills for groom's UI directly in its agents.yml.)
 # The `stablemate/` segment is the library namespace and is stripped from the
 # installed name; the skill names themselves no longer repeat it. Each one says
 # which tool it is about — `ostler`, `groom`, `farrier-setup`,
@@ -32,13 +32,12 @@ skills:
 # always in context aggregates them into its root instructions
 # (`localInstructions: prompts:`) instead of maintaining its own copy.
 #
-# `commit` is the one worth aggregating: every change ends there. `push-recovery`
-# and `reload-runs` are branches off it — a transport that hung, a live run holding
-# the code you just fixed — so they stay commands the `commit` procedure names, and
-# aggregating them would spend every turn's context on a case most turns never hit.
+# `commit` is the one worth aggregating: every change ends there. `reload-runs` is a
+# branch off it — a live run holding the code you just fixed — so it stays a command
+# the `commit` procedure names, and aggregating it would spend every turn's context
+# on a case most turns never hit.
 prompts:
   - stablemate/commit
-  - stablemate/push-recovery
   - stablemate/reload-runs
   - stablemate/grill
   - stablemate/brainstorm

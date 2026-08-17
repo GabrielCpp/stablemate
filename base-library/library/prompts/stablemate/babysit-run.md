@@ -22,7 +22,7 @@ groom status                                    # if groom is up: which runs are
 ```
 
 `<name>` is whichever workflow distribution owns this run (`coder`, `author`, …) — the
-same console script `reload-runs` and `push-recovery` assume. If groom is down, read the
+same console script `reload-runs` assumes. If groom is down, read the
 run dir directly: `<run-dir>/inbox.jsonl` and whichever gate file its checkpoint's
 `waiting_on` names.
 

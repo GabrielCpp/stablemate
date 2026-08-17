@@ -126,7 +126,6 @@ package.
 Land the work that is finished right now. Not the session's whole diff — the
 concern that just became complete.
 
-
 ## 1. Look at the tree before you touch it
 
 ```bash
@@ -236,9 +235,11 @@ is information: fetch, rebase onto the new tip, re-run the gate, push again.
 `--force` onto a shared branch discards whatever moved it, which in a repo
 several agents push to is somebody else's committed work.
 
-**A push that hangs is not a push that failed.** Bound every one of them with
-`timeout`, and when a transport errors out rather than landing, the ladder down to
-leaving the commit local and saying so is the `push-recovery` command.
+**A push that hangs is not a push that failed.** The commit is finished, the work
+looks done, and nothing says otherwise — so bound every push with `timeout`, as the
+command above does. When it errors out rather than landing, leave the commit local
+and say which transport you tried and how it failed. An unpushed commit the user
+knows about is recoverable; a silent hang nobody was told about is not.
 
 ## 8. If the change touches code a live run is holding
 
