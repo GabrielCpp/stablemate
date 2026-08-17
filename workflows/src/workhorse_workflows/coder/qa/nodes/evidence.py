@@ -309,32 +309,6 @@ def _criteria_problems(criteria: list, root: Path, spec_dir: Path) -> list[str]:
     return problems
 
 
-def _failed_scenarios(spec_dir: Path) -> dict[str, list[str]]:
-    """`scenario -> ids of its assertions the runner recorded as FAIL`.
-
-    Read from the same `qa/qa-run.ndjson` the runner writes, because the run log is the only
-    account of an assertion that the assessor cannot edit after the fact.
-    """
-    failures: dict[str, list[str]] = {}
-    log_path = spec_dir / "qa" / "qa-run.ndjson"
-    if not log_path.is_file():
-        return failures
-    for line in log_path.read_text(encoding="utf-8").splitlines():
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if record.get("kind") != "assert":
-            continue
-        if str(record.get("result", "")).strip().upper() != "FAIL":
-            continue
-        scenario = str(record.get("scenario", "")).strip()
-        if not scenario:
-            continue
-        failures.setdefault(scenario, []).append(str(record.get("id") or "?"))
-    return failures
-
-
 def _unsupported_pass_problems(criteria: list, spec_dir: Path) -> list[str]:
     """A criterion may not be Pass while a scenario it rests on failed an assertion.
 
@@ -345,7 +319,7 @@ def _unsupported_pass_problems(criteria: list, spec_dir: Path) -> list[str]:
     assertion that failed inside it is evidence *against* the criterion the scenario covers,
     whether or not the citation acknowledges it.
     """
-    failures = _failed_scenarios(spec_dir)
+    failures = ostler_qa.failed_assertions(ostler_qa.scored_run_log(spec_dir))
     if not failures:
         return []
     problems: list[str] = []

@@ -153,7 +153,7 @@ def test_the_plan_prompts_only_interpolate_arguments_the_flow_passes():
     prose."""
     keys = _plan_arg_keys()
     #: Jinja's own names and the loop variables the templates bind themselves.
-    local = {"raw", "endraw", "repo", "f", "p", "r"}
+    local = {"raw", "endraw", "repo", "f", "p", "r", "scenario"}
     for prompt in PLAN_PROMPTS:
         text = prompt.read_text()
         named = set(_SCALAR_ARG.findall(text)) | set(_STRUCTURED_ARG.findall(text))

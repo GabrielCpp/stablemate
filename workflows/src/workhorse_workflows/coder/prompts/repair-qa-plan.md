@@ -40,6 +40,19 @@ scope — it is the single fastest way to lose this turn's work.
 The findings are a list, one per line, each naming an id, a target and the smallest
 acceptable repair. That list is the whole of your worklist.
 
+{% if failed_scenarios %}
+## Scenarios that failed the last run
+
+These are the scenarios the runner did not pass, with the ids of the assertions that failed
+inside each. They are what this repair is for, and **every one of them must be dry-run green
+before you return** — see "Dry-run the scenarios you repaired", which is a contract and not
+advice.
+
+{% for scenario in failed_scenarios %}
+- `{{ scenario.id }}`{% if scenario.failed_assertions %} — failed assertions: `{{ scenario.failed_assertions | join('`, `') }}`{% endif %}
+{% endfor %}
+{% endif %}
+
 ## The rule
 
 **Every scenario the findings do not cite stays byte-identical.** Read
@@ -213,17 +226,38 @@ command prints about the behaviour, or an assertion on the surface — not a rew
 
 ## Dry-Run The Scenarios You Repaired
 
-The stack is already up. Before returning, execute each scenario you changed on its own:
+The stack is already up. **This is a contract, and a workflow node checks it.** Before
+returning, execute — each on its own, into its own out-dir:
+
+- every scenario listed under "Scenarios that failed the last run", and
+- every scenario you changed.
 
 ```bash
 ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> \
-  --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}
+  --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}/<scenario-id>
 ```
+
+**One out-dir per scenario, named after the scenario.** The runner deletes its out-dir at the
+start of every run, so a shared scratch directory keeps only the last scenario's evidence and
+every earlier one reads as never run. The gate opens
+`{{ workhorse_var('qa_scratch_dir') }}/<scenario-id>/qa-run.ndjson` for each id and requires
+it to exist, to contain at least one assertion, and to contain no `FAIL`. A missing directory
+fails the same way a failing assertion does, and the repair comes straight back to you.
+
 `--out-dir` keeps the artifacts out of `{{ workhorse_var('qa_dir') }}`, the scored ledger the
 evidence gate reads — a scenario tuned until it passed must not be able to leave its own proof.
 Fix what does not resolve and run it again. One call settles what no amount of re-reading does:
 a locator matching zero elements, a straight `'` where the fixture has `’`, a credential that
-disagrees with the seed script. Each of those otherwise costs another full workflow lap.
+disagrees with the seed script. Each of those otherwise costs another full workflow lap — and
+that is the whole reason this is mandatory: an edit nobody executed is a guess, and the flow
+was paying a complete suite run to find out it was wrong.
+
+If a scenario cannot be made green because the **product** is wrong, leave it red and say so
+in `notes`, naming the assertion and what the product does instead. Do not edit product code,
+and do not weaken the assertion to make the dry run pass: a plan bent until it agrees with a
+broken product is the one outcome this whole lane exists to prevent, and it is worth more to
+the run to spend a repair lap saying "the product is wrong" than to hand back a green plan
+that proves nothing.
 
 You may repair **runner tooling** to make the dry run executable — the ostler venv and its
 dependencies, harness wiring, fixture plumbing, a missing browser binary — and say so in
@@ -242,9 +276,16 @@ Return JSON only:
 ```json
 {
   "status": "done",
-  "notes": "R2: scenario `create-document` now asserts the new row after the dialog closes."
+  "notes": "R2: scenario `create-document` now asserts the new row after the dialog closes.",
+  "repaired_scenarios": ["create-document"]
 }
 ```
 
 `notes` names each finding you closed and how. A finding you did not close is named there
 too, with why.
+
+`repaired_scenarios` lists the id of **every scenario whose code you changed**, added ones
+included. It is what the dry-run gate checks on top of the failing set, because a rewritten
+scenario the last run passed can be broken by this turn and nothing else would catch it. Name
+one you did not dry-run and the gate refuses the repair — the claim is checked against the
+scratch logs, never taken on its word.

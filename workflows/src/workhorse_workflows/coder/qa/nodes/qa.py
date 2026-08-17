@@ -28,8 +28,9 @@ from workhorse import stack
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import ostler_qa
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.ostler_qa import QA_PLAN_FILE
+from workhorse_workflows.coder.shared.ostler_qa import QA_PLAN_FILE, QA_RUN_LOG
 from workhorse_workflows.coder.shared.schemas.qa import (
+    DryRunGate,
     QaCleared,
     QaGiveupRecord,
     QaPlanValidation,
@@ -312,6 +313,100 @@ def validate_qa_plan(
 
 
 @blueprint.node
+def verify_qa_dry_run(
+    logger: logging.Logger, spec_dir: str = "", scenarios: tuple[str, ...] = ()
+) -> DryRunGate:
+    """Did the repair turn run each scenario it had to repair, and did each one pass?
+
+    The deterministic half of the dry-run contract. `repair-qa-plan.md` is told to execute
+    every failing scenario, and every scenario it changed, with
+    `ostler qa run … --scenario <id> --out-dir qa-dry-run/<id>`; this reads what that left
+    behind. A scenario has to have a log, that log has to contain at least one `assert`
+    record naming it, and none of those records may be a FAIL:
+
+    - **no directory or no log** — the scenario was not run. An unexecuted repair is a
+      hypothesis, and the flow already knows what a hypothesis costs: a full suite run to
+      test it, and the whole loop again when it was wrong.
+    - **a log with no `assert` record for the scenario** — the run reached no assertion, so
+      it establishes nothing. This is the shape a locator typo or an unreachable fixture
+      makes, and it is exactly what the dry run is for.
+    - **any FAIL** — the scenario still fails, and the plan is not repaired.
+
+    One out-dir per scenario is load-bearing rather than tidy: ostler's runner `rmtree`s its
+    out-dir at the start of every run, so a shared scratch directory would hold only the last
+    scenario's evidence and every earlier one would read as "not run".
+
+    Scratch, never scored: this reads `qa-dry-run/`, which `clear_qa_evidence` deletes and
+    which the evidence gate never looks at. A scenario tuned until it passed cannot leave
+    its own proof in `qa/`.
+    """
+    wanted = [s for s in dict.fromkeys(scenarios) if s]
+    if not wanted:
+        return DryRunGate(
+            status="passed", notes="No scenarios required a dry run.", scenarios=[]
+        )
+    if not spec_dir:
+        return DryRunGate(notes="QA dry-run gate: no spec_dir provided to locate the logs.")
+
+    root = Path(spec_dir) / QA_SCRATCH_DIRNAME
+    problems: list[str] = []
+    verified: list[str] = []
+    for scenario in wanted:
+        log_path = root / scenario / QA_RUN_LOG
+        if not log_path.is_file():
+            problems.append(
+                f"`{scenario}`: no dry run at {log_path}. Run it with "
+                f"`ostler qa run {QA_PLAN_FILE} --spec {spec_dir} --scenario {scenario} "
+                f"--out-dir {QA_SCRATCH_DIRNAME}/{scenario}` and repair it until it passes."
+            )
+            continue
+        # A single-scenario run is allowed to leave the field off its own records: the
+        # out-dir names the scenario, so an unlabelled assert in it is that scenario's.
+        mine = [
+            r
+            for r in ostler_qa.assert_records(log_path)
+            if str(r.get("scenario", "")).strip() in ("", scenario)
+        ]
+        if not mine:
+            problems.append(
+                f"`{scenario}`: the dry run at {log_path} recorded no assertion for it, so "
+                "it proves nothing — the scenario never reached an assert. Find out why "
+                "(locator, fixture, navigation) and re-run it."
+            )
+            continue
+        failed = [
+            str(r.get("id") or "?")
+            for r in mine
+            if str(r.get("result", "")).strip().upper() == "FAIL"
+        ]
+        if failed:
+            problems.append(
+                f"`{scenario}`: the dry run still fails {len(failed)} assertion(s) "
+                f"({', '.join(failed)}). The repair is not finished."
+            )
+            continue
+        verified.append(scenario)
+
+    if problems:
+        logger.info("qa dry-run gate refused %d of %d scenario(s)", len(problems), len(wanted))
+        return DryRunGate(
+            notes=(
+                "The QA-plan repair must prove itself before the suite runs again. "
+                + " ".join(problems)
+            ),
+            scenarios=wanted,
+            verified=verified,
+        )
+    logger.info("qa dry-run gate passed %d scenario(s)", len(verified))
+    return DryRunGate(
+        status="passed",
+        notes=f"Dry run passed for {', '.join(verified)}.",
+        scenarios=wanted,
+        verified=verified,
+    )
+
+
+@blueprint.node
 def run_qa_plan(
     logger: logging.Logger,
     spec_dir: str = "",
@@ -342,4 +437,5 @@ __all__ = [
     "qa_tools_catalog",
     "run_qa_plan",
     "validate_qa_plan",
+    "verify_qa_dry_run",
 ]

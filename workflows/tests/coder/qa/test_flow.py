@@ -41,7 +41,10 @@ from workhorse.runner.failure import BackendInvocationError
 from workhorse_workflows.coder.shared import ostler_qa
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes import regression as regression_nodes
-from workhorse_workflows.coder.qa.nodes.qa import record_qa_giveup
+from workhorse_workflows.coder.qa.nodes.qa import (
+    QA_SCRATCH_DIRNAME,
+    record_qa_giveup,
+)
 from workhorse_workflows.coder.shared.dev import resolve_impl_context
 
 STORY = "STORY-1"
@@ -337,9 +340,8 @@ class _Ostler:
         run_id = f"run-{self.runs}"
         qa = spec / "qa"
         qa.mkdir(parents=True, exist_ok=True)
-        results = ["PASS", "PASS"] if status == "passed" else ["PASS", "FAIL"]
         (qa / "qa-run.ndjson").write_text(
-            "".join(json.dumps({"kind": "assert", "result": r}) + "\n" for r in results),
+            "".join(json.dumps(record) + "\n" for record in self._assert_records(status)),
             encoding="utf-8",
         )
         (qa / "run-manifest.json").write_text(
@@ -357,6 +359,30 @@ class _Ostler:
             ),
             encoding="utf-8",
         )
+
+    def _assert_records(self, status: str) -> list[dict[str, Any]]:
+        """The per-assertion records of this run, labelled by scenario when there are any.
+
+        A test that scripts `scenarios` is describing a run at scenario granularity, and the
+        run log is where that granularity is readable — `_plan_args` mines it for the ids of
+        the assertions each failing scenario left red, and hands them to the repair turn as
+        its worklist. Leaving the label off would make every failing scenario's worklist
+        empty and let a brief that carries nothing pass for one that carries the failures.
+        """
+        scenarios = self.scenarios[min(self.runs, len(self.scenarios)) - 1] if self.scenarios else {}
+        if not scenarios:
+            results = ["PASS", "PASS"] if status == "passed" else ["PASS", "FAIL"]
+            return [{"kind": "assert", "result": r} for r in results]
+        return [
+            {
+                "kind": "assert",
+                "id": f"{name}-{n}",
+                "scenario": name,
+                "result": "FAIL" if n <= int(outcome.get("failures", 0)) else "PASS",
+            }
+            for name, outcome in scenarios.items()
+            for n in range(1, int(outcome.get("assertions", 1)) + 1)
+        ]
 
     # -- the artifact contract --------------------------------------------
 
@@ -422,8 +448,14 @@ class _Agent:
         scope: str = "story",
         explode: set[str] | None = None,
         cut: set[str] | None = None,
+        dry_run: str = "passed",
     ) -> None:
         self.docs = docs
+        #: What the repair turn leaves in the dry-run scratch directory: `passed` writes a
+        #: green log per scenario the brief named, `failed` a red one, `empty` a log with no
+        #: assertion in it, and `missing` writes nothing at all. Only `passed` gets past
+        #: `verify_qa_dry_run`; the other three are the refusals it exists to make.
+        self.dry_run = dry_run
         self.repair = repair
         self.disposition = disposition
         # A count of *leading* assessments that send the failure to the plan author, after
@@ -510,8 +542,30 @@ class _Agent:
         return {"status": "planned", "notes": f"plan pass {nth}"}
 
     def _repair_qa_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """The repair turn leaves the same plan on disk and answers in the same shape."""
-        return self._plan_qa(data, nth)
+        """The repair turn rewrites the plan *and* proves it, exactly as its prompt demands.
+
+        The proof is the scratch run log the flow's dry-run gate reads: one out-dir per
+        scenario the brief named, holding the assertions that scenario recorded. A fake that
+        only returned `{"status": "planned"}` would stand in for a turn the gate refuses, so
+        every repair lap in this suite would be a gate failure rather than the loop under
+        test. `self.dry_run` is what lets a test ask for the refused shapes on purpose.
+        """
+        answer = self._plan_qa(data, nth)
+        scenarios = [str(s["id"]) for s in data.get("failed_scenarios") or []]
+        if self.dry_run != "missing":
+            scratch = Path(data["spec_dir"]) / QA_SCRATCH_DIRNAME
+            for scenario in scenarios:
+                out = scratch / scenario
+                out.mkdir(parents=True, exist_ok=True)
+                records = [] if self.dry_run == "empty" else [
+                    {"kind": "assert", "id": f"{scenario}-1", "result": (
+                        "FAIL" if self.dry_run == "failed" else "PASS"
+                    )}
+                ]
+                (out / ostler_qa.QA_RUN_LOG).write_text(
+                    "".join(json.dumps(r) + "\n" for r in records), encoding="utf-8"
+                )
+        return {**answer, "repaired_scenarios": scenarios}
 
     def _qa_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         # A runner failure the assessment confirms is a product defect unless the test says
@@ -858,6 +912,95 @@ def test_validation_and_judgement_spend_separate_plan_budgets(
     assert okf.runs == 2
     # Draft, two schema repairs, then the post-run repair — every plan lap revalidates.
     assert okf.plan_validations == 4
+
+
+def test_the_repair_turn_is_told_which_scenarios_failed_and_on_which_assertions(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The repair's worklist is the failing set itself, not a paragraph describing it.
+
+    Standing, the brief carried the runner's prose notes and the author re-derived what had
+    failed from them — sometimes onto a scenario that was green. The ids come off the run
+    log, which is the same artifact the evidence gate reads, so the two cannot disagree.
+    """
+    ostler(fail_runs=1, scenarios=(_STUCK, {}))
+    agent = _Agent(docs, repair_plans=1)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    brief = agent.args_for("repair-qa-plan")[0]
+    assert brief["failed_scenarios"] == [
+        {"id": "copy-link", "failed_assertions": ["copy-link-1"]}
+    ], brief["failed_scenarios"]
+
+
+def test_the_first_draft_carries_no_failing_scenarios_and_proves_nothing(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The draft has no run behind it, so there is nothing to dry-run and nothing to prove.
+
+    `dry_run="missing"` is the seam: an author turn that leaves no scratch evidence at all.
+    If the gate ran on this path the story could never reach the runner.
+    """
+    okf = ostler()
+    agent = _Agent(docs, dry_run="missing")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert okf.runs == 1, "the draft went straight to the runner"
+    assert agent.args_for("plan-qa")[0]["failed_scenarios"] == []
+
+
+def test_a_repair_that_never_dry_ran_is_repaired_again_and_costs_no_suite_run(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The point of the gate: an unproven repair is refused where the refusal is cheap.
+
+    A suite run is the most expensive thing this flow does, and the plan-repair loop has six
+    laps to spend on it. Believing the turn's own "repaired" cost one full run per lap to
+    disprove — and the run came back with the same scenario red, which then looked like a
+    stall in the *product* rather than a repair that never executed anything.
+    """
+    okf = ostler(fail_runs=99, scenarios=(_STUCK,))
+    agent = _Agent(docs, repair_plans=99, escalate=True, dry_run="missing")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert okf.runs == 1, "a refused repair must not buy another suite run"
+    assert agent.counts()["repair-qa-plan"] > 1, agent.counts()
+    # The refusal is spent out of the plan-repair budget, not a new one beside it.
+    assert agent.counts()["repair-qa-plan"] == Qa.MAX_PLAN_REWORKS, agent.counts()
+
+
+def test_a_repair_whose_dry_run_is_still_red_is_not_a_finished_repair(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The turn ran the scenario and left it failing — which is the answer, honestly come by,
+    and still not a repair. The next brief says so rather than the next suite run."""
+    okf = ostler(fail_runs=99, scenarios=(_STUCK,))
+    agent = _Agent(docs, repair_plans=99, escalate=True, dry_run="failed")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "exhausted", result
+    assert okf.runs == 1, okf.runs
+    brief = agent.args_for("repair-qa-plan")[1]
+    assert "still fails" in brief["plan_validation_notes"], brief["plan_validation_notes"]
 
 
 def test_the_stacked_plan_budgets_cannot_multiply(

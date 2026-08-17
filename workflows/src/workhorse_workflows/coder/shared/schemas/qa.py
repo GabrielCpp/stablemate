@@ -72,6 +72,26 @@ class QaPlanValidation(CoderResult):
     ostler: dict[str, Any] = {}
 
 
+class DryRunGate(CoderResult):
+    """Did the repair turn actually execute the scenarios it was told to repair?
+
+    The deterministic half of the dry-run contract in `repair-qa-plan.md`. A repair turn that
+    edits a locator and returns has established nothing — the next full suite run is what
+    finds out, forty minutes later, and a lap that costs a whole run to learn one assertion
+    still fails is the loop this gate exists to cut. The turn has the stack up and the plan on
+    disk, so it can run the failing scenario itself for the price of a shell command.
+
+    `status` is `passed` or `failed`, on the same two-state rule as `QaPlanValidation`, and a
+    failure routes back into the repair loop on the same budget rather than a new one.
+    `scenarios` is what was demanded; `verified` is what the scratch evidence proved.
+    """
+
+    status: str = "failed"
+    notes: str = ""
+    scenarios: list[str] = []
+    verified: list[str] = []
+
+
 class QaToolCatalog(CoderResult):
     """`ostler qa tools list` — the tools this repo opted into, resolved for this host.
 
@@ -241,13 +261,20 @@ class QaContextRepair(CoderResult):
 class QaPlanResult(CoderResult):
     """`plan-qa.md` — the authored `qa_plan.py`, as the author reports it.
 
-    Nothing branches on it: the plan is judged by `validate_qa_plan` reading the file, not by
-    the author's word for it. Kept because the YAML declared the key and the run record is
-    poorer without the author's own account of what it wrote.
+    Its prose is judged by nothing: the plan itself is judged by `validate_qa_plan` reading
+    the file, not by the author's word for it. Kept because the YAML declared the key and the
+    run record is poorer without the author's own account of what it wrote.
+
+    `repaired_scenarios` is the exception, and only on the repair path. The dry-run gate has
+    to know which scenarios a repair *touched* — a repair that rewrote a scenario the last
+    run passed is exactly as capable of breaking it, and the failing set the flow already has
+    cannot name it. It is a claim, not evidence: the gate still reads the scratch run log for
+    each id, so naming a scenario it did not dry-run fails the gate rather than passing it.
     """
 
     status: str = ""
     notes: str = ""
+    repaired_scenarios: list[str] = []
 
 
 class QaFinding(CoderResult):
@@ -491,6 +518,14 @@ class QaLoop(CoderResult):
     #: the flow is currently reacting to. Empty for a run that passed, blocked, or was
     #: invalid: none of those is a repairable failure, and the counters below bound them.
     run_failures: tuple[str, ...] = ()
+    #: The ids alone of the scenarios that latest failing run did not pass, sorted. Written
+    #: and blanked exactly where `run_failures` is, and derived from the same payload.
+    #:
+    #: The fingerprint above answers "did the last repair move anything"; this answers "what
+    #: must the repair turn prove it fixed", which is a different question and needs the ids
+    #: without the counts glued to them. `_plan_args` hands them to `repair-qa-plan.md` as the
+    #: dry-run contract, and `verify_qa_dry_run` reads the scratch evidence back.
+    failed_scenarios: tuple[str, ...] = ()
     #: The same fingerprint as the last repair lap — a code fix or a plan repair — was
     #: dispatched against.
     #:

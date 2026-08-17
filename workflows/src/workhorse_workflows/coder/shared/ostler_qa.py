@@ -153,6 +153,53 @@ def artifact_vet(
     return (1 if vetted.get("problems") else 0), vetted, ""
 
 
+#: The runner's per-assertion log, relative to whichever directory the run wrote into —
+#: `<spec_dir>/qa/` for the scored run, `<spec_dir>/qa-dry-run/<scenario>/` for a dry one.
+QA_RUN_LOG = "qa-run.ndjson"
+
+
+def assert_records(log_path: Path) -> list[dict[str, Any]]:
+    """Every `kind == "assert"` record in one `qa-run.ndjson`, in the order it was written.
+
+    The run log is the only account of an assertion that no later turn can edit: the
+    assessor writes `qa-evidence.json`, the runner writes this. Both the evidence gate and
+    the dry-run gate read it, which is why the parse lives here rather than in either.
+
+    A malformed line is skipped rather than raised on. The file is append-only NDJSON a
+    killed run can leave half-written, and one truncated tail is not a reason to lose the
+    hundred records before it.
+    """
+    if not log_path.is_file():
+        return []
+    records: list[dict[str, Any]] = []
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(record, dict) and record.get("kind") == "assert":
+            records.append(record)
+    return records
+
+
+def failed_assertions(log_path: Path) -> dict[str, list[str]]:
+    """`scenario -> ids of its assertions the run recorded as FAIL`, from one run log."""
+    failures: dict[str, list[str]] = {}
+    for record in assert_records(log_path):
+        if str(record.get("result", "")).strip().upper() != "FAIL":
+            continue
+        scenario = str(record.get("scenario", "")).strip()
+        if not scenario:
+            continue
+        failures.setdefault(scenario, []).append(str(record.get("id") or "?"))
+    return failures
+
+
+def scored_run_log(spec_dir: Path) -> Path:
+    """The scored run's log — the one `run_qa_plan` writes and the evidence gate reads."""
+    return spec_dir / "qa" / QA_RUN_LOG
+
+
 def notes_for(payload: dict[str, Any], stderr: str, fallback: str) -> str:
     """Concise routing notes off the packet, keeping the deterministic diagnostics."""
     for key in ("notes", "message", "problems", "errors", "healthFindings"):
@@ -166,6 +213,8 @@ def notes_for(payload: dict[str, Any], stderr: str, fallback: str) -> str:
 
 __all__ = [
     "artifact_vet",
+    "assert_records",
+    "failed_assertions",
     "notes_for",
     "okf",
     "parse_source_roots",
@@ -175,4 +224,5 @@ __all__ = [
     "qa_run",
     "qa_tools_catalog",
     "qa_validate",
+    "scored_run_log",
 ]

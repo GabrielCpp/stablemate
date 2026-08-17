@@ -454,8 +454,10 @@ resolves. After authoring a scenario, execute it on its own:
 
 ```bash
 ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> \
-  --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}
+  --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}/<scenario-id>
 ```
+One out-dir per scenario, named after it: the runner deletes its out-dir at the start of every
+run, so a shared scratch directory keeps only the last scenario's evidence.
 `--out-dir` keeps the artifacts out of `{{ workhorse_var('qa_dir') }}`, which is the scored
 ledger the evidence gate reads — a scenario tuned until it passed must not be able to leave its
 own proof. Fix what does not resolve and run it again. This is what one call answers and no
@@ -485,6 +487,10 @@ Return JSON only:
 ```json
 {
   "status": "done",
-  "notes": "Wrote qa_plan.py and qa-plan.md with complete AC and OKF coverage."
+  "notes": "Wrote qa_plan.py and qa-plan.md with complete AC and OKF coverage.",
+  "repaired_scenarios": []
 }
 ```
+
+`repaired_scenarios` belongs to the *repair* turn, which names the scenarios it changed so a
+gate can check each one was dry-run green. This turn wrote the file, so leave it empty.

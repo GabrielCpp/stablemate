@@ -74,7 +74,7 @@ from pathlib import Path
 from typing import Any, ClassVar, NamedTuple
 
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow
-from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared import ostler_qa, paths
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
 from workhorse_workflows.coder.shared.docs import detect_okf_docs
@@ -90,6 +90,7 @@ from workhorse_workflows.coder.qa.nodes.qa import (
     record_qa_giveup,
     run_qa_plan,
     validate_qa_plan,
+    verify_qa_dry_run,
 )
 from workhorse_workflows.coder.qa.nodes.regression import (
     detect_regression_platform,
@@ -209,6 +210,30 @@ def _failure_signature(result: QaRunResult) -> tuple[str, ...]:
     return tuple(
         sorted(
             f"{name}:{outcome.get('status')}:{outcome.get('assertions')}/{outcome.get('failures')}"
+            for name, outcome in scenarios.items()
+            if isinstance(outcome, dict) and outcome.get("status") != "passed"
+        )
+    )
+
+
+def _failed_scenario_ids(result: QaRunResult) -> tuple[str, ...]:
+    """The ids alone of the scenarios a failing run did not pass, sorted.
+
+    `_failure_signature` above answers a different question with the same payload, and glues
+    the status and the assertion counts onto each id to answer it. This is the worklist the
+    repair turn is handed and the dry-run gate reads back, so it is the bare ids.
+
+    Empty for every status but `failed`, exactly as the fingerprint is: a `blocked` run never
+    reached its scenarios, so there is nothing to demand a dry run of.
+    """
+    if result.status != "failed":
+        return ()
+    scenarios = result.ostler.get("scenarios")
+    if not isinstance(scenarios, dict):
+        return ()
+    return tuple(
+        sorted(
+            str(name)
             for name, outcome in scenarios.items()
             if isinstance(outcome, dict) and outcome.get("status") != "passed"
         )
@@ -623,14 +648,20 @@ class Qa(Workflow):
         shrink monotonically, which is the whole mechanism by which the loop converges.
 
         It takes the same brief as `plan` and returns the same result, so the validation tail
-        and every guard are unchanged; what differs is the instruction and the power tier.
+        and every guard are unchanged; what differs is the instruction, the power tier and
+        the dry run. The turn has the stack up and the plan on disk, so it is told to execute
+        each failing scenario itself — `ostler qa run … --scenario <id> --out-dir
+        qa-dry-run/<id>` — and `verify_qa_dry_run` reads that scratch evidence back before
+        the flow spends a whole suite run finding out. A repair that has not been observed to
+        work is a hypothesis, and this lane was paying a full run per hypothesis.
         """
         self.logger.info("repairing the QA plan for %s", self.ctx.story_slug,
                          extra={"activity": True})
         overran = ""
+        repaired: tuple[str, ...] = ()
         started = time.monotonic()
         try:
-            self.agent(
+            result = self.agent(
                 "prompts/repair-qa-plan.md",
                 returns=QaPlanResult,
                 # low: applying a named list of edits to a file that already exists is not
@@ -649,6 +680,7 @@ class Qa(Workflow):
                 add_dirs=self._dirs(),
                 args=self._plan_args(loop),
             )
+            repaired = tuple(str(scenario) for scenario in result.repaired_scenarios)
         except AgentTimeout:
             self.logger.info(
                 "the QA-plan repair turn was stopped at its budget — validating what it wrote",
@@ -656,7 +688,9 @@ class Qa(Workflow):
             )
             overran = _OVERRAN_REPAIR
         return self._validated(
-            loop.charged(time.monotonic() - started, plan=True), overran=overran
+            loop.charged(time.monotonic() - started, plan=True),
+            overran=overran,
+            dry_run=tuple(sorted({*loop.failed_scenarios, *repaired})),
         )
 
     def _plan_args(self, loop: QaLoop) -> dict[str, object]:
@@ -669,6 +703,13 @@ class Qa(Workflow):
         run is already blocked. The planner was left re-deriving a fixture path that was
         sitting in a file two directories up, and getting it wrong is how a scenario comes
         back `blocked` on data that exists.
+
+        `failed_scenarios` is the repair turn's contract, not a diagnostic: each entry is a
+        scenario the last run did not pass, with the ids of its FAIL assertions read off the
+        runner's own log. The prompt turns the list into a demand — dry-run each of these
+        until it passes — and `verify_qa_dry_run` checks it was met. It is empty for the
+        `plan` turn and after any run that did not fail, which is what makes the same brief
+        serve both nodes.
 
         `qa_scratch_dir` is the other half of the dry run: it is deliberately *not* under
         `qa_dir`, because `clear_qa_evidence` wipes that and `verify_qa_evidence` reads it. A
@@ -684,6 +725,11 @@ class Qa(Workflow):
         impl = self.output(resolve_impl_context)
         tools = self.call(qa_tools_catalog, self.docs_path)
         spec_abs = Path(self.ctx.spec_dir) if self.ctx.spec_dir else None
+        failed_assertions = (
+            ostler_qa.failed_assertions(ostler_qa.scored_run_log(spec_abs))
+            if spec_abs and loop.failed_scenarios
+            else {}
+        )
         return {
             "story_path": self.ctx.story_path,
             "spec_dir": self.ctx.spec_dir,
@@ -697,6 +743,10 @@ class Qa(Workflow):
                 {"title": s.title, "ac": s.ac, "level": s.level}
                 for s in qa_only_scenarios(spec_abs, "")
             ],
+            "failed_scenarios": [
+                {"id": scenario, "failed_assertions": failed_assertions.get(scenario, [])}
+                for scenario in loop.failed_scenarios
+            ],
             "context_status": loop.context_status,
             "context_notes": loop.context_notes,
             "plan_validation_notes": loop.plan_validation_notes,
@@ -706,7 +756,9 @@ class Qa(Workflow):
             "qa_tools": tools.tools,
         }
 
-    def _validated(self, loop: QaLoop, overran: str = "") -> Continue | Await | Done:
+    def _validated(
+        self, loop: QaLoop, overran: str = "", dry_run: tuple[str, ...] = ()
+    ) -> Continue | Await | Done:
         """The tail both plan turns share: clear the brief, stamp, parse, route on the parse.
 
         A plan that parses goes straight to the runner. There is no semantic pre-run gate
@@ -725,6 +777,12 @@ class Qa(Workflow):
         which reads exactly like a plan whose author made a mistake, and invites a rewrite.
         It is only ever a brief: a plan that validates goes to the runner regardless, because
         a plan that parses is a plan that runs whatever cut its author short.
+
+        `dry_run` is the one thing the two turns do not share. A repair is dispatched against
+        a named set of failing scenarios, so it can be *asked to prove it worked* before the
+        suite is spent finding out — which is what `verify_qa_dry_run` reads. The `plan` turn
+        has no failing set to prove anything about and passes nothing here, so the gate is
+        skipped rather than vacuously passed.
         """
         loop = loop.cleared()
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
@@ -740,9 +798,20 @@ class Qa(Workflow):
         if overran:
             notes = f"{overran}\n\n{notes}".strip()
         loop = loop.update(plan_validation_notes=_finding(validation.status == "passed", notes))
-        if validation.status == "passed":
-            return Continue(validation, self.run, loop=loop.update(plan_authored=True))
-        return self._guard_plan_validation(validation, loop)
+        if validation.status != "passed":
+            return self._guard_plan_validation(validation, loop)
+        if dry_run:
+            gate = self.call(verify_qa_dry_run, self.ctx.spec_dir, dry_run)
+            if gate.status != "passed":
+                self.logger.info(
+                    "the QA-plan repair did not dry-run clean — repairing again without "
+                    "spending a suite run",
+                    extra={"activity": True},
+                )
+                return self._guard_dry_run(
+                    gate, loop.update(plan_validation_notes=_finding(False, gate.notes))
+                )
+        return Continue(validation, self.run, loop=loop.update(plan_authored=True))
 
     # ── stack and run ─────────────────────────────────────────────────────────────────
 
@@ -809,7 +878,8 @@ class Qa(Workflow):
 
         A `failed` run carries the equivalent for the repair loops: the scenarios it failed
         and how far each got, which `_repeating` compares against what the last repair was
-        handed. See `QaLoop.repaired_failures`.
+        handed. See `QaLoop.repaired_failures`. The bare ids go alongside it: they are the
+        set the next repair turn must dry-run before the suite is spent on it again.
         """
         self.logger.info("running the QA plan", extra={"activity": True})
         result = self.call(run_qa_plan, self.ctx.spec_dir, self.docs_path)
@@ -819,6 +889,7 @@ class Qa(Workflow):
             loop=loop.with_qa(result).update(
                 blocked_problems=_blocked_problems(result),
                 run_failures=_failure_signature(result),
+                failed_scenarios=_failed_scenario_ids(result),
             ),
         )
 
@@ -1536,6 +1607,32 @@ class Qa(Workflow):
             return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
         return self._plan_lap(
             result,
+            loop.with_lap(
+                "QA-plan repair",
+                plan_rework=loop.plan_rework + 1,
+                repaired_failures=loop.run_failures,
+            ),
+        )
+
+    def _guard_dry_run(self, gate: object, loop: QaLoop) -> Continue | Await | Done:
+        """A repair whose own dry run refused it — repair again, on the same budget.
+
+        The judgement budget and not a new one: the lap is a QA-plan repair lap whichever
+        gate refused it, and a dry-run failure is the *cheap* way to learn what the post-run
+        gate would have said an hour later. Adding a budget here would let a story spend
+        more laps than before by failing earlier in each of them.
+
+        `_repeating` is deliberately not consulted, which is the one difference from
+        `_guard_plan`. That detector asks whether the last repair left *the suite* failing
+        identically, and its inputs are a run fingerprint; no run happened between this
+        repair and this refusal, so the fingerprint is the one the previous guard already
+        stamped and the test would report a stall on every first dry-run failure. The
+        sameness signal still fires where it means something — after the next scored run.
+        """
+        if loop.plan_judgement_rework >= self.MAX_PLAN_REWORKS:
+            return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
+        return self._plan_lap(
+            gate,
             loop.with_lap(
                 "QA-plan repair",
                 plan_rework=loop.plan_rework + 1,
