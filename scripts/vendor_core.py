@@ -10,7 +10,7 @@ Vendoring is a *committed* copy rather than something the wheel build synthesize
 release reason: release-please decides which distribution to bump from the paths a commit
 touched. A fix committed only under ``core/`` touches no released package and would ship
 to nobody — the copies are what make it visible. Run ``make vendor`` in the same commit
-as the core change and both tools bump.
+as the core change and every tool that carries it bumps.
 
     make vendor         write the copies
     make check-vendor   fail if they have drifted (runs as part of `make test`)
