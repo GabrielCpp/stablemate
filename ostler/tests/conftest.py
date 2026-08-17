@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -80,6 +82,61 @@ def feature_md(slug: str, title: str, area: str = "", route: str = "") -> str:
     return "\n".join(out) + "\n"
 
 
+def screen_md(slug: str, title: str, *, entry: bool = False, body: str = "") -> str:
+    """A UI-profile screen carrying every bullet the linter makes mandatory.
+
+    `route`/`requires`/`params` are *body* bullets, not frontmatter: the linter reads a node's
+    bullets off the parsed sections, so a screen that states its route in the frontmatter still
+    reports `missing-required-bullet`.
+    """
+    out = ["---", "type: screen", f"slug: {slug}", f"title: {title}", "---",
+           f"# {title}", ""]
+    if entry:
+        # Stated only on a real root: `entry:` at all is what makes a screen an entry point, so a
+        # screen that carries `entry: false` is still a root and nothing is ever unreachable.
+        out.append("- entry: app root")
+    out += [f"- route: `/{slug}`",
+           "- requires: none",
+           "- params: none",
+           ""]
+    return "\n".join(out) + (body or "")
+
+
+# The entry screen: it links out to two feature docs (one of them to an anchor, which is what
+# makes the link resolver parse that file) and reaches `detail.md` through a component edge.
+UI_DASH_LINKS = """
+Sits next to [rec](../area/rec.md) and its [heading](../area/rec.md#rec).
+
+## Components
+
+### dash-detail-link
+
+- selector: `[data-testid="dash-detail-link"]`
+- role: link
+- name: Detail
+- leads-to: [Detail](detail.md)
+"""
+
+# The same screen with the component edge cut: `detail.md` is then reachable from nothing, and
+# the finding lands on a file this run never re-read.
+UI_DASH_UNLINKED = """
+Sits next to [rec](../area/rec.md) and its [heading](../area/rec.md#rec).
+"""
+
+
+@pytest.fixture
+def ui_book(repo: Path) -> Path:
+    """`repo` plus two screens — an entry screen that reaches a detail screen through a component.
+
+    Enough of a UI profile that one `doctor` run exercises all five read-only parse sites: the
+    graph load, the per-file UI check, conformance, and the link resolver's anchor computation.
+    """
+    write(repo / "docs/features/ui/dash.md",
+          screen_md("dash", "Dash", entry=True, body=UI_DASH_LINKS))
+    write(repo / "docs/features/ui/detail.md", screen_md("detail", "Detail"))
+    return repo
+
+
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
     """A clean two-epic repo with feature docs cited by story prose."""
@@ -108,3 +165,51 @@ def repo(tmp_path: Path) -> Path:
     write(root / "docs/features/area/rec2.md", feature_md("rec2", "Rec 2", area="area"))
 
     return root
+
+
+# ---------------------------------------------------------------------------
+# the parse index: a directory of one's own, and a warm one to run against
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def index_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The resolved index directory, with the operator's real config and cache out of reach."""
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(tmp_path / "config" / "config.toml"))
+    monkeypatch.setenv("STABLEMATE_CACHE_DIR", str(tmp_path / "cache"))
+    resolved = tmp_path / "resolved-index"
+    monkeypatch.setenv("OSTLER_INDEX_DIR", str(resolved))
+    return resolved
+
+
+def entry_files(directory: Path) -> list[Path]:
+    """Every entry the store has written under *directory* — none, when it was never created."""
+    if not directory.exists():
+        return []
+    return sorted(p for p in directory.rglob("*") if p.is_file())
+
+
+def report_of(capsys) -> dict:
+    """The `--json` payload a command just printed."""
+    return json.loads(capsys.readouterr().out)
+
+
+def ostler_process(book: Path, *argv: str) -> subprocess.CompletedProcess[str]:
+    """One `ostler` invocation in a process of its own."""
+    code = "import sys; from ostler.cli import main; sys.exit(main(sys.argv[1:]))"
+    return subprocess.run(  # noqa: S603
+        [sys.executable, "-c", code, "-C", str(book), *argv],
+        capture_output=True, text=True, cwd=Path(__file__).resolve().parents[1],
+        stdin=subprocess.DEVNULL, timeout=300, check=False,
+    )
+
+
+def warm_index(book: Path, directory: Path) -> None:
+    """Populate *directory* the way a real run does — from a process that then exits.
+
+    A same-process warm-up proves nothing about the store: any process-lifetime memo would
+    answer the second run before the index was ever consulted. Leaving the process makes the
+    index the only thing that survives, so a later hit is a hit on disk.
+    """
+    done = ostler_process(book, "doctor", "--json", "--index-dir", str(directory))
+    assert done.returncode in (0, 1), done.stderr or done.stdout
+    assert entry_files(directory), (
+        f"a run that loads a graph must populate the index, but {directory} is empty")

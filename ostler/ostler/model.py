@@ -8,16 +8,15 @@ epic's seeds and story dependency-DAG are folded into its ``epic.md`` body (``##
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import yaml
 
-from ostler import dynamic_registry, markdown, registry
+from ostler import dynamic_registry, index, markdown, registry
 
 # Seed statuses that no longer require story coverage.
 INACTIVE_SEED_STATUS = registry.INACTIVE_SEED_STATUS
@@ -555,7 +554,145 @@ def _load_ids(graph: Graph) -> None:
             graph.ids = None
 
 
-_FEATURE_DOC_CACHE: dict[Path, tuple[str, dict, list[UINode]]] = {}
+#: The read-only document memo: one parsed :class:`markdown.MarkdownDoc` per path, with the
+#: content digest it was parsed from and the store it has been written to. Process-lifetime,
+#: in front of the persistent index — a run reads the same file from four places and must not
+#: pay four lookups for it.
+#:
+#: The store is remembered because a memo hit must not *cost* the index an entry. One process
+#: can open more than one store — ``--verify-index`` opens two, and a long-lived
+#: :class:`ostler.Ostler` opens one per book — and a document already in memory would
+#: otherwise never be written to a store that does not yet have it, leaving that store cold
+#: for every process after this one.
+@dataclass
+class _Cached:
+    """One path's read-only products, held for the life of the process."""
+
+    digest: str
+    doc: markdown.MarkdownDoc
+    store: index.IndexStore | None       # the store this content has been written to, if any
+    ui_nodes: list[UINode] | None        # stored form, straight off the entry; see `_DocProducts`
+
+
+_DOC_CACHE: dict[Path, _Cached] = {}
+
+@dataclass(frozen=True)
+class _DocProducts:
+    """An index entry's payload: everything a reader wants off a document that costs a parse.
+
+    The frontmatter, the byte-exact halves the sections index into, and the section tree itself
+    (which carries the bullets, the tables and the links). A class rather than a dict so the
+    shape check on the way back in is one ``isinstance`` — a payload from an older build names
+    a class this one no longer has, and unpickling it raises, which the store already reads as
+    the miss it is.
+    """
+
+    frontmatter: dict | None
+    raw_frontmatter: str
+    body: str
+    sections: list[markdown.Section]
+    #: The file's UI nodes, in *stored* form — every ``UINode.path`` blanked, because it is the
+    #: one part of a node that is not a function of the file's bytes and its repo-relative path,
+    #: and an entry is shared between every checkout of the repo. Re-bound on the way out.
+    #:
+    #: ``None`` when nothing has derived them yet: the accessor is reached for stories, epics and
+    #: link targets too, and only :func:`_feature_doc` has the repo root a node's id is minted
+    #: against. Such an entry is completed in place the first time a run does want them.
+    ui_nodes: list[UINode] | None = None
+
+
+def read_doc(path: Path) -> markdown.MarkdownDoc:
+    """The parsed document at *path* — **shared, and for read-only callers only**.
+
+    One `doctor` run reads the same feature document four times over: the graph load wants its
+    frontmatter, the UI-node load wants its sections, the per-file UI check re-splits it,
+    conformance re-splits it again, and the link resolver splits every file a link points into
+    so it can list that file's anchors. Each is the same parse of the same bytes, and on a real
+    book that splitting is most of the wall clock. This is the one place those readers go.
+
+    Two caches sit behind it, both keyed on the file's **content digest** rather than its mtime.
+    A load is not the only thing that touches these files — the writer phases of a workflow edit
+    them between loads, and a same-size rewrite inside one filesystem timestamp tick is exactly
+    the case a stat-keyed cache serves stale. Reading the bytes is required to hash them, and
+    reading the whole book costs 0.03s against the tens of seconds it saves. In front is
+    :data:`_DOC_CACHE`, for the life of the process; behind it is :mod:`ostler.index`, for the
+    life of the machine, since every ``ostler`` invocation is a fresh process.
+
+    **A writer must not come through here.** ``MarkdownDoc.replace_body`` mutates in place and
+    drops the document's parsed sections, so a writer served this instance would leave every
+    later reader in the run holding a document that no longer matches the file. The mutating
+    call sites keep calling ``markdown.split`` for themselves, which is what makes serving a
+    shared instance safe at all.
+
+    Raises ``OSError`` when the file cannot be read, as ``read_text`` did at each of the call
+    sites this replaced — absence is the caller's finding to report, not this function's.
+    """
+    target = Path(path)
+    data = target.read_bytes()
+    digest = index.content_sha(data)
+    store = index.active()
+    cached = _DOC_CACHE.get(target)
+    if cached is not None and cached.digest == digest:
+        if store is not None and store is not cached.store:
+            # A store this document has not been written to yet. Serving it out of memory would
+            # leave that store cold for every process after this one, so pay the write now.
+            _persist(store, target, cached)
+        return cached.doc
+    cached = _read_products(target, data, digest, store)
+    _DOC_CACHE[target] = cached
+    return cached.doc
+
+
+def _read_products(path: Path, data: bytes, digest: str,
+                   store: index.IndexStore | None) -> _Cached:
+    """*path*'s products, from the index when it has them and from the parser when it does not.
+
+    Outside a session *store* is ``None`` and this is the cold path — which is the right reading,
+    because a command that opened no index has no index, and that must never be an error.
+    """
+    payload = _products_of(store.get(path, sha=digest)) if store is not None else None
+    if payload is not None:
+        return _Cached(digest, _doc_from_products(payload), store, payload.ui_nodes)
+    doc = markdown.split(data.decode("utf-8"))
+    # Force the lazy section parse now. The sections — and the bullets, tables and links hanging
+    # off them — are the expensive half, and an entry carrying only the frontmatter would make
+    # every warm reader re-parse the body the entry was supposed to save it from.
+    _ = doc.sections
+    cached = _Cached(digest, doc, store, None)
+    if store is not None:
+        _persist(store, path, cached)
+    return cached
+
+
+def _persist(store: index.IndexStore, path: Path, cached: _Cached) -> None:
+    """Write *cached*'s products to *store*, and record that this content is now in it."""
+    store.put(path, _DocProducts(
+        frontmatter=cached.doc.frontmatter, raw_frontmatter=cached.doc.raw_frontmatter,
+        body=cached.doc.body, sections=cached.doc.sections, ui_nodes=cached.ui_nodes,
+    ), sha=cached.digest)
+    cached.store = store
+
+
+def _products_of(payload: object) -> _DocProducts | None:
+    """*payload* as this build's entry shape, or ``None`` when it is not one.
+
+    Shape-checked rather than trusted: the store guarantees the payload is something *this*
+    build wrote, not that it is this particular product, and a malformed entry has to read as a
+    miss like every other kind of damage.
+    """
+    return payload if isinstance(payload, _DocProducts) else None
+
+
+def _doc_from_products(payload: _DocProducts) -> markdown.MarkdownDoc:
+    return markdown.MarkdownDoc(
+        frontmatter=payload.frontmatter, raw_frontmatter=payload.raw_frontmatter,
+        body=payload.body, _sections=payload.sections)
+
+
+#: Per-path UI nodes, held against the *identity* of the document they were parsed from.
+#: :func:`read_doc` hands back the same instance while the file's content has not moved, so
+#: identity is the freshness test — and re-deriving the nodes is the only thing left to skip.
+_FEATURE_DOC_CACHE: dict[Path, tuple[markdown.MarkdownDoc, dict, list[UINode]]] = {}
 
 
 def _feature_doc(path: Path, root: Path) -> tuple[dict, list[UINode]]:
@@ -568,11 +705,15 @@ def _feature_doc(path: Path, root: Path) -> tuple[dict, list[UINode]]:
     parsed every file a second time for its sections. Measured on a real book: 5.7s and 18.7s of
     a 25s load. One pass produces both.
 
-    The cache is keyed on the file's **content digest**, not its mtime. A load is not the only
-    thing that touches these files — the writer phases of a workflow edit them between loads, and
-    a same-size rewrite inside one filesystem timestamp tick is exactly the case a stat-keyed
-    cache serves stale. Reading the text is required to hash it, and reading the whole book costs
-    0.03s against the 24s it saves.
+    The parse itself now comes from :func:`read_doc`, so the same pass also serves the per-file
+    UI check, conformance and the link resolver — and the nodes derived here go back into the
+    same entry, because deriving them is a second markdown pass per node (``extract_refs`` on
+    each node's region) and was 15s of a warm 20s load on a real book.
+
+    The one part of a node that is *not* a function of the file's bytes is ``UINode.path``, an
+    absolute path into this checkout; it is blanked on the way in and re-bound on the way out, so
+    two worktrees of the same repo share the entry rather than fighting over it. The node's *id*
+    is repo-relative already, and the entry's key carries that same repo-relative path.
 
     What is cached is shared across every graph loaded in this process, so callers read these
     products and do not mutate them — as every consumer of ``graph.ui_nodes`` and
@@ -580,16 +721,35 @@ def _feature_doc(path: Path, root: Path) -> tuple[dict, list[UINode]]:
     hands it to callers directly; the nodes are not, because copying them is the cost this is
     avoiding.
     """
-    text = path.read_text(encoding="utf-8")
-    digest = hashlib.blake2b(text.encode("utf-8"), digest_size=16).hexdigest()
+    doc = read_doc(path)
     hit = _FEATURE_DOC_CACHE.get(path)
-    if hit is not None and hit[0] == digest:
+    if hit is not None and hit[0] is doc:
         return dict(hit[1]), hit[2]
-    doc = markdown.split(text)
     frontmatter = doc.frontmatter or {}
-    nodes = _parse_ui_nodes(doc, path, root)
-    _FEATURE_DOC_CACHE[path] = (digest, frontmatter, nodes)
+    nodes = _ui_nodes(doc, path, root)
+    _FEATURE_DOC_CACHE[path] = (doc, frontmatter, nodes)
     return dict(frontmatter), nodes
+
+
+def _ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[UINode]:
+    """*path*'s UI nodes: off the index entry when it carries them, derived and stored when not.
+
+    The entry the accessor already read is completed in place, rather than given a key of its
+    own: a document and its nodes go stale together — they are the same bytes — and one entry
+    per file is one write and one read instead of two.
+    """
+    cached = _DOC_CACHE.get(path)
+    if cached is not None and cached.ui_nodes is not None:
+        # Copied out rather than re-bound in place: the stored form stays stored, so a store this
+        # process has not written to yet still gets the nodes and not just the document.
+        return [replace(node, path=path) for node in cached.ui_nodes]
+    nodes = _parse_ui_nodes(doc, path, root)
+    if cached is not None and cached.doc is doc:
+        cached.ui_nodes = [replace(node, path=Path()) for node in nodes]
+        store = index.active()
+        if store is not None:
+            _persist(store, path, cached)
+    return nodes
 
 
 def _feature_paths(graph: Graph) -> list[Path]:

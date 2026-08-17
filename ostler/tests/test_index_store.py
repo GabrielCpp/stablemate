@@ -411,31 +411,38 @@ def test_a_missing_file_is_a_miss(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# No parse product is served from it yet
+# The parse products are served from it
 # ---------------------------------------------------------------------------
-#: The modules that own a parse product — the read-only document accessor, the anchor
-#: computation, the markdown parse and the graph build. The increment that starts serving
-#: from the store is the one that lets the store into these; until then, a reference here
-#: means a product is being cached ahead of the controls that gate it.
-PRODUCT_MODULES = ("model.py", "links.py", "markdown.py", "graph.py")
+#: The two modules that own a read-only parse product: the document accessor every reader goes
+#: through, and the anchor computation — the single largest consumer of it. `markdown.py` and
+#: `graph.py` stay out on purpose. The parser is the thing being cached, not a caller of the
+#: cache, and the graph build reaches its documents through the accessor.
+PRODUCT_MODULES = ("model.py", "links.py")
 
 
-def test_no_parse_product_is_served_from_the_store_yet():
-    """The store's key and validity rules ship ahead of any consumer of them.
+def test_every_parse_product_is_served_from_the_store():
+    """The store shipped ahead of its consumers; this is the increment that connects them.
 
-    The command layer (`cli.py`, `doctor.py`'s verify mode) is exempt: the controls —
-    `--no-index`, `--index-dir`, the hit/miss line, `cache clean`, `--verify-index` — are
-    what gate the serving increments, and `test_index_cli.py` is where they are pinned.
+    A file-level check rather than a behavioural one, because it is the *converse* that the
+    behavioural tests cannot state: `test_index_parse_products.py` shows the accessor is warm,
+    but only reading the modules shows that the anchor computation goes through the same store
+    rather than growing a memo of its own.
     """
     package = REPO_ROOT / "ostler" / "ostler"
-    markers = ("IndexStore", "from ostler.index", "from ostler import index", "ostler.index")
+    # Reaching the store means either owning the connection to it or going through `read_doc`,
+    # the one accessor that owns it. `links.py` does the latter — it names no store at all now,
+    # which is the shape the increment was after, so the second half of the check is what keeps
+    # that from being indistinguishable from a module that quietly went back to parsing: a
+    # consumer may not call the splitter for itself.
+    served = ("from ostler import index", "from ostler.index", "ostler.index", "IndexStore",
+              "read_doc")
+    sources = {path.name: path.read_text(encoding="utf-8")
+               for path in package.rglob("*.py") if path.name in PRODUCT_MODULES}
 
-    consumers = [
-        f"{path.relative_to(package)}: {marker}"
-        for path in package.rglob("*.py")
-        if path.name in PRODUCT_MODULES
-        for marker in markers
-        if marker in path.read_text(encoding="utf-8")
-    ]
+    unserved = [name for name, text in sources.items()
+                if not any(marker in text for marker in served)]
 
-    assert not consumers, f"no parse product may be served from the store yet: {consumers}"
+    assert not unserved, f"still parsing without the store: {unserved}"
+    # `model.py` is exempt: its call to the splitter *is* the cache fill.
+    assert "markdown.split" not in sources["links.py"], (
+        "links.py splits markdown for itself again instead of going through the accessor")

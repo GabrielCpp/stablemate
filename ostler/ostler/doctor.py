@@ -18,7 +18,7 @@ from ostler import graph as graph_mod, locators as loc_mod, reach, waivers as wa
 from ostler.vet import placement as placement_mod
 from ostler import refs as refs_mod
 from ostler.refs import normalize_ref
-from ostler.model import Graph, Epic, required_section_problems
+from ostler.model import Graph, Epic, read_doc, required_section_problems
 
 
 @dataclass
@@ -453,7 +453,11 @@ def _check_conformance(graph: Graph, f: list[Finding]) -> None:
             seen.add(path)
             rel = path.relative_to(graph.root).as_posix()
             try:
-                fm = (markdown.split(path.read_text(encoding="utf-8")).frontmatter) or {}
+                # Read-only, so through the shared accessor: `_check_ui_file` and the graph
+                # load want the same parse of the same file, and the index makes it survive
+                # the process. A copy of the frontmatter, because the mapping behind it is
+                # shared with every other reader in this run.
+                fm = dict(read_doc(path).frontmatter or {})
             except OSError as exc:
                 f.append(Finding("error", "unreadable", f"{rel}: {exc}", path=rel))
                 continue
@@ -541,7 +545,7 @@ def _check_container_siblings(doc: markdown.MarkdownDoc, rel: str, f: list[Findi
 def _check_ui_file(graph: Graph, path, f: list[Finding]) -> None:
     rel = path.relative_to(graph.root).as_posix()
     try:
-        doc = markdown.split(path.read_text(encoding="utf-8"))
+        doc = read_doc(path)
     except OSError:
         return
     fm = doc.frontmatter or {}
