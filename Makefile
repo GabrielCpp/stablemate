@@ -48,8 +48,16 @@ lint: ## Lint every subproject in one pass: ruff (style, imports) + ty (types)
 	# reads one file at a time, so the argument that does not match the parameter is
 	# invisible to it; ty follows the call across modules and never has an opinion
 	# about import order.
-	uv run ruff check .
-	uv run ty check
+	#
+	# `--all-packages` for the same reason `check-public` needs it: a bare `uv run`
+	# syncs this root and its dev group, so every workspace member's own dependencies
+	# — jinja2, GitPython, opentelemetry — are absent unless someone has already run
+	# `make install`. ruff never notices, but ty resolves imports, so in a fresh
+	# checkout it reports hundreds of unresolved-import errors that say nothing about
+	# the code. The lint gate has to mean the same thing on a clean machine as on a
+	# set-up one.
+	uv run --all-packages ruff check .
+	uv run --all-packages ty check
 
 .PHONY: test
 test: ## Run the packages' test suites, the workflow suites, and the public/private guard
@@ -103,7 +111,14 @@ check-public: ## Guard the public/private split (no private names; the base stan
 	# Two silent failure modes, both invisible on a machine where the private overlay
 	# is configured and shadows everything: a private name reaching this public repo,
 	# and a base skill/workflow quietly depending on the overlay.
-	uv run python scripts/check_public.py
+	#
+	# `--all-packages` because the base-stands-alone half imports farrier and
+	# stablemate_core. A bare `uv run` syncs this root and its dev group only, so the
+	# check resolves those two purely by accident: it works in a clone that has run
+	# `make install` (`uv sync --all-packages`) and dies with ModuleNotFoundError in a
+	# fresh checkout that has not. A gate that passes only on a machine already set up
+	# is the one thing this particular gate must not be.
+	uv run --all-packages python scripts/check_public.py
 
 .PHONY: check-no-env
 check-no-env: ## Guard the no-environment rule (a workflow's inputs are parameters)

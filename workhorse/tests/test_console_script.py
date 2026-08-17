@@ -221,9 +221,15 @@ def _capture_run_call(argv: list[str], repo_dir_env: str | None = None) -> dict:
 
 def test_every_flag_reaches_the_engine(tmp_path: Path) -> None:
     params = json.dumps({"story": "AUTH-12"})
-    seen = _capture_run_call(
-        ["run", "qa", "--run-id=test123", "--params", params, "--dry-run"]
-    )
+    # `$AGENT_REPO_DIR` outranks the working directory in the CLI's default
+    # (`cli/run.py`), and it is set in every environment a run itself spawns — including
+    # the one this suite is executed from when an agent is driving it. Left in place, the
+    # assertion below is about whoever launched pytest rather than about the CLI.
+    with patch.dict("os.environ", {}, clear=False):
+        os.environ.pop("AGENT_REPO_DIR", None)
+        seen = _capture_run_call(
+            ["run", "qa", "--run-id=test123", "--params", params, "--dry-run"]
+        )
 
     # The registry travels through by identity — the command runs the workflow it *is*,
     # and there is no name in between for it to resolve to something else.
