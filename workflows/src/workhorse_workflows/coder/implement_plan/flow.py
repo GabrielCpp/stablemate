@@ -29,6 +29,7 @@ from workhorse_workflows.coder.implement_plan.inventory import (
 )
 from workhorse_workflows.coder.implement_plan.review import (
     check_review_turn,
+    audit_review_issues,
     prepare_review_issues,
     project_review_approval,
     project_review_progress,
@@ -73,12 +74,18 @@ class ImplementPlan(Workflow):
     plan_path: str
 
     injects: ClassVar[tuple[str, ...]] = ("repo_dir",)
-    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("repair", "tests_rework", "decomposition_rework")
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = (
+        "repair",
+        "tests_rework",
+        "decomposition_rework",
+        "review_rework",
+    )
     MAX_REPAIRS: ClassVar[int] = 2
     MAX_AGGREGATE_ROUNDS: ClassVar[int] = 6
     MAX_TESTS_REWORKS: ClassVar[int] = 2
     MAX_DECOMPOSITION_REWORKS: ClassVar[int] = 2
     MAX_REVIEW_FIX_CYCLES: ClassVar[int] = 3
+    MAX_REVIEW_REWORKS: ClassVar[int] = 2
 
     def setup(self) -> PlanRunContext:
         if not self.plan_path.strip():
@@ -719,6 +726,8 @@ class ImplementPlan(Workflow):
         review_issue_count: int,
         review_commits: list[str],
         review_issue_ids: list[str],
+        findings: str = "",
+        review_rework: int = 0,
     ) -> Continue:
         report = self.agent(
             "prompts/review-plan-implementation.md",
@@ -733,6 +742,7 @@ class ImplementPlan(Workflow):
                 "candidate_commit": expected_head,
                 "prepared_plan": plan.model_dump(mode="json"),
                 "review_cycle": cycle + 1,
+                "findings": findings,
             },
         )
         self.call(check_review_turn, self.ctx, expected_head)
@@ -747,6 +757,7 @@ class ImplementPlan(Workflow):
             review_commits=review_commits,
             review_issue_ids=review_issue_ids,
             report=report,
+            review_rework=review_rework,
         )
 
     def route_review(
@@ -759,6 +770,7 @@ class ImplementPlan(Workflow):
         review_commits: list[str],
         review_issue_ids: list[str],
         report: PlanReview,
+        review_rework: int = 0,
     ) -> Continue | Done:
         """Route one checkpointed review report into approval or its issue worklist."""
         self.call(validate_review_report, report)
@@ -796,6 +808,25 @@ class ImplementPlan(Workflow):
                     review_commits,
                     review_issue_ids,
                 )
+            )
+        # Same shape as `prepare`: the worklist is a proposal, so a rejected one buys a
+        # rework instead of ending a run whose packets are all landed and gate-green.
+        # This is the most expensive turn in the flow to have to repeat, which is an
+        # argument for bounding the rework, not for having none.
+        rejection = self.call(audit_review_issues, report, self.ctx, plan, cycle)
+        if rejection and review_rework < self.MAX_REVIEW_REWORKS:
+            return Continue(
+                rejection,
+                self.review,
+                plan=plan,
+                completed_commits=completed_commits,
+                expected_head=expected_head,
+                cycle=cycle,
+                review_issue_count=review_issue_count,
+                review_commits=review_commits,
+                review_issue_ids=review_issue_ids,
+                findings=rejection,
+                review_rework=review_rework + 1,
             )
         issues = self.call(prepare_review_issues, report, self.ctx, plan, cycle)
         if cycle >= self.MAX_REVIEW_FIX_CYCLES:

@@ -1,4 +1,17 @@
 # Independently review a completed implementation plan
+{% if findings %}
+## Rework — the previous review worklist was rejected
+
+> {{ workhorse_var('findings') }}
+
+The verdict itself was not rejected; the worklist it carried could not be admitted as a validated
+packet batch. Only one rejection is reported at a time, so fix that one and re-check every issue
+against the packet rules below before returning: another issue may hold the same defect, and it
+will be the next rejection. Keep every finding the rejection did not touch — re-derive the same
+verdict, do not soften it. Note that a commit subject is the whole line `type(scope): title`, so
+the prefix counts toward its 72-character limit, and that the workflow prefixes your `id` with the
+review cycle, so keep ids well under 48 characters.
+{% endif %}
 
 Act as the final senior reviewer. The implementation agents' claims and green command output are
 evidence, not proof. Review the exact candidate against the complete immutable plan and identify
