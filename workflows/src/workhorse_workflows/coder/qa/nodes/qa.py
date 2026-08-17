@@ -17,8 +17,10 @@ see would have nothing to blank.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +28,7 @@ import yaml
 from ostler import Ostler, registry
 from workhorse import stack
 from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.kit.credentials import scoped_env
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.qa_support import (
     QA_PLAN_FILE,
@@ -409,21 +412,113 @@ def verify_qa_dry_run(
 
 
 @blueprint.node
+def _read_manifest(path: Path, logger: logging.Logger) -> dict[str, Any]:
+    """The stack manifest as a mapping, or ``{}`` if it is absent or unreadable.
+
+    Silent rather than a `StackStatus` failure: `run_qa_plan` only reads this for the
+    optional `refresh_env` block, and a repo with no manifest (or one `ensure_stack`
+    already validated) must run QA exactly as it did before this existed.
+    """
+    if not path.is_file():
+        return {}
+    try:
+        manifest = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        logger.warning("stack manifest %s could not be read for refresh_env: %s", path, exc)
+        return {}
+    return manifest if isinstance(manifest, dict) else {}
+
+
+def _mint_qa_secret(
+    manifest: dict[str, Any], root: Path, logger: logging.Logger
+) -> tuple[str, str, str]:
+    """Run this repo's declared `refresh_env` recipe; return ``(var, token, error)``.
+
+    A short-lived credential (a Firebase ID token minted against a local auth emulator,
+    say) goes stale between QA-plan authoring and the run that actually consumes it —
+    minutes to hours apart in this flow. `ensure_stack`'s `seed`/`health` steps run once
+    per stack bring-up, not once per plan execution, so they cannot be the freshening
+    point; this runs immediately before the one call that spends the token.
+
+    `manifest["refresh_env"]` is `{var: ENV_NAME, mint: "<shell recipe>"}` — `mint` is a
+    repo-owned shell command (never interpreted here) that resolves whatever the repo
+    needs (a saddlebag-leased password, an emulator sign-in call, ...) and prints the
+    fresh token to stdout and nothing else. This module knows none of that shape; it
+    only runs the recipe and reads its last line back. `working-directory` and `timeout`
+    are optional, matching the other manifest step kinds.
+
+    Returns ``("", "", "")`` when no `refresh_env` is declared — nothing to do, and the
+    caller runs the plan exactly as it always has. A non-empty `error` means the plan
+    must not run this pass: a stale or absent secret would only fail with a confusing
+    401 deep inside the runner, not at the boundary that actually knows what broke.
+
+    The token is returned to the caller's local scope only, never logged, and never
+    part of a node's return value — see `workhorse_workflows.kit.credentials.scoped_env`,
+    which is the only place it is allowed to touch `os.environ`.
+    """
+    refresh = manifest.get("refresh_env")
+    if not refresh:
+        return "", "", ""
+    if not isinstance(refresh, dict):
+        return "", "", "refresh_env must be a mapping with `var` and `mint`"
+    var = str(refresh.get("var") or "").strip()
+    mint_cmd = str(refresh.get("mint") or "").strip()
+    if not var or not mint_cmd:
+        return "", "", "refresh_env is declared but is missing `var` or `mint`"
+    cwd = str((root / str(refresh.get("working-directory") or ".")).resolve())
+    try:
+        timeout = float(refresh.get("timeout") or 60)
+    except (TypeError, ValueError):
+        timeout = 60.0
+    try:
+        result = subprocess.run(  # noqa: S602 (documented repo-owned recipe, loopback stack)
+            mint_cmd, shell=True, cwd=cwd, capture_output=True, text=True,
+            timeout=timeout, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return var, "", f"mint command for {var} could not be run: {exc}"
+    if result.returncode != 0:
+        return var, "", (
+            f"mint command for {var} exited {result.returncode}: "
+            f"{result.stderr.strip()[:500]}"
+        )
+    token = result.stdout.strip()
+    if not token:
+        return var, "", f"mint command for {var} produced no output"
+    return var, token, ""
+
+
+@blueprint.node
 def run_qa_plan(
     logger: logging.Logger,
     spec_dir: str = "",
     docs_path: str = "",
     repo_dir: str = "",
+    manifest_path: str = "qa-stack.yml",
 ) -> QaRunResult:
     """Execute the QA plan through ostler and normalize its four-state outcome.
 
     The returncode is deliberately ignored: `failed` and `blocked` are answers the runner
     is *supposed* to give, and both exit non-zero. The status comes off the payload, and
     only an unrecognized one becomes `invalid`.
+
+    Before the run, `manifest_path`'s `refresh_env` block (if any) is minted and set in
+    the process environment for the duration of `Ostler(...).qa_run` only — see
+    `_mint_qa_secret`. `qa_run` executes the plan **in this process**, so a `secret(...,
+    from_env=...)` in the plan reads whatever this scope just set; nothing shells out for
+    the plan itself, so there is no other boundary to cross the value at.
     """
-    plan = str(Path(spec_dir) / QA_PLAN_FILE)
     docs_root = find_docs_root(docs_path, repo_dir)
-    outcome = Ostler(docs_root).qa_run(plan, spec=spec_dir)
+    plan = str(Path(spec_dir) / QA_PLAN_FILE)
+    manifest = _read_manifest(docs_root / (manifest_path or "qa-stack.yml"), logger)
+    var, token, error = _mint_qa_secret(manifest, docs_root, logger)
+    if error:
+        logger.warning("QA secret refresh failed: %s", error)
+        return QaRunResult(status="blocked", notes=f"QA secret refresh failed: {error}")
+    if var:
+        logger.info("minted a fresh QA secret for %s", var)
+    with scoped_env(var, token) if var else contextlib.nullcontext():
+        outcome = Ostler(docs_root).qa_run(plan, spec=spec_dir)
     status = outcome.status.lower()
     if status not in RUN_STATUSES:
         status = "invalid"

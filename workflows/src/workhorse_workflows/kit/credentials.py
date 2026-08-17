@@ -15,7 +15,9 @@ exception is one auditable module rather than a habit.
 """
 from __future__ import annotations
 
+import contextlib
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import yaml
@@ -69,6 +71,33 @@ def api_token() -> str:
     """The token an unconfigured API client falls back to: ``GH_TOKEN``, then the
     checkout credential. Empty means "call the API anonymously"."""
     return os.environ.get("GH_TOKEN") or os.environ.get(GIT_CREDENTIAL_ENV) or ""
+
+
+@contextlib.contextmanager
+def scoped_env(name: str, value: str) -> Iterator[None]:
+    """Set ``name=value`` in the process environment for the block, then restore it.
+
+    The other half of this module's exception: `github_token`/`api_token` *read* a
+    credential another process placed in the environment; this *writes* one, for a
+    caller that minted a secret in-process (a QA token freshly signed against a local
+    auth emulator, say) and must hand it to a callee that itself reads `os.environ` —
+    typically a library invoked in-process, one node call away from a subprocess
+    boundary this repo doesn't own. The value never becomes a node's return value (so
+    it is never checkpointed) and is cleared as soon as the block exits, success or not.
+
+    Not reentrant on the same *name*: a nested `scoped_env` for the same key restores
+    the *outer* value on its own exit, breaking the outer scope's guarantee. Callers
+    scope each mint to its own node call, which is the shape every use here has.
+    """
+    previous = os.environ.get(name)
+    os.environ[name] = value
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = previous
 
 
 def has_git_credential(name: str = GIT_CREDENTIAL_ENV) -> bool:

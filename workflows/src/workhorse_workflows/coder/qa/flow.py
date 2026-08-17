@@ -935,7 +935,9 @@ class Qa(Workflow):
         set the next repair turn must dry-run before the suite is spent on it again.
         """
         self.logger.info("running the QA plan", extra={"activity": True})
-        result = self.call(run_qa_plan, self.ctx.spec_dir, self.docs_path)
+        result = self.call(
+            run_qa_plan, self.ctx.spec_dir, self.docs_path, manifest_path=self.qa_stack_manifest
+        )
         return Continue(
             result,
             self.assess,
