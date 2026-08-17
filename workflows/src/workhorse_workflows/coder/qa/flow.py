@@ -690,7 +690,8 @@ class Qa(Workflow):
         and every guard are unchanged; what differs is the instruction, the power tier and
         the dry run. The turn has the stack up and the plan on disk, so it is told to execute
         each failing scenario itself — `ostler qa run … --scenario <id> --out-dir
-        qa-dry-run/<id>` — and `verify_qa_dry_run` reads that scratch evidence back before
+        <id>`, which lands in `qa/<id>/` — and `verify_qa_dry_run` reads that scratch
+        evidence back before
         the flow spends a whole suite run finding out. A repair that has not been observed to
         work is a hypothesis, and this lane was paying a full run per hypothesis.
 
@@ -764,9 +765,13 @@ class Qa(Workflow):
         `plan` turn and after any run that did not fail, which is what makes the same brief
         serve both nodes.
 
-        `qa_scratch_dir` is the other half of the dry run: it is deliberately *not* under
-        `qa_dir`, because `clear_qa_evidence` wipes that and `verify_qa_evidence` reads it. A
-        scenario tuned until it passed must not be able to leave its own admissible evidence.
+        `qa_scratch_dir` is the other half of the dry run. It is `qa_dir` itself, because a
+        dry run writes a subdirectory of it: that is the one directory a repo ignores, and
+        the sibling layout it replaces shipped hundreds of megabytes of traces into client
+        repos. Nesting takes nothing away — `verify_qa_evidence` names `qa/qa-run.ndjson` and
+        `qa/run-manifest.json` by exact path, so a scenario tuned until it passed still
+        cannot leave its own admissible evidence, and `clear_qa_evidence` wiping `qa/` whole
+        now removes the scratch with it.
 
         `qa_only_scenarios` is the dev plan's own list of what it decided *not* to write a
         test for. The dev lane's red gate reads the same section to decide whether to run

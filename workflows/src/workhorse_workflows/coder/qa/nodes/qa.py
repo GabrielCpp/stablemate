@@ -50,11 +50,15 @@ from workhorse_workflows.coder.shared.schemas.qa import (
 #: a runner that answered something unrecognized has not established a verdict.
 RUN_STATUSES = frozenset({"passed", "failed", "blocked", "invalid"})
 
-#: Where a plan turn's dry runs land — `ostler qa run --scenario … --out-dir`. Spec-relative
-#: and deliberately *not* `qa/`: that directory is the scored ledger the evidence gate reads,
-#: and a scenario tuned until it passed would otherwise be able to leave its own proof. It is
-#: cleared with the evidence for the same reason, so no dry run outlives the pass that made it.
-QA_SCRATCH_DIRNAME = "qa-dry-run"
+#: Where a plan turn's dry runs land — `ostler qa run --scenario ID --out-dir ID`, which
+#: ostler resolves to `<spec_dir>/qa/<ID>/`. Spec-relative, and *inside* `qa/` on purpose:
+#: that is the one directory a repo ignores, and the sibling layout it replaces shipped
+#: hundreds of megabytes of traces and video into client repos. Nesting costs nothing here
+#: because the evidence gate reads `qa/qa-run.ndjson` and `qa/run-manifest.json` by exact
+#: path, so a scenario tuned until it passed still cannot leave its own scored proof — and
+#: starting the scored run wipes `qa/` whole, scratch included, which is the intent: no dry
+#: run outlives the pass that made it.
+QA_SCRATCH_DIRNAME = "qa"
 
 
 @blueprint.node
@@ -65,20 +69,20 @@ def clear_qa_evidence(logger: logging.Logger, spec_dir: str = "") -> QaCleared:
     its manifest and its evidence, and a node that pre-created it would be authoring an
     empty shell the evidence gate then has to tell apart from a real run.
 
-    `QA_SCRATCH_DIRNAME` goes with it. A dry run is authoring exhaust — it exists to tell the
-    planner whether a locator resolves — and leaving it in the spec directory would both ship
-    it in the story's commit and offer the audit a second, unscored ledger to read.
+    Scratch goes with it, and needs no second target: dry runs nest inside `qa/`, so one
+    rmtree takes both. A dry run is authoring exhaust — it exists to tell the planner
+    whether a locator resolves — and leaving it would both ship it in the story's commit
+    and offer the audit a second, unscored ledger to read.
     """
     if not spec_dir:
         logger.warning("no spec_dir given — nothing to clear")
         return QaCleared()
     root = Path(spec_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
-    for name in ("qa", QA_SCRATCH_DIRNAME):
-        stale = root / name
-        if stale.exists():
-            shutil.rmtree(stale)
-            logger.info("removed stale qa dir %s", stale)
+    stale = root / QA_SCRATCH_DIRNAME
+    if stale.exists():
+        shutil.rmtree(stale)
+        logger.info("removed stale qa dir %s", stale)
     evidence = root / "qa-evidence.json"
     if evidence.exists():
         evidence.unlink()
@@ -325,7 +329,7 @@ def verify_qa_dry_run(
 
     The deterministic half of the dry-run contract. `repair-qa-plan.md` is told to execute
     every failing scenario, and every scenario it changed, with
-    `ostler qa run … --scenario <id> --out-dir qa-dry-run/<id>`; this reads what that left
+    `ostler qa run … --scenario <id> --out-dir <id>`; this reads what that left
     behind. A scenario has to have a log, that log has to contain at least one `assert`
     record naming it, and none of those records may be a FAIL:
 
@@ -341,9 +345,10 @@ def verify_qa_dry_run(
     out-dir at the start of every run, so a shared scratch directory would hold only the last
     scenario's evidence and every earlier one would read as "not run".
 
-    Scratch, never scored: this reads `qa-dry-run/`, which `clear_qa_evidence` deletes and
-    which the evidence gate never looks at. A scenario tuned until it passed cannot leave
-    its own proof in `qa/`.
+    Scratch, never scored: this reads `qa/<id>/`, which `clear_qa_evidence` deletes and
+    which the evidence gate never looks at — that gate names `qa/qa-run.ndjson` and
+    `qa/run-manifest.json` exactly, so a scenario tuned until it passed still cannot leave
+    its own proof where the score is read.
     """
     wanted = [s for s in dict.fromkeys(scenarios) if s]
     if not wanted:
@@ -362,7 +367,7 @@ def verify_qa_dry_run(
             problems.append(
                 f"`{scenario}`: no dry run at {log_path}. Run it with "
                 f"`ostler qa run {QA_PLAN_FILE} --spec {spec_dir} --scenario {scenario} "
-                f"--out-dir {QA_SCRATCH_DIRNAME}/{scenario}` and repair it until it passes."
+                f"--out-dir {scenario}` and repair it until it passes."
             )
             continue
         # A single-scenario run is allowed to leave the field off its own records: the

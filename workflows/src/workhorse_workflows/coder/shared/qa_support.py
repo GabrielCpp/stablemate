@@ -24,7 +24,7 @@ from ostler.qa import QaOutcome
 QA_PLAN_FILE = "qa_plan.py"
 
 #: The runner's per-assertion log, relative to whichever directory the run wrote into —
-#: `<spec_dir>/qa/` for the scored run, `<spec_dir>/qa-dry-run/<scenario>/` for a dry one.
+#: `<spec_dir>/qa/` for the scored run, `<spec_dir>/qa/<scenario>/` for a dry one.
 QA_RUN_LOG = "qa-run.ndjson"
 
 

@@ -237,18 +237,21 @@ returning, execute — each on its own, into its own out-dir:
 
 ```bash
 ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> \
-  --scenario <scenario-id> --out-dir {{ workhorse_var('qa_scratch_dir') }}/<scenario-id>
+  --scenario <scenario-id> --out-dir <scenario-id>
 ```
 
-**One out-dir per scenario, named after the scenario.** The runner deletes its out-dir at the
-start of every run, so a shared scratch directory keeps only the last scenario's evidence and
-every earlier one reads as never run. The gate opens
+**One label per scenario, named after the scenario.** `--out-dir` takes a label, not a path —
+one name, no slashes — and the run lands in
+`{{ workhorse_var('qa_scratch_dir') }}/<scenario-id>/`, inside the directory the repo already
+ignores. The runner deletes its out-dir at the start of every run, so a shared scratch
+directory keeps only the last scenario's evidence and every earlier one reads as never run. The gate opens
 `{{ workhorse_var('qa_scratch_dir') }}/<scenario-id>/qa-run.ndjson` for each id and requires
 it to exist, to contain at least one assertion, and to contain no `FAIL`. A missing directory
 fails the same way a failing assertion does, and the repair comes straight back to you.
 
-`--out-dir` keeps the artifacts out of `{{ workhorse_var('qa_dir') }}`, the scored ledger the
-evidence gate reads — a scenario tuned until it passed must not be able to leave its own proof.
+The scored ledger is what you get by *omitting* the flag, and its own files —
+`{{ workhorse_var('qa_dir') }}/qa-run.ndjson` and `run-manifest.json` — are what the evidence
+gate reads, so a scenario tuned until it passed cannot leave its own proof.
 Fix what does not resolve and run it again. One call settles what no amount of re-reading does:
 a locator matching zero elements, a straight `'` where the fixture has `’`, a credential that
 disagrees with the seed script. Each of those otherwise costs another full workflow lap — and

@@ -273,8 +273,16 @@ remember to ask for, made the default.
 ```bash
 ostler qa validate <spec_dir>/qa_plan.py --spec <spec_dir> --json
 ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> --json
-ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> --scenario <scenario-id> --out-dir DIR
+ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> --scenario <scenario-id> --out-dir LABEL
 ```
 
-`--out-dir` is how a rehearsal stays out of the scored ledger: a scenario tuned until it passed
-must not be able to leave its own proof where the evidence gate reads it.
+`--out-dir` takes a **label** — one name, no slashes — and resolves it to
+`<spec_dir>/qa/LABEL/`. Two things follow. A rehearsal stays out of the *scored* ledger, whose
+files the evidence gate names exactly (`qa/qa-run.ndjson`, `qa/run-manifest.json`), so a
+scenario tuned until it passed cannot leave its own proof. And it stays inside `qa/`, the one
+directory a repo ignores: the sibling roots this replaces — `qa-dry-run/`, `qa-fix-*/`,
+`qa-operator-*/` — were committed by the hundred of megabytes. `ostler qa clean --spec <dir>`
+lists what an old layout already left behind, and removes it with `--yes`.
+
+The scored ledger is what you get by *omitting* the flag; `qa`, `steps`, `asserts`, `traces`,
+`videos` and `screenshots` are refused as labels, because the scored run owns those names.

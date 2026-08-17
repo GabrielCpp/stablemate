@@ -161,14 +161,34 @@ def test_the_plan_prompts_only_interpolate_arguments_the_flow_passes():
         assert not unknown, f"{prompt.name} reads {sorted(unknown)}, which _plan_args omits"
 
 
-def test_the_dry_run_scratch_directory_is_not_the_evidence_directory():
-    """The whole separation: a scenario tuned until it passed must not be able to write into
-    the ledger `verify_qa_evidence` reads."""
-    assert QA_SCRATCH_DIRNAME != QA_DIRNAME
+def test_the_dry_run_scratch_directory_nests_inside_the_ignored_one():
+    """Scratch is a subdirectory of the ledger directory, not a sibling of it.
+
+    The separation that matters is by *file*, not by directory: `verify_qa_evidence` names
+    `qa/qa-run.ndjson` and `qa/run-manifest.json` exactly, so a dry run in `qa/<scenario>/`
+    still cannot leave admissible proof. What nesting buys is that every rehearsal lands
+    under the one directory a repo ignores — the sibling layout it replaces shipped 297 MB
+    of traces and video into a client repo.
+    """
+    assert QA_SCRATCH_DIRNAME == QA_DIRNAME
     for prompt in PLAN_PROMPTS:
         text = prompt.read_text()
         assert "--out-dir" in text, f"{prompt.name} does not teach the dry run"
         assert "qa_scratch_dir" in text, f"{prompt.name} hard-codes the dry-run directory"
+
+
+def test_no_prompt_passes_a_path_to_out_dir():
+    """`--out-dir` is one label now, and ostler refuses anything with a separator in it. A
+    prompt still rendering `<dir>/<scenario-id>` would teach every plan turn a command that
+    exits `invalid` — and the repo-relative form of it is what produced a committed
+    `docs/specs/x/docs/specs/x/qa-operator-firefox/traces/*.zip`."""
+    for prompt in PLAN_PROMPTS:
+        for line in prompt.read_text().splitlines():
+            match = re.search(r"--out-dir\s+(\S+)", line)
+            if match is None:
+                continue
+            argument = match.group(1)
+            assert "/" not in argument, f"{prompt.name} passes a path to --out-dir: {argument}"
 
 
 if __name__ == "__main__":

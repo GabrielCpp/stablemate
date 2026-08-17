@@ -3,7 +3,7 @@
 A repair turn's answer is a claim: "I fixed the scenarios that failed." Believing it costs a
 full suite run to disprove, and the loop that pays for it has six laps. So the gate reads the
 scratch evidence the prompt requires the turn to leave — one `qa-run.ndjson` per repaired
-scenario, under `<spec_dir>/qa-dry-run/<scenario>/` — and a repair that did not run what it
+scenario, under `<spec_dir>/qa/<scenario>/` — and a repair that did not run what it
 claimed to repair is sent straight back without spending the run.
 
 The three refusals are the three ways a turn can look finished and not be: it never ran the
@@ -79,6 +79,19 @@ def test_a_log_with_no_assertion_in_it_does_not_count_as_evidence(tmp_path: Path
 
     assert gate.status == "failed"
     assert "no assertion" in gate.notes, gate.notes
+
+
+def test_the_gate_reads_the_ignored_subtree_not_a_sibling(tmp_path: Path) -> None:
+    """`--out-dir <id>` resolves to `<spec_dir>/qa/<id>/`, so that is where the gate has to
+    look. The sibling it used to read was outside every repo's ignore, which is how 297 MB
+    of traces and video got committed."""
+    out = tmp_path / "qa" / "copy-link"
+    out.mkdir(parents=True)
+    (out / QA_RUN_LOG).write_text(
+        json.dumps({"kind": "assert", "id": "a1", "result": "PASS"}) + "\n", encoding="utf-8"
+    )
+
+    assert verify_qa_dry_run(LOGGER, str(tmp_path), ("copy-link",)).status == "passed"
 
 
 def test_a_scenarios_own_out_dir_claims_its_unlabelled_assertions(tmp_path: Path) -> None:
