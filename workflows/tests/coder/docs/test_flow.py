@@ -41,6 +41,7 @@ from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.docs.flow import _prompt_note
 from workhorse_workflows.coder.shared.docs import (
     CONTEXT_FILE,
+    DOCTOR_ERRORS_FILE,
     _doctor_errors_note,
     classify_documentation_context,
     verify_story_documentation,
@@ -731,30 +732,95 @@ def test_a_doctor_refusal_carries_the_form_the_checker_would_accept(
     assert "expected form: - placement: width 60-100%, x 0-20%" in gate.notes, gate.notes
 
 
-def test_repeated_doctor_refusals_are_compacted_for_the_agent_brief() -> None:
-    """A malformed pattern can mint enough findings to exceed exec argv limits.
+def test_every_affected_doctor_error_reaches_the_repair_turn() -> None:
+    """Nothing is omitted, because omitting is what made the loop.
 
-    The gate still records every stable failure id, but the prose prompt only needs the first
-    batch plus the shared repair shape. The run that forced this had 124 unparsed `verify:`
-    findings and crashed before the repair agent could start.
+    The brief used to carry twelve findings and the sentence "rerun the gate for the next
+    batch". A story with 124 unparsed `verify:` findings of one shape therefore cost ten
+    laps by construction, each one re-reading the book from a fresh session to close a
+    twelfth of a list one turn could have walked. The repair prompt now iterates `ostler
+    doctor` itself, which only works if it holds the whole set.
     """
     findings = [
         {
             "path": "docs/features/groom/gui/screens/s.md",
             "line": index,
             "code": "unparsed-check",
-            "message": "`verify:` names a test id instead of an observation" * 20,
-            "suggestion": "- verify: visible(locator=\"button\")",
+            "message": "`verify:` names a test id instead of an observation",
+            "suggestion": '- verify: visible(locator="button")',
         }
-        for index in range(20)
+        for index in range(40)
     ]
 
     notes = _doctor_errors_note(findings)
 
-    assert "unparsed-check" in notes, notes
-    assert "8 more doctor error(s) omitted" in notes, notes
-    assert ":19 [unparsed-check]" not in notes, notes
-    assert len(notes) < 12000, notes
+    assert len(notes.splitlines()) == 41, notes  # the header plus one line per error
+    assert "omitted" not in notes, notes
+    assert ":39 [unparsed-check]" in notes, notes
+
+
+def test_an_over_long_doctor_list_is_spilled_to_a_file_the_note_names(
+    docs: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    write_json: Callable[[Path, Any], Path],
+) -> None:
+    """A list too big for an argv becomes a path, never a truncation.
+
+    Both halves matter: the turn still gets every error, and the prompt still fits. A stale
+    spill from an earlier pass is removed when the next list is small enough to inline, so
+    nothing ever points at a worklist that no longer holds.
+    """
+    screen = "docs/features/groom/gui/screens/s.md"
+    components = "".join(
+        f"### body{index}\n- role: article\n- name: none\n- placement: mostly the middle\n\n"
+        for index in range(200)
+    )
+    write(
+        docs / screen,
+        "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n## Components\n\n" + components,
+    )
+    write_json(docs / SPEC_REL / CONTEXT_FILE, {"changedCode": [], "directNodes": []})
+    spill = docs / SPEC_REL / DOCTOR_ERRORS_FILE
+
+    gate = verify_story_documentation(
+        logger,
+        spec_dir=SPEC_REL,
+        author_status="documented",
+        build_status="passed",
+        validation_status="passed",
+        context_mode="local",
+        author_nodes=(screen,),
+    )
+
+    assert gate.status == "invalid", gate
+    assert str(spill) in gate.notes, gate.notes
+    assert f"{gate.doctor_error_count} doctor errors" in gate.notes, gate.notes
+    assert len(gate.notes) < 12000, gate.notes
+    assert len(spill.read_text(encoding="utf-8").splitlines()) == gate.doctor_error_count + 1
+    # Every identity still travels in `failures`, spilled or not.
+    assert len(gate.failures) == gate.doctor_error_count
+
+    # A later pass whose list fits inline clears the stale file rather than leaving it.
+    write(
+        docs / screen,
+        "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+        "## Components\n\n### body\n- role: article\n- name: none\n"
+        "- placement: mostly the middle\n",
+    )
+    again = verify_story_documentation(
+        logger,
+        spec_dir=SPEC_REL,
+        author_status="documented",
+        build_status="passed",
+        validation_status="passed",
+        context_mode="local",
+        author_nodes=(screen,),
+    )
+
+    assert again.status == "invalid", again
+    assert "malformed-placement" in again.notes, again.notes
+    assert not spill.exists()
 
 
 def test_checkpointed_repair_notes_are_compacted_for_the_agent_brief() -> None:
@@ -1286,6 +1352,7 @@ def test_a_gate_that_never_passes_is_bounded_on_its_own_budget(
     assert agent.counts() == {"document-story": 1, "repair-documentation": 3}, agent.counts()
 
 
+
 def test_the_gates_failure_does_not_spend_the_reviewers_budget(
     docs: Path,
     elsewhere: Path,
@@ -1392,14 +1459,23 @@ def test_the_grounding_lane_carries_its_own_verdict_into_the_failure(
     assert "4 grounding passes (stalled)" in str(excinfo.value), excinfo.value
 
 
-def test_a_grounding_gate_that_is_still_reducing_gets_another_batch(
+def test_a_shrinking_failure_set_no_longer_waives_the_grounding_budget(
     docs: Path,
     elsewhere: Path,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A large deterministic doctor worklist may need more than four productive batches."""
+    """Closing one error a lap is the loop, not a licence to keep laping.
+
+    `verify` used to waive `MAX_REWORKS` for as long as the pass had *reduced* the failure
+    set. That is exactly the shape a batched worklist produces — the gate handed over twelve
+    of 124 findings and the sentence "rerun the gate for the next batch", so every lap
+    reduced, the budget never applied, and one story of one error shape cost ten fresh
+    sessions. The gate now hands over all of them and the repair prompt iterates `ostler
+    doctor` to zero inside the turn, so a lap that still comes back red has spent a real
+    pass and the budget is what bounds it.
+    """
     outstanding = [
         ["E:a", "E:b", "E:c", "E:d"],
         ["E:a", "E:b", "E:c"],
@@ -1419,10 +1495,12 @@ def test_a_grounding_gate_that_is_still_reducing_gets_another_batch(
 
     monkeypatch.setattr(docs_flow, "verify_story_documentation", _gate)
 
-    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), _Agent())
+    with pytest.raises(WorkflowFailed, match="did not converge in 4 grounding passes"):
+        drive_flow(Docs(story=STORY, epic=EPIC), env(), _Agent())
 
-    assert result.status == "passed", result
-    assert not outstanding
+    # The fifth, passing verdict is never reached: the budget stopped the story on the
+    # fourth author pass even though every lap had closed a finding.
+    assert outstanding == [[]]
 
 
 # --------------------------------------------------------------------------- resume

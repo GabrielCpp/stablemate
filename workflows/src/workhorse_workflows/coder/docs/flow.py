@@ -53,6 +53,7 @@ from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
 from workhorse_workflows.coder.shared.docs import (
+    MAX_PROMPT_NOTE_CHARS,
     classify_documentation_context,
     detect_okf_docs,
     documentation_obligations,
@@ -77,15 +78,22 @@ from workhorse_workflows.kit.telemetry import counter_labels, verdict_labels
 #: it is standing in for the accountable party, and cutting it off mid-decision buys a
 #: block back.
 UNBOUNDED = float("inf")
-MAX_PROMPT_NOTE_CHARS = 12000
 
 
 def _prompt_note(note: str) -> str:
+    """Last-resort bound on a brief that would not fit an argv.
+
+    A backstop, and it should no longer fire: the gate spills an over-long doctor-error
+    list to a file and hands over the path instead, so the turn keeps the whole worklist.
+    A note that arrives here oversized anyway is one this flow carried forward from an
+    older checkpoint.
+    """
     if len(note) <= MAX_PROMPT_NOTE_CHARS:
         return note
     return (
         note[:MAX_PROMPT_NOTE_CHARS].rstrip()
-        + "\n\n... note truncated for the agent prompt; rerun the gate after repairing this batch."
+        + "\n\n... note truncated for the agent prompt; re-run `ostler doctor` yourself for "
+        "the rest."
     )
 
 
@@ -473,7 +481,12 @@ class Docs(Workflow):
                 authored_nodes=authored_nodes,
                 consulted=consulted,
             )
-        if rework >= self.MAX_REWORKS and progress.gate_progress_verdict != "reduced":
+        # No escape hatch for a shrinking failure set. The gate used to waive the budget
+        # while `gate_progress_verdict == "reduced"`, which is exactly the shape a batched
+        # worklist produces — twelve errors closed per lap out of a hundred and twenty,
+        # forever. The repair turn now gets every affected error at once and iterates
+        # doctor itself, so a lap that does not converge is a lap that is not going to.
+        if rework >= self.MAX_REWORKS:
             raise WorkflowFailed(
                 f"documentation did not converge in {self.MAX_REWORKS + 1} grounding "
                 f"passes ({progress.gate_progress_verdict}): {gate.notes or review_notes}"

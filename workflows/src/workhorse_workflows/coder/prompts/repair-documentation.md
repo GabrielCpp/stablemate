@@ -4,8 +4,11 @@ agent: agent
 
 # Repair the cited documentation (OKF UI profile)
 
-This story is already documented and a gate sent the book back. Close the findings below.
-**Do not re-document the story, and do not revisit a node no finding names.**
+This story is already documented and a gate sent the book back. **Do not re-document the
+story.** Close every finding below; the deterministic gate re-runs `ostler doctor` when you
+return and sends back whatever is still red, so **iterate `ostler doctor` yourself until it
+reports zero errors for the affected nodes** before returning. One turn that converges costs
+less than ten laps that each close a batch.
 
 Load the skill and follow it: {{ skill_load_ref("ostler-documentation", skill_dir() + "/ostler-documentation/SKILL.md") }}
 It carries the node-type vocabulary, the bullet schema and the linter rules; obey them. The
@@ -52,6 +55,12 @@ This is not a stylistic preference. A node you rewrite is a node the `power="hig
 must read again, and it will — correctly — find a different real defect in it. That is how a
 story spends four documentation passes on a book that was one edit from conformant. A
 gratuitous improvement to an uncited node is a defect in this turn.
+
+**A doctor error the gate scoped to this story is a finding, wherever it sits.** So is one
+your own edit mints. The worklist is "the cited findings, plus whatever `ostler doctor` still
+reports for the affected nodes when you are done" — not "the nodes named in the prose". If the
+gate notes point at a `doctor-errors.txt`, read that file: it is the full list, and the note is
+only a pointer to it.
 
 Retain the stable `D1`, `D2`, ... IDs on semantic review findings, and normalize unresolved
 deterministic grounding failures as `G1`, `G2`, .... For each item:
@@ -148,7 +157,11 @@ does not print a banner, declare the health route or other actual probe, not inv
 ## Converge
 
 Run `ostler fmt` on the docs you touched, then `ostler doctor` (from the docs root, `-C` if
-needed). Fix any error by its named remedy until `doctor` is green for the nodes you touched.
+needed). **Fix, re-run, repeat — iterate until `doctor` reports zero errors for the affected
+nodes.** Do not return after one pass of edits and let the gate tell you what is left: that is
+a whole extra lap, with a fresh read of the book, to learn something one more `doctor` call
+would have told you here. Errors of a single shape are the cheapest case, not a reason to
+stop — repair them all in this turn.
 
 To narrow that report to your own nodes, `ostler doctor --json` emits
 `{org, profile, epics, errors, warnings, findings}`. `findings` is the list — each entry

@@ -54,9 +54,17 @@ DIRECT_KINDS = {"changed-code", "file-owner", "surface-owner"}
 #: resolve a code reference against, so a dangling one is the mode's normal state.
 SEMANTIC_SUPPRESSED = {"dangling-code-ref", "missing-code-symbol"}
 
-# Keep agent briefs below OS argv/env limits when one malformed pattern creates dozens of
-# doctor findings. The full machine-readable identities still travel in `failures`.
-MAX_DOCTOR_ERRORS_IN_NOTES = 12
+#: Above this many characters a rendered note stops being a prompt and starts being a file.
+#: The gate spills the doctor-error list to `DOCTOR_ERRORS_FILE` and points at it instead of
+#: dropping errors, so the repair turn always has the whole set; `docs.flow._prompt_note` is
+#: the backstop for a note that reaches it oversized anyway.
+MAX_PROMPT_NOTE_CHARS = 12000
+
+#: Where an over-long doctor-error list lands, relative to the story's spec dir.
+DOCTOR_ERRORS_FILE = "doctor-errors.txt"
+
+# One malformed pattern can mint dozens of findings whose messages are long. Truncating the
+# *message* keeps every error on the list; truncating the list would not.
 MAX_DOCTOR_ERROR_MESSAGE_CHARS = 400
 
 
@@ -286,15 +294,43 @@ def _doctor_error_note(item: dict[str, Any]) -> str:
 
 
 def _doctor_errors_note(doctor_errors: list[dict[str, Any]]) -> str:
-    shown = doctor_errors[:MAX_DOCTOR_ERRORS_IN_NOTES]
-    notes = [_doctor_error_note(item) for item in shown]
-    remaining = len(doctor_errors) - len(shown)
-    if remaining > 0:
-        notes.append(
-            f"... {remaining} more doctor error(s) omitted from this prompt; repair the "
-            "same error shape in the cited files, then rerun the gate for the next batch."
-        )
-    return "ostler doctor errors: " + " | ".join(notes)
+    """Every affected doctor error, one per line, with nothing omitted.
+
+    This used to hand over the first twelve and tell the turn to "rerun the gate for the
+    next batch", which is a loop by construction: a story with 124 findings of one shape
+    cost ten laps to clear a list one turn could have walked. The repair prompt now owns
+    the iteration — it re-runs `ostler doctor` itself until the affected nodes are clean —
+    and that only works if it is holding the whole set.
+    """
+    return "ostler doctor errors:\n" + "\n".join(
+        _doctor_error_note(item) for item in doctor_errors
+    )
+
+
+def _spill_doctor_errors(spec_root: Path, note: str, logger: logging.Logger) -> Path | None:
+    """Write the full error list beside the story's spec, so the note can just point at it.
+
+    Overwritten every pass: the file is this pass's reading, and a stale one read as current
+    is worse than none. Returns `None` when it could not be written, and then the caller
+    keeps the inline note — an oversized prompt is survivable, a silently shortened worklist
+    is not.
+    """
+    path = spec_root / DOCTOR_ERRORS_FILE
+    try:
+        spec_root.mkdir(parents=True, exist_ok=True)
+        path.write_text(note + "\n", encoding="utf-8")
+    except OSError as exc:
+        logger.info("could not write %s (%s)", path, exc)
+        return None
+    return path
+
+
+def _clear_doctor_errors(spec_root: Path, logger: logging.Logger) -> None:
+    """Remove a previous pass's spill file, so nothing points at a list that no longer holds."""
+    try:
+        (spec_root / DOCTOR_ERRORS_FILE).unlink(missing_ok=True)
+    except OSError as exc:
+        logger.info("could not remove %s (%s)", spec_root / DOCTOR_ERRORS_FILE, exc)
 
 
 @blueprint.node
@@ -449,6 +485,8 @@ def verify_story_documentation(
     for why that subtraction is safe in only one direction.
     """
     docs_root = Path(find_docs_root(docs_path, repo_dir))
+    spec = Path(spec_dir)
+    spec_root = spec if spec.is_absolute() else docs_root / spec
     nodes = [str(node) for node in author_nodes]
     inherited = untouched_since(docs_root.resolve(), tuple(preexisting))
 
@@ -473,8 +511,7 @@ def verify_story_documentation(
 
     packet: dict[str, Any] = {}
     if context_mode == "local":
-        spec = Path(spec_dir)
-        packet_path = (spec if spec.is_absolute() else docs_root / spec) / CONTEXT_FILE
+        packet_path = spec_root / CONTEXT_FILE
         loaded = load_json(packet_path, CONTEXT_FILE, logger)
         if isinstance(loaded, dict) and loaded:
             packet = loaded
@@ -531,7 +568,21 @@ def verify_story_documentation(
         # was widened to escape: a `placement:` bullet was refused twice for prose the
         # message never said was disallowed, while the checker's own
         # `- placement: width 60-100%, x 0-20%` sat unrendered in the finding.
-        problems.append(_doctor_errors_note(doctor_errors))
+        note = _doctor_errors_note(doctor_errors)
+        spilled = (
+            _spill_doctor_errors(spec_root, note, logger)
+            if len(note) > MAX_PROMPT_NOTE_CHARS
+            else None
+        )
+        if spilled is not None:
+            note = (
+                f"{len(doctor_errors)} doctor errors affect this story's nodes; the full "
+                f"list is in `{spilled}`. Read it, repair every one, and re-run "
+                "`ostler doctor` yourself until the affected nodes are clean."
+            )
+        else:
+            _clear_doctor_errors(spec_root, logger)
+        problems.append(note)
         # The message is excluded from the identity on purpose: a doctor error whose prose
         # was reworded is the same defect, and a pass that only changed the wording did not
         # buy anything.
@@ -540,6 +591,8 @@ def verify_story_documentation(
             f"{item.get('line') or 0}:{item.get('code', '?')}"
             for item in doctor_errors
         )
+    else:
+        _clear_doctor_errors(spec_root, logger)
 
     changed = len(packet.get("changedCode", []))
     if problems:
