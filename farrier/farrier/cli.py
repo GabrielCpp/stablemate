@@ -24,6 +24,7 @@ from farrier._vendor.stablemate_core.config import (
     write_base_dir,
     write_library_dir,
     write_stablemate_dir,
+    write_worktree_dir,
 )
 from farrier.frontmatter import (
     LOCAL_INSTRUCTION_FILES,
@@ -207,6 +208,16 @@ def _dispatch_config(args: argparse.Namespace) -> int:
             )
         write_base_dir(root)
         print(f"base_dir={root}")
+        return 0
+
+    if args.config_action == "set-worktree":
+        # Not validated for existence: this names where worktrees will be *created*,
+        # and the directory is routinely made on first use. Refusing an absent path
+        # would make the setting unorderable — you could not configure the machine
+        # before cutting the first worktree.
+        root = args.path.expanduser().resolve()
+        write_worktree_dir(root)
+        print(f"worktree_dir={root}")
         return 0
 
     # show — with a key: print bare value; without: print all as key=value
@@ -498,6 +509,12 @@ def _build_parser() -> argparse.ArgumentParser:
     set_base.add_argument(
         "path", type=Path, help="Path to the base library content directory"
     )
+    set_wt = config_sub.add_parser(
+        "set-worktree",
+        help="Record the directory new git worktrees are cut into (machine-local disk "
+        "layout, so an agent need not be told the path on every invocation)",
+    )
+    set_wt.add_argument("path", type=Path, help="Parent directory for git worktrees")
     show_p = config_sub.add_parser(
         "show", help="Print all config keys as key=value lines, or a single bare value"
     )

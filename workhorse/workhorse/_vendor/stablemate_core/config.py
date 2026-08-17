@@ -544,9 +544,33 @@ def write_base_dir(path: Path) -> None:
     write_config_key("base_dir", str(path))
 
 
+def write_worktree_dir(path: Path) -> None:
+    """Persist ``worktree_dir`` (the parent directory new git worktrees are cut into)."""
+    write_config_key("worktree_dir", str(path))
+
+
 def resolve_stablemate_dir() -> Path | None:
     """The configured stablemate checkout path, or None if unset."""
     configured = get_config_value("stablemate_dir")
+    if isinstance(configured, str) and configured:
+        return Path(configured).expanduser().resolve()
+    return None
+
+
+def resolve_worktree_dir() -> Path | None:
+    """The directory new git worktrees are cut into, or None if unset.
+
+    Machine-local by nature: where a checkout's siblings may live is a property of the
+    disk layout, not of the repo — one machine keeps them on a big data volume
+    (``/mnt/data/worktrees``), another under ``~``. Persisting it here is what lets an
+    agent cut a worktree without being told the path on every invocation, and what keeps
+    that path out of any repo's committed instructions.
+
+    Returns ``None`` when unset rather than guessing a default: the caller knows what a
+    sensible sibling directory is for the repo in hand, and inventing one here would
+    scatter worktrees across a machine that has a configured home for them.
+    """
+    configured = get_config_value("worktree_dir")
     if isinstance(configured, str) and configured:
         return Path(configured).expanduser().resolve()
     return None

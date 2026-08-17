@@ -140,6 +140,19 @@ def test_a_config_with_no_profiles_at_all_still_shows_the_top_level():
         assert _show("--config", str(path), "show") == ["default_cli=codex"]
 
 
+def test_set_worktree_records_a_directory_that_does_not_exist_yet():
+    """`set-worktree` names where worktrees will be *cut*, so requiring the directory to
+    exist would make the machine unconfigurable before the first worktree."""
+    with written('default_cli = "codex"\n') as path:
+        absent = path.parent / "worktrees"
+        lines = _show("--config", str(path), "set-worktree", str(absent))
+
+        assert lines == [f"worktree_dir={absent}"]
+        assert _show("--config", str(path), "show", "worktree_dir") == [str(absent)]
+        # the write is still non-destructive
+        assert _show("--config", str(path), "show", "default_cli") == ["codex"]
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0

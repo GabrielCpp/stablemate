@@ -371,5 +371,36 @@ def test_writing_a_key_preserves_qa_tools_table(cfg_file):
     assert data["base_dir"] == "/some/path"
 
 
+# --- worktree_dir -------------------------------------------------------------
+
+
+def test_worktree_dir_is_none_when_unset(cfg_file):
+    """Unset means unset — no invented default, or worktrees scatter across the disk."""
+    cfg_file.write_text(_POWER)
+
+    assert cfgmod.resolve_worktree_dir() is None
+
+
+def test_worktree_dir_round_trips_expanded(cfg_file, tmp_path):
+    cfgmod.write_worktree_dir(tmp_path / "worktrees")
+
+    assert cfgmod.resolve_worktree_dir() == (tmp_path / "worktrees").resolve()
+
+
+def test_worktree_dir_survives_a_missing_directory(cfg_file, tmp_path):
+    """The path names where worktrees will be created; it need not exist yet."""
+    absent = tmp_path / "not-yet" / "worktrees"
+
+    cfgmod.write_worktree_dir(absent)
+
+    assert cfgmod.resolve_worktree_dir() == absent
+
+
+def test_a_malformed_worktree_dir_reads_as_unset(cfg_file):
+    cfg_file.write_text("worktree_dir = 42\n")
+
+    assert cfgmod.resolve_worktree_dir() is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

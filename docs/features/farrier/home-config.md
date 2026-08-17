@@ -55,6 +55,22 @@ library (`<checkout>/base-library`). Written by
 
 - code: `core/stablemate_core/config.py::write_stablemate_dir`
 
+### worktree_dir
+- type: `string` — required: no — default: unset
+
+The parent directory new git worktrees are cut into — `git worktree add "$worktree_dir/<repo>-<slug>"`.
+Machine-local disk layout rather than a repo property: one machine keeps worktrees on a data
+volume, another under `~`, and no repo can commit an answer that is right on both. Written by
+[`farrier config set-worktree <path>`](farrier.md#config) via `write_worktree_dir`, persisted as-is
+with **no existence check** — the path names where worktrees *will* be created, so requiring it to
+exist would make the machine unconfigurable before the first worktree. Read back by
+`resolve_worktree_dir`, which returns `None` when unset; no tool defaults it, because inventing a
+location would scatter worktrees across a machine that has a configured home for them. The reader
+is an agent: the base library's `implement-plan` command resolves it with
+`farrier config show worktree_dir` before branching.
+
+- code: `core/stablemate_core/config.py::write_worktree_dir`
+
 ### config_version
 - type: `integer` — required: no — default: absent (treated as version 0)
 

@@ -132,12 +132,12 @@ the pruned starting point, and the two are kept consistent by hand.
 - verify: `farrier/tests/test_base_fetch_on_install.py::test_check_fetches_but_does_not_refresh`
 
 ### config
-- usage: `farrier config [--config PATH] <set-library|set-stablemate|set-base|show> [args]`
+- usage: `farrier config [--config PATH] <set-library|set-stablemate|set-base|set-worktree|show> [args]`
 - flags:
   - `--config <path>` — goes **before** the action (`farrier config --config ./c.toml show`):
     the [shared config file](../workhorse/concepts/config.md)
     every config verb reads and writes, instead of the discovered one. It is written back to
-    `$STABLEMATE_CONFIG` rather than threaded, because `read_config` and all four writers resolve
+    `$STABLEMATE_CONFIG` rather than threaded, because `read_config` and every writer resolve
     the path themselves — one assignment moves them together. It lets the question be asked of a
     config that is not this machine's home one (a CI file, the copy a container was launched with).
   - `show --profile <name>` — print one [`[profiles.<name>]`](../workhorse/concepts/config.md#profiles)
@@ -157,6 +157,10 @@ the pruned starting point, and the two are kept consistent by hand.
   - `set-base <path>` — record `path` as `base_dir` in the home config file, for isolated/pipx
     installs where the `stablemate-library` wheel isn't importable; errors unless `path` contains a
     `library/` directory.
+  - `set-worktree <path>` — record `path` as `worktree_dir` in the home config file: the parent
+    directory new git worktrees are cut into. **No validation, not even existence** — the path names
+    where worktrees will be created, so requiring it to exist would make the machine unconfigurable
+    before the first worktree.
   - `show [key]` — with `key`: print that config key's bare value (error if unset). Without: print
     every config key as `key=value` lines.
 - does:
@@ -170,6 +174,9 @@ the pruned starting point, and the two are kept consistent by hand.
   - run (`set-base`): resolve `path` to an absolute path, validate it with `is_library_dir`,
     persist it as `base_dir` in the [home config file](home-config.md) via `write_base_dir`, and
     print `base_dir=<path>`
+  - run (`set-worktree`): resolve `path` to an absolute path and persist it as `worktree_dir`
+    in the [home config file](home-config.md) via `write_worktree_dir` (no validation); print
+    `worktree_dir=<path>`
   - run (any action): `--config`, if given, is written into `$STABLEMATE_CONFIG` before dispatch
   - run (`show`): read the [home config file](home-config.md) via `read_config`; with `--profile`,
     narrow it with `select_profile` and flatten to dotted leaves first; with a `key`,
@@ -179,7 +186,8 @@ the pruned starting point, and the two are kept consistent by hand.
 - verify: `farrier/tests/test_config_profiles_cli.py::test_the_config_flag_reads_the_file_it_names`,
   `farrier/tests/test_config_profiles_cli.py::test_a_profile_is_shown_flattened_to_dotted_keys`,
   `farrier/tests/test_config_profiles_cli.py::test_the_profile_replaces_the_top_level_rather_than_layering_over_it`,
-  `farrier/tests/test_config_profiles_cli.py::test_an_unknown_profile_exits_cleanly_and_lists_the_ones_there_are`
+  `farrier/tests/test_config_profiles_cli.py::test_an_unknown_profile_exits_cleanly_and_lists_the_ones_there_are`,
+  `farrier/tests/test_config_profiles_cli.py::test_set_worktree_records_a_directory_that_does_not_exist_yet`
 
 The one command that reads and writes the [shared config file](../workhorse/concepts/config.md):
 workhorse is a library and ships no `config` of its own, so `agents.mk` and other scripts go

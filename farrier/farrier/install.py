@@ -31,9 +31,11 @@ from farrier._vendor.stablemate_core.config import (
     config_path,
     read_config,
     resolve_stablemate_dir,
+    resolve_worktree_dir,
     write_base_dir,
     write_library_dir,
     write_stablemate_dir,
+    write_worktree_dir,
 )
 from farrier.frontmatter import (
     banner_sources,
@@ -200,6 +202,7 @@ __all__ = [
     "resolve_library_dir",
     "resolve_scaffold_params",
     "resolve_stablemate_dir",
+    "resolve_worktree_dir",
     "searched_layers",
     "selected_sources",
     "set_layers",
@@ -212,6 +215,7 @@ __all__ = [
     "write_base_dir",
     "write_library_dir",
     "write_stablemate_dir",
+    "write_worktree_dir",
     "write_text",
     "yaml_quote",
 ]

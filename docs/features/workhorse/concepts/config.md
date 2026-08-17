@@ -7,7 +7,7 @@ title: stablemate config file
 
 The toolchain's small persistent settings file — **one** TOML file at
 `~/.config/stablemate/config.toml`, shared by workhorse and farrier, holding `library_dir`,
-`stablemate_dir`, `base_dir`, `default_cli`, a `[power.<tier>.<backend>]` model/effort table, a per-backend
+`stablemate_dir`, `base_dir`, `worktree_dir`, `default_cli`, a `[power.<tier>.<backend>]` model/effort table, a per-backend
 `[default.<backend>]` fallback table, a per-harness `[harness.<backend>].env` table, and any number of
 named [`[profiles.<name>]`](#profiles) tables carrying a whole alternative set of the model
 ones. Read and
@@ -108,8 +108,9 @@ mapping — every node quietly falling back to the harness's default model, with
 
 Creates the config directory if absent. Refuses with `ConfigVersionError` when the file on disk is
 newer than `CONFIG_VERSION`. Used by
-[farrier config set-library / set-stablemate / set-base](../../farrier/farrier.md#config), and by the
-typed helpers `write_library_dir`, `write_stablemate_dir` and `write_base_dir` that wrap it.
+[farrier config set-library / set-stablemate / set-base / set-worktree](../../farrier/farrier.md#config),
+and by the typed helpers `write_library_dir`, `write_stablemate_dir`, `write_base_dir` and
+`write_worktree_dir` that wrap it.
 
 - code: `core/stablemate_core/config.py::write_config_key`
 
@@ -127,9 +128,9 @@ A profile **replaces** the top-level tables; it does not layer over them. Inheri
 rejected because power tiers are opaque strings: no schema says which tiers exist, so "the
 profile did not mention `smart`, therefore it means the machine's `smart`" is a guess the
 config cannot state and the operator cannot see. What stays outside a profile stays outside
-for free — `[harness.<backend>].env`, `library_dir`, `stablemate_dir` and `base_dir` are
-resolved from the *unnarrowed* config, because they are properties of the machine, not of
-a model set.
+for free — `[harness.<backend>].env`, `library_dir`, `stablemate_dir`, `base_dir` and
+`worktree_dir` are resolved from the *unnarrowed* config, because they are properties of the
+machine, not of a model set.
 
 ```toml
 [profiles.cheap.power.high.claude]
