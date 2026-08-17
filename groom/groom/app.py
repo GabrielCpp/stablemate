@@ -42,7 +42,7 @@ from groom import (
     turns,
 )
 from groom.gates import AWAITING, answer_gate, extract_question, status_of
-from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
+from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 
 ASSETS_DIR = Path(__file__).parent / "assets"
 
@@ -568,6 +568,42 @@ async def diff(container_id: str, repo: str = "") -> dict:
     return {"diff": text or ""}
 
 
+@get("/api/run/{run_id:str}/outbox", include_in_schema=False)
+async def outbox_get(run_id: str) -> dict:
+    """The gate this run is parked on, if any — its path, question and status.
+
+    A run has at most one live gate (the one its checkpoint's ``waiting_on``
+    names), so this is the one entry in ``wf.gates`` rather than a scan.
+    """
+    wf = _workflow_by_run_id(run_id)
+    if wf is None:
+        return {"found": False}
+    gate = next(iter(wf.gates.values()), None)
+    if gate is None:
+        return {"found": False}
+    return {
+        "found": True,
+        "file_path": gate.file_path,
+        "question": gate.question,
+        "status": gate.status,
+    }
+
+
+@post("/api/run/{run_id:str}/outbox", include_in_schema=False)
+async def outbox_post(run_id: str, data: dict) -> dict:
+    """Answer the gate this run is parked on. Straight through to ``_answer``,
+    the same path the browser's websocket ``answer`` command takes, so a gate
+    answered from the CLI updates every open tab exactly like one answered here.
+    """
+    wf = _workflow_by_run_id(run_id)
+    if wf is None:
+        return {"ok": False, "message": "no such run"}
+    file_path = str(data.get("file_path", ""))
+    answer = str(data.get("answer", ""))
+    result = await _answer(wf, wf.container_id, file_path, answer)
+    return {"ok": result.ok, "message": result.message}
+
+
 async def _reconcile() -> int:
     """One discovery pass: upsert every found workflow, then prune the ones
     whose container is gone (skipping the prune when docker is unreachable so a
@@ -803,27 +839,12 @@ async def traces(
     )
 
 
-async def _handle_command(data: dict, queue: asyncio.Queue | None = None) -> None:
-    cmd = data.get("cmd")
-    if cmd == "watch":
-        # One tab declaring which run's detail pane it has open. The immediate push
-        # back is what makes a reconnect self-healing: the tab re-sends `watch` on
-        # every socket open and gets the current slices without an HTTP fetch.
-        if queue is None:
-            return
-        run_id = str(data.get("run_id", ""))
-        state.watch(queue, run_id)
-        if run_id:
-            wf = state.WORKFLOWS.get(run_id)
-            if wf is not None:
-                await state.send(queue, _detail_message(wf))
-        return
-    if cmd != "answer":
-        return
-    container_id = str(data.get("workflow_id", ""))
-    file_path = str(data.get("file_path", ""))
-    answer = str(data.get("answer", ""))
-    wf = state.WORKFLOWS.get(container_id)
+async def _answer(wf: WorkflowContainer | None, container_id: str, file_path: str, answer: str) -> AnswerResult:
+    """Write an operator's answer into one gate and settle the fleet around it —
+    the state flip, the log, the broadcast. Shared by the websocket ``answer``
+    command and the ``POST /api/run/{run_id}/outbox`` route so a gate answered
+    from a CLI updates every open tab exactly like one answered from the browser.
+    """
     workspace_volume = wf.workspace_volume if wf else ""
     gate = wf.gates.get(file_path) if wf else None
     allow_headerless = bool(gate and gate.legacy_headerless)
@@ -862,6 +883,49 @@ async def _handle_command(data: dict, queue: asyncio.Queue | None = None) -> Non
         await state.broadcast(
             {"type": "answered", "id": container_id, "file_path": file_path}
         )
+    return result
+
+
+def _workflow_by_run_id(run_id: str) -> WorkflowContainer | None:
+    """A run addressed by run id rather than container id.
+
+    A native row's dict key already *is* its run id (``state.evict_runs`` looks
+    it up the same way), so the direct lookup below covers it. A container-backed
+    row is keyed by container id instead — its run id is a separate field the
+    sidecar pushed — so that case falls back to a scan of the (small, in-memory)
+    fleet rather than needing a second index kept in sync with the first.
+    """
+    wf = state.WORKFLOWS.get(run_id)
+    if wf is not None:
+        return wf
+    for candidate in state.WORKFLOWS.values():
+        if candidate.run_id == run_id:
+            return candidate
+    return None
+
+
+async def _handle_command(data: dict, queue: asyncio.Queue | None = None) -> None:
+    cmd = data.get("cmd")
+    if cmd == "watch":
+        # One tab declaring which run's detail pane it has open. The immediate push
+        # back is what makes a reconnect self-healing: the tab re-sends `watch` on
+        # every socket open and gets the current slices without an HTTP fetch.
+        if queue is None:
+            return
+        run_id = str(data.get("run_id", ""))
+        state.watch(queue, run_id)
+        if run_id:
+            wf = state.WORKFLOWS.get(run_id)
+            if wf is not None:
+                await state.send(queue, _detail_message(wf))
+        return
+    if cmd != "answer":
+        return
+    container_id = str(data.get("workflow_id", ""))
+    file_path = str(data.get("file_path", ""))
+    answer = str(data.get("answer", ""))
+    wf = state.WORKFLOWS.get(container_id)
+    await _answer(wf, container_id, file_path, answer)
 
 
 async def _send_loop(socket: WebSocket, queue: asyncio.Queue) -> None:
@@ -1190,6 +1254,8 @@ def create_app() -> Litestar:
             file_content,
             worker_detail,
             diff,
+            outbox_get,
+            outbox_post,
             refresh,
             push_progress,
             push_blocked,

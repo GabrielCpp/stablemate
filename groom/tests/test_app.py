@@ -639,6 +639,133 @@ def test_handle_answer_failure_does_not_flip_or_dispatch():
     assert "groom:answered" not in captured["fragment"]
 
 
+# ---- /api/run/{run_id}/outbox: addressed by run id, not container id ----
+def test_outbox_get_names_the_gate_the_run_is_parked_on():
+    _reset()
+    wf = WorkflowContainer(container_id="abc123", name="w", run_id="run-9", workspace_volume="v")
+    wf.gates["docs/gate.md"] = GateInfo(workflow_id="abc123", file_path="docs/gate.md", question="Ship it?")
+    state.WORKFLOWS["abc123"] = wf
+
+    client = _hermetic_client()
+    try:
+        resp = client.get("/api/run/run-9/outbox")
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.json() == {
+        "found": True,
+        "file_path": "docs/gate.md",
+        "question": "Ship it?",
+        "status": "AWAITING_OPERATOR",
+    }
+
+
+def test_outbox_get_on_a_native_run_is_keyed_by_run_id_directly():
+    _reset()
+    wf = WorkflowContainer(container_id="run-9", name="w", run_id="run-9", native=True, workspace_volume="/host/ws")
+    wf.gates["docs/gate.md"] = GateInfo(workflow_id="run-9", file_path="docs/gate.md", question="Ship it?")
+    state.WORKFLOWS["run-9"] = wf
+
+    client = _hermetic_client()
+    try:
+        resp = client.get("/api/run/run-9/outbox")
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.json()["found"] is True
+    assert resp.json()["file_path"] == "docs/gate.md"
+
+
+def test_outbox_get_with_no_live_gate_is_not_found():
+    _reset()
+    wf = WorkflowContainer(container_id="abc123", name="w", run_id="run-9", workspace_volume="v")
+    state.WORKFLOWS["abc123"] = wf
+
+    client = _hermetic_client()
+    try:
+        resp = client.get("/api/run/run-9/outbox")
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.json() == {"found": False}
+
+
+def test_outbox_get_for_an_unknown_run_id_is_not_found():
+    _reset()
+
+    client = _hermetic_client()
+    try:
+        resp = client.get("/api/run/no-such-run/outbox")
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.json() == {"found": False}
+
+
+def test_outbox_post_resolves_run_id_to_container_id_before_answering():
+    _reset()
+    wf = WorkflowContainer(container_id="abc123", name="w", run_id="run-9", state=WorkflowState.BLOCKED, workspace_volume="v")
+    wf.gates["docs/gate.md"] = GateInfo(workflow_id="abc123", file_path="docs/gate.md", question="Ship it?")
+    state.WORKFLOWS["abc123"] = wf
+
+    captured = {}
+
+    async def _fake_answer_gate(cid, fp, ans, *, workspace_volume, native=False, allow_headerless=False):
+        captured["container_id"] = cid
+        captured["answer"] = ans
+        state.clear_gate(cid, fp)
+        return AnswerResult(ok=True, message="answered")
+
+    with patch.object(groom_app, "answer_gate", _fake_answer_gate):
+        client = _hermetic_client()
+        try:
+            resp = client.post(
+                "/api/run/run-9/outbox", json={"file_path": "docs/gate.md", "answer": "go ahead"}
+            )
+        finally:
+            client.__exit__(None, None, None)
+
+    assert resp.json() == {"ok": True, "message": "answered"}
+    assert captured == {"container_id": "abc123", "answer": "go ahead"}
+    assert state.WORKFLOWS["abc123"].state == WorkflowState.RUNNING
+
+
+def test_outbox_post_race_returns_the_already_answered_message_and_does_not_flip_state():
+    _reset()
+    wf = WorkflowContainer(container_id="abc123", name="w", run_id="run-9", state=WorkflowState.BLOCKED, workspace_volume="v")
+    wf.gates["docs/gate.md"] = GateInfo(workflow_id="abc123", file_path="docs/gate.md", question="Ship it?")
+    state.WORKFLOWS["abc123"] = wf
+
+    async def _fake_answer_gate(cid, fp, ans, *, workspace_volume, native=False, allow_headerless=False):
+        return AnswerResult(ok=False, message="already answered in another tab")
+
+    with patch.object(groom_app, "answer_gate", _fake_answer_gate):
+        client = _hermetic_client()
+        try:
+            resp = client.post(
+                "/api/run/run-9/outbox", json={"file_path": "docs/gate.md", "answer": "go ahead"}
+            )
+        finally:
+            client.__exit__(None, None, None)
+
+    assert resp.json() == {"ok": False, "message": "already answered in another tab"}
+    assert state.WORKFLOWS["abc123"].state == WorkflowState.BLOCKED
+
+
+def test_outbox_post_for_an_unknown_run_id_is_an_error_not_a_500():
+    _reset()
+
+    client = _hermetic_client()
+    try:
+        resp = client.post(
+            "/api/run/no-such-run/outbox", json={"file_path": "docs/gate.md", "answer": "go ahead"}
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.json() == {"ok": False, "message": "no such run"}
+
+
 # ---- startup only *schedules* discovery; it must not block on the scan ----
 def test_spawn_scan_returns_before_discovery_completes():
     _reset()
