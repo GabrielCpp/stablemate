@@ -46,6 +46,18 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     ):
         subprocess.run(["git", *args], cwd=root, check=True, stdout=subprocess.DEVNULL)
     monkeypatch.chdir(root)
+    command = root / ".claude" / "commands" / "stablemate-grill.md"
+    command.parent.mkdir(parents=True, exist_ok=True)
+    command.write_text(
+        "---\n"
+        "description: grill\n"
+        "metadata:\n"
+        "  generated_by: farrier\n"
+        "  tags: [grill]\n"
+        "---\n\n"
+        "# Grill\n",
+        encoding="utf-8",
+    )
     return root
 
 

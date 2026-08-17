@@ -198,6 +198,16 @@ class EpicReview(AuthorResult):
     notes: str = ""
 
 
+class GrillBrief(AuthorResult):
+    """`prompts/grill-brief.md` — the frontier brief handed to the operator's grill.
+
+    Written to the outbox alongside the trigger command; the operator's own grilling
+    session reads it as round one instead of rediscovering the repo.
+    """
+
+    brief: str = ""
+
+
 class WriteEpicResult(AuthorResult):
     """`prompts/write-epic.md` — one epic's `epic.md` written from its seeds."""
 

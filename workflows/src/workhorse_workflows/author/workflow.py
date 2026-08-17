@@ -65,6 +65,7 @@ from workhorse_workflows.author.nodes import (
     prune_backlog,
     prune_bullet,
     record_attempt,
+    resolve_grill_trigger,
     seed_story,
     select_epic,
     select_epic_document,
@@ -85,6 +86,7 @@ from workhorse_workflows.author.shared.schemas import (
     CoverageReview,
     DecomposeResult,
     EpicReview,
+    GrillBrief,
     MockupResult,
     OperatorResolution,
     RunContext,
@@ -403,7 +405,7 @@ class Author(Workflow):
                 backlog=self.backlog,
                 operator_mode=self.operator_mode,
             )
-            return Continue(result, self.split_epics)
+            return Continue(result, self.grill_backlog)
         if self.mode == "parity-survey":
             result = self.handoff(
                 ParitySurveyor,
@@ -426,7 +428,31 @@ class Author(Workflow):
                 story_dir=seeded.story_dir,
                 story_path=seeded.story_path,
             )
-        return Continue(None, self.split_epics)
+        return Continue(None, self.grill_backlog)
+
+    # --- 0. the grill -----------------------------------------------------------
+
+    def grill_backlog(self) -> Await:
+        """Brief the operator's grilling session, then block for it — unconditionally.
+
+        `operator_mode` does not gate this: the whole premise is that these decisions
+        are the operator's, not a stand-in agent's. `split_epics` still adopts the
+        backlog itself; this state only reads it to seed the brief, so a bullet that
+        has not been minted an id yet is still nameable in the frontier.
+        """
+        brief = self.agent(
+            "prompts/grill-brief.md",
+            returns=GrillBrief,
+            power="high",
+            cwd=self.ctx.repo_root,
+            args={
+                "backlog": self.ctx.backlog_path,
+                "epics_dir": self.ctx.epics_dir,
+            },
+        )
+        trigger = self.call(resolve_grill_trigger)
+        notes = f"Run {trigger} to grill this backlog before it is split into epics.\n\n{brief.brief}"
+        return Await(self._abs(self._author_context()), notes, self.split_epics)
 
     # --- 1. epic split --------------------------------------------------------
 

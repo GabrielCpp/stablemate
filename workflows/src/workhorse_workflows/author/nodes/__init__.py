@@ -5,6 +5,7 @@ name `workflow.py` needs from here. The submodules are the subjects:
 
 * `config` — what the run works on, and the branch it works on it in
 * `intake` — give every manually entered work bullet a durable id
+* `grill` — find the slash command that opens the operator's grilling session
 * `epics` — which epic is next
 * `stories` — one story at a time: seed it, pick it, validate it, ground it
 * `coverage` — whether an epic's stories cover it, and the backlog it consumed
@@ -40,6 +41,7 @@ from workhorse_workflows.author.nodes.artifacts import (
 from workhorse_workflows.author.nodes.config import branch_author, load_config
 from workhorse_workflows.author.nodes.coverage import prune_backlog, validate_coverage
 from workhorse_workflows.author.nodes.epics import select_epic, select_epic_document
+from workhorse_workflows.author.nodes.grill import resolve_grill_trigger
 from workhorse_workflows.author.nodes.intake import adopt_backlog
 from workhorse_workflows.author.nodes.stories import (
     check_mockup_needed,
@@ -67,6 +69,7 @@ __all__ = [
     "prune_bullet",
     "record_attempt",
     "remove_story",
+    "resolve_grill_trigger",
     "seed_story",
     "select_epic",
     "select_epic_document",

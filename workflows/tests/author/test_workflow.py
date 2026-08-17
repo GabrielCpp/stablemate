@@ -391,6 +391,11 @@ class _Agent:
     def args_for(self, stem: str) -> list[dict[str, Any]]:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
 
+    # -- the grill ---------------------------------------------------------
+
+    def _grill_brief(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        return {"brief": "no open questions"}
+
     # -- the epic split ---------------------------------------------------
 
     def _decompose_epics(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -680,8 +685,32 @@ def _env(tmp: Path, *, run_dir: Path | None = None) -> RunEnv:
     )
 
 
-def _drive(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
-    return drive(Author(**inputs), replace(env, agent_runner=StubRunner(agent)))
+def _drive(
+    env: RunEnv,
+    agent: _Agent,
+    *,
+    wait_for_answer: Callable[..., Any] | None = None,
+    **inputs: Any,
+) -> Any:
+    """Drive `Author`, auto-answering the grill's gate so it never blocks a test.
+
+    The grill fires unconditionally at backlog intake, ahead of every other operator
+    gate, and its `Await` writes to the same context-file path `review_epics`'s gate
+    later reuses — so the two are told apart by *content*, not by path. A test that
+    wants to script its own gate passes `wait_for_answer`; every other `Await` this
+    run reaches still goes through it, only the grill's is skipped automatically.
+    """
+
+    def _wait_for_answer(path: Path, **kwargs: Any) -> Any:
+        text = path.read_text(encoding="utf-8") if path.is_file() else ""
+        if "grill this backlog" in text:
+            return None
+        if wait_for_answer is not None:
+            return wait_for_answer(path, **kwargs)
+        return None
+
+    with patch.object(pyflow_driver, "wait_for_answer", _wait_for_answer):
+        return drive(Author(**inputs), replace(env, agent_runner=StubRunner(agent)))
 
 
 def _drive_story_edit(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
@@ -711,6 +740,7 @@ def test_epic_mode_authors_the_backlog_and_commits_it(
     pruned = "\n".join(r.getMessage() for r in caplog.records if "pruned" in r.getMessage())
 
     assert agent.counts() == {
+        "grill-brief": 1,
         "decompose-epics": 1,
         "review-epics": 1,
         "write-epic": 1,
@@ -741,6 +771,21 @@ def test_epic_mode_authors_the_backlog_and_commits_it(
 
     # Every turn ran in the repo, not in the run directory.
     assert set(agent.cwds) == {str(backlogged)}
+
+
+def test_the_grill_briefs_the_operator_before_the_backlog_is_split(
+    backlogged: Path, tmp_path: Path
+) -> None:
+    """The grill fires first, unconditionally, and its note carries the trigger and brief."""
+    agent = _Agent(backlogged)
+    _drive(_env(tmp_path), agent)
+
+    note = (backlogged / CONTEXT).read_text(encoding="utf-8")
+    assert "/stablemate-grill" in note, note
+    assert "grill this backlog before it is split into epics" in note, note
+    assert "no open questions" in note, note
+    assert agent.calls[0] == "grill-brief", agent.calls
+    assert agent.counts()["decompose-epics"] == 1, agent.counts()
 
 
 def test_epic_mode_skips_mockups_for_seeds_tagged_without_a_frontend_layer(
@@ -1077,11 +1122,8 @@ def test_coverage_resolver_cycles_share_the_epic_scoped_split_bound(
         labels.append(dict(current))
         return real_rebase(self, current)
 
-    with (
-        patch.object(pyflow_driver, "wait_for_answer", answered),
-        patch.object(pyflow_activity.ActivityLog, "rebase", capture),
-    ):
-        _drive(_env(tmp_path), agent)
+    with patch.object(pyflow_activity.ActivityLog, "rebase", capture):
+        _drive(_env(tmp_path), agent, wait_for_answer=answered)
 
     assert agent.counts()["resolve-operator"] == 2, agent.counts()
     assert len(seen) == 1 and "the reset flow is unclaimed" in seen[0], seen
@@ -1130,8 +1172,7 @@ def test_operator_mode_human_sends_the_block_straight_to_the_context_file(
         seen.append(path.read_text())
 
     agent = _Agent(backlogged, review_epics=["blocked", "approved"])
-    with patch.object(pyflow_driver, "wait_for_answer", answered):
-        _drive(_env(tmp_path), agent, operator_mode="human")
+    _drive(_env(tmp_path), agent, wait_for_answer=answered, operator_mode="human")
 
     assert agent.counts()["resolve-operator"] == 0, agent.counts()
     assert agent.counts()["rework-epics"] == 0, agent.counts()
@@ -1158,8 +1199,7 @@ def test_an_escalated_story_block_waits_on_the_story_context(
         agent.fail_audit.clear()
 
     agent = _Agent(backlogged, fail_audit={"01-sign-in"}, escalate=True)
-    with patch.object(pyflow_driver, "wait_for_answer", answered):
-        _drive(_env(tmp_path), agent)
+    _drive(_env(tmp_path), agent, wait_for_answer=answered)
 
     assert seen == [backlogged / EPIC_DIR / "stories/01-sign-in/context.md"], seen
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
