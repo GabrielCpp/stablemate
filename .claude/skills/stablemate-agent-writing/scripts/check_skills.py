@@ -74,13 +74,18 @@ def declarations(root: Path) -> dict:
 
 
 def _assets(skill_dir: Path) -> list[str]:
-    """Every bundled asset under a skill, relative to the skill directory."""
+    """Every bundled asset under a skill, relative to the skill directory.
+
+    Byte-compilation output is not an asset: running a bundled `scripts/*.py` leaves a
+    `__pycache__/` beside it, and a check that then demanded a link to a `.pyc` would fire
+    on the skill whose script somebody actually ran.
+    """
     return sorted(
         path.relative_to(skill_dir).as_posix()
         for name in ASSET_DIRS
         if (skill_dir / name).is_dir()
         for path in (skill_dir / name).rglob("*")
-        if path.is_file()
+        if path.is_file() and "__pycache__" not in path.parts
     )
 
 
