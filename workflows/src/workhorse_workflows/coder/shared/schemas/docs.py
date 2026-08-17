@@ -185,6 +185,13 @@ class DocsProgress(CoderResult):
     gate_ids: list[str] = []
     review_ids: list[str] = []
 
+    #: Consecutive repair laps that have run on the story's session chain, so `repair` can
+    #: end a conversation that has grown longer than it is worth. Reset to 0 whenever the
+    #: chain is, which is what makes it *consecutive* rather than a total. It lives here
+    #: because it must survive a resume: a counter kept anywhere else would restart at 0
+    #: mid-loop and give a stale chain a fresh budget.
+    chain_laps: int = 0
+
     #: Closed vocabularies, so the label cardinality they add is bounded. Every name ends in
     #: a suffix `groom profile` recognises as a verdict dimension.
     VERDICT_LABELS: ClassVar[tuple[str, ...]] = (

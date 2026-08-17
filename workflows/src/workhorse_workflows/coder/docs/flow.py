@@ -136,6 +136,12 @@ class Docs(Workflow):
     #: for the run that forced the split.
     MAX_REVIEW_REWORKS: ClassVar[int] = 3
 
+    #: Repair laps that ride one session chain before it is started over. A chain is worth
+    #: keeping because lap N+1 already knows what lap N edited and why; past a handful of
+    #: laps that value is mostly compaction summary, and a conversation that has been
+    #: wrong four times running is a worse starting point than an empty one.
+    MAX_CHAIN_LAPS: ClassVar[int] = 4
+
     def setup(self) -> StoryPaths:
         """Resolve the slug to paths and the workspace to directories."""
         self.call(resolve_workspace_dirs, self.docs_path)
@@ -144,6 +150,25 @@ class Docs(Workflow):
     def labels(self) -> dict[str, str]:
         """Which story this run is on — the YAML's `labels:` block."""
         return {"work_id": self.ctx.story_slug} if self.ctx.story_slug else {}
+
+    @property
+    def _chain(self) -> str:
+        """The session chain `repair` runs on, keyed per story.
+
+        Per story rather than per run: a run documents several stories, and a chain they
+        shared would open story two's repair on story one's diff — the failure the chain
+        exists to avoid, inverted.
+        """
+        return f"docs-repair:{self.ctx.story_slug}"
+
+    def _ends(self, result: DocsResult) -> Done:
+        """End the flow, and the story's repair chain with it.
+
+        Every terminal goes through here so no exit can forget: a chain left behind is a
+        conversation about a book as it was, waiting for the next entry to resume it.
+        """
+        self.reset_session(self._chain)
+        return Done(result)
 
     #: The two budgets, split because the grounding gate and the reviewer fail for
     #: unrelated reasons — see `_rework`. Which one a story spent is the whole point of
@@ -186,6 +211,9 @@ class Docs(Workflow):
         document into — while `invalid` fails it, because a graph that is configured and will
         not load is a broken repo rather than an unmanaged one.
         """
+        # Whatever is left of an earlier pass's repair conversation describes a book and a
+        # diff that have both moved since. Entry is the one place that is knowable.
+        self.reset_session(self._chain)
         if not self.ctx.story_path:
             raise WorkflowFailed(
                 f"no story path for {self.story!r} — the story could not be resolved, so "
@@ -197,7 +225,7 @@ class Docs(Workflow):
         okf = self.call(detect_okf_docs, self.docs_path)
         if okf.has_okf == "no":
             self.logger.info("no OKF docs here — nothing to document")
-            return Done(DocsResult(status="not_applicable", notes=okf.reason))
+            return self._ends(DocsResult(status="not_applicable", notes=okf.reason))
         if okf.has_okf != "yes":
             raise WorkflowFailed(f"OKF documentation is unusable here: {okf.reason}")
         classification = self.call(
@@ -305,9 +333,22 @@ class Docs(Workflow):
 
         Same signature, same result, same gate as `document`: only the instruction and the
         power tier differ.
+
+        The laps also share one conversation. Under a clean context per turn, lap N+1 is
+        handed a worklist and has to re-read the nodes lap N was editing a minute earlier
+        before it can act on it — a turn of reading bought to end up with a worse copy of
+        the context the model just had. The chain is dropped when it stops being an asset:
+        after `MAX_CHAIN_LAPS`, and on a `stalled` gate verdict, which says the last laps
+        changed nothing and the conversation has talked itself into a corner.
         """
         self.logger.info("repairing the documentation for %s", self.ctx.story_slug,
                          extra={"activity": True})
+        progress = progress or DocsProgress()
+        laps = progress.chain_laps
+        if laps >= self.MAX_CHAIN_LAPS or progress.gate_progress_verdict == "stalled":
+            self.reset_session(self._chain)
+            laps = 0
+        progress = progress.model_copy(update={"chain_laps": laps + 1})
         result = self.agent(
             "prompts/repair-documentation.md",
             returns=DocumentationResult,
@@ -316,6 +357,7 @@ class Docs(Workflow):
             power="low",
             add_dirs=self._dirs(),
             args=self._author_args(gate_notes, review_notes, obligations),
+            session=self._chain,
         )
         return self._authored(
             result,
@@ -556,7 +598,7 @@ class Docs(Workflow):
         )
         if result.status == "approved":
             self.logger.info("documentation approved for %s", self.ctx.story_slug)
-            return Done(
+            return self._ends(
                 DocsResult(
                     status="passed",
                     notes=result.notes,
@@ -698,7 +740,7 @@ class Docs(Workflow):
         `human`/`operator` mode still parks — someone asked to be asked.
         """
         if consulted:
-            return Done(DocsResult(status="blocked", notes=notes))
+            return self._ends(DocsResult(status="blocked", notes=notes))
         carried: dict[str, Any] = {
             "notes": notes,
             "rework": rework,
@@ -749,7 +791,7 @@ class Docs(Workflow):
         )
         if result.decision != "answered":
             self.logger.info("the documentation resolver escalated — blocking the story")
-            return Done(DocsResult(status="blocked", notes=notes))
+            return self._ends(DocsResult(status="blocked", notes=notes))
         return Continue(
             result,
             self.read_author,
@@ -785,7 +827,7 @@ class Docs(Workflow):
         answer = self.call(read_operator_context, self.ctx.story_path)
         if answer.scope == "epic":
             self.logger.info("the author scoped the documentation block to the epic")
-            return Done(DocsResult(status="blocked", notes=answer.content or notes))
+            return self._ends(DocsResult(status="blocked", notes=answer.content or notes))
         brief = "\n".join(
             part for part in (f"Ratified by the author: {answer.content}".strip(), notes) if part
         )

@@ -645,6 +645,14 @@ class QaLoop(CoderResult):
     lane_seconds: float = 0.0
     plan_lane_seconds: float = 0.0
 
+    #: Consecutive repair laps that have run on the story's QA-plan session chain, so
+    #: `repair_plan` can end a conversation that has grown longer than it is worth. Reset to
+    #: 0 whenever the chain is, which is what makes it *consecutive* rather than a total —
+    #: every rejoin through `build_context` ends the chain, because the diff the plan answers
+    #: has changed. It lives here because it must survive a resume: a counter kept anywhere
+    #: else would restart at 0 mid-loop and give a stale chain a fresh budget.
+    chain_laps: int = 0
+
     @property
     def plan_rework_total(self) -> int:
         """Repairs spent across validation, review, and post-run plan gates.

@@ -420,6 +420,12 @@ class Qa(Workflow):
     MAX_SETUP_REWORKS: ClassVar[int] = 2
     MAX_REGRESSION_FIXES: ClassVar[int] = 3
     MAX_TRIAGE_SCOPES: ClassVar[int] = 2
+    #: How many consecutive laps `repair_plan` may spend on one session chain before it
+    #: starts a fresh conversation. Continuity is what stops each lap re-deriving the plan it
+    #: is editing, but a conversation that has been wrong four times running is no longer a
+    #: head start — it is a transcript of four rejected repairs, and the compaction that keeps
+    #: it in the window summarises the wrong turns as readily as the right ones.
+    MAX_CHAIN_LAPS: ClassVar[int] = 4
 
     def setup(self) -> StoryPaths:
         """Resolve the slug to the story path, its spec dir and its `qa/` directory."""
@@ -428,6 +434,27 @@ class Qa(Workflow):
     def labels(self) -> dict[str, str]:
         """Which story this run is on — the YAML's `labels:` block."""
         return {"work_id": self.ctx.story_slug} if self.ctx.story_slug else {}
+
+    @property
+    def _chain(self) -> str:
+        """The session chain `repair_plan` runs on, keyed per story.
+
+        Per story and not per run: two stories QA'd by the same run repair two different
+        plans against two different diffs, and sharing one conversation would open the second
+        on the first one's worklist.
+        """
+        return f"qa-plan-repair:{self.ctx.story_slug}"
+
+    def _ends(self, result: QaFlowResult) -> Done:
+        """End the flow, and the story's plan-repair chain with it.
+
+        A chain outliving its flow is the failure this exists to prevent: the run moves to
+        the next story, that story's QA opens `qa-plan-repair:<its slug>` — a different key,
+        so it is safe — but a *re-QA* of this same story would otherwise resume a
+        conversation about a plan and a diff that have both moved on since.
+        """
+        self.reset_session(self._chain)
+        return Done(result)
 
     #: `ensure_stack` brings a durable app stack up and health-gates it — on a real run
     #: that is minutes of `booting app: … waiting up to 2400s`, and it is the model
@@ -498,6 +525,10 @@ class Qa(Workflow):
         if not self.ctx.story_path:
             self.logger.info("no story to QA — nothing to run")
             return Done(QaFlowResult(triage_scope=self.triage_scope_count))
+        # A re-QA of a story that was already QA'd — after a fix, after an operator answer,
+        # after a resume — must not resume the previous pass's repair conversation: it
+        # describes a plan and a diff that have both been rewritten since.
+        self.reset_session(self._chain)
         self.call(clear_qa_evidence, self.ctx.spec_dir)
         self.call(resolve_impl_context, self.ctx.spec_dir, self.target_env, self.docs_path)
         okf = self.call(detect_okf_docs, self.docs_path)
@@ -520,6 +551,10 @@ class Qa(Workflow):
         This is the loop's join point — six states route back here, because a product fix, an
         operator answer or a regression fix can all change what the diff obligates.
         """
+        # The join point ends the repair chain for the same reason it clears `plan_authored`
+        # below: every state that routes back here changed what the diff obligates, so the
+        # conversation that was repairing the old plan is now describing the wrong file.
+        self.reset_session(self._chain)
         impl = self.output(resolve_impl_context)
         build = self.call(
             build_okf_context,
@@ -538,6 +573,9 @@ class Qa(Workflow):
         loop = loop.update(
             context_status=result.status,
             context_notes=_finding(result.status == "passed", result.notes),
+            # Zeroed with the chain itself, so the next chain gets a whole budget rather than
+            # inheriting a count of laps that belonged to a conversation that no longer exists.
+            chain_laps=0,
         )
         if result.status == "passed":
             # To the stack, not to the plan: the planner authors against a surface it can
@@ -654,9 +692,20 @@ class Qa(Workflow):
         qa-dry-run/<id>` — and `verify_qa_dry_run` reads that scratch evidence back before
         the flow spends a whole suite run finding out. A repair that has not been observed to
         work is a hypothesis, and this lane was paying a full run per hypothesis.
+
+        Every lap runs on one session chain, so the turn that is handed "scenario 4 still
+        fails" is the turn that wrote scenario 4 and remembers why. The chain is dropped when
+        continuity stops being worth its length: after `MAX_CHAIN_LAPS` consecutive laps, on a
+        lap that already failed at exactly what the last one failed at, and at every rejoin
+        through `build_context` — which is also where the counter is zeroed.
         """
         self.logger.info("repairing the QA plan for %s", self.ctx.story_slug,
                          extra={"activity": True})
+        laps = loop.chain_laps
+        if laps >= self.MAX_CHAIN_LAPS or self._repeating(loop, "QA-plan repair"):
+            self.reset_session(self._chain)
+            laps = 0
+        loop = loop.update(chain_laps=laps + 1)
         overran = ""
         repaired: tuple[str, ...] = ()
         started = time.monotonic()
@@ -679,6 +728,7 @@ class Qa(Workflow):
                 retries=0,
                 add_dirs=self._dirs(),
                 args=self._plan_args(loop),
+                session=self._chain,
             )
             repaired = tuple(str(scenario) for scenario in result.repaired_scenarios)
         except AgentTimeout:
@@ -1101,7 +1151,7 @@ class Qa(Workflow):
             return self._fixable(triage, loop)
         if triage.triage_action == "rescope":
             self.logger.info("triage rescoped the story — handing back to dev")
-            return Done(
+            return self._ends(
                 QaFlowResult(
                     status="rescope",
                     qa=loop.qa,
@@ -1132,7 +1182,7 @@ class Qa(Workflow):
             },
         )
         self.logger.info("QA findings reported: %s", report.notes)
-        return Done(
+        return self._ends(
             QaFlowResult(
                 qa=loop.qa,
                 qa_rework=loop.qa_rework,
@@ -1304,7 +1354,7 @@ class Qa(Workflow):
         if self.target_env == "dev":
             return Continue(result, self.report_dev_pass, loop=loop)
         self.logger.info("QA passed for %s", self.ctx.story_slug)
-        return Done(
+        return self._ends(
             QaFlowResult(
                 status="passed",
                 qa=loop.qa,
@@ -1329,7 +1379,7 @@ class Qa(Workflow):
                 "qa_notes": loop.block_notes,
             },
         )
-        return Done(
+        return self._ends(
             QaFlowResult(
                 status="passed",
                 qa=loop.qa,
@@ -1474,7 +1524,7 @@ class Qa(Workflow):
         answer = self.call(read_operator_context, self.ctx.story_path)
         if answer.scope == "epic":
             self.logger.info("operator scoped the block to the epic — handing back to replan")
-            return Done(
+            return self._ends(
                 QaFlowResult(
                     status="replan",
                     qa=loop.qa,
@@ -1900,7 +1950,7 @@ class Qa(Workflow):
             context_notes=loop.context_notes,
             evidence_notes=loop.qa.notes,
         )
-        return Done(
+        return self._ends(
             QaFlowResult(
                 qa=loop.qa,
                 qa_rework=loop.qa_rework,
