@@ -86,6 +86,26 @@ def test_a_workflow_failure_writes_a_diagnostic_outbox_entry():
         assert not message.reply, "a fresh diagnosis is not yet answered"
 
 
+def test_a_raise_sites_own_failure_class_and_artifacts_reach_the_outbox():
+    """A raise site can attach a specific `failure_class` and artifact paths — see
+    `WorkflowFailed.__init__` — and the handoff surfaces them instead of the bare
+    exception class name."""
+    with tempfile.TemporaryDirectory() as tmp:
+        code, run_dir = _run(
+            tmp,
+            WorkflowFailed(
+                "QA never passed for story 'widget'",
+                failure_class="qa-give-up",
+                artifacts={"qa": "/repo/specs/widget/qa.md"},
+            ),
+        )
+
+        assert code == 1, code
+        message = inbox.all_messages(run_dir / "inbox.jsonl")[0]
+        assert "failure_class: qa-give-up" in message.body, message.body
+        assert "qa: /repo/specs/widget/qa.md" in message.body, message.body
+
+
 def test_a_run_budget_stop_writes_no_outbox_entry():
     """`RunBudgetExceeded` is an operational stop, not a verdict — see its own
     docstring. It returns before the diagnostic branch and leaves no `inbox.jsonl`,
@@ -99,5 +119,6 @@ def test_a_run_budget_stop_writes_no_outbox_entry():
 
 if __name__ == "__main__":
     test_a_workflow_failure_writes_a_diagnostic_outbox_entry()
+    test_a_raise_sites_own_failure_class_and_artifacts_reach_the_outbox()
     test_a_run_budget_stop_writes_no_outbox_entry()
     print("ok")

@@ -17,7 +17,25 @@ class WorkflowFailed(PyflowError):
     Deliberately an exception rather than a fourth transition type: a failure needs
     a traceback, and it has to compose with the retry ladder in `runner/ladder.py`
     the same way any other exception does.
+
+    `failure_class` and `artifacts` are optional diagnosis a raise site can attach for
+    the outbox handoff (`workhorse/pyflow/run.py::_record_failure_handoff`) to surface —
+    a short machine-readable code (`"transition-budget-exhausted"`, `"qa-give-up"`) and a
+    `name -> path` map of whatever the site already knows is worth reading. Every raise
+    site still works with neither: the handoff falls back to the exception's class name
+    and the run dir's own paths, which is all a bare `WorkflowFailed(msg)` ever had.
     """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        failure_class: str = "",
+        artifacts: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.failure_class = failure_class
+        self.artifacts = dict(artifacts or {})
 
 
 class AgentTimeout(PyflowError):

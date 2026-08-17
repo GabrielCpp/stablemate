@@ -805,16 +805,18 @@ def _record_failure_handoff(writer: ArtifactWriter, exc: PyflowError) -> None:
     failure path, and a second exception here must not bury the first.
     """
     state = _state_of(writer)
-    body = "\n".join(
-        [
-            f"failure_class: {type(exc).__name__}",
-            f"node: {state}",
-            f"error: {exc}",
-            f"run_dir: {writer.run_dir}",
-            f"checkpoint: {writer.run_dir / ArtifactWriter.CHECKPOINT_FILE}",
-            f"turns: {writer.run_dir / ArtifactWriter.TURNS_DIR}",
-        ]
-    )
+    failure_class = getattr(exc, "failure_class", "") or type(exc).__name__
+    lines = [
+        f"failure_class: {failure_class}",
+        f"node: {state}",
+        f"error: {exc}",
+        f"run_dir: {writer.run_dir}",
+        f"checkpoint: {writer.run_dir / ArtifactWriter.CHECKPOINT_FILE}",
+        f"turns: {writer.run_dir / ArtifactWriter.TURNS_DIR}",
+    ]
+    for name, path in getattr(exc, "artifacts", {}).items():
+        lines.append(f"{name}: {path}")
+    body = "\n".join(lines)
     try:
         inbox.append(
             writer.run_dir / "inbox.jsonl",

@@ -71,7 +71,8 @@ def read_resume(checkpoint: Checkpoint) -> Resume:
         raise WorkflowFailed(
             "this run directory holds a checkpoint from the YAML engine "
             f"(node '{checkpoint.current_id}'), not a Python state machine. "
-            "Resume it with the workflow that wrote it, or start a new run."
+            "Resume it with the workflow that wrote it, or start a new run.",
+            failure_class="yaml-engine-checkpoint",
         )
     return Resume(
         state=checkpoint.state,
@@ -100,7 +101,8 @@ def coerce_params(
         known = ", ".join(signature.parameters) or "(none)"
         raise WorkflowFailed(
             f"checkpoint gives state '{state}' the parameter(s) {', '.join(unknown)}, "
-            f"which it does not have. Its parameters are: {known}."
+            f"which it does not have. Its parameters are: {known}.",
+            failure_class="unknown-checkpoint-param",
         )
     try:
         hints = get_type_hints(bound)
@@ -118,7 +120,8 @@ def coerce_params(
         except (ValidationError, TypeError) as exc:
             raise WorkflowFailed(
                 f"checkpoint parameter '{name}' for state '{state}' is not a valid "
-                f"{annotation}: {exc}"
+                f"{annotation}: {exc}",
+                failure_class="invalid-checkpoint-param",
             ) from exc
 
     missing = [
@@ -129,7 +132,8 @@ def coerce_params(
     if missing:
         raise WorkflowFailed(
             f"checkpoint does not give state '{state}' its required parameter(s): "
-            f"{', '.join(missing)}"
+            f"{', '.join(missing)}",
+            failure_class="missing-checkpoint-param",
         )
     return coerced
 
@@ -209,7 +213,9 @@ def wait_for_answer(
             return None
         if deadline is not None and clock.now().timestamp() > deadline:
             raise WorkflowFailed(
-                f"run exceeded its wall-clock budget while waiting on {path}"
+                f"run exceeded its wall-clock budget while waiting on {path}",
+                failure_class="await-deadline-exceeded",
+                artifacts={"gate": str(path)},
             )
         request = wait_until(
             lambda: answered(path),
@@ -398,7 +404,8 @@ def drive(
         if not isinstance(outcome, (Continue, Done, Await)):
             raise WorkflowFailed(
                 f"state '{spec.name}' returned {outcome!r} — a state must return "
-                "Continue(...), Done(...) or Await(...), or raise WorkflowFailed"
+                "Continue(...), Done(...) or Await(...), or raise WorkflowFailed",
+                failure_class="invalid-state-return",
             )
         next_state = outcome.state if isinstance(outcome, (Continue, Await)) else None
         otel.state_end(spec.name, state_seq, next_state)
@@ -432,7 +439,8 @@ def drive(
     raise WorkflowFailed(
         f"transition budget exhausted after {budget} transitions (last state "
         f"'{state}'). Raise WORKHORSE_MAX_TRANSITIONS if the run is genuinely that "
-        "long, or look for two states handing each other back and forth."
+        "long, or look for two states handing each other back and forth.",
+        failure_class="transition-budget-exhausted",
     )
 
 
