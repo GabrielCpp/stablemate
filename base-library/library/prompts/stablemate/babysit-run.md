@@ -52,13 +52,34 @@ artifact paths the raise site attached — read those paths before guessing. A l
 (outbox) instead means the run is waiting on a question, not failed; answer it like any
 other gate, over groom's `POST /api/run/{run_id}/outbox` or `workhorse-<name> control`.
 
-## 4. Fix `stablemate`, not the target repo
+**Read the escalation body before you answer.** A coder gate is not a bare question: it
+opens with which escalation this is for the story, what blocked, and — the part worth
+the most — what the auto-resolver already **tried and ruled out**. That list is the
+diagnosis so far. Answering without reading it means re-running the dead ends an
+unbounded resolver turn already paid for, and a second escalation on the same story
+means the previous answer did not hold.
+
+## 4. Fix the cause — in `stablemate` or in the target environment
 
 Failures at this layer are overwhelmingly workflow bugs, workhorse bugs, or a prompt
 needing tuning — not the run's target-repo content being wrong. Find the cause in
 `workhorse/` or `workflows/`, fix it there, and run that package's gate (`make lint` from
 the repo root, plus the affected test package) before going further — the same
 commit discipline as anywhere else in this repo.
+
+The other arm is **in scope too**: a blocker that is the run's *environment* — a stack
+that will not come up, a missing tool or binary, a seeded identity or fixture the QA
+needs, credentials the emulator does not know — is yours to fix, not to hand back. Bring
+it up, seed it, install it, using the target repo's own scripts rather than an ad-hoc
+command of your own, then **re-run the failing step** (`ostler qa run --scenario …`,
+`ostler doctor`, the stack manifest) and only answer the gate once you have watched it
+go green.
+
+**Never answer a gate to make the run move.** An answer says the cause is fixed and
+verified. If it is not, there are exactly two honest outcomes: fix it, or leave the gate
+open and tell the operator (§6). An answer written to unstick a run buys one lap and
+costs the next reviewer the whole investigation — and on a QA block it is the one
+failure the loop exists to prevent.
 
 ## 5. Reload and resume
 
