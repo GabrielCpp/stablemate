@@ -144,7 +144,7 @@ class ImplementPlan(Workflow):
                 review_issue_ids=[],
             )
         task = plan.tasks[index]
-        decision = self.call(decide_task_entry, self.ctx, task, expected_head)
+        decision = self.call(decide_task_entry, self.ctx, plan, task, expected_head)
         if decision.phase == "publish":
             return Continue(
                 decision,
@@ -482,6 +482,7 @@ class ImplementPlan(Workflow):
         result = self.call(
             verify_committed_task,
             self.ctx,
+            plan,
             task,
             expected_parent,
             commit_sha,
@@ -575,6 +576,7 @@ class ImplementPlan(Workflow):
         result = self.call(
             publish_plan_task,
             self.ctx,
+            plan,
             task,
             expected_parent,
             commit_sha,

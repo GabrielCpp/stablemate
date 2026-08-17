@@ -48,6 +48,7 @@ def check_planning_turn(logger, context: PlanRunContext) -> None:
 def decide_task_entry(
     logger,
     context: PlanRunContext,
+    plan: PreparedPlan,
     task: PlanTask,
     expected_head: str,
 ) -> TaskDecision:
@@ -62,7 +63,9 @@ def decide_task_entry(
         return TaskDecision(phase="implement")
     if changed:
         raise WorkflowFailed("HEAD moved while the worktree or index is also dirty")
-    repository.validate_task_commit(context, task, expected_head, head)
+    repository.validate_task_commit(
+        context, task, expected_head, head, repository.task_scopes(plan.tasks, task)
+    )
     logger.info("recovered committed task %s at %s", task.id, head[:12])
     return TaskDecision(phase="publish", commit_sha=head)
 
@@ -161,6 +164,7 @@ def verify_plan_task(
 def verify_committed_task(
     logger,
     context: PlanRunContext,
+    plan: PreparedPlan,
     task: PlanTask,
     expected_parent: str,
     commit_sha: str,
@@ -175,7 +179,9 @@ def verify_committed_task(
     repaired against it instead of the run ending one state before its own publication.
     """
     repository.assert_clean_at(context, commit_sha, expected_parent)
-    repository.validate_task_commit(context, task, expected_parent, commit_sha)
+    repository.validate_task_commit(
+        context, task, expected_parent, commit_sha, repository.task_scopes(plan.tasks, task)
+    )
     repository.assert_tree_matches_worktree(context, task, commit_sha)
     with repository.committed_tree(Path(context.repo_root), commit_sha) as candidate:
         result = repository.run_commands(candidate, task.verification)
@@ -222,15 +228,15 @@ def commit_plan_task(
     repository.assert_repository_identity(context)
     repository.assert_remote(context, expected_head)
     head = repository.head(context)
+    reach = repository.task_scopes(plan.tasks, task)
     if head != expected_head:
         if repository.changed_paths(root):
             raise WorkflowFailed("cannot recover task commit with a dirty worktree")
-        repository.validate_task_commit(context, task, expected_head, head)
+        repository.validate_task_commit(context, task, expected_head, head, reach)
         return CommitResult(committed=True, commit_sha=head)
-    reach = repository.task_scopes(plan.tasks, task)
     repository.assert_owned(context, task, scopes=reach, require_changes=True)
     commit_sha = repository.create_task_commit(context, task, reach)
-    repository.validate_task_commit(context, task, expected_head, commit_sha)
+    repository.validate_task_commit(context, task, expected_head, commit_sha, reach)
     if repository.changed_paths(root):
         raise WorkflowFailed(f"task {task.id} left uncommitted work after its scoped commit")
     logger.info("committed task %s as %s", task.id, commit_sha[:12])
@@ -241,6 +247,7 @@ def commit_plan_task(
 def publish_plan_task(
     logger,
     context: PlanRunContext,
+    plan: PreparedPlan,
     task: PlanTask,
     expected_parent: str,
     commit_sha: str,
@@ -250,7 +257,9 @@ def publish_plan_task(
         raise WorkflowFailed(f"HEAD moved away from task {task.id} before publication")
     if repository.changed_paths(Path(context.repo_root)):
         raise WorkflowFailed(f"task {task.id} publication requires a clean worktree")
-    repository.validate_task_commit(context, task, expected_parent, commit_sha)
+    repository.validate_task_commit(
+        context, task, expected_parent, commit_sha, repository.task_scopes(plan.tasks, task)
+    )
     remote = repository.remote_head(context)
     if remote not in {expected_parent, commit_sha}:
         raise WorkflowFailed(
