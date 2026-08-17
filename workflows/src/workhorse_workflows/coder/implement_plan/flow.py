@@ -1,6 +1,8 @@
 """A checkpoint-authoritative plan-to-commits worklist."""
 from __future__ import annotations
 
+import re
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -46,6 +48,25 @@ from workhorse_workflows.coder.shared.scenarios import escape_in_text
 from workhorse_workflows.kit.telemetry import counter_labels
 
 
+_EXPORT_DIR = re.compile(r"workhorse-verify-\w+")
+_PYTEST_TMP = re.compile(r"pytest-of-\w+/pytest-\d+")
+
+
+def _aggregate_finding_key(findings: str) -> str:
+    """Key one aggregate-gate failure by what it *is*, not by where it happened.
+
+    The gate runs in a fresh temporary export and its commands write that path into
+    their own output, so the identical defect reported twice produces two different
+    texts. Keying on the raw text would make every finding look new, and the guard that
+    stops a failed repair from being retried forever would never fire — the failure mode
+    it exists to prevent. Only the volatile paths are collapsed; nothing else is
+    normalized away, because two findings that differ anywhere else are two findings.
+    """
+    collapsed = _EXPORT_DIR.sub("workhorse-verify-*", findings)
+    collapsed = _PYTEST_TMP.sub("pytest-of-*/pytest-*", collapsed)
+    return sha256(collapsed.strip().encode()).hexdigest()
+
+
 class ImplementPlan(Workflow):
     """Split one reviewed plan into dependency-ordered, verified, pushed commits."""
 
@@ -54,6 +75,7 @@ class ImplementPlan(Workflow):
     injects: ClassVar[tuple[str, ...]] = ("repo_dir",)
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("repair", "tests_rework", "decomposition_rework")
     MAX_REPAIRS: ClassVar[int] = 2
+    MAX_AGGREGATE_ROUNDS: ClassVar[int] = 6
     MAX_TESTS_REWORKS: ClassVar[int] = 2
     MAX_DECOMPOSITION_REWORKS: ClassVar[int] = 2
     MAX_REVIEW_FIX_CYCLES: ClassVar[int] = 3
@@ -353,6 +375,7 @@ class ImplementPlan(Workflow):
         completed_commits: list[str],
         expected_head: str,
         repair: int = 0,
+        aggregate_seen: list[str] | None = None,
     ) -> Continue:
         result = self.call(verify_plan_task, self.ctx, plan, task, expected_head)
         if result.passed:
@@ -365,6 +388,7 @@ class ImplementPlan(Workflow):
                 completed_commits=completed_commits,
                 expected_head=expected_head,
                 repair=repair,
+                aggregate_seen=aggregate_seen,
             )
         if repair >= self.MAX_REPAIRS:
             self.call(
@@ -388,6 +412,7 @@ class ImplementPlan(Workflow):
             expected_head=expected_head,
             repair=repair,
             findings=result.findings,
+            aggregate_seen=aggregate_seen,
         )
 
     def repair(
@@ -400,6 +425,7 @@ class ImplementPlan(Workflow):
         repair: int,
         findings: str,
         export_repair: bool = False,
+        aggregate_seen: list[str] | None = None,
     ) -> Continue:
         """Hand the packet back to the agent, then re-assert its repository boundary.
 
@@ -437,6 +463,7 @@ class ImplementPlan(Workflow):
             completed_commits=completed_commits,
             expected_head=expected_head,
             repair=repair + 1,
+            aggregate_seen=aggregate_seen,
         )
 
     def commit(
@@ -447,6 +474,7 @@ class ImplementPlan(Workflow):
         completed_commits: list[str],
         expected_head: str,
         repair: int = 0,
+        aggregate_seen: list[str] | None = None,
     ) -> Continue:
         result = self.call(commit_plan_task, self.ctx, plan, task, expected_head)
         return Continue(
@@ -459,6 +487,7 @@ class ImplementPlan(Workflow):
             expected_parent=expected_head,
             commit_sha=result.commit_sha,
             repair=repair,
+            aggregate_seen=aggregate_seen,
         )
 
     def verify_committed(
@@ -470,6 +499,7 @@ class ImplementPlan(Workflow):
         expected_parent: str,
         commit_sha: str,
         repair: int = 0,
+        aggregate_seen: list[str] | None = None,
     ) -> Continue:
         """Verify the exact clean tree that the next state may publish.
 
@@ -514,6 +544,7 @@ class ImplementPlan(Workflow):
                 repair=repair,
                 findings=result.findings,
                 export_repair=True,
+                aggregate_seen=aggregate_seen,
             )
         if index + 1 == len(plan.tasks):
             return Continue(
@@ -526,6 +557,7 @@ class ImplementPlan(Workflow):
                 expected_parent=expected_parent,
                 commit_sha=commit_sha,
                 repair=repair,
+                aggregate_seen=aggregate_seen,
             )
         return Continue(
             result,
@@ -547,6 +579,7 @@ class ImplementPlan(Workflow):
         expected_parent: str,
         commit_sha: str,
         repair: int = 0,
+        aggregate_seen: list[str] | None = None,
     ) -> Continue:
         """Gate the fully committed candidate before its last packet reaches origin.
 
@@ -556,10 +589,29 @@ class ImplementPlan(Workflow):
         committed. Terminating here threw all of that away over findings that are
         usually ordinary and local: a root command nobody had ever run outside an
         already-provisioned worktree, two packets that type-check alone but not in
-        sequence. It now spends the same repair budget every other gate spends, and the
-        counter arrives from the commit for the same reason it does there — the packet
-        gets `MAX_REPAIRS` turns in total, so the two gates cannot hand it back and
-        forth forever.
+        sequence.
+
+        It gets a repair arm, but deliberately not the packet's counter. `MAX_REPAIRS`
+        meters attempts at one defect, which is the right meter for a packet gate: the
+        packet has one implementation, and a second failure of it means the repair turn
+        is not working. This gate is the first command in the entire run to exercise the
+        repository as a whole, so what it reports is not one defect but a *queue* of
+        them — every root-level command that nobody had provisioned, every convention
+        that only held inside an already-warm developer worktree. Charging a queue to a
+        counter sized for one defect ends the run on its third distinct finding while
+        every repair turn so far has been correct and has made real progress.
+
+        So the meter here is progress, not attempts: `aggregate_seen` accumulates the
+        findings this gate has already handed out. A finding never seen before buys a
+        repair turn. A finding that comes back after its own repair turn is the failure
+        `MAX_REPAIRS` was guarding against and ends the run immediately — the repair did
+        not work, and running it again would only spin. `MAX_AGGREGATE_ROUNDS` is the
+        backstop for the pathological case where every turn trades one fresh defect for
+        another, so the loop cannot run forever even while it appears to progress.
+
+        The findings are keyed on their normalized text because the raw text embeds the
+        export's temporary directory, which is unique per gate run — digesting it raw
+        would make every finding look new and the guard would never bite.
 
         The repair turn is aimed at the whole candidate rather than at the last packet.
         The defect the aggregate gate finds is frequently not in that packet at all; it
@@ -576,8 +628,10 @@ class ImplementPlan(Workflow):
             commit_sha,
             expected_parent,
         )
+        seen = list(aggregate_seen or [])
         if not result.passed:
-            if repair >= self.MAX_REPAIRS:
+            key = _aggregate_finding_key(result.findings)
+            if key in seen:
                 self.call(
                     project_plan_progress,
                     self.ctx,
@@ -586,7 +640,23 @@ class ImplementPlan(Workflow):
                     completed_commits,
                     task.id,
                 )
-                raise WorkflowFailed(f"final plan verification failed:\n{result.findings}")
+                raise WorkflowFailed(
+                    "final plan verification failed: the same finding survived its "
+                    f"repair turn:\n{result.findings}"
+                )
+            if len(seen) >= self.MAX_AGGREGATE_ROUNDS:
+                self.call(
+                    project_plan_progress,
+                    self.ctx,
+                    plan,
+                    index,
+                    completed_commits,
+                    task.id,
+                )
+                raise WorkflowFailed(
+                    f"final plan verification failed after {self.MAX_AGGREGATE_ROUNDS} "
+                    f"distinct findings:\n{result.findings}"
+                )
             self.call(retract_task_commit, self.ctx, task, expected_parent, commit_sha)
             return Continue(
                 result,
@@ -599,6 +669,7 @@ class ImplementPlan(Workflow):
                 repair=repair,
                 findings=result.findings,
                 export_repair=True,
+                aggregate_seen=[*seen, key],
             )
         return Continue(
             None,

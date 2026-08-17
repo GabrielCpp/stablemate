@@ -90,6 +90,7 @@ class _Agent:
         reworked: list[dict[str, Any]] | None = None,
         edits: dict[str, dict[str, str]] | None = None,
         repair_edits: dict[str, dict[str, str]] | None = None,
+        repair_steps: dict[str, list[dict[str, str]]] | None = None,
         repair_removes: list[str] | None = None,
         planning_edits: dict[str, str] | None = None,
         test_edits: dict[str, dict[str, str]] | None = None,
@@ -104,6 +105,11 @@ class _Agent:
         self.decomposition_index = 0
         self.edits = edits or {}
         self.repair_edits = repair_edits or {}
+        # A repair turn that writes something *different* on each pass, indexed by the
+        # `repair` counter the flow puts in the prompt. `repair_edits` cannot express
+        # that — it replays one set of writes forever — so a fixture where the gate
+        # reports a fresh defect after each repair needs this instead.
+        self.repair_steps = repair_steps or {}
         # Absolute paths a repair turn deletes. A committed-tree failure is retracted and
         # handed back for repair, so a fixture that fails only after a commit needs the
         # repair turn to undo the thing the commit created — otherwise the next worktree
@@ -143,7 +149,13 @@ class _Agent:
             if repairing:
                 for target in self.repair_removes:
                     target.unlink(missing_ok=True)
-            writes = self.repair_edits.get(task_id, {}) if repairing else self.edits.get(task_id, {})
+            if repairing and task_id in self.repair_steps:
+                steps = self.repair_steps[task_id]
+                writes = steps[min(int(data.get("repair", 1)) - 1, len(steps) - 1)]
+            elif repairing:
+                writes = self.repair_edits.get(task_id, {})
+            else:
+                writes = self.edits.get(task_id, {})
             self._write(writes)
             if task_id == self.commit_on_task:
                 subprocess.run(["git", "add", "-A"], cwd=self.repo, check=True)
