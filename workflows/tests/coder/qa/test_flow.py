@@ -751,7 +751,7 @@ def test_a_blank_story_ends_exhausted_without_running_anything(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`decide_qa_story`'s empty arm: `not_passed`, not a failure, and no turns spent.
+    """`decide_qa_story`'s empty arm: `inconclusive`, not a failure, and no turns spent.
 
     There is nothing here to escalate — no story means no block for an operator to look
     at — so this is the one terminal `Done` left in the flow, not a route to the gate. The
@@ -763,7 +763,7 @@ def test_a_blank_story_ends_exhausted_without_running_anything(
 
     result = drive_flow(Qa(story="", triage_scope_count=1), env(), agent)
 
-    assert result.status == "not_passed", result
+    assert result.status == "inconclusive", result
     assert result.triage_scope == 1
     assert agent.calls == []
     assert (okf.contexts, okf.runs) == (0, 0)
@@ -1831,7 +1831,7 @@ def test_a_dev_target_switching_to_the_product_reports_instead_of_fixing(
 
     result = drive_flow(Qa(story=STORY, target_env="dev"), env(), agent)
 
-    assert result.status == "not_passed", result
+    assert result.status == "inconclusive", result
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
     assert agent.counts()["report-qa-dev"] == 1, agent.counts()
     # The switch is what ended the story: `report_dev` is terminal, so the stall never
@@ -2096,11 +2096,11 @@ def test_each_exhaustion_names_the_budget_it_spent(
 
     # A dev target reworks nothing and has no code to rework, so there is no operator-
     # answerable question to gate on — it is still the one legitimate terminal exit in this
-    # flow, reported via `not_passed` rather than an escalation.
+    # flow, reported via `inconclusive` rather than an escalation.
     ostler(fail_runs=99)
     agent = _Agent(docs, assessment_class="product", escalate=True)
     result = drive_flow(Qa(story=STORY, target_env="dev"), env(), agent)
-    assert result.status == "not_passed", result
+    assert result.status == "inconclusive", result
 
 
 def test_triage_can_hand_the_scope_back_to_the_author(
@@ -2360,7 +2360,7 @@ def test_a_dev_target_reports_a_product_test_finding_rather_than_fixing_it(
 
     result = drive_flow(Qa(story=STORY, target_env="dev"), env(), agent)
 
-    assert result.status == "not_passed", result
+    assert result.status == "inconclusive", result
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
     assert agent.counts()["report-qa-dev"] == 1, agent.counts()
 
@@ -2380,7 +2380,7 @@ def test_a_dev_target_reports_findings_instead_of_fixing_them(
 
     result = drive_flow(Qa(story=STORY, target_env="dev"), env(), agent)
 
-    assert result.status == "not_passed", result
+    assert result.status == "inconclusive", result
     assert agent.counts()["report-qa-dev"] == 1, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
 

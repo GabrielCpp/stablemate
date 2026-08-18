@@ -1179,13 +1179,13 @@ def test_a_give_up_names_the_rework_count_in_its_failure_message(
 
     `give_up` is reachable only by the `target_env="dev"` report path now — every other QA
     exhaustion escalates to the operator gate inside the QA sub-flow instead of returning
-    `not_passed` at all. What still has to surface here is the rework count `qa()` threads
+    `inconclusive` at all. What still has to surface here is the rework count `qa()` threads
     through as `attempts`, because the operator reading this is as often a `/loop` tick
     polling the run's terminal state as a human, and neither can act on a story that shipped
     behind a marker.
     """
     repo = epic()
-    _Sub(repo, qa_status="not_passed").install(monkeypatch)
+    _Sub(repo, qa_status="inconclusive").install(monkeypatch)
 
     with pytest.raises(WorkflowFailed, match="after 1 attempt") as caught:
         drive_flow(Coder(), env(), _Agent())
@@ -1204,13 +1204,13 @@ def test_a_give_up_docs_recheck_that_changes_the_qa_plan_retries_qa(
 
     The give-up path runs Docs before stamping a skipped story. If that Docs pass amends the
     story-owned QA plan, the next honest step is a fresh QA run against the new contract. Filing
-    the old not_passed result skips work that has just become runnable.
+    the old inconclusive result skips work that has just become runnable.
     """
     repo = epic()
     sub = _Sub(
         repo,
         docs_authored_nodes=["docs/specs/STORY-1/qa_plan.py#compare_article_inventory"],
-        qa_statuses=["not_passed", "passed"],
+        qa_statuses=["inconclusive", "passed"],
     ).install(monkeypatch)
     run_env = env()
 

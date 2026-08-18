@@ -450,7 +450,7 @@ class Coder(Workflow):
             self.logger.info("QA rescoped %s — back to dev", self._story.story_slug)
             return Continue(result, self.dev, epic=epic, zero_diff=zero_diff,
                             triage=result.triage_scope)
-        if result.status == "not_passed":
+        if result.status == "inconclusive":
             # The only mode that still lands here is `target_env="dev"`: every other
             # exhaustion now escalates to the operator gate inside the QA sub-flow itself
             # and never returns with this status at all.

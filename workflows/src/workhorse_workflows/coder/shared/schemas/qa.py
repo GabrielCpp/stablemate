@@ -739,19 +739,19 @@ class QaLoop(CoderResult):
 class QaFlowResult(CoderResult):
     """What the QA flow hands back — the YAML's five `qa_phase` output keys, as one value.
 
-    `status` is the `qa_status` the four `emit-kv.py` terminals wrote (`passed`, `not_passed`,
-    `replan`, `rescope`). `not_passed` is the default for the same reason the YAML's
-    `qa_phase` output declared it: a flow that produced nothing has not passed. Every budget
-    the flow can exhaust now routes to the operator gate instead — `Qa` never returns
-    `not_passed` on its own; only `target_env="dev"`'s `report_dev` does, because that mode
-    does not own the code and reporting the findings *is* the terminal action.
+    `status` is the `qa_status` the four `emit-kv.py` terminals wrote (`passed`,
+    `inconclusive`, `replan`, `rescope`). `inconclusive` is the default for the same reason
+    the YAML's `qa_phase` output declared it: a flow that produced nothing has not passed.
+    Every budget the flow can exhaust now routes to the operator gate instead — `Qa` never
+    returns `inconclusive` on its own; only `target_env="dev"`'s `report_dev` does, because
+    that mode does not own the code and reporting the findings *is* the terminal action.
 
     `triage_scope` crosses the flow boundary in both directions — the parent seeds it and
     reads the bumped value back — which is the one piece of state the isolated flow does not
     own.
     """
 
-    status: str = "not_passed"
+    status: str = "inconclusive"
     qa: QaResult = QaResult()
     qa_rework: int = 0
     triage_scope: int = 0

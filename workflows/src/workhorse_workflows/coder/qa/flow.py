@@ -1174,7 +1174,7 @@ class Qa(Workflow):
     def report_dev(self, loop: QaLoop) -> Done:
         """`target_env=dev`: we do not own the code, so write the findings out and stop.
 
-        `report_qa_dev` + `mark_qa_exhausted`. The `not_passed` default status is not a
+        `report_qa_dev` + `mark_qa_exhausted`. The `inconclusive` default status is not a
         judgement on the report — it is how the parent's `decide_qa_fail` learns the story
         did not pass. This is the one legitimate terminal exit left in this flow: a dev
         target has no code to rework, so there is no operator-answerable question to gate on.
