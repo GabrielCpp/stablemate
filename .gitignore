@@ -249,3 +249,13 @@ docs/backload.md
 .agents/local.compose.yaml
 .agents/agents-context.json
 .agents/agents-context.*.json
+# >>> farrier: QA evidence (generated) >>>
+**/qa/**/steps/
+**/qa/**/asserts/
+**/qa/**/traces/
+**/qa/**/videos/
+**/qa/**/screenshots/
+**/qa/qa-run.ndjson
+**/qa/run-manifest.json
+**/qa/qa-session.json
+# <<< farrier: QA evidence <<<
