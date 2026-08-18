@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -1044,7 +1043,7 @@ def test_both_flows_that_diff_the_worktree_are_told_what_was_already_dirty(
 # ------------------------------------------------------------------- the counters
 
 
-def test_three_stories_in_a_row_that_commit_nothing_stop_the_run(
+def test_three_stories_in_a_row_that_commit_nothing_park_for_an_operator(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
@@ -1055,8 +1054,10 @@ def test_three_stories_in_a_row_that_commit_nothing_stop_the_run(
     `zero_diff` is threaded through eight states to get from one story's commit to the
     next's, which is the noisiest thing in the port and the thing this test exists to hold
     down. Three stories that build nothing is not three failures — each one is allowed —
-    it is a loop that is not making progress, and the run stops rather than walking the rest
-    of the epic producing nothing.
+    it is a loop that is not making progress, so it parks for a human at `_zero_diff_gate`
+    rather than walking the rest of the epic producing nothing — and it does not end the
+    run, because a human answering the gate is exactly the "no cap on escalations" every
+    other operator gate in this file gets.
 
     Three stories, and it used to be four. `branch_epic` reconciles the epic queue from
     the base by writing back what `git show` returns, and `git show` drops the file's
@@ -1069,12 +1070,17 @@ def test_three_stories_in_a_row_that_commit_nothing_stop_the_run(
     """
     repo = epic(count=4)
     sub = _Sub(repo, changes=False).install(monkeypatch)
+    seen: list[str] = []
 
-    with pytest.raises(WorkflowFailed, match="in a row committed no changes"):
-        drive_flow(Coder(), env(), _Agent())
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, {"yes": True})):
+        result = drive_flow(Coder(), env(), _Agent())
 
-    # Three stories were built before the guard tripped, not one and not the whole epic.
-    assert sub.calls.count("Dev") == 3, sub.calls
+    # Three stories were built before the guard tripped, and the fourth after the operator
+    # answered and the streak reset — not one and not the whole epic left unattempted.
+    assert sub.calls.count("Dev") == 4, sub.calls
+    assert result.has_epic is False, result
+    assert len(seen) == 1, seen
+    assert "in a row committed no changes" in seen[0], seen[0]
     assert _dirty(repo) == "", _dirty(repo)
 
 
@@ -1221,85 +1227,94 @@ def test_a_give_up_docs_recheck_that_changes_the_qa_plan_retries_qa(
     assert all("QA FAILED" not in subject for subject in _subjects(repo))
 
 
-def test_a_blocked_docs_verdict_stops_the_run_rather_than_shipping_the_story(
+def test_a_blocked_docs_verdict_parks_for_an_operator_rather_than_shipping_the_story(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A documentation block ends the run, carrying the refusal's reason.
+    """A documentation block parks the run for a human, carrying the refusal's reason.
 
     Observed: the author was asked to document a CORS story, found that the implementation
     granted every origin when the allow-list was unset — the opposite of the fail-closed
     guarantee the story's own plan required — and refused to write the book's claim as true.
 
-    This node has been both ways. Failing the run cost eight unrelated epics behind the
+    This node has been three ways now. Failing the run cost eight unrelated epics behind the
     first; flagging and continuing cost worse, because it committed the refused story behind
     a `[DOCS BLOCKED — needs manual review]` marker and reported the run a success, so the
     queue built on a baseline the reviewer had rejected and the review it asked for never
-    happened. Stopping is the recoverable half of that trade: the run is checkpointed, so
-    the epics behind this one are deferred rather than lost, and an operator patches the
-    finding and resumes. Shipping the story is not recoverable at all.
+    happened. Parking is the recoverable half of both trades: the run is checkpointed, so
+    the epics behind this one are deferred rather than lost or wrongly shipped, and an
+    operator patches the finding and touches the gate file to try again — with no cap on how
+    many times a story can bounce back here.
 
-    `notes` has to reach the failure because it is the only place the refusal is written
+    `notes` has to reach the escalation because it is the only place the refusal is written
     down — unlike a QA give-up there is no `qa.md`, and the story file is no longer stamped.
     """
     repo = epic(count=2)
 
     class _BlockingFirst(_Sub):
         def _docs(self, child: _StubFlow) -> DocsResult:
-            if child.story == "STORY-1":
+            if child.story == "STORY-1" and self.calls.count("Docs") == 1:
                 return DocsResult(status="blocked", notes=BLOCK_REASON)
             return DocsResult(status="passed", notes="")
 
     sub = _BlockingFirst(repo).install(monkeypatch)
+    seen: list[str] = []
 
-    with pytest.raises(WorkflowFailed, match=re.escape(BLOCK_REASON)) as caught:
-        drive_flow(Coder(), env(), _Agent())
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, {"yes": True})):
+        result = drive_flow(Coder(), env(), _Agent())
 
-    assert "STORY-1" in str(caught.value), caught.value
-    # The refused story is documented once and never revisited: the flow that just refused
-    # would refuse again on the same grounds.
+    assert result.has_epic is False, result
+    assert len(seen) == 1, seen
+    assert BLOCK_REASON in seen[0], seen[0]
+    assert "STORY-1" in seen[0], seen[0]
+    # The refused story is redocumented once the operator has acted — the flow that just
+    # refused would refuse again on the same grounds, but a resume only pays off after
+    # something changed, and this one goes on to build both stories.
     documented = [c.story for c in sub.calls_to("Docs")]
-    assert documented.count("STORY-1") == 1, documented
-    # Docs precedes QA here, so the refusal costs the QA pass too — the run stops at the
-    # refusal rather than spending an agent on a story it has already decided not to ship.
-    assert sub.calls.count("Qa") == 0, sub.calls
+    assert documented.count("STORY-1") == 2, documented
+    assert sub.calls.count("Qa") == 2, sub.calls
     assert not any("DOCS BLOCKED" in s for s in _subjects(repo)), _subjects(repo)
-    # STORY-2 is deferred, not lost — nothing was built for it, and nothing claims it was.
-    assert not any("STORY-2" in s for s in _subjects(repo)), _subjects(repo)
 
 
 @pytest.mark.parametrize("mode", ["epic", "story"])
-def test_a_required_final_docs_block_stops_the_run_in_either_mode(
+def test_a_required_final_docs_block_parks_for_an_operator_in_either_mode(
     mode: str,
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A tainted story cannot publish when its required recheck blocks — in either mode.
+    """A tainted story's required recheck parks for a human when it blocks — in either mode.
 
     The parametrisation is the point. Epic mode used to contain this finding in the queue
     while story mode failed, so the same refusal shipped a commit or didn't depending on how
-    the run was launched. The two modes now agree, and this asserts they keep agreeing.
+    the run was launched. The two modes now agree, and this asserts they keep agreeing —
+    including on the fix: a resume re-enters `document`, so the recheck that just refused
+    gets the whole pipeline run past it fresh rather than being re-tried in isolation.
     """
     repo = epic()
 
     class _BlockingFinal(_Sub):
         def _docs(self, child: _StubFlow) -> DocsResult:
-            if self.calls.count("Docs") == 1:
-                return DocsResult(status="passed", notes="")
-            return DocsResult(status="blocked", notes=BLOCK_REASON)
+            if self.calls.count("Docs") == 2:
+                return DocsResult(status="blocked", notes=BLOCK_REASON)
+            return DocsResult(status="passed", notes="")
 
     sub = _BlockingFinal(repo, qa_docs_recheck_required=True).install(monkeypatch)
     flow = Coder() if mode == "epic" else Coder(mode="story", story="STORY-1", epic=EPIC)
+    seen: list[str] = []
 
-    with pytest.raises(WorkflowFailed, match=re.escape(BLOCK_REASON)):
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, {"yes": True})):
         drive_flow(flow, env(), _Agent())
 
-    assert sub.calls.count("Docs") == 2, sub.calls
-    assert "feat(acme): story STORY-1" not in _subjects(repo), _subjects(repo)
+    assert len(seen) == 1, seen
+    assert BLOCK_REASON in seen[0], seen[0]
+    # Documented four times: the initial pass and the final recheck, then the same two
+    # again once the operator's answer sent the run back to `document` from scratch.
+    assert sub.calls.count("Docs") == 4, sub.calls
+    assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
     assert not any("DOCS BLOCKED" in subject for subject in _subjects(repo)), _subjects(repo)
 
 

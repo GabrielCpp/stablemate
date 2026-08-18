@@ -55,7 +55,7 @@ on loop 2's list, not resolved silently here.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, ClassVar, NoReturn
+from typing import Any, ClassVar
 
 from workhorse.cli import console_script
 from workhorse.pyflow import (
@@ -389,34 +389,55 @@ class Coder(Workflow):
         )
         if result.status == "blocked":
             return Continue(result, self.blocked_docs, epic=epic, zero_diff=zero_diff,
-                            notes=result.notes)
+                            triage=triage, notes=result.notes)
         self._require_documented(result, "story")
         return Continue(result, self.qa, epic=epic, zero_diff=zero_diff, triage=triage)
 
-    def blocked_docs(self, epic: str = "", zero_diff: int = 0, notes: str = "") -> NoReturn:
-        """The docs phase refused the story: the run ends failed.
+    def blocked_docs(
+        self, epic: str = "", zero_diff: int = 0, triage: int = 0, notes: str = ""
+    ) -> Await:
+        """The docs phase refused the story: the run parks for a human, not ends failed.
 
-        `give_up`'s counterpart for the other verdict that ends a story unfinished, and it
-        fails for the same reason. A block is the author or the reviewer saying the book
+        `give_up`'s counterpart for the other verdict that ends a story unfinished — but a
+        block is answerable and a QA-on-`target_env="dev"` report is not, so the two no
+        longer end the same way. A block is the author or the reviewer saying the book
         cannot be made true of this code — in the run that forced this state, because the
-        implementation contradicted a fail-closed guarantee its own plan required. Flagging
-        that and taking the next story committed a `[DOCS BLOCKED — needs manual review]`
-        marker onto the branch and moved on, so an automated run reported success carrying a
-        story its own reviewer had refused.
+        implementation contradicted a fail-closed guarantee its own plan required — and the
+        `Docs` sub-flow's own resolver (`_blocked`) already had its say before returning
+        here at all, in the author's stead. What is left once that has happened is a human
+        decision, which is exactly what `Await` is for: the same "no cap on escalations"
+        every other operator gate in this file gets, not a fourth way for a state to end.
+        Committing behind a `[DOCS BLOCKED — needs manual review]` marker and taking the
+        next story is the shape this replaces — it read as progress in `git log` while the
+        story's own reviewer had refused it, and the run being checkpointed here costs an
+        operator no more than that marker would have.
 
-        No `Docs` re-entry, which is what separates this from `give_up`: the flow that just
-        refused would refuse again on the same grounds.
+        No re-entry into `Docs` directly, which is still what separates this from a plain
+        rework lap: the flow that just refused would refuse again on the same grounds. A
+        resume only pays off once the operator has changed the code, the spec or the plan,
+        so it lands back at `document` to have the sub-flow judge the fix fresh.
 
-        `notes` carries the refusal's reason into the failure, because it is the only place
-        it is written down — unlike a QA give-up, there is no `qa.md` to point an operator at.
+        `notes` carries the refusal's reason into the escalation, because it is the only
+        place it is written down — unlike a QA give-up, there is no `qa.md` to point at.
         """
         slug = self._story.story_slug
-        raise WorkflowFailed(
-            f"documentation was blocked for story {slug!r}, so the run cannot honestly "
-            f"continue: {notes or 'no reason given'}. Nothing was committed for this story.",
-            failure_class="docs-blocked",
-            artifacts={"spec_dir": str(self._story.spec_dir)},
+        return Await(
+            paths.operator_context_path(paths.launch_repo_root(self.repo_dir), "docs-operator", slug),
+            f"Documentation was blocked for story {slug!r}: {notes or 'no reason given'}.\n\n"
+            "Fix the code, the spec or the plan so the book can be made true of it, and "
+            "touch this file when the run should try again.",
+            self.docs_operator,
+            epic=epic,
+            zero_diff=zero_diff,
+            triage=triage,
         )
+
+    def docs_operator(self, epic: str = "", zero_diff: int = 0, triage: int = 0) -> Continue:
+        """The consume half of the docs gate: re-document on the operator's fix."""
+        self.logger.info(
+            "operator answered the docs gate — redocumenting %s", self._story.story_slug
+        )
+        return Continue(None, self.document, epic=epic, zero_diff=zero_diff, triage=triage)
 
     def qa(self, epic: str = "", zero_diff: int = 0, triage: int = 0) -> Continue:
         """`qa_phase` + `decide_qa_outcome`: the four-way gate the whole loop turns on.
@@ -723,13 +744,14 @@ class Coder(Workflow):
             return Continue(result, self.commit, epic=epic, zero_diff=zero_diff)
         return Continue(result, self.commit_pr)
 
-    def commit(self, epic: str = "", zero_diff: int = 0) -> Continue:
+    def commit(self, epic: str = "", zero_diff: int = 0) -> Continue | Await:
         """`commit_story` + `decide_committed` + the zero-diff guard.
 
         A commit that found nothing to commit is not an error by itself — a story can be
         satisfied by what is already there — but three in a row is a loop that is not
-        building anything, and the run stops rather than walking the whole epic producing
-        nothing. The counter resets on any commit that landed.
+        building anything, so it parks for a human at `_zero_diff_gate` rather than walking
+        the rest of the epic producing nothing. The counter resets on any commit that
+        landed, and on the operator's answer, same as the CI and merge gates below.
 
         It also resets when the stamp superseded a *previous attempt's* outcome — a
         give-up, a docs block, an interrupted run. Re-running one of those is the loop
@@ -753,12 +775,7 @@ class Coder(Workflow):
             story.story_slug, zero_diff, self.MAX_ZERO_DIFF_COMMITS,
         )
         if zero_diff >= self.MAX_ZERO_DIFF_COMMITS:
-            raise WorkflowFailed(
-                f"{zero_diff} stories in a row committed no changes — the loop is not "
-                "making progress; stopping rather than walking the rest of the epic.",
-                failure_class="zero-diff-streak",
-                artifacts={"spec_dir": str(story.spec_dir)},
-            )
+            return self._zero_diff_gate(zero_diff, epic, story.story_slug)
         return Continue(result, self.select_story, epic=epic, zero_diff=zero_diff)
 
     def commit_pr(self) -> Done:
@@ -914,6 +931,11 @@ class Coder(Workflow):
         self.logger.info("operator answered the merge gate — re-merging")
         return Continue(None, self.merge, epic=epic, zero_diff=zero_diff, merge_rework=0)
 
+    def zero_diff_operator(self, epic: str = "", zero_diff: int = 0) -> Continue:
+        """The consume half of the zero-diff gate: try the next story, streak reset."""
+        self.logger.info("operator answered the zero-diff gate — continuing")
+        return Continue(None, self.select_story, epic=epic, zero_diff=0)
+
     # ── routers and shared turns, none of them states ─────────────────────────────────
 
     def _ci_gate(
@@ -957,6 +979,28 @@ class Coder(Workflow):
             f"`{ci_epic}` will not merge into `{ci_base}` after {attempts} automated "
             "attempt(s).\n\nResolve it and touch this file when the run should try again.",
             self.merge_operator,
+            epic=epic,
+            zero_diff=zero_diff,
+        )
+
+    def _zero_diff_gate(self, zero_diff: int, epic: str, slug: str) -> Await:
+        """`decide_committed`'s stall arm: a run not making progress parks, it does not die.
+
+        The same shape as `_ci_gate`/`_merge_gate` above, for a budget that is run-global
+        rather than per-epic: `commit`'s own docstring has the incident this replaced —
+        counting a re-verification as another zero-diff commit killed a sixteen-hour run
+        three stories after it re-verified and passed exactly that kind of story. Ending the
+        run outright on the same signal would have repeated that failure with a different
+        `failure_class`; parking for a human, resumable and uncapped like every other gate
+        in this file, is what does not.
+        """
+        return Await(
+            paths.operator_context_path(paths.launch_repo_root(self.repo_dir), "zero-diff-operator", slug),
+            f"{zero_diff} stories in a row committed no changes — the loop does not look "
+            "like it is making progress.\n\nInvestigate (a broken dev/QA loop, a story "
+            "genuinely already satisfied, or the plan itself) and touch this file when the "
+            "run should try the next story again.",
+            self.zero_diff_operator,
             epic=epic,
             zero_diff=zero_diff,
         )
