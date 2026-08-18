@@ -241,7 +241,6 @@ class _Sub:
         docs_authored_nodes: list[str] | None = None,
         qa_status: str = "passed",
         qa_statuses: list[str] | None = None,
-        qa_spent: str = "",
         qa_docs_recheck_required: bool = False,
         ci_status: str = "passed",
         explode: set[str] | None = None,
@@ -254,7 +253,6 @@ class _Sub:
         self.docs_authored_nodes = docs_authored_nodes or []
         self.qa_status = qa_status
         self.qa_statuses = qa_statuses or []
-        self.qa_spent = qa_spent
         self.qa_docs_recheck_required = qa_docs_recheck_required
         self.ci_status = ci_status
         self.explode = explode or set()
@@ -320,7 +318,6 @@ class _Sub:
             qa_rework=1,
             triage_scope=child.triage_scope_count,
             operator_notes="",
-            spent=self.qa_spent,
             docs_recheck_required=self.qa_docs_recheck_required,
         )
 
@@ -1172,7 +1169,7 @@ def test_the_triage_budget_survives_a_rescope_back_to_dev(
     assert _output(run_env, prepare_story)["story_slug"] == "STORY-1"
 
 
-def test_the_give_up_marker_names_the_budget_qa_actually_spent(
+def test_a_give_up_names_the_rework_count_in_its_failure_message(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
@@ -1180,24 +1177,20 @@ def test_the_give_up_marker_names_the_budget_qa_actually_spent(
 ) -> None:
     """The failure message is the only thing an operator triaging a give-up reads first.
 
-    `exhausted` covers four unrelated budgets, and this graph used to stamp the code-rework
-    count for all of them. A story that spent every QA-plan repair and so never reached a
-    code fix was reported as `after 0 attempts`, which reads as a story the loop declined to
-    try — the opposite of what happened, and enough to send the reader looking for a routing
-    bug instead of at the plan. `QaFlowResult.spent` names its own budget and this is where
-    that name has to surface.
-
-    It surfaces in the exception rather than in a commit subject because a give-up no longer
-    commits anything: the operator reading this is as often a `/loop` tick polling the run's
-    terminal state as a human, and neither can act on a story that shipped behind a marker.
+    `give_up` is reachable only by the `target_env="dev"` report path now — every other QA
+    exhaustion escalates to the operator gate inside the QA sub-flow instead of returning
+    `not_passed` at all. What still has to surface here is the rework count `qa()` threads
+    through as `attempts`, because the operator reading this is as often a `/loop` tick
+    polling the run's terminal state as a human, and neither can act on a story that shipped
+    behind a marker.
     """
     repo = epic()
-    _Sub(repo, qa_status="exhausted", qa_spent="4 QA-plan repair").install(monkeypatch)
+    _Sub(repo, qa_status="not_passed").install(monkeypatch)
 
-    with pytest.raises(WorkflowFailed, match="4 QA-plan repair attempt") as caught:
+    with pytest.raises(WorkflowFailed, match="after 1 attempt") as caught:
         drive_flow(Coder(), env(), _Agent())
 
-    assert "after 0 attempt" not in str(caught.value), caught.value
+    assert "nothing was committed" in str(caught.value), caught.value
     assert not any("QA FAILED" in s for s in _subjects(repo)), _subjects(repo)
 
 
@@ -1211,14 +1204,13 @@ def test_a_give_up_docs_recheck_that_changes_the_qa_plan_retries_qa(
 
     The give-up path runs Docs before stamping a skipped story. If that Docs pass amends the
     story-owned QA plan, the next honest step is a fresh QA run against the new contract. Filing
-    the old exhausted result skips work that has just become runnable.
+    the old not_passed result skips work that has just become runnable.
     """
     repo = epic()
     sub = _Sub(
         repo,
         docs_authored_nodes=["docs/specs/STORY-1/qa_plan.py#compare_article_inventory"],
-        qa_statuses=["exhausted", "passed"],
-        qa_spent="QA-plan repair",
+        qa_statuses=["not_passed", "passed"],
     ).install(monkeypatch)
     run_env = env()
 
@@ -1227,73 +1219,6 @@ def test_a_give_up_docs_recheck_that_changes_the_qa_plan_retries_qa(
     assert sub.calls.count("Qa") == 2, sub.calls
     assert not (run_env.writer.run_dir / SKIP_FILE).exists()
     assert all("QA FAILED" not in subject for subject in _subjects(repo))
-
-
-def test_a_give_up_with_no_named_budget_falls_back_to_the_rework_count(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A blank `spent` is a real case, not just an old checkpoint: the empty-story arm.
-
-    It ends `exhausted` having spent nothing at all, so there is no budget to name and the
-    bare count is the honest answer. The fallback also carries a run resumed from a
-    checkpoint written before the field existed.
-    """
-    repo = epic()
-    _Sub(repo, qa_status="exhausted").install(monkeypatch)
-
-    with pytest.raises(WorkflowFailed, match="after 1 attempt"):
-        drive_flow(Coder(), env(), _Agent())
-
-
-def test_the_give_up_status_names_the_qa_assessment_that_explains_the_failure(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    write: Callable[[Path, str], Path],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A failure has to say where the diagnosis starts, and it is not `review.md`.
-
-    Everything else the give-up leaves behind points elsewhere. The story's own
-    `## Implementation Status` block carries a `- **Review**:` link written by the review
-    phase — a code-quality verdict that is silent about QA — and nothing at all links
-    `qa.md`, which is the document that names the failing assertions and the root cause.
-    Observed on a benchmark give-up whose `qa.md` diagnosed all eleven failures as one plan
-    defect while the story pointed the reader at a review complaining about test helpers.
-
-    In the exception rather than in the story's status line: the story is no longer written
-    to at all on this path, and the operator who has to act — often a `/loop` tick reading
-    the run's terminal error — never opens the story file to find out where to look.
-    """
-    repo = epic()
-    write(repo / "docs" / "specs" / "STORY-1" / "qa.md", "# QA\n\nEleven assertions failed.\n")
-    _Sub(repo, qa_status="exhausted", qa_spent="4 QA-plan repair").install(monkeypatch)
-
-    with pytest.raises(WorkflowFailed, match=r"docs/specs/STORY-1/qa\.md"):
-        drive_flow(Coder(), env(), _Agent())
-
-
-def test_a_give_up_with_no_qa_assessment_written_points_nowhere_rather_than_at_a_ghost(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A give-up can precede any assessment: the QA-plan repair budget can run out with no
-    plan ever executed, so there is nothing to point at. A failure naming a file that is not
-    there sends the reader hunting for a missing artifact instead of reading the code, which
-    is strictly worse than the honest bare message."""
-    repo = epic()
-    _Sub(repo, qa_status="exhausted").install(monkeypatch)
-
-    with pytest.raises(WorkflowFailed) as caught:
-        drive_flow(Coder(), env(), _Agent())
-
-    assert "qa.md" not in str(caught.value), caught.value
-    assert "nothing was committed" in str(caught.value), caught.value
 
 
 def test_a_blocked_docs_verdict_stops_the_run_rather_than_shipping_the_story(

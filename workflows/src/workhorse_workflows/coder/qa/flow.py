@@ -88,7 +88,6 @@ from workhorse_workflows.coder.qa.nodes.qa import (
     ensure_stack,
     lint_qa_plan,
     qa_tools_catalog,
-    record_qa_giveup,
     run_qa_plan,
     validate_qa_plan,
     verify_qa_dry_run,
@@ -245,7 +244,7 @@ def _finding_line(finding: QaFinding) -> str:
     """One structured finding as the line whoever repairs it is briefed with.
 
     Both axes are rendered, because both decide what happened to the finding: `scope` says
-    who was billed for it and `kind` says whether it refused the plan. A give-up record
+    who was billed for it and `kind` says whether it refused the plan. An escalation gate
     listing four findings with no way to tell which of them actually blocked is the artifact
     a human has to reconstruct the loop from.
     """
@@ -412,7 +411,7 @@ class Qa(Workflow):
     #: auditor samples the riskiest evidence rather than enumerating everything — which means
     #: each repair is judged against a bar that moves. A live story died of exactly that: three
     #: audits, three *different* genuine gaps, each closed, the fourth lap out of budget and
-    #: filed `give_up` on a plan whose runner had passed every time. Past this many
+    #: escalated a plan whose runner had passed every time. Past this many
     #: plan-scoped refutations the audit stops blocking: its findings still get written and
     #: filed as backlog work, and the story lands on the verdict its evidence supports.
     #: Product contradictions and findings whose repair is a test or the stack are unaffected
@@ -1175,8 +1174,10 @@ class Qa(Workflow):
     def report_dev(self, loop: QaLoop) -> Done:
         """`target_env=dev`: we do not own the code, so write the findings out and stop.
 
-        `report_qa_dev` + `mark_qa_exhausted`. The `exhausted` status is not a judgement on
-        the report — it is how the parent's `decide_qa_fail` learns the story did not pass.
+        `report_qa_dev` + `mark_qa_exhausted`. The `not_passed` default status is not a
+        judgement on the report — it is how the parent's `decide_qa_fail` learns the story
+        did not pass. This is the one legitimate terminal exit left in this flow: a dev
+        target has no code to rework, so there is no operator-answerable question to gate on.
         """
         report = self.agent(
             "prompts/report-qa-dev.md",
@@ -1198,10 +1199,6 @@ class Qa(Workflow):
                 qa_rework=loop.qa_rework,
                 triage_scope=loop.triage_scope,
                 docs_recheck_required=loop.docs_recheck_required,
-                # Not a budget that ran out — a dev target never fixes — but the parent's
-                # give-up marker is written from this either way, and "0 attempts" on a story
-                # nobody was ever going to rework is the same misreading in a different place.
-                spent=f"{loop.qa_rework} code rework (dev target: reported, not fixed)",
             )
         )
 
@@ -1485,20 +1482,23 @@ class Qa(Workflow):
 
     # ── the operator gate ─────────────────────────────────────────────────────────────
 
-    def resolve_operator(self, loop: QaLoop) -> Continue | Await | Done:
-        """Stand in for the operator on a QA block, or escalate to a human.
+    def resolve_operator(self, loop: QaLoop) -> Await:
+        """Diagnose a QA block, then park the run for a human — never decide on their behalf.
 
-        `resolve_qa` + the `await_operator_qa` that followed it unconditionally. Split for the
-        reason `dev` records: the driver's `Await` waits unconditionally, so whether to wait
-        has to be decided before it is reached. A blank decision matches neither arm and takes
-        the conservative one — wait for a person.
+        The resolver may investigate with full tool access, but it cannot answer the block
+        itself and cannot decide that the story is unrecoverable: those are calls only the
+        human who reads the escalation gets to make. A workflow does not give up, it blocks —
+        so every path out of here is the same `Await`, carrying whatever the resolver found.
+
+        `resolve_qa` + the `await_operator_qa` that followed it, folded into one turn because
+        there is no longer a decision between them to split on.
         """
-        self.logger.info("resolving the QA block", extra={"activity": True})
+        self.logger.info("diagnosing the QA block for the operator", extra={"activity": True})
         result = self.agent(
             "prompts/resolve-operator.md",
             returns=OperatorResolution,
-            # high, and unbounded: standing in for a human, with full tool access, on the
-            # highest-stakes decision in the flow.
+            # high, and unbounded: a full-tool-access investigation ahead of the highest-
+            # stakes decision in the flow — which stays the human's to make.
             power="high",
             timeout=UNBOUNDED,
             add_dirs=self._dirs(),
@@ -1510,16 +1510,6 @@ class Qa(Workflow):
                 "block_notes": loop.block_notes,
             },
         )
-        if result.decision == "answered":
-            return Continue(result, self.read_operator, loop=loop)
-        if loop.giveup_reason:
-            # The gate was the last thing between this story and a give-up, and the resolver
-            # declined to be it. Parking here instead would stop the *whole* run: the story
-            # drain is single-threaded, so one halted story halts every remaining epic — and
-            # this flow was already about to file the story as abandoned-but-visible. So take
-            # that outcome now and let the queue keep draining.
-            self.logger.info("the QA resolver escalated with nothing to answer — giving up")
-            return self._give_up(loop, loop.giveup_reason)
         # `Await` writes its `questions` over this file with `write_text`, so the body it is
         # handed has to *contain* the note the resolver just wrote there — which is what
         # `_escalation` does, on top of saying what was tried and what would unblock it.
@@ -1548,7 +1538,7 @@ class Qa(Workflow):
             )
         return Continue(answer, self.apply_resolved, loop=loop, content=answer.content)
 
-    def apply_resolved(self, loop: QaLoop, content: str) -> Continue | Done:
+    def apply_resolved(self, loop: QaLoop, content: str) -> Continue | Await:
         """Apply the operator's answer as a QA fix, and spend a rework on it.
 
         `apply_qa_resolved` + `incr_qa`. The same prompt `apply_qa_fixes` runs, at medium
@@ -1574,12 +1564,8 @@ class Qa(Workflow):
             docs_recheck_required=True,
         )
         if loop.qa_rework >= self.MAX_QA_REWORKS:
-            self.logger.info("operator loop is out of QA reworks — ending the flow exhausted")
-            # `_give_up` and not `_exhausted`: this state is the far end of the operator gate,
-            # so the one consult every give-up is owed has just happened — one turn ago, on
-            # the answer this lap was spent applying. Escalating again is the cycle
-            # `operator_consulted` exists to stop, one loop further out.
-            return self._give_up(loop, f"{loop.qa_rework} operator-guided rework")
+            self.logger.info("operator-guided rework loop is out of QA reworks — escalating")
+            return self._exhausted(loop, f"{loop.qa_rework} operator-guided rework")
         return Continue(result, self.build_context, loop=loop)
 
     # ── routers and shared turns, none of them states ─────────────────────────────────
@@ -1726,20 +1712,12 @@ class Qa(Workflow):
             "; ".join(loop.run_failures),
             extra={"activity": True},
         )
-        # The reason travels with the gate for the same purpose it does out of `_exhausted`:
-        # in `auto` mode a resolver that escalates ends the story, and the story's marker has
-        # to say what ended it. A stall is not a spent budget, so it says so in those words.
-        return self._gate(
-            result,
-            loop.update(
-                operator_consulted=True,
-                giveup_reason=(
-                    f"a {lap} that changed nothing after switching repair class"
-                    if loop.class_switched
-                    else f"a {lap} that changed nothing"
-                ),
-            ),
+        self.logger.info(
+            "stall reason: a %s that changed nothing%s",
+            lap,
+            " after switching repair class" if loop.class_switched else "",
         )
+        return self._gate(result, loop)
 
     def _switched(
         self, result: object, loop: QaLoop, spent: str, other: str
@@ -1755,8 +1733,7 @@ class Qa(Workflow):
         One switch per story, and only toward a class that has never run. That is the whole
         termination argument: `QaLoop.class_switched` is monotone and written only here, both
         exits below charge a counter with its own ceiling, and the second stall — whichever
-        class raises it — falls straight through to the gate above. The operator's one shot is
-        untouched, because `operator_consulted` is not set here.
+        class raises it — falls straight through to the gate above.
 
         `_fixable` and not `apply_fixes`: a `dev` run reports findings rather than editing
         code it does not own, and that is not a rule this shortcut gets to skip.
@@ -1839,13 +1816,7 @@ class Qa(Workflow):
                 "; ".join(loop.blocked_problems),
                 extra={"activity": True},
             )
-            return self._gate(
-                result,
-                loop.update(
-                    operator_consulted=True,
-                    giveup_reason="a QA-setup repair that changed nothing",
-                ),
-            )
+            return self._gate(result, loop)
         return Continue(result, self.setup_fix, loop=loop)
 
     def _guard_qa(self, result: object, loop: QaLoop) -> Continue | Await | Done:
@@ -1935,70 +1906,23 @@ class Qa(Workflow):
                 extra={"activity": True},
             )
 
-    def _exhausted(self, loop: QaLoop, spent: str = "") -> Continue | Await | Done:
-        """Out of budget — ask the operator once, and only then give up.
+    def _exhausted(self, loop: QaLoop, spent: str = "") -> Continue | Await:
+        """Out of budget — hand the block to the operator gate. There is no other exit.
 
         Every deciding site in this flow funnels through here, which is what makes it the
-        right place for the ask. A give-up is the flow saying "I have spent everything I am
-        allowed to spend", and that is exactly when an operator's one sentence — the port is
-        squatted, the driver is fine, this assertion is testing the wrong thing — is worth
-        the most. Until this, it was also the one moment the flow stopped asking: eleven
-        sites filed the story `exhausted` and only two of them had ever reached the gate.
+        right place for the ask. Running out of a repair budget is not a verdict on the
+        story — it is a question the flow cannot answer by itself, and the gate is the only
+        way to ask it. There is deliberately no cap on how many times a story can come back
+        through here: a run-side backstop on asking is what turns "ask again" into "give up"
+        (see `coder.shared.escalation`), and budgets keep counting down across a resume
+        rather than resetting, so a second exhaustion still escalates rather than looping.
 
-        The reason is parked on the loop rather than reported (see `QaLoop.giveup_reason`),
-        because if the gate does not resolve the block the give-up still has to name the
-        budget that actually ran out — not "the operator gate".
-
-        One shot per story: `apply_resolved` has its own `_exhausted`, so without
-        `operator_consulted` a guided lap that exhausts again would gate again, forever.
+        `spent` is logged, not stored — `_escalation`'s `where` already reports every
+        counter, so the phrase only needs to reach the log a human tailing the run reads.
         """
-        if not loop.operator_consulted:
-            return self._gate(loop, loop.update(operator_consulted=True, giveup_reason=spent))
-        return self._give_up(loop, spent or loop.giveup_reason)
-
-    def _give_up(self, loop: QaLoop, spent: str = "") -> Done:
-        """`mark_qa_exhausted`: the budget is spent, and the parent decides what that costs.
-
-        `spent` names *which* of the four budgets ran out, because the parent stamps it onto
-        the story and into the marker commit. Without it the give-up always reported the
-        code-rework count, so a story that spent every QA-plan repair and never got as far as
-        a code fix was filed as "0 attempts" — which reads as an untried story rather than an
-        exhausted one, and is the version a human triaging the marker would act on.
-
-        `record_qa_giveup` is the other half of that same fix. Naming the budget tells the
-        human *how* the flow stopped; the gate diagnostics on `loop` are the only record of
-        *why*, and they die here otherwise — `QaFlowResult` carries the code-rework verdict
-        and the plan gates never write to it. The node persists them beside the story, at the
-        path `Coder.give_up` names in the failure the run ends on.
-
-        Past the operator gate that is a *pair* of facts, and the first one is the one a
-        human triaging the marker needs: which budget ran out originally. The lap the
-        operator's answer bought is what happened next, not what the story ran out of, so it
-        is reported as the suffix it is rather than as the whole reason.
-        """
-        spent = spent or loop.giveup_reason
-        if loop.giveup_reason and spent != loop.giveup_reason:
-            spent = f"{loop.giveup_reason} plus an operator-guided lap"
-        self.call(
-            record_qa_giveup,
-            self.ctx.spec_dir,
-            self.ctx.story_slug,
-            spent,
-            plan_validation_notes=loop.plan_validation_notes,
-            assessment_notes=loop.assessment_notes,
-            audit_notes=loop.audit_notes,
-            context_notes=loop.context_notes,
-            evidence_notes=loop.qa.notes,
-        )
-        return self._ends(
-            QaFlowResult(
-                qa=loop.qa,
-                qa_rework=loop.qa_rework,
-                triage_scope=loop.triage_scope,
-                spent=spent,
-                docs_recheck_required=loop.docs_recheck_required,
-            )
-        )
+        if spent:
+            self.logger.info("QA budget exhausted (%s) — escalating", spent)
+        return self._gate(loop, loop)
 
     def _apply_fixes(
         self, *, qa_notes: str, operator_feedback: str | None, power: str

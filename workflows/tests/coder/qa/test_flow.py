@@ -18,7 +18,6 @@ convinced of rather than one it was told about.
 from __future__ import annotations
 
 import json
-import logging
 import subprocess
 from collections import Counter
 from collections.abc import Callable, Iterable
@@ -27,11 +26,11 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-import yaml
 from workhorse import inbox
 from workhorse import stack as workhorse_stack
 from workhorse.artifacts import ArtifactWriter
 from workhorse.cli.inbox import INBOX_FILE
+from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
@@ -45,10 +44,7 @@ from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes import evidence as evidence_nodes
 from workhorse_workflows.coder.qa.nodes import qa as qa_nodes
 from workhorse_workflows.coder.qa.nodes import regression as regression_nodes
-from workhorse_workflows.coder.qa.nodes.qa import (
-    QA_SCRATCH_DIRNAME,
-    record_qa_giveup,
-)
+from workhorse_workflows.coder.qa.nodes.qa import QA_SCRATCH_DIRNAME
 from workhorse_workflows.coder.shared import okf as okf_nodes
 from workhorse_workflows.coder.shared import qa_support
 from workhorse_workflows.coder.shared.dev import resolve_impl_context
@@ -691,6 +687,27 @@ def _answers(seen: list[str], *, scope: str = "story") -> Callable[..., None]:
     return answered
 
 
+class _Parked(Exception):
+    """Raised by the patched `wait_for_answer` to stop a run right at its `Await`.
+
+    A budget exhaustion always escalates now, and never terminates on its own — so a test
+    that only wants to prove the escalation was reached, without hand-scripting an answer
+    and the cascade that follows it, stops the run here instead. `otel.wait` re-raises
+    rather than swallowing, and nothing in `drive()` catches around the `wait_for_answer`
+    call, so this propagates cleanly out of `drive_flow` to `pytest.raises`.
+    """
+
+
+def _parked_at(seen: list[str]) -> Callable[..., None]:
+    """Capture the escalation body the `Await` wrote, then stop the run there."""
+
+    def stop(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text(encoding="utf-8"))
+        raise _Parked
+
+    return stop
+
+
 def _output(run_env: RunEnv, node: Any) -> dict[str, Any]:
     """A node's recorded output — the artifact, not the return value the flow saw."""
     path = run_env.writer.run_dir / node.__name__ / "output.json"
@@ -734,18 +751,19 @@ def test_a_blank_story_ends_exhausted_without_running_anything(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`decide_qa_story`'s empty arm: `exhausted`, not a failure, and no turns spent.
+    """`decide_qa_story`'s empty arm: `not_passed`, not a failure, and no turns spent.
 
-    The parent graph's `decide_qa_outcome` has an arm for `exhausted`; `docs` raises on the
-    same condition, and the divergence is deliberate. The seeded rescope budget is handed
-    straight back, because this flow never got far enough to spend it.
+    There is nothing here to escalate — no story means no block for an operator to look
+    at — so this is the one terminal `Done` left in the flow, not a route to the gate. The
+    seeded rescope budget is handed straight back, because this flow never got far enough
+    to spend it.
     """
     okf = ostler()
     agent = _Agent(docs)
 
     result = drive_flow(Qa(story="", triage_scope_count=1), env(), agent)
 
-    assert result.status == "exhausted", result
+    assert result.status == "not_passed", result
     assert result.triage_scope == 1
     assert agent.calls == []
     assert (okf.contexts, okf.runs) == (0, 0)
@@ -842,18 +860,24 @@ def test_the_context_repair_loop_is_bounded_at_three(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A repairer that claims success on a packet that stays unmappable costs three passes."""
+    """A repairer that claims success on a packet that stays unmappable costs three passes,
+    then escalates — there is no cap on re-escalation, only on the repair loop itself."""
     okf = ostler(context_invalid=9)
-    # `escalate=True` throughout the budget tests: every spent budget now gets one operator
-    # shot before the give-up, and a resolver that declines to answer is what leaves the
-    # boundary these tests are about — the budget's own — the only thing that moved.
+    # `escalate=True` throughout the budget tests: the resolver investigates and declines to
+    # answer, which is what leaves the boundary these tests are about — the budget's own —
+    # the only thing that moved before the run parks at the operator gate.
     agent = _Agent(docs, repair="repaired", escalate=True)
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
     assert agent.counts() == {"repair-qa-context": 3, "resolve-operator": 1}, agent.counts()
     assert okf.runs == 0, "the plan was never reached, so nothing should have run"
+    assert len(seen) == 1 and "context repair" in seen[0], seen
 
 
 def test_an_unrepairable_packet_goes_to_the_auto_operator(
@@ -865,8 +889,10 @@ def test_an_unrepairable_packet_goes_to_the_auto_operator(
     """`blocked` skips the rework and takes the gate; the answer is applied as a QA fix."""
     ostler(context_invalid=1)
     agent = _Agent(docs, repair="blocked")
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
@@ -905,9 +931,11 @@ def test_an_epic_scoped_answer_hands_the_story_back_to_replan(
 ) -> None:
     """No amount of QA fixing reaches a wrong premise, so the parent re-derives the epic."""
     ostler(context_invalid=1)
-    agent = _Agent(docs, repair="blocked", scope="epic")
+    agent = _Agent(docs, repair="blocked")
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, scope="epic")):
+        result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "replan", result
     assert "staging bucket" in result.operator_notes
@@ -923,13 +951,23 @@ def test_a_plan_that_never_parses_spends_only_the_schema_budget(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """Three schema repairs buy four plan turns and never reach the stack."""
+    """Three schema repairs buy four plan turns and never reach the stack, then escalate.
+
+    The schema-repair count itself is not one of the counters threaded into the escalation
+    body (only `qa_rework`/`plan_rework`/`context_rework`/`setup_rework` are), so there is
+    no live assertion for the old "3 QA-plan schema repair" phrase — this test now only
+    proves where the run actually stopped.
+    """
     okf = ostler(plan_invalid=9)
     agent = _Agent(docs, escalate=True)
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
     # One draft and three repairs: a plan that does not parse is repaired, not re-authored.
     assert agent.counts() == {
         "plan-qa": 1,
@@ -937,7 +975,6 @@ def test_a_plan_that_never_parses_spends_only_the_schema_budget(
         "resolve-operator": 1,
     }, agent.counts()
     assert okf.runs == 0, "an invalid plan must never be executed"
-    assert result.spent == "3 QA-plan schema repair", result.spent
 
 
 def test_validation_and_judgement_spend_separate_plan_budgets(
@@ -1020,14 +1057,19 @@ def test_a_repair_that_never_dry_ran_is_repaired_again_and_costs_no_suite_run(
     """
     okf = ostler(fail_runs=99, scenarios=(_STUCK,))
     agent = _Agent(docs, repair_plans=99, escalate=True, dry_run="missing")
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
     assert okf.runs == 1, "a refused repair must not buy another suite run"
     assert agent.counts()["repair-qa-plan"] > 1, agent.counts()
     # The refusal is spent out of the plan-repair budget, not a new one beside it.
     assert agent.counts()["repair-qa-plan"] == Qa.MAX_PLAN_REWORKS, agent.counts()
+    assert len(seen) == 1 and "plan repair" in seen[0], seen
 
 
 def test_a_repair_whose_dry_run_is_still_red_is_not_a_finished_repair(
@@ -1040,10 +1082,14 @@ def test_a_repair_whose_dry_run_is_still_red_is_not_a_finished_repair(
     and still not a repair. The next brief says so rather than the next suite run."""
     okf = ostler(fail_runs=99, scenarios=(_STUCK,))
     agent = _Agent(docs, repair_plans=99, escalate=True, dry_run="failed")
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
     assert okf.runs == 1, okf.runs
     brief = agent.args_for("repair-qa-plan")[1]
     assert "still fails" in brief["plan_validation_notes"], brief["plan_validation_notes"]
@@ -1066,11 +1112,18 @@ def test_the_stacked_plan_budgets_cannot_multiply(
     """
     ostler(plan_invalid_passes=(2, 4, 6), fail_runs=99)
     agent = _Agent(docs, repair_plans=99, escalate=True)
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    # `plan_rework_total` is not one of the counters threaded into the escalation body, so
+    # there is no live equivalent for the old "8 total QA-plan lap" phrase — what still
+    # proves the total-lap ceiling (rather than either stage ceiling) is what stopped this
+    # run is the lap count itself, below.
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
-    assert result.spent == f"{Qa.MAX_TOTAL_PLAN_LAPS} total QA-plan lap", result.spent
     # One author turn per charged lap, plus the draft that opened the lane — the draft is
     # deliberately free, because charging it would price the lane at one lap less than the
     # ceiling names.
@@ -1145,11 +1198,17 @@ def test_a_plan_lane_past_its_budget_still_repairs_a_plan_that_will_not_import(
     """
     ostler(plan_invalid=99)
     agent = _Agent(docs, escalate=True)
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY, plan_lane_budget_s=0), env(), agent)
+    # `plan_validation_rework` is not threaded into the escalation body either, so the old
+    # "3 QA-plan schema repair" phrase has no live equivalent — the repair count below is
+    # what still proves this is the schema ceiling, not the lap ceiling, that stopped it.
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
+        drive_flow(Qa(story=STORY, plan_lane_budget_s=0), env(), agent)
 
-    assert result.status == "exhausted", result
-    assert result.spent == f"{Qa.MAX_PLAN_VALIDATION_REWORKS} QA-plan schema repair"
     assert agent.counts()["repair-qa-plan"] == Qa.MAX_PLAN_VALIDATION_REWORKS, agent.counts()
 
 
@@ -1191,11 +1250,16 @@ def test_a_spent_plan_budget_after_the_run_still_repairs_the_failing_plan(
     """
     ostler(fail_runs=99)
     agent = _Agent(docs, repair_plans=99, escalate=True)
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY, plan_lane_budget_s=0), env(), agent)
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
+        drive_flow(Qa(story=STORY, plan_lane_budget_s=0), env(), agent)
 
-    assert result.status == "exhausted", result
-    assert result.spent == f"{Qa.MAX_PLAN_REWORKS} QA-plan repair", result.spent
+    assert agent.counts()["repair-qa-plan"] == Qa.MAX_PLAN_REWORKS, agent.counts()
+    assert len(seen) == 1 and "plan repair" in seen[0], seen
 
 
 def test_only_the_first_draft_is_authored_and_every_lap_after_it_repairs(
@@ -1224,88 +1288,32 @@ def test_only_the_first_draft_is_authored_and_every_lap_after_it_repairs(
     assert agent.calls[0] == "plan-qa", agent.calls
 
 
-def test_a_plan_loop_give_up_leaves_the_gates_finding_on_disk(
+def test_a_plan_loop_that_never_converges_escalates_with_the_refusal_that_spent_it(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`record_qa_giveup`: the give-up writes the `qa.md` its own status points at.
+    """The gate's diagnosis reaches the escalation, not just an aggregate attempt count.
 
-    `flag_qa_failure` appends `<spec_dir>/qa.md` to the `needs manual review` status only if
-    the file is there, and on this path nothing had ever written one. The human was sent to
-    review a story whose whole account of itself was only an aggregate attempt count.
-
-    The findings existed the entire time: the gate that refused writes its diagnosis onto the
-    loop on the very transition that reaches the guard, and `_exhausted` used to drop it —
-    `QaFlowResult` carries the code-rework verdict, which on this path is empty. A live run
-    lost a correct and specific diagnosis that way — three scenarios asserting a raw substring
-    against a validation body the API double-JSON-encodes — and the only copy of it was a
-    run-dir artifact the next story's QA flow overwrote.
-
-    The give-up is driven the way it now happens in practice: a runner the post-run assessment
-    never accepts, sending the plan back until the shared ceiling ends it.
+    The give-up marker and its recorder are gone — every exhaustion now escalates to the
+    operator gate instead of writing that marker, and the gate's `where` names the plan-repair
+    count that was spent reaching it. This is driven the way it now happens in practice: a
+    runner the post-run assessment never accepts, sending the plan back until the shared
+    ceiling escalates it.
     """
     ostler(fail_runs=99)
-    agent = _Agent(docs, repair_plans=99)
+    agent = _Agent(docs, repair_plans=99, escalate=True)
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
-    giveup = docs / SPEC_REL / "qa.md"
-    assert giveup.is_file(), "the give-up must leave the file its status points at"
-    text = giveup.read_text(encoding="utf-8")
-    assert f"{Qa.MAX_PLAN_REWORKS} QA-plan repair" in text, text
-    # And the refusal that spent the budget beside it, which is the thing a human triaging
-    # the marker actually reads.
-    assert "## Run assessment" in text, text
-
-
-def test_the_give_up_document_is_typed_like_any_other_spec_doc(tmp_path: Path) -> None:
-    """A bare give-up doc plants an `okf-missing-type` error the *next* story trips over.
-
-    It lands in `docs/specs/<slug>/`, where every document is an OKF Concept and a missing
-    non-empty `type` is a doctor *error*. The docs gate runs `ostler doctor` over the tree,
-    not over the story — so a give-up here left a permanent error that the following story's
-    documentation phase read as its own blocker and refused to converge on, with nothing
-    linking the two. A real run lost a story to it days after the give-up.
-    """
-    record = record_qa_giveup(
-        logging.getLogger("test"),
-        spec_dir=str(tmp_path),
-        story_slug=STORY,
-        spent="4 QA-plan repair",
-        assessment_notes="no run ever passed its scenarios",
-    )
-
-    assert record.written is True
-    text = (tmp_path / "qa.md").read_text(encoding="utf-8")
-    front = yaml.safe_load(text.split("---")[1])
-    assert front["type"] == "spec.qa", text
-    assert "no run ever passed its scenarios" in text, text
-
-
-def test_a_give_up_never_overwrites_a_real_qa_assessment(tmp_path: Path) -> None:
-    """A run that produced an assessment has the better document — the node keeps it.
-
-    `_exhausted` is reached from four budgets, and two of them (`code rework`, the
-    operator-guided loop) run *after* QA has executed and written its own account. Summarizing
-    the loop's gate notes over the top of that would replace evidence with a digest.
-    """
-    written = "# QA — STORY-1\n\nEleven scenarios ran; two failed on the empty state.\n"
-    (tmp_path / "qa.md").write_text(written, encoding="utf-8")
-
-    record = record_qa_giveup(
-        logging.getLogger("test"),
-        spec_dir=str(tmp_path),
-        story_slug=STORY,
-        spent="3 code rework",
-        assessment_notes="two scenarios still fail",
-    )
-
-    assert record.written is False
-    assert record.path == str(tmp_path / "qa.md")
-    assert (tmp_path / "qa.md").read_text(encoding="utf-8") == written
+    assert not (docs / SPEC_REL / "qa.md").exists(), "there is no give-up marker to write"
+    assert len(seen) == 1 and "plan repair" in seen[0], seen
 
 
 # --------------------------------------------------------------------------- the stack
@@ -1445,18 +1453,15 @@ def test_a_stack_nobody_can_repair_gives_up_instead_of_spinning(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The YAML cycle with no terminal — the ledger's C3 finding — now has one.
+    """The YAML cycle with no terminal — the ledger's C3 finding — never gets a give-up either.
 
     `guard_setup` escalates a spent setup budget to the operator gate, and the gate's answer
     is applied as a QA fix that rejoins at `build_context` — which walks back to the stack,
-    which is still down, which finds the budget still spent, which escalates again. Every
-    counter on that cycle was either already at its cap or (`qa_rework`) read by nothing on
-    it, so in auto mode — where the resolver always answers — nothing broke the cycle and the
-    driver's transition budget ended the run, hundreds of agent turns later.
-
-    `apply_resolved` now reads the budget it was already spending, so the third lap ends the
-    flow `exhausted` and the parent decides what that costs. The transition budget is pinned
-    low here so a regression is a failed assertion rather than a very slow test.
+    which is still down, which finds the budget still spent, which escalates again. A
+    workflow does not give up, so this cycle has no counter left to end it on its own — it
+    escalates every lap, forever, and only the driver's transition budget (pinned low here)
+    stops the *test* rather than the story. Answering every gate keeps the cycle turning so
+    the escalation count below is what proves the repeat, not a single park.
     """
     ostler()
     write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
@@ -1465,17 +1470,19 @@ def test_a_stack_nobody_can_repair_gives_up_instead_of_spinning(
     )
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
     agent = _Agent(docs, setup="unfixable")
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _answers(seen)),
+        pytest.raises(WorkflowFailed, match="transition budget exhausted"),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
-    # Two repairs before the setup budget is spent, and the gate is what it hands off to.
+    # Two repairs before the setup budget is spent, and the gate is what it hands off to —
+    # every lap after that re-escalates without spending another repair.
     assert agent.counts()["setup-fix"] == Qa.MAX_SETUP_REWORKS, agent.counts()
-    assert result.spent == f"{Qa.MAX_SETUP_REWORKS} QA-setup repair", result.spent
-    # One resolver turn per lap of the gate, and the laps are what is now bounded — by the
-    # repeat detector, since a guided lap that leaves the identical blocked bundle has
-    # proved the answer does not reach what is broken.
-    assert agent.counts()["resolve-operator"] == 3, agent.counts()
+    assert agent.counts()["resolve-operator"] > 1, agent.counts()
+    assert all("setup repair" in body for body in seen), seen
 
 
 def test_a_setup_fix_that_changes_nothing_is_not_asked_a_second_time(
@@ -1495,20 +1502,28 @@ def test_a_setup_fix_that_changes_nothing_is_not_asked_a_second_time(
     timeout to be told the same thing twice.
 
     The sameness is the signal. One fix is still attempted — the fixer has to run before
-    there is any evidence about it — and the second is spent on a person instead.
+    there is any evidence about it — and the second is spent on a person instead. Answering
+    each of those questions still leaves the identical bundle behind, so the cycle escalates
+    again rather than ending — a workflow does not give up — and only the pinned-low
+    transition budget stops this test rather than the story.
     """
     ostler(blocked_problems=["target 'web' requires the Playwright Python package"])
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
     agent = _Agent(docs, setup="fixed")
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _answers(seen)),
+        pytest.raises(WorkflowFailed, match="transition budget exhausted"),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
     counts = agent.counts()
     assert counts["setup-fix"] == 1, counts
     assert counts["setup-fix"] < Qa.MAX_SETUP_REWORKS, counts
-    # And the block reached a person on every lap instead.
-    assert counts["resolve-operator"] == Qa.MAX_QA_REWORKS, counts
+    # And the block reached a person on every lap instead of another repair attempt.
+    assert counts["resolve-operator"] > 1, counts
+    assert len(seen) > 1, "the identical bundle must escalate more than once"
 
 
 def test_a_packet_that_stays_unmappable_bounds_the_operator_gate(
@@ -1523,19 +1538,29 @@ def test_a_packet_that_stays_unmappable_bounds_the_operator_gate(
     `build_context` guards on `context_rework`, and `repair_context` only spends one when it
     claims to have *repaired* something. A repairer that answers `blocked` every time
     therefore laps context → repair → gate → resolve → read → apply → context with no counter
-    moving — three agent turns a lap, one of them the unbounded-timeout resolver. This is the
-    cycle a live coder run hit; it is the reason the guard in `apply_resolved` exists.
+    moving — three agent turns a lap, one of them the unbounded-timeout resolver. `qa_rework`
+    is spent each lap in `apply_resolved`, but once it is spent past `MAX_QA_REWORKS` every
+    later lap re-escalates instead of stopping — a workflow blocks rather than gives up, so
+    only the driver's transition budget ends this run.
     """
     ostler(context_invalid=99)
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
     agent = _Agent(docs, repair="blocked")
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _answers(seen)),
+        pytest.raises(WorkflowFailed, match="transition budget exhausted"),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
-    assert result.qa_rework == Qa.MAX_QA_REWORKS, result
-    assert agent.counts()["resolve-operator"] == Qa.MAX_QA_REWORKS, agent.counts()
-    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
+    counts = agent.counts()
+    assert counts["resolve-operator"] >= Qa.MAX_QA_REWORKS, counts
+    assert counts["apply-qa-fixes"] >= Qa.MAX_QA_REWORKS, counts
+    # `context_rework` never moves — the packet never gets repaired — so the context loop's
+    # own repair attempts plateau, unlike the unbounded gate/apply pair above.
+    assert counts["repair-qa-context"] < counts["resolve-operator"], counts
+    assert len(seen) > 1, "the identical block must escalate more than once"
 
 
 def test_a_fixer_that_reports_blocked_reaches_the_operator(
@@ -1543,40 +1568,48 @@ def test_a_fixer_that_reports_blocked_reaches_the_operator(
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`blocked` is the fixer saying nothing it does in this repo can help — so stop asking it.
+    """`blocked` is the fixer saying nothing it does in this repo can help — so ask a person.
 
     The prompt has always asked for this status on a credential it cannot hold, a product
     decision in neither the story nor the plan, or work in another repo. The node discarded
     it and re-entered `build_context` regardless, so the answer to "I am blocked on X" was
-    the same question again, at high power, until the budget ran out — and the story was then
-    filed as `exhausted`, which reads as "we tried and failed" rather than as blocked on X.
+    the same question again, at high power, until the budget ran out.
 
     Here the first `blocked` reaches the operator gate instead, so the block is put to
-    somebody who can answer it — and the flow spends half the full QA laps getting there,
-    because a blocked fix costs a gate lap as well as a fix lap. Without this, the same
-    script consults nobody and re-plans and re-runs the entire QA suite once per fix lap
-    before filing the story exhausted.
+    somebody who can answer it — one gate lap for every fix lap, because a blocked fix costs
+    a gate lap as well as a fix lap. No cap on the fix budget still ends the story now: an
+    answer that never actually unblocks the fixer just earns the next escalation, forever —
+    bounded here only by the harness's transition budget, not by `Qa`.
     """
     ostler(fail_runs=99)
-    laps = Qa.MAX_QA_REWORKS // 2
+    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
     seen: list[str] = []
     agent = _Agent(docs, assessment_class="product", qa_fix="blocked", escalate=True)
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
-        result = drive_flow(Qa(story=STORY), env(), agent)
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _answers(seen)),
+        pytest.raises(WorkflowFailed, match="transition budget exhausted"),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
 
     counts = agent.counts()
-    # The block is asked of the operator on the first fix, not swallowed.
-    assert counts["resolve-operator"] == laps, counts
-    # Each gate is the composed escalation body, numbered, carrying the resolver's note.
-    assert [f"**Escalation #{n} " in body for n, body in enumerate(seen, 1)] == [True] * laps, seen
-    assert all(ESCALATION_NOTE.strip() in body for body in seen), seen
-    # And each lap that would have re-planned and re-run the whole suite is one the gate
-    # took instead: half the full QA laps rather than one per fix.
+    laps = Qa.MAX_QA_REWORKS // 2
+    # The block is asked of the operator on the first fix, not swallowed — and one gate lap
+    # for every fix lap up to the budget: the suite is re-run and re-planned `laps` times,
+    # never again after that, because the run failure stops changing and the loop stalls
+    # straight into the gate instead of paying for another suite run.
     assert counts["qa-story"] == laps, counts
     assert counts["plan-qa"] + counts["repair-qa-plan"] == laps, counts
-    assert result.status == "exhausted", result
+    # After that plateau the stall keeps escalating on every fix lap — unboundedly, since an
+    # answer that never actually unblocks the fixer just earns the next escalation.
+    assert counts["resolve-operator"] > laps, counts
+    # Each gate is the composed escalation body, numbered, carrying the resolver's note.
+    assert [f"**Escalation #{n} " in body for n, body in enumerate(seen, 1)] == [
+        True
+    ] * len(seen), seen
+    assert all(ESCALATION_NOTE.strip() in body for body in seen), seen
 
 
 def test_an_escalating_resolver_hands_the_block_to_a_person(
@@ -1627,14 +1660,16 @@ def test_the_evidence_gate_invalidates_a_pass_it_cannot_verify(
     """
     ostler(vet_problems=["criterion AC-1 cites an artifact this run did not produce"])
     agent = _Agent(docs, escalate=True)
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
     assert agent.counts()["audit-qa"] == 0, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
     # The draft, plus one plan turn per judgement rework the gate is entitled to spend.
     assert agent.planned() == Qa.MAX_PLAN_REWORKS + 1, agent.counts()
+    assert len(seen) == 1 and "plan repair" in seen[0], seen
 
 
 def test_an_audit_that_refutes_the_pass_turns_it_into_a_product_failure(
@@ -1646,14 +1681,17 @@ def test_an_audit_that_refutes_the_pass_turns_it_into_a_product_failure(
     """`mark-qa-audit-failed.py`: a product contradiction is a fix, not a replan."""
     ostler()
     agent = _Agent(docs, audit=("refuted", "product-contradiction"), escalate=True)
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    # Every subsequent pass is refuted the same way, so the fix loop runs out its budget.
-    assert result.status == "exhausted", result
+    # Every subsequent pass is refuted the same way, so the fix loop runs out its budget
+    # and escalates instead of stopping.
     assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
     # One triage per lap, plus the one on the lap the ceiling refuses to grant.
     assert agent.counts()["triage-qa"] == Qa.MAX_QA_REWORKS + 1, agent.counts()
+    assert len(seen) == 1 and "code rework" in seen[0], seen
 
 
 # --------------------------------------------------------------------------- the fix loop
@@ -1707,10 +1745,11 @@ def test_a_fix_that_leaves_the_run_failing_identically_is_not_repeated(
     """
     ostler(fail_runs=99, scenarios=(_STUCK,))
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"))
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
     # The operator gate runs the same fixer prompt, so count the laps of the *fix loop* —
     # the ones carrying no operator answer — rather than every invocation of it.
     unaided = [a for a in agent.args_for("apply-qa-fixes") if "operator_feedback" not in a]
@@ -1719,7 +1758,7 @@ def test_a_fix_that_leaves_the_run_failing_identically_is_not_repeated(
     # whole difference between this ending and the one the docstring above describes.
     assert agent.counts()["repair-qa-plan"] == 1, agent.counts()
     # And the failure reached a person instead of the rest of the budget.
-    assert agent.counts()["resolve-operator"] >= 1, agent.counts()
+    assert len(seen) == 1, seen
 
 
 def test_a_stalled_plan_repair_tries_the_other_hypothesis_before_the_operator(
@@ -1739,10 +1778,11 @@ def test_a_stalled_plan_repair_tries_the_other_hypothesis_before_the_operator(
     """
     ostler(fail_runs=99, scenarios=(_STUCK,))
     agent = _Agent(docs, repair_plans=99, escalate=True)
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
     unaided = [a for a in agent.args_for("apply-qa-fixes") if "operator_feedback" not in a]
     assert len(unaided) >= 1, agent.counts()
     # The fixer is told which hypothesis was spent, so it does not re-derive it.
@@ -1763,15 +1803,16 @@ def test_the_hypothesis_switch_happens_at_most_once_per_story(
     """
     ostler(fail_runs=99, scenarios=(_STUCK,))
     agent = _Agent(docs, repair_plans=99, escalate=True)
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    # The "after switching repair class" marker is logged only (see `Qa._stalled`), not
+    # threaded into the escalation body — there is no live equivalent to assert on here.
+    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
     # One shot at the operator, not one per stall.
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
-    # And the marker says the story ran out *after* the second hypothesis, so a human
-    # triaging it does not spend the lap that was already spent.
-    assert "after switching repair class" in result.spent, result.spent
+    assert len(seen) == 1, seen
 
 
 def test_a_dev_target_switching_to_the_product_reports_instead_of_fixing(
@@ -1790,7 +1831,7 @@ def test_a_dev_target_switching_to_the_product_reports_instead_of_fixing(
 
     result = drive_flow(Qa(story=STORY, target_env="dev"), env(), agent)
 
-    assert result.status == "exhausted", result
+    assert result.status == "not_passed", result
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
     assert agent.counts()["report-qa-dev"] == 1, agent.counts()
     # The switch is what ended the story: `report_dev` is terminal, so the stall never
@@ -1820,11 +1861,13 @@ def test_a_fix_that_gets_the_run_further_still_earns_its_next_lap(
         ),
     )
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
     assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
+    assert len(seen) == 1, seen
 
 
 def test_the_fix_loop_grants_one_bonus_pass_only_for_an_evidence_failure(
@@ -1841,11 +1884,13 @@ def test_the_fix_loop_grants_one_bonus_pass_only_for_an_evidence_failure(
     """
     ostler(fail_runs=99)
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "evidence"), escalate=True)
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
     assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS + 1, agent.counts()
+    assert len(seen) == 1, seen
 
 
 def test_a_code_failure_earns_no_bonus_pass(
@@ -1857,11 +1902,13 @@ def test_a_code_failure_earns_no_bonus_pass(
     """The same run, triaged `code`: the fix loop runs out its laps and stops."""
     ostler(fail_runs=99)
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
     assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
+    assert len(seen) == 1, seen
 
 
 # ------------------------------------------------------------------ the give-up is a handoff
@@ -1872,28 +1919,34 @@ def test_a_spent_budget_asks_the_operator_before_abandoning_the_story(
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A give-up is where an operator's one sentence is worth the most, and was where nobody asked.
 
-    Eleven sites in this flow file a story `exhausted`, and until this only two of them had
+    Eleven sites in this flow used to file a story `exhausted` outright, and only two of them
     ever reached the gate. Every one of those give-ups is a story a person could plausibly
     unblock — the port is squatted, the driver is fine, that assertion tests the wrong thing —
-    and the flow's answer was to stamp it and move on.
+    and the flow's old answer was to stamp it and move on. Now every one reaches the gate, and
+    a spent code-fix budget is no exception: the first answer is spent as a fix, and if that
+    still does not clear the run, the story escalates again rather than ending — a workflow
+    blocks, it does not give up.
     """
     ostler(fail_runs=99)
+    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"))
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _answers(seen)),
+        pytest.raises(WorkflowFailed, match="transition budget exhausted"),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
-    assert agent.counts()["resolve-operator"] == 1, agent.counts()
+    assert agent.counts()["resolve-operator"] >= 1, agent.counts()
     # The answer is spent as a fix, which is the whole point of asking for it.
     guided = [a for a in agent.args_for("apply-qa-fixes") if "operator_feedback" in a]
-    assert len(guided) == 1, agent.args_for("apply-qa-fixes")
+    assert len(guided) >= 1, agent.args_for("apply-qa-fixes")
     assert "staging bucket" in guided[0]["operator_feedback"]
-    # And the marker still names the budget that ran out, not the gate that followed it: a
-    # human triaging it needs to know the story burned its code reworks.
-    assert result.spent == f"{Qa.MAX_QA_REWORKS} code rework plus an operator-guided lap"
 
 
 def test_an_escalating_resolver_gives_up_now_rather_than_halting_the_drain(
@@ -1901,48 +1954,61 @@ def test_an_escalating_resolver_gives_up_now_rather_than_halting_the_drain(
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """In `auto` mode the gate gets one shot, and declining it is not a reason to stop the fleet.
+    """A spent code-fix budget escalates and keeps escalating — a workflow blocks, not gives up.
 
-    The story drain is single-threaded, so a QA gate that parks holds up every remaining epic
-    — which is the stall this whole change is removing, not a fix for it. The flow was already
-    one transition from filing the story as abandoned-but-visible, so it files it.
+    There used to be a one-shot flag here: auto mode got exactly one ask, and declining it
+    filed the story `exhausted` outright rather than parking the single-threaded story drain.
+    That flag is gone — every give-up site now reaches the same `Await`, repeatedly if the
+    operator's answer never actually clears the run, bounded only by the harness's transition
+    budget rather than by `Qa` itself.
     """
     ostler(fail_runs=99)
+    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
     seen: list[str] = []
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
-        result = drive_flow(Qa(story=STORY), env(), agent)
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _answers(seen)),
+        pytest.raises(WorkflowFailed, match="transition budget exhausted"),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
-    assert agent.counts()["resolve-operator"] == 1, agent.counts()
-    assert seen == [], "auto mode must never park the run on a spent budget"
-    # No guided lap was bought, so the reported budget is the one that actually ran out.
-    assert result.spent == f"{Qa.MAX_QA_REWORKS} code rework", result.spent
+    assert agent.counts()["resolve-operator"] > 1, agent.counts()
+    assert len(seen) > 1, "the spent budget must escalate more than once"
 
 
-def test_the_operator_is_asked_once_per_story_and_not_once_per_budget(
+def test_the_operator_is_asked_again_after_a_guided_lap_that_does_not_clear_the_run(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The guided lap can exhaust a second time, and that one is a give-up, not a second ask.
+    """The guided lap can exhaust a second time, and that is another ask, not a give-up.
 
-    Without the one-shot flag the pair cycles: `_exhausted` gates, the gate's answer is
-    applied, the flow rejoins the loop that was already out of budget, and exhausts into the
-    same gate again. That is the livelock `apply_resolved` already documents, one loop out.
+    `_exhausted` gates, the gate's answer is applied, the flow rejoins the loop that was
+    already out of budget, and exhausts into the same gate again — the livelock
+    `apply_resolved` documents, and now the intended behavior rather than one this test used
+    to guard against with a one-shot flag.
     """
     ostler(context_invalid=9)
+    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
     agent = _Agent(docs, repair="repaired")
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
-    assert agent.counts()["resolve-operator"] == 1, agent.counts()
-    # The same budget ends it both times, so the phrase says it once.
-    assert result.spent == "3 OKF-context repair", result.spent
+    # The context stays invalid for nine checks, so `MAX_CONTEXT_REWORKS` runs out well
+    # before it clears — the story is escalated, a guided lap is applied, the budget is
+    # already spent so it escalates again immediately, and this repeats until the invalid
+    # count finally runs out and the run passes. Every one of those is a real ask, not a
+    # give-up.
+    assert result.status == "passed", result
+    assert agent.counts()["resolve-operator"] > 1, agent.counts()
+    assert len(seen) == agent.counts()["resolve-operator"], seen
 
 
 def test_a_human_operator_mode_still_waits_on_a_spent_budget(
@@ -1951,7 +2017,7 @@ def test_a_human_operator_mode_still_waits_on_a_spent_budget(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """Somebody who asked to be asked is still asked — the never-park rule is `auto`'s alone."""
+    """Somebody who asked to be asked is still asked directly — `human` mode skips the resolver."""
     ostler(context_invalid=9)
     seen: list[str] = []
     agent = _Agent(docs, repair="repaired")
@@ -1959,9 +2025,12 @@ def test_a_human_operator_mode_still_waits_on_a_spent_budget(
     with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
         result = drive_flow(Qa(story=STORY, operator_mode="human"), env(), agent)
 
-    assert result.status == "exhausted", result
+    # `human` mode parks the run on the gate directly, with no resolver investigation first —
+    # and the context eventually clears the same way it does in `auto` mode, so the run ends
+    # up passed rather than filed exhausted.
+    assert result.status == "passed", result
     assert agent.counts()["resolve-operator"] == 0, agent.counts()
-    assert len(seen) == 1, seen
+    assert len(seen) >= 1, seen
 
 
 def test_each_exhaustion_names_the_budget_it_spent(
@@ -1970,49 +2039,68 @@ def test_each_exhaustion_names_the_budget_it_spent(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`exhausted` is one status over several unrelated budgets, and they must not blur.
+    """The escalation body names the budget that ran out, and the budgets must not blur.
 
-    The parent stamps this phrase into the give-up marker commit and the story frontmatter,
-    and for a while it stamped `qa_rework` no matter which budget ended the flow. A story
-    that burned its QA-plan repairs and so never reached a code fix was filed as
-    `[QA FAILED after 0 attempts]` — which reads as a story the loop never tried, and sends
-    whoever triages the marker looking in the wrong place. Each arm now says its own name.
+    There is no terminal `exhausted` status anymore — every arm below now parks on the
+    operator gate instead. What survives from the old give-up marker is the `where` clause
+    `_escalation` composes: a story that burned its QA-plan repairs and so never reached a
+    code fix must not read as `0 code rework`, which looks like a loop that never tried.
+    Each budget keeps its own counter in that clause.
     """
     ostler(context_invalid=9)
-    result = drive_flow(Qa(story=STORY), env(), _Agent(docs, repair="repaired", escalate=True))
-    assert result.status == "exhausted", result
-    assert result.spent == "3 OKF-context repair", result.spent
+    seen: list[str] = []
+    with (
+        pytest.raises(_Parked),
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+    ):
+        drive_flow(Qa(story=STORY), env(), _Agent(docs, repair="repaired", escalate=True))
+    assert "3 context repair" in seen[0], seen
 
-    # The mechanical plan gate names itself, and spends only its own budget — a schema
-    # give-up and a coverage give-up ask a human for very different things.
+    # The mechanical plan gate spends its own budget (`plan_validation_rework`), not the
+    # coverage one threaded into the escalation body — `_escalation`'s `where` only reports
+    # `qa_rework`/`plan_rework`/`context_rework`/`setup_rework`, so a schema give-up and a
+    # coverage give-up both read as `0 plan repair` there. What still tells them apart is
+    # that this one never got as far as a run.
     okf = ostler(plan_invalid=9)
-    result = drive_flow(Qa(story=STORY), env(), _Agent(docs, escalate=True))
-    assert result.status == "exhausted", result
-    assert result.spent == "3 QA-plan schema repair", result.spent
+    seen = []
+    with (
+        pytest.raises(_Parked),
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+    ):
+        drive_flow(Qa(story=STORY), env(), _Agent(docs, escalate=True))
+    assert "0 plan repair" in seen[0], seen
     assert okf.runs == 0
 
     # The post-run budget, reached only through a plan that validated and the runner
     # executed — the first run plus one per judgement repair, each an assessment that did not
     # reach the objective.
     okf = ostler(fail_runs=99)
-    result = drive_flow(Qa(story=STORY), env(), _Agent(docs, escalate=True))
-    assert result.status == "exhausted", result
-    assert result.spent == f"{Qa.MAX_PLAN_REWORKS} QA-plan repair", result.spent
+    seen = []
+    with (
+        pytest.raises(_Parked),
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+    ):
+        drive_flow(Qa(story=STORY), env(), _Agent(docs, escalate=True))
+    assert f"{Qa.MAX_PLAN_REWORKS} plan repair" in seen[0], seen
     assert okf.runs == Qa.MAX_PLAN_REWORKS + 1
 
     ostler(fail_runs=99)
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
-    result = drive_flow(Qa(story=STORY), env(), agent)
-    assert result.status == "exhausted", result
-    assert result.spent == f"{Qa.MAX_QA_REWORKS} code rework", result.spent
+    seen = []
+    with (
+        pytest.raises(_Parked),
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
+    assert f"{Qa.MAX_QA_REWORKS} code rework" in seen[0], seen
 
-    # A dev target reworks nothing by design, so its count is a truthful zero — which is
-    # exactly the number that used to be indistinguishable from "the loop never ran".
+    # A dev target reworks nothing and has no code to rework, so there is no operator-
+    # answerable question to gate on — it is still the one legitimate terminal exit in this
+    # flow, reported via `not_passed` rather than an escalation.
     ostler(fail_runs=99)
     agent = _Agent(docs, assessment_class="product", escalate=True)
     result = drive_flow(Qa(story=STORY, target_env="dev"), env(), agent)
-    assert result.status == "exhausted", result
-    assert "dev target" in result.spent, result.spent
+    assert result.status == "not_passed", result
 
 
 def test_triage_can_hand_the_scope_back_to_the_author(
@@ -2044,11 +2132,19 @@ def test_a_spent_rescope_budget_makes_triage_fix_in_place(
     agent = _Agent(
         docs, assessment_class="product", triage=("rescope", "code"), escalate=True
     )
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY, triage_scope_count=2), env(), agent)
+    # `triage_scope` isn't threaded into the escalation body's `where` clause, so it isn't
+    # observable once the story parks rather than ending — what stays checkable is that the
+    # triager's `rescope` verdict was ignored: the story goes on to spend a full code-rework
+    # budget instead of ending early with `status="rescope"`.
+    with (
+        pytest.raises(_Parked),
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+    ):
+        drive_flow(Qa(story=STORY, triage_scope_count=2), env(), agent)
 
-    assert result.status == "exhausted", result
-    assert result.triage_scope == 2, "the parent's budget is handed back unspent"
+    assert agent.counts()["triage-qa"] == Qa.MAX_QA_REWORKS + 1, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
 
 
@@ -2096,12 +2192,17 @@ def test_an_audit_refuting_on_a_product_test_gap_sends_the_fixer_not_the_planner
         escalate=True,
     )
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    seen: list[str] = []
 
-    # The auditor never relents in this fake, so the flow still ends exhausted — but on the
+    # The auditor never relents in this fake, so the flow still escalates — but on the
     # budget that names the work, and having actually attempted it.
-    assert result.status == "exhausted", result
-    assert result.spent == f"{Qa.MAX_QA_REWORKS} code rework", result.spent
+    with (
+        pytest.raises(_Parked),
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
+
+    assert f"{Qa.MAX_QA_REWORKS} code rework" in seen[0], seen
     assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
     assert agent.counts()["repair-qa-plan"] == 0, agent.counts()
     brief = agent.args_for("apply-qa-fixes")[0]["qa_notes"]
@@ -2128,10 +2229,14 @@ def test_an_extend_plan_naming_a_product_test_gap_sends_the_fixer(
         escalate=True,
     )
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    seen: list[str] = []
+    with (
+        pytest.raises(_Parked),
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
-    assert result.spent == f"{Qa.MAX_QA_REWORKS} code rework", result.spent
+    assert f"{Qa.MAX_QA_REWORKS} code rework" in seen[0], seen
     assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
     assert agent.counts()["repair-qa-plan"] == 0, agent.counts()
 
@@ -2229,7 +2334,6 @@ def test_an_audit_refuting_on_plan_scope_forever_stops_blocking(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
-    assert result.spent == "", result.spent
     # The ceiling is on *blocking*, not on running: the audit still ran the lap it stopped
     # blocking on, and its findings still reached the filer.
     assert agent.counts()["audit-qa"] == Qa.MAX_BLOCKING_AUDITS + 1, agent.counts()
@@ -2256,7 +2360,7 @@ def test_a_dev_target_reports_a_product_test_finding_rather_than_fixing_it(
 
     result = drive_flow(Qa(story=STORY, target_env="dev"), env(), agent)
 
-    assert result.status == "exhausted", result
+    assert result.status == "not_passed", result
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
     assert agent.counts()["report-qa-dev"] == 1, agent.counts()
 
@@ -2276,7 +2380,7 @@ def test_a_dev_target_reports_findings_instead_of_fixing_them(
 
     result = drive_flow(Qa(story=STORY, target_env="dev"), env(), agent)
 
-    assert result.status == "exhausted", result
+    assert result.status == "not_passed", result
     assert agent.counts()["report-qa-dev"] == 1, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
 
@@ -2377,14 +2481,18 @@ def test_a_journey_suite_that_stays_red_falls_into_the_qa_fix_loop(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`mark-regression-unresolved.py`: three fix attempts, then it is an ordinary failure."""
+    """`mark-regression-unresolved.py`: three fix attempts, then it joins the ordinary QA-fix loop."""
     ostler()
     monkeypatch.setattr(regression_nodes, "_run", _Suite(fail_runs=99))
     agent = _Agent(docs)
+    seen: list[str] = []
 
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    with (
+        pytest.raises(_Parked),
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert result.status == "exhausted", result
     assert agent.counts()["fix-regression"] == 3, agent.counts()
     assert agent.counts()["apply-qa-fixes"] >= 1, agent.counts()
 

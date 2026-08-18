@@ -450,12 +450,12 @@ class Coder(Workflow):
             self.logger.info("QA rescoped %s — back to dev", self._story.story_slug)
             return Continue(result, self.dev, epic=epic, zero_diff=zero_diff,
                             triage=result.triage_scope)
-        if result.status == "exhausted":
-            # `result.spent` names which budget actually ran out. `qa_rework` stays as the
-            # fallback for a result that carries no name: the empty-story arm, which really
-            # did spend nothing, and a checkpoint written before the field existed.
+        if result.status == "not_passed":
+            # The only mode that still lands here is `target_env="dev"`: every other
+            # exhaustion now escalates to the operator gate inside the QA sub-flow itself
+            # and never returns with this status at all.
             return Continue(result, self.give_up, epic=epic, zero_diff=zero_diff,
-                            attempts=result.spent or result.qa_rework)
+                            attempts=result.qa_rework)
         # `passed`, and the YAML's `default:` arm, which was also the drain.
         return Continue(
             result,
@@ -492,29 +492,28 @@ class Coder(Workflow):
     def give_up(
         self, epic: str = "", zero_diff: int = 0, attempts: int | str = 0
     ) -> Continue:
-        """`decide_qa_fail` → `failed_docs`: QA is out of attempts, so the run ends failed.
+        """`decide_qa_fail` → `failed_docs`: the dev-target report ends here; the run stops.
 
-        Every mode fails here, and that is deliberate. A give-up used to commit the story
-        behind a `[QA FAILED — needs manual review]` marker and take the next one, which is
-        the worst available outcome for an *automated* runner: it reads as progress in `git
-        log`, the next story builds on a baseline QA rejected, and the review it asks for
-        never happens because nothing stopped to demand it. The run is checkpointed, so
-        stopping costs nothing an operator cannot resume — patch the plan or the workflow and
-        re-enter at this node.
+        Real QA exhaustion no longer reaches this method: every budget the QA sub-flow can
+        run out of now escalates to the operator gate and parks the run there instead of
+        returning a terminal result. The only status that still lands here is
+        `target_env="dev"`'s `report_dev` — that mode does not own the code, so there is no
+        operator-answerable question to gate on, and reporting the findings *is* the terminal
+        action. Failing the run (rather than committing behind a `[QA FAILED — needs manual
+        review]` marker and taking the next story) is still the right call for that report:
+        the marker-and-continue shape used to read as progress in `git log` while the next
+        story built on a baseline QA rejected, and the review it asked for never happened
+        because nothing stopped to demand it. The run is checkpointed, so stopping costs
+        nothing an operator cannot resume — patch the plan or the workflow and re-enter at
+        this node.
 
         Documentation still runs first (the `failed_docs` handoff): whatever *was* built is
         described before the run dies, and the re-entry below exists because documenting can
-        legitimately repair the QA artifacts that caused the give-up.
+        legitimately change what QA reported.
 
-        The message carries `attempts` — `QaFlowResult.spent`'s phrase, naming which budget
-        ran out — and the spec dir, because the operator reading it is as often a `/loop`
-        tick as a human, and "needs manual review" is not something a poller can act on.
-        `record_qa_giveup` has already written the failure class and the artifact paths to
-        `<spec_dir>/qa.md`, uncommitted, which is where that operator should start.
-
-        `attempts` is a count only for a result that predates `QaFlowResult.spent`; normally
-        it is that field's phrase ("4 QA-plan repair"), which is why it is stringified rather
-        than counted here. Both forms read correctly in the failure the run ends on.
+        `attempts` names the rework count in the failure message, because the operator
+        reading it is as often a `/loop` tick as a human, and "needs manual review" is not
+        something a poller can act on.
         """
         result = self.handoff(
             Docs,
@@ -533,21 +532,11 @@ class Coder(Workflow):
                 extra={"activity": True},
             )
             return Continue(result, self.qa, epic=epic, zero_diff=zero_diff)
-        # Named only if it is actually there. A give-up can precede any assessment — the
-        # QA-plan repair budget can run out with no plan ever executed — and pointing an
-        # operator at a file that was never written sends them hunting for a missing
-        # artifact instead of reading the code.
-        assessment = Path(self._story.spec_dir) / "qa.md"
-        where = f" the failure class and the artifact paths are in {assessment};" \
-            if assessment.is_file() else ""
-        artifacts = {"spec_dir": str(self._story.spec_dir)}
-        if assessment.is_file():
-            artifacts["qa"] = str(assessment)
         raise WorkflowFailed(
             f"QA never passed for story {self._story.story_slug!r} after {attempts} "
-            f"attempt(s);{where} nothing was committed for this story.",
+            f"attempt(s); nothing was committed for this story.",
             failure_class="qa-give-up",
-            artifacts=artifacts,
+            artifacts={"spec_dir": str(self._story.spec_dir)},
         )
 
     # ── the backlog drain, nested inside the story ────────────────────────────────────

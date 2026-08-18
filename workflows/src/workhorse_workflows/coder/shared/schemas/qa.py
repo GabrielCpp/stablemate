@@ -118,19 +118,6 @@ class QaCleared(CoderResult):
     cleared: bool = False
 
 
-class QaGiveupRecord(CoderResult):
-    """`record_qa_giveup` — the give-up left a `qa.md` behind, or found one already there.
-
-    `written` is `False` both when a real QA assessment already occupies the path (nothing
-    to add: the runner's own account is better than a summary of gate notes) and when there
-    was no spec dir to write into. Nothing branches on it; it is there so the run record
-    distinguishes the give-up that produced an explanation from the one that inherited one.
-    """
-
-    written: bool = False
-    path: str = ""
-
-
 class StackStatus(CoderResult):
     """`ensure-stack.py` — the durable QA stack is up, adopted, absent, or broken.
 
@@ -572,27 +559,6 @@ class QaLoop(CoderResult):
     #: as before.
     class_switched: bool = False
 
-    #: The budget line a give-up is about to report — `"4 QA-plan repair"` — parked here
-    #: while the operator gate gets its one shot at the story first.
-    #:
-    #: Every deciding site funnels through `_exhausted`, and a give-up there is the flow
-    #: saying "I have spent everything I am allowed to spend on this". That is exactly the
-    #: moment an operator's one sentence — the port is squatted, the driver is fine — is
-    #: worth the most, and until now it was the moment the flow stopped asking. So the
-    #: reason is parked rather than reported, the gate runs, and the give-up happens after.
-    #:
-    #: It is also the signal `resolve_operator` reads: a resolver that escalates when this
-    #: is set means *give up now*, not *park the run for a human*. In `operator_mode="auto"`
-    #: the story drain is single-threaded, so a parked gate stalls every remaining epic —
-    #: one resolver shot, then the queue keeps moving.
-    giveup_reason: str = ""
-    #: Whether this story has already had its one operator shot.
-    #:
-    #: Without it the gate is re-entrant: `apply_resolved` has its own `_exhausted`, so a
-    #: guided lap that exhausts again would gate again, and the pair would cycle
-    #: context → repair → gate → resolve → apply forever.
-    operator_consulted: bool = False
-
     #: How many times this story has been handed to the operator gate, counting the one it
     #: is being handed to now. `dev` and `review` already keep this as `plan_blocks` /
     #: `review_blocks`; QA had no equivalent because nothing branched on it, and nothing
@@ -773,32 +739,25 @@ class QaLoop(CoderResult):
 class QaFlowResult(CoderResult):
     """What the QA flow hands back — the YAML's five `qa_phase` output keys, as one value.
 
-    `status` is the `qa_status` the four `emit-kv.py` terminals wrote (`passed`, `exhausted`,
-    `replan`, `rescope`), and `exhausted` is the default for the same reason the YAML's
-    `qa_phase` output declared it: a flow that produced nothing has not passed.
+    `status` is the `qa_status` the four `emit-kv.py` terminals wrote (`passed`, `not_passed`,
+    `replan`, `rescope`). `not_passed` is the default for the same reason the YAML's
+    `qa_phase` output declared it: a flow that produced nothing has not passed. Every budget
+    the flow can exhaust now routes to the operator gate instead — `Qa` never returns
+    `not_passed` on its own; only `target_env="dev"`'s `report_dev` does, because that mode
+    does not own the code and reporting the findings *is* the terminal action.
 
     `triage_scope` crosses the flow boundary in both directions — the parent seeds it and
     reads the bumped value back — which is the one piece of state the isolated flow does not
     own.
-
-    `spent` exists because `qa_rework` alone cannot describe why the flow gave up. Four
-    separate budgets end it `exhausted` — context repairs, plan repairs, code reworks, and the
-    operator loop — and the parent stamped the story with the code-rework count whichever one
-    ran out. A story that burned its QA-plan repairs and never reached a code fix was
-    committed as `[QA FAILED after 0 attempts — needs manual review]`, which reads as "the
-    loop never tried" and is the opposite of what happened.
     """
 
-    status: str = "exhausted"
+    status: str = "not_passed"
     qa: QaResult = QaResult()
     qa_rework: int = 0
     triage_scope: int = 0
     operator_notes: str = ""
     #: Whether the parent must document again before committing. Missing old results recheck.
     docs_recheck_required: bool = True
-    #: Which budget ran out and how much of it was spent, as the phrase that goes in the
-    #: give-up marker ("4 QA-plan repair"). Empty unless the flow ended `exhausted`.
-    spent: str = ""
 
 
 __all__ = [

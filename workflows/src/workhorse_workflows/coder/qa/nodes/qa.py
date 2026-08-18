@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from ostler import Ostler, registry
+from ostler import Ostler
 from workhorse import stack
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.credentials import scoped_env
@@ -39,7 +39,6 @@ from workhorse_workflows.coder.shared.qa_support import (
 from workhorse_workflows.coder.shared.schemas.qa import (
     DryRunGate,
     QaCleared,
-    QaGiveupRecord,
     QaPlanValidation,
     QaRunResult,
     QaToolCatalog,
@@ -88,83 +87,6 @@ def clear_qa_evidence(logger: logging.Logger, spec_dir: str = "") -> QaCleared:
         evidence.unlink()
         logger.info("removed stale evidence file %s", evidence)
     return QaCleared(cleared=True)
-
-
-@blueprint.node
-def record_qa_giveup(
-    logger: logging.Logger,
-    spec_dir: str = "",
-    story_slug: str = "",
-    spent: str = "",
-    plan_validation_notes: str = "",
-    assessment_notes: str = "",
-    audit_notes: str = "",
-    context_notes: str = "",
-    evidence_notes: str = "",
-) -> QaGiveupRecord:
-    """Write `<spec_dir>/qa.md` when the flow gives up before any QA run produced one.
-
-    A give-up ends the run, and `Coder.give_up`'s failure names this file when it is there.
-    It is not always there — the QA-plan repair budget can run out with no plan ever
-    executed — and on that path the operator is handed a stop with nothing to read. The flow
-    is not empty-handed at that moment, though: the gate that refused the
-    plan handed its findings to `QaLoop`, and they are still on the loop when `_exhausted`
-    builds the result. They are simply dropped there, because `QaFlowResult` carries the
-    *code*-rework verdict and the plan gates never touch it.
-
-    A live run made the cost concrete. `group-membership` exhausted its QA-plan repairs; the
-    refusal was specific and correct — three scenarios asserted a raw substring against a
-    validation error body the API double-JSON-encodes, so they could never match — and the
-    only copy of it was a run-dir artifact that the next story's QA flow overwrote within the
-    hour. The retry starts from the same blank story and walks into the same wall.
-
-    Deliberately never overwrites: a real QA run's assessment is the better document, and a
-    give-up that happens *after* one has run has nothing to add to it.
-    """
-    if not spec_dir:
-        logger.warning("no spec_dir given — the give-up leaves no explanation behind")
-        return QaGiveupRecord()
-    path = Path(spec_dir) / "qa.md"
-    if path.exists():
-        logger.info("%s already exists — leaving the QA run's own assessment in place", path)
-        return QaGiveupRecord(path=str(path))
-
-    # The schema verdict leads: on the budget-exhausted path, where no plan ever ran, it is
-    # usually the only diagnosis there is.
-    sections = [
-        f"## {heading}\n\n{notes.strip()}\n"
-        for heading, notes in (
-            ("Plan validation — `ostler qa validate`", plan_validation_notes),
-            ("Run assessment", assessment_notes),
-            ("Evidence audit", audit_notes),
-            ("Obligation packet", context_notes),
-            ("Last QA verdict", evidence_notes),
-        )
-        if notes.strip()
-    ]
-    body = "\n".join(sections) if sections else (
-        "No gate left a diagnostic. The flow ended without reaching one — check the run's\n"
-        "`events.jsonl` for where it stopped.\n"
-    )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Stamped with the same `type:` a real QA assessment carries. A doc under `docs/specs/`
-    # with no non-empty `type` is an `okf-missing-type` *error* in `ostler doctor`, and this
-    # file lands in exactly that directory. Leaving it bare made the give-up plant a
-    # permanent doctor error, which the next story's documentation gate then read as its own
-    # blocker and refused to converge on — one story's QA give-up blocking an unrelated
-    # story's docs phase, days later, with nothing connecting the two.
-    front = f"---\ntype: {registry.spec_type_for(path.name)}\n---\n\n"
-    path.write_text(
-        front
-        + f"# QA give-up — {story_slug or 'story'}\n\n"
-        f"QA never reached a verdict on this story: {spent or 'the retry budget'} was spent "
-        "and no\nrun produced an assessment. There is no evidence directory, because nothing "
-        "ran. What\nfollows is what the gates said before the budget ended, which is the whole "
-        "of what the\nrun knew when it stopped.\n\n" + body,
-        encoding="utf-8",
-    )
-    logger.info("recorded the give-up diagnostics at %s", path)
-    return QaGiveupRecord(written=True, path=str(path))
 
 
 def _absolutize(manifest: dict[str, Any], root: Path) -> dict[str, Any]:
