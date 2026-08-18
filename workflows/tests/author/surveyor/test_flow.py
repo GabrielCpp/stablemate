@@ -19,9 +19,11 @@ What the port could get wrong, and what is therefore under test here:
 * the three operator gates, which are the flow's (and the whole port's) first `Await`
   sites. The YAML sent `resolve_plan` and `resolve_partition` into `await_*`
   *unconditionally* and let `await-operator.py` decide whether to wait by reading a
-  `STATUS:` line; the driver's `Await` waits unconditionally, so the port branches on the
-  reply instead. Both arms of all three gates are driven below — an autonomous resolution
-  must NOT block, and an escalation must.
+  `STATUS:` line the resolver could write itself. That let a resolver answer on the
+  operator's behalf; this port's `resolve-operator.md` is diagnosis-only, so all three
+  gates always park with `Await` regardless of what the resolver reports. Every test
+  below that reaches a gate patches `wait_for_answer` to stand in for the human — without
+  it, the test would hang against the driver's real poll.
 * resume, which is why the checkpoint lands before the agent turn: a run killed
   mid-assessment re-runs that one unit and nothing before it.
 """
@@ -177,9 +179,10 @@ class _Agent:
     from, and every handler leaves behind the artifact the next deterministic node reads.
     The knobs are the flow's branches: `blocked` returns a stage's blocked reply once,
     `corrupt` writes a record with unparseable front-matter, `split_units` takes the
-    granularity escape hatch, `unfixable` refuses the repair, `escalate` makes the
-    operator stand-in hand the block to a human, and `explode` raises instead of
-    assessing — a run killed mid-turn.
+    granularity escape hatch, `unfixable` refuses the repair, and `explode` raises
+    instead of assessing — a run killed mid-turn. `resolve-operator.md` is
+    diagnosis-only, so its handler below never branches the flow — only the human's
+    answer (a patched `wait_for_answer` in the test itself) does that.
     """
 
     def __init__(
@@ -192,7 +195,6 @@ class _Agent:
         split_units: set[str] | None = None,
         empty_rules_first: bool = False,
         unfixable: bool = False,
-        escalate: bool = False,
         orphan_first: bool = False,
         block_repeats: int = 1,
     ) -> None:
@@ -203,7 +205,6 @@ class _Agent:
         self.split_units = set(split_units or ())
         self.empty_rules_first = empty_rules_first
         self.unfixable = unfixable
-        self.escalate = escalate
         self.orphan_first = orphan_first
         self.block_repeats = block_repeats
         self.calls: list[str] = []
@@ -268,11 +269,14 @@ class _Agent:
         return {"status": "complete", "notes": "one mechanical cluster"}
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        if self.escalate:
-            return {"decision": "escalated", "notes": "needs a product call"}
-        if data["block_stage"] == "survey-coverage":
-            _accept_blocked(self.repo)
-        return {"decision": "answered", "notes": f"resolved {data['block_stage']}"}
+        """The diagnostic investigator's report. It never resolves the block itself —
+        that would be deciding on the operator's behalf — so it only writes a diagnosis;
+        whatever the test wants to happen next belongs in a patched `wait_for_answer`."""
+        return {
+            "decision": "escalated",
+            "notes": f"needs a decision on {data['block_stage']}",
+            "tried": ["read the block notes"],
+        }
 
 
 def _env(tmp: Path, *, run_dir: Path | None = None) -> RunEnv:
@@ -408,19 +412,26 @@ def test_an_invalid_record_is_repaired_once_and_the_unit_lands_assessed(
     assert agent.args_for("fix-record")[0]["record_errors"], agent.args_for("fix-record")
 
 
-def test_an_unfixable_record_blocks_its_unit_and_the_coverage_gate_resolves_it(
+def test_an_unfixable_record_blocks_its_unit_and_the_operator_accepts_it(
     surveyed: Path, tmp_path: Path
 ) -> None:
     """The give-up path, end to end, which is the one that must not wedge the survey.
 
     Two repairs fail, so the unit is marked `blocked` with the validator's errors as its
     reason and the loop moves on. `verify_records` then re-surfaces it — a blocked unit
-    is an OPEN gap, never a silent drop — and the autonomous operator closes it by
-    recording an accepted disposition, exactly as its prompt specifies. The survey ends
-    with a partition over what was actually assessed.
+    is an OPEN gap, never a silent drop — and the flow parks for the operator. The
+    patched `wait_for_answer` below stands in for the human: it records an accepted
+    disposition, exactly as the resolver's prompt tells a human operator to do, and
+    resuming into `pick` re-verifies coverage against it. The survey ends with a
+    partition over what was actually assessed.
     """
     agent = _Agent(surveyed, corrupt={BUTTON}, unfixable=True)
-    result = _drive(_env(tmp_path), agent)
+
+    def answered(path: Path, **kwargs: Any) -> None:
+        _accept_blocked(surveyed)
+
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
+        result = _drive(_env(tmp_path), agent)
 
     assert result.emit_ok is True, result
     assert result.bullet_count == 1, result.emit_note
@@ -503,19 +514,26 @@ def test_a_unit_too_big_to_assess_is_split_into_its_children(
 # ------------------------------------------------------------------ the three gates
 
 
-def test_a_blocked_plan_is_resolved_by_the_operator_stand_in_without_waiting(
+def test_a_blocked_plan_waits_on_the_operator_then_resumes_the_planner(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """The gate the YAML got wrong, driven on its autonomous arm.
+    """The gate the YAML got wrong, and how this port fixes it.
 
-    `resolve_plan` ran into `await_plan` unconditionally there; whether it *waited* was
-    decided inside `await-operator.py`, by reading a `STATUS:` line the resolver had
-    written. `Await` in the driver always waits, so an answered resolution has to be a
-    branch in the flow — and this test is what proves that branch does not block: no
-    patched poll, so a wait here would hang the suite.
+    `resolve_plan` ran into `await_plan` unconditionally there too; whether it *waited*
+    was decided inside `await-operator.py`, by reading a `STATUS:` line the resolver
+    itself could write — a resolver could answer on the operator's behalf. Here
+    `resolve-operator.md` is diagnosis-only and `Await` in the driver always waits, so
+    the block always parks; the patched `wait_for_answer` below is what lets the test
+    proceed past it. Re-entering `plan` on resume is the re-verification: `plan_rework`
+    reset to 0, so the planner gets one more unblocked attempt.
     """
     agent = _Agent(surveyed, blocked={"plan-units"})
-    result = _drive(_env(tmp_path), agent)
+
+    def answered(path: Path, **kwargs: Any) -> None:
+        pass
+
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
+        result = _drive(_env(tmp_path), agent)
 
     assert result.emit_ok is True, result
     assert agent.counts()["plan-units"] == 2, agent.counts()
@@ -528,13 +546,14 @@ def test_a_blocked_plan_is_resolved_by_the_operator_stand_in_without_waiting(
 def test_plan_resolver_cycles_are_cumulative_across_local_budget_resets(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """Two autonomous answers exhaust the outer budget even though plan rework resets."""
+    """Two resolver diagnoses exhaust the outer budget even though plan rework resets;
+    a third block still parks, but with no resolver turn — the budget decides, not the
+    resolver's reply."""
     seen: list[str] = []
-    agent = _Agent(surveyed, blocked={"plan-units"}, block_repeats=99)
+    agent = _Agent(surveyed, blocked={"plan-units"}, block_repeats=3)
 
     def answered(path: Path, **kwargs: Any) -> None:
         seen.append(path.read_text())
-        agent.block_repeats = agent.counts()["plan-units"]
 
     with patch.object(pyflow_driver, "wait_for_answer", answered):
         result = _drive(_env(tmp_path), agent)
@@ -542,19 +561,21 @@ def test_plan_resolver_cycles_are_cumulative_across_local_budget_resets(
     assert result.emit_ok is True, result
     assert agent.counts()["resolve-operator"] == 2, agent.counts()
     assert agent.counts()["plan-units"] == 4, agent.counts()
-    assert len(seen) == 1 and "is the design system in scope?" in seen[0], seen
+    assert len(seen) == 3, seen
+    assert all("is the design system in scope?" in s for s in seen), seen
 
 
 def test_partition_resolver_cycles_are_cumulative_across_local_budget_resets(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """Partition rework resets after answers without resetting autonomous resolutions."""
+    """Two resolver diagnoses exhaust the outer budget even though partition rework
+    resets; a third block still parks, but with no resolver turn — the budget decides,
+    not the resolver's reply."""
     seen: list[str] = []
-    agent = _Agent(surveyed, blocked={"partition-findings"}, block_repeats=99)
+    agent = _Agent(surveyed, blocked={"partition-findings"}, block_repeats=3)
 
     def answered(path: Path, **kwargs: Any) -> None:
         seen.append(path.read_text())
-        agent.block_repeats = agent.counts()["partition-findings"]
 
     with patch.object(pyflow_driver, "wait_for_answer", answered):
         result = _drive(_env(tmp_path), agent)
@@ -562,24 +583,25 @@ def test_partition_resolver_cycles_are_cumulative_across_local_budget_resets(
     assert result.emit_ok is True, result
     assert agent.counts()["resolve-operator"] == 2, agent.counts()
     assert agent.counts()["partition-findings"] == 4, agent.counts()
-    assert len(seen) == 1 and "one story or one per area?" in seen[0], seen
+    assert len(seen) == 3, seen
+    assert all("one story or one per area?" in s for s in seen), seen
 
 
-def test_an_escalated_partition_block_waits_on_the_operator_context_file(
+def test_a_blocked_partition_waits_on_the_operator_context_file(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """The same gate's other arm: the resolver escalates, so the flow waits on a human.
+    """The partition gate parks on a block, same as the plan gate.
 
-    The ask lands in the context file and the wait is a poll on that file's mtime — the
-    driver's portable replacement for `await-operator.py`'s inotify. Patching the poll is
-    the operator answering.
+    The resolver's diagnosis lands in the context file and the wait is a poll on that
+    file's mtime — the driver's portable replacement for `await-operator.py`'s inotify.
+    Patching the poll is the operator answering.
     """
     seen: list[str] = []
 
     def answered(path: Path, **kwargs: Any) -> None:
         seen.append(path.read_text())
 
-    agent = _Agent(surveyed, blocked={"partition-findings"}, escalate=True)
+    agent = _Agent(surveyed, blocked={"partition-findings"})
     with patch.object(pyflow_driver, "wait_for_answer", answered):
         result = _drive(_env(tmp_path), agent)
 
@@ -597,8 +619,8 @@ def test_human_operator_mode_sends_the_block_straight_to_the_context_file(
     """`operator_mode: human` is the YAML's `cases: {human: …}` arm: no stand-in turn at
     all, the block goes to the person.
 
-    It is also the only setting under which the resolver never runs, which is what makes
-    the autonomous arm a choice rather than the only path through the gate.
+    It is also the only setting under which the resolver never runs — under `"auto"` the
+    resolver still investigates before the same `Await`, it just never decides.
     """
     seen: list[str] = []
 

@@ -30,22 +30,18 @@ three shapes the YAML had no other way to write:
 
 Divergences from the YAML, all deliberate:
 
-* **the three operator gates now branch on the reply.** This is the substantive one. In
-  the YAML, `resolve_plan` and `resolve_partition` route *unconditionally* into an
-  `await-operator.py` node, and that script's own state machine is what decides whether
-  the run stops: it reads `STATUS:` from the context file, and `ANSWERED` (which the
-  resolver writes when it resolved the block) flips to `CONSUMED` and returns
-  immediately, while `AWAITING_OPERATOR` (which it writes when it escalated) blocks. The
-  driver's `Await` has no such status protocol — it waits for the file to change, full
-  stop — so an unconditional `Await` after a *successful* auto-resolution would wait for
-  a human who was never needed. The decision therefore moves out of the file and into
-  the flow: `decision == "answered"` continues, anything else awaits. That is not an
-  invention, it is the branch the YAML already spells out at the third gate
-  (`decide_verify_resolve`: `escalated` → await, default → retry) applied to the two
-  that had delegated it to the file. A blank `decision` — the resilience ladder's
-  default when the resolver turn produced nothing — awaits, matching the YAML, where a
-  defaulted `{decision: answered}` reached an `await-operator.py` that found no
-  `ANSWERED` line and blocked anyway.
+* **the three operator gates never decide on the operator's behalf.** In the YAML,
+  `resolve_plan` and `resolve_partition` route *unconditionally* into an
+  `await-operator.py` node, and that script's own state machine could still decide the
+  run continues: it read `STATUS:` from the context file, and `ANSWERED` (which the
+  resolver wrote when it resolved the block itself) flipped to `CONSUMED` and returned
+  immediately without a human. This port removes that: `resolve-operator.md` is
+  diagnosis-only — it investigates and writes findings, it never decides the
+  scope/granularity/clustering question or edits a file to resolve it — so all three
+  resolvers (`resolve_plan`, `resolve_verify`, `resolve_partition`) unconditionally
+  return `Await`. The `answered`/`escalated` split in `OperatorResolution` is a relic of
+  the old auto-resolve contract kept for now because the coder side of the codebase
+  still shares the field names; nothing here reads `.decision` any more.
 * `await-operator.py`'s **append-and-re-arm** behavior is not reproduced: `Await` writes
   the questions to the context file, replacing it. So a second block overwrites the
   first block's questions and the answer to them. The prompts read the file for history
@@ -289,19 +285,20 @@ class Surveyor(Workflow):
             )
         return Continue(result, self.resolve_plan, notes=notes, plan_resolve=plan_resolve)
 
-    def resolve_plan(self, notes: str, plan_resolve: int = 0) -> Continue | Await:
-        """Stand in for the operator on a granularity block, or escalate to one.
+    def resolve_plan(self, notes: str, plan_resolve: int = 0) -> Await:
+        """Investigate a granularity block, then park for the operator.
 
-        `resolve_plan` + the `await_plan` that followed it unconditionally. See the
-        module docstring: the answered/escalated decision lived in the context file's
-        `STATUS:` line and now lives here, because the driver's `Await` waits
-        unconditionally and would otherwise block on a resolution that already happened.
+        `resolve_plan` + `incr_plan_resolve` + `await_plan`. The resolver never decides
+        on the operator's behalf — it only investigates and writes findings into the
+        context file, so the block always ends in an `Await`. Re-entering `plan` on
+        resume *is* the re-verification: it re-reads the context file the human's answer
+        just updated.
         """
         self.logger.info("resolving the granularity block", extra={"activity": True})
-        result = self.agent(
+        self.agent(
             "prompts/surveyor/resolve-operator.md",
             returns=OperatorResolution,
-            # high, and unbounded: it is standing in for a human, with full tool access.
+            # high, and unbounded: it is investigating a block, with full tool access.
             power="high",
             timeout=UNBOUNDED,
             cwd=self.ctx.repo_root,
@@ -312,13 +309,6 @@ class Surveyor(Workflow):
                 "block_notes": notes,
             },
         )
-        if result.decision == "answered":
-            return Continue(
-                result,
-                self.plan,
-                plan_rework=0,
-                plan_resolve=plan_resolve + 1,
-            )
         return Await(
             self._context,
             notes,
@@ -514,16 +504,17 @@ class Surveyor(Workflow):
             result, self.resolve_verify, notes=notes, verify_resolve=verify_resolve
         )
 
-    def resolve_verify(self, notes: str, verify_resolve: int = 0) -> Continue | Await:
-        """Stand in for the operator on a coverage failure, or escalate to one.
+    def resolve_verify(self, notes: str, verify_resolve: int = 0) -> Await:
+        """Investigate a coverage failure, then park for the operator.
 
-        `resolve_verify` + `decide_verify_resolve` + `incr_verify_resolve`. This is the
-        one gate whose answered/escalated branch the YAML wrote out explicitly, and it
-        is the shape the other two now follow. Resolution loops back through the unit
-        loop, because the usual fix is a `blocked` unit set back to `pending`.
+        `resolve_verify` + `incr_verify_resolve` + `await_verify`. The resolver never
+        decides on the operator's behalf — it only investigates and writes findings into
+        the context file, so the block always ends in an `Await`. Re-entering `pick` on
+        resume *is* the re-verification: the unit loop and `verify` both re-read
+        whatever the human's answer changed (usually a `blocked` unit back to `pending`).
         """
         self.logger.info("resolving the coverage block", extra={"activity": True})
-        result = self.agent(
+        self.agent(
             "prompts/surveyor/resolve-operator.md",
             returns=OperatorResolution,
             power="high",
@@ -536,9 +527,7 @@ class Surveyor(Workflow):
                 "block_notes": notes,
             },
         )
-        if result.decision == "escalated":
-            return Await(self._context, notes, self.pick, verify_resolve=verify_resolve)
-        return Continue(result, self.pick, verify_resolve=verify_resolve + 1)
+        return Await(self._context, notes, self.pick, verify_resolve=verify_resolve + 1)
 
     # --- clustering, and the artifacts author reads -------------------------
 
@@ -610,16 +599,17 @@ class Surveyor(Workflow):
             partition_resolve=partition_resolve,
         )
 
-    def resolve_partition(
-        self, notes: str, partition_resolve: int = 0
-    ) -> Continue | Await:
-        """Stand in for the operator on a clustering block, or escalate to one.
+    def resolve_partition(self, notes: str, partition_resolve: int = 0) -> Await:
+        """Investigate a clustering block, then park for the operator.
 
-        `resolve_partition` + the unconditional `await_partition` after it — same
-        correction as `resolve_plan`, for the same reason.
+        `resolve_partition` + `incr_partition_resolve` + `await_partition`. The resolver
+        never decides on the operator's behalf — it only investigates and writes
+        findings into the context file, so the block always ends in an `Await`.
+        Re-entering `partition` on resume *is* the re-verification: it re-reads the
+        context file the human's answer just updated.
         """
         self.logger.info("resolving the partition block", extra={"activity": True})
-        result = self.agent(
+        self.agent(
             "prompts/surveyor/resolve-operator.md",
             returns=OperatorResolution,
             power="high",
@@ -632,13 +622,6 @@ class Surveyor(Workflow):
                 "block_notes": notes,
             },
         )
-        if result.decision == "answered":
-            return Continue(
-                result,
-                self.partition,
-                partition_rework=0,
-                partition_resolve=partition_resolve + 1,
-            )
         return Await(
             self._context,
             notes,

@@ -167,15 +167,25 @@ class PartitionProposal(AuthorResult):
 
 
 class OperatorResolution(AuthorResult):
-    """`surveyor/prompts/resolve-operator.md` and the author's own copy.
+    """`surveyor/prompts/resolve-operator.md` — the diagnostic investigator's report.
 
-    `decision` is `answered` (the agent resolved it and the flow retries) or
-    `escalated` (only a human can). A blank `decision` matches neither, so the
-    conservative arm — escalate to the human — is the else.
+    The resolver never decides on the operator's behalf; it only investigates a block
+    and writes findings into the context file, so the flow always parks with `Await`
+    after this returns. `decision` is a relic of the old auto-resolve contract kept for
+    the field's shape rather than read; the two live fields are `notes` and `tried`.
+    Note the field is `notes` here and `summary` in `coder`'s copy of this model: the
+    two prompts genuinely ask for different key names, and the port follows each prompt
+    rather than unifying a name the model would then not emit.
     """
 
     decision: str = ""
     notes: str = ""
+
+    #: What the resolver attempted and ruled out before it escalated, one line each. It
+    #: is the diagnosis so far, and without it the human who arrives at the gate re-runs
+    #: every dead end the resolver already paid for. Defaulted and never required: an
+    #: older transcript parses with it absent.
+    tried: list[str] = []
 
 
 __all__ = [

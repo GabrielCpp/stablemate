@@ -148,13 +148,15 @@ class FixLintResult(CoderResult):
 
 
 class OperatorResolution(CoderResult):
-    """`prompts/resolve-operator.md` — the auto-operator's verdict on a block.
+    """`prompts/resolve-operator.md` — the diagnostic investigator's report on a block.
 
-    `decision` is `answered` (it resolved the block and the flow retries) or `escalated`
-    (only a human can). A blank matches neither, so the conservative arm — halt for the
-    human — is the else. Note the field is `summary` here and `notes` in `author`'s copy of
-    this model: the two prompts genuinely ask for different key names, and the port follows
-    each prompt rather than unifying a name the model would then not emit.
+    The resolver never decides on the operator's behalf; it only investigates a block
+    and writes findings into the context file, so the flow always parks with `Await`
+    after this returns. `decision` is a relic of the old auto-resolve contract kept for
+    the field's shape rather than read; the two live fields are `summary` and `tried`.
+    Note the field is `summary` here and `notes` in `author`'s copy of this model: the
+    two prompts genuinely ask for different key names, and the port follows each prompt
+    rather than unifying a name the model would then not emit.
     """
 
     decision: str = ""
@@ -163,8 +165,7 @@ class OperatorResolution(CoderResult):
     #: What the resolver attempted and ruled out before it escalated, one line each. It is
     #: the diagnosis so far, and without it the human who arrives at the gate re-runs every
     #: dead end the resolver already paid for. Defaulted and never required: an older
-    #: transcript, and a resolver that answered rather than escalated, both parse with it
-    #: absent.
+    #: transcript parses with it absent.
     tried: list[str] = []
 
 
