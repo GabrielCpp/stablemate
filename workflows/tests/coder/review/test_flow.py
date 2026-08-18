@@ -33,7 +33,6 @@ import pytest
 from workhorse import inbox
 from workhorse.artifacts import ArtifactWriter
 from workhorse.cli.inbox import INBOX_FILE
-from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
@@ -174,9 +173,10 @@ class _Agent:
     reviews demand rework, `apply_status` is what every apply turn *claims* (which the
     settlement gate is free to overrule), `settle` makes the apply turn write a real
     `review-resolution.json` so that gate has something to verify, `evidence_after` is the
-    apply pass from which it also writes the artifact that verdict cites, `escalate` makes
-    the auto-operator hand the block to a human, and `explode` raises on a named prompt — a
-    run killed mid-turn.
+    apply pass from which it also writes the artifact that verdict cites, and `explode`
+    raises on a named prompt — a run killed mid-turn. There is no "answer directly" knob:
+    the resolver always escalates to a human, per `resolve_review`'s contract — see the
+    module docstring.
     """
 
     def __init__(
@@ -187,7 +187,6 @@ class _Agent:
         apply_status: str = "applied",
         settle: bool = False,
         evidence_after: int = 1,
-        escalate: bool = False,
         explode: set[str] | None = None,
     ) -> None:
         self.docs = docs
@@ -195,7 +194,6 @@ class _Agent:
         self.apply_status = apply_status
         self.settle = settle
         self.evidence_after = evidence_after
-        self.escalate = escalate
         self.explode = explode or set()
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
@@ -264,23 +262,14 @@ class _Agent:
         return {"status": self.apply_status, "notes": f"apply pass {nth}"}
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        if self.escalate:
-            self._escalate()
-            return {
-                "decision": "escalated",
-                "summary": "needs a product call",
-                "tried": list(RESOLVER_TRIED),
-            }
-        self._answer()
-        return {"decision": "answered", "summary": "ship it without the retry"}
+        self._escalate()
+        return {
+            "decision": "escalated",
+            "summary": "needs a product call",
+            "tried": list(RESOLVER_TRIED),
+        }
 
     # -- what the resolver leaves behind ----------------------------------
-
-    def _answer(self) -> None:
-        """Write the answer into the file `read_operator_context` reads it back out of."""
-        (self.docs / CONTEXT_REL).write_text(
-            "STATUS: ANSWERED\n\nDrop the retry; log it instead.\n", encoding="utf-8"
-        )
 
     def _escalate(self) -> None:
         """An escalating resolver writes its note into the same file, it does not write nothing.
@@ -442,13 +431,16 @@ def test_the_apply_loop_is_bounded_and_then_reaches_the_operator(
 ) -> None:
     """Three apply passes that settle nothing escalate rather than looping forever.
 
-    `MAX_REVIEW_REWORKS` is 3, so the third failed settlement is the one that gives up. The
-    operator answers, the resolution is applied — a fourth turn on the same shared prompt —
-    and the flow re-enters at `start` with a fresh budget and a fresh read of the code.
+    `MAX_REVIEW_REWORKS` is 3, so the third failed settlement is the one that blocks. The
+    resolver escalates, the human answers, the resolution is applied — a fourth turn on the
+    same shared prompt — and the flow re-enters at `start` with a fresh budget and a fresh
+    read of the code.
     """
     agent = _Agent(docs, needs_changes=1, apply_status="needs_changes")
+    seen: list[str] = []
 
-    result = drive_flow(Review(story=STORY), env(), agent)
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Review(story=STORY), env(), agent)
 
     assert result.status == "approved", result
     assert agent.counts()["apply-review"] == 4, agent.counts()
@@ -468,29 +460,49 @@ def test_a_blocked_settlement_escalates_without_spending_the_budget(
 ) -> None:
     """`blocked` is a finding nobody can settle, so re-applying it is not the answer."""
     agent = _Agent(docs, needs_changes=1, apply_status="blocked")
+    seen: list[str] = []
 
-    result = drive_flow(Review(story=STORY), env(), agent)
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Review(story=STORY), env(), agent)
 
     assert result.status == "approved", result
     # One apply, straight to the operator, then the resolution apply.
     assert agent.counts()["apply-review"] == 2, agent.counts()
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
+    # The human's answer reached the applier as operator feedback, not as review notes.
+    resolved = agent.args_for("apply-review")[-1]
+    assert "Drop the retry" in resolved["operator_feedback"]
 
 
-def test_repeated_operator_cycles_fail_after_the_outer_bound(
+def test_repeated_operator_cycles_never_give_up(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """Local rework resets cannot buy unbounded review/operator cycles."""
+    """Local rework resets do not buy unbounded *resolver* turns — but the run never dies.
+
+    Once `MAX_REVIEW_BLOCKS` resolver turns are spent, every further block goes straight to
+    a human instead — the same "no dead end" contract `dev` settled. The story only finishes
+    once the human's answer actually fixes it, not because the flow gave up asking.
+    """
     agent = _Agent(docs, needs_changes=99, apply_status="blocked")
+    seen: list[str] = []
 
-    with pytest.raises(WorkflowFailed, match="still blocked after 3 operator resolution"):
-        drive_flow(Review(story=STORY), env(), agent)
+    def answered(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text(encoding="utf-8"))
+        if len(seen) >= Review.MAX_REVIEW_BLOCKS + 2:
+            agent.apply_status = "applied"
+        path.write_text(
+            "STATUS: ANSWERED\n\nDrop the retry; log it instead.\n", encoding="utf-8"
+        )
 
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
+        result = drive_flow(Review(story=STORY), env(), agent)
+
+    assert result.status == "approved", result
     assert agent.counts()["resolve-operator"] == Review.MAX_REVIEW_BLOCKS, agent.counts()
-    assert agent.counts()["code-review"] == Review.MAX_REVIEW_BLOCKS + 1, agent.counts()
+    assert len(seen) == Review.MAX_REVIEW_BLOCKS + 2, seen
 
 
 # --------------------------------------------------------------------- the settlement gate
@@ -604,20 +616,17 @@ def test_human_operator_modes_wait_on_the_story_context_file(
     assert len(seen) == 1 and "the handler ignores the timeout" in seen[0], seen
 
 
-def test_an_escalating_resolver_falls_through_to_the_human(
+def test_the_resolver_always_escalates_to_the_human(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The human path is the resolver's fallback, not a separate mode.
-
-    This is the arm the port's operator-gate split exists for: the YAML fell into
-    `await_operator_review` unconditionally and let the file's `STATUS:` line decide whether
-    that halted, so only the escalated arm may wait here.
+    """`resolve_review` investigates and always parks — it never decides on the operator's
+    behalf, exactly as `dev` settled it. See the module docstring.
     """
     seen: list[str] = []
-    agent = _Agent(docs, needs_changes=1, apply_status="blocked", escalate=True)
+    agent = _Agent(docs, needs_changes=1, apply_status="blocked")
 
     with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY), env(), agent)
@@ -630,32 +639,6 @@ def test_an_escalating_resolver_falls_through_to_the_human(
     assert "**Escalation #1 " in gate, gate
     assert all(line in gate for line in RESOLVER_TRIED), gate
     assert ESCALATION_NOTE.strip() in gate, gate
-
-
-def test_an_answered_resolution_never_waits(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """The other half of the split: a resolver that answered must not halt the run.
-
-    `wait_for_answer` is replaced with something that fails the test if it is reached, so
-    an accidental unconditional `Await` cannot pass by having a helpful stub answer it.
-    """
-
-    def never(path: Path, **kwargs: Any) -> None:
-        raise AssertionError(f"an answered resolution waited on {path}")
-
-    agent = _Agent(docs, needs_changes=1, apply_status="blocked")
-
-    with patch.object(pyflow_driver, "wait_for_answer", never):
-        result = drive_flow(Review(story=STORY), env(), agent)
-
-    assert result.status == "approved", result
-    # The answer reached the applier as operator feedback, not as review notes.
-    resolved = agent.args_for("apply-review")[-1]
-    assert "Drop the retry" in resolved["operator_feedback"]
 
 
 # --------------------------------------------------------------------------- feedback

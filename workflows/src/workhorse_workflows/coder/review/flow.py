@@ -19,11 +19,13 @@ by node name, and what distinguished the sites was their arguments and where the
 
 Divergences from the YAML, all deliberate:
 
-* **The operator gate is split**, exactly as `author`, `surveyor` and `dev` settled it: the
-  YAML's `resolve_review` fell into `await_operator_review` unconditionally and the *file's*
-  `STATUS:` line decided whether that halted. `Await` waits unconditionally, so
-  `resolve_review` below branches on the resolver's own `decision` and only the escalated arm
-  waits. The consume half of `await_operator.py` is `read_operator_context`, a node.
+* **The operator gate never decides on the operator's behalf**, exactly as `author`,
+  `surveyor` and `dev` settled it. `resolve_review` below investigates and always `Await`s —
+  it does not read a `decision` field to choose between looping and waiting, because there is
+  no loop it could choose instead: a block always parks. `_gate` decides only whether the
+  resolver gets a turn first (`review_blocks` below `MAX_REVIEW_BLOCKS`) or the block goes
+  straight to a human — never whether to wait at all. The consume half of `await_operator.py`
+  is `read_operator_context`, a node.
 * `review_rework_count` was a var with `seed`/`incr` nodes; it is the `review_rework`
   parameter. The re-seed that `apply_review_resolved → reset_review` performed is the
   transition back to `start` not carrying it. `review_blocks` is the cumulative outer
@@ -47,7 +49,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
+from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.dev import read_operator_context
 from workhorse_workflows.coder.shared.escalation import compose_escalation
@@ -115,8 +117,9 @@ class Review(Workflow):
     #: exposed no var for it — see the module docstring.
     MAX_REVIEW_REWORKS: ClassVar[int] = 3
 
-    #: Trips through the operator gate before review is declared a dead end. This outer
-    #: budget survives the local rework reset after an operator answer.
+    #: Trips through the operator gate that get a resolver turn before every further block
+    #: goes straight to a human — not a cap on how many times review may block; there isn't
+    #: one. This budget survives the local rework reset after an operator answer.
     MAX_REVIEW_BLOCKS: ClassVar[int] = 3
 
     def setup(self) -> StoryPaths:
@@ -357,23 +360,19 @@ class Review(Workflow):
         code_reuse: CodeReuseResult,
         review_blocks: int,
     ) -> Continue | Await:
-        """`gate_review`: hand the block to the auto-operator, or halt for a human.
+        """`gate_review`: hand the block to the resolver, or straight to a human.
 
         Reached when the loop exhausts its budget or the settlement reports a finding
         unresolvable. Both are real: an unsatisfiable finding may need a product decision
-        that no amount of re-applying will produce.
+        that no amount of re-applying will produce. There is no dead end here — a block
+        always reaches a human eventually, either through the resolver or directly once
+        `review_blocks` is spent — never a terminal failure.
         """
-        if review_blocks >= self.MAX_REVIEW_BLOCKS:
-            raise WorkflowFailed(
-                f"the review for story {self.ctx.story_slug!r} was still blocked after "
-                f"{review_blocks} operator resolution(s); giving up rather than looping. "
-                f"Last block: {notes or '(no notes given)'}"
-            )
-        review_blocks += 1
-        if self.operator_mode in {"human", "operator"}:
+        if self.operator_mode in {"human", "operator"} or review_blocks >= self.MAX_REVIEW_BLOCKS:
+            gate = self._escalation(notes, review_blocks)
             return Await(
                 self._context,
-                self._escalation(notes, review_blocks).body,
+                gate.body,
                 self.read_operator,
                 notes=notes,
                 code_review=code_review,
@@ -397,13 +396,13 @@ class Review(Workflow):
         code_review: CodeReviewResult,
         code_reuse: CodeReuseResult,
         review_blocks: int = 0,
-    ) -> Continue | Await:
-        """Stand in for the operator on the unresolved findings, or escalate to a human.
+    ) -> Await:
+        """Investigate a review block, then park for the operator.
 
         `resolve_review` + the `await_operator_review` that followed it unconditionally; see
-        the module docstring. The resolver makes the call a human would — the product
-        decision, or the targeted fix — and writes it into the story's `context.md`, so the
-        human path is the automatic fallback rather than a separate mode.
+        the module docstring. The resolver never decides on the operator's behalf — it only
+        investigates and writes findings into the story's `context.md`, so this always ends
+        in an `Await`.
         """
         self.logger.info("resolving the review block", extra={"activity": True})
         result = self.agent(
@@ -421,15 +420,6 @@ class Review(Workflow):
                 "block_notes": notes,
             },
         )
-        if result.decision == "answered":
-            return Continue(
-                result,
-                self.read_operator,
-                notes=notes,
-                code_review=code_review,
-                code_reuse=code_reuse,
-                review_blocks=review_blocks,
-            )
         # See `dev.flow.resolve_plan`: the escalating resolver's note is already in this
         # file and `Await` writes over it, so the body handed here carries that note
         # forward along with what the resolver tried.
@@ -440,7 +430,7 @@ class Review(Workflow):
             notes=notes,
             code_review=code_review,
             code_reuse=code_reuse,
-            review_blocks=review_blocks,
+            review_blocks=review_blocks + 1,
         )
 
     def read_operator(
