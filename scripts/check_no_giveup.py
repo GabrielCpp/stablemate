@@ -21,11 +21,14 @@ pattern itself is back too.
 
 This is a narrow guard, not a proof. It does not (yet) cover the sibling give-up-shaped
 sites this migration deliberately left alone for a follow-up pass — `blocked_docs`,
-`zero-diff-streak`, `docs-not-passed` in `coder/workflow.py`, and the `operator_mode`
-sites in `coder/docs/flow.py` — nor the resolver-authority half of the rule (a diagnosis
-prompt must never decide or answer on the operator's behalf). `author/workflow.py`,
-`author/surveyor/flow.py`, `coder/dev/flow.py` and `coder/review/flow.py` are migrated
-and scanned. Widen `BANNED` and the scanned root as the remaining sites migrate.
+`zero-diff-streak` and `docs-not-passed` in `coder/workflow.py` — nor the
+resolver-authority half of the rule (a diagnosis prompt must never decide or answer on
+the operator's behalf). `author/workflow.py`, `author/surveyor/flow.py`,
+`coder/dev/flow.py`, `coder/review/flow.py` and `coder/docs/flow.py` are migrated and
+scanned; `docs/flow.py`'s one budget-exhaustion raise now blocks through the same
+resolver its reviewer-convergence exhaustion already used, and its remaining
+`WorkflowFailed` sites guard inputs no repair lap can fix, not a budget. Widen `BANNED`
+and the scanned root as the remaining sites migrate.
 
 Run:
     uv run python scripts/check_no_giveup.py
@@ -65,6 +68,8 @@ SCANNED_ROOTS = (
     "workflows/tests/coder/dev/test_flow.py",
     "workflows/src/workhorse_workflows/coder/review/flow.py",
     "workflows/tests/coder/review/test_flow.py",
+    "workflows/src/workhorse_workflows/coder/docs/flow.py",
+    "workflows/tests/coder/docs/test_flow.py",
 )
 
 
