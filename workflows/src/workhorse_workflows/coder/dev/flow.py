@@ -817,6 +817,10 @@ class Dev(Workflow):
                 "cwd": self._layer.cwd,
                 "lint_command": outcome.command,
                 "lint_output": outcome.output,
+                # The prompt commits its own fix now, and these two are the trailers that
+                # tie that commit back to the story it belongs to.
+                "epic": self.epic,
+                "story_slug": self.ctx.story_slug,
             },
             # Lap two of this loop is handed the same service's findings minus whatever lap
             # one fixed, so a fresh context would spend its first minutes re-reading the

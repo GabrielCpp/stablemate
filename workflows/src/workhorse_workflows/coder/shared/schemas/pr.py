@@ -80,11 +80,12 @@ class MergeFlagged(CoderResult):
 class MergeFixResult(CoderResult):
     """`fix_merge`'s reply — the conflict resolution the agent turn wrote.
 
-    Nothing branches on it: the YAML declared `fix_merge_result` as an output key and then
-    routed unconditionally to `push_merge`, because whether the resolution *worked* is
-    settled by the push and the re-merge, not by the turn's own account of itself. It is a
-    schema rather than nothing because `self.agent` needs a reply type, and a typed record
-    in the run directory is what makes the resolution readable afterwards.
+    The optimistic half is not branched on: the YAML declared `fix_merge_result` as an
+    output key and then routed unconditionally to `push_merge`, because whether the
+    resolution *worked* is settled by the push and the re-merge, not by the turn's own
+    account of itself. `blocked` is, because it is the one claim the re-merge cannot
+    settle — a resolver saying the choice between the two sides is not its to make — and
+    the remaining reworks would each re-ask a turn that has already answered.
     """
 
     status: str = ""

@@ -40,7 +40,7 @@ Return this JSON as your final response:
 
 ```json
 {
-  "status": "findings" | "clean" | "skipped",
+  "status": "findings" | "clean" | "skipped" | "blocked",
   "findings": [
     {
       "repo": "<repo directory name>",
@@ -58,3 +58,9 @@ Return this JSON as your final response:
 - `findings` — the review reported at least one high-confidence finding (score ≥ 80 when scored) in one or more repos; each is listed in `findings`.
 - `clean` — the review ran on at least one repo with local changes and found no issues meeting the threshold; `findings` is empty.
 - `skipped` — no affected repo had any local changes to review; `findings` is empty.
+- `blocked` — the diff could not be read at all: the repos you were given are not the ones the
+  change landed in, or the working tree is in a state (an unresolved conflict, a detached or
+  missing branch) that no review of it would mean anything. `clean` and `blocked` are not the
+  same answer — one says the diff is fine, the other says there was no diff to judge — and the
+  binding reviewer downstream is handed this verdict as prose. `findings` is empty and
+  `findings_summary` names what stopped you.

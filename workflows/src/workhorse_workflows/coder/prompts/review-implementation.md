@@ -219,12 +219,20 @@ Return this JSON as your final response:
 
 ```json
 {
-  "status": "approved" | "needs_changes",
+  "status": "approved" | "needs_changes" | "blocked",
   "notes": "<brief summary of findings from all three review passes, or 'No issues found.'>"
 }
 ```
 
 - `approved` — no Critical or Major findings from either review pass.
-- `needs_changes` — one or more Critical or Major findings require a fix before QA.
+- `needs_changes` — one or more Critical or Major findings require a fix before QA. `notes` is
+  the brief the repair turn is handed, so each finding names where it is and what must change.
+- `blocked` — **you cannot reach either verdict**, because what is missing is outside this
+  repository: the change lives in a repo you were not given, judging it needs a product decision
+  present in neither the story nor the plan, or the working tree holds no diff that corresponds
+  to the story at all. An unwelcome verdict is not a blocked one — `needs_changes` exists to
+  carry it, and reaching for `blocked` to avoid picking one takes the decision away from the only
+  stage allowed to make it. A `blocked` turn hands the story to an operator, so name the specific
+  dependency in `notes` and say what you attempted before concluding it.
 
 {% block repo_review_rules %}{% endblock %}

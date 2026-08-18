@@ -963,7 +963,7 @@ class Coder(Workflow):
         """
         gate = self.output(open_pr)
         self.logger.info("resolving the merge for %s", gate.ci_epic, extra={"activity": True})
-        self.agent(
+        result = self.agent(
             "prompts/fix-merge.md",
             returns=MergeFixResult,
             # high: a wrong conflict resolution silently corrupts code.
@@ -974,6 +974,13 @@ class Coder(Workflow):
             # resolved half the conflicts is the one that knows which half.
             session=f"merge-fix:{gate.ci_epic}",
         )
+        if result.blocked:
+            # The resolver says choosing between the two sides is not its call. Pushing an
+            # unresolved branch and re-merging would spend the whole budget re-asking it,
+            # so go straight to the gate the budget's own exhaustion goes to — and get
+            # there with the resolver's reason, which is the only account of *why*.
+            self.logger.info("the merge resolver reported it cannot decide: %s", result.notes)
+            return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework, epic, zero_diff)
         push = self.call(push_ci_fix, "", gate.ci_epic)
         if push.status in ("pushed", "unavailable"):
             return Continue(push, self.merge, epic=epic, zero_diff=zero_diff,

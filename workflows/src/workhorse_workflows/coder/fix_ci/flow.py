@@ -159,7 +159,7 @@ class FixCi(Workflow):
 
     def fix(
         self, repo: str, repo_dir: str, processed: list[str], attempts: int, summary: str
-    ) -> Continue:
+    ) -> Continue | Done:
         """Diagnose the failing checks and commit a fix on the branch.
 
         A state of its own, holding nothing but the turn: it is the expensive thing in the
@@ -184,6 +184,16 @@ class FixCi(Workflow):
             # was testing. A different repo's failures are a different worklist.
             session=f"ci-fix:{self.branch}:{repo}",
         )
+        if result.blocked:
+            # Nothing this repo contains would make the checks green, so the remaining
+            # attempts would each re-ask a turn that has already answered. Ending here is
+            # the same ending the budget's own arm takes, minus the laps: the branch is
+            # left red and the epic gate above is what an operator meets it at.
+            self.reset_session(f"ci-fix:{self.branch}:{repo}")
+            return self._finish(
+                f"the CI fixer reported it cannot make {self.branch} green in {repo}: "
+                f"{result.notes}"
+            )
         return Continue(
             result,
             self.push,

@@ -73,7 +73,7 @@ captures it under `code_reuse_result`:
 
 ```json
 {
-  "status": "findings" | "clean" | "skipped",
+  "status": "findings" | "clean" | "skipped" | "blocked",
   "findings": [
     {
       "repo": "<repo directory name>",
@@ -92,3 +92,8 @@ captures it under `code_reuse_result`:
 - `findings` — at least one reuse/duplication problem was found; each is listed.
 - `clean` — the diff was reviewed and no reuse issues were found; `findings` is empty.
 - `skipped` — no affected repo had local changes to review; `findings` is empty.
+- `blocked` — the diff could not be read at all: the repos you were given are not the ones the
+  change landed in, or the working tree is in a state (an unresolved conflict, a detached or
+  missing branch) that no review of it would mean anything. This is not the answer for a diff
+  that is merely large or unfamiliar — that is a review you still owe. `findings` is empty and
+  `findings_summary` names what stopped you.

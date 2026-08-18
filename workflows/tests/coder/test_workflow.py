@@ -73,6 +73,7 @@ from workhorse_workflows.coder.shared.schemas.ci import CiChecks
 from workhorse_workflows.coder.shared.schemas.dev import DevResult
 from workhorse_workflows.coder.shared.schemas.docs import DocsResult
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaResult
+from workhorse_workflows.coder.shared.schemas.pr import MergeOutcome
 from workhorse_workflows.coder.shared.schemas.review import ReviewResult
 from workhorse_workflows.coder.workflow import Coder
 
@@ -1587,3 +1588,73 @@ def test_red_ci_spends_its_three_attempts_and_then_escalates_to_a_human(
     assert len(seen) == 1, seen
     assert "after 3 automated attempt(s)" in seen[0], seen[0]
     assert (repo / "docs" / "epics" / EPIC / "ci-operator-context.md").is_file()
+
+
+# -------------------------------------------------------------- the merge operator gate
+
+
+def _failing_merge(merges: list[str], landed: dict[str, bool]) -> Any:
+    """`merge_pr`, conflicted until the operator answers the gate.
+
+    Seamed the same way `_red_ci` is, and for the same reason: offline the real node can
+    only ever report `unavailable`, which is the arm that passes straight through to the
+    next epic — so the whole rework side of the cluster is unreachable without it.
+    """
+
+    @_test_bp.node
+    def merge_pr(
+        logger: Any, epic: str = "", base_branch: str = "main", repo_dir: str = ""
+    ) -> Any:
+        merges.append(epic)
+        if landed["yes"]:
+            return MergeOutcome(merge_status="merged", base_branch=base_branch)
+        return MergeOutcome(merge_status="failed", base_branch=base_branch)
+
+    return merge_pr
+
+
+class _BlockedResolver(_Agent):
+    """`_Agent` plus the one turn this test expects: a resolver that will not choose."""
+
+    def _fix_merge(self, data: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "status": "blocked",
+            "notes": "both sides rewrote the same migration and only you know which wins",
+        }
+
+
+def test_a_merge_resolver_that_cannot_decide_parks_instead_of_spending_the_budget(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One resolver turn, then the gate — not `MAX_MERGE_REWORKS` of them.
+
+    A resolver saying the choice is not its to make is the one claim the re-merge cannot
+    check: pushing an unresolved branch and merging again would spend the whole budget
+    re-asking a turn that has already answered. So it goes straight to the gate the
+    budget's own exhaustion goes to, and gets there carrying the resolver's reason.
+    """
+    repo = epic()
+    _Sub(repo).install(monkeypatch)
+    merges: list[str] = []
+    landed = {"yes": False}
+    monkeypatch.setattr(coder_workflow, "merge_pr", _failing_merge(merges, landed))
+    run_env = env()
+    seen: list[str] = []
+
+    agent = _BlockedResolver()
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, landed)):
+        result = drive_flow(Coder(), run_env, agent)
+
+    assert result.has_epic is False, result
+    # One turn, not three: the resolver was asked once and believed.
+    assert agent.calls.count("fix-merge") == 1, agent.calls
+    # Two merges: the conflicted one that raised the block, and the one after the answer.
+    assert merges == [EPIC, EPIC], merges
+    # The gate was reached with the budget untouched, so it names zero spent attempts.
+    assert len(seen) == 1, seen
+    assert "after 0 automated attempt(s)" in seen[0], seen[0]
+    assert (repo / "docs" / "epics" / EPIC / "merge-operator-context.md").is_file()

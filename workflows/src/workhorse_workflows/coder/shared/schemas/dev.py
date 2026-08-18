@@ -47,8 +47,10 @@ class PlanResult(CoderResult):
 class ReuseResult(CoderResult):
     """`prompts/check-code-reuse.md` — does the plan propose to build what already exists?
 
-    `status` is `ok` or `needs_rework`, and a blank takes `ok`: the gate is advisory and
-    fail-open by design, because review and QA re-check reuse against the real diff.
+    `status` is `ok`, `needs_rework` or `blocked`, and a blank takes `ok`: the gate is
+    advisory and fail-open by design, because review and QA re-check reuse against the real
+    diff. `blocked` is the plan that could not be read at all, which `ok` would otherwise
+    report as "found nothing" about something nobody looked at.
     `findings` is left loosely typed — it is stringified into the refiner's review notes and
     never read field by field.
     """
@@ -142,9 +144,12 @@ class RedGateOutcome(CoderResult):
 
 
 class FixLintResult(CoderResult):
-    """`prompts/fix-lint.md` — the lint repair turn's own report. `fixed` or `failed`.
+    """`prompts/fix-lint.md` — the lint repair turn's own report.
 
-    Nothing branches on it either; the next `run_lint` is what decides.
+    `fixed` and `failed` are not branched on; the next `run_lint` is what decides.
+    `blocked` is, and only to stop the laps: this gate is fail-open by design — QA re-runs
+    lint as the binding one — so the block already has an owner downstream, and what the
+    signal buys is not re-asking a turn that has just said it cannot.
     """
 
     status: str = ""

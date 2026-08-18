@@ -44,5 +44,15 @@ If you cannot safely resolve the merge (e.g. the conflict needs a product decisi
 ## Output
 Respond with JSON only after you have committed your resolution (or concluded you cannot):
 ```json
-{"status": "fixed|failed", "notes": "<what you resolved (content merge, or Step 0 stale-duplicate remediation — say which), or why you couldn't>"}
+{"status": "fixed|failed|blocked", "notes": "<what you resolved (content merge, or Step 0 stale-duplicate remediation — say which), or why you couldn't>"}
 ```
+
+- `fixed` — the branches merge cleanly now and the resolution is committed.
+- `failed` — this attempt did not finish the resolution, but another one on the same two branches
+  plausibly would.
+- `blocked` — **no attempt of this stage can resolve it.** Both sides of a conflict are
+  deliberate and choosing between them is a product decision present in neither branch, the
+  divergence is a history rewrite rather than a content conflict, or resolving it needs work in a
+  repo you were not given. Resolving a conflict wrongly corrupts code silently rather than
+  failing loudly, so hand it to an operator instead of guessing: name in `notes` exactly which
+  files and which decision you could not make, and what you attempted first.

@@ -17,6 +17,16 @@ The workflow supplies these values. Use them exactly as given:
 
 Your CWD is the repo containing the service above. The service root is `{{ workhorse_var('service_path') }}` within this repo. If the plan file above is blank or does not exist in the spec directory, fall back to `{{ workhorse_var('spec_dir') }}/plan.md`. If the story path is blank or its file does not exist, stop and report that the workflow did not provide a usable story path — do not pick a story yourself.
 
+{% if operator_context %}
+## Operator answer (authoritative ground truth)
+
+You raised a block on this story and an operator answered it. Treat the following as fact: it
+overrides any earlier assumption in the story, the plan or the code. Do **not** re-derive it,
+second-guess it, or raise the same block again — it has been answered.
+
+{{ workhorse_var('operator_context') }}
+{% endif %}
+
 {% if gate_feedback %}
 ## Rework — the red gate rejected the previous attempt
 

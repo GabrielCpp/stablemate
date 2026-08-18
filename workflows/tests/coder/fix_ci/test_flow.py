@@ -104,16 +104,25 @@ def workspace(
 
 
 class _Turn:
-    """The scripted fixer turn. It reports `fixed`; nothing in the flow believes it."""
+    """The scripted fixer turn.
 
-    def __init__(self) -> None:
+    It reports `fixed` by default and nothing in the flow believes it — the next poll is
+    what decides. `status="blocked"` is the one claim the flow does act on, because it is
+    the one the next poll cannot check.
+    """
+
+    def __init__(self, status: str = "fixed") -> None:
+        self.status = status
         self.calls: list[dict[str, Any]] = []
         self.nodes: list[Any] = []
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
         self.calls.append(ctx.as_dict())
         self.nodes.append(node)
-        return f"(scripted) {node.prompt}", {"status": "fixed", "notes": "narrowed the test"}
+        return f"(scripted) {node.prompt}", {
+            "status": self.status,
+            "notes": "narrowed the test",
+        }
 
 
 class _GitHub:
@@ -309,6 +318,34 @@ def test_the_fix_budget_is_spent_and_the_loop_reports_the_branch_still_red(
     assert result.status == "failed", result
     assert result.summary == (
         f"CI still red for {BRANCH} in api after 3 attempt(s): build#7(failure)"
+    )
+
+
+def test_a_fixer_that_says_it_cannot_stops_the_laps_instead_of_re_asking_it(
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    workspace: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`blocked` spends one attempt, not three, and never reaches the push.
+
+    The budget's own exhaustion arm ends the loop on a red branch already; what this adds
+    is ending there without first re-asking a turn that has answered. The branch is left
+    red for the epic gate above, and the fixer's reason is what the run record carries —
+    a summary saying "still red after 3 attempts" would say nothing about why.
+    """
+    github = _GitHub(monkeypatch, runs=[RED])
+    run_env = env()
+    turn = _Turn(status="blocked")
+
+    result = drive_flow(FixCi(repo="api", branch=BRANCH), run_env, turn)
+
+    assert len(turn.calls) == 1, "a blocked turn must not be asked the same question twice"
+    assert github.polls == 1, "and the loop must not poll a branch nobody pushed to"
+    assert github.pushes == []
+    assert result.status == "failed", result
+    assert result.summary == (
+        f"the CI fixer reported it cannot make {BRANCH} green in api: narrowed the test"
     )
 
 

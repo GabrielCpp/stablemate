@@ -395,7 +395,9 @@ class QaReport(CoderResult):
     """`report-qa-dev(-pass).md` — the findings written out to the tracker, in `dev` runs.
 
     One model for both prompts: they emit the same key and differ only in whether the story
-    passed. Nothing branches on it — the report is the terminal act of a `dev` run.
+    passed. Nothing branches on it — the report is the terminal act of a `dev` run — but
+    `blocked` is still worth saying rather than reporting a comment that was never written,
+    because the run record is the only place that absence would otherwise show up.
     """
 
     status: str = ""

@@ -29,8 +29,20 @@ Command: `{{ lint_command or "make lint" }}`
 3. **Re-run the exact command** (`{{ lint_command or "make lint" }}`) in this
    directory and confirm it now exits clean. A later step re-runs it deterministically; a still-dirty
    tree just comes back to you.
-4. **Do not commit, push, or open a PR** — the workflow owns those. Leave your fixes in the working
-   tree.
+4. **Commit what you fixed.** The workflow does not commit on your behalf. Stage **by explicit
+   path** — never `git add -A`, `git add .` or `git commit -a`, which sweep in whatever else is in
+   the tree — and write a Conventional Commit subject scoped to the package you changed:
+
+   ```
+   fix(<package>): <lowercase imperative description>
+{% if epic %}
+   Epic: {{ epic }}{% endif %}
+   Story: {{ story_slug }}
+   ```
+
+   Subject ≤ 72 characters, no capital first word, no trailing period. Keep the trailers exactly
+   as spelled above; they are how the run record ties a commit back to its story. **Do not push or
+   open a PR** — the workflow owns those.
 
 If a finding is impossible to fix without changing intended behavior (e.g. it flags a deliberate
 choice), fix everything else and explain the one you left in `notes`.
@@ -40,5 +52,13 @@ choice), fix everything else and explain the one you left in `notes`.
 Respond with JSON only, after you have re-run lint locally:
 
 ```json
-{"status": "fixed|failed", "notes": "<what you changed, or why a finding remains>"}
+{"status": "fixed|failed|blocked", "notes": "<what you changed, or why a finding remains>"}
 ```
+
+- `fixed` — the command above exits clean in this service.
+- `failed` — findings remain, but another lap over the same output could plausibly close them.
+- `blocked` — **no lap of this stage can make the linter pass**: the command itself does not run
+  here, the finding demands a behaviour change this stage may not make, or the fix lives in a repo
+  you were not given. Returning `blocked` skips the remaining laps rather than re-asking a turn
+  that has already said it cannot; QA's own lint gate is the binding one and still sees the
+  finding. Name the specific dependency in `notes`.

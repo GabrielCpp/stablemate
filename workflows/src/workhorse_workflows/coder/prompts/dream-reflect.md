@@ -97,5 +97,10 @@ Return this exact JSON as the LAST thing in your final response — the object i
 these keys at its top level and no wrapper around it. Always return it:
 
 ```json
-{"status": "reflected|no_issues|insufficient_evidence", "proposals": 0, "top_layer": "base-prompt|repo-flavor|workflow-dag|ostler|infra|none", "notes": "one-line summary of the biggest proposed improvement (or why none)"}
+{"status": "reflected|no_issues|insufficient_evidence|blocked", "proposals": 0, "top_layer": "base-prompt|repo-flavor|workflow-dag|ostler|infra|none", "notes": "one-line summary of the biggest proposed improvement (or why none)"}
 ```
+
+`insufficient_evidence` is what you return when this run left too little to reflect on — it is
+the ordinary answer to a thin run, not a failure. `blocked` is narrower and rarer: the inbox
+path is not writable, or the run record you were pointed at is not there to read, so no answer
+of any kind can be produced from where you are standing. Name that in `notes`.

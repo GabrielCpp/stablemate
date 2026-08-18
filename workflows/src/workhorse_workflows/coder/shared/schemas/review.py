@@ -55,9 +55,12 @@ class CodeReuseResult(CoderResult):
 class ReviewVerdict(CoderResult):
     """`prompts/review-implementation.md` — the binding verdict on the implementation.
 
-    `status` is `approved` or `needs_changes`, and a blank takes the YAML's `default:` arm,
-    which is `needs_changes`: the holistic reviewer is the gate, and a reviewer that did not
-    speak is not an approval. `notes` is the brief every downstream repair turn is handed.
+    `status` is `approved`, `needs_changes` or `blocked`, and a blank takes the YAML's
+    `default:` arm, which is `needs_changes`: the holistic reviewer is the gate, and a
+    reviewer that did not speak is not an approval. `blocked` is the third answer the gate
+    always needed — a reviewer that cannot reach *either* verdict, because what is missing
+    is outside the repository — and it goes to the operator rather than round the repair
+    loop, which has nothing to act on. `notes` is the brief every downstream turn is handed.
     """
 
     status: str = ""

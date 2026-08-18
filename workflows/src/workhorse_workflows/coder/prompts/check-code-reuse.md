@@ -70,7 +70,7 @@ captures it under `reuse_result`:
 
 ```json
 {
-  "status": "ok" | "needs_rework",
+  "status": "ok" | "needs_rework" | "blocked",
   "findings": [
     {
       "intended": "<what the plan proposes to build>",
@@ -86,5 +86,9 @@ captures it under `reuse_result`:
   existing capability was found. `findings` is empty.
 - `needs_rework` — the plan would rebuild at least one capability that already exists;
   each is listed in `findings` so the plan can be reworked to reuse it.
+- `blocked` — the plan could not be checked at all: there is no plan file where you were told
+  one is, or it names a repo you were not given, so `ok` would mean "found nothing" about
+  something you never read. A plan that is merely long or unfamiliar is still a plan you check.
+  `findings` is empty and `summary` names what stopped you.
 
 Do NOT modify the plan, source files, or anything else — this stage only reports.

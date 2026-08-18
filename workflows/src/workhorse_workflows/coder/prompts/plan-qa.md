@@ -506,3 +506,15 @@ Return JSON only:
 
 `repaired_scenarios` belongs to the *repair* turn, which names the scenarios it changed so a
 gate can check each one was dry-run green. This turn wrote the file, so leave it empty.
+
+### When the plan cannot be written at all
+
+Return `{"status": "blocked", ...}` instead, and **only** when no plan this stage could write
+would be a real test of the story: the acceptance criteria name a surface, device, service or
+credential that does not exist to drive, the story's criteria contradict each other or the code
+so that no scenario can assert either reading, or the coverage demanded lives in a repo you were
+not given. A hard planning problem is not a blocked one — a scenario that is awkward to express
+still gets written. A `blocked` turn hands the story to an operator, so `notes` must name the
+specific dependency and say what you attempted before concluding it. Do **not** write a plan of
+scenarios you know cannot run and report `done`: a plan that dry-runs green by asserting nothing
+is worse than no plan, because the run continues on it.

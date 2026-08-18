@@ -86,5 +86,9 @@ Return this exact JSON object in your **final response**:
 }
 ```
 
-- `status` is always `"reported"`
+- `status` is `"reported"` once the comment file exists
 - `notes` must name the output path and confirm that all ACs passed
+- `status` is `"blocked"` in the one case where it cannot: the evidence you were pointed at
+  is not there to read, or the output path cannot be written. Do **not** invent the comment's
+  content from the story alone — a tracker comment that describes a QA run nobody performed is
+  worse than no comment, because it is read as a record. `notes` names what was missing.

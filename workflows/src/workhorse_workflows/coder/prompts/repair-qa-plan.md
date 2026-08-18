@@ -295,3 +295,15 @@ included. It is what the dry-run gate checks on top of the failing set, because 
 scenario the last run passed can be broken by this turn and nothing else would catch it. Name
 one you did not dry-run and the gate refuses the repair — the claim is checked against the
 scratch logs, never taken on its word.
+
+### When no repair of this plan would close the finding
+
+Return `{"status": "blocked", "notes": "...", "repaired_scenarios": []}` instead, and **only**
+when the finding cannot be closed by changing the plan at all: what it asks the plan to drive
+does not exist to be driven, the repair needs a credential, deployment or product decision that
+is in neither the story nor the plan, or it lives in a repo you were not given. A repair that is
+merely hard is not blocked — repair it. A repair budget that runs out is not an ending here, and
+neither is this: a `blocked` turn stops the alternation between planning and repair and hands
+the story to an operator, which is why `notes` must name the specific dependency and what you
+attempted. Never weaken or delete a scenario so the dry-run goes green — that closes the finding
+by deleting the question, and the run then proceeds as though it had been answered.

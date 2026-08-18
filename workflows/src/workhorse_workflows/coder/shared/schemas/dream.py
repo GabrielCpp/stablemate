@@ -32,9 +32,11 @@ class RunEvidence(CoderResult):
 class ReflectionResult(CoderResult):
     """`prompts/dream-reflect.md` — what the reflection turn concluded.
 
-    `status` is `reflected`, `no_issues` or `insufficient_evidence`, and `top_layer` names
-    the layer most of the proposals landed in. Neither is branched on; the proposals
-    themselves go to disk, in the inbox `record_improvements` drains.
+    `status` is `reflected`, `no_issues`, `insufficient_evidence` or `blocked`, and
+    `top_layer` names the layer most of the proposals landed in. Neither is branched on;
+    the proposals themselves go to disk, in the inbox `record_improvements` drains.
+    `insufficient_evidence` is a thin run, which is ordinary; `blocked` is the inbox or the
+    run record being unreachable, which is why it is recorded apart from it.
     """
 
     status: str = ""

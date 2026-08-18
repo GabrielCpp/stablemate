@@ -72,10 +72,13 @@ class PushOutcome(CoderResult):
 
 
 class FixCiResult(CoderResult):
-    """`prompts/fix-ci.md` — the fixer's own report. `status` is `fixed` or `failed`.
+    """`prompts/fix-ci.md` — the fixer's own report: `fixed`, `failed` or `blocked`.
 
-    Nothing branches on it: the push and the next poll decide whether the fix worked, and
-    an agent claiming `fixed` is not evidence that it did.
+    The optimistic half is not branched on: the push and the next poll decide whether the
+    fix worked, and an agent claiming `fixed` is not evidence that it did. `blocked` is,
+    for the reason the whole asymmetry exists — a fixer saying nothing in this repository
+    would make the checks green is the one claim the next poll cannot check, and spending
+    the remaining attempts on it just re-asks a turn that has already answered.
     """
 
     status: str = ""
