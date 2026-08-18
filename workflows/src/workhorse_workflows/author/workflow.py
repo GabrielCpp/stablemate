@@ -541,16 +541,16 @@ class Author(Workflow):
         )
         return Continue(result, self.review_epics, reworks=reworks + 1, resolves=resolves)
 
-    def resolve_epics(self, notes: str, resolves: int = 0) -> Continue | Await:
-        """Stand in for the operator on an epic-split block, or escalate to one.
+    def resolve_epics(self, notes: str, resolves: int = 0) -> Await:
+        """Investigate an epic-split block, then park for the operator.
 
-        `resolve_epics` + `incr_epics_resolve` + the `await_epics` that followed them
-        unconditionally. Re-entering `split_epics` *is* the re-verification: the split
-        and the review both re-read the context file the resolver just answered.
+        `resolve_epics` + `incr_epics_resolve` + `await_epics`. The resolver never
+        decides on the operator's behalf — it only investigates and writes findings into
+        the context file `_resolve` hands it, so the block always ends in an `Await`.
+        Re-entering `split_epics` on resume *is* the re-verification: the split and the
+        review both re-read the context file the human's answer just updated.
         """
-        result = self._resolve("epic-split", notes, self._author_context(), self.ctx.epics_dir)
-        if result.decision == "answered":
-            return Continue(result, self.split_epics, resolves=resolves + 1)
+        self._resolve("epic-split", notes, self._author_context(), self.ctx.epics_dir)
         return Await(self._abs(self._author_context()), notes, self.split_epics, resolves=resolves + 1)
 
     # --- 2. the epic-document loop -------------------------------------------
@@ -593,18 +593,18 @@ class Author(Workflow):
             return Await(self._abs(context), result.notes, self.author_epic, epic=epic, resolves=resolves)
         return Continue(result, self.resolve_epic_doc, epic=epic, notes=result.notes, resolves=resolves)
 
-    def resolve_epic_doc(self, epic: str, notes: str, resolves: int = 0) -> Continue | Await:
-        """Stand in for the operator on a write-epic block, or escalate to one.
+    def resolve_epic_doc(self, epic: str, notes: str, resolves: int = 0) -> Await:
+        """Investigate a write-epic block, then park for the operator.
 
-        `resolve_write_epic` + `incr_write_epic_resolve` + `await_write_epic`. The budget
+        `resolve_write_epic` + `incr_write_epic_resolve` + `await_write_epic`. The
+        resolver only investigates and writes findings into the context file; it never
+        decides on the operator's behalf, so this always ends in an `Await`. The budget
         is *not* reset by the loop back into `author_epic`, which is what bounds a block
-        the resolver cannot actually clear.
+        the operator's answer does not actually clear.
         """
         epic_dir = self._epic_dir(epic)
         context = paths.epic_context(epic_dir)
-        result = self._resolve("write-epic", notes, context, epic_dir)
-        if result.decision == "answered":
-            return Continue(result, self.author_epic, epic=epic, resolves=resolves + 1)
+        self._resolve("write-epic", notes, context, epic_dir)
         return Await(self._abs(context), notes, self.author_epic, epic=epic, resolves=resolves + 1)
 
     # --- 2b. the story-authoring epic loop -----------------------------------
@@ -688,24 +688,24 @@ class Author(Workflow):
         split_resolves: int = 0,
         cov_reworks: int = 0,
         rework_notes: str = "",
-    ) -> Continue | Await:
-        """Stand in for the operator on a story-split block, or escalate to one.
+    ) -> Await:
+        """Investigate a story-split block, then park for the operator.
 
-        `resolve_split` + `incr_split_resolve` + `await_split`. `rework_notes` is carried
-        across the gate because the YAML re-rendered it from a var on the way back in: a
-        block resolved mid-coverage-rework must return to the same worklist.
+        `resolve_split` + `incr_split_resolve` + `await_split`. The resolver only
+        investigates and writes findings into the context file; it never decides on the
+        operator's behalf, so this always ends in an `Await`. `rework_notes` is carried
+        across the gate so a block resolved mid-coverage-rework returns to the same
+        worklist.
         """
         epic_dir = self._epic_dir(epic)
         context = paths.epic_context(epic_dir)
-        result = self._resolve("story-split", notes, context, epic_dir)
+        self._resolve("story-split", notes, context, epic_dir)
         params = {
             "epic": epic,
             "split_resolves": split_resolves + 1,
             "cov_reworks": cov_reworks,
             "rework_notes": rework_notes,
         }
-        if result.decision == "answered":
-            return Continue(result, self.split_stories, **params)
         return Await(self._abs(context), notes, self.split_stories, **params)
 
     # --- 2d. the per-story loop -----------------------------------------------
@@ -1090,17 +1090,17 @@ class Author(Workflow):
         split_resolves: int = 0,
         parked: Sequence[str] = (),
         resolves: int = 0,
-    ) -> Continue | Await:
-        """Stand in for the operator on a story block, or escalate to one.
+    ) -> Await:
+        """Investigate a story block, then park for the operator.
 
-        `resolve_write_story` + `incr_write_story_resolve` + `await_write_story`.
+        `resolve_write_story` + `incr_write_story_resolve` + `await_write_story`. The
+        resolver only investigates and writes findings into the context file; it never
+        decides on the operator's behalf, so this always ends in an `Await`.
         """
         context = paths.story_context(story_dir)
-        result = self._resolve("write-story", notes, context, self._epic_dir(epic))
+        self._resolve("write-story", notes, context, self._epic_dir(epic))
         story = self._story(epic, story_slug, story_dir, story_path, mockup, cov_reworks,
                             split_resolves, parked)
-        if result.decision == "answered":
-            return Continue(result, self.write_story, **story, reworks=0, resolves=resolves + 1)
         return Await(self._abs(context), notes, self.write_story, **story, reworks=0, resolves=resolves + 1)
 
     def story_feedback(
@@ -1248,18 +1248,17 @@ class Author(Workflow):
 
     def resolve_coverage(
         self, epic: str, notes: str, split_resolves: int = 0
-    ) -> Continue | Await:
-        """Stand in for the operator on a coverage block, or escalate to one.
+    ) -> Await:
+        """Investigate a coverage block, then park for the operator.
 
-        `resolve_coverage` + `await_coverage`. Coverage shares the epic-scoped
-        `split_resolves` budget so resetting the local `cov_reworks` counter after an answer
-        cannot create an unbounded autonomous cycle.
+        `resolve_coverage` + `await_coverage`. The resolver only investigates and writes
+        findings into the context file; it never decides on the operator's behalf, so
+        this always ends in an `Await`. Coverage shares the epic-scoped `split_resolves`
+        budget so a resume through here cannot create an unbounded autonomous cycle.
         """
         context = paths.epic_context(self._epic_dir(epic))
-        result = self._resolve("coverage", notes, context, self._epic_dir(epic))
+        self._resolve("coverage", notes, context, self._epic_dir(epic))
         params = {"epic": epic, "split_resolves": split_resolves + 1}
-        if result.decision == "answered":
-            return Continue(result, self.split_stories, **params)
         return Await(self._abs(context), notes, self.split_stories, **params)
 
     def _gate_coverage(
@@ -1295,18 +1294,17 @@ class Author(Workflow):
             return Await(self._abs(self._author_context()), report.errors, self.integrity)
         return Continue(report, self.resolve_reconcile, notes=report.errors, resolves=resolves)
 
-    def resolve_reconcile(self, notes: str, resolves: int = 0) -> Continue | Await:
+    def resolve_reconcile(self, notes: str, resolves: int = 0) -> Await:
         """Investigate each dropped entity: meant to go, or a regression to restore?
 
         `resolve_reconcile` + `decide_reconcile_resolve` + `incr_reconcile_resolve`. The
-        answered arm re-runs the *same deterministic check* rather than trusting the
-        resolver's say-so, and `escalated` skips that recheck because the resolver has
-        told us the state is unchanged.
+        resolver only investigates and writes findings into the context file; it never
+        decides whether a drop was intended or a regression, so this always ends in an
+        `Await` — the recheck belongs to `reconcile` once the human has answered, not to
+        an autonomous "answered" loop back through here.
         """
-        result = self._resolve("reconciliation", notes, self._author_context(), self.ctx.epics_dir)
-        if result.decision == "escalated":
-            return Await(self._abs(self._author_context()), notes, self.integrity)
-        return Continue(result, self.reconcile, resolves=resolves + 1)
+        self._resolve("reconciliation", notes, self._author_context(), self.ctx.epics_dir)
+        return Await(self._abs(self._author_context()), notes, self.integrity)
 
     # --- 4. referential integrity --------------------------------------------
 

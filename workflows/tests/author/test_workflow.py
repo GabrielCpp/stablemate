@@ -1118,15 +1118,19 @@ def test_a_coverage_gap_re_enters_the_split_with_the_worklist(
 def test_coverage_resolver_cycles_share_the_epic_scoped_split_bound(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """Coverage answers cannot reset the epic's cumulative autonomous resolution count."""
+    """A resolved coverage block cannot reset the epic's cumulative resolution count.
+
+    Each block always parks for a human — the resolver never decides on the operator's
+    behalf — so two blocked reviews in a row cost two real `Await`s, and the second one's
+    `split_resolves` must pick up from the first's, not restart at zero.
+    """
     seen: list[str] = []
     labels: list[dict[str, str]] = []
-    agent = _Agent(backlogged, coverage_verdicts=["blocked"])
+    agent = _Agent(backlogged, coverage_verdicts=["blocked", "blocked", "ok"])
     real_rebase = pyflow_activity.ActivityLog.rebase
 
     def answered(path: Path, **kwargs: Any) -> None:
         seen.append(path.read_text())
-        agent.coverage_verdicts = ["ok"]
 
     def capture(self: Any, current: dict[str, str]) -> Any:
         labels.append(dict(current))
@@ -1136,7 +1140,8 @@ def test_coverage_resolver_cycles_share_the_epic_scoped_split_bound(
         _drive(_env(tmp_path), agent, wait_for_answer=answered)
 
     assert agent.counts()["resolve-operator"] == 2, agent.counts()
-    assert len(seen) == 1 and "the reset flow is unclaimed" in seen[0], seen
+    assert len(seen) == 2, seen
+    assert all("the reset flow is unclaimed" in note for note in seen), seen
     reset_laps = [row for row in labels if row.get("author.split_resolves") == "1"]
     assert any("author.cov_reworks" not in row for row in reset_laps), labels
 
