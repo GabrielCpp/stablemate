@@ -78,7 +78,8 @@ from workhorse_workflows.coder.shared import paths, qa_support
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
 from workhorse_workflows.coder.shared.docs import detect_okf_docs
-from workhorse_workflows.coder.shared.escalation import compose_escalation
+from workhorse_workflows.coder.shared.escalation import escalation
+from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.qa.nodes.evidence import verify_qa_evidence
 from workhorse_workflows.coder.qa.nodes.hygiene import check_sentinel_ids, flush_root_screenshots
 from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
@@ -1858,24 +1859,30 @@ class Qa(Workflow):
             return Await(self._context, gate.body, self.read_operator, loop=loop)
         return Continue(result, self.resolve_operator, loop=loop)
 
-    def _escalation(self, loop: QaLoop, result: OperatorResolution | None = None) -> OperatorGate:
-        """The gate body for this block — see `coder.shared.escalation`."""
-        return self.call(
-            compose_escalation,
-            story_path=self.ctx.story_path,
-            story_slug=self.ctx.story_slug,
-            spec_dir=self.ctx.spec_dir,
-            run_dir=str(self.run_dir),
-            number=loop.escalations,
+    def _escalation(
+        self,
+        loop: QaLoop,
+        result: OperatorResolution | None = None,
+        findings: Sequence[Finding] = (),
+    ) -> OperatorGate:
+        """The gate body for this block — see `coder.shared.escalation`.
+
+        `findings` is what the blocking gate saw, and it is passed here only for the ones
+        `_route_findings` could not send anywhere: a finding with an owner has already gone
+        to that owner, so anything reaching the operator is evidence nobody could act on.
+        """
+        return escalation(
+            self,
             block_kind="qa",
-            block_notes=loop.block_notes,
             where=(
                 f"last lap: {loop.repaired_lap or 'none'}; "
                 f"{loop.qa_rework} code rework, {loop.plan_rework} plan repair, "
                 f"{loop.context_rework} context repair, {loop.setup_rework} setup repair"
             ),
-            tried=list(result.tried) if result else [],
-            summary=result.summary if result else "",
+            notes=loop.block_notes,
+            number=loop.escalations,
+            result=result,
+            findings=findings,
         )
 
     def _note_lane_budget(self, loop: QaLoop) -> None:

@@ -16,6 +16,7 @@ from workhorse_workflows.coder.shared.escalation import (
     HISTORY_TAIL,
     compose_escalation,
 )
+from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
 
 LOG = logging.getLogger("test")
@@ -115,6 +116,40 @@ def test_a_gate_nobody_investigated_says_so(tmp_path: Path) -> None:
     gate = compose_escalation(LOG, story_path=_story(tmp_path), number=1, block_kind="review")
 
     assert "no auto-resolver ran" in gate.body
+
+
+def test_the_node_s_own_findings_reach_the_operator(tmp_path: Path) -> None:
+    """A block that arrives here with evidence is one nobody could route.
+
+    Every finding a fixer could act on has already gone to that fixer, so what is left is
+    what the operator has to look at — and prose about "three failures" is not that.
+    """
+    gate = compose_escalation(
+        LOG,
+        story_path=_story(tmp_path),
+        number=1,
+        block_kind="qa",
+        block_notes="two scenarios cannot be exercised",
+        findings=[
+            Finding(target="web/tests/todo.spec.ts:40", issue="no seeded editor",
+                    repair="add one to the fixture"),
+            Finding(issue="the emulator refuses every account"),
+        ],
+    )
+
+    assert "### What the node found" in gate.body
+    assert "- `web/tests/todo.spec.ts:40` — no seeded editor → add one to the fixture" in gate.body
+    # A finding with no target still shows: unroutable is exactly why it is here.
+    assert "- `(no target given)` — the emulator refuses every account" in gate.body
+    assert gate.body.index("tried and ruled out") < gate.body.index("What the node found")
+    assert gate.body.index("What the node found") < gate.body.index("Where everything is")
+
+
+def test_a_block_with_no_findings_grows_no_empty_heading(tmp_path: Path) -> None:
+    """Most blocks are prose-only, and a heading over nothing reads as "it found nothing"."""
+    gate = compose_escalation(LOG, story_path=_story(tmp_path), number=1, block_kind="plan")
+
+    assert "What the node found" not in gate.body
 
 
 def test_a_long_history_is_bounded_and_says_where_it_was_cut(tmp_path: Path) -> None:

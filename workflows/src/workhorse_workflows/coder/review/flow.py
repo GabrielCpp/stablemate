@@ -46,13 +46,14 @@ Divergences from the YAML, all deliberate:
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.dev import read_operator_context
-from workhorse_workflows.coder.shared.escalation import compose_escalation
+from workhorse_workflows.coder.shared.escalation import escalation
 from workhorse_workflows.coder.shared.review import (
     check_feedback,
     clear_review_resolution,
@@ -64,6 +65,7 @@ from workhorse_workflows.coder.shared.story import (
     resolve_workspace_dirs,
     stamp_specs,
 )
+from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.shared.schemas.dev import (
     ImplResult,
     OperatorGate,
@@ -570,21 +572,26 @@ class Review(Workflow):
         return paths.story_context_path(self.ctx.story_path)
 
     def _escalation(
-        self, notes: str, review_blocks: int, result: OperatorResolution | None = None
+        self,
+        notes: str,
+        review_blocks: int,
+        result: OperatorResolution | None = None,
+        where: str = "the implementation-review stage",
+        findings: Sequence[Finding] = (),
     ) -> OperatorGate:
-        """The gate body for a review block — see `coder.shared.escalation`."""
-        return self.call(
-            compose_escalation,
-            story_path=self.ctx.story_path,
-            story_slug=self.ctx.story_slug,
-            spec_dir=self.ctx.spec_dir,
-            run_dir=str(self.run_dir),
-            number=review_blocks,
+        """The gate body for a block in this lane — see `coder.shared.escalation`.
+
+        `where` is a parameter because the holistic reviewer is no longer the only turn
+        here that can report it cannot finish.
+        """
+        return escalation(
+            self,
             block_kind="review",
-            block_notes=notes,
-            where="the implementation-review stage",
-            tried=list(result.tried) if result else [],
-            summary=result.summary if result else "",
+            where=where,
+            notes=notes,
+            number=review_blocks,
+            result=result,
+            findings=findings,
         )
 
     def _dirs(self) -> list[str]:

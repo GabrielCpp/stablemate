@@ -64,7 +64,7 @@ from workhorse_workflows.coder.shared.docs import (
     documentation_obligations,
     verify_story_documentation,
 )
-from workhorse_workflows.coder.shared.escalation import compose_escalation
+from workhorse_workflows.coder.shared.escalation import escalation
 from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.story import prepare_story, resolve_workspace_dirs
 from workhorse_workflows.coder.shared.schemas.docs import (
@@ -808,18 +808,14 @@ class Docs(Workflow):
             "authored_nodes": authored_nodes,
         }
         if self.operator_mode in {"human", "operator"}:
-            gate = self.call(
-                compose_escalation,
-                story_path=self.ctx.story_path,
-                story_slug=self.ctx.story_slug,
-                spec_dir=self.ctx.spec_dir,
-                run_dir=str(self.run_dir),
+            gate = escalation(
+                self,
+                block_kind="docs",
+                where=f"the docs stage, after {rework} rework pass(es)",
+                notes=notes,
                 # One consult per flow (`consulted` returns above), so a docs block is
                 # always this story's first documentation escalation.
                 number=1,
-                block_kind="docs",
-                block_notes=notes,
-                where=f"the docs stage, after {rework} rework pass(es)",
             )
             return Await(self._context, gate.body, self.read_author, **carried)
         return Continue(None, self.resolve_author, **carried)

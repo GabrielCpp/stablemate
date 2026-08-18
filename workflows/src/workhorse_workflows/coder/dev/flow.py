@@ -70,6 +70,7 @@ Divergences from the YAML, all deliberate:
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -83,13 +84,14 @@ from workhorse_workflows.coder.shared.dev import (
     select_next_layer,
     validate_plan_context,
 )
-from workhorse_workflows.coder.shared.escalation import compose_escalation
+from workhorse_workflows.coder.shared.escalation import escalation
 from workhorse_workflows.coder.shared.red_gate import arm_red_gate, run_red_gate
 from workhorse_workflows.coder.shared.story import (
     prepare_story,
     resolve_workspace_dirs,
     stamp_specs,
 )
+from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.shared.schemas.dev import (
     DevResult,
     FixLintResult,
@@ -737,21 +739,29 @@ class Dev(Workflow):
         return self.output(select_next_layer).layer
 
     def _escalation(
-        self, notes: str, plan_blocks: int, result: OperatorResolution | None = None
+        self,
+        notes: str,
+        plan_blocks: int,
+        result: OperatorResolution | None = None,
+        block_kind: str = "plan",
+        where: str = "the plan stage",
+        findings: Sequence[Finding] = (),
     ) -> OperatorGate:
-        """The gate body for a plan block — see `coder.shared.escalation`."""
-        return self.call(
-            compose_escalation,
-            story_path=self.ctx.story_path,
-            story_slug=self.ctx.story_slug,
-            spec_dir=self.ctx.spec_dir,
-            run_dir=str(self.run_dir),
+        """The gate body for a block in this lane — see `coder.shared.escalation`.
+
+        `block_kind` and `where` are parameters rather than the constants they were,
+        because the plan stage is no longer the only thing in this flow that can block: any
+        node that reports it cannot finish escalates through here, and the operator's first
+        question is which one did.
+        """
+        return escalation(
+            self,
+            block_kind=block_kind,
+            where=where,
+            notes=notes,
             number=plan_blocks,
-            block_kind="plan",
-            block_notes=notes,
-            where="the plan stage",
-            tried=list(result.tried) if result else [],
-            summary=result.summary if result else "",
+            result=result,
+            findings=findings,
         )
 
     @property

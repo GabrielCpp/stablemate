@@ -25,10 +25,14 @@ counter and left to whoever answers; a run-side backstop would turn "ask again" 
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
+
+from workhorse.pyflow import Workflow
 
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.schemas.dev import OperatorGate
+from workhorse_workflows.coder.shared.schemas._base import Finding
+from workhorse_workflows.coder.shared.schemas.dev import OperatorGate, OperatorResolution
 
 #: How much of the existing `context.md` is carried into the new body. Each escalation
 #: embeds the last one, so an uncapped copy grows quadratically over a story that blocks
@@ -71,6 +75,7 @@ def compose_escalation(
     where: str = "",
     tried: list[str] | None = None,
     summary: str = "",
+    findings: list[Finding] | None = None,
 ) -> OperatorGate:
     """Build the gate body for one escalation, preserving what is already on disk.
 
@@ -78,6 +83,12 @@ def compose_escalation(
     escalating flow already keeps (`plan_blocks`, `review_blocks`, `QaLoop.escalations`).
     `tried` and `summary` are the resolver's, and are empty on the `human`/`operator` arm
     where no resolver ran — the gate then says so rather than implying nothing was tried.
+
+    `findings` is the producing node's own structured evidence, when it had any. A block
+    that reaches this function *with* findings is one nobody could route — every finding a
+    fixer could act on has already been sent to that fixer — so what is left is either
+    evidence with no owner or a defect the lane could not repair with it. Either way the
+    operator needs to see the specifics rather than re-derive them from prose.
 
     The existing file is read here rather than by the caller because reading it is the
     whole reason this is a node: it is the one part of the body that is not already in the
@@ -105,6 +116,14 @@ def compose_escalation(
         or (
             "_(no auto-resolver ran — this run is in `human`/`operator` mode, so nothing "
             "has been attempted on your behalf)_"
+        ),
+    )
+    lines += _section(
+        "What the node found",
+        "\n".join(
+            f"- `{finding.target or '(no target given)'}` — {finding.issue or '(no issue given)'}"
+            + (f" → {finding.repair}" if finding.repair else "")
+            for finding in (findings or [])
         ),
     )
     lines += _section("What would unblock it, in the resolver's words", summary)
@@ -144,4 +163,41 @@ def compose_escalation(
     return OperatorGate(body=body, number=number or 1)
 
 
-__all__ = ["compose_escalation"]
+def escalation(
+    flow: Workflow,
+    *,
+    block_kind: str,
+    where: str,
+    notes: str,
+    number: int = 1,
+    result: OperatorResolution | None = None,
+    findings: Sequence[Finding] = (),
+) -> OperatorGate:
+    """The gate body for one block, from any lane.
+
+    Four flows had a private `_escalation` differing only in the two strings `block_kind`
+    and `where` and in which counter they read for `number`. That was tolerable while
+    blocking was something three specific gates did; it is not once *every* node can say
+    "not possible", because a fifth copy is then a copy per node rather than per lane.
+
+    So the two strings are parameters and the story identity comes off the flow, which is
+    the part that was never lane-specific: every coder flow carries the same `ctx` and
+    parks on the same `context.md` beside the same story.
+    """
+    return flow.call(
+        compose_escalation,
+        story_path=flow.ctx.story_path,
+        story_slug=flow.ctx.story_slug,
+        spec_dir=flow.ctx.spec_dir,
+        run_dir=str(flow.run_dir),
+        number=number,
+        block_kind=block_kind,
+        block_notes=notes,
+        where=where,
+        tried=list(result.tried) if result else [],
+        summary=result.summary if result else "",
+        findings=list(findings),
+    )
+
+
+__all__ = ["compose_escalation", "escalation"]
