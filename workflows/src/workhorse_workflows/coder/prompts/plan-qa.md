@@ -296,8 +296,18 @@ a static count of the `qa.check`/`qa.require` calls in its body, and again at ru
   `net::ERR_ABORTED` an app fires when it cancels its own fetch — exclude by *reason* like
   that, never by count, since "allow one failure" tolerates a refused connection too. The
   same records are written to `qa/traces/<scenario>-diagnostics.json` when the scenario ends
-  (`schema: browser-diagnostics/1`), for the post-run audit; every record carries `atMs`, the
+  (`schema: browser-diagnostics/2`), for the post-run audit; every record carries `atMs`, the
   run-relative offset, so console and network can be read against each other.
+- The records are the DevTools panels, not a summary of them: `console(level=…, contains=…)`
+  is every message with its arguments as **values** (`args`), where `text` is only the
+  `{items: Array(3), …}` line DevTools prints; `requests(url_contains=…)` and
+  `responses(status_at_least=…, url_contains=…)` carry `requestHeaders`, `requestBody`,
+  `responseHeaders`, `responseBody` and `durationMs`. Assert on what the *page* sent and
+  received rather than re-issuing the call through `qa.http`, which goes out with different
+  cookies and proves a different thing. A record with no `responseBody` always carries
+  `bodyOmitted` saying why (binary, a redirect, budget exhausted, still in flight) — read it
+  before asserting absence, since an uncaptured body and an empty one read alike. Secrets and
+  credential header values are already redacted, with the header name kept.
 - Background daemons are declared with `background(...)` — the runner starts and stops them,
   and the scenario must not. It is for **foreground in-QA services** scoped to the run (a dev
   server pinned to branch source, an event tail). The **heavyweight stack** (docker compose,
