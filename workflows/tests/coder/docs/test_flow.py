@@ -1271,6 +1271,82 @@ def test_a_blocked_review_fails_rather_than_reworking(
     assert agent.counts()["document-story"] == 1, agent.counts()
 
 
+def test_a_reviewer_that_says_unfixable_takes_the_same_arm_as_one_that_says_blocked(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The four refusal words are one signal, and the flow must not sort them by spelling.
+
+    `blocked`, `unfixable`, `not_passed` and `invalid` are the same answer — a turn saying it
+    cannot get there from here. Branching on the literal `"blocked"` meant a reviewer that
+    reached for one of the other three fell through to the revision arm, which spends the
+    whole rework budget re-asking a question already answered, and then blocks anyway three
+    expensive passes later.
+    """
+    agent = _Agent(review_status="unfixable")
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "blocked", result
+    assert agent.counts()["repair-documentation"] == 0, agent.counts()
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
+
+
+class _RefusesWithEvidence(_Agent):
+    """A reviewer that refuses *and* names what it read as wrong.
+
+    The realistic shape: a refusal is rarely "I cannot tell", it is "these two documents say
+    different things and picking one is not mine to do" — which is a finding with a target.
+    """
+
+    def _review_story_documentation(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        return {
+            "status": "blocked",
+            "findings": [
+                {
+                    "id": "D9",
+                    "kind": "author-decision",
+                    "target": "docs/features/widget.md#slug",
+                    "issue": "the plan and the spec disagree on the slug contract",
+                    "repair": "Ratify one contract and amend the other document",
+                }
+            ],
+            "notes": "the slug contract is ambiguous",
+        }
+
+
+def test_the_reviewers_findings_travel_to_the_operator_gate(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A gate that says only "documentation is impossible" is a gate nobody can answer.
+
+    The reviewer that refused still knows *which* contradiction stopped it. Those findings are
+    exactly what an operator rules on, so they belong in the body of the question rather than
+    in a log line the person reading `context.md` never sees.
+    """
+    agent = _RefusesWithEvidence()
+    asked: list[str] = []
+
+    def _answer(path: Path, **kwargs: Any) -> None:
+        # Read before writing: the answer replaces the question in place, so what the
+        # operator was shown only exists while they are being asked.
+        asked.append(path.read_text(encoding="utf-8"))
+        path.write_text("STATUS: ANSWERED\nSCOPE: story\n\nOne slug.\n", encoding="utf-8")
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answer):
+        result = drive_flow(Docs(story=STORY, epic=EPIC, operator_mode="human"), env(), agent)
+
+    assert result.status == "blocked", result
+    gate = "".join(asked)
+    assert "docs/features/widget.md#slug" in gate, gate
+    assert "Ratify one contract" in gate, gate
+
+
 def test_only_the_first_pass_authors_and_every_pass_after_it_repairs(
     docs: Path,
     elsewhere: Path,

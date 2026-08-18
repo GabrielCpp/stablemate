@@ -352,7 +352,14 @@ class Dev(Workflow):
             add_dirs=self._dirs(),
             args={"story_path": self.ctx.story_path, "spec_dir": self.ctx.spec_dir},
         )
-        if result.status == "needs_rework" and reuse_rework < self.max_reuse_reworks:
+        # A reuse check that reports it could not run is not an escalation either: its
+        # findings are advisory, and review and QA re-check reuse against the real diff.
+        # It skips the rework lap, which is the only thing re-asking it would buy.
+        if (
+            result.status == "needs_rework"
+            and not result.blocked
+            and reuse_rework < self.max_reuse_reworks
+        ):
             return Continue(
                 result,
                 self.rework_reuse,
@@ -472,7 +479,9 @@ class Dev(Workflow):
         )
         return Continue(pick, self.implement, index=pick.index)
 
-    def implement(self, index: int) -> Continue:
+    def implement(
+        self, index: int, operator_context: str = "", impl_blocks: int = 0
+    ) -> Continue | Await:
         """Route one service layer into the tests/code split, or the classic single turn.
 
         The split is the TDD contract made structural: the tests land alone, `run_red_gate`
@@ -485,21 +494,50 @@ class Dev(Workflow):
 
         `arm_red_gate` must run *before* the tests turn — it records the worktree baseline
         the gate later diffs against, so pre-existing dirt is never charged to that turn.
+
+        `operator_context` is an answer to a block this layer already raised, and it is
+        threaded rather than read off `read_operator_context`'s output because the layer
+        loop re-enters this state for *every* layer: an answer about one service must not
+        silently brief the next one's turn.
         """
         layer = self._layer
         if layer.type in NON_TDD_TYPES:
-            self._implement_classic()
-            return Continue(None, self.lint, index=index)
+            return self._classic(index, operator_context, impl_blocks)
         arm = self.call(
             arm_red_gate, layer.cwd, layer.service, self.ctx.spec_dir, layer.plan_file
         )
         if arm.mode in {"regression_only", "qa_only"}:
-            self._implement_classic()
-            return Continue(None, self.lint, index=index)
-        return Continue(arm, self.implement_tests, index=index)
+            return self._classic(index, operator_context, impl_blocks)
+        return Continue(
+            arm,
+            self.implement_tests,
+            index=index,
+            operator_context=operator_context,
+            impl_blocks=impl_blocks,
+        )
+
+    def _classic(
+        self, index: int, operator_context: str, impl_blocks: int
+    ) -> Continue | Await:
+        """Run the classic turn and route on whether it said it could not.
+
+        The routing half of both `implement` arms that skip the split, factored out so the
+        block reaches the operator from either. Not a state: it is the tail of `implement`.
+        """
+        result = self._implement_classic(operator_context)
+        if result.blocked:
+            return self._gate_impl(
+                result, result.notes, index, "the implementation turn", impl_blocks
+            )
+        return Continue(result, self.lint, index=index)
 
     def implement_tests(
-        self, index: int, tests_rework: int = 0, gate_feedback: str = ""
+        self,
+        index: int,
+        tests_rework: int = 0,
+        gate_feedback: str = "",
+        operator_context: str = "",
+        impl_blocks: int = 0,
     ) -> Continue:
         """Write the plan's Test Scenarios as failing tests — tests only, no production code.
 
@@ -528,6 +566,7 @@ class Dev(Workflow):
                 "test_command": arm.test_command,
                 "impl_instruction_paths": impl.impl_instruction_paths,
                 "gate_feedback": gate_feedback,
+                "operator_context": operator_context,
             },
         )
         return Continue(
@@ -535,11 +574,18 @@ class Dev(Workflow):
             self.red_gate,
             index=index,
             tests_rework=tests_rework,
-            tests_blocked=tests.status == "blocked",
+            tests_blocked=tests.blocked,
+            operator_context=operator_context,
+            impl_blocks=impl_blocks,
         )
 
     def red_gate(
-        self, index: int, tests_rework: int = 0, tests_blocked: bool = False
+        self,
+        index: int,
+        tests_rework: int = 0,
+        tests_blocked: bool = False,
+        operator_context: str = "",
+        impl_blocks: int = 0,
     ) -> Continue:
         """Hold the tests turn to its contract: a pure diff, observed genuinely red.
 
@@ -585,6 +631,8 @@ class Dev(Workflow):
                 index=index,
                 tests_rework=tests_rework + 1,
                 gate_feedback=f"[{outcome.status}] {outcome.reason}",
+                operator_context=operator_context,
+                impl_blocks=impl_blocks,
             )
         if rejected and not futile:
             self.logger.warning(
@@ -592,9 +640,17 @@ class Dev(Workflow):
                 outcome.status,
                 tests_rework,
             )
-        return Continue(outcome, self.implement_code, index=index)
+        return Continue(
+            outcome,
+            self.implement_code,
+            index=index,
+            operator_context=operator_context,
+            impl_blocks=impl_blocks,
+        )
 
-    def implement_code(self, index: int) -> Continue:
+    def implement_code(
+        self, index: int, operator_context: str = "", impl_blocks: int = 0
+    ) -> Continue | Await:
         """Make the observed-red tests green — the second half of the split.
 
         `cwd` is the service repo, which is what lets workhorse resolve a repo-specific
@@ -611,7 +667,7 @@ class Dev(Workflow):
         layer = self._layer
         impl = self.output(resolve_impl_context)
         outcome = self.output(run_red_gate)
-        self.agent(
+        result = self.agent(
             "prompts/implement-plan-code.md",
             returns=ImplResult,
             # high: writes the production change, across whatever the plan touches.
@@ -631,20 +687,29 @@ class Dev(Workflow):
                 "red_status": outcome.status,
                 "red_log_path": outcome.log_path,
                 "red_failing_files": ", ".join(outcome.failing_files),
+                "operator_context": operator_context,
             },
         )
-        return Continue(None, self.lint, index=index)
+        if result.blocked:
+            return self._gate_impl(
+                result, result.notes, index, "the code turn", impl_blocks
+            )
+        return Continue(result, self.lint, index=index)
 
-    def _implement_classic(self) -> None:
+    def _implement_classic(self, operator_context: str = "") -> ImplResult:
         """The original single `implement-plan.md` turn, for the layers the split skips.
 
         A helper rather than a state: both callers are arms of `implement`, and the fix
         lane elsewhere still runs this same prompt — see its docstring history in git for
         why the last three args are passed explicitly.
+
+        The result is returned rather than discarded, which is the whole of this lane's
+        root-cause bug: a turn that reported it could not implement the plan was thrown
+        away here, and the layer proceeded to lint an unwritten change.
         """
         layer = self._layer
         impl = self.output(resolve_impl_context)
-        self.agent(
+        return self.agent(
             "prompts/implement-plan.md",
             returns=ImplResult,
             # high: writes the production change, across whatever the plan touches.
@@ -661,6 +726,7 @@ class Dev(Workflow):
                 "impl_instruction_paths": impl.impl_instruction_paths,
                 "qa_run_plan": impl.qa_run_plan,
                 "qa_stack": impl.qa_stack,
+                "operator_context": operator_context,
             },
         )
 
@@ -684,9 +750,15 @@ class Dev(Workflow):
         than through the transition: they are what this state *consumes*, not what the
         routing decision was made on, and a lint log is exactly the sort of thing that
         should not be copied through a checkpoint.
+
+        A turn that reports it cannot satisfy the linter does not reach the operator from
+        here, and that is deliberate rather than an omission: this gate is fail-open by
+        design — QA re-runs lint as the binding one — so the block already has an owner
+        downstream. What it does buy is skipping the remaining laps, because re-asking a
+        turn that just said "not possible" is the churn this whole change is against.
         """
         outcome = self.output(run_lint)
-        self.agent(
+        result = self.agent(
             "prompts/fix-lint.md",
             returns=FixLintResult,
             # medium: mechanical — satisfy the linter in one service cwd, grounded in the
@@ -701,7 +773,118 @@ class Dev(Workflow):
                 "lint_output": outcome.output,
             },
         )
-        return Continue(None, self.lint, index=index, lint_rework=lint_rework + 1)
+        if result.blocked:
+            self.logger.warning(
+                "the lint fixer reported it cannot satisfy %s — leaving it to QA's lint gate",
+                self._layer.service,
+            )
+            return Continue(result, self.layer, index=index)
+        return Continue(result, self.lint, index=index, lint_rework=lint_rework + 1)
+
+    # --- the implementation gate --------------------------------------------
+
+    def _gate_impl(
+        self,
+        result: ImplResult,
+        notes: str,
+        index: int,
+        where: str,
+        impl_blocks: int,
+    ) -> Continue | Await:
+        """`implement` said it could not — hand that to the resolver, or to a human.
+
+        The mirror of `_gate_plan` for the implementation half, and the reason this change
+        exists: an implementation turn reporting `blocked` used to be discarded, so the
+        layer went on to lint a change nobody had written and the run reported success
+        several stages later.
+
+        There is no fix-demand arm here even when the turn carried findings. The evidence
+        test in `CoderResult.actionable` decides *who* a block is routed to, and an
+        implement turn's owner is itself: routing its own findings back to the same prompt
+        is precisely the lap it just declared futile.
+        """
+        if self.operator_mode in {"human", "operator"} or impl_blocks >= self.MAX_PLAN_BLOCKS:
+            gate = self._escalation(
+                notes,
+                impl_blocks,
+                block_kind="implementation",
+                where=where,
+                findings=result.actionable,
+            )
+            return Await(
+                self._context,
+                gate.body,
+                self.read_operator_impl,
+                index=index,
+                impl_blocks=impl_blocks,
+            )
+        return Continue(
+            result,
+            self.resolve_impl,
+            notes=notes,
+            index=index,
+            where=where,
+            impl_blocks=impl_blocks,
+        )
+
+    def resolve_impl(
+        self, notes: str, index: int, where: str, impl_blocks: int = 0
+    ) -> Await:
+        """Investigate an implementation block, then park for the operator.
+
+        The same shape as `resolve_plan`, and for the same reason it always ends in an
+        `Await`: the resolver describes the block, it does not decide it.
+        """
+        self.logger.info("resolving the implementation block", extra={"activity": True})
+        result = self.agent(
+            "prompts/resolve-operator.md",
+            returns=OperatorResolution,
+            # high, and unbounded: see `resolve_plan` — it is investigating a block with
+            # full tool access, standing in for the person who would otherwise be woken.
+            power="high",
+            timeout=UNBOUNDED,
+            add_dirs=self._dirs(),
+            args={
+                "story_path": self.ctx.story_path,
+                "spec_dir": self.ctx.spec_dir,
+                "block_kind": "implementation",
+                "block_notes": notes,
+            },
+        )
+        gate = self._escalation(
+            notes, impl_blocks, result, block_kind="implementation", where=where
+        )
+        return Await(
+            self._context,
+            gate.body,
+            self.read_operator_impl,
+            index=index,
+            impl_blocks=impl_blocks + 1,
+        )
+
+    def read_operator_impl(self, index: int, impl_blocks: int = 0) -> Continue | Done:
+        """Consume the answer and re-enter the layer with it in hand.
+
+        A thin consume-the-answer state, which is what `Await` asks for: resume replays
+        its target from the top, so everything but the answer is read by reference. The
+        answer resumes at the escalating layer rather than the next one — the block was
+        about *this* service, and `select_next_layer` is re-run by `implement` off the
+        same cursor.
+
+        `SCOPE: epic` leaves the flow exactly as it does from the plan gate: an answer can
+        reveal the epic's premise was wrong, and that is the queue level's to fix.
+        """
+        answer = self.call(read_operator_context, self.ctx.story_path)
+        if answer.scope == "epic":
+            self.logger.info("operator scoped the fix to the epic — handing back to replan")
+            return Done(DevResult(status="replan", operator_notes=answer.content))
+        return Continue(
+            answer,
+            self.implement,
+            index=index,
+            operator_context=answer.content,
+            impl_blocks=impl_blocks,
+        )
 
     # --- shared -------------------------------------------------------------
 

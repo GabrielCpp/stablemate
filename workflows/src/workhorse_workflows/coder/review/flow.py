@@ -182,6 +182,16 @@ class Review(Workflow):
                 "pr_number": self.pr_number,
             },
         )
+        if result.blocked:
+            # Advisory input, not a gate: `review-implementation.md` below is the binding
+            # verdict and it runs against the diff either way. A turn that could not run the
+            # review skill is worth saying out loud and worth not pretending produced
+            # findings — it is not worth stopping the run to ask a human about.
+            self.logger.warning(
+                "the code-review pass reported it could not run (%s) — the "
+                "implementation reviewer is the binding verdict and still runs",
+                result.findings_summary or "no reason given",
+            )
         return Continue(result, self.reuse, code_review=result, review_blocks=review_blocks)
 
     def reuse(self, code_review: CodeReviewResult, review_blocks: int = 0) -> Continue:
@@ -205,6 +215,12 @@ class Review(Workflow):
                 "affected_repo_paths": self._repos,
             },
         )
+        if result.blocked:
+            # Same reasoning as `start`: advisory, and the reviewer reads it as prose.
+            self.logger.warning(
+                "the reuse pass reported it could not run (%s) — folding it in as it stands",
+                result.findings_summary or "no reason given",
+            )
         return Continue(
             result,
             self.review,
@@ -257,6 +273,11 @@ class Review(Workflow):
                 review_rework=review_rework,
                 review_blocks=review_blocks,
             )
+        if result.blocked:
+            # A reviewer that could not reach a verdict is not a reviewer demanding changes:
+            # the apply turn would be handed nothing to act on, and each futile lap ends
+            # back here with the same reason. Straight to the gate, rework budget unspent.
+            return self._gate(result, result.notes, code_review, code_reuse, review_blocks)
         return self._guard(
             result,
             result.notes,
@@ -317,8 +338,15 @@ class Review(Workflow):
                 review_rework=review_rework,
                 review_blocks=review_blocks,
             )
-        if settled.status == "blocked":
-            return self._gate(settled, notes, code_review, code_reuse, review_blocks)
+        if settled.blocked:
+            return self._gate(
+                settled,
+                notes,
+                code_review,
+                code_reuse,
+                review_blocks,
+                where="applying the review findings",
+            )
         return self._guard(
             settled,
             notes,
@@ -361,6 +389,7 @@ class Review(Workflow):
         code_review: CodeReviewResult,
         code_reuse: CodeReuseResult,
         review_blocks: int,
+        where: str = "the implementation-review stage",
     ) -> Continue | Await:
         """`gate_review`: hand the block to the resolver, or straight to a human.
 
@@ -371,7 +400,7 @@ class Review(Workflow):
         `review_blocks` is spent — never a terminal failure.
         """
         if self.operator_mode in {"human", "operator"} or review_blocks >= self.MAX_REVIEW_BLOCKS:
-            gate = self._escalation(notes, review_blocks)
+            gate = self._escalation(notes, review_blocks, where=where)
             return Await(
                 self._context,
                 gate.body,
@@ -388,6 +417,7 @@ class Review(Workflow):
             code_review=code_review,
             code_reuse=code_reuse,
             review_blocks=review_blocks,
+            where=where,
         )
 
     # --- the operator arm ---------------------------------------------------
@@ -398,6 +428,7 @@ class Review(Workflow):
         code_review: CodeReviewResult,
         code_reuse: CodeReuseResult,
         review_blocks: int = 0,
+        where: str = "the implementation-review stage",
     ) -> Await:
         """Investigate a review block, then park for the operator.
 
@@ -427,7 +458,7 @@ class Review(Workflow):
         # forward along with what the resolver tried.
         return Await(
             self._context,
-            self._escalation(notes, review_blocks, result).body,
+            self._escalation(notes, review_blocks, result, where=where).body,
             self.read_operator,
             notes=notes,
             code_review=code_review,
@@ -467,12 +498,17 @@ class Review(Workflow):
         code_review: CodeReviewResult,
         code_reuse: CodeReuseResult,
         review_blocks: int = 0,
-    ) -> Continue:
+    ) -> Continue | Await:
         """Apply the operator's resolution, then start the review over with a fresh budget.
 
         `apply_review_resolved` + `reset_review`. Going back to `start` re-runs both feeder
         reviews against the new code, which is what the YAML did and what makes the answer
         binding rather than asserted: the same reviewer has to look again.
+
+        A turn that reports it could not apply the answer goes back to the operator instead
+        of re-entering the loop: re-reviewing unchanged code produces the same findings and
+        the same block, one full review round later. The operator is told it was their own
+        answer that could not be applied, which is a different question from the original.
         """
         result = self.agent(
             "prompts/apply-review.md",
@@ -486,6 +522,15 @@ class Review(Workflow):
                 "operator_feedback": operator_context,
             },
         )
+        if result.blocked:
+            return self._gate(
+                result,
+                result.notes or notes,
+                code_review,
+                code_reuse,
+                review_blocks,
+                where="applying the operator's own resolution",
+            )
         return Continue(result, self.start, review_blocks=review_blocks)
 
     # --- the non-blocking feedback checkpoint -------------------------------
@@ -525,13 +570,18 @@ class Review(Workflow):
         code_reuse: CodeReuseResult,
         review_rework: int,
         review_blocks: int = 0,
-    ) -> Continue:
+    ) -> Continue | Await:
         """Rework against the operator's notes, then re-review.
 
         No review findings go in: the feedback *is* the work, and handing the applier a stale
         set of already-settled findings would invite it to redo them. The rework counter is
         carried rather than reset, which is the YAML's wiring — the feedback pass re-enters
         the review loop with whatever allowance is left.
+
+        Feedback the turn reports it cannot act on is the one case in this flow where the
+        block came from a human who is not waiting: they dropped a note and moved on. It
+        still parks, because the alternative is re-reviewing code the feedback never
+        reached and reporting the story approved over it.
         """
         result = self.agent(
             "prompts/apply-review.md",
@@ -545,6 +595,15 @@ class Review(Workflow):
                 "operator_feedback": content,
             },
         )
+        if result.blocked:
+            return self._gate(
+                result,
+                result.notes or content,
+                code_review,
+                code_reuse,
+                review_blocks,
+                where="applying the operator's feedback note",
+            )
         return Continue(
             result,
             self.review,

@@ -487,6 +487,7 @@ class _Agent:
         explode: set[str] | None = None,
         cut: set[str] | None = None,
         dry_run: str = "passed",
+        refuses: set[str] | None = None,
     ) -> None:
         self.docs = docs
         #: What the repair turn leaves in the dry-run scratch directory: `passed` writes a
@@ -519,6 +520,11 @@ class _Agent:
         #: whatever it had written when the clock ran out, and a fake that raised instead of
         #: writing would be testing the flow against a turn that never started.
         self.cut = cut or set()
+        #: Prompt stems whose turn answers "I cannot get there from here". The reply replaces
+        #: the handler's rather than decorating it, because a turn that refused did not also
+        #: write the file its handler stands in for — and a fake that wrote it anyway would
+        #: test the flow against a refusal nobody has ever seen.
+        self.refuses = refuses or set()
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         self.dirs: list[list[str]] = []
@@ -538,9 +544,15 @@ class _Agent:
         self.dirs.append(list(node.add_dirs or []))
         if stem in self.explode:
             raise RuntimeError(f"killed during {stem}")
-        handler = getattr(self, f"_{stem.replace('-', '_')}")
         nth = self.planned() if stem in self.PLAN_STEMS else self.counts()[stem]
-        answer = handler(data, nth)
+        if stem in self.refuses:
+            answer: dict[str, Any] = {
+                "status": "blocked",
+                "notes": f"{stem} needs a credential this run does not hold (pass {nth})",
+            }
+        else:
+            handler = getattr(self, f"_{stem.replace('-', '_')}")
+            answer = handler(data, nth)
         if stem in self.cut:
             # The transport-level signal, not the pyflow one: raising `AgentTimeout` here
             # would skip the engine's translation and let the flow pass over a chain that
@@ -1578,10 +1590,14 @@ def test_a_fixer_that_reports_blocked_reaches_the_operator(
     the same question again, at high power, until the budget ran out.
 
     Here the first `blocked` reaches the operator gate instead, so the block is put to
-    somebody who can answer it — one gate lap for every fix lap, because a blocked fix costs
-    a gate lap as well as a fix lap. No cap on the fix budget still ends the story now: an
-    answer that never actually unblocks the fixer just earns the next escalation, forever —
-    bounded here only by the harness's transition budget, not by `Qa`.
+    somebody who can answer it. And the fix that is handed the answer and *still* says it is
+    blocked goes back to the gate rather than round the QA cycle: the answer did not reach
+    the block, so re-planning and re-running the suite against it buys nothing but the same
+    refusal an hour later. One suite cycle, then gate laps only.
+
+    No cap on the fix budget still ends the story now: an answer that never actually unblocks
+    the fixer just earns the next escalation, forever — bounded here only by the harness's
+    transition budget, not by `Qa`.
     """
     ostler(fail_runs=99)
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
@@ -1595,16 +1611,15 @@ def test_a_fixer_that_reports_blocked_reaches_the_operator(
         drive_flow(Qa(story=STORY), env(), agent)
 
     counts = agent.counts()
-    laps = Qa.MAX_QA_REWORKS // 2
-    # The block is asked of the operator on the first fix, not swallowed — and one gate lap
-    # for every fix lap up to the budget: the suite is re-run and re-planned `laps` times,
-    # never again after that, because the run failure stops changing and the loop stalls
-    # straight into the gate instead of paying for another suite run.
-    assert counts["qa-story"] == laps, counts
-    assert counts["plan-qa"] + counts["repair-qa-plan"] == laps, counts
-    # After that plateau the stall keeps escalating on every fix lap — unboundedly, since an
-    # answer that never actually unblocks the fixer just earns the next escalation.
-    assert counts["resolve-operator"] > laps, counts
+    # The block is asked of the operator on the first fix, not swallowed. The suite is
+    # planned and assessed exactly once — the cycle that found the failure — and never again,
+    # because every lap after it is a fixer refusing an answer rather than a fix to verify.
+    assert counts["qa-story"] == 1, counts
+    assert counts["plan-qa"] + counts["repair-qa-plan"] == 1, counts
+    # One gate lap per refusing fix lap, unboundedly: an answer that never actually unblocks
+    # the fixer just earns the next escalation.
+    assert counts["resolve-operator"] == counts["apply-qa-fixes"], counts
+    assert counts["resolve-operator"] > 1, counts
     # Each gate is the composed escalation body, numbered, carrying the resolver's note.
     assert [f"**Escalation #{n} " in body for n, body in enumerate(seen, 1)] == [
         True
@@ -2563,3 +2578,53 @@ def test_the_lane_runs_standalone_with_no_plan_context(
     assert result.status == "passed", result
     assert agent.planned() == 1, agent.counts()
 
+
+
+# --------------------------------------------------------------- a turn that cannot proceed
+
+
+@pytest.mark.parametrize("stem", ["plan-qa", "qa-story", "audit-qa"])
+def test_a_turn_that_says_it_cannot_proceed_reaches_the_operator(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    stem: str,
+) -> None:
+    """Every binding turn on the clean path can refuse, and the refusal is a block.
+
+    Not a repair lap: nothing about the plan, the run or the evidence is wrong, so a lap
+    that re-ran the same turn would get the same answer for the same reason. The refusal's
+    own words are what the operator is shown — that is the only thing in the run that says
+    *why* it stopped.
+    """
+    ostler()
+    agent = _Agent(docs, refuses={stem})
+    seen: list[str] = []
+
+    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+        drive_flow(Qa(story=STORY, operator_mode="human"), env(), agent)
+
+    assert agent.counts()[stem] == 1, agent.counts()
+    assert len(seen) == 1, seen
+    assert "needs a credential this run does not hold" in seen[0], seen
+
+
+def test_a_triage_that_cannot_proceed_reaches_the_operator(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Triage is only reached by a failing run, so it needs one to refuse on."""
+    ostler(fail_runs=1)
+    agent = _Agent(docs, assessment_class="product", refuses={"triage-qa"})
+    seen: list[str] = []
+
+    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+        drive_flow(Qa(story=STORY, operator_mode="human"), env(), agent)
+
+    assert agent.counts()["triage-qa"] == 1, agent.counts()
+    # The fix loop never opened: a triage that refused named no target to fix.
+    assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
+    assert len(seen) == 1 and "needs a credential this run does not hold" in seen[0], seen

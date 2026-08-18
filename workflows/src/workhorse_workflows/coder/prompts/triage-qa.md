@@ -127,8 +127,10 @@ classified the findings and what you changed:
 
 ```json
 {
+  "status": "",
   "triage_action": "rescope" | "qa_fix",
-  "qa_failure_class": "code" | "evidence" | "environment"
+  "qa_failure_class": "code" | "evidence" | "environment",
+  "notes": ""
 }
 ```
 
@@ -151,8 +153,10 @@ Example final response (after the markdown summary):
 
 ```json
 {
+  "status": "",
   "triage_action": "qa_fix",
-  "qa_failure_class": "evidence"
+  "qa_failure_class": "evidence",
+  "notes": ""
 }
 ```
 
@@ -166,3 +170,14 @@ Example final response (after the markdown summary):
 - If you cannot tell whether a finding is adjacent or orthogonal, prefer scoping it **in** (bucket
   2) when this story touched the surface — fixing forward is the goal — but never grow the story
   past your rescope budget.
+
+### `status` — how you say you cannot judge this at all
+
+Leave `status` empty on any turn that reached a verdict, however unwelcome. Set it to
+`"blocked"` **only** when nothing in this repository would let you reach one, because what is
+missing is external to it: a credential or deployment you cannot perform, a product decision
+present in neither the story nor the plan, or work that lives in another repo. A `blocked`
+turn ends the loop and hands the story to an operator, so it must name that specific
+dependency in `notes` and say what you attempted before concluding it. A hard judgement is
+not a blocked one — the fields above exist to carry an unfavourable verdict, and reaching for
+`blocked` to avoid picking one takes the decision away from the only stage allowed to make it.

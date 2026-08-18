@@ -50,6 +50,7 @@ answer. See `_blocked` for the loop guard and for what `human`/`operator` mode s
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -76,6 +77,7 @@ from workhorse_workflows.coder.shared.schemas.docs import (
     DocumentationResult,
     DocumentationReview,
 )
+from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.kit.telemetry import counter_labels, verdict_labels
@@ -456,7 +458,10 @@ class Docs(Workflow):
         run: four grounding passes of work discarded on the pass that had nothing left to
         do.
         """
-        if result.status == "blocked":
+        # `blocked` on the derived property, not the literal: an author that answered
+        # `unfixable` or `invalid` said the same thing, and the raise below would otherwise
+        # kill the run over which synonym it reached for.
+        if result.blocked:
             self.logger.info(
                 "documentation author blocked on %s: %s", self.ctx.story_slug, result.notes
             )
@@ -663,12 +668,16 @@ class Docs(Workflow):
                     authored_nodes=list(authored_nodes),
                 )
             )
-        if result.status == "blocked":
+        if result.blocked:
             self.logger.info(
                 "documentation review blocked on %s: %s", self.ctx.story_slug, result.notes
             )
             return self._blocked(
                 result.notes,
+                # A reviewer that refused still names what it read as wrong. Those findings
+                # are what an operator needs to rule on, and without them the gate says only
+                # that documentation is impossible, not which contradiction made it so.
+                findings=result.actionable,
                 consulted=consulted,
                 rework=rework,
                 gate_notes=gate_notes,
@@ -773,6 +782,7 @@ class Docs(Workflow):
         progress: DocsProgress | None,
         delta_refs: tuple[str, ...],
         authored_nodes: tuple[str, ...],
+        findings: Sequence[Finding] = (),
     ) -> Continue | Await | Done:
         """A block ends the flow — but not before the author it belongs to gets a say.
 
@@ -796,6 +806,11 @@ class Docs(Workflow):
         again immediately and the pair would cycle forever.
 
         `human`/`operator` mode still parks — someone asked to be asked.
+
+        `findings` reaches the gate body but deliberately not `carried`: it is evidence for
+        whoever reads the escalation, and putting it in the checkpoint would widen every
+        downstream state's parameters — which *are* the checkpoint — for a value none of them
+        read.
         """
         if consulted:
             return self._ends(DocsResult(status="blocked", notes=notes))
@@ -816,6 +831,7 @@ class Docs(Workflow):
                 # One consult per flow (`consulted` returns above), so a docs block is
                 # always this story's first documentation escalation.
                 number=1,
+                findings=findings,
             )
             return Await(self._context, gate.body, self.read_author, **carried)
         return Continue(None, self.resolve_author, **carried)

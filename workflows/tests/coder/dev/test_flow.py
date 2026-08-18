@@ -222,8 +222,9 @@ class _Agent:
     `impure` makes the first N tests turns leave a production file behind, `make_green` is
     the marker the code turn writes — the seam a real red suite checks for —
     `regression_only` makes every plan write carry the planner's escape marker, `qa_only`
-    makes every plan's scenario list entirely QA-only, and `tests_blocked` makes every tests
-    turn report `blocked` instead of `done`.
+    makes every plan's scenario list entirely QA-only, `tests_blocked` makes every tests
+    turn report `blocked` instead of `done`, and `impl_blocked` makes the first N
+    implementation turns — of either prompt — report they could not write the change.
     """
 
     def __init__(
@@ -242,6 +243,7 @@ class _Agent:
         regression_only: bool = False,
         qa_only: bool = False,
         tests_blocked: bool = False,
+        impl_blocked: int = 0,
     ) -> None:
         self.docs = docs
         self.services = services if services is not None else SERVICES
@@ -256,11 +258,15 @@ class _Agent:
         self.regression_only = regression_only
         self.qa_only = qa_only
         self.tests_blocked = tests_blocked
+        self.impl_blocked = impl_blocked
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         #: Plan turns of either prompt, so `blocked` and `bad_paths` count the *writes*
         #: rather than one prompt's share of them.
         self.plans = 0
+        #: The same, for the two implementation prompts: a layer takes one or the other,
+        #: so counting them apart would make `impl_blocked` mean different things per layer.
+        self.impls = 0
 
     # -- the seam ---------------------------------------------------------
 
@@ -352,7 +358,7 @@ class _Agent:
         }
 
     def _implement_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        return {"status": "done", "notes": f"implemented {data['service_path']}"}
+        return self._implemented(data)
 
     def _implement_plan_tests(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """Write a real failing test into the layer's real worktree — the gate diffs it.
@@ -376,6 +382,13 @@ class _Agent:
     def _implement_plan_code(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if self.make_green is not None:
             self.make_green.write_text("", encoding="utf-8")
+        return self._implemented(data)
+
+    def _implemented(self, data: dict[str, Any]) -> dict[str, Any]:
+        """What either implementation prompt reports back, blocked laps first."""
+        self.impls += 1
+        if self.impls <= self.impl_blocked:
+            return {"status": "blocked", "notes": "the plan names a migration nobody has run"}
         return {"status": "done", "notes": f"implemented {data['service_path']}"}
 
     def _fix_lint(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -767,6 +780,54 @@ def test_an_escalating_resolver_leaves_its_note_for_the_human(
     assert ESCALATION_NOTE.strip() in gate, gate
 
 
+def test_an_implementation_turn_that_says_it_cannot_reaches_the_operator(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The lane's root-cause bug, from the outside.
+
+    A turn reporting it could not implement the plan used to be discarded where it was
+    produced, and the layer went straight on to lint a change nobody had written — the run
+    reported `ready` over an empty diff. It is a block like any other now: it parks on the
+    story's `context.md`, and the operator's answer re-enters the layer with the answer in
+    hand rather than starting the same turn again blind.
+    """
+    agent = _Agent(docs, impl_blocked=1)
+    seen: list[str] = []
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)):
+        result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
+    (gate,) = seen
+    assert "the plan names a migration nobody has run" in gate, gate
+    # The layer is re-entered from the top, so the retried turn is the second one — and it
+    # carries what the operator said, which is the whole point of stopping to ask.
+    retried = agent.args_for("implement-plan-code")[1]
+    assert "staging bucket" in retried["operator_context"], retried
+
+
+def test_an_implementation_block_in_human_mode_skips_the_resolver(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Same gate, no investigation — `human` mode routes every block straight to the file."""
+    agent = _Agent(docs, impl_blocked=1)
+    seen: list[str] = []
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)):
+        result = drive_flow(Dev(story=STORY, operator_mode="human"), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["resolve-operator"] == 0, agent.counts()
+    assert len(seen) == 1 and "no auto-resolver ran" in seen[0], seen
+
+
 def test_a_plan_no_operator_can_unblock_never_gives_up_either(
     docs: Path,
     workspace: dict[str, Path],
@@ -1156,7 +1217,13 @@ def test_a_run_killed_mid_implement_resumes_on_that_layer(
     resume = read_resume(checkpoint)
     assert resume.state == "implement_tests", resume
     assert resume.flow == "Dev", resume
-    assert resume.params == {"index": 0}, resume.params
+    # The cursor, plus the two the operator gate threads through the layer loop: an
+    # unanswered layer carries no operator context and has spent no escalation.
+    assert resume.params == {
+        "index": 0,
+        "operator_context": "",
+        "impl_blocks": 0,
+    }, resume.params
 
     agent = _Agent(docs)
     result = drive_flow(Dev(**resume.inputs), env(run_dir=run_dir), agent, resume)

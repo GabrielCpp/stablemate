@@ -173,8 +173,9 @@ class _Agent:
     reviews demand rework, `apply_status` is what every apply turn *claims* (which the
     settlement gate is free to overrule), `settle` makes the apply turn write a real
     `review-resolution.json` so that gate has something to verify, `evidence_after` is the
-    apply pass from which it also writes the artifact that verdict cites, and `explode`
-    raises on a named prompt — a run killed mid-turn. There is no "answer directly" knob:
+    apply pass from which it also writes the artifact that verdict cites, `review_blocked`
+    makes the first N implementation reviews report they could not reach a verdict, and
+    `explode` raises on a named prompt — a run killed mid-turn. There is no "answer directly" knob:
     the resolver always escalates to a human, per `resolve_review`'s contract — see the
     module docstring.
     """
@@ -184,6 +185,7 @@ class _Agent:
         docs: Path,
         *,
         needs_changes: int = 0,
+        review_blocked: int = 0,
         apply_status: str = "applied",
         settle: bool = False,
         evidence_after: int = 1,
@@ -191,6 +193,7 @@ class _Agent:
     ) -> None:
         self.docs = docs
         self.needs_changes = needs_changes
+        self.review_blocked = review_blocked
         self.apply_status = apply_status
         self.settle = settle
         self.evidence_after = evidence_after
@@ -233,6 +236,8 @@ class _Agent:
         }
 
     def _review_implementation(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        if nth <= self.review_blocked:
+            return {"status": "blocked", "notes": "the story's acceptance criteria contradict"}
         if nth <= self.needs_changes:
             return {"status": "needs_changes", "notes": "the handler ignores the timeout"}
         return {"status": "approved", "notes": "matches the acceptance criteria"}
@@ -259,6 +264,13 @@ class _Agent:
                 ),
                 encoding="utf-8",
             )
+        if data.get("operator_feedback"):
+            # The two sites handed an answer from outside — the operator resolution and the
+            # feedback note. `apply_status` is the *loop's* claim: a turn that has just been
+            # told what to do is not still blocked on being told, and a fake that says it is
+            # asks the operator the same question forever, which is now a real loop rather
+            # than a discarded result.
+            return {"status": "applied", "notes": f"applied what the operator said (pass {nth})"}
         return {"status": self.apply_status, "notes": f"apply pass {nth}"}
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -472,6 +484,32 @@ def test_a_blocked_settlement_escalates_without_spending_the_budget(
     # The human's answer reached the applier as operator feedback, not as review notes.
     resolved = agent.args_for("apply-review")[-1]
     assert "Drop the retry" in resolved["operator_feedback"]
+
+
+def test_a_reviewer_that_cannot_reach_a_verdict_escalates_instead_of_reworking(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A blocked verdict is not a demand for changes, and the applier is not its audience.
+
+    Both non-approving arms used to land on the rework guard, so a reviewer reporting it
+    could not review at all bought three apply passes against notes describing why no
+    review was possible — three turns to arrive back here with the same sentence.
+    """
+    agent = _Agent(docs, review_blocked=1)
+    seen: list[str] = []
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Review(story=STORY), env(), agent)
+
+    assert result.status == "approved", result
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
+    # Only the apply that carries the operator's answer — the rework budget went unspent.
+    assert agent.counts()["apply-review"] == 1, agent.counts()
+    (gate,) = seen
+    assert "the story's acceptance criteria contradict" in gate, gate
 
 
 def test_repeated_operator_cycles_never_give_up(

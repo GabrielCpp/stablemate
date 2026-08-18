@@ -329,8 +329,13 @@ class QaAssessment(CoderResult):
     `confirmed` disposition billed the plan author, including the ones whose repair was an
     assertion in a committed test file. Empty by default, so a checkpoint written before this
     field existed resumes on the prose path.
+
+    `status` carries the one answer no disposition spells: `blocked`, for a turn that could
+    not judge the run at all. It is separate because every `disposition` value classifies a
+    run this turn *did* read, and each routes the story to a budget that is then spent on it.
     """
 
+    status: str = ""
     disposition: str = "repair_plan"
     failure_class: str = "plan"
     objective_reached: str = "no"
@@ -350,8 +355,12 @@ class QaAudit(CoderResult):
     classification and routes the product case on its own; the findings are what keep an
     evidence defect whose repair is a test assertion from being billed to the plan author,
     who cannot write it. Empty by default, so an older checkpoint resumes on the prose path.
+
+    `status` is the auditor saying it could not audit — distinct from `refuted`, which is a
+    verdict about the evidence rather than an admission there was none to judge.
     """
 
+    status: str = ""
     verdict: str = "refuted"
     refutation_class: str = "plan-defect"
     findings: list[QaFinding] = []
@@ -365,10 +374,21 @@ class QaTriage(CoderResult):
     two fields of one model, which produces the same two keys. Both defaults are the YAML's
     and both are deliberately safe: never rescope on a malformed answer, and never let one
     earn the verification-only bonus pass.
+
+    `status` is the triager refusing to sort at all, which neither default covers: both of
+    them are *classifications*, and picking one on a turn that could not read the findings
+    bills a loop for a judgement nobody made.
     """
 
+    status: str = ""
     triage_action: str = "qa_fix"
     qa_failure_class: str = "code"
+    #: Only read on a refusal, and that is why it exists at all: a triage that sorted the
+    #: findings said everything it had to say in the two fields above, but one that could
+    #: not sort them has said nothing anywhere else — and the escalation it raises would
+    #: otherwise reach the operator as "the QA triage reported it cannot proceed", with no
+    #: sentence naming what stopped it.
+    notes: str = ""
 
 
 class QaReport(CoderResult):
@@ -385,11 +405,13 @@ class QaReport(CoderResult):
 class RegressionFix(CoderResult):
     """`fix-regression.md` — the attempt to make the committed journey suites green again.
 
-    No `status`, and that is the prompt's own contract rather than an omission: the fixer's
-    claim is not trusted, the suite is simply re-run, and `run_regression_suite` is the only
-    thing that decides whether the fix worked.
+    A claim of success is still not read: the suite is simply re-run, and
+    `run_regression_suite` is the only thing that decides whether the fix worked. `status`
+    exists for the opposite claim — a fixer saying it *cannot* get there, which the re-run
+    can only translate into another red suite and another identical lap.
     """
 
+    status: str = ""
     notes: str = ""
 
 

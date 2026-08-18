@@ -61,8 +61,11 @@ class ReuseResult(CoderResult):
 class ImplResult(CoderResult):
     """`prompts/implement-plan.md` — one service layer implemented, or the blocker.
 
-    Nothing branches on it: the lint gate below and QA downstream decide whether the layer
-    is done, and an agent claiming `done` is not evidence that it is.
+    The optimistic half is still not branched on: the lint gate below and QA downstream
+    decide whether the layer is done, and an agent claiming `done` is not evidence that it
+    is. The *pessimistic* half is, and that asymmetry is the point — a turn reporting it
+    could not implement the plan was discarded here for the whole of this workflow's life,
+    and the layer went on to lint a change nobody had written.
     """
 
     status: str = ""
@@ -72,9 +75,10 @@ class ImplResult(CoderResult):
 class TestsResult(CoderResult):
     """`prompts/implement-plan-tests.md` — the failing tests written, or the blocker.
 
-    Like `ImplResult`, nothing branches on it: the red gate downstream is the deterministic
-    verdict on whether the tests turn did its job, and an agent claiming `done` is not
-    evidence that it did.
+    Like `ImplResult`, the `done` claim is not branched on: the red gate downstream is the
+    deterministic verdict on whether the tests turn did its job, and an agent claiming
+    `done` is not evidence that it did. `blocked` is carried to that gate, which reads it
+    as one of the two conditions for standing down rather than reworking.
     """
 
     status: str = ""

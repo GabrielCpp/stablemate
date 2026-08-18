@@ -137,6 +137,7 @@ Return JSON only:
 
 ```json
 {
+  "status": "",
   "verdict": "refuted",
   "refutation_class": "evidence-defect",
   "findings": [
@@ -175,3 +176,14 @@ whose real repair is a missing test assertion is `product-test`, not `plan`: fil
 it bills a replan that cannot write the assertion, and the identical gap comes back on the
 next pass. Classifying it honestly is what makes the refutation actionable rather than a
 finding the run rediscovers until its budget runs out.
+
+### `status` — how you say you cannot judge this at all
+
+Leave `status` empty on any turn that reached a verdict, however unwelcome. Set it to
+`"blocked"` **only** when nothing in this repository would let you reach one, because what is
+missing is external to it: a credential or deployment you cannot perform, a product decision
+present in neither the story nor the plan, or work that lives in another repo. A `blocked`
+turn ends the loop and hands the story to an operator, so it must name that specific
+dependency in `notes` and say what you attempted before concluding it. A hard judgement is
+not a blocked one — the fields above exist to carry an unfavourable verdict, and reaching for
+`blocked` to avoid picking one takes the decision away from the only stage allowed to make it.

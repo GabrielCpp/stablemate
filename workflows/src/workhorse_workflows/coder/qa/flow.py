@@ -79,7 +79,7 @@ from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
 from workhorse_workflows.coder.shared.docs import detect_okf_docs
 from workhorse_workflows.coder.shared.escalation import escalation
-from workhorse_workflows.coder.shared.schemas._base import Finding
+from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 from workhorse_workflows.coder.qa.nodes.evidence import verify_qa_evidence
 from workhorse_workflows.coder.qa.nodes.hygiene import check_sentinel_ids, flush_root_screenshots
 from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
@@ -639,15 +639,20 @@ class Qa(Workflow):
         finding, an audit refutation — goes to `repair_plan`, which edits the plan instead of
         writing a new one.
 
-        The turn's *reply* is discarded — the deliverable is `qa_plan.py` on disk, which the
-        validation tail reads back. That is what makes a turn cut at its 20-minute cap
-        survivable, and it is the whole reason for `retries=0` plus the catch below.
+        The turn's *reply* is discarded but for one field — the deliverable is `qa_plan.py`
+        on disk, which the validation tail reads back. That is what makes a turn cut at its
+        20-minute cap survivable, and it is the whole reason for `retries=0` plus the catch
+        below. `status` is the exception, because it is a claim about the turn rather than
+        about the file: a planner that says it cannot write a plan for this story has written
+        no file for the tail to read, and every validation-repair lap after it is spent
+        discovering that.
         """
         self.logger.info("planning QA for %s", self.ctx.story_slug, extra={"activity": True})
         overran = ""
         started = time.monotonic()
+        drafted: QaPlanResult | None = None
         try:
-            self.agent(
+            drafted = self.agent(
                 "prompts/plan-qa.md",
                 returns=QaPlanResult,
                 # medium: writing a runnable plan against a schema, from a story and an
@@ -672,9 +677,10 @@ class Qa(Workflow):
                 extra={"activity": True},
             )
             overran = _OVERRAN_PLAN
-        return self._validated(
-            loop.charged(time.monotonic() - started, plan=True), overran=overran
-        )
+        loop = loop.charged(time.monotonic() - started, plan=True)
+        if drafted is not None and drafted.blocked:
+            return self._refused(drafted, loop, "the QA planner")
+        return self._validated(loop, overran=overran)
 
     def repair_plan(self, loop: QaLoop) -> Continue | Await | Done:
         """Edit the cited part of a plan that already exists, leaving the rest byte-identical.
@@ -710,6 +716,7 @@ class Qa(Workflow):
         loop = loop.update(chain_laps=laps + 1)
         overran = ""
         repaired: tuple[str, ...] = ()
+        result: QaPlanResult | None = None
         started = time.monotonic()
         try:
             result = self.agent(
@@ -741,8 +748,15 @@ class Qa(Workflow):
                 extra={"activity": True},
             )
             overran = _OVERRAN_REPAIR
+        loop = loop.charged(time.monotonic() - started, plan=True)
+        if result is not None and result.blocked:
+            # Every lap here is a *repair*, so the scenario it could not repair is the same
+            # one the next lap would be handed. The validation tail would find the plan still
+            # red, the guard would grant another lap, and the chain would keep the same
+            # refusal in its own context — which is the loop this branch exists to leave.
+            return self._refused(result, loop, "the QA-plan repair")
         return self._validated(
-            loop.charged(time.monotonic() - started, plan=True),
+            loop,
             overran=overran,
             dry_run=tuple(sorted({*loop.failed_scenarios, *repaired})),
         )
@@ -984,6 +998,12 @@ class Qa(Workflow):
             },
         )
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
+        if assessment.blocked:
+            # Ahead of the dispositions, because a turn that could not read the run has no
+            # standing to classify it — and `repair_plan`, the default a silent reply takes,
+            # would bill the plan author for a judgement nobody made.
+            return self._refused(assessment, loop.charged(time.monotonic() - started),
+                                 "the QA run assessment")
         loop = loop.charged(time.monotonic() - started).update(
             assessment_notes=_finding(assessment.disposition == "confirmed", assessment.notes),
             assessment_disposition=assessment.disposition,
@@ -1077,6 +1097,12 @@ class Qa(Workflow):
                 "qa_notes": loop.qa.notes,
             },
         )
+        if result.blocked:
+            # `refuted` is a verdict about the evidence; this is the auditor saying there was
+            # nothing it could judge. Defaulting one into the other spends a plan rework on a
+            # refutation that was never made.
+            return self._refused(result, loop.charged(time.monotonic() - started),
+                                 "the QA audit")
         loop = loop.charged(time.monotonic() - started).update(
             audit_notes=_finding(
                 result.verdict == "stands" and result.refutation_class == "none", result.notes
@@ -1154,6 +1180,12 @@ class Qa(Workflow):
                 "max_triage_scopes": str(self.MAX_TRIAGE_SCOPES),
             },
         )
+        if triage.blocked:
+            # Both defaults below are classifications, and a triager that could not sort the
+            # findings has made neither. Taking one anyway sends the story to a loop on the
+            # strength of a verdict nobody reached.
+            return self._refused(triage, loop.charged(time.monotonic() - started),
+                                 "the QA triage")
         loop = loop.charged(time.monotonic() - started).update(
             failure_class=triage.qa_failure_class
         )
@@ -1193,6 +1225,15 @@ class Qa(Workflow):
                 "qa_notes": loop.qa.notes,
             },
         )
+        if report.blocked:
+            # Advisory, deliberately: the findings are already written down in `qa_dir`, and
+            # this turn only summarises them into a tracker. Gating a `dev` run's terminal
+            # act on the summary would park a story whose actual output already landed.
+            self.logger.warning(
+                "the QA report turn reported it could not write the summary (%s) — the "
+                "findings themselves are already in %s",
+                report.notes or "no reason given", self.ctx.qa_dir,
+            )
         self.logger.info("QA findings reported: %s", report.notes)
         return self._ends(
             QaFlowResult(
@@ -1308,13 +1349,16 @@ class Qa(Workflow):
         """Reproduce and fix a real-stack journey failure, then run the suite again.
 
         `fix_regression` + `incr_regression_fix` + `mark_regression_fix_applied`. The fixer's
-        own claim is not read: it returns notes and no status, and the re-run is the verdict.
+        claim of *success* is not read — the re-run is the verdict. Its claim that it cannot
+        get there is, because the re-run cannot express it: a suite that is still red looks
+        the same whether the last turn ran out of ideas or never had any, so the loop grants
+        another lap and spends a 90-minute turn on the question it just answered.
         """
         platform = self.output(detect_regression_platform)
         run = self.output(run_regression_suite)
         self.logger.info("fixing the regression suite", extra={"activity": True})
         started = time.monotonic()
-        self.agent(
+        fix = self.agent(
             "prompts/fix-regression.md",
             returns=RegressionFix,
             # high: reproducing and fixing real-stack journey failures.
@@ -1336,10 +1380,13 @@ class Qa(Workflow):
                 "regression_fix_count": loop.regression_fix,
             },
         )
+        loop = loop.charged(time.monotonic() - started)
+        if fix.blocked:
+            return self._refused(fix, loop, "the regression fixer")
         return Continue(
             run,
             self.run_regression,
-            loop=loop.charged(time.monotonic() - started).update(
+            loop=loop.update(
                 regression_fix=loop.regression_fix + 1,
                 regression_fix_applied=True,
                 docs_recheck_required=True,
@@ -1419,7 +1466,10 @@ class Qa(Workflow):
         loop = loop.charged(time.monotonic() - started).update(
             qa=result, qa_rework=loop.qa_rework + 1, docs_recheck_required=True
         )
-        if result.status == "blocked":
+        if result.blocked:
+            # The derived signal, not the literal `"blocked"`: this prompt's own reply has
+            # come back `unfixable` and `not_passed` as often as `blocked`, and three
+            # quarters of one vocabulary fell through to another lap of the same loop.
             self.logger.info("QA fixer reported blocked; escalating: %s", result.notes)
             return self._gate(result, loop)
         return Continue(result, self.build_context, loop=loop)
@@ -1477,7 +1527,7 @@ class Qa(Workflow):
             # next blocked run against.
             setup_problems=loop.blocked_problems,
         )
-        if result.status == "unfixable":
+        if result.blocked:
             return self._gate(result, loop)
         return Continue(result, self.stack, loop=loop)
 
@@ -1564,6 +1614,12 @@ class Qa(Workflow):
             qa_rework=loop.qa_rework + 1,
             docs_recheck_required=True,
         )
+        if result.blocked:
+            # Ahead of the budget check, and it is not the same escalation: the fixer was
+            # handed the operator's own answer and still says it cannot get there, which
+            # means the answer did not reach the block. Going round for another lap re-runs
+            # a fix against an instruction already known not to work.
+            return self._refused(result, loop, "the operator-guided QA fix")
         if loop.qa_rework >= self.MAX_QA_REWORKS:
             self.logger.info("operator-guided rework loop is out of QA reworks — escalating")
             return self._exhausted(loop, f"{loop.qa_rework} operator-guided rework")
@@ -1844,6 +1900,27 @@ class Qa(Workflow):
         if self.target_env == "dev":
             return Continue(result, self.report_dev, loop=loop)
         return self._guard_qa(result, loop)
+
+    def _refused(self, result: CoderResult, loop: QaLoop, what: str) -> Continue | Await:
+        """A turn that said it cannot get there, handed straight to the operator.
+
+        Every lane node routes its refusal through here rather than through the budget guard
+        beside it. The guard's question is "has this loop had enough tries", and the answer
+        it gets from a turn that just said the work is not doable is the wrong one: the tries
+        are not what is missing, so the loop spends the rest of the budget re-asking, and the
+        story is finally filed as exhausted rather than as blocked on the one thing it is
+        actually blocked on.
+
+        The reason goes into `loop.qa.notes` because that is where `block_notes` — and so the
+        gate body, and so the operator's `context.md` — reads it from. Prefixed with the turn
+        that refused, since by the time a person reads it the only other clue is a counter.
+        """
+        reason = getattr(result, "notes", "") or "no reason given"
+        self.logger.info("%s reported it cannot proceed; escalating: %s", what, reason)
+        loop = loop.update(
+            qa=loop.qa.model_copy(update={"notes": f"{what} reported it cannot proceed: {reason}"})
+        )
+        return self._gate(result, loop)
 
     def _gate(self, result: object, loop: QaLoop) -> Continue | Await:
         """`gate_qa`: hand the block to the auto-operator, or halt for a human.
