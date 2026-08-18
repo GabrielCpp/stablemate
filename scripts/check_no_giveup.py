@@ -22,10 +22,10 @@ pattern itself is back too.
 This is a narrow guard, not a proof. It does not (yet) cover the sibling give-up-shaped
 sites this migration deliberately left alone for a follow-up pass — `blocked_docs`,
 `zero-diff-streak`, `docs-not-passed` in `coder/workflow.py`, and the `operator_mode`
-sites in `coder/review/flow.py`, `coder/docs/flow.py` — nor the resolver-authority half
-of the rule (a diagnosis prompt must never decide or answer on the operator's behalf).
-`author/workflow.py`, `author/surveyor/flow.py` and `coder/dev/flow.py` are migrated and
-scanned. Widen `BANNED` and the scanned root as the remaining sites migrate.
+sites in `coder/docs/flow.py` — nor the resolver-authority half of the rule (a diagnosis
+prompt must never decide or answer on the operator's behalf). `author/workflow.py`,
+`author/surveyor/flow.py`, `coder/dev/flow.py` and `coder/review/flow.py` are migrated
+and scanned. Widen `BANNED` and the scanned root as the remaining sites migrate.
 
 Run:
     uv run python scripts/check_no_giveup.py
@@ -63,6 +63,8 @@ SCANNED_ROOTS = (
     "workflows/tests/author/surveyor/test_flow.py",
     "workflows/src/workhorse_workflows/coder/dev/flow.py",
     "workflows/tests/coder/dev/test_flow.py",
+    "workflows/src/workhorse_workflows/coder/review/flow.py",
+    "workflows/tests/coder/review/test_flow.py",
 )
 
 
