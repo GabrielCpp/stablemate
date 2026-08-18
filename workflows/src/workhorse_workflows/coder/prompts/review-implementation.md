@@ -153,12 +153,7 @@ Severity guidelines:
    **underneath that `---` block, leaving it in place** — a doc with no `type:` is an
    `okf-missing-type` error against the graph.
 
-2. **Write `review.json`** to `{{ workhorse_var('spec_dir') }}/review.json`:
-   ```json
-   {"verdict": "Approved" | "Needs changes"}
-   ```
-
-3. **Update the story** `## Implementation Status` section: link the review and set status to `Reviewed`.
+2. **Update the story** `## Implementation Status` section: link the review and set status to `Reviewed`.
 
 ## review.md structure
 
