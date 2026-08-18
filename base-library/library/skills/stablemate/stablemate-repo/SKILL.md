@@ -102,12 +102,13 @@ make check-no-giveup    # also runs as part of `make test`
 ```
 
 This guard is narrow: it stops the specific vocabulary of a deleted give-up pattern from
-quietly reappearing, not every way the rule could be broken. `blocked_docs`,
-`zero-diff-streak` and `docs-not-passed` in `workflows/src/workhorse_workflows/coder/workflow.py`,
-and the `operator_mode` sites in `author/workflow.py`, `author/surveyor/flow.py`,
-`coder/dev/flow.py`, `coder/review/flow.py` and `coder/docs/flow.py`, still carry
-give-up-shaped exits and are not yet migrated — see the script's own docstring before
-widening it.
+quietly reappearing, not every way the rule could be broken. It does not cover the
+resolver-authority half of the rule — that a diagnosis prompt must never decide or answer
+on the operator's behalf, at the `operator_mode` sites in `author/workflow.py`,
+`author/surveyor/flow.py`, `coder/dev/flow.py`, `coder/review/flow.py` and
+`coder/docs/flow.py` — which needs the control-flow graph, not a grep, same as everything
+else this check cannot see structurally. See the script's own docstring before widening
+it.
 
 ## Python linting (load-bearing)
 

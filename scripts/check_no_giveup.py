@@ -19,16 +19,18 @@ fields, the record type, and the node that used to spell "give up" were deleted 
 migration, and a reintroduction under the same name is the cheapest possible sign the
 pattern itself is back too.
 
-This is a narrow guard, not a proof. It does not (yet) cover the sibling give-up-shaped
-sites this migration deliberately left alone for a follow-up pass — `blocked_docs`,
-`zero-diff-streak` and `docs-not-passed` in `coder/workflow.py` — nor the
-resolver-authority half of the rule (a diagnosis prompt must never decide or answer on
-the operator's behalf). `author/workflow.py`, `author/surveyor/flow.py`,
-`coder/dev/flow.py`, `coder/review/flow.py` and `coder/docs/flow.py` are migrated and
+This is a narrow guard, not a proof. It does not cover the resolver-authority half of the
+rule (a diagnosis prompt must never decide or answer on the operator's behalf) — that
+needs the control-flow graph, not a grep, same as everything else this check cannot see
+structurally. `author/workflow.py`, `author/surveyor/flow.py`, `coder/dev/flow.py`,
+`coder/review/flow.py`, `coder/docs/flow.py` and `coder/workflow.py` are migrated and
 scanned; `docs/flow.py`'s one budget-exhaustion raise now blocks through the same
-resolver its reviewer-convergence exhaustion already used, and its remaining
-`WorkflowFailed` sites guard inputs no repair lap can fix, not a budget. Widen `BANNED`
-and the scanned root as the remaining sites migrate.
+resolver its reviewer-convergence exhaustion already used, and `workflow.py`'s
+`blocked_docs` and zero-diff-streak exhaustions now escalate through `_zero_diff_gate` and
+`docs_operator` the same way `_ci_gate`/`_merge_gate` always did. The remaining
+`WorkflowFailed` sites across all six files — including `give_up`'s `target_env="dev"`
+report path and `_require_documented`'s `docs-not-passed` — guard inputs no repair lap can
+fix, or a story path this migration does not own the ending of, not a budget.
 
 Run:
     uv run python scripts/check_no_giveup.py
