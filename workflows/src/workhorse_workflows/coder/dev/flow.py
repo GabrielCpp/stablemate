@@ -15,13 +15,14 @@ counter nodes, which disappear entirely, because a counter is a state parameter 
 left is the work: four agent turns (two of them the same prompt at three call sites), five
 deterministic nodes, and the operator gate.
 
-**The operator gate is split, exactly as `author` and `surveyor` settled it.** In the YAML,
-`resolve_plan` fell into `await_operator` unconditionally and the *file's* `STATUS:` line
-decided whether that halted or consumed an answer. The driver's `Await` waits
-unconditionally, so the decision has to be made before it is reached: `resolve_plan` below
-branches on the resolver's own `decision`, and only the escalated arm actually waits. The
-half of `await_operator.py` that is not about waiting — read the answer, take its `SCOPE:`,
-flip `ANSWERED` to `CONSUMED` — is `read_operator_context`, a node.
+**The operator gate never decides on the operator's behalf, exactly as `author` and
+`surveyor` settled it.** `resolve_plan` below investigates and always `Await`s — it does
+not read a `decision` field to choose between looping and waiting, because there is no
+loop it could choose instead: a block always parks. `_gate_plan` decides only whether the
+resolver gets a turn first (`plan_blocks` below `MAX_PLAN_BLOCKS`) or the block goes
+straight to a human — never whether to wait at all. The half of `await_operator.py` that
+is not about waiting — read the answer, take its `SCOPE:`, flip `ANSWERED` to `CONSUMED`
+— is `read_operator_context`, a node.
 
 Divergences from the YAML, all deliberate:
 
@@ -50,24 +51,29 @@ Divergences from the YAML, all deliberate:
 * the three `refine-plan.md` call sites share one node id (the driver ids an agent node by
   its prompt stem), where the YAML had three. Nothing reads that output by node name, and
   each site's *next* state is what distinguished them.
-* **the operator gate is bounded, and the YAML's was not.** `plan_blocks` counts trips
-  through `_gate_plan` and is the only counter that survives an operator answer, which is
-  what makes it the one that terminates. Two cycles need it. A plan that comes back
-  `blocked` from every refine pass laps `_gate_plan → resolve_plan → read_operator →
-  rework_plan → _gate_plan` with nothing counting; and a service path nothing can repair
-  laps the *wider* ring — `validate_paths` spends its three reworks, escalates, and
-  `read_operator` hands back a plan stage whose `plan_rework` has been reset to 0 (see its
-  docstring: the YAML re-emitted `plan_rework_count: 0`, and that reset is deliberate), so
-  the same three reworks are spent again, forever. Both laps run the unbounded-timeout
-  resolver at `power="high"`. `plan_blocks` is therefore threaded through the reuse and
-  path gates too, not just the operator states: a counter the loop resets is not a bound.
+* **`plan_blocks` bounds the *resolver*, not the block.** It counts trips through
+  `_gate_plan` that actually invoked `resolve_plan`, and is the only counter that
+  survives an operator answer. Once it reaches `MAX_PLAN_BLOCKS`, `_gate_plan` stops
+  spending a resolver turn and routes every further block straight to a human — it does
+  not fail the run and it does not stop counting the story's trips back to this gate,
+  because there is no cap on those: a plan blocked forever keeps coming back to this gate
+  forever, across as many resumes as it takes (AGENTS.md, "a workflow never gives up —
+  it can only be blocked"). Two cycles feed it. A plan that comes back `blocked` from
+  every refine pass laps `_gate_plan → resolve_plan → read_operator → rework_plan →
+  _gate_plan`; and a service path nothing can repair laps the *wider* ring —
+  `validate_paths` spends its three reworks, escalates, and `read_operator` hands back a
+  plan stage whose `plan_rework` has been reset to 0 (see its docstring: the YAML
+  re-emitted `plan_rework_count: 0`, and that reset is deliberate), so the same three
+  reworks are spent again. Both laps run the unbounded-timeout resolver at
+  `power="high"`. `plan_blocks` is therefore threaded through the reuse and path gates
+  too, not just the operator states.
 """
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
+from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.dev import (
     branch_code_repos,
@@ -148,9 +154,11 @@ class Dev(Workflow):
     #: because the YAML exposed no var for it — see the module docstring.
     MAX_VALIDATE_REWORKS: ClassVar[int] = 3
 
-    #: Trips through the operator gate before the plan stage is declared a dead end.
-    #: `ClassVar` for the same reason: the YAML had no bound at all here, so exposing one
-    #: as an input would invent an operator control the port is not entitled to invent.
+    #: Trips through the operator gate that get a resolver turn before every further
+    #: block goes straight to a human — not a cap on how many times the plan stage may
+    #: block; there isn't one. `ClassVar` for the same reason: the YAML had no bound at
+    #: all here, so exposing one as an input would invent an operator control the port
+    #: is not entitled to invent.
     MAX_PLAN_BLOCKS: ClassVar[int] = 3
 
     def setup(self) -> StoryPaths:
@@ -219,47 +227,37 @@ class Dev(Workflow):
         return Continue(result, self.check_reuse, notes=result.summary)
 
     def _gate_plan(self, result: object, notes: str, plan_blocks: int) -> Continue | Await:
-        """`gate_plan`: hand the block to the auto-operator, or halt for a human.
+        """`gate_plan`: hand the block to the resolver, or straight to a human.
 
         Not a state — it is the routing half of a branch, called from the two states that
         can decide the plan stage is stuck (`start`/`rework_plan`'s `blocked`, and
         `validate`'s exhausted budget). `_`-prefixed so state discovery does not pick it up.
 
-        It is also the one place the plan stage's laps can be counted, because it is the one
-        place both cycles pass through — see the module docstring. Out of trips is a genuine
-        dead end rather than an `exhausted` verdict for the parent: `dev` returning normally
-        means "implemented", the parent's next state is `review`, and there is nothing to
-        review. A block three operators could not clear needs a person, and failing the run
-        with the block in the message is how the flow says so.
+        There is no dead end here: a block always reaches a human eventually, either
+        through the resolver or directly once `plan_blocks` is spent — never a terminal
+        failure. `result` is unused once escalating straight to a human, but is threaded
+        through so the resolver arm can still `Continue` it into `resolve_plan`.
         """
-        if plan_blocks >= self.MAX_PLAN_BLOCKS:
-            raise WorkflowFailed(
-                f"the plan for story {self.ctx.story_slug!r} was still blocked after "
-                f"{plan_blocks} operator resolution(s); giving up rather than looping. "
-                f"Last block: {notes or '(no summary given)'}"
-            )
-        plan_blocks += 1
-        if self.operator_mode in {"human", "operator"}:
+        if self.operator_mode in {"human", "operator"} or plan_blocks >= self.MAX_PLAN_BLOCKS:
             gate = self._escalation(notes, plan_blocks)
             return Await(
                 self._context, gate.body, self.read_operator, notes=notes, plan_blocks=plan_blocks
             )
         return Continue(result, self.resolve_plan, notes=notes, plan_blocks=plan_blocks)
 
-    def resolve_plan(self, notes: str, plan_blocks: int = 0) -> Continue | Await:
-        """Stand in for the operator on a plan block, or escalate to a human.
+    def resolve_plan(self, notes: str, plan_blocks: int = 0) -> Await:
+        """Investigate a plan block, then park for the operator.
 
         `resolve_plan` + the `await_operator` that followed it unconditionally; see the
-        module docstring. The resolver investigates the block, acts if it can, and writes
-        its answer into the story's `context.md` — so the human path is the automatic
-        fallback rather than a separate mode. A blank decision matches neither arm and
-        takes the conservative one: wait for a person.
+        module docstring. The resolver never decides on the operator's behalf — it only
+        investigates and writes findings into the story's `context.md`, so this always
+        ends in an `Await`.
         """
         self.logger.info("resolving the plan block", extra={"activity": True})
         result = self.agent(
             "prompts/resolve-operator.md",
             returns=OperatorResolution,
-            # high, and unbounded: it is standing in for a human, with full tool access,
+            # high, and unbounded: it is investigating a block, with full tool access,
             # on the highest-stakes decision in the flow.
             power="high",
             timeout=UNBOUNDED,
@@ -271,17 +269,19 @@ class Dev(Workflow):
                 "block_notes": notes,
             },
         )
-        if result.decision == "answered":
-            return Continue(result, self.read_operator, notes=notes, plan_blocks=plan_blocks)
-        # An escalating resolver has already written `STATUS: AWAITING_OPERATOR` into this
-        # very file, with what it tried and what the human must supply — and `Await` writes
-        # its `questions` with `write_text`, so anything handed here replaces that note. The
-        # composed body carries it forward verbatim, which is what makes it safe to ask a
-        # question at this gate at all; passing `notes` alone would have left the human
-        # reading the block summary instead of the investigation.
+        # The resolver has already written `STATUS: AWAITING_OPERATOR` into this very
+        # file, with what it tried and what the human must supply — and `Await` writes
+        # its `questions` with `write_text`, so anything handed here replaces that note.
+        # The composed body carries it forward verbatim, which is what makes it safe to
+        # ask a question at this gate at all; passing `notes` alone would have left the
+        # human reading the block summary instead of the investigation.
         gate = self._escalation(notes, plan_blocks, result)
         return Await(
-            self._context, gate.body, self.read_operator, notes=notes, plan_blocks=plan_blocks
+            self._context,
+            gate.body,
+            self.read_operator,
+            notes=notes,
+            plan_blocks=plan_blocks + 1,
         )
 
     def read_operator(self, notes: str, plan_blocks: int = 0) -> Continue | Done:

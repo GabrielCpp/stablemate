@@ -32,7 +32,6 @@ from unittest.mock import patch
 
 import pytest
 from workhorse.artifacts import ArtifactWriter
-from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
@@ -211,10 +210,12 @@ class _Agent:
 
     The knobs are the flow's branches: `blocked` makes the first N planning turns report a
     block, `bad_paths` makes the first N plan writes name a repo the workspace has not got,
-    `reuse_rework` makes the first N reuse checks demand a rework, `escalate` makes the
-    auto-operator hand the block to a human, `scope` is what the answer it writes claims the
-    block was about, `fix_lint` decides whether the lint repair turn actually repairs
-    anything, and `explode` raises on a named prompt — a run killed mid-turn.
+    `reuse_rework` makes the first N reuse checks demand a rework, `fix_lint` decides
+    whether the lint repair turn actually repairs anything, and `explode` raises on a named
+    prompt — a run killed mid-turn. There is no `escalate` knob: the resolver never decides
+    on the operator's behalf, so every resolved block investigates and then waits, the same
+    way every time — and no `scope` knob either, since the answer's `SCOPE:` now comes from
+    whatever stands in for the operator (`_answers`), not from the resolver the agent scripts.
 
     The red-gate knobs mirror the gate's verdicts: `repos` maps a repo name to its checkout
     so the tests turn can write a real test file into the real worktree the gate diffs,
@@ -233,8 +234,6 @@ class _Agent:
         blocked: int = 0,
         bad_paths: int = 0,
         reuse_rework: int = 0,
-        escalate: bool = False,
-        scope: str = "story",
         fix_lint: Path | None = None,
         explode: set[str] | None = None,
         repos: dict[str, Path] | None = None,
@@ -249,8 +248,6 @@ class _Agent:
         self.blocked = blocked
         self.bad_paths = bad_paths
         self.reuse_rework = reuse_rework
-        self.escalate = escalate
-        self.scope = scope
         self.fix_lint = fix_lint
         self.explode = explode or set()
         self.repos = repos or {}
@@ -347,15 +344,12 @@ class _Agent:
         return {"status": "ok", "findings": [], "summary": "nothing to reuse"}
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        if self.escalate:
-            self._escalate()
-            return {
-                "decision": "escalated",
-                "summary": "needs a product call",
-                "tried": list(RESOLVER_TRIED),
-            }
-        self._answer()
-        return {"decision": "answered", "summary": "the bucket exists in staging"}
+        self._escalate()
+        return {
+            "decision": "escalated",
+            "summary": "needs a product call",
+            "tried": list(RESOLVER_TRIED),
+        }
 
     def _implement_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"status": "done", "notes": f"implemented {data['service_path']}"}
@@ -391,17 +385,6 @@ class _Agent:
         return {"status": "fixed", "notes": "satisfied the linter"}
 
     # -- what the resolver leaves behind ----------------------------------
-
-    def _answer(self) -> None:
-        """Write the answer into the file `read_operator_context` reads it back out of.
-
-        `STATUS: ANSWERED` is what that node flips to `CONSUMED`, and `SCOPE:` is the line
-        that decides whether the flow reworks this story's plan or leaves entirely.
-        """
-        (self.docs / CONTEXT_REL).write_text(
-            f"STATUS: ANSWERED\nSCOPE: {self.scope}\n\nUse the staging bucket.\n",
-            encoding="utf-8",
-        )
 
     def _escalate(self) -> None:
         """What an *escalating* resolver leaves behind — it does not write nothing.
@@ -622,13 +605,16 @@ def test_an_unfixable_plan_exhausts_the_budget_and_reaches_the_operator(
 ) -> None:
     """Three refine passes that do not fix it escalate rather than looping forever.
 
-    `MAX_VALIDATE_REWORKS` is 3, so the fourth validation is the one that gives up; the
-    operator answers, the plan is reworked with the answer in hand — the fifth write, and
-    the first good one — and the restored budget takes it through the gate.
+    `MAX_VALIDATE_REWORKS` is 3, so the fourth validation is the one that escalates to the
+    gate; the resolver investigates and parks, the operator answers, the plan is reworked
+    with the answer in hand — the fifth write, and the first good one — and the restored
+    budget takes it through the gate.
     """
     agent = _Agent(docs, bad_paths=4)
+    seen: list[str] = []
 
-    result = drive_flow(Dev(story=STORY), env(), agent)
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)):
+        result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
     assert agent.counts()["refine-plan"] == 4, agent.counts()
@@ -636,38 +622,45 @@ def test_an_unfixable_plan_exhausts_the_budget_and_reaches_the_operator(
     assert agent.args_for("resolve-operator")[0]["block_kind"] == "plan"
 
 
-def test_a_service_path_nobody_can_repair_gives_up_instead_of_relapping(
+def test_a_service_path_nobody_can_repair_never_gives_up(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The wider of the two operator cycles, and the one the reset makes.
+    """The wider of the two operator cycles never dead-ends, even once the resolver is spent.
 
     `read_operator` deliberately restores the path-validation budget — the YAML re-emitted
     `plan_rework_count: 0` and an operator answer really is a fresh licence to re-validate.
-    But a repo the workspace has not got is not a thing an answer can conjure, so before
-    `plan_blocks` the flow spent its three reworks, escalated, had the budget handed back,
-    and spent it again forever: five agent turns a lap, one of them the unbounded-timeout
-    resolver. `plan_blocks` is the counter that survives the reset, which is the only reason
-    this terminates.
-
-    The exact counts are what the bound costs, pinned so that changing it is a decision
-    rather than a drift: three refines to reach the first escalation, then four per answered
-    lap — the one `rework_plan` buys plus the three the restored budget spends — and three
-    answered laps before the fourth trip to the gate is refused. 3 + 4×3 = 15.
+    But a repo the workspace has not got is not a thing an answer can conjure, so the block
+    keeps recurring long after `MAX_PLAN_BLOCKS` resolver turns are spent. `_gate_plan`
+    routes every trip past that cap straight to a human instead of raising — there is no
+    further cap on how many times it may ask. Once "the operator" finally supplies a real
+    fix, the run finishes normally rather than having given up on itself somewhere in the
+    middle.
     """
-    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "120")
+    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "180")
     agent = _Agent(docs, bad_paths=99)
+    seen: list[str] = []
 
-    with pytest.raises(WorkflowFailed, match="still blocked after 3 operator resolution"):
-        drive_flow(Dev(story=STORY), env(), agent)
+    def answered(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text(encoding="utf-8"))
+        if len(seen) >= Dev.MAX_PLAN_BLOCKS + 2:
+            agent.bad_paths = 0
+        path.write_text(
+            "STATUS: ANSWERED\nSCOPE: story\n\nUse the staging bucket.\n", encoding="utf-8"
+        )
 
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
+        result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    # The resolver only ever gets `MAX_PLAN_BLOCKS` turns; every later block still reaches a
+    # human, which `seen` outgrowing that count proves without a resolver call to match it.
     assert agent.counts()["resolve-operator"] == Dev.MAX_PLAN_BLOCKS, agent.counts()
-    assert agent.counts()["refine-plan"] == 15, agent.counts()
-    assert agent.counts()["check-code-reuse"] == 4, agent.counts()
-    assert agent.counts()["implement-plan-code"] == 0, agent.counts()
+    assert len(seen) == Dev.MAX_PLAN_BLOCKS + 2, seen
+    assert agent.counts()["implement-plan-code"] > 0, agent.counts()
 
 
 # --------------------------------------------------------------------------- the operator
@@ -682,8 +675,10 @@ def test_a_blocked_plan_goes_to_the_auto_operator_and_is_reworked(
     """`operator_mode=auto` stands an agent in for the human, and consumes its answer."""
     agent = _Agent(docs, blocked=1)
     run_env = env()
+    seen: list[str] = []
 
-    result = drive_flow(Dev(story=STORY), run_env, agent)
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)):
+        result = drive_flow(Dev(story=STORY), run_env, agent)
 
     assert result.status == "ready", result
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
@@ -705,9 +700,11 @@ def test_an_epic_scoped_answer_leaves_the_flow_to_be_replanned(
     It is the only exit from the flow other than an exhausted dispatch list, and it carries
     the operator's text back so the queue level can replan against it.
     """
-    agent = _Agent(docs, blocked=1, scope="epic")
+    agent = _Agent(docs, blocked=1)
+    seen: list[str] = []
 
-    result = drive_flow(Dev(story=STORY), env(), agent)
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen, scope="epic")):
+        result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "replan", result
     assert "staging bucket" in result.operator_notes
@@ -738,23 +735,6 @@ def test_human_operator_modes_wait_on_the_story_context_file(
     assert len(seen) == 1 and "the prod bucket may not exist" in seen[0], seen
 
 
-def test_an_escalating_resolver_falls_through_to_the_human(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """The human path is the resolver's fallback, not a separate mode."""
-    seen: list[str] = []
-    agent = _Agent(docs, blocked=1, escalate=True)
-
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)):
-        result = drive_flow(Dev(story=STORY), env(), agent)
-
-    assert result.status == "ready", result
-    assert agent.counts()["resolve-operator"] == 1, agent.counts()
-
-
 def test_an_escalating_resolver_leaves_its_note_for_the_human(
     docs: Path,
     workspace: dict[str, Path],
@@ -775,7 +755,7 @@ def test_an_escalating_resolver_leaves_its_note_for_the_human(
     the flow writing the questions is the only thing that puts an ask on disk.
     """
     seen: list[str] = []
-    agent = _Agent(docs, blocked=1, escalate=True)
+    agent = _Agent(docs, blocked=1)
 
     with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)):
         result = drive_flow(Dev(story=STORY), env(), agent)
@@ -787,63 +767,77 @@ def test_an_escalating_resolver_leaves_its_note_for_the_human(
     assert ESCALATION_NOTE.strip() in gate, gate
 
 
-def test_a_plan_no_operator_can_unblock_fails_instead_of_looping(
+def test_a_plan_no_operator_can_unblock_never_gives_up_either(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The tight operator cycle: a refine that re-raises the block every time.
+    """The tight operator cycle: a refine that re-raises the block keeps escalating, not failing.
 
     `rework_plan` re-gating a still-blocked plan is what keeps the loop honest — a resolver
-    that resolved nothing cannot wave the plan through — and nothing counted the laps, so
-    honest meant endless: gate → resolve → read → rework → gate, at `power="high"` with the
-    resolver on an unbounded timeout, until the driver's transition budget ended the run
-    naming a state that was not the problem.
-
-    Three trips through the gate is the whole plan stage's allowance, so this ends as a
-    failed run rather than a `Done` — `dev` returning normally means "implemented", and the
-    parent's next state is `review`, which would have nothing to review.
+    that resolved nothing cannot wave the plan through. Nothing bounds how many times the
+    block itself may recur: `MAX_PLAN_BLOCKS` only bounds how many of those trips get a
+    resolver turn before `_gate_plan` starts routing straight to a human instead, forever if
+    it must. Once a real answer lands the run finishes, rather than the block having ended
+    the run on its own somewhere short of that.
     """
-    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "120")
+    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "180")
     agent = _Agent(docs, blocked=99)
+    seen: list[str] = []
 
-    with pytest.raises(WorkflowFailed, match="prod bucket may not exist"):
-        drive_flow(Dev(story=STORY), env(), agent)
+    def answered(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text(encoding="utf-8"))
+        if len(seen) >= Dev.MAX_PLAN_BLOCKS + 2:
+            agent.blocked = 0
+        path.write_text(
+            "STATUS: ANSWERED\nSCOPE: story\n\nUse the staging bucket.\n", encoding="utf-8"
+        )
 
-    # One refine per gate trip: the first trip comes off `plan-story`, and each answer buys
-    # exactly one more plan before the block is re-raised.
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
+        result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
     assert agent.counts()["resolve-operator"] == Dev.MAX_PLAN_BLOCKS, agent.counts()
-    assert agent.counts()["refine-plan"] == Dev.MAX_PLAN_BLOCKS, agent.counts()
-    assert agent.counts()["implement-plan-code"] == 0, agent.counts()
+    assert len(seen) == Dev.MAX_PLAN_BLOCKS + 2, seen
+    assert agent.counts()["implement-plan-code"] > 0, agent.counts()
 
 
-def test_the_human_operator_is_bounded_by_the_same_counter(
+def test_human_operator_mode_never_gives_up_either(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`operator_mode=human` takes the other arm of the gate, and the same bound.
+    """`operator_mode=human` skips the resolver entirely, and has no bound of its own either.
 
-    A person answering in place is not a reason to loop forever either — the third answer
-    that does not unblock the plan ends the run, with the block in the message, rather than
-    asking them a fourth time.
+    Only `resolve_plan` increments `plan_blocks`, and human mode never calls it — `_gate_plan`
+    takes the direct-to-human arm unconditionally in this mode, so there is nothing here for
+    `MAX_PLAN_BLOCKS` to bound. A human who answers wrong more times than that is asked again,
+    not handed a failed run.
     """
-    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "120")
+    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "180")
     seen: list[str] = []
     agent = _Agent(docs, blocked=99)
 
-    with (
-        patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)),
-        pytest.raises(WorkflowFailed, match="still blocked after 3 operator resolution"),
-    ):
-        drive_flow(Dev(story=STORY, operator_mode="human"), env(), agent)
+    def answered(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text(encoding="utf-8"))
+        if len(seen) >= Dev.MAX_PLAN_BLOCKS + 2:
+            agent.blocked = 0
+        path.write_text(
+            "STATUS: ANSWERED\nSCOPE: story\n\nUse the staging bucket.\n", encoding="utf-8"
+        )
 
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
+        result = drive_flow(Dev(story=STORY, operator_mode="human"), env(), agent)
+
+    assert result.status == "ready", result
     assert agent.counts()["resolve-operator"] == 0, agent.counts()
-    assert len(seen) == Dev.MAX_PLAN_BLOCKS, seen
+    # More asks than the resolver's own cap, with zero resolver turns — proof this mode was
+    # never tied to that counter at all, not just given a larger one.
+    assert len(seen) == Dev.MAX_PLAN_BLOCKS + 2, seen
 
 
 def test_an_unanswered_context_file_is_not_treated_as_an_answer(
