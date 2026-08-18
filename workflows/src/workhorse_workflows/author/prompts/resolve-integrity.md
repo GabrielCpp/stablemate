@@ -75,8 +75,12 @@ escalating.
 End your turn with exactly this JSON and nothing after it:
 
 ```json
-{"decision": "answered", "notes": "<one line: what you reconciled>"}
+{"decision": "answered", "notes": "<one line: what you reconciled>", "tried": ["<one line per dead end you ruled out>"]}
 ```
+
+`tried` is the diagnosis you already paid for: each approach you attempted and ruled out, one
+line each. Without it the human who arrives at the gate re-runs every dead end you just walked.
+Send `[]` only when you ruled nothing out.
 
 Use `"decision": "escalated"` only under the stop conditions above — it hands the block to a human
 and the run waits on this file until one touches it.
