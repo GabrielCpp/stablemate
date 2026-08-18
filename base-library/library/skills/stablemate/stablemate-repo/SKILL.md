@@ -75,6 +75,40 @@ The full rule, including `Workflow.injects` for the ambient paths
 (`repo_dir`/`docs_path`/`workspace_file`), is in
 [workflows/README.md](workflows/README.md).
 
+## A workflow never gives up — it can only be blocked (load-bearing)
+
+A pyflow state ends one of three ways: `Continue`, `Done`, or `Await`. A repair-budget
+exhaustion inside a bounded rework loop — a QA-plan repair, a code-fix lap, a stalled
+identical failure — is **not** a fourth way. It escalates to the operator gate (`Await`)
+like any other block, checkpointed and resumable, and never ends the run in
+`WorkflowFailed` on that ground alone. There is no cap on how many times a story can
+bounce back to that gate across resumes — the same "no cap on escalations" the gate
+already applied to human mode now applies unconditionally.
+
+The reason is what a give-up used to look like from outside: a story committed behind a
+`[QA FAILED — needs manual review]` marker, the run reporting success on the next story
+built atop a rejected baseline, and the review nobody stopped to demand never happening.
+An `Await` costs the same operator ten minutes it always would have; a give-up spent
+those ten minutes anyway; it just spent them after the run had already moved on.
+
+The auto-resolver a block routes through (`prompts/resolve-operator.md`) may investigate
+and describe the block, but it may not decide, act, or answer on the operator's behalf —
+only a human, or an operator who patches the code/plan/workflow and reloads, resolves a
+block. A resolver that writes `STATUS: ANSWERED` and lets the loop continue on its own
+authority is the same failure mode in a different place.
+
+```bash
+make check-no-giveup    # also runs as part of `make test`
+```
+
+This guard is narrow: it stops the specific vocabulary of a deleted give-up pattern from
+quietly reappearing, not every way the rule could be broken. `blocked_docs`,
+`zero-diff-streak` and `docs-not-passed` in `workflows/src/workhorse_workflows/coder/workflow.py`,
+and the `operator_mode` sites in `author/workflow.py`, `author/surveyor/flow.py`,
+`coder/dev/flow.py`, `coder/review/flow.py` and `coder/docs/flow.py`, still carry
+give-up-shaped exits and are not yet migrated — see the script's own docstring before
+widening it.
+
 ## Python linting (load-bearing)
 
 This repo is linted with **ruff** *and* type-checked with **ty**. Keep both clean — zero

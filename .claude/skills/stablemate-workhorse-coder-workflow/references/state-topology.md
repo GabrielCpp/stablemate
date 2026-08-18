@@ -115,4 +115,3 @@ primary QA after a green fix without resetting that budget.
 The reviewed implementation's `code:`/`tests:` grounding is hard-gated by the docs flow before
 entering QA so impact generation sees current references. Product fixes loop back through
 context generation; setup-only fixes may rerun the already validated plan.
-

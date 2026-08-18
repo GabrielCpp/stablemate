@@ -242,13 +242,6 @@ docs/specs
 
 docs/backload.md
 
-.agents/runs/
-.agents/worktrees/
-.agents/workflows/
-.agents/operator/
-.agents/local.compose.yaml
-.agents/agents-context.json
-.agents/agents-context.*.json
 # >>> farrier: QA evidence (generated) >>>
 **/qa/**/steps/
 **/qa/**/asserts/
@@ -259,3 +252,11 @@ docs/backload.md
 **/qa/run-manifest.json
 **/qa/qa-session.json
 # <<< farrier: QA evidence <<<
+
+.agents/runs/
+.agents/worktrees/
+.agents/workflows/
+.agents/operator/
+.agents/local.compose.yaml
+.agents/agents-context.json
+.agents/agents-context.*.json

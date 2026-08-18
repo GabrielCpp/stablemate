@@ -106,4 +106,3 @@ against a fresh load and invalidates the cache, so the next read sees it (`reloa
 forces a refresh). A read never returns `None` — an unloadable graph *raises*
 `(OSError, ValueError, RuntimeError)`. QA/artifact/edit methods are lazy-imported, so a
 read-only script never pays for the QA/vet machinery.
-

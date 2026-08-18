@@ -58,4 +58,3 @@ a field; there is no adapter in between and nothing to wrap in
 `except (OSError, ValueError, RuntimeError)`. Branch on `status == "invalid"` where "the check
 never ran" must not read as "the check found nothing". Full verb→method reference: the
 `ostler` skill.
-
