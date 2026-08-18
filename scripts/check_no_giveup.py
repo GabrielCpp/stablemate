@@ -22,15 +22,16 @@ pattern itself is back too.
 This is a narrow guard, not a proof. It does not cover the resolver-authority half of the
 rule (a diagnosis prompt must never decide or answer on the operator's behalf) — that
 needs the control-flow graph, not a grep, same as everything else this check cannot see
-structurally. `author/workflow.py`, `author/surveyor/flow.py`, `coder/dev/flow.py`,
-`coder/review/flow.py`, `coder/docs/flow.py` and `coder/workflow.py` are migrated and
-scanned; `docs/flow.py`'s one budget-exhaustion raise now blocks through the same
-resolver its reviewer-convergence exhaustion already used, and `workflow.py`'s
-`blocked_docs` and zero-diff-streak exhaustions now escalate through `_zero_diff_gate` and
-`docs_operator` the same way `_ci_gate`/`_merge_gate` always did. The remaining
-`WorkflowFailed` sites across all six files — including `give_up`'s `target_env="dev"`
-report path and `_require_documented`'s `docs-not-passed` — guard inputs no repair lap can
-fix, or a story path this migration does not own the ending of, not a budget.
+structurally. The scan is now the whole `workflows/` package rather than the handful of
+migrated files it started as: every lane flow routes a blocked verdict to the operator
+gate, `workflow.py`'s docs exhaustions escalate through `docs_operator` the way
+`_ci_gate`/`_merge_gate` always did, and the zero-diff streak counter that used to end a
+run for "no progress" is deleted rather than migrated — so a reintroduction anywhere in
+the package is a regression, not an unmigrated sibling.
+
+The remaining `WorkflowFailed` sites guard inputs no repair lap can fix — or, in
+`give_up`'s `target_env="dev"` report path, a story path this migration does not own the
+ending of. They are not budgets.
 
 Run:
     uv run python scripts/check_no_giveup.py
@@ -45,34 +46,26 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 
 #: Vocabulary of the deleted give-up pattern. Each one names something this migration
-#: removed outright (a field, a class, a function) — not a word that could legitimately
-#: reappear in unrelated prose, so a plain substring match is precise enough here, unlike
-#: `check_public.py`'s name sweep, which has to worry about incidental false positives.
+#: removed outright (a field, a class, a function, a `failure_class` string) — not a word
+#: that could legitimately reappear in unrelated prose, so a plain substring match is
+#: precise enough here, unlike `check_public.py`'s name sweep, which has to worry about
+#: incidental false positives.
 BANNED = (
     "giveup_reason",
     "operator_consulted",
     "QaGiveupRecord",
     "record_qa_giveup",
+    # The two `failure_class` strings a run used to die under. The first was raised when a
+    # `Docs` handoff came back anything but passing, which is now an `Await` on the same
+    # gate a `blocked` verdict takes; the second counted consecutive stories that committed
+    # nothing, and went when the workflow stopped committing on the agent's behalf.
+    "docs-not-passed",
+    "zero-diff-streak",
 )
 
-#: Where the migration actually landed. Widening this to `workflows/` as the deferred
-#: sibling sites migrate is the point of listing them above.
-SCANNED_ROOTS = (
-    "workflows/src/workhorse_workflows/coder/qa",
-    "workflows/src/workhorse_workflows/coder/workflow.py",
-    "workflows/tests/coder/qa",
-    "workflows/tests/coder/test_workflow.py",
-    "workflows/src/workhorse_workflows/author/workflow.py",
-    "workflows/src/workhorse_workflows/author/surveyor/flow.py",
-    "workflows/tests/author/test_workflow.py",
-    "workflows/tests/author/surveyor/test_flow.py",
-    "workflows/src/workhorse_workflows/coder/dev/flow.py",
-    "workflows/tests/coder/dev/test_flow.py",
-    "workflows/src/workhorse_workflows/coder/review/flow.py",
-    "workflows/tests/coder/review/test_flow.py",
-    "workflows/src/workhorse_workflows/coder/docs/flow.py",
-    "workflows/tests/coder/docs/test_flow.py",
-)
+#: The whole package. It started as the list of files the migration had reached, and the
+#: point of the list was always to stop needing it.
+SCANNED_ROOTS = ("workflows/",)
 
 
 def _tracked_files() -> list[Path]:
