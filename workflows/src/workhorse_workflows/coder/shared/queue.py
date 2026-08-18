@@ -421,7 +421,7 @@ def _reconcile_queue(logger: logging.Logger, root: Path, base: str) -> None:
     what it returns left the queue file one byte dirty on *every* epic — a diff with no
     change in it, which the first story of each epic then swept into its own commit. That
     stray byte was also enough to make a story that built nothing look like a story that
-    built something, hiding it from the zero-diff churn guard.
+    built something, to anything downstream reading "did this story change the tree".
     """
     if not base or not branch_exists(root, base):
         return
@@ -1098,11 +1098,11 @@ def commit_story(
     def _commit_in(repo_path: Path, package: str) -> bool:
         """``commit_all``, with a git refusal turned into a halt rather than a False.
 
-        False here flows into the caller's zero-diff counter, and three of them stop the
-        run for making no progress. A stale ``index.lock``, a rejecting hook or a failed
-        signature is the opposite situation — the story's work exists and git would not
-        record it — so it must halt loudly here, while the tree still holds the work and
-        the git error is still in hand, rather than be counted as an idle story."""
+        False here means the tree held nothing to commit, and callers read it as "this
+        story did no work". A stale ``index.lock``, a rejecting hook or a failed signature
+        is the opposite situation — the story's work exists and git would not record it —
+        so it must halt loudly here, while the tree still holds the work and the git error
+        is still in hand, rather than be reported as an idle story."""
         try:
             return bool(commit_all(repo_path, _story_message(package)))
         except GitError as exc:

@@ -1379,8 +1379,9 @@ def test_a_required_final_docs_block_parks_for_an_operator_in_either_mode(
     The parametrisation is the point. Epic mode used to contain this finding in the queue
     while story mode failed, so the same refusal shipped a commit or didn't depending on how
     the run was launched. The two modes now agree, and this asserts they keep agreeing —
-    including on the fix: a resume re-enters `document`, so the recheck that just refused
-    gets the whole pipeline run past it fresh rather than being re-tried in isolation.
+    including on where the resume lands: `finalize`, the state that refused, not `document`
+    at the top of the story. Re-entering `document` would send a story that had already
+    passed QA back through QA on the strength of a docs recheck.
     """
     repo = epic()
 
@@ -1399,11 +1400,52 @@ def test_a_required_final_docs_block_parks_for_an_operator_in_either_mode(
 
     assert len(seen) == 1, seen
     assert BLOCK_REASON in seen[0], seen[0]
-    # Documented four times: the initial pass and the final recheck, then the same two
-    # again once the operator's answer sent the run back to `document` from scratch.
-    assert sub.calls.count("Docs") == 4, sub.calls
+    # Documented three times: the initial pass, the final recheck that refused, and that
+    # same recheck again on the operator's answer. QA ran once — the resume landed at
+    # `finalize`, so nothing before it was repeated.
+    assert sub.calls.count("Docs") == 3, sub.calls
+    assert sub.calls.count("Qa") == 1, sub.calls
     assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
     assert not any("DOCS BLOCKED" in subject for subject in _subjects(repo)), _subjects(repo)
+
+
+def test_a_docs_handoff_that_merely_failed_parks_on_the_same_gate_a_block_does(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`failed` is not a second-class `blocked` — it is the same escalation.
+
+    It used to be the one docs verdict that ended the run: a `WorkflowFailed` raised
+    beside the `blocked` arm that parked. The distinction was
+    never load-bearing — neither is fixable by running the same handoff again unchanged,
+    and both need the same person to change the code, the spec or the plan — so the run
+    now parks on the same gate either way, carrying the verdict that produced it.
+    """
+    repo = epic()
+
+    class _FailingFirst(_Sub):
+        def _docs(self, child: _StubFlow) -> DocsResult:
+            if self.calls.count("Docs") == 1:
+                return DocsResult(status="failed", notes="the book's coverage check errored")
+            return DocsResult(status="passed", notes="")
+
+    sub = _FailingFirst(repo).install(monkeypatch)
+    seen: list[str] = []
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, {"yes": True})):
+        drive_flow(Coder(), env(), _Agent())
+
+    assert len(seen) == 1, seen
+    # The gate names the verdict, not just the notes: "failed" and "blocked" reach the
+    # same file and an operator has to be able to tell which one they are reading.
+    assert "failed" in seen[0], seen[0]
+    assert "the book's coverage check errored" in seen[0], seen[0]
+    # This one refused before QA, so the resume does re-enter `document` and QA runs after.
+    assert sub.calls.count("Docs") == 2, sub.calls
+    assert sub.calls.count("Qa") == 1, sub.calls
+    assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
 
 
 # ------------------------------------------------------------------- the nested drain
@@ -1498,7 +1540,6 @@ def test_a_run_killed_in_qa_resumes_on_qa_without_rebuilding_the_story(
     assert resume.state == "qa", resume
     assert resume.flow == "Coder", resume
     assert resume.params["epic"] == EPIC, resume.params
-    assert resume.params["zero_diff"] == 0, resume.params
 
     sub = _Sub(repo).install(monkeypatch)
     result = drive_flow(Coder(**resume.inputs), env(run_dir=run_dir), _Agent(), resume)

@@ -21,13 +21,13 @@ one. Deterministic nodes fold forward into whichever state branches on them. Tha
 pop must precede the PR) while `dev`, `review`, `document` and `qa` are four states rather
 than one — a kill during QA must not re-run the implementation.
 
-**The three counters are parameters, and one of them travels a long way.** `ci_rework` and
-`merge_rework` live inside the PR cluster. `zero_diff` — consecutive stories whose commit
-found nothing to commit — is a *run-global* counter in the YAML, reset only by a commit
-that landed something, so it survives the epic boundary and has to be threaded through the
-PR/CI/merge cluster to get from one epic's last story to the next epic's first. Threading
-it is noisier than a mutable field would be and it is the honest shape: it is state the
-checkpoint has to carry, and every other way of writing it hides that.
+**The two counters are parameters.** `ci_rework` and `merge_rework` both live inside the
+PR cluster, which is the whole distance either of them travels. There was a third —
+`zero_diff`, consecutive stories whose commit found nothing to commit — and it is gone:
+the workflow no longer commits on the agent's behalf, so "this story produced no diff" is
+no longer a thing this graph is in a position to observe. What replaced it is not a
+smaller counter but the check that the agent committed at all, in `commit`, and the two
+gates that hang off a tree it left dirty.
 
 **Two disjunctions that look alike and are not.** The YAML resolves the working epic two
 different ways and the port keeps both apart:
@@ -150,6 +150,26 @@ def _docs_changed_qa_retry_artifact(result: DocsResult, spec_dir: str) -> bool:
     return False
 
 
+def _documented(result: DocsResult) -> bool:
+    """`decide_docs_outcome`: did the book end up true of this story?
+
+    `not_applicable` — a repo with no book — passes, because the alternative is that every
+    repo without documentation cannot run the workflow. Everything else, blank included, is
+    the pessimistic arm the YAML's `default:` took, and every one of them now goes to the
+    operator rather than one of them ending the run.
+    """
+    return result.status in ("passed", "not_applicable")
+
+
+def _docs_notes(result: DocsResult, what: str) -> str:
+    """The reason the gate shows the operator, with the verdict that produced it named.
+
+    A `blocked` result says why in `notes`; a `failed` one often does not, and "no reason
+    given" against a named status is more use at the gate than a bare empty string.
+    """
+    return f"{result.status or 'no status'} — {result.notes or 'no reason given'} ({what})"
+
+
 class Coder(Workflow):
     """Implement one epic's stories end to end, or one named story.
 
@@ -203,9 +223,6 @@ class Coder(Workflow):
     MAX_CI_REWORKS: ClassVar[int] = 3
     #: `max_merge_reworks` — automated attempts at a conflicted merge, ditto.
     MAX_MERGE_REWORKS: ClassVar[int] = 2
-    #: `max_zero_diff_commits` — consecutive stories whose commit found nothing to commit
-    #: before the run gives up. Three in a row is not a run making progress.
-    MAX_ZERO_DIFF_COMMITS: ClassVar[int] = 3
 
     # Eighty nodes with several loops in them: the default budget is not generous here.
     max_transitions: ClassVar[int] = 4000
@@ -240,9 +257,8 @@ class Coder(Workflow):
             "progress": pick.progress,
         }
 
-    #: The graph's own budgets. `zero_diff` is run-global rather than per-story, so it is
-    #: the one whose label answers "how many stories in a row produced no diff".
-    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("ci_rework", "merge_rework", "zero_diff")
+    #: The graph's own budgets, both of them inside the PR cluster.
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("ci_rework", "merge_rework")
 
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
         """The same, plus which attempt of which budget the next state is on."""
@@ -269,7 +285,7 @@ class Coder(Workflow):
 
     # ── the epic queue ────────────────────────────────────────────────────────────────
 
-    def select_epic(self, zero_diff: int = 0) -> Continue | Done:
+    def select_epic(self) -> Continue | Done:
         """`select_epic` + `decide_epic` + `branch_epic`: take the front of the queue.
 
         The branch is cut in the same state as the pick because nothing branches between
@@ -281,9 +297,9 @@ class Coder(Workflow):
             return Done(pick)
         base = self.output(init_base).base_branch
         self.call(branch_epic, pick.epic, base, str(self.run_dir))
-        return Continue(pick, self.select_story, epic=pick.epic, zero_diff=zero_diff)
+        return Continue(pick, self.select_story, epic=pick.epic)
 
-    def select_story(self, epic: str = "", zero_diff: int = 0) -> Continue:
+    def select_story(self, epic: str = "") -> Continue:
         """`select_story` + `decide_story`: the next unimplemented story of this epic.
 
         Three outcomes, and the third is the one worth naming: `blocked` does *not* fail the
@@ -293,18 +309,17 @@ class Coder(Workflow):
         """
         pick = self.call(select_story, epic, self.docs_path, str(self.run_dir))
         if pick.story_outcome == "story":
-            return Continue(pick, self.prepare, slug=pick.story_slug, epic=epic,
-                            zero_diff=zero_diff)
+            return Continue(pick, self.prepare, slug=pick.story_slug, epic=epic)
         if pick.story_outcome == "done":
             self.logger.info("epic %s has no stories left — opening its PR", epic)
-            return Continue(pick, self.open_pr, epic=epic, zero_diff=zero_diff)
+            return Continue(pick, self.open_pr, epic=epic)
         # `blocked`, and the YAML's `default:` arm, which pointed at the same node.
         self.call(flag_epic_blocked, epic, str(self.run_dir), pick.reason)
-        return Continue(pick, self.select_epic, zero_diff=zero_diff)
+        return Continue(pick, self.select_epic)
 
     # ── one story ─────────────────────────────────────────────────────────────────────
 
-    def prepare(self, slug: str = "", epic: str = "", zero_diff: int = 0) -> Continue:
+    def prepare(self, slug: str = "", epic: str = "") -> Continue:
         """`prepare_story` + `init_triage_counter`: resolve the slug to paths.
 
         The triage budget is seeded here rather than inside `qa` for the reason the YAML
@@ -322,9 +337,9 @@ class Coder(Workflow):
         self.call(snapshot_worktree_state, self.docs_path)
         story = self.call(prepare_story, self.docs_path, slug, epic)
         self.logger.info("preparing %s%s", slug, self._progress(), extra={"activity": True})
-        return Continue(story, self.dev, epic=epic, zero_diff=zero_diff)
+        return Continue(story, self.dev, epic=epic)
 
-    def dev(self, epic: str = "", zero_diff: int = 0, triage: int = 0) -> Continue:
+    def dev(self, epic: str = "", triage: int = 0) -> Continue:
         """`dev` + `decide_dev`: plan and implement the story.
 
         `replan` is the sub-flow saying the *story* was the wrong thing to build — an
@@ -342,12 +357,11 @@ class Coder(Workflow):
             target_env=self.target_env,
         )
         if result.status == "replan":
-            return Continue(result, self.replan, epic=epic, zero_diff=zero_diff,
-                            notes=result.operator_notes)
+            return Continue(result, self.replan, epic=epic, notes=result.operator_notes)
         # `ready` and the YAML's `default:` arm, which was also `review`.
-        return Continue(result, self.review, epic=epic, zero_diff=zero_diff, triage=triage)
+        return Continue(result, self.review, epic=epic, triage=triage)
 
-    def review(self, epic: str = "", zero_diff: int = 0, triage: int = 0) -> Continue:
+    def review(self, epic: str = "", triage: int = 0) -> Continue:
         """`review`: code review and reuse, with no branch on the outcome.
 
         The YAML declared `outputs: []` here and went straight to `docs`. That is not an
@@ -364,9 +378,9 @@ class Coder(Workflow):
             epic=self._story_epic(epic),
             operator_mode=self.operator_mode,
         )
-        return Continue(result, self.document, epic=epic, zero_diff=zero_diff, triage=triage)
+        return Continue(result, self.document, epic=epic, triage=triage)
 
-    def document(self, epic: str = "", zero_diff: int = 0, triage: int = 0) -> Continue:
+    def document(self, epic: str = "", triage: int = 0) -> Continue:
         """`docs` + `decide_docs_outcome`: fold the story into the OKF book.
 
         `not_applicable` — a repo with no book — passes, because the alternative is that
@@ -377,8 +391,10 @@ class Coder(Workflow):
         changes apart from whatever was already dirty when it started; see `_preexisting`
         for why a run that predates the snapshot passes nothing rather than failing.
 
-        `blocked` is the sub-flow's fourth answer and the only call site that catches it —
-        see `blocked_docs`.
+        A `blocked` answer and a `failed` one both route to `blocked_docs`. They read
+        differently — one is the book refusing the code, the other is the documenting turn
+        not finishing — and neither is answerable by trying again unchanged, so both park
+        for the operator rather than one parking and the other ending the run.
         """
         result = self.handoff(
             Docs,
@@ -389,16 +405,20 @@ class Coder(Workflow):
             preexisting=self._preexisting(),
             operator_mode=self.operator_mode,
         )
-        if result.status == "blocked":
-            return Continue(result, self.blocked_docs, epic=epic, zero_diff=zero_diff,
-                            triage=triage, notes=result.notes)
-        self._require_documented(result, "story")
-        return Continue(result, self.qa, epic=epic, zero_diff=zero_diff, triage=triage)
+        if not _documented(result):
+            return Continue(result, self.blocked_docs, epic=epic, triage=triage,
+                            notes=_docs_notes(result, "story"))
+        return Continue(result, self.qa, epic=epic, triage=triage)
 
     def blocked_docs(
-        self, epic: str = "", zero_diff: int = 0, triage: int = 0, notes: str = ""
+        self,
+        epic: str = "",
+        triage: int = 0,
+        notes: str = "",
+        resume_at: str = "document",
+        attempts: int | str = 0,
     ) -> Await:
-        """The docs phase refused the story: the run parks for a human, not ends failed.
+        """The docs phase would not pass the story: the run parks for a human, not ends failed.
 
         `give_up`'s counterpart for the other verdict that ends a story unfinished — but a
         block is answerable and a QA-on-`target_env="dev"` report is not, so the two no
@@ -421,27 +441,44 @@ class Coder(Workflow):
 
         `notes` carries the refusal's reason into the escalation, because it is the only
         place it is written down — unlike a QA give-up, there is no `qa.md` to point at.
+
+        `resume_at` names which of the three `Docs` handoffs raised this, because they sit
+        at different points in the story and a resume has to land back at the one it left.
+        Sending `finalize`'s block back to `document` would re-run QA on a story that had
+        already passed it; sending `give_up`'s there would restart a story the run had
+        already stopped implementing.
         """
         slug = self._story.story_slug
         return Await(
             paths.operator_context_path(paths.launch_repo_root(self.repo_dir), "docs-operator", slug),
-            f"Documentation was blocked for story {slug!r}: {notes or 'no reason given'}.\n\n"
+            f"Documentation did not pass for story {slug!r}: {notes or 'no reason given'}.\n\n"
             "Fix the code, the spec or the plan so the book can be made true of it, and "
             "touch this file when the run should try again.",
             self.docs_operator,
             epic=epic,
-            zero_diff=zero_diff,
             triage=triage,
+            resume_at=resume_at,
+            attempts=attempts,
         )
 
-    def docs_operator(self, epic: str = "", zero_diff: int = 0, triage: int = 0) -> Continue:
+    def docs_operator(
+        self,
+        epic: str = "",
+        triage: int = 0,
+        resume_at: str = "document",
+        attempts: int | str = 0,
+    ) -> Continue:
         """The consume half of the docs gate: re-document on the operator's fix."""
         self.logger.info(
             "operator answered the docs gate — redocumenting %s", self._story.story_slug
         )
-        return Continue(None, self.document, epic=epic, zero_diff=zero_diff, triage=triage)
+        if resume_at == "give_up":
+            return Continue(None, self.give_up, epic=epic, attempts=attempts)
+        if resume_at == "finalize":
+            return Continue(None, self.finalize, epic=epic)
+        return Continue(None, self.document, epic=epic, triage=triage)
 
-    def qa(self, epic: str = "", zero_diff: int = 0, triage: int = 0) -> Continue:
+    def qa(self, epic: str = "", triage: int = 0) -> Continue:
         """`qa_phase` + `decide_qa_outcome`: the four-way gate the whole loop turns on.
 
         `rescope` is the interesting arm. It sends the story back to `dev` carrying the
@@ -467,28 +504,24 @@ class Coder(Workflow):
             preexisting=self._preexisting(),
         )
         if result.status == "replan":
-            return Continue(result, self.replan, epic=epic, zero_diff=zero_diff,
-                            notes=result.operator_notes)
+            return Continue(result, self.replan, epic=epic, notes=result.operator_notes)
         if result.status == "rescope":
             self.logger.info("QA rescoped %s — back to dev", self._story.story_slug)
-            return Continue(result, self.dev, epic=epic, zero_diff=zero_diff,
-                            triage=result.triage_scope)
+            return Continue(result, self.dev, epic=epic, triage=result.triage_scope)
         if result.status == "inconclusive":
             # The only mode that still lands here is `target_env="dev"`: every other
             # exhaustion now escalates to the operator gate inside the QA sub-flow itself
             # and never returns with this status at all.
-            return Continue(result, self.give_up, epic=epic, zero_diff=zero_diff,
-                            attempts=result.qa_rework)
+            return Continue(result, self.give_up, epic=epic, attempts=result.qa_rework)
         # `passed`, and the YAML's `default:` arm, which was also the drain.
         return Continue(
             result,
             self.drain,
             epic=epic,
-            zero_diff=zero_diff,
             docs_recheck_required=result.docs_recheck_required,
         )
 
-    def replan(self, epic: str = "", zero_diff: int = 0, notes: str = "") -> Continue:
+    def replan(self, epic: str = "", notes: str = "") -> Continue:
         """`replan_epic`: rewrite the epic from what the operator said, and re-select.
 
         The one turn in this graph that rewrites planning documents rather than code, which
@@ -510,11 +543,9 @@ class Coder(Workflow):
                 "operator_context": notes,
             },
         )
-        return Continue(result, self.select_story, epic=epic, zero_diff=zero_diff)
+        return Continue(result, self.select_story, epic=epic)
 
-    def give_up(
-        self, epic: str = "", zero_diff: int = 0, attempts: int | str = 0
-    ) -> Continue:
+    def give_up(self, epic: str = "", attempts: int | str = 0) -> Continue:
         """`decide_qa_fail` → `failed_docs`: the dev-target report ends here; the run stops.
 
         Real QA exhaustion no longer reaches this method: every budget the QA sub-flow can
@@ -547,14 +578,22 @@ class Coder(Workflow):
             preexisting=self._preexisting(),
             operator_mode=self.operator_mode,
         )
-        self._require_documented(result, "failed story")
+        if not _documented(result):
+            return Continue(
+                result,
+                self.blocked_docs,
+                epic=epic,
+                notes=_docs_notes(result, "failed story"),
+                resume_at="give_up",
+                attempts=attempts,
+            )
         if _docs_changed_qa_retry_artifact(result, self._story.spec_dir):
             self.logger.info(
                 "documentation changed QA retry artifacts for %s — rerunning QA",
                 self._story.story_slug,
                 extra={"activity": True},
             )
-            return Continue(result, self.qa, epic=epic, zero_diff=zero_diff)
+            return Continue(result, self.qa, epic=epic)
         raise WorkflowFailed(
             f"QA never passed for story {self._story.story_slug!r} after {attempts} "
             f"attempt(s); nothing was committed for this story.",
@@ -564,12 +603,7 @@ class Coder(Workflow):
 
     # ── the backlog drain, nested inside the story ────────────────────────────────────
 
-    def drain(
-        self,
-        epic: str = "",
-        zero_diff: int = 0,
-        docs_recheck_required: bool = True,
-    ) -> Continue:
+    def drain(self, epic: str = "", docs_recheck_required: bool = True) -> Continue:
         """`decide_post_sentinel` + `select_fix_item` + `seed_fix_story` + the seeding.
 
         The draw does not touch the backlog file — a bullet leaves it only at `_fix_prune`
@@ -587,7 +621,6 @@ class Coder(Workflow):
                 pick,
                 self.finalize,
                 epic=epic,
-                zero_diff=zero_diff,
                 docs_recheck_required=docs_recheck_required,
             )
         self.logger.info("draining %s: %s", pick.fix_bullet_id, pick.fix_bullet_text)
@@ -595,9 +628,9 @@ class Coder(Workflow):
             seed_fix_story, pick.fix_bullet_id, pick.fix_bullet_text, "", "", self.docs_path
         )
         self.call(prepare_fix_story, self.docs_path, seed.story_slug, seed.epic)
-        return Continue(seed, self.fix_plan, epic=epic, zero_diff=zero_diff)
+        return Continue(seed, self.fix_plan, epic=epic)
 
-    def fix_plan(self, epic: str = "", zero_diff: int = 0) -> Continue:
+    def fix_plan(self, epic: str = "") -> Continue:
         """`plan_fix` + `decide_plan_fix`: plan the one-AC fix story."""
         fix = self._fix_story
         self.logger.info("planning %s", fix.story_slug, extra={"activity": True})
@@ -611,11 +644,11 @@ class Coder(Workflow):
             args={"story_path": fix.story_path, "spec_dir": fix.spec_dir},
         )
         if result.status == "blocked":
-            return self._fix_flag(result, epic, zero_diff)
+            return self._fix_flag(result, epic)
         # The YAML's `default:` arm was `resolve_fix_impl_context`, not the give-up.
-        return Continue(result, self.fix_dispatch, epic=epic, zero_diff=zero_diff)
+        return Continue(result, self.fix_dispatch, epic=epic)
 
-    def fix_dispatch(self, epic: str = "", zero_diff: int = 0) -> Continue:
+    def fix_dispatch(self, epic: str = "") -> Continue:
         """`resolve_fix_impl_context` + `branch_fix_code_repos` + `select_fix_layer`.
 
         `branch_code_repos` is called with `spec_dir` alone here, as the YAML's nested copy
@@ -628,10 +661,10 @@ class Coder(Workflow):
         pick = self.call(select_next_layer, fix.spec_dir, -1)
         if not pick.has_layer:
             self.logger.info("no service layer dispatched — checking the fix as it stands")
-            return Continue(pick, self.fix_check, epic=epic, zero_diff=zero_diff)
-        return Continue(pick, self.fix_implement, epic=epic, zero_diff=zero_diff)
+            return Continue(pick, self.fix_check, epic=epic)
+        return Continue(pick, self.fix_implement, epic=epic)
 
-    def fix_implement(self, epic: str = "", zero_diff: int = 0) -> Continue:
+    def fix_implement(self, epic: str = "") -> Continue:
         """`implement_fix`: the first dispatched layer, and only it.
 
         Only it, because the nested drain has no loop back to `select_fix_layer` — the YAML
@@ -661,17 +694,16 @@ class Coder(Workflow):
                 "verification": layer.verification,
             },
         )
-        return Continue(result, self.fix_check, epic=epic, zero_diff=zero_diff)
+        return Continue(result, self.fix_check, epic=epic)
 
-    def fix_check(self, epic: str = "", zero_diff: int = 0) -> Continue:
+    def fix_check(self, epic: str = "") -> Continue:
         """`check_fix` + `decide_fix_check`: one QA turn on the drained item."""
         result = self._fix_qa()
         if result.status == "passed":
-            return self._fix_prune(result, epic, zero_diff)
-        return Continue(result, self.fix_apply, epic=epic, zero_diff=zero_diff,
-                        notes=result.notes)
+            return self._fix_prune(result, epic)
+        return Continue(result, self.fix_apply, epic=epic, notes=result.notes)
 
-    def fix_apply(self, epic: str = "", zero_diff: int = 0, notes: str = "") -> Continue:
+    def fix_apply(self, epic: str = "", notes: str = "") -> Continue:
         """`apply_fix_once`: the single retry, on what the QA turn found.
 
         `notes` crosses from one agent turn to the next, and agent turns are not nodes, so
@@ -695,9 +727,9 @@ class Coder(Workflow):
                 "qa_notes": notes,
             },
         )
-        return Continue(result, self.fix_recheck, epic=epic, zero_diff=zero_diff)
+        return Continue(result, self.fix_recheck, epic=epic)
 
-    def fix_recheck(self, epic: str = "", zero_diff: int = 0) -> Continue:
+    def fix_recheck(self, epic: str = "") -> Continue:
         """`recheck_fix` + `decide_recheck`: settle the item either way.
 
         Only `passed` prunes; everything else, blank included, flags the bullet and moves
@@ -706,17 +738,12 @@ class Coder(Workflow):
         """
         result = self._fix_qa()
         if result.status == "passed":
-            return self._fix_prune(result, epic, zero_diff)
-        return self._fix_flag(result, epic, zero_diff)
+            return self._fix_prune(result, epic)
+        return self._fix_flag(result, epic)
 
     # ── the far end of a story ────────────────────────────────────────────────────────
 
-    def finalize(
-        self,
-        epic: str = "",
-        zero_diff: int = 0,
-        docs_recheck_required: bool = True,
-    ) -> Continue:
+    def finalize(self, epic: str = "", docs_recheck_required: bool = True) -> Continue:
         """Recheck documentation after a mutation, then commit the story.
 
         A clean QA pass needs no redundant second Docs handoff. QA repairs and the nested
@@ -725,7 +752,7 @@ class Coder(Workflow):
         """
         if not docs_recheck_required:
             if self.mode == "epic":
-                return Continue(None, self.commit, epic=epic, zero_diff=zero_diff)
+                return Continue(None, self.commit, epic=epic)
             return Continue(None, self.commit_pr)
         result = self.handoff(
             Docs,
@@ -736,22 +763,19 @@ class Coder(Workflow):
             preexisting=self._preexisting(),
             operator_mode=self.operator_mode,
         )
-        if result.status == "blocked":
+        if not _documented(result):
             return Continue(
                 result,
                 self.blocked_docs,
                 epic=epic,
-                zero_diff=zero_diff,
-                notes=result.notes,
+                notes=_docs_notes(result, "story (final pass)"),
+                resume_at="finalize",
             )
-        self._require_documented(result, "story (final pass)")
         if self.mode == "epic":
-            return Continue(result, self.commit, epic=epic, zero_diff=zero_diff)
+            return Continue(result, self.commit, epic=epic)
         return Continue(result, self.commit_pr)
 
-    def commit(
-        self, epic: str = "", zero_diff: int = 0, dirty_laps: int = 0
-    ) -> Continue | Await:
+    def commit(self, epic: str = "", dirty_laps: int = 0) -> Continue | Await:
         """`check_repos_clean` + `stamp_story_passed`: the story's work is recorded, or it parks.
 
         The workflow used to commit for the agent — `git commit -a` per affected repo,
@@ -778,17 +802,15 @@ class Coder(Workflow):
         )
         if not state.clean:
             if dirty_laps:
-                return self._dirty_gate(state.dirty, epic, zero_diff)
-            return Continue(state, self.settle, epic=epic, zero_diff=zero_diff, dirty_laps=1)
+                return self._dirty_gate(state.dirty, epic)
+            return Continue(state, self.settle, epic=epic, dirty_laps=1)
         self.reset_session(self._settle_chain())
         result = self.call(
             stamp_story_passed, self._queue_epic(epic), story.story_slug, story.story_path
         )
-        return Continue(result, self.select_story, epic=epic, zero_diff=0)
+        return Continue(result, self.select_story, epic=epic)
 
-    def settle(
-        self, epic: str = "", zero_diff: int = 0, dirty_laps: int = 1
-    ) -> Continue | Await:
+    def settle(self, epic: str = "", dirty_laps: int = 1) -> Continue | Await:
         """One chained turn to record what the story left on disk, then re-read the tree.
 
         Chained deliberately, and to the story rather than the run: this is the same agent
@@ -823,9 +845,8 @@ class Coder(Workflow):
             session=self._settle_chain(),
         )
         if result.blocked:
-            return self._dirty_gate(state.dirty, epic, zero_diff, notes=result.notes)
-        return Continue(result, self.commit, epic=epic, zero_diff=zero_diff,
-                        dirty_laps=dirty_laps)
+            return self._dirty_gate(state.dirty, epic, notes=result.notes)
+        return Continue(result, self.commit, epic=epic, dirty_laps=dirty_laps)
 
     def commit_pr(self) -> Done:
         """`commit_story_pr` + `open_story_pr`: story mode's end.
@@ -851,7 +872,7 @@ class Coder(Workflow):
 
     # ── the epic's pull request, and the two gates behind it ──────────────────────────
 
-    def open_pr(self, epic: str = "", zero_diff: int = 0) -> Continue:
+    def open_pr(self, epic: str = "") -> Continue:
         """`prune_epic` + `open_pr` + `decide_gate`: the epic is done, so ship it.
 
         The pop comes *before* the PR deliberately: `open_pr` commits the docs it finds, so
@@ -868,12 +889,10 @@ class Coder(Workflow):
                          str(self.run_dir))
         if not gate.should_gate:
             self.logger.info("no PR to gate on for %s — taking the next epic", epic)
-            return Continue(gate, self.select_epic, zero_diff=zero_diff)
-        return Continue(gate, self.ci, epic=epic, zero_diff=zero_diff)
+            return Continue(gate, self.select_epic)
+        return Continue(gate, self.ci, epic=epic)
 
-    def ci(
-        self, epic: str = "", zero_diff: int = 0, ci_rework: int = 0, merge_rework: int = 0
-    ) -> Continue | Await:
+    def ci(self, epic: str = "", ci_rework: int = 0, merge_rework: int = 0) -> Continue | Await:
         """`await_ci` + `decide_ci` + `guard_ci`: is the epic's PR green?
 
         `unavailable` passes through to the merge, and that is the deliberate design rather
@@ -887,17 +906,15 @@ class Coder(Workflow):
         gate = self.output(open_pr)
         checks = self.call(poll_pr_checks, "", epic_branch(gate.ci_epic))
         if checks.status in ("passed", "unavailable"):
-            return Continue(checks, self.merge, epic=epic, zero_diff=zero_diff,
-                            merge_rework=merge_rework)
+            return Continue(checks, self.merge, epic=epic, merge_rework=merge_rework)
         # `failed`, and the YAML's `default:`, which was also the guard.
         if ci_rework >= self.MAX_CI_REWORKS:
-            return self._ci_gate(gate.ci_epic, ci_rework, checks.summary, epic, zero_diff,
-                                 merge_rework)
-        return Continue(checks, self.repair_ci, epic=epic, zero_diff=zero_diff,
-                        ci_rework=ci_rework, merge_rework=merge_rework)
+            return self._ci_gate(gate.ci_epic, ci_rework, checks.summary, epic, merge_rework)
+        return Continue(checks, self.repair_ci, epic=epic, ci_rework=ci_rework,
+                        merge_rework=merge_rework)
 
     def repair_ci(
-        self, epic: str = "", zero_diff: int = 0, ci_rework: int = 0, merge_rework: int = 0
+        self, epic: str = "", ci_rework: int = 0, merge_rework: int = 0
     ) -> Continue | Await:
         """`fix_ci` + `push_ci` + `decide_push` + `incr_ci`: one automated attempt at red CI.
 
@@ -915,13 +932,11 @@ class Coder(Workflow):
         )
         push = self.call(push_ci_fix, "", epic_branch(gate.ci_epic))
         if push.status in ("pushed", "unavailable"):
-            return Continue(push, self.ci, epic=epic, zero_diff=zero_diff,
-                            ci_rework=ci_rework + 1, merge_rework=merge_rework)
-        return self._ci_gate(gate.ci_epic, ci_rework, summary, epic, zero_diff, merge_rework)
+            return Continue(push, self.ci, epic=epic, ci_rework=ci_rework + 1,
+                            merge_rework=merge_rework)
+        return self._ci_gate(gate.ci_epic, ci_rework, summary, epic, merge_rework)
 
-    def ci_operator(
-        self, epic: str = "", zero_diff: int = 0, merge_rework: int = 0
-    ) -> Continue:
+    def ci_operator(self, epic: str = "", merge_rework: int = 0) -> Continue:
         """The consume half of the CI gate: the operator acted, so poll again.
 
         The budget resets to zero, which is what `await-ci-operator.py` emitted — the
@@ -930,10 +945,9 @@ class Coder(Workflow):
         because what the operator did is visible in the next poll, not in what they typed.
         """
         self.logger.info("operator answered the CI gate — re-polling")
-        return Continue(None, self.ci, epic=epic, zero_diff=zero_diff, ci_rework=0,
-                        merge_rework=merge_rework)
+        return Continue(None, self.ci, epic=epic, ci_rework=0, merge_rework=merge_rework)
 
-    def merge(self, epic: str = "", zero_diff: int = 0, merge_rework: int = 0) -> Continue | Await:
+    def merge(self, epic: str = "", merge_rework: int = 0) -> Continue | Await:
         """`merge` + `decide_merge` + `guard_merge`: land the epic's PR.
 
         Best-effort, like the gate above it: with no origin, no token or no open PR the
@@ -945,16 +959,13 @@ class Coder(Workflow):
         if outcome.merge_status in ("merged", "unavailable"):
             # The epic's merge is settled; the next epic's conflicts are a different worklist.
             self.reset_session(f"merge-fix:{gate.ci_epic}")
-            return Continue(outcome, self.select_epic, zero_diff=zero_diff)
+            return Continue(outcome, self.select_epic)
         # `failed`, and the blank the YAML's pessimistic `default:` sent the same way.
         if merge_rework >= self.MAX_MERGE_REWORKS:
-            return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework, epic, zero_diff)
-        return Continue(outcome, self.fix_merge, epic=epic, zero_diff=zero_diff,
-                        merge_rework=merge_rework)
+            return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework, epic)
+        return Continue(outcome, self.fix_merge, epic=epic, merge_rework=merge_rework)
 
-    def fix_merge(
-        self, epic: str = "", zero_diff: int = 0, merge_rework: int = 0
-    ) -> Continue | Await:
+    def fix_merge(self, epic: str = "", merge_rework: int = 0) -> Continue | Await:
         """`fix_merge` + `push_merge` + `decide_merge_push` + `incr_merge`.
 
         The second of the graph's two agent turns. `power="high"` for the reason the YAML
@@ -980,19 +991,18 @@ class Coder(Workflow):
             # so go straight to the gate the budget's own exhaustion goes to — and get
             # there with the resolver's reason, which is the only account of *why*.
             self.logger.info("the merge resolver reported it cannot decide: %s", result.notes)
-            return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework, epic, zero_diff)
+            return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework, epic)
         push = self.call(push_ci_fix, "", gate.ci_epic)
         if push.status in ("pushed", "unavailable"):
-            return Continue(push, self.merge, epic=epic, zero_diff=zero_diff,
-                            merge_rework=merge_rework + 1)
-        return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework, epic, zero_diff)
+            return Continue(push, self.merge, epic=epic, merge_rework=merge_rework + 1)
+        return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework, epic)
 
-    def merge_operator(self, epic: str = "", zero_diff: int = 0) -> Continue:
+    def merge_operator(self, epic: str = "") -> Continue:
         """The consume half of the merge gate: try the merge again, budget reset."""
         self.logger.info("operator answered the merge gate — re-merging")
-        return Continue(None, self.merge, epic=epic, zero_diff=zero_diff, merge_rework=0)
+        return Continue(None, self.merge, epic=epic, merge_rework=0)
 
-    def dirty_operator(self, epic: str = "", zero_diff: int = 0) -> Continue:
+    def dirty_operator(self, epic: str = "") -> Continue:
         """The consume half of the dirty-tree gate: re-read the tree, budget reset.
 
         Back to `commit` rather than on to `select_story`, because what the operator
@@ -1000,12 +1010,7 @@ class Coder(Workflow):
         exactly where the run should land again.
         """
         self.logger.info("operator answered the dirty-tree gate — re-reading the worktree")
-        return Continue(None, self.commit, epic=epic, zero_diff=zero_diff, dirty_laps=0)
-
-    def zero_diff_operator(self, epic: str = "", zero_diff: int = 0) -> Continue:
-        """The consume half of the zero-diff gate: try the next story, streak reset."""
-        self.logger.info("operator answered the zero-diff gate — continuing")
-        return Continue(None, self.select_story, epic=epic, zero_diff=0)
+        return Continue(None, self.commit, epic=epic, dirty_laps=0)
 
     # ── routers and shared turns, none of them states ─────────────────────────────────
 
@@ -1015,7 +1020,6 @@ class Coder(Workflow):
         attempts: int,
         summary: str,
         epic: str,
-        zero_diff: int,
         merge_rework: int,
     ) -> Await:
         """`flag_ci_fail` + `await_ci_operator`: the automated attempts are spent.
@@ -1036,13 +1040,10 @@ class Coder(Workflow):
             "should poll again.",
             self.ci_operator,
             epic=epic,
-            zero_diff=zero_diff,
             merge_rework=merge_rework,
         )
 
-    def _merge_gate(
-        self, ci_epic: str, ci_base: str, attempts: int, epic: str, zero_diff: int
-    ) -> Await:
+    def _merge_gate(self, ci_epic: str, ci_base: str, attempts: int, epic: str) -> Await:
         """`flag_merge_fail` + `await_merge_operator`: the merge-side twin of `_ci_gate`."""
         self.call(flag_merge_failure, ci_epic, ci_base, str(attempts))
         return Await(
@@ -1051,34 +1052,9 @@ class Coder(Workflow):
             "attempt(s).\n\nResolve it and touch this file when the run should try again.",
             self.merge_operator,
             epic=epic,
-            zero_diff=zero_diff,
         )
 
-    def _zero_diff_gate(self, zero_diff: int, epic: str, slug: str) -> Await:
-        """`decide_committed`'s stall arm: a run not making progress parks, it does not die.
-
-        The same shape as `_ci_gate`/`_merge_gate` above, for a budget that is run-global
-        rather than per-epic: `commit`'s own docstring has the incident this replaced —
-        counting a re-verification as another zero-diff commit killed a sixteen-hour run
-        three stories after it re-verified and passed exactly that kind of story. Ending the
-        run outright on the same signal would have repeated that failure with a different
-        `failure_class`; parking for a human, resumable and uncapped like every other gate
-        in this file, is what does not.
-        """
-        return Await(
-            paths.operator_context_path(paths.launch_repo_root(self.repo_dir), "zero-diff-operator", slug),
-            f"{zero_diff} stories in a row committed no changes — the loop does not look "
-            "like it is making progress.\n\nInvestigate (a broken dev/QA loop, a story "
-            "genuinely already satisfied, or the plan itself) and touch this file when the "
-            "run should try the next story again.",
-            self.zero_diff_operator,
-            epic=epic,
-            zero_diff=zero_diff,
-        )
-
-    def _dirty_gate(
-        self, dirty: list[str], epic: str, zero_diff: int, notes: str = ""
-    ) -> Await:
+    def _dirty_gate(self, dirty: list[str], epic: str, notes: str = "") -> Await:
         """`commit`'s uncommitted-work arm: the story ends parked, not swept into a commit.
 
         Reached from two places and for the same reason both times — the tree still holds
@@ -1104,7 +1080,6 @@ class Coder(Workflow):
             "touch this file when the run should re-read the tree.",
             self.dirty_operator,
             epic=epic,
-            zero_diff=zero_diff,
         )
 
     def _settle_chain(self) -> str:
@@ -1115,7 +1090,7 @@ class Coder(Workflow):
         """
         return f"settle-worktree:{self._story.story_slug}"
 
-    def _fix_prune(self, result: object, epic: str, zero_diff: int) -> Continue:
+    def _fix_prune(self, result: object, epic: str) -> Continue:
         """`prune_fix_item`: the drained fix shipped, so its bullet leaves the backlog."""
         bullet = self.output(select_fix_item).fix_bullet_id
         self.call(prune_fix_item, bullet, self.docs_path)
@@ -1123,11 +1098,10 @@ class Coder(Workflow):
             result,
             self.drain,
             epic=epic,
-            zero_diff=zero_diff,
             docs_recheck_required=True,
         )
 
-    def _fix_flag(self, result: object, epic: str, zero_diff: int) -> Continue:
+    def _fix_flag(self, result: object, epic: str) -> Continue:
         """`fix_give_up`: annotate the bullet in place and draw the next one."""
         bullet = self.output(select_fix_item).fix_bullet_id
         self.logger.info("flagging %s as blocked", bullet)
@@ -1136,7 +1110,6 @@ class Coder(Workflow):
             result,
             self.drain,
             epic=epic,
-            zero_diff=zero_diff,
             docs_recheck_required=True,
         )
 
@@ -1163,17 +1136,6 @@ class Coder(Workflow):
                 "target_env": self.target_env,
             },
         )
-
-    def _require_documented(self, result: object, what: str) -> None:
-        """`decide_docs_outcome`, shared by the three `docs` handoffs that branch alike."""
-        status = getattr(result, "status", "")
-        if status not in ("passed", "not_applicable"):
-            raise WorkflowFailed(
-                f"documenting the {what} {self._story.story_slug!r} failed: "
-                f"{getattr(result, 'notes', '') or 'no notes'}",
-                failure_class="docs-not-passed",
-                artifacts={"spec_dir": str(self._story.spec_dir)},
-            )
 
     def _story_epic(self, epic: str) -> str:
         """`prepare_story.story_epic or select_story.epic or epic` — the *story's* epic.

@@ -107,10 +107,9 @@ def test_a_refused_commit_raises_instead_of_reading_as_an_empty_one(tmp_path: Pa
     """The regression that killed a real run.
 
     A stale `.git/index.lock` makes `git add` refuse. Both helpers used to swallow that
-    and return False — the same value they return for a clean tree — so the coder's
-    zero-diff guard counted three stories' worth of *refused* commits as three stories
-    that did no work and stopped the run, with the git error printed nowhere and the work
-    still sitting in the tree.
+    and return False — the same value they return for a clean tree — so a *refused* commit
+    read as a story that did no work, with the git error printed nowhere and the work still
+    sitting in the tree.
     """
     root = make_git_repo(tmp_path / "acme")
     _write(root, "src/feature.py")

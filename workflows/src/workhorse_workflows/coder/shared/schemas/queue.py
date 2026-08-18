@@ -140,9 +140,8 @@ class StoryCommitted(CoderResult):
     """`commit-story.py` — did the story's *work* land in any affected repo?
 
     Deliberately not "did anything get committed": the `QA passed` status stamp is
-    committed separately and is excluded from this answer, because the zero-diff churn
-    guard counts consecutive no-op story commits and a stamp every passing story makes
-    would keep the guard from ever tripping.
+    committed separately and is excluded from this answer, because every passing story
+    writes one — counting it would make every story look like a story that did work.
 
     `superseded_outcome` is the other half of that guard's question. It is narrower than
     "was a stamp written", which every passing story does: it is "did this stamp replace a

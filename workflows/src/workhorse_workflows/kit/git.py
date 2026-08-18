@@ -11,12 +11,12 @@ fail-soft: a bad repo or failed command yields ``None``/``False``/``-1`` rather 
 raising into an unattended run.
 
 The two commit helpers are the deliberate exception. Their ``False`` means *the tree
-had nothing to commit*, and callers act on it — the coder's zero-diff guard reads three
-of them in a row as "the loop is not making progress" and stops the run. Laundering a
-git refusal (a stale ``index.lock``, a rejecting hook, a failed signature) into that same
-``False`` tells the caller the opposite of what happened: work was done, git would not
-record it, and the run is killed for idleness with the real error never printed. So they
-raise ``GitCommandError`` when git refuses, and reserve ``False`` for the empty tree.
+had nothing to commit*, and callers act on it — the coder reads it as "this story did no
+work". Laundering a git refusal (a stale ``index.lock``, a rejecting hook, a failed
+signature) into that same ``False`` tells the caller the opposite of what happened: work
+was done, git would not record it, and the run reports an idle story with the real error
+printed nowhere. So they raise ``GitCommandError`` when git refuses, and reserve ``False``
+for the empty tree.
 
 GitPython is imported at **module scope**. It used to be imported inside every
 function because importing it runs a ``git --version`` probe that crashes when ``git``
