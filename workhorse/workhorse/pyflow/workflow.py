@@ -347,6 +347,15 @@ class Workflow(BaseModel):
             session=session,
         )
 
+    def session_id(self, key: str) -> str:
+        """The session id chain `key` is on, or `""` before its first turn.
+
+        Read it to hold a conversation in checkpointed state — a state's parameters are
+        its checkpoint — and pass it back as `session=` to reopen that conversation from
+        anywhere, including a later run.
+        """
+        return self._require_engine().session_id(key)
+
     def reset_session(self, key: str) -> None:
         """End session chain `key`, so the next turn on it starts a fresh conversation.
 

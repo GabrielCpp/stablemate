@@ -350,6 +350,13 @@ class Engine:
         resumed = ""
         if session and session_path is not None:
             session_path = sessions.chain_path(session_path.parent, session)
+            # A literal id is a chain named after itself: seeding the file is the whole
+            # of "resume this exact conversation", and it makes the id a *held* value —
+            # a state can put it in its parameters, which are its checkpoint, and the
+            # turn after a resume opens the same conversation the turn before it did.
+            if sessions.is_session_id(session) and not session_path.exists():
+                session_path.parent.mkdir(parents=True, exist_ok=True)
+                session_path.write_text(session.strip(), encoding="utf-8")
             if session_path.exists():
                 resumed = session_path.read_text(encoding="utf-8").strip()
         # The `enter` below opens this node's span and only `write_step` closes it.
@@ -447,6 +454,18 @@ class Engine:
                 raise AgentTimeout(str(exc)) from exc
             writer.write_step(node_id, rendered, raw, {}, next_node=None)
             return _coerce(raw, returns, node_id)
+
+    def session_id(self, key: str) -> str:
+        """The session id chain ``key`` is on, or ``""`` before its first turn.
+
+        What makes a chain survivable across a resume: the chain *file* lives in the run
+        directory and a resumed run finds it there, but a state that wants the id in its
+        own parameters — the only thing a checkpoint carries — has to be able to read it
+        out. Passing that id back as ``session=`` reopens the same conversation.
+        """
+        if not key or self.env.session_id_path is None:
+            return ""
+        return sessions.read_chain(self.env.session_id_path.parent, key)
 
     def reset_session(self, key: str) -> None:
         """End chain ``key``: the next turn on it opens a fresh conversation.

@@ -185,6 +185,68 @@ def test_reset_session_ends_the_chain_and_forgives_one_that_never_ran():
         assert not (env.run_dir / ".sessions" / "docs-S-1").exists()
 
 
+def test_a_literal_session_id_resumes_that_exact_conversation():
+    """The id a caller already holds — out of checkpointed state, or from an operator —
+    goes where a key goes. Seeding the file with it *is* the resume."""
+    with tempfile.TemporaryDirectory() as tmp:
+        seen: list[dict[str, Any]] = []
+
+        def fake_run(node: Any, ctx: Any, wdir: Any, sid: Any, **kwargs: Any) -> Any:
+            seen.append({"sid": sid, "held": sid.read_text().strip(), **kwargs})
+            return "rendered", {"kind": "ok"}
+
+        env = _env(tmp, agent_runner=ScriptedRunner(fake_run))
+        held = "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                self.agent("prompts/repair.md", returns=Payload, session=held)
+                return Done(None)
+
+        drive(Asks(), env)
+
+        assert seen[0]["held"] == held, seen[0]
+        assert seen[0]["resume_session"] is True, seen[0]
+        # And the record says which conversation, not just that there was one.
+        (enter,) = _enters(env, "repair")
+        assert enter["resumed_session"] == held, enter
+
+
+def test_the_id_a_chain_is_on_is_readable_so_a_state_can_checkpoint_it():
+    """A chain file survives a resume because it lives in the run directory; an id a
+    *state* holds survives because the state's parameters are its checkpoint. This is
+    the accessor that lets the second one exist."""
+    with tempfile.TemporaryDirectory() as tmp:
+        held: list[str] = []
+
+        def fake_run(node: Any, ctx: Any, wdir: Any, sid: Any, **kwargs: Any) -> Any:
+            sid.parent.mkdir(parents=True, exist_ok=True)
+            sid.write_text("11111111-2222-4333-8444-555555555555")
+            return "rendered", {"kind": "ok"}
+
+        env = _env(tmp, agent_runner=ScriptedRunner(fake_run))
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                # Nothing has run on it yet, and an empty answer is the honest one.
+                held.append(self.session_id("docs:S-1"))
+                self.agent("prompts/repair.md", returns=Payload, session="docs:S-1")
+                held.append(self.session_id("docs:S-1"))
+                held.append(self.session_id("docs:S-2"))
+                return Done(None)
+
+        drive(Asks(), env)
+
+        assert held == ["", "11111111-2222-4333-8444-555555555555", ""], held
+
+
+def test_a_chain_key_is_never_mistaken_for_an_id():
+    """The two live in one parameter, so the test that tells them apart is the contract."""
+    assert sessions.is_session_id("11111111-2222-4333-8444-555555555555")
+    assert not sessions.is_session_id("qa-plan-repair:STORY-1")
+    assert not sessions.is_session_id("")
+
+
 def test_two_stories_repairing_in_one_run_do_not_share_a_conversation():
     """The key is per worklist. Sharing one would open story two on story one's diff."""
     with tempfile.TemporaryDirectory() as tmp:

@@ -41,9 +41,36 @@ def slug(key: str) -> str:
     return _UNSAFE.sub("-", key).strip("-") or "chain"
 
 
+#: What an agent CLI mints. Every backend this runner drives hands back a UUID, and a
+#: chain key is a human-written name (``qa-plan-repair:STORY-1``) that cannot collide
+#: with one — which is what lets a single ``session=`` parameter carry either.
+_SESSION_ID = re.compile(r"\A[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\Z")
+
+
+def is_session_id(value: str) -> bool:
+    """Whether ``value`` is a literal session id rather than a chain key.
+
+    A caller that already holds an id — from checkpointed state, or from an operator
+    naming a conversation to resume — passes it where a key would go, and the id becomes
+    the key: a chain named after itself, seeded with itself, resumed like any other.
+    """
+    return bool(_SESSION_ID.match(value.strip()))
+
+
 def chain_path(run_dir: Path, key: str) -> Path:
     """Where the session id for chain ``key`` is kept."""
     return run_dir / SESSIONS_DIRNAME / slug(key)
+
+
+def read_chain(run_dir: Path, key: str) -> str:
+    """The session id filed under ``key``, or ``""`` when that chain has not run yet."""
+    if not key:
+        return ""
+    path = chain_path(run_dir, key)
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
 
 def run_dir_of(session_id_path: Path) -> Path:

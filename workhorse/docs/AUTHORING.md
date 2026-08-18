@@ -302,6 +302,25 @@ The chain is in the telemetry too: the node's `enter` record carries `chain` and
 `resumed_session` it continued, so a reader can tell a lap that resumed from one that
 started over without joining three files by hand.
 
+### Holding the id instead of the key
+
+A chain file lives in the run directory, so a resumed run finds its chains where it left
+them. When a state needs the conversation itself as a *value* — to carry it somewhere the
+key does not reach, or to hand it to a turn several states away — read it and pass it
+back:
+
+```python
+sid = self.session_id(f"docs-repair:{story.slug}")   # "" before the first lap
+...
+self.agent("prompts/repair.md", returns=Repair, session=sid)
+```
+
+`session=` takes either: anything shaped like an agent-CLI session id is used as one, and
+everything else is a chain key. An id given this way becomes a chain named after itself,
+so `reset_session`, the not-resumable recovery and the `enter` record all behave exactly
+as they do for a key. Hold it in a state's parameters — which are its checkpoint — and the
+turn after a resume opens the conversation the turn before it did.
+
 ## A stack that outlives the turn (`workhorse.stack`)
 
 A process an agent turn backgrounds is dead by the next state — the runner reaps the
