@@ -46,8 +46,8 @@ from typing import Any
 
 from ostler import Ostler, markdown
 from workhorse.pyflow import WorkflowFailed
-from workhorse_workflows.kit import find_docs_root
-from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.kit import commit_paths, find_docs_root
+from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.backlog import (
     FixBlocked,
@@ -529,6 +529,11 @@ def prune_fix_item(
     covers a custom `backlog_path` layout ostler does not know to look at — a mechanical
     removal it could do itself should never hard-stop the drain loop. Both ends read the
     bullet off the same parse, so the fallback cannot remove a line ostler would have kept.
+
+    **It commits what it writes.** Nothing downstream commits on this node's behalf any
+    more — the agent commits its own work and the workflow only checks that it did — so a
+    pruned bullet left in the working tree is dirt the story is then blamed for, and the
+    tree is the only record that the item shipped.
     """
     bullet_id = bullet_id.strip()
 
@@ -540,12 +545,14 @@ def prune_fix_item(
     rel = paths.backlog_file(root, backlog_path)
     if Ostler(root).backlog_prune(bullet_id).ok:
         logger.info("pruned '%s' via ostler", bullet_id)
+        _commit_prune(logger, root, rel, bullet_id)
         return FixPruned(
             pruned=True, bullet_id=bullet_id, reason=f"pruned '{bullet_id}' via ostler"
         )
 
     if _prune_directly(root / rel, bullet_id):
         logger.info("pruned '%s' via direct edit", bullet_id)
+        _commit_prune(logger, root, rel, bullet_id)
         return FixPruned(
             pruned=True,
             bullet_id=bullet_id,
@@ -556,6 +563,17 @@ def prune_fix_item(
     return FixPruned(
         bullet_id=bullet_id, reason=f"no backlog bullet '{bullet_id}' found to prune"
     )
+
+
+def _commit_prune(logger: logging.Logger, root: Path, rel: str, bullet_id: str) -> None:
+    """Commit the backlog file alone, scoped to the one path the prune rewrote.
+
+    `chore`, because dropping a shipped item off a worklist releases nothing: the fix it
+    stands for ships in the commit the drain's own agent already wrote.
+    """
+    message = commits.message("chore", commits.scope(root.name), f"drop shipped fix {bullet_id}")
+    if commit_paths(root, message, rel):
+        logger.info("committed the backlog prune for '%s'", bullet_id)
 
 
 def _prune_directly(path: Path, bullet_id: str) -> bool:

@@ -159,6 +159,55 @@ class StoryCommitted(CoderResult):
     superseded_outcome: bool = False
 
 
+class WorktreeCleanliness(CoderResult):
+    """`check_repos_clean` — has the agent left uncommitted work behind in any repo?
+
+    The reading that replaced the workflow's own `git commit -a`. Committing on the
+    agent's behalf meant the workflow decided the subject, the scope and the boundary of
+    every story commit from outside the work, and swept whatever else was in the tree into
+    it. The agent commits at will now, and this node checks the one thing that has to be
+    true afterwards: nothing this story produced is still only on disk.
+
+    `dirty` is `repo:path`, one entry per uncommitted path, already **minus** what
+    `snapshot_worktree_state` recorded as dirty before the story started and which the
+    story has not touched since — an operator's leftovers are not the agent's to answer
+    for. The subtraction only ever shrinks by mistake; see `shared/worktree.py`.
+    """
+
+    clean: bool = False
+    dirty: list[str] = []
+    repos: list[str] = []
+
+
+class WorktreeSettled(CoderResult):
+    """`settle-worktree.md` — the one lap given to work the story did not record.
+
+    `blocked` is the interesting arm and it is the honest one: the tree holds something
+    the agent did not write and will not speak for, which is an operator's call, not a
+    reason to commit a stranger's changes under this story's name.
+    """
+
+    status: str = ""
+    notes: str = ""
+
+
+class StoryStamped(CoderResult):
+    """`stamp_story_passed` — the story's `QA passed` status line, and whether it moved.
+
+    Queue integrity rather than development work, which is why it stayed a node when the
+    commits left: nothing else on the success path writes that status, and story selection
+    reads the status, not the git log. An agent that forgets it re-runs the story forever
+    and the epic never completes, and the failure is invisible until it does not.
+
+    `superseded_outcome` is the narrower fact `StoryCommitted` carried under the same
+    name: this stamp replaced a *previous attempt's* outcome — a give-up, a docs block, an
+    interrupted run — rather than the `Not started` a never-built story carries.
+    """
+
+    stamped: bool = False
+    superseded_outcome: bool = False
+
+
 class ReplanResult(CoderResult):
     """`replan_epic`'s reply — the rewrite of the epic the operator's answer forced.
 
@@ -182,4 +231,7 @@ __all__ = [
     "StoryBranch",
     "StoryCommitted",
     "StoryPick",
+    "StoryStamped",
+    "WorktreeCleanliness",
+    "WorktreeSettled",
 ]

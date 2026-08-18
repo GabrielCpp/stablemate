@@ -106,6 +106,9 @@ from workhorse_workflows.coder.shared.schemas.queue import (
     StoryBranch,
     StoryCommitted,
     StoryPick,
+    StoryStamped,
+    WorktreeCleanliness,
+    WorktreeSettled,
 )
 from workhorse_workflows.coder.shared.schemas.review import (
     CodeReuseResult,
@@ -202,6 +205,9 @@ __all__ = [
     "StoryPaths",
     "StoryPick",
     "StoryPr",
+    "StoryStamped",
     "TargetClassification",
     "WorkspaceDirs",
+    "WorktreeCleanliness",
+    "WorktreeSettled",
 ]

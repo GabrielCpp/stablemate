@@ -44,6 +44,7 @@ from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.kit import find_docs_root, find_repo_root, load_json
 from workhorse_workflows.coder.shared import commits, paths, story_status
 from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.shared.worktree import untouched_since
 from workhorse_workflows.coder.shared.schemas.queue import (
     BaseBranch,
     EpicBlocked,
@@ -54,6 +55,8 @@ from workhorse_workflows.coder.shared.schemas.queue import (
     StoryBranch,
     StoryCommitted,
     StoryPick,
+    StoryStamped,
+    WorktreeCleanliness,
 )
 from workhorse_workflows.kit import (
     active_branch,
@@ -70,6 +73,7 @@ from workhorse_workflows.kit import (
     is_ancestor,
     local_branch_exists,
     merge_ref,
+    open_repo,
     resolve_workspace,
     restore_paths,
     show_file,
@@ -862,21 +866,22 @@ def select_story(
 
 def _stamp_status(
     logger: logging.Logger, root: Path, epic: str, slug: str, story_path: str
-) -> bool:
-    """Record `QA passed` on the story and commit just that change. Did the record move?
+) -> tuple[bool, bool]:
+    """Record `QA passed` on the story and commit just that change.
 
-    Deliberately committed SEPARATELY, scoped to the paths the stamp touched, and
-    deliberately NOT folded into the caller's `committed` answer. That answer drives the
-    zero-diff churn guard (three consecutive no-op story commits halt the run), and a
-    status stamp is a change every passing story makes — counting it would mean every story
-    always "committed something" and the guard could never trip again.
+    Returns `(was it written, did it supersede a previous attempt's outcome)`.
 
-    The return value is the narrower fact the guard actually wants: this stamp replaced a
-    *previous attempt's* outcome — a give-up, a docs block, an interrupted run — rather
-    than the `Not started` a story carries before anything has touched it. A re-run of work
-    that already landed under a failure marker commits nothing by construction, and it is
-    the run advancing, not spinning. A never-attempted story that builds nothing is not,
-    and still counts.
+    Committed SEPARATELY from the story's own work and scoped to the paths the stamp
+    touched, so recording that a story passed can never sweep in working-tree changes the
+    story deliberately left alone. It is a `docs` commit rather than the story's `feat`
+    for the same reason: it moves a status line and no code, and typing it as the story
+    would cut a second release for the act of recording the first.
+
+    `superseded` is the narrower half of the answer: this stamp replaced a *previous
+    attempt's* outcome — a give-up, a docs block, an interrupted run — rather than the
+    `Not started` a story carries before anything has touched it. A re-run of work that
+    already landed under a failure marker produces no diff at all by construction, and the
+    stamp moving is the only evidence the pass happened.
     """
     before = story_status.current(root, slug, epic=epic, story_path=story_path)
     written = story_status.mark(root, slug, DONE_STATUS, epic=epic, story_path=story_path, logger=logger)
@@ -886,7 +891,7 @@ def _stamp_status(
             DONE_STATUS,
             slug,
         )
-        return False
+        return False, False
     prior = before.strip()
     superseded = bool(prior) and prior not in (registry.DEFAULT_STORY_STATUS, DONE_STATUS)
 
@@ -912,7 +917,136 @@ def _stamp_status(
     )
     if specs and commit_paths(root, stamp, *specs):
         logger.info("recorded %s for %s", DONE_STATUS, slug)
-    return superseded
+    return True, superseded
+
+
+def _affected_roots(
+    logger: logging.Logger, root: Path, spec_dir: str, workspace_file: str, repo_dir: str
+) -> list[tuple[str, Path]]:
+    """The repos this story's plan says it touched, as `(package name, checkout)` pairs.
+
+    Read from the story's own `plan-context.json`, which is the only record of where the
+    work went — the workspace manifest lists every repo the run *may* touch, not the ones
+    it did. A plan naming nothing falls back to the resolved root, which is the
+    single-repo case and every sandbox with no seeded plan.
+
+    Shared by the two nodes that have to agree on the answer: the one that commits and the
+    one that checks the commit happened. A repo listed in the plan but missing on disk, or
+    not a git checkout, is warned about and dropped — its absence is not this story's
+    defect and neither node can do anything about it.
+    """
+    repos = resolve_workspace(workspace_file, repo_dir)
+    spec = root / spec_dir if spec_dir else None
+    plan_ctx = (
+        load_json(spec / "plan-context.json", "plan-context.json", logger)
+        if spec and spec.exists()
+        else {}
+    )
+    affected = get_affected_repos(plan_ctx, repos)
+    if not affected:
+        logger.info("no affected repos resolved from plan-context — falling back to the repo root")
+        return [(root.name, root)]
+
+    found: list[tuple[str, Path]] = []
+    for name in affected:
+        repo_path = Path(repos.get(name, {}).get("path", ""))
+        if not repo_path.is_dir():
+            logger.warning("repo %s path not found: %s", name, repo_path)
+            continue
+        if not (repo_path / ".git").exists():
+            logger.warning("repo %s is not a git repo — skipping", name)
+            continue
+        found.append((name, repo_path))
+    return found
+
+
+def _uncommitted(root: Path) -> list[str]:
+    """Every path in *root* holding work that is not in a commit yet.
+
+    Staged, unstaged and untracked alike: all three are work the agent produced and did
+    not record, and the whole point of the check is that a story ends in commits. An
+    unreadable repo — or one with no commit to diff against yet — reports nothing, which
+    is the conservative answer for a gate whose other arm parks the run.
+    """
+    try:
+        repo = open_repo(root)
+        dirty = {item.a_path for item in repo.index.diff(None) if item.a_path}
+        dirty |= set(repo.untracked_files)
+        try:
+            dirty |= {item.a_path for item in repo.index.diff("HEAD") if item.a_path}
+        except (GitError, OSError, TypeError, ValueError, KeyError):
+            pass  # an unborn HEAD has nothing to compare the index against
+    except (GitError, OSError, TypeError, ValueError, RuntimeError):
+        return []
+    return sorted(dirty)
+
+
+@blueprint.node
+def check_repos_clean(
+    logger: logging.Logger,
+    story_slug: str = "",
+    spec_dir: str = "",
+    preexisting: list[str] | None = None,
+    repo_dir: str = "",
+    workspace_file: str = "",
+) -> WorktreeCleanliness:
+    """Did the agent commit its own work in every repo the story touched?
+
+    The replacement for committing on the agent's behalf. `commit_all` decided the
+    subject, the scope and the boundary of a story's commits from outside the work and
+    swept whatever else was on disk into them; the agent knows all three and commits at
+    will now, so what is left for the workflow is the check — and a dirty tree at this
+    point means work that was produced and not recorded, which is the failure the sweep
+    was hiding.
+
+    `preexisting` is `snapshot_worktree_state`'s reading from before the first dev turn.
+    Whatever it recorded and the story has not since touched is subtracted, so an
+    operator's leftovers never park a run the agent finished cleanly. The subtraction is
+    one-directional by construction — see `shared/worktree.py`.
+    """
+    root = find_repo_root(repo_dir)
+    snapshot = tuple(preexisting or ())
+    dirty: list[str] = []
+    names: list[str] = []
+    for name, repo_path in _affected_roots(logger, root, spec_dir, workspace_file, repo_dir):
+        names.append(name)
+        excused = untouched_since(repo_path, snapshot)
+        dirty.extend(
+            f"{name}:{rel}"
+            for rel in _uncommitted(repo_path)
+            if rel not in excused and not paths.is_gate_context(rel)
+        )
+
+    slug = story_slug or "story"
+    if dirty:
+        logger.info(
+            "%s left %d uncommitted path(s) behind: %s",
+            slug, len(dirty), ", ".join(dirty[:10]) + (" …" if len(dirty) > 10 else ""),
+        )
+    else:
+        logger.info("%s left nothing uncommitted in %s", slug, ", ".join(names) or "the repo root")
+    return WorktreeCleanliness(clean=not dirty, dirty=dirty, repos=names)
+
+
+@blueprint.node
+def stamp_story_passed(
+    logger: logging.Logger,
+    epic: str = "",
+    story_slug: str = "",
+    story_path: str = "",
+    repo_dir: str = "",
+) -> StoryStamped:
+    """Record the story's passing outcome, and commit that one line.
+
+    All that is left of `commit_story` on the main graph's success path once the code
+    commits belong to the agent. It stays a node because it is queue integrity rather than
+    development work: story selection reads the status line, so an agent that forgets it
+    re-runs the story forever and the epic never completes.
+    """
+    slug = story_slug or "story"
+    root = find_repo_root(repo_dir)
+    stamped, superseded = _stamp_status(logger, root, epic, slug, story_path)
+    return StoryStamped(stamped=stamped, superseded_outcome=superseded)
 
 
 @blueprint.node
@@ -947,20 +1081,11 @@ def commit_story(
     """
     slug = story_slug or "story"
     root = find_repo_root(repo_dir)
-    repos = resolve_workspace(workspace_file, repo_dir)
 
     # The epic's sequence number is a folder-ordering device, not part of its name, so the
     # trailer reads `Epic: fixes` whether the caller handed us `fixes` or `0004-fixes`.
     epic_name = registry.epic_slug(epic) or epic
     description = commits.story_description(root, story_path, slug)
-
-    spec = root / spec_dir if spec_dir else None
-    plan_ctx = (
-        load_json(spec / "plan-context.json", "plan-context.json", logger)
-        if spec and spec.exists()
-        else {}
-    )
-    affected = get_affected_repos(plan_ctx, repos)
 
     # Each repo's commit is scoped to that repo's own name, because that is the name its
     # release-please config knows the package by — one story touching three repos produces
@@ -985,38 +1110,25 @@ def commit_story(
                 f"git refused the commit for {slug} in {repo_path}: {exc}"
             ) from exc
 
-    if not affected:
-        # No plan-context.json or no services in it — commit in the resolved root (the
-        # single-repo / no-workspace-file case, and test sandboxes with no seeded plan).
-        logger.info("no affected repos resolved from plan-context — falling back to the repo root")
-        any_committed = _commit_in(root, root.name)
-        if any_committed:
-            logger.info("committed in %s", root.name)
-    else:
-        any_committed = False
-        for name in affected:
-            repo_path = Path(repos.get(name, {}).get("path", ""))
-            if not repo_path.is_dir():
-                logger.warning("repo %s path not found: %s", name, repo_path)
-                continue
-            if not (repo_path / ".git").exists():
-                logger.warning("repo %s is not a git repo — skipping", name)
-                continue
-            if _commit_in(repo_path, name):
-                logger.info("committed in %s", repo_path.name)
-                any_committed = True
+    any_committed = False
+    for name, repo_path in _affected_roots(logger, root, spec_dir, workspace_file, repo_dir):
+        if _commit_in(repo_path, name):
+            logger.info("committed in %s", repo_path.name)
+            any_committed = True
 
-    superseded = _stamp_status(logger, root, epic, slug, story_path)
+    _, superseded = _stamp_status(logger, root, epic, slug, story_path)
     return StoryCommitted(committed=any_committed, superseded_outcome=superseded)
 
 
 __all__ = [
     "branch_epic",
     "branch_story",
+    "check_repos_clean",
     "commit_story",
     "flag_epic_blocked",
     "init_base",
     "prune_epic",
     "select_epic",
     "select_story",
+    "stamp_story_passed",
 ]

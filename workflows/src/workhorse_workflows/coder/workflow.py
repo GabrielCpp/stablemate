@@ -102,12 +102,14 @@ from workhorse_workflows.coder.shared.queue import (
     begin_run,
     branch_epic,
     branch_story,
+    check_repos_clean,
     commit_story,
     flag_epic_blocked,
     init_base,
     prune_epic,
     select_epic,
     select_story,
+    stamp_story_passed,
 )
 from workhorse_workflows.coder.shared.story import (
     prepare_fix_story,
@@ -118,7 +120,7 @@ from workhorse_workflows.coder.shared.schemas.dev import DispatchEntry, ImplResu
 from workhorse_workflows.coder.shared.schemas.docs import DocsResult
 from workhorse_workflows.coder.shared.schemas.pr import MergeFixResult
 from workhorse_workflows.coder.shared.schemas.qa import QaResult
-from workhorse_workflows.coder.shared.schemas.queue import ReplanResult
+from workhorse_workflows.coder.shared.schemas.queue import ReplanResult, WorktreeSettled
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
 
 
@@ -747,39 +749,83 @@ class Coder(Workflow):
             return Continue(result, self.commit, epic=epic, zero_diff=zero_diff)
         return Continue(result, self.commit_pr)
 
-    def commit(self, epic: str = "", zero_diff: int = 0) -> Continue | Await:
-        """`commit_story` + `decide_committed` + the zero-diff guard.
+    def commit(
+        self, epic: str = "", zero_diff: int = 0, dirty_laps: int = 0
+    ) -> Continue | Await:
+        """`check_repos_clean` + `stamp_story_passed`: the story's work is recorded, or it parks.
 
-        A commit that found nothing to commit is not an error by itself — a story can be
-        satisfied by what is already there — but three in a row is a loop that is not
-        building anything, so it parks for a human at `_zero_diff_gate` rather than walking
-        the rest of the epic producing nothing. The counter resets on any commit that
-        landed, and on the operator's answer, same as the CI and merge gates below.
+        The workflow used to commit for the agent — `git commit -a` per affected repo,
+        under a subject this file composed from the story's title. That decided the
+        message, the scope and the *boundary* of every story commit from outside the work
+        that produced it, and swept whatever else was on disk into whichever story
+        happened to finish next. The agent knows all three and commits as it goes now; what
+        is left here is the check that it did, which is the failure the sweep was hiding.
 
-        It also resets when the stamp superseded a *previous attempt's* outcome — a
-        give-up, a docs block, an interrupted run. Re-running one of those is the loop
-        proving that work already in the tree is now correct, and it commits nothing by
-        construction, because the code it vindicates was committed under the failure marker
-        the first time. Counting it killed a sixteen-hour run three stories after it
-        re-verified and passed exactly that kind of story. A `Not started` story that
-        builds nothing is the reading the guard was written for and still counts, so a dev
-        phase that has quietly stopped producing code is caught as before.
+        A dirty tree is not an error on the first reading — it is work nobody recorded, and
+        the agent that wrote it is the one who can say what belongs where. So the first one
+        buys a chained `settle` lap and the second parks for the operator, because a second
+        identical reading means the turn that was asked to record it declined twice, and
+        committing a stranger's changes under this story's name is not the workflow's call
+        to make.
+
+        The stamp stays a node on this path, and stays *after* the check. Story selection
+        reads the status line rather than the git log, so a story stamped over work that is
+        still only on disk reads as done and is never selected again.
         """
         story = self._story
+        state = self.call(
+            check_repos_clean, story.story_slug, story.spec_dir, list(self._preexisting())
+        )
+        if not state.clean:
+            if dirty_laps:
+                return self._dirty_gate(state.dirty, epic, zero_diff)
+            return Continue(state, self.settle, epic=epic, zero_diff=zero_diff, dirty_laps=1)
+        self.reset_session(self._settle_chain())
         result = self.call(
-            commit_story, self._queue_epic(epic), story.story_slug, story.spec_dir,
-            story.story_path,
+            stamp_story_passed, self._queue_epic(epic), story.story_slug, story.story_path
         )
-        if result.committed or result.superseded_outcome:
-            return Continue(result, self.select_story, epic=epic, zero_diff=0)
-        zero_diff += 1
+        return Continue(result, self.select_story, epic=epic, zero_diff=0)
+
+    def settle(
+        self, epic: str = "", zero_diff: int = 0, dirty_laps: int = 1
+    ) -> Continue | Await:
+        """One chained turn to record what the story left on disk, then re-read the tree.
+
+        Chained deliberately, and to the story rather than the run: this is the same agent
+        being told that what it just built is not in a commit, and the conversation that
+        built it is the one that knows which of those paths were its own. A fresh context
+        would be handed a list of paths and no way to tell the story's work from the
+        operator's.
+
+        It does not decide anything. `commit` re-reads the tree afterwards either way, so a
+        turn that reports success it did not achieve buys one more reading, not a pass.
+        """
+        state = self.output(check_repos_clean)
+        story = self._story
         self.logger.info(
-            "%s committed nothing and its status did not move (%d/%d in a row)",
-            story.story_slug, zero_diff, self.MAX_ZERO_DIFF_COMMITS,
+            "asking %s to settle %d uncommitted path(s)", story.story_slug, len(state.dirty),
+            extra={"activity": True},
         )
-        if zero_diff >= self.MAX_ZERO_DIFF_COMMITS:
-            return self._zero_diff_gate(zero_diff, epic, story.story_slug)
-        return Continue(result, self.select_story, epic=epic, zero_diff=zero_diff)
+        result = self.agent(
+            "prompts/settle-worktree.md",
+            # medium: deciding what a diff belongs to and writing its commit message, with
+            # no design left to do — the work itself is already on disk.
+            power="medium",
+            returns=WorktreeSettled,
+            add_dirs=self._dirs(),
+            args={
+                "story_path": story.story_path,
+                "spec_dir": story.spec_dir,
+                "story_slug": story.story_slug,
+                "epic": self._queue_epic(epic),
+                "dirty_paths": "\n".join(state.dirty),
+            },
+            session=self._settle_chain(),
+        )
+        if result.blocked:
+            return self._dirty_gate(state.dirty, epic, zero_diff, notes=result.notes)
+        return Continue(result, self.commit, epic=epic, zero_diff=zero_diff,
+                        dirty_laps=dirty_laps)
 
     def commit_pr(self) -> Done:
         """`commit_story_pr` + `open_story_pr`: story mode's end.
@@ -939,6 +985,16 @@ class Coder(Workflow):
         self.logger.info("operator answered the merge gate — re-merging")
         return Continue(None, self.merge, epic=epic, zero_diff=zero_diff, merge_rework=0)
 
+    def dirty_operator(self, epic: str = "", zero_diff: int = 0) -> Continue:
+        """The consume half of the dirty-tree gate: re-read the tree, budget reset.
+
+        Back to `commit` rather than on to `select_story`, because what the operator
+        changed is the thing `commit` reads — and if they left it dirty, the gate is
+        exactly where the run should land again.
+        """
+        self.logger.info("operator answered the dirty-tree gate — re-reading the worktree")
+        return Continue(None, self.commit, epic=epic, zero_diff=zero_diff, dirty_laps=0)
+
     def zero_diff_operator(self, epic: str = "", zero_diff: int = 0) -> Continue:
         """The consume half of the zero-diff gate: try the next story, streak reset."""
         self.logger.info("operator answered the zero-diff gate — continuing")
@@ -1012,6 +1068,45 @@ class Coder(Workflow):
             epic=epic,
             zero_diff=zero_diff,
         )
+
+    def _dirty_gate(
+        self, dirty: list[str], epic: str, zero_diff: int, notes: str = ""
+    ) -> Await:
+        """`commit`'s uncommitted-work arm: the story ends parked, not swept into a commit.
+
+        Reached from two places and for the same reason both times — the tree still holds
+        work nobody recorded, and the one turn that could speak for it has had its lap.
+        Committing it anyway is what this replaces, and it is how a story's diff used to
+        acquire files no one on the story had ever opened.
+
+        The chain the settle lap ran on is dropped here: whatever it holds is a
+        conversation that did not settle the tree, and the operator is about to change the
+        tree underneath it.
+        """
+        slug = self._story.story_slug
+        self.reset_session(self._settle_chain())
+        listing = "\n".join(f"- `{path}`" for path in dirty[:40])
+        elided = f"\n\n_… and {len(dirty) - 40} more._" if len(dirty) > 40 else ""
+        return Await(
+            paths.operator_context_path(paths.launch_repo_root(self.repo_dir), "dirty-tree-operator", slug),
+            f"`{slug}` finished with uncommitted work still on disk, and the lap that was "
+            "asked to record it did not.\n\n"
+            f"{listing}{elided}\n\n"
+            + (f"The agent's own account:\n\n{notes}\n\n" if notes.strip() else "")
+            + "Commit what belongs to this story, discard or set aside what does not, and "
+            "touch this file when the run should re-read the tree.",
+            self.dirty_operator,
+            epic=epic,
+            zero_diff=zero_diff,
+        )
+
+    def _settle_chain(self) -> str:
+        """The conversation the settle lap runs on, keyed per story.
+
+        Per story because two stories in one run left two different sets of paths behind,
+        and the whole value of the chain is that it already knows which of them it wrote.
+        """
+        return f"settle-worktree:{self._story.story_slug}"
 
     def _fix_prune(self, result: object, epic: str, zero_diff: int) -> Continue:
         """`prune_fix_item`: the drained fix shipped, so its bullet leaves the backlog."""

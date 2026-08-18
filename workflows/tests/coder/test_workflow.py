@@ -45,8 +45,9 @@ from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
-from workhorse_workflows.kit import is_ancestor
+from workhorse_workflows.kit import commit_all, commit_paths, is_ancestor
 from workhorse_workflows.coder import workflow as coder_workflow
+from workhorse_workflows.coder.shared import commits
 from workhorse_workflows.coder.shared.backlog import prune_fix_item, select_fix_item
 from workhorse_workflows.coder.shared.ci import poll_pr_checks
 from workhorse_workflows.coder.nodes.pr import (
@@ -63,8 +64,9 @@ from workhorse_workflows.coder.shared.queue import (
     begin_run,
     branch_epic,
     branch_story,
-    commit_story,
+    check_repos_clean,
     select_epic,
+    stamp_story_passed,
 )
 from workhorse_workflows.coder.shared.story import prepare_fix_story, prepare_story
 from workhorse_workflows.coder.shared.schemas.ci import CiChecks
@@ -148,9 +150,9 @@ def epic(
 ) -> Callable[..., Path]:
     """An epic of N stories in the queue, committed — so the tree starts clean.
 
-    Committed on purpose. `commit_story` reports whether the story's *work* landed, and an
-    uncommitted fixture would make every story look like it built something; the zero-diff
-    guard below is only testable against a repo whose only dirt is what the run made.
+    Committed on purpose. `check_repos_clean` asks git what is uncommitted, and a fixture
+    that left the queue dirty would make every story look like it forgot to commit — the
+    dirty-tree gate is only testable against a repo whose only dirt is what the run made.
     """
 
     def _epic(count: int = 1, status: str = "Not started") -> Path:
@@ -197,6 +199,18 @@ def workspace(
 # ----------------------------------------------------------------------- the sub-flows
 
 
+def _story_message(package: str, slug: str) -> str:
+    """The subject a real dev agent is told to write, built from the shared helper.
+
+    Spelled through `commits` rather than as a literal so the trailers the run record ties
+    a commit back to stay one definition — the stand-in and the prompt agree by
+    construction, not by two people remembering the same format.
+    """
+    return commits.message(
+        "feat", commits.scope(package), f"story {slug}", epic=EPIC, story=slug
+    )
+
+
 class _StubFlow(Workflow):
     """Every keyword the graph's five handoffs pass, because `Workflow` forbids extras.
 
@@ -224,9 +238,11 @@ class _StubFlow(Workflow):
 class _Sub:
     """The five stand-ins, their call log, and the one file `dev` writes.
 
-    `dev` writing a file is not decoration: `commit_story` asks git what changed, so a
-    `dev` that only returned `ready` would make every story a zero-diff story and the
-    happy path would trip the churn guard on its third iteration.
+    `dev` writing a file *and committing it* is not decoration: it is what the real dev
+    lane does now that the workflow no longer commits on the agent's behalf, and
+    `check_repos_clean` reads exactly that. A `dev` that wrote and did not commit would
+    take the settle lap on every story; `leave_dirty` is the stand-in for the agent that
+    forgets, and only the two tests about that arm pass it.
     """
 
     def __init__(
@@ -234,6 +250,7 @@ class _Sub:
         repo: Path,
         *,
         changes: bool = True,
+        leave_dirty: bool = False,
         dev_status: str = "ready",
         docs_status: str = "passed",
         docs_notes: str = "",
@@ -246,6 +263,7 @@ class _Sub:
     ) -> None:
         self.repo = repo
         self.changes = changes
+        self.leave_dirty = leave_dirty
         self.dev_status = dev_status
         self.docs_status = docs_status
         self.docs_notes = docs_notes
@@ -297,6 +315,15 @@ class _Sub:
             path = self.repo / "src" / f"{child.story}.py"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f"# {child.story}\n", encoding="utf-8")
+            if not self.leave_dirty:
+                # By explicit path, which is what the prompt asks of a real one: a stray
+                # file in the tree is the operator's, and `git add -A` is how it stops
+                # being theirs.
+                commit_paths(
+                    self.repo,
+                    _story_message(self.repo.name, child.story),
+                    f"src/{child.story}.py",
+                )
         return DevResult(status=self.dev_status, operator_notes="rescope to the epic")
 
     def _review(self, child: _StubFlow) -> ReviewResult:
@@ -335,8 +362,11 @@ class _Agent:
     through as a pass.
     """
 
-    def __init__(self, *, services: list[dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self, *, services: list[dict[str, Any]] | None = None, settle: str = ""
+    ) -> None:
         self.services = services if services is not None else []
+        self.settle = settle
         self.calls: list[str] = []
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
@@ -355,10 +385,29 @@ class _Agent:
             json.dumps({"services": self.services, "implementation_order": []}, indent=2) + "\n",
             encoding="utf-8",
         )
+        # Committed, like every producer turn is now told to: the plan is an artifact the
+        # story leaves behind, and an uncommitted one is dirt `check_repos_clean` reads.
+        root = Path.cwd()
+        commit_all(root, commits.message("docs", commits.scope(root.name), "plan a drained item"))
         return {"status": "done", "summary": "one AC, one fix"}
 
     def _qa_fix_item(self, data: dict[str, Any]) -> dict[str, Any]:
         return {"status": "passed", "notes": ""}
+
+    def _settle_worktree(self, data: dict[str, Any]) -> dict[str, Any]:
+        """The one lap a story gets to record work it left on disk.
+
+        `settle` is empty for every test that does not expect this turn at all, and the
+        assertion is the same one the default handler makes: a settle lap firing where the
+        story committed as it went is a routing bug, and a permissive stub would pass it.
+        """
+        assert self.settle, "unexpected settle lap — the story committed nothing"
+        if self.settle == "commit":
+            root = Path.cwd()
+            slug = data["story_slug"]
+            commit_all(root, _story_message(root.name, slug))
+            return {"status": "settled", "notes": f"committed {slug}"}
+        return {"status": self.settle, "notes": "the tree holds an edit I did not write"}
 
 
 # --------------------------------------------------------------------------- helpers
@@ -410,7 +459,8 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
     assert result.has_epic is False, result
     assert sub.calls == ["Dev", "Review", "Docs", "Qa"], sub.calls
     # The story built, and its work landed as one commit.
-    assert _output(run_env, commit_story)["committed"] is True
+    assert _output(run_env, check_repos_clean)["clean"] is True
+    assert _output(run_env, stamp_story_passed)["stamped"] is True
     assert _dirty(repo) == "", _dirty(repo)
     assert (repo / "src" / "STORY-1.py").is_file()
     # The epic was popped off the queue before its PR was opened.
@@ -1040,68 +1090,26 @@ def test_both_flows_that_diff_the_worktree_are_told_what_was_already_dirty(
         assert any(entry.startswith("src/abandoned.py\0") for entry in snapshot), snapshot
 
 
-# ------------------------------------------------------------------- the counters
+# --------------------------------------------------- the stamp and the dirty-tree gate
 
 
-def test_three_stories_in_a_row_that_commit_nothing_park_for_an_operator(
+def test_re_verifying_given_up_stories_moves_each_status_to_passed(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The churn guard, and the run-global counter that carries it between stories.
-
-    `zero_diff` is threaded through eight states to get from one story's commit to the
-    next's, which is the noisiest thing in the port and the thing this test exists to hold
-    down. Three stories that build nothing is not three failures — each one is allowed —
-    it is a loop that is not making progress, so it parks for a human at `_zero_diff_gate`
-    rather than walking the rest of the epic producing nothing — and it does not end the
-    run, because a human answering the gate is exactly the "no cap on escalations" every
-    other operator gate in this file gets.
-
-    Three stories, and it used to be four. `branch_epic` reconciles the epic queue from
-    the base by writing back what `git show` returns, and `git show` drops the file's
-    trailing newline — so cutting an epic branch always left `docs/epics/index.md` one
-    byte dirty, and the *first* story of every epic swept that byte into its own commit.
-    A story that built nothing therefore looked to this guard like a story that built
-    something, and the run walked one extra story before stopping. The reconcile now
-    restores the newline and commits itself when it does change something, so the first
-    story is measured on its own work like every other.
-    """
-    repo = epic(count=4)
-    sub = _Sub(repo, changes=False).install(monkeypatch)
-    seen: list[str] = []
-
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, {"yes": True})):
-        result = drive_flow(Coder(), env(), _Agent())
-
-    # Three stories were built before the guard tripped, and the fourth after the operator
-    # answered and the streak reset — not one and not the whole epic left unattempted.
-    assert sub.calls.count("Dev") == 4, sub.calls
-    assert result.has_epic is False, result
-    assert len(seen) == 1, seen
-    assert "in a row committed no changes" in seen[0], seen[0]
-    assert _dirty(repo) == "", _dirty(repo)
-
-
-def test_re_verifying_given_up_stories_is_progress_not_churn(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The zero-diff guard's false positive, which ended a real sixteen-hour run.
+    """The re-verification pass, which produces no diff at all and is still the loop's
+    most valuable work.
 
     A story given up on is committed behind its `[QA FAILED]` marker — the work is already
-    in the tree. Re-running it later is the most valuable thing the loop does, and it
-    commits nothing *by construction*: there is no diff left to make, only a status to
-    move from the failure marker to `QA passed`. Three of those in a row read to the old
-    guard exactly like three stories that built nothing, and it stopped the run for
-    succeeding at the expensive thing.
+    in the tree. Re-running it later commits nothing *by construction*: there is no diff
+    left to make, only a status to move from the failure marker to `QA passed`. So the
+    only evidence the pass happened is the stamp, which is precisely why the stamp stayed
+    a node of this workflow's when the commits went to the agent.
 
-    Same four stories and the same no-change sub-flows as the test above; the only
-    difference is what the stories arrived carrying, and that is the whole distinction —
-    a prior attempt's outcome superseded, versus a `Not started` story that built nothing.
+    Four stories, none of them building anything, and all four end `QA passed` — with the
+    tree clean throughout, because a story that writes nothing has nothing to leave behind.
     """
     repo = epic(count=4, status=GAVE_UP)
     sub = _Sub(repo, changes=False).install(monkeypatch)
@@ -1117,27 +1125,106 @@ def test_re_verifying_given_up_stories_is_progress_not_churn(
         assert "QA passed" in story.read_text(encoding="utf-8"), story
 
 
-def test_a_commit_that_lands_resets_the_zero_diff_counter(
+def test_a_story_that_left_work_uncommitted_gets_one_lap_to_record_it(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The other half of the guard: *consecutive*, not cumulative.
+    """A dirty tree is not a failure on the first reading — it is one more turn.
 
-    Three stories that each land a commit walk the whole epic and reach the PR, which is
-    what says the counter resets rather than accumulating — and a three-story epic is the
-    smallest one that can tell the difference.
+    The workflow does not commit on the agent's behalf any more, so `check_repos_clean` is
+    the only thing standing between a story's work and being silently left on disk. What it
+    finds first is almost always an agent that built the thing and forgot the last step,
+    and that is a turn's worth of work, not an operator's ten minutes: the same conversation
+    is handed the list and asked to record it, and the check is re-read afterwards.
     """
-    repo = epic(count=3)
-    sub = _Sub(repo).install(monkeypatch)
+    repo = epic()
+    _Sub(repo, leave_dirty=True).install(monkeypatch)
+    run_env = env()
+    agent = _Agent(settle="commit")
+    seen: list[str] = []
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, {})):
+        result = drive_flow(Coder(), run_env, agent)
+
+    assert result.has_epic is False, result
+    assert agent.calls == ["settle-worktree"], agent.calls
+    assert seen == [], seen  # nobody was asked for anything
+    assert _output(run_env, check_repos_clean)["clean"] is True
+    assert _output(run_env, stamp_story_passed)["stamped"] is True
+    assert _dirty(repo) == "", _dirty(repo)
+    assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
+
+
+def test_a_settle_lap_that_blocks_parks_the_story_for_an_operator(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    git: Callable[..., subprocess.CompletedProcess],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The arm that used to be a `git commit -a` over whatever happened to be in the tree.
+
+    An agent that will not speak for what is on disk is the one case where committing is
+    the wrong answer in both directions: committing it ships a stranger's half-finished
+    edit under this story's name, and discarding it destroys work nobody asked about. So
+    the story parks, the operator resolves the tree, and the run re-reads it — which is
+    also why the gate is answerable at all rather than being the end of the run.
+    """
+    repo = epic()
+    _Sub(repo, leave_dirty=True).install(monkeypatch)
+    run_env = env()
+    agent = _Agent(settle="blocked")
+    seen: list[str] = []
+
+    def answered(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text(encoding="utf-8"))
+        git(repo, "add", "-A")
+        git(repo, "commit", "-qm", "feat(acme): story STORY-1")
+        path.write_text("STATUS: ANSWERED\n\nCommitted it myself.\n", encoding="utf-8")
+
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
+        result = drive_flow(Coder(), run_env, agent)
+
+    assert result.has_epic is False, result
+    # One lap, one gate: the second dirty reading does not buy another turn.
+    assert agent.calls == ["settle-worktree"], agent.calls
+    assert len(seen) == 1, seen
+    assert "src/STORY-1.py" in seen[0], seen[0]
+    assert "did not write" in seen[0], seen[0]
+    # The operator's tree is what the run re-read, and the story went on to be stamped.
+    assert _output(run_env, check_repos_clean)["clean"] is True
+    assert _output(run_env, stamp_story_passed)["stamped"] is True
+    # The only thing still dirty is the gate's own file, holding the answer that resolved
+    # it — which is exactly the path `is_gate_context` excuses, and why the re-read is
+    # clean rather than parking the story a second time on the note it just wrote.
+    assert _dirty(repo) == "M dirty-tree-operator-context.STORY-1.md", _dirty(repo)
+
+
+def test_the_operators_own_uncommitted_files_are_not_the_storys_to_answer_for(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`preexisting` subtracted, which is the difference between this check and `git status`.
+
+    A developer's half-finished edit sitting in the tree when the run started belongs to
+    them. Left in the reading it would park every story of the epic on someone else's work,
+    which is the failure mode that makes an operator turn the gate off.
+    """
+    repo = epic()
+    write(repo / "src" / "scratch.py", "# mine, not the run's\n")
+    _Sub(repo).install(monkeypatch)
     run_env = env()
 
     result = drive_flow(Coder(), run_env, _Agent())
 
     assert result.has_epic is False, result
-    assert sub.calls.count("Dev") == 3, sub.calls
-    assert _output(run_env, open_pr)["should_gate"] is True
+    assert _output(run_env, check_repos_clean)["clean"] is True
+    assert _dirty(repo) == "?? src/scratch.py", _dirty(repo)
 
 
 def test_the_triage_budget_survives_a_rescope_back_to_dev(
@@ -1356,7 +1443,7 @@ def test_a_drained_backlog_item_ships_in_the_storys_own_commit(
     # The shipped item left the backlog, and everything landed in one commit.
     assert _output(run_env, prune_fix_item)["pruned"] is True
     assert BULLET not in (repo / "docs" / "backlog.md").read_text(encoding="utf-8")
-    assert _output(run_env, commit_story)["committed"] is True
+    assert _output(run_env, check_repos_clean)["clean"] is True
     assert sub.calls.count("Docs") == 2, sub.calls
     assert _dirty(repo) == "", _dirty(repo)
 

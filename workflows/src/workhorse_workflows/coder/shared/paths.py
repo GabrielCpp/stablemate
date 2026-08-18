@@ -216,6 +216,32 @@ def story_context_path(story_path: str, repo_dir: str | Path = "") -> Path:
     return launch_repo_root(repo_dir) / "context.md"
 
 
+def is_gate_context(path: str | Path) -> bool:
+    """Is *path* a file an operator gate wrote, rather than work a story produced?
+
+    Both gate locations at once, because the cleanliness check reads one flat list of
+    repo-relative paths and cannot tell them apart by directory: `<story>/context.md` from
+    :func:`story_context_path`, and `<gate>-context.md` / `<gate>-context.<epic>.md` from
+    :func:`operator_context_path`.
+
+    It matters that these are excused. A gate writes its questions into the working tree
+    and the operator answers in the same file, so every escalation leaves the tree dirty by
+    construction — and a run that parked once would then park forever, blaming the agent
+    for the note the workflow itself left. The old `git commit -a` had the opposite bug:
+    it swept the questions and the answers into the story's own commit.
+
+    A hand-written document that happens to be called `something-context.md` is excused
+    along with them. That is the trade this spelling makes, and it errs the safe way: a
+    file wrongly excused is one the operator sees in `git status` afterwards, while a gate
+    file wrongly flagged stops the run.
+    """
+    name = Path(path).name
+    if not name.endswith(".md"):
+        return False
+    stem = name[: -len(".md")]
+    return stem == "context" or stem.split(".", 1)[0].endswith("-context")
+
+
 __all__ = [
     "AMBIENT",
     "DREAM_INBOX",
@@ -228,6 +254,7 @@ __all__ = [
     "epics_index",
     "epics_repo_root",
     "features_dir",
+    "is_gate_context",
     "launch_repo_root",
     "operator_context_path",
     "story_context_path",
