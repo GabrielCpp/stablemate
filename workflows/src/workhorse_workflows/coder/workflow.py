@@ -674,6 +674,9 @@ class Coder(Workflow):
 
         `notes` crosses from one agent turn to the next, and agent turns are not nodes, so
         it is threaded as a parameter — `self.output` cannot reach it.
+
+        No session chain, unlike the QA lane's fix loop: there is exactly one lap here, so
+        there is no second turn for a chain to hand anything to.
         """
         fix = self._fix_story
         self.logger.info("applying QA fixes to the drained item", extra={"activity": True})
@@ -894,6 +897,8 @@ class Coder(Workflow):
         gate = self.output(open_pr)
         outcome = self.call(merge_pr, gate.ci_epic, gate.ci_base)
         if outcome.merge_status in ("merged", "unavailable"):
+            # The epic's merge is settled; the next epic's conflicts are a different worklist.
+            self.reset_session(f"merge-fix:{gate.ci_epic}")
             return Continue(outcome, self.select_epic, zero_diff=zero_diff)
         # `failed`, and the blank the YAML's pessimistic `default:` sent the same way.
         if merge_rework >= self.MAX_MERGE_REWORKS:
@@ -919,6 +924,9 @@ class Coder(Workflow):
             power="high",
             add_dirs=self._dirs(),
             args={"ci_epic": gate.ci_epic, "ci_base": gate.ci_base},
+            # Rework two is the same two branches still refusing to merge, and the turn that
+            # resolved half the conflicts is the one that knows which half.
+            session=f"merge-fix:{gate.ci_epic}",
         )
         push = self.call(push_ci_fix, "", gate.ci_epic)
         if push.status in ("pushed", "unavailable"):

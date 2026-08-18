@@ -221,6 +221,9 @@ class Fix(Workflow):
         `notes` is `{{ get_node_output('check_fix','qa_result').notes }}`, threaded as an
         argument because it crosses from one agent turn to the next and agent turns are not
         nodes — `self.output` cannot reach them.
+
+        No session chain, unlike the QA lane's fix loop: there is exactly one lap here, so
+        there is no second turn for a chain to hand anything to.
         """
         self.logger.info("applying QA fixes to the drained item", extra={"activity": True})
         result = self.agent(

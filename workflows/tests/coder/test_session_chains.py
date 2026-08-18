@@ -1,10 +1,9 @@
-"""The two repair loops that run their laps as one conversation.
+"""The repair loops that run their laps as one conversation.
 
-`docs.repair` and `qa.repair_plan` are the only states in the coder that pass
-`session=` to a turn. Everything here is about the part of that decision the engine
-cannot make for them: which key a lap runs under, and *when the conversation has to be
-thrown away* — because a chain that outlives what it was repairing is worse than no
-chain at all, and no test downstream of these two states can see the difference.
+Everything here is about the part of that decision the engine cannot make for a state:
+which key a lap runs under, and *when the conversation has to be thrown away* — because
+a chain that outlives what it was repairing is worse than no chain at all, and no test
+downstream of these states can see the difference.
 
 The states are called directly rather than driven. Both sit deep inside a loop whose
 entry costs a real ostler graph, a real stack and a scripted suite run, and none of that
@@ -19,8 +18,10 @@ from typing import Any
 
 import pytest
 
+from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.qa.flow import Qa
+from workhorse_workflows.coder.shared.schemas.dev import DevResult
 from workhorse_workflows.coder.shared.schemas.docs import DocsProgress, DocsResult
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaLoop
 
@@ -56,7 +57,7 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
     def fake_reset(self: Any, key: str) -> None:
         seen.resets.append(key)
 
-    for flow in (Docs, Qa):
+    for flow in (Docs, Qa, Dev):
         monkeypatch.setattr(flow, "agent", fake_agent)
         monkeypatch.setattr(flow, "reset_session", fake_reset)
         monkeypatch.setattr(flow, "logger", property(lambda _: logging.getLogger("test")))
@@ -74,6 +75,12 @@ def _docs() -> Docs:
 
 def _qa() -> Qa:
     flow = Qa(story=STORY)
+    flow._ctx = SimpleNamespace(story_slug=STORY, story_path="", spec_dir="", qa_dir="")
+    return flow
+
+
+def _dev() -> Dev:
+    flow = Dev(story=STORY)
     flow._ctx = SimpleNamespace(story_slug=STORY, story_path="", spec_dir="", qa_dir="")
     return flow
 
@@ -169,8 +176,93 @@ def test_the_two_lanes_never_share_a_conversation(spy: _Spy) -> None:
     assert _docs()._chain != _qa()._chain
 
 
-def test_ending_the_qa_flow_ends_its_chain(spy: _Spy) -> None:
+def test_ending_the_qa_flow_ends_every_chain_it_opened(spy: _Spy) -> None:
+    """Not just the plan-repair one: the fix loop, the feedback turn and the regression
+    fixer each hold a conversation, and a re-QA of this story resumes whichever survived."""
     done = _qa()._ends(QaFlowResult(status="passed"))
 
     assert isinstance(done.result, QaFlowResult) and done.result.status == "passed"
-    assert spy.resets == [f"qa-plan-repair:{STORY}"]
+    assert spy.resets == [
+        f"qa-plan-repair:{STORY}",
+        f"qa-fix:{STORY}",
+        f"qa-feedback:{STORY}",
+        f"qa-regression-fix:{STORY}",
+    ]
+
+
+# ── the QA fix lane ──────────────────────────────────────────────────────────────────
+
+
+def _apply(flow: Qa, **kwargs: Any) -> None:
+    with pytest.raises(_Reached):
+        flow._apply_fixes(qa_notes="", operator_feedback=None, power="high", **kwargs)
+
+
+def test_the_fix_loop_and_the_operator_guided_lap_are_one_conversation(spy: _Spy) -> None:
+    """`apply_resolved` is the fix loop being told its attempt did not land. Handing it a
+    fresh context throws away the one thing it has that the first turn did not: what it
+    already tried."""
+    flow = _qa()
+    _apply(flow, worklist="fix")
+    _apply(flow, worklist="fix")
+
+    assert [turn["session"] for turn in spy.turns] == [f"qa-fix:{STORY}"] * 2
+
+
+def test_applying_a_product_note_is_not_the_fix_worklist(spy: _Spy) -> None:
+    """An operator's note is new work on a passing story, not another lap at a failure —
+    and resuming the fixer would put it in a conversation about failures it already fixed."""
+    _apply(_qa(), worklist="feedback")
+
+    assert spy.turns[0]["session"] == f"qa-feedback:{STORY}"
+
+
+# ── the dev lane ─────────────────────────────────────────────────────────────────────
+
+
+def _refine(flow: Dev, worklist: str) -> None:
+    with pytest.raises(_Reached):
+        flow._refine(review_notes="", operator_context="", worklist=worklist)
+
+
+def test_the_three_re_planning_loops_never_share_a_conversation(spy: _Spy) -> None:
+    """One prompt, three call sites, three unrelated worklists. Sharing a key would hand
+    the reuse pass the operator's answer to a block it was never told about — the stale
+    context `rework_reuse` deliberately withholds through its arguments."""
+    flow = _dev()
+    for worklist in ("block-repair", "reuse-repair", "path-repair"):
+        _refine(flow, worklist)
+
+    assert [turn["session"] for turn in spy.turns] == [
+        f"plan-{worklist}:{STORY}"
+        for worklist in ("block-repair", "reuse-repair", "path-repair")
+    ]
+
+
+def test_a_lint_fix_lap_is_keyed_per_service(spy: _Spy, monkeypatch) -> None:
+    """The next layer's linter reports on a different cwd, so resuming there would open
+    on the previous service's findings."""
+    flow = _dev()
+    layer = SimpleNamespace(cwd="/tmp/api", service="api-service")
+    monkeypatch.setattr(Dev, "_layer", property(lambda _: layer))
+    monkeypatch.setattr(
+        Dev, "output", lambda *a, **k: SimpleNamespace(command="make lint", output="")
+    )
+
+    with pytest.raises(_Reached):
+        flow.fix_lint(index=0, lint_rework=0)
+
+    assert spy.turns[0]["session"] == f"lint-repair:{STORY}:api-service"
+
+
+def test_ending_the_dev_flow_ends_every_plan_chain(spy: _Spy) -> None:
+    """The lint chain is not here because it is dropped per layer, by the state that
+    leaves it — by the time the flow ends there is none left to drop."""
+    done = _dev()._ends(DevResult())
+
+    assert isinstance(done.result, DevResult)
+    assert spy.resets == [
+        f"plan-block-repair:{STORY}",
+        f"plan-reuse-repair:{STORY}",
+        f"plan-path-repair:{STORY}",
+    ]

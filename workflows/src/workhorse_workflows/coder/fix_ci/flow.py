@@ -138,8 +138,11 @@ class FixCi(Workflow):
         """
         checks = self.call(poll_pr_checks, repo_dir, self.branch, self.pr_number)
         if checks.status in ("passed", "unavailable"):
+            # This repo is settled; the next one round the loop has its own failures.
+            self.reset_session(f"ci-fix:{self.branch}:{repo}")
             return Continue(checks, self.start, processed=processed, attempts=attempts)
         if attempts >= self.MAX_ATTEMPTS:
+            self.reset_session(f"ci-fix:{self.branch}:{repo}")
             return self._finish(
                 f"CI still red for {self.branch} in {repo} after {attempts} attempt(s): "
                 f"{checks.summary}"
@@ -176,6 +179,10 @@ class FixCi(Workflow):
             cwd=repo_dir,
             add_dirs=list(self.ctx.dirs),
             args={"ci_epic": self.branch, "ci_summary": summary},
+            # One chain per repo per branch: attempt two is this repo's CI still red after
+            # attempt one's push, and the turn that wrote that push knows which theory it
+            # was testing. A different repo's failures are a different worklist.
+            session=f"ci-fix:{self.branch}:{repo}",
         )
         return Continue(
             result,
@@ -199,6 +206,7 @@ class FixCi(Workflow):
         """
         outcome = self.call(push_ci_fix, repo_dir, self.branch)
         if outcome.status not in ("pushed", "unavailable"):
+            self.reset_session(f"ci-fix:{self.branch}:{repo}")
             return self._finish(f"could not push the fix for {self.branch} in {repo}")
         return Continue(
             outcome,

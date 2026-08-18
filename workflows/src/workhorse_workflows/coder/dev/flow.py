@@ -198,6 +198,35 @@ class Dev(Workflow):
         """
         return self.labels() | counter_labels(params, "dev", self.BUDGET_LABELS)
 
+    def _chain(self, worklist: str) -> str:
+        """The session chain a repair loop runs on, keyed per story and per worklist.
+
+        Per story because two stories planned by one run are two different plans against
+        two different diffs; per worklist because the three loops that re-plan are asking
+        for three unrelated things. Sharing one key across them would hand the reuse pass
+        the operator's answer to a block it was never told about — the exact stale context
+        `rework_reuse` deliberately withholds through its arguments.
+        """
+        return f"plan-{worklist}:{self.ctx.story_slug}"
+
+    def _lint_chain(self) -> str:
+        """The chain the lint-fix laps for the *current* service layer run on.
+
+        Keyed by service as well as story: the next layer's linter reports on a different
+        cwd, and resuming there would open on the previous service's findings.
+        """
+        return f"lint-repair:{self.ctx.story_slug}:{self._layer.service}"
+
+    def _ends(self, result: DevResult) -> Done:
+        """End the flow, and every chain it opened with it.
+
+        A chain outliving its flow is what makes a re-run of the same story resume a
+        conversation about a plan that has since been rewritten.
+        """
+        for worklist in ("block-repair", "reuse-repair", "path-repair"):
+            self.reset_session(self._chain(worklist))
+        return Done(result)
+
     # --- planning -----------------------------------------------------------
 
     def start(self) -> Continue | Await:
@@ -305,7 +334,7 @@ class Dev(Workflow):
         answer = self.call(read_operator_context, self.ctx.story_path)
         if answer.scope == "epic":
             self.logger.info("operator scoped the fix to the epic — handing back to replan")
-            return Done(DevResult(status="replan", operator_notes=answer.content))
+            return self._ends(DevResult(status="replan", operator_notes=answer.content))
         return Continue(
             answer,
             self.rework_plan,
@@ -323,9 +352,16 @@ class Dev(Workflow):
         a resolver that did not actually resolve anything cannot wave the plan through — and
         bounded, which is what keeps honest from meaning endless.
         """
-        result = self._refine(review_notes=notes, operator_context=operator_context)
+        result = self._refine(
+            review_notes=notes,
+            operator_context=operator_context,
+            worklist="block-repair",
+        )
         if result.status == "blocked":
             return self._gate_plan(result, result.summary, plan_blocks)
+        # The block is resolved: the conversation that was re-planning around it describes
+        # a plan this state has just replaced, and the next block is a different one.
+        self.reset_session(self._chain("block-repair"))
         return Continue(
             result, self.check_reuse, notes=result.summary, plan_blocks=plan_blocks
         )
@@ -368,6 +404,9 @@ class Dev(Workflow):
                 findings=str(result.findings),
                 plan_blocks=plan_blocks,
             )
+        # Whichever arm this is, the reuse loop is over: either the plan reuses what exists
+        # or the budget is spent, and both leave nothing for a next lap to remember.
+        self.reset_session(self._chain("reuse-repair"))
         return Continue(result, self.validate_paths, notes=notes, plan_blocks=plan_blocks)
 
     def rework_reuse(
@@ -386,6 +425,7 @@ class Dev(Workflow):
                 f"per-finding why reuse is not possible. Reuse findings: {findings}"
             ),
             operator_context="",
+            worklist="reuse-repair",
         )
         return Continue(
             result,
@@ -411,6 +451,7 @@ class Dev(Workflow):
         """
         result = self.call(validate_plan_context, self.ctx.spec_dir)
         if result.status != "invalid":
+            self.reset_session(self._chain("path-repair"))
             return Continue(result, self.dispatch)
         if plan_rework >= self.MAX_VALIDATE_REWORKS:
             return self._gate_plan(result, notes, plan_blocks)
@@ -432,7 +473,9 @@ class Dev(Workflow):
         node — agent nodes could not also emit one — is the parameter on the way back.
         """
         result = self._refine(
-            review_notes=f"Service path validation failed: {errors}", operator_context=""
+            review_notes=f"Service path validation failed: {errors}",
+            operator_context="",
+            worklist="path-repair",
         )
         return Continue(
             result,
@@ -473,7 +516,7 @@ class Dev(Workflow):
         pick = self.call(select_next_layer, self.ctx.spec_dir, index)
         if not pick.has_layer:
             self.logger.info("every service layer implemented")
-            return Done(DevResult())
+            return self._ends(DevResult())
         self.logger.info(
             "implementing %s (%d/%d)", pick.layer.label, pick.index + 1, pick.dispatch_count
         )
@@ -741,6 +784,9 @@ class Dev(Workflow):
         result = self.call(run_lint, self._layer.cwd, self._layer.service)
         if result.status == "dirty" and lint_rework < self.max_lint_reworks:
             return Continue(result, self.fix_lint, index=index, lint_rework=lint_rework)
+        # Clean, skipped, or out of laps — this service's lint conversation is finished, and
+        # the next layer's findings are about a different cwd.
+        self.reset_session(self._lint_chain())
         return Continue(result, self.layer, index=index)
 
     def fix_lint(self, index: int, lint_rework: int) -> Continue:
@@ -772,12 +818,17 @@ class Dev(Workflow):
                 "lint_command": outcome.command,
                 "lint_output": outcome.output,
             },
+            # Lap two of this loop is handed the same service's findings minus whatever lap
+            # one fixed, so a fresh context would spend its first minutes re-reading the
+            # code it had just edited.
+            session=self._lint_chain(),
         )
         if result.blocked:
             self.logger.warning(
                 "the lint fixer reported it cannot satisfy %s — leaving it to QA's lint gate",
                 self._layer.service,
             )
+            self.reset_session(self._lint_chain())
             return Continue(result, self.layer, index=index)
         return Continue(result, self.lint, index=index, lint_rework=lint_rework + 1)
 
@@ -877,7 +928,7 @@ class Dev(Workflow):
         answer = self.call(read_operator_context, self.ctx.story_path)
         if answer.scope == "epic":
             self.logger.info("operator scoped the fix to the epic — handing back to replan")
-            return Done(DevResult(status="replan", operator_notes=answer.content))
+            return self._ends(DevResult(status="replan", operator_notes=answer.content))
         return Continue(
             answer,
             self.implement,
@@ -888,12 +939,14 @@ class Dev(Workflow):
 
     # --- shared -------------------------------------------------------------
 
-    def _refine(self, *, review_notes: str, operator_context: str) -> PlanResult:
+    def _refine(self, *, review_notes: str, operator_context: str, worklist: str) -> PlanResult:
         """The `refine-plan.md` turn, shared by the three states that re-plan.
 
         One helper rather than three copies of the same call: what distinguished the YAML's
         three refine nodes was their `review_notes` and where they went next, and both of
-        those are the caller's.
+        those are the caller's. So is `worklist`, and for the same reason — the three loops
+        lap on three unrelated things, so each resumes its own conversation and none of them
+        inherits another's.
         """
         return self.agent(
             "prompts/refine-plan.md",
@@ -908,6 +961,7 @@ class Dev(Workflow):
                 "review_notes": review_notes,
                 "operator_context": operator_context,
             },
+            session=self._chain(worklist),
         )
 
     @property

@@ -446,15 +446,25 @@ class Qa(Workflow):
         """
         return f"qa-plan-repair:{self.ctx.story_slug}"
 
+    #: The repair loops that run on a chain, as the worklist half of their key. `_apply_fixes`
+    #: and `fix_regression` build theirs the same way; the plan-repair chain is `_chain`,
+    #: which several states reset on its own.
+    _WORKLISTS = ("plan-repair", "fix", "feedback", "regression-fix")
+
+    def _reset_chains(self) -> None:
+        """Drop every chain this flow opens for the current story."""
+        for worklist in self._WORKLISTS:
+            self.reset_session(f"qa-{worklist}:{self.ctx.story_slug}")
+
     def _ends(self, result: QaFlowResult) -> Done:
-        """End the flow, and the story's plan-repair chain with it.
+        """End the flow, and every chain it opened with it.
 
         A chain outliving its flow is the failure this exists to prevent: the run moves to
         the next story, that story's QA opens `qa-plan-repair:<its slug>` — a different key,
         so it is safe — but a *re-QA* of this same story would otherwise resume a
         conversation about a plan and a diff that have both moved on since.
         """
-        self.reset_session(self._chain)
+        self._reset_chains()
         return Done(result)
 
     #: `ensure_stack` brings a durable app stack up and health-gates it — on a real run
@@ -529,7 +539,7 @@ class Qa(Workflow):
         # A re-QA of a story that was already QA'd — after a fix, after an operator answer,
         # after a resume — must not resume the previous pass's repair conversation: it
         # describes a plan and a diff that have both been rewritten since.
-        self.reset_session(self._chain)
+        self._reset_chains()
         self.call(clear_qa_evidence, self.ctx.spec_dir)
         self.call(resolve_impl_context, self.ctx.spec_dir, self.target_env, self.docs_path)
         okf = self.call(detect_okf_docs, self.docs_path)
@@ -1267,7 +1277,9 @@ class Qa(Workflow):
         YAML's wiring — feedback is not a failure of the fix loop.
         """
         started = time.monotonic()
-        result = self._apply_fixes(qa_notes="", operator_feedback=content, power="medium")
+        result = self._apply_fixes(
+            qa_notes="", operator_feedback=content, power="medium", worklist="feedback"
+        )
         return Continue(
             result,
             self.build_context,
@@ -1379,6 +1391,10 @@ class Qa(Workflow):
                 "regression_run_log_path": run.log_path,
                 "regression_fix_count": loop.regression_fix,
             },
+            # Lap two is handed the same suite, still red, and its first act on a fresh
+            # context is to re-reproduce the failure lap one had already reproduced — a
+            # twenty-five-minute suite run spent re-learning what it just knew.
+            session=f"qa-regression-fix:{self.ctx.story_slug}",
         )
         loop = loop.charged(time.monotonic() - started)
         if fix.blocked:
@@ -1462,7 +1478,9 @@ class Qa(Workflow):
         """
         self.logger.info("applying QA fixes", extra={"activity": True})
         started = time.monotonic()
-        result = self._apply_fixes(qa_notes=loop.qa.notes, operator_feedback=None, power="high")
+        result = self._apply_fixes(
+            qa_notes=loop.qa.notes, operator_feedback=None, power="high", worklist="fix"
+        )
         loop = loop.charged(time.monotonic() - started).update(
             qa=result, qa_rework=loop.qa_rework + 1, docs_recheck_required=True
         )
@@ -1607,7 +1625,7 @@ class Qa(Workflow):
         """
         started = time.monotonic()
         result = self._apply_fixes(
-            qa_notes=loop.qa.notes, operator_feedback=content, power="medium"
+            qa_notes=loop.qa.notes, operator_feedback=content, power="medium", worklist="fix"
         )
         loop = loop.charged(time.monotonic() - started).update(
             qa=result,
@@ -2009,12 +2027,18 @@ class Qa(Workflow):
         return self._gate(loop, loop)
 
     def _apply_fixes(
-        self, *, qa_notes: str, operator_feedback: str | None, power: str
+        self, *, qa_notes: str, operator_feedback: str | None, power: str, worklist: str
     ) -> QaResult:
         """`apply-qa-fixes.md`, which three nodes ran with three different argument sets.
 
         `operator_feedback` is omitted rather than passed empty on the plain fix path,
         because that node's YAML args did not include the key at all.
+
+        `worklist` names the chain the turn resumes. The fix laps and the operator-guided
+        lap are one conversation on purpose — the second is the same fixer being told its
+        first attempt did not land, and it is worth far more knowing what it already tried
+        than re-deriving it. Applying a product note is *not* that worklist, which is why
+        the caller names it rather than this helper assuming one.
         """
         args: dict[str, object] = {
             "story_path": self.ctx.story_path,
@@ -2030,6 +2054,7 @@ class Qa(Workflow):
             power=power,
             add_dirs=self._dirs(),
             args=args,
+            session=f"qa-{worklist}:{self.ctx.story_slug}",
         )
 
     @property
