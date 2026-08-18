@@ -22,10 +22,15 @@ Divergences from the YAML, all deliberate:
   is the only budget the YAML had. **It is now two.** `review_rework`/`MAX_REVIEW_REWORKS`
   counts the reviewer's revisions separately from the grounding gate's; `_rework` carries
   the run that forced the split.
-* **`documentation_failed` was a `type: fail`**, so every arm that reached it raises
+* **`documentation_failed` was a `type: fail`**, so every arm that reached it raised
   `WorkflowFailed` at the deciding site. What the four call sites' `default: failed` was for
   — a sub-flow that produced no value at all — cannot happen here, and `DocsResult`'s
-  default records that.
+  default records that. A workflow does not give up, though: the one arm here that was a
+  rework-budget exhaustion rather than a genuinely malformed or unresolvable input —
+  `verify`'s grounding gate not converging in `MAX_REWORKS` passes — now takes the same
+  `_blocked` arm `review`'s own convergence exhaustion always did. The remaining raises
+  guard inputs no repair lap can fix: an unresolvable story path, an unusable OKF, an
+  author or reviewer response that does not parse.
 * `resolve_documentation_context` reused `resolve-impl-context.py` whole and read only two
   of its seven outputs. It is the same `resolve_impl_context` node here; the port does not
   fork a node to narrow what a caller reads.
@@ -495,7 +500,7 @@ class Docs(Workflow):
         authored_nodes: tuple[str, ...] = (),
         consulted: bool = False,
         overran: str = "",
-    ) -> Continue:
+    ) -> Continue | Await | Done:
         """Check the claim against the diff before any reviewer reads a word of it.
 
         `decide_documentation_context_mode` + `build_documentation_context` +
@@ -566,11 +571,21 @@ class Docs(Workflow):
         # while `gate_progress_verdict == "reduced"`, which is exactly the shape a batched
         # worklist produces — twelve errors closed per lap out of a hundred and twenty,
         # forever. The repair turn now gets every affected error at once and iterates
-        # doctor itself, so a lap that does not converge is a lap that is not going to.
+        # doctor itself, so a lap that does not converge is a lap that is not going to —
+        # which is a block, not a failure: `_blocked` below, the same arm `review`'s own
+        # convergence exhaustion takes a few lines down. A workflow does not give up.
         if rework >= self.MAX_REWORKS:
-            raise WorkflowFailed(
-                f"documentation did not converge in {self.MAX_REWORKS + 1} grounding "
-                f"passes ({progress.gate_progress_verdict}): {gate.notes or review_notes}"
+            return self._blocked(
+                (
+                    f"documentation did not converge in {self.MAX_REWORKS + 1} grounding "
+                    f"passes ({progress.gate_progress_verdict}): {gate.notes or review_notes}"
+                ),
+                consulted=consulted,
+                rework=rework,
+                gate_notes=f"{overran}\n\n{gate.notes}".strip() if overran else gate.notes,
+                progress=progress,
+                delta_refs=delta_refs,
+                authored_nodes=authored_nodes,
             )
         # The `G:` identities are the still-ungrounded references, in the inventory's own
         # spelling — the same worklist `start` computed, minus what this pass closed.

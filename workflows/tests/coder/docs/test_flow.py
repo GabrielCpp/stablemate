@@ -449,9 +449,9 @@ def test_the_author_is_handed_the_grounding_worklist_before_it_writes(
     agent = _Agent()
     run_env = env()
 
-    with pytest.raises(WorkflowFailed):
-        drive_flow(Docs(story=STORY, epic=EPIC), run_env, agent)
+    result = drive_flow(Docs(story=STORY, epic=EPIC), run_env, agent)
 
+    assert result.status == "blocked", result
     first = agent.args_for("document-story")[0]
     assert first["obligations"] == ["api/widget.go::Widget"], first["obligations"]
     # The rework pass is handed the gate's own `G:` identities, in the same spelling.
@@ -1383,13 +1383,23 @@ def test_a_gate_that_never_passes_is_bounded_on_its_own_budget(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """An author that never names a node never reaches the reviewer, and still stops."""
+    """An author that never names a node never reaches the reviewer — and still blocks, not fails.
+
+    The exhausted grounding budget is a `blocked` verdict, not an exception, the same
+    distinction `test_the_loop_is_bounded_at_four_passes` draws for the reviewer's own budget:
+    the resolver is consulted once in the author's stead before the story ends blocked.
+    """
     agent = _Agent(nodes_after=99)
 
-    with pytest.raises(WorkflowFailed, match="did not converge in 4 grounding passes"):
-        drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
-    assert agent.counts() == {"document-story": 1, "repair-documentation": 3}, agent.counts()
+    assert result.status == "blocked", result
+    assert "did not converge in 4 grounding passes" in result.notes, result.notes
+    assert agent.counts() == {
+        "document-story": 1,
+        "repair-documentation": 3,
+        "resolve-operator": 1,
+    }, agent.counts()
 
 
 
@@ -1484,7 +1494,7 @@ def test_a_reviewer_closing_each_worklist_and_opening_another_exhausts_as_churne
     assert "did not converge in 4 passes (churned)" in result.notes, result.notes
 
 
-def test_the_grounding_lane_carries_its_own_verdict_into_the_failure(
+def test_the_grounding_lane_carries_its_own_verdict_into_the_block(
     docs: Path,
     elsewhere: Path,
     env: Callable[..., RunEnv],
@@ -1493,10 +1503,10 @@ def test_the_grounding_lane_carries_its_own_verdict_into_the_failure(
     """An author that never names a node is handed the identical brief every pass."""
     agent = _Agent(nodes_after=99)
 
-    with pytest.raises(WorkflowFailed) as excinfo:
-        drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
-    assert "4 grounding passes (stalled)" in str(excinfo.value), excinfo.value
+    assert result.status == "blocked", result
+    assert "4 grounding passes (stalled)" in result.notes, result.notes
 
 
 def test_a_shrinking_failure_set_no_longer_waives_the_grounding_budget(
@@ -1535,9 +1545,10 @@ def test_a_shrinking_failure_set_no_longer_waives_the_grounding_budget(
 
     monkeypatch.setattr(docs_flow, "verify_story_documentation", _gate)
 
-    with pytest.raises(WorkflowFailed, match="did not converge in 4 grounding passes"):
-        drive_flow(Docs(story=STORY, epic=EPIC), env(), _Agent())
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), _Agent())
 
+    assert result.status == "blocked", result
+    assert "did not converge in 4 grounding passes" in result.notes, result.notes
     # The fifth, passing verdict is never reached: the budget stopped the story on the
     # fourth author pass even though every lap had closed a finding.
     assert outstanding == [[]]
