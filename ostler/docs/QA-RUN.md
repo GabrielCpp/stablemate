@@ -417,48 +417,104 @@ proving it is the defect the old `_exit_sentinel` regex was guessing at.
 
 The Playwright driver writes one diagnostics file per scenario, registered in the manifest
 under kind `browser-diagnostics`. It is the whole console and the whole network for that
-scenario — every message at every level, every request, every response, every uncaught
-exception — each stamped with `atMs`, the same run-relative offset the NDJSON records
-carry, so the console and the network can be read against each other and against the step
-that was executing:
+scenario — every message at every level *with its arguments*, every request with its
+headers and payload, every response with its headers and body, every uncaught exception —
+each stamped with `atMs`, the same run-relative offset the NDJSON records carry, so the
+console and the network can be read against each other and against the step that was
+executing:
 
 ```json
 {
-  "schema": "browser-diagnostics/1",
+  "schema": "browser-diagnostics/2",
   "consoleErrors": ["<console message text>"],
-  "console": [{ "atMs": 1500, "type": "warning", "text": "<text>", "location": "<url>:12:4" }],
+  "console": [
+    {
+      "atMs": 1500, "type": "warning", "text": "state {items: Array(3)}",
+      "location": "<url>:12:4",
+      "args": ["state", { "items": [{ "id": 7 }] }]
+    }
+  ],
   "consoleCount": 1,
-  "pageErrors": [{ "atMs": 900, "name": "TypeError", "message": "<message>" }],
-  "requests": [{ "atMs": 200, "url": "<url>", "method": "GET", "resourceType": "fetch" }],
+  "pageErrors": [{ "atMs": 900, "name": "TypeError", "message": "<message>", "stack": "<frames>" }],
+  "requests": [
+    {
+      "atMs": 200, "url": "<url>", "method": "POST", "resourceType": "fetch",
+      "requestHeaders": { "content-type": "application/json", "authorization": "[REDACTED 41 chars]" },
+      "requestBody": "{\"title\":\"draft\"}",
+      "status": 201, "statusText": "Created",
+      "responseHeaders": { "content-type": "application/json" },
+      "responseBodyBytes": 62, "responseBodySha256": "<hex>",
+      "responseBody": "{\"id\":7}",
+      "durationMs": 42.512
+    }
+  ],
   "requestCount": 1,
-  "failedRequests": [{ "atMs": 3300, "url": "<url>", "method": "GET", "errorText": "net::ERR_ABORTED" }],
+  "failedRequests": [
+    {
+      "atMs": 3300, "url": "<url>", "method": "GET", "errorText": "net::ERR_ABORTED",
+      "bodyOmitted": "request did not complete"
+    }
+  ],
   "responses": [{ "atMs": 4200, "url": "<url>", "status": 200, "method": "GET" }],
-  "responseCount": 1
+  "responseCount": 1,
+  "bodyBudgetBytes": 8388608,
+  "bodyBudgetRemainingBytes": 8380000
 }
 ```
 
 `schema` names the shape of the file. A trace stays on disk after the run that wrote it, so a
 plan repaired later is often verified against one an older driver produced — and the shapes
-differ (`failedRequests` was once a list of bare url strings). Without the key that mismatch
-surfaces only as a `TypeError` deep in whatever read it, which reads as "the assertion is
-wrong" and gets repaired toward the stale shape. Check
-`data["schema"] == "browser-diagnostics/1"` before trusting a trace on disk to prove
-anything about the plan.
+differ (`failedRequests` was once a list of bare url strings; `/1` carried no headers or
+bodies at all). Without the key that mismatch surfaces only as a `TypeError` deep in
+whatever read it, which reads as "the assertion is wrong" and gets repaired toward the stale
+shape. Check `data["schema"] == "browser-diagnostics/2"` before trusting a trace on disk to
+prove anything about the plan.
 
 `console` is every message, `consoleErrors` only the `error` ones and by **text** alone —
 it predates `console` and is kept because plans assert on it. Prefer `console`: the warning
 that explains a failure (a React hydration or key warning is levelled `warn`) is invisible
 in `consoleErrors`, so a scenario failing with an empty `consoleErrors` looks like it had a
-clean console when it did not.
+clean console when it did not. Each entry's `args` holds the arguments as **values**, not as
+the console's rendering of them: `text` for `console.log("state", store)` is the DevTools
+line `state {items: Array(3), …}`, and the object the assertion needed is behind that
+ellipsis. An argument that is not JSON-serializable (a DOM node, a cycle) is recorded as
+`{"unserializable": "<error type>"}`, and a string past 4096 characters as
+`{"truncated": true, "chars": N, "head": "…"}` — the cap is declared, never silent.
 
 `pageErrors` is uncaught exceptions, which is a **different event** from the console — an
 exception nothing catches reaches `pageerror`, and the console only as a side effect. A
-page that threw during hydration is invisible in every other key here.
+page that threw during hydration is invisible in every other key here. Each carries `stack`,
+so triage starts from a frame rather than from reproducing the run.
 
 `requests` is every request issued, `responses` every response received, `failedRequests`
 every request that never completed. A request in `requests` with no matching `responses`
 entry and no `failedRequests` entry was still in flight when the scenario ended — which is
-the shape of a hung endpoint, and is in none of the other keys.
+the shape of a hung endpoint, and is in none of the other keys. There is **one record per
+request**, grown as the request progresses, and `responses` / `failedRequests` hold that
+same record — so a `responses` entry carries the request's headers and payload too, and a
+`requests` entry carries the response once one arrives.
+
+**Response bodies.** A completed request carries `responseBodyBytes` and
+`responseBodySha256` always, and `responseBody` when the body is text
+(`text/*`, JSON, JS, XML, form-encoded, NDJSON). Otherwise it carries `bodyOmitted` saying
+why in one phrase: `"binary"`, the driver's own sentence for a redirect
+(`Response body is unavailable for redirect responses`),
+`"scenario body budget exhausted"`, `"request did not complete"`, or
+`"still in flight when the scenario ended"`. **A record never has neither** — read
+`bodyOmitted` before asserting on absence, because an uncaptured body and an empty one are
+the same empty string to the reader, and "the error payload never leaks the SQL" passes
+vacuously against a body nobody kept. A body over 256 KiB is kept to that cap and flagged
+`responseBodyTruncated`; the full size and digest are still exact. Bodies stop being kept
+once a scenario has spent `bodyBudgetBytes` (8 MiB) on them, and
+`bodyBudgetRemainingBytes` says how much was left — a scenario that hit the budget can see
+it did.
+
+**Redaction.** Every declared `qa.secret` value is replaced with `[REDACTED]` wherever it
+appears in a header, a payload, a body or a console message. Credential headers
+(`authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`,
+`x-auth-token`, `x-csrf-token`) are masked to `[REDACTED <n> chars]` whether or not their
+value was declared — the header **name** stays, so "the request was authenticated" remains
+assertable while the token never reaches an artifact a reviewer reads.
 
 `failedRequests` is one record per request
 that never completed — `requestfailed` never fires for a completed response, whatever its
@@ -472,18 +528,27 @@ and keep failing on the rest — `failed_requests` takes the exclusion for you:
 qa.check("no request failed unexpectedly",
          qa.diagnostics.failed_requests(ignore=["net::ERR_ABORTED"]) == [])
 qa.check("nothing served a 5xx", qa.diagnostics.responses(status_at_least=500) == [])
+
+created = qa.diagnostics.responses(url_contains="/api/drafts", status_at_least=200)[-1]
+qa.check("the create response carried the new id", '"id"' in created["responseBody"])
+qa.check("the app never logged the raw error",
+         qa.diagnostics.console(level="warning", contains="SQLSTATE") == [])
 ```
 
 Assert through `qa.diagnostics` rather than by reading the file: the diagnostics file is
 written *after* the scenario returns, so a scenario that reads it is reading the previous
-run's copy — and a scenario cannot fail itself on a 5xx it provoked any other way.
+run's copy — and a scenario cannot fail itself on a 5xx it provoked any other way. The live
+accessors are `console(level=…, contains=…)`, `console_errors()`, `page_errors()`,
+`requests(url_contains=…)`, `responses(status_at_least=…, url_contains=…)` and
+`failed_requests(ignore=…)`, and they return the same records the file gets.
 
 `console`, `requests` and `responses` are each capped at the harness's `DIAGNOSTICS_LIMIT`
-(500) records, and the matching `consoleCount` / `requestCount` / `responseCount` reports
-the true total — compare the two before reading a long run's list as complete. `pageErrors`
-and `failedRequests` are uncapped: both are rare by construction and both are the thing
-being looked for. There is no response **body** and no headers here; a scenario that needs
-those should issue the request itself through `qa.http`.
+(50,000) records — set where no real run reaches it, because the file *is* the record and a
+reader cannot tell a page that made 500 requests from one that made 12,000. The matching
+`consoleCount` / `requestCount` / `responseCount` reports the true total, and when the cap
+does bite the file says so in a `truncated` block naming each list, what was kept and of how
+many. `pageErrors` and `failedRequests` are uncapped: both are rare by construction and both
+are the thing being looked for.
 
 ### Validation (`ostler qa validate <plan-file>`)
 

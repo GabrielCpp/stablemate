@@ -869,10 +869,14 @@ class Qa:
         #: for it says so — a scenario declared against the wrong target is a mistake worth
         #: an `AttributeError` on the line that made it.
         self.page: Any = None
-        #: The live console/network record for a `playwright` target: `console_errors()`,
-        #: `page_errors()`, `failed_requests()`, `responses()`. The diagnostics *file* is
-        #: written after the scenario returns, so this is the only way a scenario can fail
-        #: itself on a 5xx or an uncaught exception it provoked.
+        #: The live console/network record for a `playwright` target: `console()`,
+        #: `console_errors()`, `page_errors()`, `requests()`, `failed_requests()`,
+        #: `responses()`. Records carry what the DevTools panels show — request and response
+        #: headers, request payloads, text response bodies, timings, and each console
+        #: message's structured arguments — so an assertion about what the app sent or was
+        #: told is written against the traffic rather than inferred from the rendering. The
+        #: diagnostics *file* is written after the scenario returns, so this is the only way
+        #: a scenario can fail itself on a 5xx or an uncaught exception it provoked.
         self.diagnostics: Any = None
         self.maestro = Maestro(self)
         self.tesseract = Tesseract(self)
@@ -1877,6 +1881,22 @@ def _harness_module(name: str) -> Any:
     return importlib.import_module(name)
 
 
+def _secret_values() -> list[str]:
+    """Every declared secret this process can resolve, for redaction.
+
+    A secret whose variable is not set is skipped rather than raised on: the scenario that
+    needs it will raise on its own `qa.secret(...)` call, naming it, and a redaction pass
+    is the wrong place to discover a missing credential.
+    """
+    values: list[str] = []
+    for declared in REGISTRY.secrets.values():
+        try:
+            values.append(declared.get())
+        except KeyError:
+            continue
+    return values
+
+
 def _open_browser(qa: Qa) -> Any:
     """Start Playwright for a browser target and hand the page to the scenario.
 
@@ -1905,6 +1925,10 @@ def _open_browser(qa: Qa) -> Any:
         scenario_id=qa.scenario_id,
         clock=qa.offset_ms,
         emit=qa._recorder.emit,  # noqa: SLF001 - one module, split across two files
+        # The recorded traffic now carries headers and bodies, so the redaction the ledger
+        # path does on this side has to reach it too — a token posted to a login endpoint
+        # would otherwise land verbatim in an evidence file that outlives the run.
+        secrets=_secret_values(),
     )
     qa.page = browser.open()
     qa.diagnostics = browser

@@ -15,6 +15,7 @@ cannot see the page from ostler, and a recording policy cannot see the run from 
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Sequence
 from pathlib import Path
@@ -26,15 +27,67 @@ from playwright.sync_api import sync_playwright
 #: Stamped into every diagnostics file so a
 #: plan reading one written by an older driver can tell, instead of asserting against a
 #: shape that has since changed and reading the mismatch as a product defect.
-DIAGNOSTICS_SCHEMA = "browser-diagnostics/1"
+#:
+#: `/2` is the first schema that carries what the DevTools panels show rather than a
+#: summary of it: request and response headers, request payloads, response bodies, timings,
+#: and each console message's structured arguments.
+DIAGNOSTICS_SCHEMA = "browser-diagnostics/2"
 
 #: Stamped into every layout file, for the same reason: it is read by the audit, and an
 #: audit that cannot tell a shape change from a product change reports the first as the second.
 LAYOUT_SCHEMA = "browser-layout/1"
 
-#: How many console/request/response records are kept in the file. The counts are kept in
-#: full alongside them, so an assertion on volume survives the truncation.
-DIAGNOSTICS_LIMIT = 500
+#: How many console/request/response records are kept in the file. Set where no real run
+#: reaches it, because the file *is* the network and console record — the previous 500 cut
+#: a busy SPA off partway through its own startup, and a reader cannot tell a page that
+#: made 500 requests from one that made 12,000. When it does bite it says so, in a
+#: `truncated` block naming what was dropped; the counts stay exact either way.
+DIAGNOSTICS_LIMIT = 50_000
+
+#: Response bodies are kept whole for these content types and fingerprinted-only for the
+#: rest. The line is drawn at "can a person read the diff" rather than at size: a 2 MB
+#: bundle is worth keeping and a 4 KB PNG is not, because the PNG proves nothing a
+#: sha256 and a byte count do not.
+TEXT_BODY_TYPES = (
+    "text/",
+    "application/json",
+    "application/javascript",
+    "application/x-javascript",
+    "application/xml",
+    "application/xhtml+xml",
+    "application/x-www-form-urlencoded",
+    "application/ndjson",
+    "application/graphql",
+    "+json",
+    "+xml",
+)
+
+#: The cap on one recorded body, and on all of them together. Past either the record keeps
+#: the size and the digest and says which cap it hit — an assertion on a body that was
+#: never captured must fail loudly rather than read a missing key as an empty response.
+MAX_BODY_BYTES = 256 * 1024
+MAX_BODY_BUDGET_BYTES = 8 * 1024 * 1024
+
+#: The longest a single console argument is rendered to. Console arguments are whole
+#: objects — a Redux store logged once is megabytes — and the argument exists to say what
+#: the app thought it had, which survives truncation.
+MAX_CONSOLE_ARG_CHARS = 4096
+
+#: Header values masked to a length even when no secret declares them. A bearer token in
+#: `authorization` is a credential whether or not the plan declared it as one, and QA
+#: evidence is read, archived and attached to reviews. The header *name* stays, because
+#: "the request carried an Authorization header" is a thing plans assert.
+SENSITIVE_HEADERS = frozenset(
+    {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "set-cookie",
+        "x-api-key",
+        "x-auth-token",
+        "x-csrf-token",
+    }
+)
 
 DEFAULT_VIEWPORT = {"width": 1440, "height": 900}
 
@@ -55,6 +108,7 @@ class Browser:
         scenario_id: str,
         clock: Any,
         emit: Any,
+        secrets: Sequence[str] = (),
     ) -> None:
         self.target = target
         self.qa_dir = qa_dir
@@ -74,9 +128,25 @@ class Browser:
         self._console_errors: list[str] = []
         self._console: list[dict[str, Any]] = []
         self._page_errors: list[dict[str, Any]] = []
+        # One record per request, mutated in place as the response and then the body
+        # arrive. `_responses` and `_failed_requests` hold *the same dicts*, not copies:
+        # a plan that finds a 500 in `responses()` reads its body off the record it already
+        # has, and the two views cannot drift into disagreeing about one request.
         self._requests: list[dict[str, Any]] = []
         self._failed_requests: list[dict[str, Any]] = []
         self._responses: list[dict[str, Any]] = []
+        # Keyed by `id(request)` and pinning the request objects in `_held`, rather than
+        # keyed by the objects themselves: identity is the only correlation Playwright
+        # offers — two requests to one URL are two records — and keying on the object
+        # assumes the driver never gives its Request an `__eq__`, which is not ours to
+        # assume. Holding the reference is what makes the id safe to reuse as a key.
+        self._by_request: dict[int, dict[str, Any]] = {}
+        self._held: list[Any] = []
+        self._body_budget = MAX_BODY_BUDGET_BYTES
+        #: Values redacted out of every header, payload and body before it is recorded —
+        #: the run's declared secrets, resolved by the runner, which is the only side that
+        #: can resolve them.
+        self._secrets = [value for value in secrets if value]
 
     # -- lifecycle -----------------------------------------------------------------------
 
@@ -188,12 +258,41 @@ class Browser:
     # its verdict, so it can only be read by the post-run audit. A plan is nonetheless held
     # to "an unexpected 5xx or console error cannot pass unnoticed", and that demand needs an
     # expression the scenario itself can assert on — otherwise it arrives as a review finding
-    # no author can act on. These four are that expression: the same records the file gets,
-    # readable while the page is still open.
+    # no author can act on. These are that expression: the same records the file gets,
+    # readable while the page is still open — headers, payloads, bodies and console
+    # arguments included, so an assertion about what the app said or received is written
+    # against the record rather than against a screenshot of its consequences.
 
     def console_errors(self) -> list[dict[str, Any]]:
         """Console messages at `error` level so far."""
         return [entry for entry in self._console if entry.get("type") == "error"]
+
+    def console(self, *, level: str | None = None, contains: str | None = None) -> list[dict[str, Any]]:
+        """Every console message so far, at every level, with its arguments.
+
+        The whole console, because the message that explains a failure is routinely not an
+        error: a `warn` about a duplicate key, an `info` the app logs before the request it
+        is about to get wrong. `level` filters by `type` as Playwright spells it
+        (`log`, `debug`, `info`, `warning`, `error`); `contains` filters on the rendered
+        text.
+        """
+        entries = self._console
+        if level is not None:
+            entries = [entry for entry in entries if entry.get("type") == level]
+        if contains is not None:
+            entries = [entry for entry in entries if contains in str(entry.get("text", ""))]
+        return list(entries)
+
+    def requests(self, *, url_contains: str | None = None) -> list[dict[str, Any]]:
+        """Every request issued, with its headers and payload.
+
+        Includes requests that are still in flight and requests that failed — a record with
+        no `status` is one nothing came back for, which is what a hung endpoint looks like
+        from here.
+        """
+        if url_contains is None:
+            return list(self._requests)
+        return [entry for entry in self._requests if url_contains in str(entry.get("url", ""))]
 
     def page_errors(self) -> list[dict[str, Any]]:
         """Uncaught exceptions — a different event from the console, invisible in it."""
@@ -211,9 +310,21 @@ class Browser:
         ignored = set(ignore)
         return [entry for entry in self._failed_requests if entry.get("errorText") not in ignored]
 
-    def responses(self, *, status_at_least: int = 0) -> list[dict[str, Any]]:
-        """Every response seen, optionally only those at or above a status."""
-        return [entry for entry in self._responses if entry.get("status", 0) >= status_at_least]
+    def responses(
+        self, *, status_at_least: int = 0, url_contains: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Every response seen, with its headers and — for a text body — its content.
+
+        A record carries `responseBody` when the body was captured, and `bodyOmitted`
+        saying why when it was not: a redirect has none, a binary body is fingerprinted
+        rather than kept, and past the scenario's body budget the record keeps the size and
+        the digest. Read `bodyOmitted` before asserting on absence — a body that was never
+        captured is not an empty one.
+        """
+        found = [entry for entry in self._responses if entry.get("status", 0) >= status_at_least]
+        if url_contains is not None:
+            found = [entry for entry in found if url_contains in str(entry.get("url", ""))]
+        return found
 
     def layout(self) -> dict[str, Any]:
         """Where the page put its content, as numbers rather than pixels.
@@ -260,6 +371,7 @@ class Browser:
         page.on("request", self._on_request)
         page.on("requestfailed", self._on_failed_request)
         page.on("response", self._on_response)
+        page.on("requestfinished", self._on_request_finished)
 
     def _on_console(self, message: Any) -> None:
         """Every console message, whatever its level.
@@ -270,14 +382,49 @@ class Browser:
         are the actual defect.
         """
         if message.type == "error":
-            self._console_errors.append(message.text)
+            self._console_errors.append(self._safe(message.text))
         location = message.location or {}
         where = str(location.get("url", ""))
         if where:
             where = f"{where}:{location.get('lineNumber', 0)}:{location.get('columnNumber', 0)}"
         self._console.append(
-            {"atMs": self.clock(), "type": message.type, "text": message.text, "location": where}
+            {
+                "atMs": self.clock(),
+                "type": message.type,
+                "text": self._safe(message.text),
+                "location": where,
+                "args": self._console_args(message),
+            }
         )
+
+    def _console_args(self, message: Any) -> list[Any]:
+        """The message's arguments as values, not as the console's rendering of them.
+
+        `message.text` is what DevTools *prints*: `console.log("state", store)` becomes
+        `state {items: Array(3), …}`, and the object the app was complaining about is gone
+        — an ellipsis where the assertion needed the third item. The handles are still live
+        at this moment, so this is the only place the values can be taken.
+        """
+        args: list[Any] = []
+        for handle in getattr(message, "args", None) or []:
+            try:
+                args.append(self._shrink(handle.json_value()))
+            except Exception as exc:  # noqa: BLE001 - a DOM node or a cycle is not JSON
+                args.append({"unserializable": type(exc).__name__})
+        return args
+
+    def _shrink(self, value: Any) -> Any:
+        """A console argument, capped, with the cap declared rather than implied."""
+        if isinstance(value, str):
+            safe = self._safe(value)
+            if len(safe) > MAX_CONSOLE_ARG_CHARS:
+                return {"truncated": True, "chars": len(safe), "head": safe[:MAX_CONSOLE_ARG_CHARS]}
+            return safe
+        if isinstance(value, dict):
+            return {str(key): self._shrink(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [self._shrink(item) for item in value]
+        return value
 
     def _on_page_error(self, error: Any) -> None:
         """An uncaught exception on the page.
@@ -287,7 +434,14 @@ class Browser:
         guaranteed to see.
         """
         self._page_errors.append(
-            {"atMs": self.clock(), "name": type(error).__name__, "message": str(error)}
+            {
+                "atMs": self.clock(),
+                "name": str(getattr(error, "name", None) or type(error).__name__),
+                "message": self._safe(str(getattr(error, "message", None) or error)),
+                # The frame that threw. Without it a message like "undefined is not a
+                # function" names no file, and triage starts by reproducing the run.
+                "stack": self._safe(str(getattr(error, "stack", "") or "")),
+            }
         )
 
     def _on_request(self, request: Any) -> None:
@@ -297,14 +451,15 @@ class Browser:
         in flight when the scenario ends is in neither — which is the exact shape of a hung
         endpoint. Correlate by `url` and `atMs`.
         """
-        self._requests.append(
-            {
-                "atMs": self.clock(),
-                "url": request.url,
-                "method": request.method,
-                "resourceType": request.resource_type,
-            }
-        )
+        record = {
+            "atMs": self.clock(),
+            "url": request.url,
+            "method": request.method,
+            "resourceType": request.resource_type,
+            "requestHeaders": self._headers(getattr(request, "headers", None)),
+            "requestBody": self._payload(getattr(request, "post_data", None)),
+        }
+        self._remember(request, record)
 
     def _on_failed_request(self, request: Any) -> None:
         """A request that never completed, with *why* it did not.
@@ -315,14 +470,12 @@ class Browser:
         indistinguishable from `net::ERR_CONNECTION_REFUSED`, and a plan gating on the
         count goes permanently red on a benign self-cancel.
         """
-        self._failed_requests.append(
-            {
-                "atMs": self.clock(),
-                "url": request.url,
-                "method": request.method,
-                "errorText": request.failure or "",
-            }
-        )
+        record = self._record(request)
+        record["errorText"] = request.failure or ""
+        # A request that never completed has no body to have kept, and says so rather than
+        # leaving the reader to infer an empty response from an absent key.
+        record.setdefault("bodyOmitted", "request did not complete")
+        self._failed_requests.append(record)
 
     def _on_response(self, response: Any) -> None:
         """Every HTTP response the page received, including the ones that completed badly.
@@ -332,37 +485,186 @@ class Browser:
         asserting against a key nothing wrote — which a stream-oriented lookup reads as an
         empty stream and passes.
         """
-        self._responses.append(
+        record = self._record(response.request)
+        record.update(
             {
                 "atMs": self.clock(),
-                "url": response.url,
                 "status": response.status,
-                "method": response.request.method,
+                "statusText": str(getattr(response, "status_text", "") or ""),
+                "responseHeaders": self._headers(getattr(response, "headers", None)),
             }
         )
+        self._responses.append(record)
+
+    def _on_request_finished(self, request: Any) -> None:
+        """The body and the timings, taken at the one moment they are cheap and safe.
+
+        Not in `_on_response`: `Response.body()` blocks until the response has finished
+        loading, and a scenario that opens an `EventSource` or a long poll would block the
+        event dispatcher there for as long as the stream stays open — a harness hang
+        reported as a product timeout. `requestfinished` fires only once loading is done, so
+        the body is already buffered; a stream that never finishes simply never gets one,
+        which is the truthful record of a request still in flight.
+        """
+        record = self._record(request)
+        timing = getattr(request, "timing", None)
+        if isinstance(timing, dict) and timing.get("responseEnd", -1) >= 0:
+            record["durationMs"] = round(float(timing["responseEnd"]), 3)
+        response = None
+        try:
+            response = request.response()
+        except Exception as exc:  # noqa: BLE001 - a torn-down page loses its responses
+            record["bodyOmitted"] = f"unavailable: {exc}"
+        if response is None:
+            record.setdefault("bodyOmitted", "no response object")
+            return
+        # `all_headers()` is the raw set, including the `set-cookie` Chromium keeps out of
+        # `headers`; it costs a protocol round-trip, which is affordable here and was not in
+        # the `response` handler.
+        try:
+            record["responseHeaders"] = self._headers(response.all_headers())
+        except Exception:  # noqa: BLE001 - keep whatever the response event already gave
+            pass
+        self._capture_body(record, response)
+
+    def _capture_body(self, record: dict[str, Any], response: Any) -> None:
+        """Record the response body, or record precisely why it is not here.
+
+        Every path writes something. A missing `responseBody` key with no `bodyOmitted`
+        beside it is indistinguishable from an empty body to the plan reading it, and an
+        assertion that "the error payload never mentions the raw SQL" passes vacuously
+        against a body nobody captured.
+        """
+        try:
+            raw = response.body()
+        except Exception as exc:  # noqa: BLE001 - redirects and aborted loads have no body
+            record["bodyOmitted"] = self._why(exc)
+            return
+        record["responseBodyBytes"] = len(raw)
+        record["responseBodySha256"] = hashlib.sha256(raw).hexdigest()
+        content_type = str(record.get("responseHeaders", {}).get("content-type", ""))
+        if not self._is_text(content_type):
+            record["bodyOmitted"] = "binary"
+            return
+        if self._body_budget <= 0:
+            record["bodyOmitted"] = "scenario body budget exhausted"
+            return
+        keep = min(len(raw), MAX_BODY_BYTES, self._body_budget)
+        self._body_budget -= keep
+        if keep < len(raw):
+            record["responseBodyTruncated"] = True
+        record["responseBody"] = self._safe(raw[:keep].decode("utf-8", errors="replace"))
+
+    # -- recording helpers ----------------------------------------------------------------
+
+    def _record(self, request: Any) -> dict[str, Any]:
+        """The record for this request, creating it if the `request` event was missed.
+
+        A redirect leg, a service-worker fetch or a request already in flight when the
+        listeners attached can reach a later event first. Creating on demand keeps that
+        request in the network record instead of dropping it.
+        """
+        record = self._by_request.get(id(request))
+        if record is None:
+            record = {
+                "atMs": self.clock(),
+                "url": request.url,
+                "method": request.method,
+                "resourceType": getattr(request, "resource_type", ""),
+                "requestHeaders": self._headers(getattr(request, "headers", None)),
+                "requestBody": self._payload(getattr(request, "post_data", None)),
+            }
+            self._remember(request, record)
+        return record
+
+    def _remember(self, request: Any, record: dict[str, Any]) -> None:
+        self._requests.append(record)
+        self._by_request[id(request)] = record
+        self._held.append(request)
+
+    def _headers(self, headers: Any) -> dict[str, str]:
+        """Headers, lowercased, with credential values masked to their length."""
+        recorded: dict[str, str] = {}
+        for name, value in dict(headers or {}).items():
+            key = str(name).lower()
+            if key in SENSITIVE_HEADERS:
+                recorded[key] = f"[REDACTED {len(str(value))} chars]"
+            else:
+                recorded[key] = self._safe(str(value))
+        return recorded
+
+    def _payload(self, body: Any) -> str | None:
+        if body is None:
+            return None
+        text = self._safe(str(body))
+        if len(text) > MAX_BODY_BYTES:
+            return text[:MAX_BODY_BYTES]
+        return text
+
+    def _safe(self, text: str) -> str:
+        for value in self._secrets:
+            text = text.replace(value, "[REDACTED]")
+        return text
+
+    @staticmethod
+    def _is_text(content_type: str) -> bool:
+        lowered = content_type.lower()
+        return any(marker in lowered for marker in TEXT_BODY_TYPES)
+
+    @staticmethod
+    def _why(exc: Exception) -> str:
+        """The driver's own sentence about a missing body, kept short.
+
+        Playwright says "Response body is unavailable for redirect responses"; a reader who
+        gets `bodyOmitted: "redirect"` instead has to go and find out what the harness meant
+        by it.
+        """
+        first = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
+        return first[:200]
 
     def _write_diagnostics(self) -> None:
+        """The console and the network, as the run's own copy of what DevTools showed.
+
+        Written whole. The post-run reader — a person, the story assessment, the
+        independent audit — has no browser to open and no session to re-drive, so anything
+        this file summarizes away is gone: the payload the app posted, the error body the UI
+        rendered as "something went wrong", the header that was missing. What is capped is
+        capped out loud, in `truncated`.
+        """
+        for record in self._requests:
+            if "responseBody" not in record:
+                # Written at close because in-flight is a legitimate state *during* the
+                # scenario and a permanent one after it: a request with no body and no
+                # reason would otherwise read as an empty response to everything downstream.
+                record.setdefault("bodyOmitted", "still in flight when the scenario ended")
         path = self.qa_dir / "traces" / f"{self.scenario_id}-diagnostics.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(
-                {
-                    "schema": DIAGNOSTICS_SCHEMA,
-                    "consoleErrors": self._console_errors,
-                    "console": self._console[:DIAGNOSTICS_LIMIT],
-                    "consoleCount": len(self._console),
-                    "pageErrors": self._page_errors,
-                    "requests": self._requests[:DIAGNOSTICS_LIMIT],
-                    "requestCount": len(self._requests),
-                    "failedRequests": self._failed_requests,
-                    "responses": self._responses[:DIAGNOSTICS_LIMIT],
-                    "responseCount": len(self._responses),
-                },
-                indent=2,
+        payload: dict[str, Any] = {
+            "schema": DIAGNOSTICS_SCHEMA,
+            "consoleErrors": self._console_errors,
+            "console": self._console[:DIAGNOSTICS_LIMIT],
+            "consoleCount": len(self._console),
+            "pageErrors": self._page_errors,
+            "requests": self._requests[:DIAGNOSTICS_LIMIT],
+            "requestCount": len(self._requests),
+            "failedRequests": self._failed_requests,
+            "responses": self._responses[:DIAGNOSTICS_LIMIT],
+            "responseCount": len(self._responses),
+            "bodyBudgetBytes": MAX_BODY_BUDGET_BYTES,
+            "bodyBudgetRemainingBytes": max(self._body_budget, 0),
+        }
+        truncated = {
+            name: {"kept": DIAGNOSTICS_LIMIT, "of": total}
+            for name, total in (
+                ("console", len(self._console)),
+                ("requests", len(self._requests)),
+                ("responses", len(self._responses)),
             )
-            + "\n",
-            encoding="utf-8",
-        )
+            if total > DIAGNOSTICS_LIMIT
+        }
+        if truncated:
+            payload["truncated"] = truncated
+        path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         self.emit({"type": "artifact", "path": str(path), "kind": "browser-diagnostics"})
 
     # -- artifacts -----------------------------------------------------------------------
