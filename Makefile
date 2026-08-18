@@ -72,6 +72,7 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) test-bench
 	$(MAKE) check-public
 	$(MAKE) check-no-env
+	$(MAKE) check-no-giveup
 	$(MAKE) check-parsers
 	$(MAKE) check-portability
 	$(MAKE) check-library
@@ -125,6 +126,13 @@ check-no-env: ## Guard the no-environment rule (a workflow's inputs are paramete
 	# A value read from os.environ is in no checkpoint and no telemetry, so a resume
 	# silently takes a different one and nobody can tell what the run worked on.
 	uv run python base-library/library/skills/stablemate/workhorse-scripting/scripts/check_no_env.py
+
+.PHONY: check-no-giveup
+check-no-giveup: ## Guard the "a workflow never gives up" rule (blocked, not failed)
+	# A budget exhaustion must escalate to the operator gate, never end the run outright.
+	# This can only catch the vocabulary of the deleted pattern reappearing, not every
+	# way the rule could be broken again — see the script's docstring for what it misses.
+	uv run python scripts/check_no_giveup.py
 
 .PHONY: check-parsers
 check-parsers: ## Guard the parse-don't-match rule (a format with a grammar gets its parser)
