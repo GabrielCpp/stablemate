@@ -94,7 +94,7 @@ three ways, and picking the wrong one is the defect this section exists to preve
    on any run that reached them before the first story. Resolving it in `setup()` is the
    same call at a strictly earlier point.)
 3. **A state parameter** — one hop, on the `Continue`: `Continue(result, self.qa, epic=epic,
-   zero_diff=zero_diff)`. Counters live here. It is part of the checkpoint, so a resumed run
+   triage=triage)`. Counters live here. It is part of the checkpoint, so a resumed run
    gets it back.
 
 `self.output(node)` is a **read of a recorded artifact**, not a fourth tier: it returns the
@@ -195,8 +195,9 @@ makes a dry run take the honest arm.
 There is no gas tank and no `refuel:`. What stops a runaway is `max_transitions`
 (`ClassVar` on the workflow — `Coder` raises it to 4000 because eighty nodes with several
 loops is not a default-budget shape) and the run-wide `WORKHORSE_MAX_RUNTIME_S`. Forward
-progress is expressed as a *counter parameter* on the transition — `zero_diff`, `ci_rework`,
-`merge_rework` — checked against a `ClassVar` cap.
+progress is expressed as a *counter parameter* on the transition — `ci_rework`,
+`merge_rework` — checked against a `ClassVar` cap. A cap that runs out does not end the run:
+it escalates to the operator gate, which is an `Await` and is resumable.
 
 ### Idempotency
 A resume re-enters a state from the top, so every node that state already called runs again.
@@ -214,7 +215,7 @@ a flow cannot see the parent's `ctx`, parameters or node outputs, which is what 
 standalone invocation honest.
 
 ```python
-def qa(self, epic: str = "", zero_diff: int = 0, triage: int = 0) -> Continue:
+def qa(self, epic: str = "", triage: int = 0) -> Continue:
     result = self.handoff(
         Qa,
         story=self._story.story_slug,

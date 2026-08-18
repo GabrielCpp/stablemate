@@ -46,9 +46,9 @@ canonical source** for `story_path`, `spec_dir`, `qa_dir`, `story_slug` and `sto
 returned as one `StoryPaths` model. Never bypass it and never re-derive those paths.
 
 ```python
-def prepare(self, slug: str = "", epic: str = "", zero_diff: int = 0) -> Continue:
+def prepare(self, slug: str = "", epic: str = "") -> Continue:
     story = self.call(prepare_story, self.docs_path, slug or self.story, epic or self.epic)
-    return Continue(story, self.dev, epic=epic, zero_diff=zero_diff)
+    return Continue(story, self.dev, epic=epic)
 ```
 
 ## The backlog drain is nested as well as standalone
