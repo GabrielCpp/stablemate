@@ -126,6 +126,7 @@ package.
 Land the work that is finished right now. Not the session's whole diff — the
 concern that just became complete.
 
+
 ## 1. Look at the tree before you touch it
 
 ```bash
