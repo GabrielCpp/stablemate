@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import ClassVar, Literal
 
-from workhorse_workflows.coder.shared.schemas._base import CoderResult
+from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 from workhorse_workflows.kit.telemetry import progress_verdict
 
 
@@ -113,8 +113,12 @@ class DocumentationObligations(CoderResult):
     notes: str = ""
 
 
-class DocumentationFinding(CoderResult):
+class DocumentationFinding(Finding):
     """One semantic documentation review finding handed back to the author.
+
+    `target`/`issue`/`repair` come from `Finding`, which is the shared evidence contract:
+    a finding carrying a target and a repair is something a fixer can act on, and one
+    carrying neither is what a block hands to the operator instead of round the loop again.
 
     `kind` is intentionally closed: it lets static tests and later deterministic tooling tell a
     node-type problem from an overclaim rather than scraping prose.
@@ -131,9 +135,6 @@ class DocumentationFinding(CoderResult):
         "verify-overclaim",
         "author-decision",
     ] = "overclaim"
-    target: str = ""
-    issue: str = ""
-    repair: str = ""
 
 
 class DocumentationReview(CoderResult):

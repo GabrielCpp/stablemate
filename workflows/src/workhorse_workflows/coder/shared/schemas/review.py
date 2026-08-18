@@ -19,9 +19,7 @@ overwrites it both carry a status and notes, and it is the same key the YAML reu
 """
 from __future__ import annotations
 
-from typing import Any
-
-from workhorse_workflows.coder.shared.schemas._base import CoderResult
+from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 
 
 class CodeReviewResult(CoderResult):
@@ -29,10 +27,16 @@ class CodeReviewResult(CoderResult):
 
     `status` is advisory: nothing routes on it, and `review-implementation.md` is handed the
     whole result as evidence. A blank takes `skipped`, which is what the YAML's default said.
+
+    `findings` was `list[dict[str, Any]]` — a shape that admitted anything and so guaranteed
+    nothing. It is `Finding` now, the same contract the QA and documentation gates already
+    met: a target to go to and a repair to make. The keys the prompt already emits survive
+    (extras are ignored); what changes is that a finding with neither half is now visibly
+    not evidence, which is what decides whether a block routes to a fixer or the operator.
     """
 
     status: str = "skipped"
-    findings: list[dict[str, Any]] = []
+    findings: list[Finding] = []
     findings_summary: str = ""
 
 
@@ -44,7 +48,7 @@ class CodeReuseResult(CoderResult):
     """
 
     status: str = "skipped"
-    findings: list[dict[str, Any]] = []
+    findings: list[Finding] = []
     findings_summary: str = ""
 
 

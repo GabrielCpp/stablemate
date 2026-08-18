@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Literal
 
-from workhorse_workflows.coder.shared.schemas._base import CoderResult
+from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 
 
 class QaResult(CoderResult):
@@ -264,8 +264,11 @@ class QaPlanResult(CoderResult):
     repaired_scenarios: list[str] = []
 
 
-class QaFinding(CoderResult):
+class QaFinding(Finding):
     """One QA finding, from any of the three gates, with the authority it falls under named.
+
+    `target`/`issue`/`repair` come from `Finding` — this class is where that shared shape
+    was first written, and it is now the contract every lane's findings are held to.
 
     `scope` is closed for the same reason `DocumentationFinding.kind` is, and here the
     closure is load-bearing rather than diagnostic. Every gate's brief says in prose that the
@@ -312,9 +315,6 @@ class QaFinding(CoderResult):
     #: See the class docstring. `coverage` is the fail-closed default and the only blocking
     #: kind; the post-run gates report it and `_finding_line` renders it.
     kind: Literal["coverage", "overclaim", "cosmetic"] = "coverage"
-    target: str = ""
-    issue: str = ""
-    repair: str = ""
 
 
 class QaAssessment(CoderResult):
