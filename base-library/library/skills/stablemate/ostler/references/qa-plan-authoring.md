@@ -109,7 +109,8 @@ working tree.
 | `qa.dir`, `qa.root`, `qa.spec_dir`, `qa.scenario_id`, `qa.covers` | the paths and identity, already resolved |
 | `qa.goto`, `qa.by_role/by_label/by_test_id/by_text/by_css`, `qa.screenshot`, `qa.page` | the browser |
 | `qa.vet(screen, name=…)` | photograph the state and register what rendered against the screen document |
-| `qa.diagnostics.console_errors/page_errors/failed_requests/responses()` | the live console and network record |
+| `qa.diagnostics.console(level=…, contains=…)` / `console_errors()` / `page_errors()` | the live console: every message with its structured `args`, not just DevTools' rendering |
+| `qa.diagnostics.requests(url_contains=…)` / `responses(status_at_least=…, url_contains=…)` / `failed_requests(ignore=…)` | the live network: headers, request payload, response body, status and `durationMs` |
 | `qa.diagnostics.layout()` | the viewport, the laid-out document, and each structural region's box as a share of it |
 | `qa.maestro.flow([...])`, `qa.maestro.run(flow)` | build and run a Maestro flow |
 
@@ -252,11 +253,23 @@ remember to ask for, made the default.
   prints the same words a real run does, and its cache key does not track the environment
   variables that decide which service was actually tested.
 - **A browser scenario asserts on `qa.diagnostics`.** The diagnostics *file*
-  (`qa/traces/<scenario>-diagnostics.json`, `schema: browser-diagnostics/1`) is written after
+  (`qa/traces/<scenario>-diagnostics.json`, `schema: browser-diagnostics/2`) is written after
   the scenario has returned its verdict, so only the post-run audit reads it. For the scenario
   to fail *itself* on a 5xx or an uncaught exception, it asserts on the live accessors.
   `failed_requests()` already excludes `net::ERR_ABORTED` — exclude by *reason* like that, never
   by count, since "allow one failure" tolerates a refused connection too.
+- **Assert on what the app actually sent and received, not on a re-issued request.** The
+  records carry `requestHeaders`, `requestBody`, `responseHeaders` and — for a text body —
+  `responseBody`, so a claim about the payload the *page* got is written against that payload
+  rather than against a second call `qa.http` made with different cookies. Console entries
+  carry `args`, the arguments as values, where `text` is only the `{items: Array(3), …}` line
+  DevTools prints.
+- **Read `bodyOmitted` before asserting a body is absent.** A record with no `responseBody`
+  always carries `bodyOmitted` saying why — `binary`, a redirect, `scenario body budget
+  exhausted`, `request did not complete`, `still in flight when the scenario ended`. An
+  uncaptured body and an empty one read alike, so `"SQLSTATE" not in r.get("responseBody", "")`
+  passes on a body nobody kept. Declared secrets and credential headers are already redacted in
+  these records, so an assertion about a token's *presence* reads the header name, not its value.
 - **Generate a shared value inside one scenario**, not at module scope. Module-level randomness
   or `time.time()` is a module-level side effect, and it re-evaluates on every describe.
 

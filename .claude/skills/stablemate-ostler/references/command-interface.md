@@ -132,24 +132,31 @@ recreation of `qa/`, service/driver cleanup, `qa-run.ndjson`, `run-manifest.json
 evidence. `qa_plan.py` and static `qa-inputs/` remain outside disposable `qa/`.
 
 A browser scenario also leaves `qa/traces/<scenario>-diagnostics.json` (manifest kind
-`browser-diagnostics`) — the whole console and the whole network for that scenario, every
-record stamped with `atMs`, the run-relative offset `qa-run.ndjson` also carries, so the two
-read against each other:
+`browser-diagnostics`) — the whole console and the whole network for that scenario, at the
+fidelity the DevTools panels show, every record stamped with `atMs`, the run-relative offset
+`qa-run.ndjson` also carries, so the two read against each other:
 
 | Key | Holds | Why it exists separately |
 | --- | --- | --- |
-| `schema` | `"browser-diagnostics/1"` | a trace left by an older driver has a different shape; without this the mismatch is only a jq crash, and the plan gets repaired toward the stale shape |
-| `console` / `consoleCount` | every message, with `type`, `text` and `url:line:col` | the `warn`-level hydration or key warning that explains a failure is not an error |
+| `schema` | `"browser-diagnostics/2"` | a trace left by an older driver has a different shape (`/1` carried no headers or bodies); without this the mismatch is only a jq crash, and the plan gets repaired toward the stale shape |
+| `console` / `consoleCount` | every message, with `type`, `text`, `url:line:col` and `args` | the `warn`-level hydration or key warning that explains a failure is not an error; `args` holds the arguments as values, where `text` holds only DevTools' `{…}` rendering of them |
 | `consoleErrors` | error-level text only | legacy, predates `console`; kept because plans assert on it — prefer `console` |
-| `pageErrors` | uncaught exceptions (`name`, `message`) | `pageerror` is a *different event* from the console; a throw during hydration is in no other key |
-| `requests` / `requestCount` | every request issued | a request in here with no response and no failure was still in flight — a hung endpoint is in no other key |
-| `responses` / `responseCount` | every response, with `status` | the only place a status appears; `[.responses[] \| select(.status >= 500)] \| length == 0` is how a 5xx is caught |
+| `pageErrors` | uncaught exceptions (`name`, `message`, `stack`) | `pageerror` is a *different event* from the console; a throw during hydration is in no other key |
+| `requests` / `requestCount` | every request issued, with `requestHeaders`, `requestBody`, and the response once one arrives | a request in here with no `status` and no failure was still in flight — a hung endpoint is in no other key |
+| `responses` / `responseCount` | the same records that got a response: `status`, `responseHeaders`, `responseBodyBytes`, `responseBodySha256`, and `responseBody` or `bodyOmitted` | the only place a status or a payload appears; `[.responses[] \| select(.status >= 500)] \| length == 0` is how a 5xx is caught |
 | `failedRequests` | requests that never completed, with `errorText` | `requestfailed` never fires for a completed 5xx; gate on `select(.errorText != "net::ERR_ABORTED")` or an app cancelling its own fetch goes red |
+| `bodyBudgetBytes` / `bodyBudgetRemainingBytes` | the scenario's 8 MiB body budget and what was left | a scenario that stopped keeping bodies can tell that it did, instead of reading the gap as "no bodies were sent" |
 
-`console`, `requests` and `responses` are capped at 500 records and the `*Count` key reports
-the true total — compare them before reading a list as complete. `pageErrors` and
-`failedRequests` are uncapped. No response body and no headers are here; assert on those
-through a `command` step with `expect_http`. Full reference: stablemate's
+A record that has no `responseBody` always has `bodyOmitted` saying why (`binary`, a
+redirect, budget exhausted, never completed) — read it before asserting on absence, since an
+uncaptured body and an empty one are the same empty string. Bodies over 256 KiB are kept to
+that cap and flagged `responseBodyTruncated`, with the true size and sha256 still exact.
+Declared secrets are replaced with `[REDACTED]` everywhere, and credential headers are masked
+to `[REDACTED <n> chars]` with the header *name* kept, so authentication stays assertable.
+
+`console`, `requests` and `responses` are capped at 50,000 records, the `*Count` key reports
+the true total, and a `truncated` block names any list the cap actually bit. `pageErrors` and
+`failedRequests` are uncapped. Full reference: stablemate's
 `ostler/docs/QA-RUN.md`.
 
 **Schema-checked workflow artifacts** (a workflow's plan/review/qa docs under `docs/specs/<slug>/`)
