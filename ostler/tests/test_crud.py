@@ -279,7 +279,9 @@ def test_delete_epic_finishes_cleanup_after_interruption(
     )
     assert crud.create_story(load(tmp_path), "accounts", "sign-in", "Sign in").ok
     assert crud.add_seed(load(tmp_path), "accounts", "sign-in", status="researched").ok
-    assert todo.add(load(tmp_path), "accounts").ok
+    # Already discoverable via the milestone fallback (no index.md yet) — `add` would
+    # now correctly refuse as a duplicate, so materialize the index directly instead.
+    assert todo._write(load(tmp_path), ["accounts"])
     real_rmtree = shutil.rmtree
 
     def interrupt_after_removal(path: str | Path) -> None:
@@ -298,6 +300,26 @@ def test_delete_epic_finishes_cleanup_after_interruption(
     milestone = load(tmp_path).milestone_by_name("mvp")
     assert milestone is not None and milestone.epics == []
     assert todo.list_epics(load(tmp_path)) == []
+
+
+def test_list_epics_falls_back_to_milestone_order_without_index(tmp_path: Path):
+    """A milestone-based repo with no docs/epics/index.md still yields a work queue.
+
+    index.md is a compatibility view, not a required authoring artifact — coder's
+    epic selection reads through `list_epics`, so if it read [] here a fresh
+    milestone-only repo would look identical to "everything is merged" and never
+    start work.
+    """
+    created = crud.create_epic(load(tmp_path), "accounts", "Accounts", prefix="t")
+    assert created.ok
+    assert crud.create_milestone(load(tmp_path), "mvp", "MVP", prefix="t").ok
+    milestone_path = tmp_path / "docs/milestones/mvp.md"
+    milestone_path.write_text(
+        milestone_path.read_text(encoding="utf-8").replace("epics: []", "epics:\n- accounts")
+    )
+    assert not (tmp_path / "docs/epics/index.md").exists()
+
+    assert todo.list_epics(load(tmp_path)) == ["accounts"]
 
 
 def test_seed_add_remove(repo: Path):

@@ -36,15 +36,23 @@ def _index_path(graph: Graph) -> Path:
 
 
 def list_epics(graph: Graph) -> list[str]:
-    """Ordered epic names from index.md; empty list if the index does not exist.
+    """Ordered epic names from index.md, falling back to milestone order.
 
     Each entry is ``- [<name>](<name>/epic.md) — <title>``, so the name is the bullet's
     bracket. Reading it off the parsed list rather than a line regex is what keeps a
     fenced example of the format out of the work queue.
+
+    index.md is a compatibility view, not a required authoring artifact — a fresh
+    milestone-based repo may never write one, since milestones are the durable
+    sequencing model there. Without this fallback such a repo's queue reads as
+    permanently empty (indistinguishable from "everything is merged") rather than
+    "nothing has been queued yet". The fallback is read-only: it does not write
+    index.md itself, so `add`/`prune`/`reorder` still materialize it lazily, from
+    this same order, the first time one of them writes.
     """
     p = _index_path(graph)
     if not p.exists():
-        return []
+        return _milestone_ordered_epics(graph)
     doc = markdown.split(p.read_text(encoding="utf-8"))
     names: list[str] = []
     for bullet in doc.walk_bullets():
@@ -52,6 +60,19 @@ def list_epics(graph: Graph) -> list[str]:
         if match := _NAME.match(ident or bullet.text):
             names.append(match.group(0))
     return names
+
+
+def _milestone_ordered_epics(graph: Graph) -> list[str]:
+    """Epics in milestone order, deduped — the fallback source when index.md is absent."""
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for milestone in graph.milestones:
+        for epic in milestone.epics:
+            slug = str(epic).strip()
+            if slug and slug not in seen:
+                ordered.append(slug)
+                seen.add(slug)
+    return ordered
 
 
 def _title_of(graph: Graph, name: str) -> str:
