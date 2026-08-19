@@ -551,6 +551,24 @@ def _services_config(repo_dir: str = "") -> dict[str, dict]:
     return {str(k): v for k, v in block.items() if isinstance(v, dict)}
 
 
+def service_keys(service: str = "", service_type: str = "") -> list[str]:
+    """The `services:` keys this layer answers to, narrowest first.
+
+    The dispatch identifies a layer as `<repo>::<path>`, which is unambiguous and which
+    nobody writes in `agents.yml`: a repo names its services the way its own directories
+    do — `api`, `web`, `worker`. So the id is decomposed, and the directory it points at
+    (and that directory's own name, for a nested `services/api`) are keys in their own
+    right, before the type is tried at all.
+    """
+    path = service.partition("::")[2]
+    keys: list[str] = []
+    for key in (service, path, Path(path).name if path else "", service_type):
+        candidate = key.strip().strip("/")
+        if candidate and candidate not in keys:
+            keys.append(candidate)
+    return keys
+
+
 def service_declaration(
     service: str = "", service_type: str = "", repo_dir: str = ""
 ) -> dict:
@@ -560,8 +578,8 @@ def service_declaration(
     in each, and the narrower key is the one that can say so.
     """
     block = _services_config(repo_dir)
-    for key in (service, service_type):
-        entry = block.get(key) if key else None
+    for key in service_keys(service, service_type):
+        entry = block.get(key)
         if isinstance(entry, dict):
             return entry
     return {}

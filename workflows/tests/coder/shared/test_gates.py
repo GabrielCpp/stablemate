@@ -21,6 +21,7 @@ from workhorse_workflows.coder.shared.dev import (
     gate_command,
     run_gate,
     service_declaration,
+    service_keys,
 )
 from workhorse_workflows.coder.shared.failure import from_gate
 
@@ -69,6 +70,38 @@ def test_a_service_name_beats_its_type(repo: Path) -> None:
         "go test -tags integration ./..."
     )
     assert service_declaration("worker", "go", str(repo))["test"] == "go test ./..."
+
+
+def test_the_dispatch_id_is_decomposed_into_the_keys_a_repo_actually_writes(
+    repo: Path,
+) -> None:
+    """`<repo>::<path>` is the workflow's identifier; `api` is what the repo calls it.
+
+    Nobody writes `bench::services/api` in their own `agents.yml`, so a lookup on the raw
+    dispatch id found nothing, fell through to the Makefile convention, and ran a gate the
+    service had explicitly replaced — the declaration silently doing nothing, which is the
+    one failure mode a declarative block must not have.
+    """
+    _agents(
+        repo,
+        "services:\n"
+        "  go: {test: 'go test ./...'}\n"
+        "  api: {test: 'go test -tags integration ./...', tdd: required}\n",
+    )
+
+    for dispatch_id in ("acme::api", "acme::services/api"):
+        declared = service_declaration(dispatch_id, "go", str(repo))
+        assert declared["test"] == "go test -tags integration ./...", dispatch_id
+        assert declared["tdd"] == "required", dispatch_id
+
+    assert service_keys("acme::services/api", "go") == [
+        "acme::services/api",
+        "services/api",
+        "api",
+        "go",
+    ]
+    # A layer the dispatch named without a path still resolves — on its type, as before.
+    assert service_declaration("acme", "go", str(repo))["test"] == "go test ./..."
 
 
 def test_an_undeclared_gate_resolves_to_no_command(repo: Path) -> None:
