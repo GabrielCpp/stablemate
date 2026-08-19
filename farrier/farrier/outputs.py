@@ -10,6 +10,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from farrier.drift import Drifted, report
 from farrier.frontmatter import (
     mapping_include_readme,
     mapping_prompt_names,
@@ -249,18 +250,21 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
 
 def check_outputs(repo: Path, outputs: dict[Path, str]) -> int:
     missing: list[str] = []
-    changed: list[str] = []
+    changed: list[Drifted] = []
     extra: list[str] = []
     for path, content in outputs.items():
         expected = expected_text(content)
+        rel = path.relative_to(repo).as_posix()
         if not path.exists():
-            missing.append(path.relative_to(repo).as_posix())
-        elif path.read_text(encoding="utf-8") != expected:
-            changed.append(path.relative_to(repo).as_posix())
+            missing.append(rel)
+            continue
+        actual = path.read_text(encoding="utf-8")
+        if actual != expected:
+            changed.append(Drifted(rel, content, expected, actual))
         elif getattr(content, "executable", False) and not path.stat().st_mode & 0o111:
             # Identical text but not runnable — a `./scripts/x.sh` in a skill fails at
             # the shell, so --check has to call it out rather than report the repo current.
-            changed.append(path.relative_to(repo).as_posix())
+            changed.append(Drifted(rel, content, expected, actual))
 
     # Neither `.agents/workflows` nor `.agents/local.compose.yaml` is scanned. Farrier
     # rendered a workflow's YAML tree into the first and a per-workflow compose override
@@ -287,12 +291,7 @@ def check_outputs(repo: Path, outputs: dict[Path, str]) -> int:
             extra.append(path.relative_to(repo).as_posix())
 
     if missing or changed or extra:
-        for rel in missing:
-            print(f"missing: {rel}")
-        for rel in changed:
-            print(f"changed: {rel}")
-        for rel in extra:
-            print(f"extra: {rel}")
+        print(report(missing, changed, extra))
         return 1
     return 0
 

@@ -46,15 +46,34 @@ class Rendered(str):
     byte-for-byte rather than reformatted. Carrying those two bits on a ``str``
     subclass keeps every existing consumer (comparisons, ``.startswith``, the
     ``--check`` diff) working unchanged, and lets the writer branch where it matters.
+
+    ``sources`` and ``parts`` carry provenance for the files that cannot stamp it into
+    themselves. A generated skill names its origin in ``metadata.source`` and needs
+    neither; an aggregated AGENTS.md deliberately carries no banner at all, so the only
+    thing that knows which library files it was joined from is the renderer that joined
+    them. ``parts`` keeps each source's rendered text beside its path, which is what lets
+    ``--check`` say *which half* of a two-source aggregate somebody edited.
     """
 
     executable: bool = False
     verbatim: bool = False
+    sources: tuple[str, ...] = ()
+    parts: tuple[tuple[str, str], ...] = ()
 
-    def __new__(cls, text: str, *, executable: bool = False, verbatim: bool = False):
+    def __new__(
+        cls,
+        text: str,
+        *,
+        executable: bool = False,
+        verbatim: bool = False,
+        sources: tuple[str, ...] = (),
+        parts: tuple[tuple[str, str], ...] = (),
+    ):
         rendered = super().__new__(cls, text)
         rendered.executable = executable
         rendered.verbatim = verbatim
+        rendered.sources = sources
+        rendered.parts = parts
         return rendered
 
 
@@ -738,7 +757,7 @@ class Renderer:
         pointer instead — `render_claude_pointer` — and `farrier source
         AGENTS.md` answers the same question from either file.
         """
-        parts: list[str] = []
+        parts: list[tuple[str, str]] = []
         selected = [(source, False) for source in self.instruction_sources(skill_names)]
         selected += [
             (self.prompt_source(name), True) for name in prompt_names or []
@@ -749,16 +768,22 @@ class Renderer:
                 body = strip_arguments_placeholder(body)
             part = self.render_templates(body, target, output_path).strip()
             if part:
-                parts.append(part)
-        rendered = "\n\n---\n\n".join(parts)
+                parts.append((library_source_path(source), part))
+        rendered = "\n\n---\n\n".join(part for _, part in parts)
 
         readme = output_path.parent / "README.md"
-        if not include_readme or not readme.exists():
-            return rendered
-        readme_body = self.render_templates(
-            readme.read_text(encoding="utf-8"), target, output_path
+        if include_readme and readme.exists():
+            readme_body = self.render_templates(
+                readme.read_text(encoding="utf-8"), target, output_path
+            )
+            rendered = f"{rendered}\n\n## Local README\n\n{readme_body.strip()}\n"
+        # The provenance travels with the text because this file, alone among the
+        # generated ones, carries none of its own — see Rendered.
+        return Rendered(
+            rendered,
+            sources=tuple(rel for rel, _ in parts),
+            parts=tuple(parts),
         )
-        return f"{rendered}\n\n## Local README\n\n{readme_body.strip()}\n"
 
     def render_claude_pointer(
         self,
@@ -784,4 +809,9 @@ class Renderer:
         dest_rel = output_path.relative_to(self.repo).as_posix()
         banner = local_instruction_banner(sources, dest_rel)
         readme = "\n@README.md\n" if readme_import else ""
-        return f"{banner}@AGENTS.md\n{readme}"
+        # No `parts`: the body is two lines of pointer, so there is nothing to attribute
+        # a drift to beyond the source list the banner already carries.
+        return Rendered(
+            f"{banner}@AGENTS.md\n{readme}",
+            sources=tuple(library_source_path(source) for source in sources),
+        )
