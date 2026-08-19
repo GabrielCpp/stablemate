@@ -74,75 +74,6 @@ class ImplResult(CoderResult):
     notes: str = ""
 
 
-class TestsResult(CoderResult):
-    """`prompts/implement-plan-tests.md` — the failing tests written, or the blocker.
-
-    Like `ImplResult`, the `done` claim is not branched on: the red gate downstream is the
-    deterministic verdict on whether the tests turn did its job, and an agent claiming
-    `done` is not evidence that it did. `blocked` is carried to that gate, which reads it
-    as one of the two conditions for standing down rather than reworking.
-    """
-
-    status: str = ""
-    notes: str = ""
-
-
-class RedGateArm(CoderResult):
-    """`arm_red_gate` — what the gate will hold the tests turn to, recorded before it runs.
-
-    `mode` is `tdd`, `regression_only` or `qa_only`, and the last two both send the layer
-    down the classic single-turn path. `regression_only` is the planner's escape for a
-    story that changes no observable behavior; `qa_only` is for one whose every scenario
-    is `Level: QA-only`, where the tests turn is told to exclude every scenario there is
-    and so has nothing it may legitimately write. Neither means "no tests": the classic
-    prompt still requires a test for every new behavior. They mean no enforced split and
-    no gate. `baseline` is the worktree's changed paths *before* the tests
-    turn, so the gate can diff what that turn alone touched; `test_command` and `signatures`
-    are resolved here, once, so the tests prompt is told the exact command the gate will run
-    and the gate judges purity by the same patterns every rework.
-    """
-
-    mode: str = "tdd"
-    baseline: list[str] = []
-    test_command: str = ""
-    signatures: list[str] = []
-
-
-class RedGateOutcome(CoderResult):
-    """`run_red_gate` — the deterministic verdict between the tests turn and the code turn.
-
-    `status` is one of seven: `red` (the suite failed and a reported failure names one of
-    the new tests — proceed to the code turn), `all_green` (exit 0 — the tests exercise
-    nothing missing, loop back), `impure` (the tests turn wrote production code, loop back),
-    `no_tests` (the turn wrote no test file, loop back), `unattributed_red` (the suite
-    failed, but on something other than the new tests — the red is somebody else's, loop
-    back), `unreached` (the suite stopped in an earlier package and never reported on the
-    new tests at all — nothing to judge, stand aside), or `skipped` (no cwd, no test
-    command, or the command never returned — the gate stands aside rather than falsely
-    failing, the same fail-open shape as the lint gate's `skipped`). A blank status takes
-    the proceed arm, because a gate that cannot speak is not evidence against the tests.
-
-    `unreached` is deliberately *not* rejecting. A rework cannot help: the failure that
-    stopped the suite is in code this layer did not write and its agent may not touch, so
-    looping back only spends turns and pressures the tests turn into narrowing its own
-    command to manufacture attribution. The engine already fails open once the reworks are
-    exhausted, so this reaches the same end state without paying for it.
-
-    `changed_files` is what the tests turn touched with the harness's own state subtracted;
-    `non_test_files` is the production code among it, which is what `impure` reports; and
-    `failing_files` is the subset of the new test files a failure line actually named, so
-    the code turn is told which reds it owes green rather than inferring it from a log.
-    """
-
-    status: str = ""
-    command: str = ""
-    changed_files: list[str] = []
-    non_test_files: list[str] = []
-    failing_files: list[str] = []
-    log_path: str = ""
-    reason: str = ""
-
-
 class FixLintResult(CoderResult):
     """`prompts/fix-lint.md` — the lint repair turn's own report.
 
@@ -364,8 +295,5 @@ __all__ = [
     "PlanResult",
     "PlanValidation",
     "QaRunEntry",
-    "RedGateArm",
-    "RedGateOutcome",
     "ReuseResult",
-    "TestsResult",
 ]

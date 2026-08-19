@@ -1,20 +1,9 @@
-"""The plan's Test Scenarios section, and the two escapes read off it.
-
-The regression that matters most is the mixed list: a plan with one QA-only scenario and
-one `component` scenario still arms the gate. Deriving the escape from "some scenario has
-no test" would disable the red gate for the majority of real plans, which all carry at
-least one QA-only entry.
-"""
+"""The plan's Test Scenarios section, and the QA-only subset the QA lane reads."""
 from __future__ import annotations
 
 from pathlib import Path
 
-from workhorse_workflows.coder.shared.scenarios import (
-    escape_in_text,
-    parse_scenarios,
-    plan_escape,
-    qa_only_scenarios,
-)
+from workhorse_workflows.coder.shared.scenarios import parse_scenarios, qa_only_scenarios
 
 MIXED = """\
 ## 5. Test Scenarios
@@ -56,42 +45,17 @@ def test_scenarios_are_parsed_with_their_ac_and_level() -> None:
     assert [s.writes_no_test for s in scenarios] == [False, True]
 
 
-def test_a_mixed_scenario_list_still_arms_the_gate(tmp_path: Path) -> None:
-    assert plan_escape(_plan(tmp_path, MIXED), "plan.md") == ""
-    assert escape_in_text(MIXED) == ""
+def test_a_plan_with_no_scenario_section_yields_no_scenarios() -> None:
+    assert parse_scenarios("## 1. Summary\n\nNothing here.\n") == []
 
 
-def test_a_list_that_is_entirely_qa_only_derives_the_escape(tmp_path: Path) -> None:
-    assert plan_escape(_plan(tmp_path, ALL_QA), "plan.md") == "qa_only"
-    assert escape_in_text(ALL_QA) == "qa_only"
-
-
-def test_the_declared_marker_beats_the_derivation(tmp_path: Path) -> None:
-    """A planner that wrote `regression-only` has stated its intent; the parse cannot overrule it."""
-    text = "Test scenarios: regression-only\n\n" + ALL_QA
-    assert plan_escape(_plan(tmp_path, text), "plan.md") == "regression_only"
-
-
-def test_the_qa_only_marker_arms_the_escape_over_a_mixed_list(tmp_path: Path) -> None:
-    text = "Test scenarios: qa-only\n\n" + MIXED
-    assert plan_escape(_plan(tmp_path, text), "plan.md") == "qa_only"
-
-
-def test_a_plan_with_no_scenario_section_yields_no_escape(tmp_path: Path) -> None:
-    """Falling back to TDD costs a rework lap; inventing the escape disables the gate."""
-    assert plan_escape(_plan(tmp_path, "## 1. Summary\n\nNothing here.\n"), "plan.md") == ""
-    assert escape_in_text("") == ""
-
-
-def test_a_missing_spec_dir_yields_no_escape() -> None:
-    assert plan_escape(None, "plan.md") == ""
+def test_a_missing_spec_dir_yields_no_obligations() -> None:
     assert qa_only_scenarios(None, "plan.md") == []
 
 
 def test_the_layer_plan_is_read_before_the_root_plan(tmp_path: Path) -> None:
     _plan(tmp_path, MIXED, "backend-plan.md")
     _plan(tmp_path, ALL_QA, "plan.md")
-    assert plan_escape(tmp_path, "backend-plan.md") == ""
     assert [s.title for s in qa_only_scenarios(tmp_path, "backend-plan.md")] == [
         "The refreshed page looks right"
     ]
