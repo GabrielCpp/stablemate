@@ -8,6 +8,7 @@
 # Usage:
 #   make agent-install             # regenerate the agent adapters from the library
 #   make agent-check               # verify adapters are up to date (no writes)
+#   make farrier-run-hook          # what the repo's pre-commit hook invokes
 #   make agent-workflows           # what this machine can run, and where it came from
 #   make agent-run-<workflow>      # run one, in its own container
 #
@@ -230,7 +231,7 @@ endif
 
 .DEFAULT_GOAL := help
 
-.PHONY: help agent-install agent-check agent-workflows agent-runs agent-logs agent-stop agent-clean
+.PHONY: help agent-install agent-check farrier-run-hook agent-workflows agent-runs agent-logs agent-stop agent-clean
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -243,6 +244,10 @@ agent-check: ## Verify generated agent adapters are up to date (no writes)
 	@$(FARRIER) --repo "$(CURDIR)" --check $(FARRIER_LIB_ARG) \
 		&& echo "✓ agent files are up to date" \
 		|| { echo "↑ files above would be rewritten by 'make agent-install'"; exit 1; }
+
+farrier-run-hook: ## Run the pre-commit checks farrier and the installed skills own
+	@$(FARRIER) --repo "$(CURDIR)" --check --skip-unresolvable $(FARRIER_LIB_ARG)
+	@if [ -x "$(CURDIR)/.agents/hooks/pre-commit" ]; then "$(CURDIR)/.agents/hooks/pre-commit"; fi
 
 agent-workflows: ## Show which workflows this machine can run, and where they came from
 	@$(FARRIER) workflows
