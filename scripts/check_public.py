@@ -64,7 +64,11 @@ BASE = REPO / "base-library"
 # Per-stack mechanics (`stacks/`) and house rules remain overlay content.
 BASE_SKILL_FAMILIES = {"stablemate", "testing", "architecture", "ui"}
 RESOLVER = REPO / "scripts" / "private_names.py"
-HOOKS_DIR = ".githooks"
+#: Where `pre-commit install` writes, and the marker it leaves in what it writes. The
+#: scripts themselves still live in `.githooks/` and are still runnable by hand; what
+#: moved is only which of them git runs, and on whose say-so.
+INSTALLED_HOOK = ".git/hooks/pre-commit"
+PRE_COMMIT_MARKER = "pre-commit"
 
 # Git's own heuristic: a NUL byte in the first 8 kB means binary. This replaced a
 # suffix allowlist (.md/.yml/.py/.sh/.json/.toml/.txt) that had a hole exactly where a
@@ -261,31 +265,32 @@ def check_no_private_names_in_history() -> list[str]:
 def check_hooks_installed() -> list[str]:
     """The guard has to be plugged in, and git does not plug it in for you.
 
-    ``core.hooksPath`` is unset in a fresh clone — and stays unset through a re-clone, a
-    ``git init``, or a worktree someone made last week — so both hooks are silently off
+    A fresh clone runs no hooks at all — and stays that way through a re-clone, a
+    ``git init``, or a worktree someone made last week — so every guard is silently off
     until ``make hooks`` runs. Nothing surfaces that state: commits simply keep working.
 
     This is the check that would have caught the real incident it was written for. A
     private name reached a test fixture and survived several commits, not because the
     hook missed it but because the hook was never running.
+
+    The probe is the installed file rather than ``core.hooksPath``, because that config
+    is now the state that means hooks are *broken*: ``pre-commit install`` refuses while
+    it is set, so a clone carrying it has the old wiring and none of the new one.
     """
     private_names = _private_names_module()
     if not private_names.load():
         # A public contributor has no list to enforce, so a hook that would be a no-op
         # anyway is nothing to fail over.
         return []
-    configured = subprocess.run(
-        ["git", "-C", str(REPO), "config", "--get", "core.hooksPath"],
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    if configured != HOOKS_DIR:
+    installed = REPO / INSTALLED_HOOK
+    text = installed.read_text(encoding="utf-8", errors="replace") if installed.is_file() else ""
+    if PRE_COMMIT_MARKER not in text:
         return [
-            f"core.hooksPath is {configured or 'unset'}, not {HOOKS_DIR!r} — the "
-            "private-name and commit-message hooks are not running on this clone. "
-            "Fix: make hooks"
+            f"{INSTALLED_HOOK} is {'not pre-commit\'s' if text else 'absent'} — the "
+            "private-name, commit-message and generated-file guards are not running on "
+            "this clone. Fix: make hooks"
         ]
-    print(f"ok: git hooks resolve to {HOOKS_DIR}/")
+    print(f"ok: git hooks resolve through {INSTALLED_HOOK}")
     return []
 
 
