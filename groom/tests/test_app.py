@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from litestar.testing import TestClient
@@ -1174,7 +1177,16 @@ if __name__ == "__main__":
     failed = 0
     for fn in fns:
         try:
-            fn()
+            # `make test` runs this file as a script, so pytest's fixtures are not
+            # there to be injected. `tmp_path` is the only one the suite asks for,
+            # and standing it up here is what keeps the two ways of running this
+            # file — `python tests/test_app.py` and `pytest` — reporting the same
+            # result instead of the script runner erroring on the signature.
+            if "tmp_path" in inspect.signature(fn).parameters:
+                with tempfile.TemporaryDirectory() as tmp:
+                    fn(tmp_path=Path(tmp))
+            else:
+                fn()
             print(f"PASS  {fn.__name__}")
         except Exception as e:  # noqa: BLE001
             failed += 1
