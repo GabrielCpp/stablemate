@@ -119,6 +119,25 @@ def extra_report(rel: str) -> str:
     )
 
 
+def fence_report(rel: str) -> str:
+    """The block printed under one ``hooks:`` line.
+
+    A fenced region is the one thing farrier owns inside a file it does not, so the
+    remediation differs: there is no upstream library file to move the edit into — the
+    fence's contents are farrier's own, and what the operator wants is either the
+    surrounding file (theirs, untouched) or `hooks.manager` in agents.yml.
+    """
+    return "\n".join(
+        [
+            f"  farrier's fenced hook entry in {rel} is missing or edited.",
+            f"  Run `{REGENERATE}` to restore it. Everything outside the fence is",
+            "  yours and is not touched. To stop installing it at all, set",
+            "  `hooks: {manager: none}` in agents.yml — deleting the fence is not an",
+            "  opt-out, because agents.yml is what says whether the hook is installed.",
+        ]
+    )
+
+
 def footer() -> str:
     """Why the operator may be looking at a clean `git status` and a failing check."""
     return (
@@ -132,6 +151,7 @@ def report(
     missing: list[str],
     changed: list[Drifted],
     extra: list[str],
+    fences: list[str] | None = None,
 ) -> str:
     """The whole ``--check`` failure, ready to print."""
     blocks: list[str] = []
@@ -145,4 +165,6 @@ def report(
         )
     for rel in extra:
         blocks.append(f"extra: {rel}\n{extra_report(rel)}")
+    for rel in fences or []:
+        blocks.append(f"hooks: {rel}\n{fence_report(rel)}")
     return "\n\n".join([*blocks, footer()])

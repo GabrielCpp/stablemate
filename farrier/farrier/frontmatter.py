@@ -46,6 +46,18 @@ def _front_matter(text: str) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def frontmatter_mapping(text: str) -> dict[str, Any]:
+    """The whole parsed front matter of a markdown source — ``{}`` when there is none.
+
+    The three accessors below each read one key off it. This one is for readers that
+    need a key farrier has no dedicated accessor for (``hooks:``), and it keeps them on
+    the same lenient parse: a source whose fence does not parse is one farrier renders
+    without front matter, so a reader that raised where the renderer shrugs would
+    disagree with what actually got installed.
+    """
+    return _front_matter(text)
+
+
 def read_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise SystemExit(f"Missing config: {path}")

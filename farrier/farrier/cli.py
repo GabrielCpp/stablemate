@@ -34,6 +34,7 @@ from farrier.frontmatter import (
     mapping_skill_names,
     read_yaml,
 )
+from farrier.hook_managers import configured_manager
 from farrier.init import default_config
 from farrier.layers import (
     LAYERS,
@@ -84,6 +85,13 @@ def _add_install_args(parser: argparse.ArgumentParser) -> None:
         "--check",
         action="store_true",
         help="Verify generated files are current without writing",
+    )
+    parser.add_argument(
+        "--skip-unresolvable",
+        action="store_true",
+        help="With --check: pass, with a note, when the configured library cannot be "
+             "resolved. For the git hook, which must not block a contributor who has "
+             "no access to a private overlay layer this repo's config selects from.",
     )
     parser.add_argument(
         "--library",
@@ -139,10 +147,22 @@ def _run_install(args: argparse.Namespace) -> int:
             "packs to install under `packs:`."
         )
     config = read_yaml(config_path)
-    outputs = render_expected(config, repo)
+    manager = configured_manager(config, repo)
+    try:
+        outputs = render_expected(config, repo)
+    except SystemExit as exc:
+        # A selection naming a source the visible layers do not have. In the hook that is
+        # a contributor without the private overlay, and failing closed there fails on
+        # every commit they make — the check cannot tell them anything about a file it
+        # cannot render. `make test` runs the same check with the library pinned, which
+        # is where an unrenderable config is somebody's problem.
+        if not (args.check and getattr(args, "skip_unresolvable", False)):
+            raise
+        print(f"Skipped the generated-file check: {exc}")
+        return 0
     if args.check:
-        return check_outputs(repo, outputs)
-    install_outputs(repo, outputs)
+        return check_outputs(repo, outputs, manager)
+    install_outputs(repo, outputs, manager)
     print(f"Installed {len(outputs)} generated files into {repo}")
     return 0
 

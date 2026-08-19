@@ -170,6 +170,35 @@ is enabled. Template helpers inside the aggregated bodies resolve against the sh
 layout unless `claude` is the only enabled adapter, since a link into `.claude/skills/` inside a
 file codex also reads points at a copy codex was never given.
 
+### hooks
+- type: `mapping` — required: no — default: detected
+
+`manager` names the git-hook manager farrier wires its one command — `make farrier-run-hook`
+— into, from the vocabulary `pre-commit` | `lefthook` | `husky` | `githooks` | `none`.
+Unset, farrier detects it from the marker files a manager leaves (`.pre-commit-config.yaml`,
+`lefthook.yml`, `.husky/`), falling back to `githooks`; the key exists to settle a repo that
+has two of them installed, or to turn the wiring off with `none`.
+
+Farrier claims only a fenced region of the manager's config —
+
+```
+# >>> farrier: hooks (generated) >>>
+# <<< farrier: hooks <<<
+```
+
+— and never the whole file, so its entry and yours coexist. **Deleting the fence is not an
+opt-out**: `install` re-adds it and `--check` reports it as drift, because this key is what
+says whether the hook is installed. `none` is the opt-out, and it strips the fence back out
+of every manager's file.
+
+The command itself always runs the generated-file check; a skill can append its own with a
+`hooks:` block in its SKILL.md front matter.
+
+```yaml
+hooks:
+  manager: pre-commit
+```
+
 ### workflow
 - type: `mapping` — required: no — default: `{}`
 

@@ -49,6 +49,7 @@ _HEADER = """# Agent launcher — farrier adapter regeneration + containerized r
 # Usage:
 #   make agent-install             # regenerate the agent adapters from the library
 #   make agent-check               # verify adapters are up to date (no writes)
+#   make farrier-run-hook          # what the repo's pre-commit hook invokes
 #   make agent-workflows           # what this machine can run, and where it came from
 #   make agent-run-<workflow>      # run one, in its own container
 #
@@ -338,7 +339,7 @@ def render_agents_mk() -> str:
     at render time. See the comment above `agent_run_target` in the emitted file.
     """
     phony = (
-        ".PHONY: help agent-install agent-check "
+        ".PHONY: help agent-install agent-check farrier-run-hook "
         "agent-workflows agent-runs agent-logs agent-stop agent-clean"
     )
     return (

@@ -12,7 +12,9 @@ modules (see each for detail):
   - ``launcher``   — ``.agents/`` launcher generation
   - ``renderer``   — the ``Renderer`` class
   - ``outputs``    — full-render orchestration and repo mutations
-  - ``hooks``      — the ``pre-commit`` staged-files gate and its ignore block
+  - ``skill_hooks``— the ``hooks:`` a SKILL.md declares
+  - ``hook_managers``— wiring one command into the repo's hook manager
+  - ``hooks``      — the QA-evidence ignore block
   - ``scaffolds``  — ``farrier scaffold`` definitions and fetching
   - ``cli``        — argument parsing and command dispatch
 

@@ -12,11 +12,21 @@ from typing import Any
 
 from farrier.drift import Drifted, report
 from farrier.frontmatter import (
+    frontmatter_mapping,
     mapping_include_readme,
     mapping_prompt_names,
     mapping_skill_names,
 )
-from farrier.hooks import GATE_SCRIPT, ensure_qa_gitignore, install_hook
+from farrier.hook_managers import (
+    HOOK_RUNNER,
+    LEFTHOOK_INCLUDE,
+    configured_manager,
+    fence_drift,
+    install_manager,
+    lefthook_include_text,
+    runner_text,
+)
+from farrier.hooks import GATE_SCRIPT, ensure_qa_gitignore
 from farrier.launcher import (
     LAUNCHER_AGENTS_MK,
     LAUNCHER_COMPOSE,
@@ -25,14 +35,16 @@ from farrier.launcher import (
 )
 from farrier.layers import available_names
 from farrier.naming import repo_prefix
-from farrier.renderer import Renderer
+from farrier.renderer import Rendered, Renderer
 from farrier.selection_errors import (
     suggestions,
     unknown_selection_error,
 )
+from farrier.skill_hooks import SkillHook, hooks_for
 from farrier.sources import (
     collect_selection,
     load_layered_sources,
+    public_name,
     selected_sources,
     unmatched_patterns,
 )
@@ -96,6 +108,11 @@ def remove_targets(repo: Path) -> None:
         LAUNCHER_AGENTS_MK,
         LAUNCHER_COMPOSE,
         LAUNCHER_CONTEXT_MANIFEST,
+        # The hook side, owned whole. Listed so switching `hooks.manager` — or turning
+        # it off with `none` — takes the previous manager's files with it, rather than
+        # leaving a runner that nothing calls and `--check` then reports as `extra`.
+        HOOK_RUNNER,
+        LEFTHOOK_INCLUDE,
     ]:
         path = repo / rel
         if path.is_file():
@@ -245,10 +262,36 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
                     include_readme and claude_only,
                 )
 
+    # The hook side of the install. Both files are farrier's whole, which is what lets
+    # the region spliced into the user's manager config stay one unchanging reference:
+    # everything per-repo (which skills declared a hook, what lefthook must run) lives
+    # here instead of inside their file.
+    manager = configured_manager(config, repo)
+    if manager != "none":
+        outputs[repo / HOOK_RUNNER] = Rendered(
+            runner_text(selected_hooks(prefix, skills)), executable=True
+        )
+    if manager == "lefthook":
+        outputs[repo / LEFTHOOK_INCLUDE] = Rendered(lefthook_include_text())
+
     return outputs
 
 
-def check_outputs(repo: Path, outputs: dict[Path, str]) -> int:
+def selected_hooks(prefix: str, skills) -> list[SkillHook]:
+    """Every hook the selected skills declare, in selection order.
+
+    Read off the *library source*, not off the rendered copy: the rendered SKILL.md is
+    what a hand-edit would have reached, and a hook installed because somebody added a
+    `hooks:` key to a generated file is a hook nothing regenerates.
+    """
+    hooks: list[SkillHook] = []
+    for source in skills:
+        data = frontmatter_mapping(source.path.read_text(encoding="utf-8"))
+        hooks.extend(hooks_for(public_name(prefix, source), data))
+    return hooks
+
+
+def check_outputs(repo: Path, outputs: dict[Path, str], manager: str | None = None) -> int:
     missing: list[str] = []
     changed: list[Drifted] = []
     extra: list[str] = []
@@ -290,8 +333,14 @@ def check_outputs(repo: Path, outputs: dict[Path, str]) -> int:
         if path.exists() and path not in expected_paths:
             extra.append(path.relative_to(repo).as_posix())
 
-    if missing or changed or extra:
-        print(report(missing, changed, extra))
+    # The fenced region inside a file farrier does not own is checked the same way and
+    # for the same reason: `install` rewrites it, so an edit there is an edit about to
+    # be lost. Only when the caller knows which manager is configured — `check_outputs`
+    # is also called with a bare output map by callers that have no config.
+    fences = fence_drift(repo, manager) if manager is not None else []
+
+    if missing or changed or extra or fences:
+        print(report(missing, changed, extra, fences))
         return 1
     return 0
 
@@ -448,7 +497,9 @@ def ensure_makefile_include(repo: Path) -> bool:
     return True
 
 
-def install_outputs(repo: Path, outputs: dict[Path, str]) -> None:
+def install_outputs(
+    repo: Path, outputs: dict[Path, str], manager: str | None = None
+) -> None:
     remove_targets(repo)
     for path, content in sorted(outputs.items(), key=lambda item: item[0].as_posix()):
         write_text(path, content)
@@ -464,7 +515,12 @@ def install_outputs(repo: Path, outputs: dict[Path, str]) -> None:
     if any(path.name == Path(GATE_SCRIPT).name for path in outputs):
         if ensure_qa_gitignore(repo):
             print("Updated QA evidence .gitignore rules")
-        print(install_hook(repo))
+    # Splice farrier's one fenced entry into the repo's hook manager. Last, because the
+    # command inside the fence runs the files written above — wiring a hook to a runner
+    # that is not there yet would make the window between the two a failing commit.
+    if manager is not None:
+        for line in install_manager(repo, manager):
+            print(line)
     # When the repo already had a root Makefile, farrier left it untouched above —
     # wire the generated launcher into it so its agent targets are reachable.
     if (repo / LAUNCHER_AGENTS_MK) in outputs and ensure_makefile_include(repo):
