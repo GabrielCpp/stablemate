@@ -196,14 +196,14 @@ def test_the_two_lanes_never_share_a_conversation(spy: _Spy) -> None:
 
 
 def test_ending_the_qa_flow_ends_every_chain_it_opened(spy: _Spy) -> None:
-    """Not just the plan-repair one: the fix loop, the feedback turn and the regression
-    fixer each hold a conversation, and a re-QA of this story resumes whichever survived."""
+    """Not just the plan-repair one: the feedback turn and the regression fixer each hold
+    a conversation of their own. The fix loop is not here — it runs on the backbone chain,
+    which is stamped for the next stage rather than dropped."""
     done = _qa()._ends(QaFlowResult(status="passed"))
 
     assert isinstance(done.result, QaFlowResult) and done.result.status == "passed"
     assert spy.resets == [
         f"qa-plan-repair:{STORY}",
-        f"qa-fix:{STORY}",
         f"qa-feedback:{STORY}",
         f"qa-regression-fix:{STORY}",
     ]
@@ -230,18 +230,19 @@ def _apply(flow: Qa, **kwargs: Any) -> None:
 def test_the_fix_loop_and_the_operator_guided_lap_are_one_conversation(spy: _Spy) -> None:
     """`apply_resolved` is the fix loop being told its attempt did not land. Handing it a
     fresh context throws away the one thing it has that the first turn did not: what it
-    already tried."""
+    already tried. Both run on the story's backbone chain, which also means a fix lap
+    resumes an implement session threaded in from a prior stage rather than a cold one."""
     flow = _qa()
-    _apply(flow, worklist="fix")
-    _apply(flow, worklist="fix")
+    _apply(flow, session=flow._story_chain())
+    _apply(flow, session=flow._story_chain())
 
-    assert [turn["session"] for turn in spy.turns] == [f"qa-fix:{STORY}"] * 2
+    assert [turn["session"] for turn in spy.turns] == [f"story:{STORY}"] * 2
 
 
 def test_applying_a_product_note_is_not_the_fix_worklist(spy: _Spy) -> None:
     """An operator's note is new work on a passing story, not another lap at a failure —
     and resuming the fixer would put it in a conversation about failures it already fixed."""
-    _apply(_qa(), worklist="feedback")
+    _apply(_qa(), session=f"qa-feedback:{STORY}")
 
     assert spy.turns[0]["session"] == f"qa-feedback:{STORY}"
 

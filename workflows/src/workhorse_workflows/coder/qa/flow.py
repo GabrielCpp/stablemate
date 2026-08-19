@@ -475,10 +475,11 @@ class Qa(Workflow):
         """
         return self.session_id or f"story:{self.ctx.story_slug}"
 
-    #: The repair loops that run on a chain, as the worklist half of their key. `_apply_fixes`
-    #: and `fix_regression` build theirs the same way; the plan-repair chain is `_chain`,
-    #: which several states reset on its own.
-    _WORKLISTS = ("plan-repair", "fix", "feedback", "regression-fix")
+    #: The repair loops that run on a chain of their own, as the worklist half of their key.
+    #: `fix_regression` builds its this way; the plan-repair chain is `_chain`, which several
+    #: states reset on its own. The fix loop is deliberately absent: it runs on the story's
+    #: backbone chain (`_story_chain()`) rather than a private one — see `_apply_fixes`.
+    _WORKLISTS = ("plan-repair", "feedback", "regression-fix")
 
     def _reset_chains(self) -> None:
         """Drop every chain this flow opens for the current story."""
@@ -1312,7 +1313,10 @@ class Qa(Workflow):
         """
         started = time.monotonic()
         result = self._apply_fixes(
-            qa_notes="", operator_feedback=content, power="medium", worklist="feedback"
+            qa_notes="",
+            operator_feedback=content,
+            power="medium",
+            session=f"qa-feedback:{self.ctx.story_slug}",
         )
         return Continue(
             result,
@@ -1514,7 +1518,10 @@ class Qa(Workflow):
         self.logger.info("applying QA fixes", extra={"activity": True})
         started = time.monotonic()
         result = self._apply_fixes(
-            qa_notes=loop.qa.notes, operator_feedback=None, power="high", worklist="fix"
+            qa_notes=loop.qa.notes,
+            operator_feedback=None,
+            power="high",
+            session=self._story_chain(),
         )
         loop = loop.charged(time.monotonic() - started).update(
             qa=result, qa_rework=loop.qa_rework + 1, docs_recheck_required=True
@@ -1664,7 +1671,10 @@ class Qa(Workflow):
         """
         started = time.monotonic()
         result = self._apply_fixes(
-            qa_notes=loop.qa.notes, operator_feedback=content, power="medium", worklist="fix"
+            qa_notes=loop.qa.notes,
+            operator_feedback=content,
+            power="medium",
+            session=self._story_chain(),
         )
         loop = loop.charged(time.monotonic() - started).update(
             qa=result,
@@ -2068,18 +2078,22 @@ class Qa(Workflow):
         return self._gate(loop, loop)
 
     def _apply_fixes(
-        self, *, qa_notes: str, operator_feedback: str | None, power: str, worklist: str
+        self, *, qa_notes: str, operator_feedback: str | None, power: str, session: str
     ) -> QaResult:
         """`apply-qa-fixes.md`, which three nodes ran with three different argument sets.
 
         `operator_feedback` is omitted rather than passed empty on the plain fix path,
         because that node's YAML args did not include the key at all.
 
-        `worklist` names the chain the turn resumes. The fix laps and the operator-guided
-        lap are one conversation on purpose — the second is the same fixer being told its
-        first attempt did not land, and it is worth far more knowing what it already tried
-        than re-deriving it. Applying a product note is *not* that worklist, which is why
-        the caller names it rather than this helper assuming one.
+        `session` names the chain the turn resumes, and the caller decides which: the fix
+        laps and the operator-guided lap run on the story's own backbone chain
+        (`_story_chain()`) on purpose, both to stay one conversation with each other — the
+        second is the same fixer being told its first attempt did not land, and it is worth
+        far more knowing what it already tried than re-deriving it — and, when a session id
+        was threaded in from a prior stage, to resume *that* implement session rather than
+        opening a cold one. Applying a product note is not that worklist: it stays on its
+        own `qa-feedback:` chain so a passing story's feedback turn never inherits a fix
+        loop's failure context, or vice versa.
         """
         args: dict[str, object] = {
             "story_path": self.ctx.story_path,
@@ -2095,7 +2109,7 @@ class Qa(Workflow):
             power=power,
             add_dirs=self._dirs(),
             args=args,
-            session=f"qa-{worklist}:{self.ctx.story_slug}",
+            session=session,
         )
 
     @property
