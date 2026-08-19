@@ -4,13 +4,15 @@
 Reached from the main graph as a `type: flow` node that reads nothing back, and standalone as
 `workhorse-coder run review` for a PR that no story pipeline produced::
 
-    code review → code reuse → review ⇄ apply (bounded) → feedback poll → done
-                                    ↘ operator gate ↗
+    start (code review + code reuse) → review ⇄ apply (bounded) → feedback poll → done
+                                            ↘ operator gate ↗
 
-Eighteen nodes become nine states. Four are `type: branch` routers reading a value the node
+Eighteen nodes become eight states. Four are `type: branch` routers reading a value the node
 above them had just produced; two are the `seed`/`incr` pair for the rework counter, which is
-a state parameter here; and `stamp_specs_review` merges into the review state it always ran
-directly after.
+a state parameter here; `stamp_specs_review` merges into the review state it always ran
+directly after; and the code-review/code-reuse pair — two nodes in the YAML — is one state,
+`start`, sending both prompts to the same agent instance over a review-local session chain
+rather than spawning a second turn cold.
 
 **Three call sites share one `apply-review.md` node**, as the YAML also had them — the review
 loop, the operator resolution, and the feedback pass. The driver ids an agent turn by its
@@ -37,12 +39,12 @@ Divergences from the YAML, all deliberate:
   it is the third instance of that shape, after `genesis`'s `max_genesis_reworks` and `dev`'s
   `max_validate_reworks`.
 * **the two review verdicts are threaded, not read back.** `review_implementation` takes
-  `code_review_result` and `code_reuse_result`, produced two and three states earlier; under
-  the YAML engine they sat in the run context for the flow's lifetime. `self.output` reads
-  only *node* outputs, and an agent turn is not a node, so the two models travel as state
-  parameters. They are the one genuinely large thing this flow checkpoints, and they are
-  checkpointed because the state that consumes them is also the state the feedback loop and
-  the operator loop return to.
+  `code_review_result` and `code_reuse_result`, both produced inside `start`, one state
+  earlier; under the YAML engine they sat in the run context for the flow's lifetime.
+  `self.output` reads only *node* outputs, and an agent turn is not a node, so the two models
+  travel as state parameters. They are the one genuinely large thing this flow checkpoints,
+  and they are checkpointed because the state that consumes them is also the state the
+  feedback loop and the operator loop return to.
 """
 from __future__ import annotations
 
@@ -156,28 +158,34 @@ class Review(Workflow):
     # --- the two feeder reviews ---------------------------------------------
 
     def start(self, review_blocks: int = 0) -> Continue:
-        """Run the native code-review skill over each affected repo's local changes.
+        """Run the native code-review skill, then the reuse hunt, as one conversation.
 
         A PR is not required: uncommitted working-tree edits and story-branch commits are
         both reviewable, and if a PR happens to be open the findings are posted as inline
         comments too. The findings ride forward in the result so the implementation reviewer
         sees them without re-deriving them.
 
-        This is also where the operator loop comes back to, which re-seeds the local rework
-        budget while preserving `review_blocks`: an operator who actually answered gets a
-        clean allowance and a fresh read of the code, but not an unbounded number of cycles.
+        The two feeder turns share a session — the reuse pass reads the same diff and the
+        same story, so handing it the review turn's own context to build on beats a second
+        cold read of the repo. That chain is reset before the pair runs, not after: this is
+        also where the operator loop comes back to, and `apply_resolved`'s docstring is
+        explicit that a re-entry here is a fresh review round, not a continuation of the one
+        that got blocked — so each entry looks at the code with no memory of the last round's
+        findings, whether that is the first entry or the fifth.
         """
         self.logger.info("reviewing %s", self.ctx.story_slug, extra={"activity": True})
         # Before the findings that the round's settlement will be checked against exist. Here
         # rather than in `setup` because the operator loop re-enters this state without it,
         # and that re-entry is a fresh review round like any other.
         self.call(clear_review_resolution, self.docs_path, self.ctx.story_slug)
-        result = self.agent(
+        self.reset_session(self._feeder_chain)
+        code_review = self.agent(
             "prompts/code-review.md",
             returns=CodeReviewResult,
             # medium: runs a packaged review skill over a diff. The judgement it needs is
             # the skill's, not the caller's.
             power="medium",
+            session=self._feeder_chain,
             cwd=self._docs_repo,
             add_dirs=self._dirs(),
             args={
@@ -187,7 +195,7 @@ class Review(Workflow):
                 "pr_number": self.pr_number,
             },
         )
-        if result.blocked:
+        if code_review.blocked:
             # Advisory input, not a gate: `review-implementation.md` below is the binding
             # verdict and it runs against the diff either way. A turn that could not run the
             # review skill is worth saying out loud and worth not pretending produced
@@ -195,23 +203,15 @@ class Review(Workflow):
             self.logger.warning(
                 "the code-review pass reported it could not run (%s) — the "
                 "implementation reviewer is the binding verdict and still runs",
-                result.findings_summary or "no reason given",
+                code_review.findings_summary or "no reason given",
             )
-        return Continue(result, self.reuse, code_review=result, review_blocks=review_blocks)
-
-    def reuse(self, code_review: CodeReviewResult, review_blocks: int = 0) -> Continue:
-        """Hunt the reuse problems the diff introduced: duplication, and hand-rolled helpers.
-
-        A dedicated pass rather than one of five things the implementation reviewer juggles.
-        Its findings fold into that reviewer's verdict, so a Major reuse finding drives the
-        same bounded rework loop as any other — filed as work, not silently as backlog.
-        """
-        result = self.agent(
+        code_reuse = self.agent(
             "prompts/code-reuse.md",
             returns=CodeReuseResult,
             # high: semantic "is this already implemented elsewhere?" matching across the
             # codebase — the same discovery task as dev's check_code_reuse.
             power="high",
+            session=self._feeder_chain,
             cwd=self._docs_repo,
             add_dirs=self._dirs(),
             args={
@@ -220,17 +220,17 @@ class Review(Workflow):
                 "affected_repo_paths": self._repos,
             },
         )
-        if result.blocked:
-            # Same reasoning as `start`: advisory, and the reviewer reads it as prose.
+        if code_reuse.blocked:
+            # Same reasoning as above: advisory, and the reviewer reads it as prose.
             self.logger.warning(
                 "the reuse pass reported it could not run (%s) — folding it in as it stands",
-                result.findings_summary or "no reason given",
+                code_reuse.findings_summary or "no reason given",
             )
         return Continue(
-            result,
+            code_reuse,
             self.review,
             code_review=code_review,
-            code_reuse=result,
+            code_reuse=code_reuse,
             review_blocks=review_blocks,
         )
 
@@ -669,6 +669,17 @@ class Review(Workflow):
     def _dirs(self) -> list[str]:
         """Every directory this run's agent turns may read."""
         return list(self.output(resolve_workspace_dirs).dirs)
+
+    @property
+    def _feeder_chain(self) -> str:
+        """The code-review/code-reuse pair's own conversation — review-local by design.
+
+        Named for the pair alone, not `self.session_id`: `Review` never receives a
+        backbone `session_id` (see the module docstring) and this key must never collide
+        with one, since the two are reset on entirely different schedules — this one on
+        every entry to `start`, not once per story.
+        """
+        return f"review-feeders:{self.ctx.story_slug}"
 
 
 __all__ = ["Review"]
