@@ -17,12 +17,14 @@ import pytest
 
 from farrier.hooks import (
     HOOK_MARKER,
+    OSTLER_BASE,
     QA_GITIGNORE_BLOCK,
     ensure_qa_gitignore,
     hook_text,
     install_hook,
     plan_hook,
 )
+from farrier.naming import compose_name, repo_prefix
 from farrier.outputs import install_outputs
 
 
@@ -60,9 +62,10 @@ def test_a_plain_repo_gets_a_tracked_hook(repo: Path):
 
 
 def test_the_hook_finds_the_gate_wherever_the_adapter_put_it(repo: Path):
-    text = hook_text()
-    assert ".claude/skills/stablemate-ostler/scripts/check_staged_files.py" in text
-    assert ".agents/skills/stablemate-ostler/scripts/check_staged_files.py" in text
+    skill = compose_name(repo_prefix(repo), OSTLER_BASE)
+    text = hook_text(skill)
+    assert f".claude/skills/{skill}/scripts/check_staged_files.py" in text
+    assert f".agents/skills/{skill}/scripts/check_staged_files.py" in text
     assert "exec python3" in text
 
 
@@ -83,7 +86,8 @@ def test_farrier_rewrites_the_hook_it_owns(repo: Path):
 
     install_hook(repo)
 
-    assert hook.read_text(encoding="utf-8") == hook_text()
+    skill = compose_name(repo_prefix(repo), OSTLER_BASE)
+    assert hook.read_text(encoding="utf-8") == hook_text(skill)
 
 
 def test_a_repo_with_its_own_githooks_hook_is_refused(repo: Path):
@@ -221,7 +225,8 @@ def test_the_block_is_refreshed_in_place_when_it_changes(repo: Path):
 def test_the_install_follows_the_ostler_skill(repo: Path):
     """A repo that selected the skill has already chosen the gate; one that did not gets
     neither the hook nor the ignore block, and no explaining."""
-    gate = repo / ".claude/skills/stablemate-ostler/scripts/check_staged_files.py"
+    skill = compose_name(repo_prefix(repo), OSTLER_BASE)
+    gate = repo / ".claude/skills" / skill / "scripts/check_staged_files.py"
 
     install_outputs(repo, {gate: "print('gate')\n"})
 

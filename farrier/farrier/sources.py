@@ -17,7 +17,7 @@ from farrier.layers import (
     find_in_layers,
     layer_dirs,
 )
-from farrier.naming import kebab, normalize_pattern, source_id
+from farrier.naming import compose_name, kebab, normalize_pattern, source_id
 from farrier.selection_errors import unknown_selection_error
 
 
@@ -59,10 +59,7 @@ def public_id(source: Source) -> str:
 
 
 def public_name(prefix: str, source: Source) -> str:
-    base = public_id(source)
-    if base == prefix or base.startswith(f"{prefix}-"):
-        return base
-    return f"{prefix}-{base}"
+    return compose_name(prefix, public_id(source))
 
 
 #: Directories a skill may bundle beside its SKILL.md, shipped with it rather than

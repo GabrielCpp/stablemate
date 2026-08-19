@@ -25,16 +25,23 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from farrier.naming import compose_name, repo_prefix
+
 #: The gate, relative to a skill directory farrier rendered.
 GATE_SCRIPT = "scripts/check_staged_files.py"
 
-#: Where the rendered ostler skill lands, per assistant adapter. The shim tries them in
-#: order so a repo that installs only one of them still gets a working hook.
-GATE_CANDIDATES = (
-    ".claude/skills/stablemate-ostler/scripts/check_staged_files.py",
-    ".agents/skills/stablemate-ostler/scripts/check_staged_files.py",
-    ".github/skills/stablemate-ostler/scripts/check_staged_files.py",
-)
+#: The `ostler` skill's base name, before the repo's install prefix is composed onto it.
+OSTLER_BASE = "ostler"
+
+
+def _gate_candidates(skill_name: str) -> tuple[str, str, str]:
+    """Where the rendered ostler skill lands, per assistant adapter. The shim tries them
+    in order so a repo that installs only one of them still gets a working hook."""
+    return (
+        f".claude/skills/{skill_name}/scripts/check_staged_files.py",
+        f".agents/skills/{skill_name}/scripts/check_staged_files.py",
+        f".github/skills/{skill_name}/scripts/check_staged_files.py",
+    )
 
 #: First line of the body farrier owns. Its presence is what says "we wrote this and may
 #: rewrite it"; its absence on an existing hook is what turns an install into a refusal.
@@ -63,13 +70,15 @@ QA_GITIGNORE_BLOCK = (
 )
 
 
-def hook_text() -> str:
-    candidates = "\n".join(f'  "$root/{rel}" \\' for rel in GATE_CANDIDATES).rstrip(" \\")
+def hook_text(skill_name: str) -> str:
+    candidates = "\n".join(
+        f'  "$root/{rel}" \\' for rel in _gate_candidates(skill_name)
+    ).rstrip(" \\")
     return f"""#!/bin/sh
 {HOOK_MARKER}
 # Refuses a commit carrying QA evidence or an oversized blob. The rules, and the
 # `[check-staged-files]` allowlist that excuses a path, live in the script — see the
-# `stablemate-ostler` skill. Delete this file to opt out; `farrier install` rewrites it.
+# `{skill_name}` skill. Delete this file to opt out; `farrier install` rewrites it.
 set -eu
 
 root=$(git rev-parse --show-toplevel)
@@ -87,33 +96,34 @@ exit 1
 
 
 #: What to paste, per manager farrier will not edit for you.
-SNIPPETS = {
-    "husky": (
-        "  .husky/pre-commit already exists. Append:\n\n"
-        "    python3 .claude/skills/stablemate-ostler/scripts/check_staged_files.py\n"
-    ),
-    "pre-commit": (
-        "  .pre-commit-config.yaml is yours. Add:\n\n"
-        "    - repo: local\n"
-        "      hooks:\n"
-        "        - id: staged-files\n"
-        "          name: staged-files gate\n"
-        "          entry: python3 .claude/skills/stablemate-ostler/scripts/check_staged_files.py\n"
-        "          language: system\n"
-        "          pass_filenames: false\n"
-    ),
-    "lefthook": (
-        "  lefthook.yml is yours. Add:\n\n"
-        "    pre-commit:\n"
-        "      commands:\n"
-        "        staged-files:\n"
-        "          run: python3 .claude/skills/stablemate-ostler/scripts/check_staged_files.py\n"
-    ),
-    "hook": (
-        "  A pre-commit hook farrier did not write is already there. Append:\n\n"
-        "    python3 .claude/skills/stablemate-ostler/scripts/check_staged_files.py\n"
-    ),
-}
+def _snippets(skill_name: str) -> dict[str, str]:
+    gate = f".claude/skills/{skill_name}/scripts/check_staged_files.py"
+    return {
+        "husky": (
+            f"  .husky/pre-commit already exists. Append:\n\n    python3 {gate}\n"
+        ),
+        "pre-commit": (
+            "  .pre-commit-config.yaml is yours. Add:\n\n"
+            "    - repo: local\n"
+            "      hooks:\n"
+            "        - id: staged-files\n"
+            "          name: staged-files gate\n"
+            f"          entry: python3 {gate}\n"
+            "          language: system\n"
+            "          pass_filenames: false\n"
+        ),
+        "lefthook": (
+            "  lefthook.yml is yours. Add:\n\n"
+            "    pre-commit:\n"
+            "      commands:\n"
+            "        staged-files:\n"
+            f"          run: python3 {gate}\n"
+        ),
+        "hook": (
+            f"  A pre-commit hook farrier did not write is already there. Append:\n\n"
+            f"    python3 {gate}\n"
+        ),
+    }
 
 
 @dataclass(frozen=True)
@@ -164,12 +174,13 @@ def _ours(path: Path) -> bool:
 
 
 def plan_hook(repo: Path) -> HookPlan:
+    snippets = _snippets(compose_name(repo_prefix(repo), OSTLER_BASE))
     framework = _framework(repo)
     if framework in ("pre-commit", "lefthook"):
         return HookPlan(
             action="refuse",
             reason=f"this repo uses {framework}, whose config farrier does not edit",
-            snippet=SNIPPETS[framework],
+            snippet=snippets[framework],
         )
 
     if framework == "husky":
@@ -178,7 +189,7 @@ def plan_hook(repo: Path) -> HookPlan:
             return HookPlan(
                 action="refuse",
                 reason="husky already has a pre-commit hook",
-                snippet=SNIPPETS["husky"],
+                snippet=snippets["husky"],
             )
         return HookPlan(action="write", path=hook)
 
@@ -188,7 +199,7 @@ def plan_hook(repo: Path) -> HookPlan:
         return HookPlan(
             action="refuse",
             reason=f"{hooks_dir}/pre-commit is not farrier's",
-            snippet=SNIPPETS["hook"],
+            snippet=snippets["hook"],
         )
     legacy = repo / ".git" / "hooks" / "pre-commit"
     if _configured_hooks_dir(repo) is None and legacy.is_file():
@@ -197,7 +208,7 @@ def plan_hook(repo: Path) -> HookPlan:
         return HookPlan(
             action="refuse",
             reason=".git/hooks/pre-commit is in place and setting core.hooksPath would silence it",
-            snippet=SNIPPETS["hook"],
+            snippet=snippets["hook"],
         )
     return HookPlan(action="write", path=hook, set_hooks_path=hooks_dir == HOOKS_DIR)
 
@@ -231,7 +242,7 @@ def install_hook(repo: Path) -> str:
 
     assert plan.path is not None
     plan.path.parent.mkdir(parents=True, exist_ok=True)
-    text = hook_text()
+    text = hook_text(compose_name(repo_prefix(repo), OSTLER_BASE))
     changed = not plan.path.is_file() or plan.path.read_text(encoding="utf-8") != text
     if changed:
         plan.path.write_text(text, encoding="utf-8")

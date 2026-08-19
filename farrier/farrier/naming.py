@@ -18,6 +18,13 @@ def kebab(value: str) -> str:
     return value
 
 
+def compose_name(prefix: str, base: str) -> str:
+    """Join a repo's install prefix onto a skill's base name, without doubling it."""
+    if base == prefix or base.startswith(f"{prefix}-"):
+        return base
+    return f"{prefix}-{base}"
+
+
 def repo_prefix(repo: Path) -> str:
     """The install prefix for a repository: its directory name, kebab-cased.
 
