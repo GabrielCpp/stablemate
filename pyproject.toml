@@ -60,6 +60,11 @@ dev = [
     # state that wedged.
     "pytest-timeout>=2.3",
     "ruff>=0.15.20",
+    # The hook runner. `make hooks` wires .pre-commit-config.yaml through it, and it is
+    # a dev dependency rather than a global install so a fresh clone's `make install`
+    # sets the guards up with no step the reader has to know about — the commit that
+    # needed stopping is usually the first one.
+    "pre-commit>=4.0",
     # The type checker, run from this root next to ruff (`make lint`). Pinned as a dev
     # dependency rather than invoked with `uvx` so every clone and CI run checks against
     # the same version — a type checker that floats reports a different set of findings

@@ -167,7 +167,7 @@ one tracked top-level directory — `core`, `workhorse`, `workflows`, `farrier`,
 change.
 
 ```bash
-make install  # installs .githooks/commit-msg alongside the private-names hook
+make install  # runs `pre-commit install`, which wires up all three commit guards
 ```
 
 `.githooks/commit-msg` derives those scopes from the tracked top-level directories, so a

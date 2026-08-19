@@ -16,8 +16,11 @@ make test       # ~2 minutes; should be green before you change anything
 ```
 
 `make install` rather than `make sync`, because git ships no hook configuration: a fresh
-clone has `core.hooksPath` unset, so the two commit guards are silently off until
-something sets it — and the commit that needed stopping is usually the first one.
+clone runs nothing, so the commit guards are silently off until something installs them
+— and the commit that needed stopping is usually the first one. The wiring is
+`pre-commit`, driven by `.pre-commit-config.yaml`; the guards themselves are still the
+standalone scripts under `.githooks/`, runnable by hand when you are working out why a
+commit was blocked.
 
 `make help` lists every target. The ones you will use:
 

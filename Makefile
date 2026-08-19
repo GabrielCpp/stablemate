@@ -8,8 +8,8 @@ help: ## Show this help
 		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 # The one command a fresh clone runs. `hooks` is here rather than left to the reader
-# because git carries no hook configuration: a clone starts with core.hooksPath unset,
-# so both guards are silently off until someone sets it — and the commit that needed
+# because git carries no hook configuration: a clone starts with nothing installed, so
+# every guard is silently off until someone runs it — and the commit that needed
 # stopping is usually the first one, made before anyone has read this file.
 .PHONY: install
 install: sync browsers hooks ## Set up a fresh clone: sync the venv, fetch Chromium, install the hooks
@@ -31,14 +31,21 @@ browsers: ## Download the Chromium `playwright` drives (separate from the pip pa
 	uv run playwright install chromium
 
 .PHONY: hooks
-hooks: ## Install the git hooks (private-name guard + Conventional Commits check)
-	git config core.hooksPath .githooks
+hooks: ## Install the git hooks (private names, Conventional Commits, generated files)
+	# `pre-commit`, not `core.hooksPath`: they are mutually exclusive — pre-commit
+	# refuses outright while that config is set — and only one of them can carry a
+	# third guard farrier installs on its own schedule. The two scripts under
+	# .githooks/ did not move; .pre-commit-config.yaml is now what runs them.
+	uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 	@echo "hooks installed:"
-	@echo "  pre-commit  blocks private overlay names. They come from"
-	@echo "              \$$STABLEMATE_PRIVATE_NAMES or \$$GIT_DIR/private-names (both"
-	@echo "              untracked); with neither configured, this hook is a no-op."
-	@echo "  commit-msg  rejects a subject that is not a Conventional Commit, since"
-	@echo "              release-please reads the type to decide what gets released."
+	@echo "  private-names         blocks private overlay names. They come from"
+	@echo "                        \$$STABLEMATE_PRIVATE_NAMES or \$$GIT_DIR/private-names"
+	@echo "                        (both untracked); with neither configured, a no-op."
+	@echo "  conventional-commit   rejects a subject that is not a Conventional Commit,"
+	@echo "                        since release-please reads the type to decide what"
+	@echo "                        gets released."
+	@echo "  farrier-hooks         blocks a hand-edit to a farrier-generated file, and"
+	@echo "                        names the library source the edit belongs in."
 
 .PHONY: lint
 lint: ## Lint every subproject in one pass: ruff (style, imports) + ty (types)
@@ -76,6 +83,7 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) check-parsers
 	$(MAKE) check-portability
 	$(MAKE) check-library
+	$(MAKE) check-agent-outputs
 	$(MAKE) check-skills
 	$(MAKE) check-vendor
 
@@ -157,6 +165,24 @@ check-library: ## Guard the base library's front matter (a broken fence loses ta
 	# the gate checks the same files here and in CI, whatever overlay is configured.
 	STABLEMATE_BASE_DIR=$(CURDIR)/base-library \
 	  uv run farrier library --check --strict --library $(CURDIR)/base-library
+
+.PHONY: check-agent-outputs
+check-agent-outputs: ## Guard the generated agent adapters (a hand-edit to one is lost on the next render)
+	# AGENTS.md, CLAUDE.md and every .claude/skills/** file are rendered from the
+	# library; an edit made in the copy is silently overwritten by the next
+	# `make agent-install`, and the agent that wrote it is long gone. The commit hook
+	# catches this on a machine that has the overlay — this catches --no-verify, a
+	# clone with no hooks installed, and CI.
+	#
+	# The base half is pinned in-tree, for the same reason check-library pins it: the
+	# gate must read the same files here and in CI whatever base is configured. The
+	# overlay half deliberately is not — this repo's `packs:` live there, so a render
+	# that could not see it would not be a stricter check, it would be no check at all.
+	# `--skip-unresolvable` is what that costs: on a public clone the overlay is absent,
+	# the render cannot be done, and the guard says so and passes rather than blocking
+	# every commit a contributor makes.
+	STABLEMATE_BASE_DIR=$(CURDIR)/base-library \
+	  uv run farrier install --repo $(CURDIR) --check --skip-unresolvable
 
 .PHONY: check-skills
 check-skills: ## Guard the base library's writing doctrine (sprawl, dead disclosure, direction)

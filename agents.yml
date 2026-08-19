@@ -3,6 +3,15 @@ agents:
   codex: false
   copilot: false
 
+# The hook manager farrier splices its one entry into. `pre-commit` rather than the
+# `githooks` this repo used, because `core.hooksPath` and pre-commit are mutually
+# exclusive — it refuses to install while that config is set — and the two guards
+# under `.githooks/` are worth more as `repo: local` entries than as the only thing
+# git will run. Farrier owns a fenced region of `.pre-commit-config.yaml` and nothing
+# outside it; see docs/features/farrier/agents-yml-config.md.
+hooks:
+  manager: pre-commit
+
 packs:
   - python-workflow
   - stablemate
