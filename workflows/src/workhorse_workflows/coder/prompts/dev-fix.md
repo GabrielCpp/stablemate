@@ -84,7 +84,23 @@ expectation is genuinely obsolete, say so explicitly in `notes`.
 
 The story changed behaviour without a test that would fail if the change were reverted. Add
 that test at the level the repo already tests this kind of code, and confirm it fails without
-the change.
+the change. List every test file you wrote or extended in `tests_added` below — the gate
+re-runs against that list, so a test you write and do not report still reads as missing.
+{% elif report.source == "goal" %}
+
+### For this gate: your own exit conditions
+
+Before implementing, this story's turn wrote down what "done" would look like — the commands
+that would be green and the files that would be touched. The output above is that promise
+compared to what actually happened.
+
+The repair is to **meet the promise**, not to withdraw it. A command that fails is a command
+whose failure the turn already agreed was disqualifying; a file that was promised and never
+written is usually work that was planned and then dropped. Finish it.
+
+The one case where the promise itself was wrong — a command that does not exist in this repo,
+a path renamed since — is worth saying plainly in `notes` rather than quietly satisfying: the
+gate compares words to facts, and a wrong word is a finding about the plan, not about the code.
 {% endif %}
 {% block repo_fix_rules %}{% endblock %}
 
@@ -93,7 +109,7 @@ the change.
 Respond with JSON only, after you have re-run the gate locally:
 
 ```json
-{"status": "fixed|failed|blocked", "notes": "<what you changed, or why a finding remains>"}
+{"status": "fixed|failed|blocked", "notes": "<what you changed, or why a finding remains>", "tests_added": ["<test file you wrote or extended>"]}
 ```
 
 - `fixed` — the gate passes now in this directory.
@@ -103,3 +119,5 @@ Respond with JSON only, after you have re-run the gate locally:
   at all, the fix demands a behaviour change this stage may not make, or it lives in a repo
   you were not given. Say which, specifically, in `notes`. This ends the laps and hands the
   block to whoever can decide it — it is not a way to stop trying.
+- `tests_added` — test files this lap wrote or extended, service-relative. Omit it when this
+  repair added none; it is what the tests gate re-reads, not a summary of the change.

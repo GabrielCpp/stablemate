@@ -15,12 +15,23 @@ The workflow supplies these values. Use them exactly as given:
 - Service type: `{{ workhorse_var('service_type') }}`
 - Verification command: `{{ workhorse_var('verification') }}`
 - Gates that run after this turn: {{ workhorse_var('gates') or '(nothing declared)' }}
+- Tests, as this repo declares them: `{{ workhorse_var('tdd') or 'off' }}`
 
 The gate line above is what the workflow will actually run once you report `done`, taken
 from this service's declaration — not a guess, and not a list to add to. Run those commands
 yourself before finishing and leave them green; a red one comes straight back to you as a
 repair turn with its output attached. Where it says nothing is declared, no gate will run
 and there is no command for you to invent.
+
+{% if workhorse_var('tdd') == 'required' %}
+**This service requires tests, so the failing test is your first edit.** Write the test that
+fails for the reason the story is not yet true, watch it fail, then make it pass. Report the
+test files you wrote in `tests_added`; a turn that reports none, or names a file the diff
+does not contain, comes back as a repair turn.
+{% elif workhorse_var('tdd') == 'encouraged' %}
+**This service encourages tests.** Where the change has observable behaviour, lead with the
+failing test. Report what you wrote in `tests_added` — a miss is recorded, not punished.
+{% endif %}
 
 Your CWD is the repo containing the service above. All code changes go in this repo. The service root is `{{ workhorse_var('service_path') }}` within this repo — focus changes there and its dependencies (shared packages in the same repo).
 
@@ -86,6 +97,24 @@ Rules:
   ```
 
 Mark each task `in-progress` when you start and `completed` immediately when it passes — never batch completions.
+
+### State your exit conditions before you start
+
+With the task list in front of you and before the first edit, write down what "done" will
+look like — you will return it as `exit_conditions` in the result below, and the workflow
+checks it against what actually happened:
+
+- `criteria` — the story's acceptance criteria this turn intends to satisfy, in the story's
+  own words. Carried forward to review and QA as the thing to check first.
+- `commands` — the commands you expect to be green when you finish, beyond the gates in
+  **Provided Inputs** (those are run for you either way). The workflow runs each one in the
+  service directory; a red one comes back as a repair turn quoting your own promise.
+- `files` — the files you expect to have touched. One missing from the diff comes back the
+  same way.
+
+Promise what you mean to do, not everything you could imagine doing: an unmet promise costs
+a whole repair lap, and a turn that promises nothing simply forfeits the check. Revise the
+list as you learn — what you return at the end is what you are held to.
 
 ---
 
@@ -232,8 +261,21 @@ recording what you ran. Put that under `## Implementation Status` as prose and l
 After implementing the story and running verification, return this exact JSON object as the LAST thing in your final response. The workflow captures it under the `impl_result` key — without it the node fails to parse and is retried:
 
 ```json
-{"status": "done|blocked", "notes": "<what you implemented and verified, or what blocked you>"}
+{
+  "status": "done|blocked",
+  "notes": "<what you implemented and verified, or what blocked you>",
+  "exit_conditions": {
+    "criteria": ["<acceptance criterion this turn satisfies>"],
+    "commands": ["<command you expect to be green>"],
+    "files": ["<file you expect to have touched>"]
+  },
+  "tests_added": ["<test file you wrote or extended>"],
+  "no_test_reason": "<why there is no test, when there is none>"
+}
 ```
 
 - `status`: `"done"` only when the implementation is complete, verification passed, **and the code was run in a local environment with the touched story path exercised (Step 5)**. Use `"blocked"` if you could not complete it or could not run it locally.
 - `notes`: a brief summary of what was implemented and verified, **including how you ran it locally and what you observed** (or the blocker).
+- `exit_conditions`: the promise from Step 2, revised to what you actually mean by the end. Each `commands` entry is run in the service directory and each `files` entry is looked for in the diff — so state what is true, not what sounds thorough. Omit the whole object, or any list in it, when you have nothing to promise.
+- `tests_added`: the test files this turn wrote or extended, service-relative. Only paths really in the diff count; naming a file you did not write comes back as a repair turn.
+- `no_test_reason`: why there is none, when there is none. An exemption is weighed against what the service declares — it does not switch the check off.

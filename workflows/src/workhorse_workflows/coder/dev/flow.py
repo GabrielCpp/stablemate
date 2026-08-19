@@ -88,12 +88,14 @@ from workhorse_workflows.coder.shared.dev import (
     GATE_ORDER,
     branch_code_repos,
     changed_files,
+    check_promises,
     declared_gates,
     read_operator_context,
     record_plan,
     resolve_impl_context,
     run_gate,
     select_next_layer,
+    tdd_gate,
 )
 from workhorse_workflows.coder.shared.escalation import escalation
 from workhorse_workflows.coder.shared.failure import from_gate
@@ -110,6 +112,7 @@ from workhorse_workflows.coder.shared.story import (
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 from workhorse_workflows.coder.shared.schemas.dev import (
     DevResult,
+    FailureReport,
     FixResult,
     GateOutcome,
     ImplResult,
@@ -545,7 +548,15 @@ class Dev(Workflow):
             return self._gate_impl(
                 result, result.notes, index, "the implementation turn", impl_blocks, turns
             )
-        return Continue(result, self.gates, index=index, session_turns=turns)
+        return Continue(
+            result,
+            self.gates,
+            index=index,
+            session_turns=turns,
+            promise=result.model_dump(
+                include={"exit_conditions", "tests_added", "no_test_reason"}
+            ),
+        )
 
     def _implement_classic(self, operator_context: str = "") -> ImplResult:
         """The `implement-plan.md` turn.
@@ -582,8 +593,44 @@ class Dev(Workflow):
                 "qa_run_plan": impl.qa_run_plan,
                 "qa_stack": impl.qa_stack,
                 "gates": gates.text,
+                "tdd": gates.tdd,
                 "operator_context": operator_context,
             },
+        )
+
+    def _claims(self, promise: dict[str, Any], already_run: list[str]) -> GateOutcome:
+        """Check the implement turn's own account of what it did against what it did.
+
+        Two gates that need no command from the repo, because their evidence is the turn's
+        own words: the exit conditions it stated before it began, and the tests it says it
+        wrote. Both are `skipped` where there is nothing to check — a turn that promised
+        nothing, a service that declares no `tdd:` key — so neither invents an obligation
+        the repo never took on.
+
+        They run only once the declared gates are green, and that order is deliberate: a
+        failing linter is the cheaper, more precise complaint, and holding a turn to a
+        promise about a build that does not compile is noise.
+        """
+        conditions = promise.get("exit_conditions") or {}
+        changed = self.call(changed_files, self._layer.cwd, self.ctx.story_slug).paths
+        outcome = self.call(
+            check_promises,
+            self._layer.cwd,
+            conditions.get("commands") or [],
+            conditions.get("files") or [],
+            changed=changed,
+            already_run=already_run,
+        )
+        if outcome.status == "dirty":
+            return outcome
+        return self.call(
+            tdd_gate,
+            self._layer.cwd,
+            self._layer.service,
+            self._layer.type,
+            promise.get("tests_added") or [],
+            str(promise.get("no_test_reason") or ""),
+            changed=changed,
         )
 
     def gates(
@@ -593,6 +640,7 @@ class Dev(Workflow):
         session_turns: int = 1,
         digest: str = "",
         impl_blocks: int = 0,
+        promise: dict[str, Any] | None = None,
     ) -> Continue | Await:
         """Run this service's deterministic gates, and route on the first one that says no.
 
@@ -610,6 +658,7 @@ class Dev(Workflow):
         what `fix` does with `stalled`.
         """
         outcome = GateOutcome()
+        ran: list[str] = []
         for gate in GATE_ORDER:
             outcome = self.call(
                 run_gate,
@@ -620,16 +669,21 @@ class Dev(Workflow):
             )
             if outcome.status == "dirty":
                 break
+            if outcome.command:
+                ran.append(outcome.command)
         else:
+            outcome = self._claims(promise or {}, ran)
+        if outcome.status != "dirty":
             return Continue(outcome, self.layer, index=index, session_turns=session_turns)
         report = from_gate(outcome, self._layer.cwd, fix_lap)
         if fix_lap >= self.max_fix_laps:
             # The budget bounds the *lap*, never the story: this hands the failing gate to
             # the resolver and, failing that, to a human, exactly as a blocked implement
             # turn does. See AGENTS.md, "a workflow never gives up".
+            failing = f"`{report.command}`" if report.command else f"the {outcome.gate} gate"
             return self._gate_impl(
                 report,
-                f"{self._layer.service}: `{report.command}` still fails after "
+                f"{self._layer.service}: {failing} still fails after "
                 f"{fix_lap} repair lap(s).\n\n{report.output}",
                 index,
                 f"the {outcome.gate} gate",
@@ -644,6 +698,8 @@ class Dev(Workflow):
             session_turns=session_turns,
             stalled=bool(digest) and report.digest == digest,
             impl_blocks=impl_blocks,
+            promise=promise,
+            report=report.model_dump(),
         )
 
     def fix(
@@ -653,21 +709,31 @@ class Dev(Workflow):
         session_turns: int = 1,
         stalled: bool = False,
         impl_blocks: int = 0,
+        promise: dict[str, Any] | None = None,
+        report: dict[str, Any] | None = None,
     ) -> Continue | Await:
         """Repair whatever the gate reported, then re-run the gates.
 
         One repair role for every gate, on the story's own conversation: the turn that
         wrote this code is the cheapest turn to fix it, and a fixer in a fresh context
-        spends its first minutes re-reading a diff it has only just met. The report is
-        rebuilt here from the gate node's recorded output rather than copied through the
-        transition — a gate log is exactly the sort of thing that should not go into a
-        checkpoint.
+        spends its first minutes re-reading a diff it has only just met.
+
+        The report arrives through the transition, already clipped. It used to be rebuilt
+        from `run_gate`'s recorded output to keep a gate log out of the checkpoint, and that
+        stopped being possible once the gates stopped all being shell commands: `goal` and
+        `tdd` are answered by different nodes, so "the last thing `run_gate` said" is no
+        longer the thing that routed here. The old path is still the fallback, for a
+        checkpoint written before this change that resumes into this state.
 
         The power ladder is low, low, then high: a linter or a failing assertion is
         mechanical work grounded in exact evidence, and only a lap that has demonstrably
         changed nothing is worth a smarter turn. `stalled` brings that escalation forward.
         """
-        report = from_gate(self.output(run_gate), self._layer.cwd, fix_lap)
+        failure = (
+            FailureReport.model_validate(report)
+            if report
+            else from_gate(self.output(run_gate), self._layer.cwd, fix_lap)
+        )
         turns = self._spend_turn(session_turns)
         result = self.agent(
             "prompts/dev-fix.md",
@@ -678,7 +744,7 @@ class Dev(Workflow):
             args={
                 # Dumped rather than passed as a model: everything in `args` is
                 # checkpointed, and a checkpoint holds JSON.
-                "report": report.model_dump(),
+                "report": failure.model_dump(),
                 "changed_files": self.call(
                     changed_files, self._layer.cwd, self.ctx.story_slug
                 ).paths,
@@ -693,7 +759,9 @@ class Dev(Workflow):
         if result.blocked:
             return self._gate_impl(
                 result,
-                result.notes or f"the repair turn could not satisfy `{report.command}`",
+                result.notes
+                or "the repair turn could not satisfy "
+                + (f"`{failure.command}`" if failure.command else f"the {failure.source} gate"),
                 index,
                 "the repair turn",
                 impl_blocks,
@@ -705,9 +773,27 @@ class Dev(Workflow):
             index=index,
             fix_lap=fix_lap + 1,
             session_turns=turns,
-            digest=report.digest,
+            digest=failure.digest,
             impl_blocks=impl_blocks,
+            promise=self._with_repair_tests(promise, result),
         )
+
+    @staticmethod
+    def _with_repair_tests(
+        promise: dict[str, Any] | None, result: FixResult
+    ) -> dict[str, Any] | None:
+        """The promise the next `gates` pass re-checks, crediting tests this lap added.
+
+        The `tdd` gate reads the implement turn's own report, and a repair turn cannot amend
+        it — so a lap that writes exactly the missing test would otherwise arrive back at the
+        gate it just satisfied, unchanged, and lap again until the budget escalated it.
+        """
+        if not result.tests_added:
+            return promise
+        merged = dict(promise or {})
+        already = list(merged.get("tests_added") or [])
+        merged["tests_added"] = already + [t for t in result.tests_added if t not in already]
+        return merged
 
     # --- the implementation gate --------------------------------------------
 

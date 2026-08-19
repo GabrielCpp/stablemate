@@ -88,6 +88,32 @@ class PlanResult(CoderResult):
     qa_stack: dict[str, Any] = {}
 
 
+class ExitConditions(CoderResult):
+    """What a turn said "done" would look like, before it started doing it.
+
+    Goal setting is only worth an agent's tokens if something checks the goal, and the
+    cheapest place to check one is Python: a claim written down in a schema is falsifiable,
+    where the same claim written into prose is a pep talk. So the envelope asks for this on
+    the turns that decide something — plan and implement — and the deterministic gate after
+    the turn compares the promise to the fact.
+
+    Nothing here is required. A turn that promises nothing is not failed for it; it simply
+    forfeits the check, and the declared gates still run. What is not allowed is promising a
+    command that then fails, or a file that was never written — that is a `FailureReport`
+    with `source: "goal"` into the same repair loop every other gate feeds.
+    """
+
+    #: The acceptance criteria this turn intends to satisfy, in the story's own words. Not
+    #: checked mechanically — carried forward to review and QA as the thing to check first.
+    criteria: list[str] = []
+    #: The commands the turn expects to be green when it is finished. Run verbatim, in the
+    #: service directory, minus any the declared gates have already run.
+    commands: list[str] = []
+    #: The files the turn expects to have touched, service-relative or repo-relative. Both
+    #: are matched leniently against the diff: a false accusation costs a whole repair lap.
+    files: list[str] = []
+
+
 class ImplResult(CoderResult):
     """`prompts/implement-plan.md` — one service layer implemented, or the blocker.
 
@@ -96,10 +122,22 @@ class ImplResult(CoderResult):
     is. The *pessimistic* half is, and that asymmetry is the point — a turn reporting it
     could not implement the plan was discarded here for the whole of this workflow's life,
     and the layer went on to lint a change nobody had written.
+
+    The three fields below are the same asymmetry applied to the optimistic half: rather
+    than believe `done`, the lane checks the turn's own account of what done would mean.
     """
 
     status: str = ""
     notes: str = ""
+
+    #: What this turn promised before it began. Checked by `check_promises` afterwards.
+    exit_conditions: ExitConditions = ExitConditions()
+    #: The test files this turn wrote or extended, service-relative. The `tdd` gate reads
+    #: this against the diff; a repo that declares no `tdd:` key never asks for it.
+    tests_added: list[str] = []
+    #: Why there is no test, when there is none. An exemption is a claim the gate weighs
+    #: against the service's declared type, not a flag that switches the gate off.
+    no_test_reason: str = ""
 
 
 class FailureReport(CoderResult):
@@ -160,6 +198,12 @@ class FixResult(CoderResult):
 
     status: str = ""
     notes: str = ""
+
+    #: Test files this repair wrote or extended, service-relative. The `tdd` gate re-runs
+    #: after the lap against the implement turn's report, which a repair turn cannot amend;
+    #: without this, a lap that adds the missing test still comes back failing the gate it
+    #: just satisfied. The flow merges these into the promise it re-checks.
+    tests_added: list[str] = []
 
 
 class OperatorResolution(CoderResult):
@@ -379,6 +423,10 @@ class GateList(CoderResult):
     gates: list[str] = []
     commands: list[str] = []
     text: str = ""
+    #: What this service declares about tests — `required`, `encouraged` or `off`. Told to
+    #: the turn for the same reason the commands are: it is the repo's rule, and a turn that
+    #: is not told it either guesses or is failed by a gate it never heard of.
+    tdd: str = "off"
 
 
 class ChangedFiles(CoderResult):
@@ -416,6 +464,7 @@ __all__ = [
     "ChangedFiles",
     "DevResult",
     "DispatchEntry",
+    "ExitConditions",
     "FailureReport",
     "FixResult",
     "ImplContext",

@@ -38,6 +38,7 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder.dev.flow import Dev
+from workhorse_workflows.coder.shared.schemas.dev import FixResult
 from workhorse_workflows.coder.shared.dev import (
     read_operator_context,
     record_plan,
@@ -232,6 +233,7 @@ class _Agent:
         fix_gate: Path | None = None,
         explode: set[str] | None = None,
         impl_blocked: int = 0,
+        promise: dict[str, Any] | None = None,
     ) -> None:
         self.docs = docs
         self.services = services if services is not None else SERVICES
@@ -243,6 +245,9 @@ class _Agent:
         self.fix_gate = fix_gate
         self.explode = explode or set()
         self.impl_blocked = impl_blocked
+        #: What the implement turn states its exit conditions are — the promise the `goal`
+        #: gate then holds it to.
+        self.promise = promise or {}
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         self.plans = 0
@@ -321,7 +326,11 @@ class _Agent:
         self.impls += 1
         if self.impls <= self.impl_blocked:
             return {"status": "blocked", "notes": "the plan names a migration nobody has run"}
-        return {"status": "done", "notes": f"implemented {data['service_path']}"}
+        return {
+            "status": "done",
+            "notes": f"implemented {data['service_path']}",
+            **self.promise,
+        }
 
     def _dev_fix(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if self.fix_gate is None:
@@ -897,6 +906,67 @@ def test_the_gate_lane_repairs_and_re_runs_until_clean(
     assert report["source"] == "lint", report
     assert report["command"] == "sh lint.sh", report
     assert report["cwd"] == str(workspace["api"]), report
+
+
+def test_a_turn_is_held_to_the_exit_conditions_it_stated(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A promise the turn made and did not keep routes into the same one repair loop.
+
+    Nothing is declared in `agents.yml` here, so every command gate is `skipped` — which is
+    the point: the `goal` gate needs no command from the repo, because its evidence is the
+    turn's own words. The promised command is really run, so the second lap is green because
+    the repair turn really made it green.
+    """
+    marker = workspace["api"] / ".goal-ok"
+    # Absolute, because every layer of this story states the same promise and only one
+    # repair turn writes the marker — a relative path would hold `web` to `api`'s repair.
+    command = f"test -f {marker}"
+    agent = _Agent(
+        docs, fix_gate=marker, promise={"exit_conditions": {"commands": [command]}}
+    )
+
+    result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["dev-fix"] == 1, agent.counts()
+    report = agent.args_for("dev-fix")[0]["report"]
+    assert report["source"] == "goal", report
+    assert report["command"] == command, report
+    assert "would be green" in report["output"]
+
+
+def test_a_turn_that_promised_nothing_is_not_held_to_anything(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The check is forfeited, not failed — a lane that punished silence would only teach it."""
+    agent = _Agent(docs)
+
+    result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["dev-fix"] == 0, agent.counts()
+
+
+def test_a_repair_lap_that_writes_the_missing_test_is_credited_with_it() -> None:
+    """The tests gate reads the implement turn's report, which a repair turn cannot amend.
+
+    Without this merge, a lap that writes exactly the test the gate asked for arrives back
+    at that gate with the same empty list and laps again until the budget escalates it.
+    """
+    promise = {"tests_added": ["handler_test.go"]}
+
+    merged = Dev._with_repair_tests(promise, FixResult(status="fixed", tests_added=["store_test.go"]))
+    unchanged = Dev._with_repair_tests(promise, FixResult(status="fixed"))
+
+    assert merged == {"tests_added": ["handler_test.go", "store_test.go"]}
+    assert unchanged is promise
 
 
 def test_a_gate_no_repair_lap_can_satisfy_never_gives_up_either(

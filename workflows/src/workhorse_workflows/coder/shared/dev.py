@@ -647,14 +647,16 @@ def declared_gates(
         gate: gate_command(gate, service, service_type, service_dir, repo_dir)
         for gate in GATE_ORDER
     }
+    tdd = tdd_mode(service, service_type, repo_dir)
     declared = {gate: cmd for gate, cmd in commands.items() if cmd}
     if not declared:
         logger.info("%s declares no gate command — nothing will be run after the turn", service)
-        return GateList(text="(nothing declared)")
+        return GateList(text="(nothing declared)", tdd=tdd)
     return GateList(
         gates=list(declared),
         commands=list(declared.values()),
         text=", ".join(f"{gate}: `{cmd}`" for gate, cmd in declared.items()),
+        tdd=tdd,
     )
 
 
@@ -741,6 +743,201 @@ def run_gate(
     )
 
 
+def _touched(promised: str, changed: list[str]) -> bool:
+    """Whether one promised path is anywhere in the diff.
+
+    Deliberately lenient in both directions: the turn may name a path relative to the
+    service while the diff is relative to its repo, or the other way round. A promise the
+    gate cannot match becomes a repair lap, and a repair lap spent on a path-prefix
+    disagreement is the most expensive way to be pedantic about one.
+    """
+    promised = promised.strip().lstrip("./")
+    if not promised:
+        return False
+    return any(
+        path == promised or path.endswith("/" + promised) or promised.endswith("/" + path)
+        for path in (p.strip().lstrip("./") for p in changed)
+    )
+
+
+@blueprint.node
+def check_promises(
+    logger: logging.Logger,
+    cwd: str = "",
+    commands: list[str] | None = None,
+    files: list[str] | None = None,
+    changed: list[str] | None = None,
+    already_run: list[str] | None = None,
+) -> GateOutcome:
+    """Hold the implement turn to the exit conditions it stated before it began.
+
+    This is what makes goal setting worth a turn's tokens. The envelope asks the turn to
+    write down what "done" is — which commands will be green, which files will have changed
+    — and this node reads that back as a claim rather than as an intention: a command it
+    promised is run, a file it promised is looked for in the diff, and a gap is a
+    `FailureReport{source: "goal"}` into the same repair loop the declared gates feed.
+
+    `already_run` is what the declared gates just ran clean, so a promise that names one of
+    them costs nothing to keep — the alternative is running the test suite twice per layer
+    to check a claim the previous node already proved.
+
+    A turn that promised nothing is `skipped`, not failed. The check is a way of believing a
+    turn less, not a second place to demand ceremony from it.
+    """
+    commands = [c.strip() for c in (commands or []) if c and c.strip()]
+    files = [f for f in (files or []) if f and f.strip()]
+    if not commands and not files:
+        logger.info("the turn stated no exit conditions — nothing to hold it to")
+        return GateOutcome(gate="goal", status="skipped", reason="no exit conditions stated")
+
+    service_dir = Path(cwd).expanduser() if cwd else None
+    if service_dir is None or not service_dir.is_dir():
+        return GateOutcome(gate="goal", status="skipped", reason="no service directory")
+
+    proven = {c.strip() for c in (already_run or []) if c and c.strip()}
+    for command in commands:
+        if command in proven:
+            logger.info("promised `%s` was already run clean by a declared gate", command)
+            continue
+        try:
+            result = subprocess.run(
+                command,
+                cwd=service_dir,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=GATE_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            return GateOutcome(
+                gate="goal",
+                status="dirty",
+                command=command,
+                output=f"promised command timed out after {GATE_TIMEOUT}s",
+                reason="timeout",
+            )
+        except (OSError, ValueError) as exc:
+            # A command that will not launch is the turn's own claim about its stack, and
+            # this node is not the place to adjudicate it — the declared gates are.
+            # `ValueError` is the same class of thing one layer earlier: a string the shell
+            # was never going to be handed, from a model that free-typed it.
+            logger.info("promised command '%s' could not be launched: %s", command, exc)
+            continue
+        if result.returncode != 0:
+            output = (result.stdout + result.stderr).strip()
+            if len(output) > MAX_GATE_OUTPUT:
+                output = "…(truncated)…\n" + output[-MAX_GATE_OUTPUT:]
+            logger.warning("promised `%s` is not green (exit %s)", command, result.returncode)
+            return GateOutcome(
+                gate="goal",
+                status="dirty",
+                command=command,
+                output=(
+                    f"You stated `{command}` would be green when you were done. "
+                    f"It exits {result.returncode}.\n\n{output}"
+                ),
+                reason="a promised command is not green",
+            )
+
+    missing = [f for f in files if not _touched(f, changed or [])]
+    if missing:
+        logger.warning("%d promised file(s) are not in the diff", len(missing))
+        return GateOutcome(
+            gate="goal",
+            status="dirty",
+            output=(
+                "You stated you would change these files. Nothing in the diff matches "
+                "them:\n" + "\n".join(f"- {path}" for path in missing) + "\n\n"
+                "Either make the change you described, or say why it turned out to be "
+                "unnecessary."
+            ),
+            reason="a promised file was never touched",
+        )
+    return GateOutcome(gate="goal", status="clean", reason="the stated exit conditions hold")
+
+
+#: Service types for which "no test" is an acceptable answer rather than a defect. A
+#: directory of prose or of configuration has nothing a test could assert about it, and a
+#: gate that failed those would only teach the escape hatch to everybody else.
+TDD_EXEMPT_TYPES = ("docs", "config")
+
+
+def tdd_mode(service: str = "", service_type: str = "", repo_dir: str = "") -> str:
+    """What this service declares about tests: `required`, `encouraged` or `off`.
+
+    Off by default, and that is the invariant rather than an opinion about TDD: whether a
+    failing test comes first is a property of the service — a stack with no harness yet, an
+    infrastructure directory, a docs tree — and the repo is what knows it. A workflow that
+    defaulted to `required` would be imposing the belief this key exists to let the repo
+    hold.
+    """
+    declared = service_declaration(service, service_type, repo_dir).get("tdd")
+    mode = str(declared or "").strip().lower()
+    return mode if mode in ("required", "encouraged", "off") else "off"
+
+
+@blueprint.node
+def tdd_gate(
+    logger: logging.Logger,
+    cwd: str = "",
+    service: str = "",
+    service_type: str = "",
+    tests_added: list[str] | None = None,
+    no_test_reason: str = "",
+    changed: list[str] | None = None,
+    repo_dir: str = "",
+) -> GateOutcome:
+    """Check that a change to a service that requires tests actually came with one.
+
+    The argument for TDD with an agent is not that red-green is virtuous; it is that a
+    failing test is a concrete, machine-checked target, and that without one "green build"
+    and "build that tests nothing" are the same reading. That argument is adopted here as a
+    *mechanism*: as prose ("write the test first — MANDATORY") it is exactly the scar tissue
+    this lane is shedding, because the model half-complies and nothing can tell.
+
+    What is checked is stack-agnostic on purpose. This node does not know what a test file
+    looks like in any language — it reads the paths the turn itself reported under
+    `tests_added` and asserts they are really in the diff. A repo's own `test` command,
+    declared in `agents.yml` and run by `run_gate`, is what decides whether those tests
+    pass; this decides only whether they exist.
+
+    An exemption is a claim, not a flag: `no_test_reason` clears the gate only for a service
+    whose declared type has nothing to test, and is otherwise quoted back as the failure.
+    """
+    mode = tdd_mode(service, service_type, repo_dir)
+    if mode == "off":
+        return GateOutcome(gate="tdd", status="skipped", reason="this service declares no tdd key")
+
+    reported = [t.strip() for t in (tests_added or []) if t and t.strip()]
+    changed = changed or []
+    if reported:
+        unwritten = [t for t in reported if not _touched(t, changed)]
+        if not unwritten:
+            return GateOutcome(gate="tdd", status="clean", reason=f"{len(reported)} test file(s)")
+        problem = (
+            "You reported these test files, and the diff does not contain them:\n"
+            + "\n".join(f"- {path}" for path in unwritten)
+        )
+    elif no_test_reason and service_type in TDD_EXEMPT_TYPES:
+        logger.info("%s is a %s service — accepting '%s'", service, service_type, no_test_reason)
+        return GateOutcome(gate="tdd", status="clean", reason="exempt service type")
+    else:
+        problem = (
+            "No test covers this change. Add one that fails without it, then make it pass."
+            + (f"\n\nYou said: {no_test_reason}" if no_test_reason else "")
+        )
+
+    if mode == "encouraged":
+        # Logged, not enforced: `encouraged` is what a repo says while its harness is still
+        # being built, and failing a story on it would make the honest answer expensive.
+        logger.warning("tdd (encouraged) missed in %s: %s", service or cwd, problem)
+        return GateOutcome(gate="tdd", status="clean", reason="tdd encouraged — miss logged")
+    logger.warning("tdd (required) not satisfied in %s", service or cwd)
+    return GateOutcome(
+        gate="tdd", status="dirty", output=problem, reason="this service requires tests"
+    )
+
+
 @blueprint.node
 def changed_files(logger: logging.Logger, cwd: str = "", story_slug: str = "") -> ChangedFiles:
     """Which files this story has already written in one service checkout.
@@ -811,6 +1008,7 @@ def read_operator_context(logger: logging.Logger, story_path: str = "") -> Opera
 __all__ = [
     "branch_code_repos",
     "changed_files",
+    "check_promises",
     "declared_gates",
     "gate_command",
     "plan_document",
@@ -821,4 +1019,6 @@ __all__ = [
     "run_gate",
     "select_next_layer",
     "service_declaration",
+    "tdd_gate",
+    "tdd_mode",
 ]
