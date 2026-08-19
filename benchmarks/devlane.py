@@ -43,7 +43,7 @@ CHARS_PER_TOKEN = 4
 #: is every other turn; a lap is any turn on one of these plus any *repeat* of a node
 #: that already ran, since the second `implement-plan` in a run is rework by definition.
 REPAIR_NODES = frozenset(
-    {"fix-lint", "fix-verify", "refine-plan", "rework-story", "resolve-operator"}
+    {"dev-fix", "fix-verify", "refine-plan", "rework-story", "resolve-operator"}
 )
 
 
