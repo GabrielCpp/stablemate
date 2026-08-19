@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from farrier import doctor
 from farrier import layers as _layers
 from farrier import pipx
 from farrier._vendor.stablemate_core.config import (
@@ -639,6 +640,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # version
+    # doctor
+    doctor_p = sub.add_parser(
+        "doctor",
+        help="Report what a workflow will be unable to do with this repo's agents.yml",
+    )
+    doctor_p.add_argument(
+        "--repo",
+        type=Path,
+        default=Path.cwd(),
+        help="Repository root to diagnose (default: cwd)",
+    )
+
     sub.add_parser("version", help="Print the installed farrier version")
 
     return parser
@@ -737,6 +750,7 @@ def main(argv: list[str] | None = None) -> int:
         "scaffold",
         "workflows",
         "library",
+        "doctor",
     }
     if not argv or argv[0] in ("-h", "--help"):
         parser.print_help()
@@ -767,6 +781,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "library":
         return _run_library(args)
+
+    if args.command == "doctor":
+        return doctor.report(args.repo)
 
     return _run_install(args)
 

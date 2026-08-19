@@ -179,3 +179,25 @@ workflow:
   #   successGate:
   #     apiPath: api
   #     apiCommand: make test
+
+
+# ---------------------------------------------------------------------------
+# services — the deterministic gates a workflow runs against a service, keyed by
+# the service's name or (as a fallback) its type. farrier passes this through
+# untouched; the coder workflow's dev lane reads it, and it is the ONLY place
+# the commands come from.
+#
+# A gate a service does not declare is skipped, never guessed at: a command the
+# workflow invented would fail a story on the workflow's assumption about your
+# stack rather than on your code. `farrier doctor` reports which gates a repo
+# has and has not adopted.
+#
+# The name key beats the type key, so two services of one type in a monorepo can
+# run different commands.
+# ---------------------------------------------------------------------------
+# services:
+#   go:                       # by type — every Go service in this repo
+#     lint: golangci-lint run
+#     test: go test ./...
+#   api-service:              # by name — wins over the type above
+#     test: go test -tags integration ./...
