@@ -2,6 +2,9 @@
 name: ostler
 description: "ostler reference — the system-of-record for a repo's docs/ knowledge graph (epics, stories, seeds, features as OKF Concepts, plus the OKF UI profile's surface/element/behavior/member/concept types — nested and typed): the CLI command interface AND the `from ostler import Ostler` Python API workflow scripts use in-process, epic.md grammar, coverage model, the scaffold→fmt→doctor UI loop, `ostler graph` queries, and when a workflow agent should call it."
 tags: [cli, python, docs]
+hooks:
+  - stage: pre-commit
+    run: scripts/check_staged_files.py
 ---
 
 # Ostler

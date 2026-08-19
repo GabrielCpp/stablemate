@@ -39,6 +39,8 @@ import yaml
 from markdown_it import MarkdownIt
 from mdit_py_plugins.front_matter import front_matter_plugin
 
+from farrier.skill_hooks import findings as hook_findings
+
 __all__ = ["Finding", "check_library", "check_text", "format_findings"]
 
 _MD = MarkdownIt("commonmark").use(front_matter_plugin)
@@ -225,6 +227,19 @@ def check_text(text: str, path: Path, *, require_tags: bool = True) -> list[Find
             f"tag `{written}` is not a string to YAML, so it installs as `{installed}` — "
             f"a skill that answers find_by_tags({installed!r}) and never "
             f"find_by_tags({written!r}). Quote it.")
+
+    # A `hooks:` block is a claim that farrier will run one of this skill's scripts at
+    # every commit in every repo that selects it. It is checked here rather than at
+    # install because the gate has to fail on the machine that *authors* the library —
+    # by install time the malformed entry is already shipped, and the shape farrier
+    # cannot read is the one it treats as no hooks at all.
+    if data.get("hooks") is not None and path.name != "SKILL.md":
+        add("error", "hooks-not-a-skill",
+            "only a SKILL.md may declare `hooks:` — a prompt bundles no scripts, so "
+            "there is nothing for farrier to install and run.")
+    else:
+        for level, code, message in hook_findings(data, path.parent):
+            add(level, code, message)
 
     if require_tags and path.name == "SKILL.md" and not data.get("tags"):
         add("warning", "untagged",
