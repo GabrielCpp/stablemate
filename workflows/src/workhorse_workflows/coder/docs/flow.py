@@ -66,6 +66,11 @@ from workhorse_workflows.coder.shared.docs import (
     verify_story_documentation,
 )
 from workhorse_workflows.coder.shared.escalation import escalation
+from workhorse_workflows.coder.shared.resolution import (
+    RESOLVER_POWER,
+    answered,
+    resolver_args,
+)
 from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.story import prepare_story, resolve_workspace_dirs
 from workhorse_workflows.coder.shared.schemas.docs import (
@@ -847,9 +852,12 @@ class Docs(Workflow):
     ) -> Continue | Done:
         """Stand in for the author who wrote the specs, and ratify what the book contradicts.
 
-        The same resolver `qa` and `dev` reach, on `block_kind="docs"`: it investigates, makes
-        the call, records it in `context.md` and — this is the part specific to a docs block —
-        amends the authored documents so the decision is the product's, not this run's.
+        The same resolver `qa`, `dev` and `review` reach, on `block_kind="docs"`, and this
+        is the lane whose answering arm was never removed — the port kept it because a docs
+        block is so often a question the documents themselves already answer. What the
+        resolver may answer *from* is now written down (`shared/resolution.py`): a decision
+        record, a repo rule, an installed skill, an acceptance criterion. Having done so it
+        amends the authored documents, so the decision is the product's and not this run's.
 
         An escalation ends the flow blocked rather than waiting, for the reason
         `Qa.resolve_operator` gives: the story drain is single-threaded, so a parked story
@@ -860,19 +868,16 @@ class Docs(Workflow):
         result = self.agent(
             "prompts/resolve-operator.md",
             returns=OperatorResolution,
-            # high, and unbounded: the same reasoning `qa` documents — standing in for the
+            # smart, and unbounded: the same reasoning `qa` documents — standing in for the
             # accountable party, with full tool access, on the flow's costliest decision.
-            power="high",
+            power=RESOLVER_POWER,
             timeout=UNBOUNDED,
             add_dirs=self._dirs(),
-            args={
-                "story_path": self.ctx.story_path,
-                "spec_dir": self.ctx.spec_dir,
-                "block_kind": "docs",
-                "block_notes": notes,
-            },
+            args=resolver_args(
+                self, block_kind="docs", notes=notes, docs_path=self.docs_path
+            ),
         )
-        if result.decision != "answered":
+        if not answered(self, result, "docs"):
             self.logger.info("the documentation resolver escalated — blocking the story")
             return self._ends(DocsResult(status="blocked", notes=notes))
         return Continue(

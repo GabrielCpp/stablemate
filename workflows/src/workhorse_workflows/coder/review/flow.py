@@ -54,6 +54,11 @@ from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.dev import read_operator_context
 from workhorse_workflows.coder.shared.escalation import escalation
+from workhorse_workflows.coder.shared.resolution import (
+    RESOLVER_POWER,
+    answered,
+    resolver_args,
+)
 from workhorse_workflows.coder.shared.review import (
     check_feedback,
     clear_review_resolution,
@@ -429,30 +434,38 @@ class Review(Workflow):
         code_reuse: CodeReuseResult,
         review_blocks: int = 0,
         where: str = "the implementation-review stage",
-    ) -> Await:
-        """Investigate a review block, then park for the operator.
+    ) -> Continue | Await:
+        """Resolve a review block from what is already written down, or park for the operator.
 
         `resolve_review` + the `await_operator_review` that followed it unconditionally; see
-        the module docstring. The resolver never decides on the operator's behalf — it only
-        investigates and writes findings into the story's `context.md`, so this always ends
-        in an `Await`.
+        the module docstring. A review block is the one most often already decided: an
+        unsatisfiable finding is frequently a "which convention holds here" question, and
+        the convention is in an installed skill. When the resolver can quote it, it writes
+        the answer into `context.md` and the flow continues to `read_operator`, which reads
+        that file whoever wrote it. When it cannot, this parks, as it always did.
         """
         self.logger.info("resolving the review block", extra={"activity": True})
         result = self.agent(
             "prompts/resolve-operator.md",
             returns=OperatorResolution,
-            # high, and unbounded: standing in for a human, with full tool access, on a
+            # smart, and unbounded: standing in for a human, with full tool access, on a
             # finding nobody else could settle.
-            power="high",
+            power=RESOLVER_POWER,
             timeout=UNBOUNDED,
             add_dirs=self._dirs(),
-            args={
-                "story_path": self.ctx.story_path,
-                "spec_dir": self.ctx.spec_dir,
-                "block_kind": "review",
-                "block_notes": notes,
-            },
+            args=resolver_args(
+                self, block_kind="review", notes=notes, docs_path=self.docs_path
+            ),
         )
+        if answered(self, result, "review"):
+            return Continue(
+                result,
+                self.read_operator,
+                notes=notes,
+                code_review=code_review,
+                code_reuse=code_reuse,
+                review_blocks=review_blocks + 1,
+            )
         # See `dev.flow.resolve_plan`: the escalating resolver's note is already in this
         # file and `Await` writes over it, so the body handed here carries that note
         # forward along with what the resolver tried.

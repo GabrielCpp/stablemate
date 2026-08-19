@@ -157,24 +157,37 @@ class FixLintResult(CoderResult):
 
 
 class OperatorResolution(CoderResult):
-    """`prompts/resolve-operator.md` — the diagnostic investigator's report on a block.
+    """`prompts/resolve-operator.md` — the resolver's report on a block.
 
-    The resolver never decides on the operator's behalf; it only investigates a block
-    and writes findings into the context file, so the flow always parks with `Await`
-    after this returns. `decision` is a relic of the old auto-resolve contract kept for
-    the field's shape rather than read; the two live fields are `summary` and `tried`.
     Note the field is `summary` here and `notes` in `author`'s copy of this model: the
     two prompts genuinely ask for different key names, and the port follows each prompt
     rather than unifying a name the model would then not emit.
     """
 
+    #: `answered` or `escalated`, and the only field a flow branches on. It stopped being
+    #: a relic when the resolver was allowed to settle a block it could ground: `answered`
+    #: means the answer is already written into `context.md` and the flow continues
+    #: straight to its consume state, anything else means the flow parks for a human.
+    #: Defaulted to `""` — an unparseable or truncated turn escalates, which is the arm
+    #: that costs a round trip rather than the one that acts.
     decision: str = ""
+
     summary: str = ""
 
-    #: What the resolver attempted and ruled out before it escalated, one line each. It is
-    #: the diagnosis so far, and without it the human who arrives at the gate re-runs every
-    #: dead end the resolver already paid for. Defaulted and never required: an older
-    #: transcript parses with it absent.
+    #: One line per source that determined an `answered` decision — the file, and the rule
+    #: quoted from it. It is what makes an auto-resolution auditable: the operator reading
+    #: the log checks the citation rather than redoing the investigation. Empty on an
+    #: escalation, and empty on an `answered` turn is the resolver failing its own contract.
+    grounded: list[str] = []
+
+    #: The `docs/decisions/` slug the resolver wrote or cited — see `shared.paths.decisions_dir`.
+    #: Carried for the log, not branched on.
+    record: str = ""
+
+    #: What the resolver attempted and ruled out, one line each. It is the diagnosis so
+    #: far, and without it the human who arrives at the gate re-runs every dead end the
+    #: resolver already paid for. Defaulted and never required: an older transcript parses
+    #: with it absent.
     tried: list[str] = []
 
 

@@ -190,6 +190,7 @@ class _Agent:
         settle: bool = False,
         evidence_after: int = 1,
         explode: set[str] | None = None,
+        resolver_answers: bool = False,
     ) -> None:
         self.docs = docs
         self.needs_changes = needs_changes
@@ -197,6 +198,9 @@ class _Agent:
         self.apply_status = apply_status
         self.settle = settle
         self.evidence_after = evidence_after
+        #: Whether the resolver settles the block itself rather than parking on it — the
+        #: `answered` arm, which writes the operator's answer where a human would have.
+        self.resolver_answers = resolver_answers
         self.explode = explode or set()
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
@@ -274,6 +278,16 @@ class _Agent:
         return {"status": self.apply_status, "notes": f"apply pass {nth}"}
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        if self.resolver_answers:
+            (self.docs / CONTEXT_REL).write_text(
+                "STATUS: ANSWERED\n\nDrop the retry; log it instead.\n", encoding="utf-8"
+            )
+            return {
+                "decision": "answered",
+                "summary": "the retry policy is settled by the installed go-service skill",
+                "grounded": [".claude/skills/go-service/SKILL.md:31 — 'never retry a write'"],
+                "record": "do-writes-retry",
+            }
         self._escalate()
         return {
             "decision": "escalated",
@@ -510,6 +524,31 @@ def test_a_reviewer_that_cannot_reach_a_verdict_escalates_instead_of_reworking(
     assert agent.counts()["apply-review"] == 1, agent.counts()
     (gate,) = seen
     assert "the story's acceptance criteria contradict" in gate, gate
+
+
+def test_a_resolver_that_grounds_its_answer_settles_a_review_block(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A review block is the one most often already answered by an installed skill.
+
+    "Should this retry?" is a convention the repo has written down, not a product call, so
+    the resolver quotes the skill and applies it. Nothing parks — patching `wait_for_answer`
+    to fail is what proves the flow never reached a human.
+    """
+    agent = _Agent(docs, review_blocked=1, resolver_answers=True)
+
+    def never(path: Path, **kwargs: Any) -> None:
+        raise AssertionError(f"a grounded answer must not park on {path}")
+
+    with patch.object(pyflow_driver, "wait_for_answer", never):
+        result = drive_flow(Review(story=STORY), env(), agent)
+
+    assert result.status == "approved", result
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
+    assert "STATUS: CONSUMED" in (docs / CONTEXT_REL).read_text()
 
 
 def test_repeated_operator_cycles_never_give_up(

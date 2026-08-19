@@ -15,14 +15,16 @@ counter nodes, which disappear entirely, because a counter is a state parameter 
 left is the work: four agent turns (two of them the same prompt at three call sites), five
 deterministic nodes, and the operator gate.
 
-**The operator gate never decides on the operator's behalf, exactly as `author` and
-`surveyor` settled it.** `resolve_plan` below investigates and always `Await`s — it does
-not read a `decision` field to choose between looping and waiting, because there is no
-loop it could choose instead: a block always parks. `_gate_plan` decides only whether the
-resolver gets a turn first (`plan_blocks` below `MAX_PLAN_BLOCKS`) or the block goes
-straight to a human — never whether to wait at all. The half of `await_operator.py` that
-is not about waiting — read the answer, take its `SCOPE:`, flip `ANSWERED` to `CONSUMED`
-— is `read_operator_context`, a node.
+**The operator gate applies decisions; it does not make them.** `resolve_plan` below
+reads a `decision` field and has two arms: `answered`, when it can quote the record, rule
+or acceptance criterion that already settles the question, and everything else, which
+`Await`s. The distinction is whose call it is, not how confident the resolver feels —
+`shared/resolution.py` has the whole argument. `_gate_plan` decides something narrower and
+unchanged: whether the resolver gets a turn at all (`plan_blocks` below
+`MAX_PLAN_BLOCKS`), or the block goes straight to a human. The half of `await_operator.py`
+that is not about waiting — read the answer, take its `SCOPE:`, flip `ANSWERED` to
+`CONSUMED` — is `read_operator_context`, a node, and it is the consume state *both* arms
+land on, because a resolver that answers writes the same file a human would have.
 
 Divergences from the YAML, all deliberate:
 
@@ -65,8 +67,10 @@ Divergences from the YAML, all deliberate:
   plan stage whose `plan_rework` has been reset to 0 (see its docstring: the YAML
   re-emitted `plan_rework_count: 0`, and that reset is deliberate), so the same three
   reworks are spent again. Both laps run the unbounded-timeout resolver at
-  `power="high"`. `plan_blocks` is therefore threaded through the reuse and path gates
-  too, not just the operator states.
+  `power=RESOLVER_POWER`. `plan_blocks` is therefore threaded through the reuse and path
+  gates too, not just the operator states — and it is spent on a resolver *answer* as
+  well as on an escalation, so a resolver that keeps answering the same block keeps
+  approaching the human arm rather than laping behind it forever.
 """
 from __future__ import annotations
 
@@ -85,6 +89,11 @@ from workhorse_workflows.coder.shared.dev import (
     validate_plan_context,
 )
 from workhorse_workflows.coder.shared.escalation import escalation
+from workhorse_workflows.coder.shared.resolution import (
+    RESOLVER_POWER,
+    answered,
+    resolver_args,
+)
 from workhorse_workflows.coder.shared.red_gate import arm_red_gate, run_red_gate
 from workhorse_workflows.coder.shared.story import (
     prepare_story,
@@ -276,30 +285,39 @@ class Dev(Workflow):
             )
         return Continue(result, self.resolve_plan, notes=notes, plan_blocks=plan_blocks)
 
-    def resolve_plan(self, notes: str, plan_blocks: int = 0) -> Await:
-        """Investigate a plan block, then park for the operator.
+    def resolve_plan(self, notes: str, plan_blocks: int = 0) -> Continue | Await:
+        """Resolve a plan block from what is already written down, or park for the operator.
 
         `resolve_plan` + the `await_operator` that followed it unconditionally; see the
-        module docstring. The resolver never decides on the operator's behalf — it only
-        investigates and writes findings into the story's `context.md`, so this always
-        ends in an `Await`.
+        module docstring. It no longer follows it unconditionally: a resolver that can
+        quote the record, rule or acceptance criterion deciding this question writes the
+        answer into `context.md` itself and the flow goes straight to `read_operator`,
+        which reads that file either way and cannot tell — nor need to — whether a human
+        or the resolver wrote what is in it. See `shared.resolution` for why that is a
+        narrowing of who decides rather than a widening.
+
+        `plan_blocks` is spent on both arms. An answered block still counts, because the
+        budget's job is to stop this lane laping on a question it keeps failing to settle,
+        and a resolver answering the same block three times is exactly that lap — the
+        third one lands on `_gate_plan`'s human arm, which is the point.
         """
         self.logger.info("resolving the plan block", extra={"activity": True})
         result = self.agent(
             "prompts/resolve-operator.md",
             returns=OperatorResolution,
-            # high, and unbounded: it is investigating a block, with full tool access,
+            # smart, and unbounded: it is investigating a block, with full tool access,
             # on the highest-stakes decision in the flow.
-            power="high",
+            power=RESOLVER_POWER,
             timeout=UNBOUNDED,
             add_dirs=self._dirs(),
-            args={
-                "story_path": self.ctx.story_path,
-                "spec_dir": self.ctx.spec_dir,
-                "block_kind": "plan",
-                "block_notes": notes,
-            },
+            args=resolver_args(
+                self, block_kind="plan", notes=notes, docs_path=self.docs_path
+            ),
         )
+        if answered(self, result, "plan"):
+            return Continue(
+                result, self.read_operator, notes=notes, plan_blocks=plan_blocks + 1
+            )
         # The resolver has already written `STATUS: AWAITING_OPERATOR` into this very
         # file, with what it tried and what the human must supply — and `Await` writes
         # its `questions` with `write_text`, so anything handed here replaces that note.
@@ -884,28 +902,30 @@ class Dev(Workflow):
 
     def resolve_impl(
         self, notes: str, index: int, where: str, impl_blocks: int = 0
-    ) -> Await:
-        """Investigate an implementation block, then park for the operator.
+    ) -> Continue | Await:
+        """Resolve an implementation block from the record, or park for the operator.
 
-        The same shape as `resolve_plan`, and for the same reason it always ends in an
-        `Await`: the resolver describes the block, it does not decide it.
+        The same shape as `resolve_plan`, and the same two arms for the same reason: a
+        grounded answer re-enters the layer through `read_operator_impl`, an ungrounded
+        one parks. `impl_blocks` is spent either way.
         """
         self.logger.info("resolving the implementation block", extra={"activity": True})
         result = self.agent(
             "prompts/resolve-operator.md",
             returns=OperatorResolution,
-            # high, and unbounded: see `resolve_plan` — it is investigating a block with
+            # smart, and unbounded: see `resolve_plan` — it is investigating a block with
             # full tool access, standing in for the person who would otherwise be woken.
-            power="high",
+            power=RESOLVER_POWER,
             timeout=UNBOUNDED,
             add_dirs=self._dirs(),
-            args={
-                "story_path": self.ctx.story_path,
-                "spec_dir": self.ctx.spec_dir,
-                "block_kind": "implementation",
-                "block_notes": notes,
-            },
+            args=resolver_args(
+                self, block_kind="implementation", notes=notes, docs_path=self.docs_path
+            ),
         )
+        if answered(self, result, "implementation"):
+            return Continue(
+                result, self.read_operator_impl, index=index, impl_blocks=impl_blocks + 1
+            )
         gate = self._escalation(
             notes, impl_blocks, result, block_kind="implementation", where=where
         )

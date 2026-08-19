@@ -669,7 +669,12 @@ class _Agent:
                 "tried": list(RESOLVER_TRIED),
             }
         self._answer()
-        return {"decision": "answered", "summary": "use the staging bucket"}
+        return {
+            "decision": "answered",
+            "summary": "use the staging bucket",
+            "grounded": ["docs/decisions/which-bucket.md:3 — 'QA writes go to the staging bucket'"],
+            "record": "which-bucket",
+        }
 
     def _answer(self) -> None:
         """Write the answer where `read_operator_context` reads it back out of."""
@@ -943,7 +948,7 @@ def test_an_epic_scoped_answer_hands_the_story_back_to_replan(
 ) -> None:
     """No amount of QA fixing reaches a wrong premise, so the parent re-derives the epic."""
     ostler(context_invalid=1)
-    agent = _Agent(docs, repair="blocked")
+    agent = _Agent(docs, repair="blocked", escalate=True)
     seen: list[str] = []
 
     with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, scope="epic")):
@@ -1521,7 +1526,7 @@ def test_a_setup_fix_that_changes_nothing_is_not_asked_a_second_time(
     """
     ostler(blocked_problems=["target 'web' requires the Playwright Python package"])
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
-    agent = _Agent(docs, setup="fixed")
+    agent = _Agent(docs, setup="fixed", escalate=True)
     seen: list[str] = []
 
     with (
@@ -1557,7 +1562,7 @@ def test_a_packet_that_stays_unmappable_bounds_the_operator_gate(
     """
     ostler(context_invalid=99)
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
-    agent = _Agent(docs, repair="blocked")
+    agent = _Agent(docs, repair="blocked", escalate=True)
     seen: list[str] = []
 
     with (
@@ -1567,11 +1572,13 @@ def test_a_packet_that_stays_unmappable_bounds_the_operator_gate(
         drive_flow(Qa(story=STORY), env(), agent)
 
     counts = agent.counts()
-    assert counts["resolve-operator"] >= Qa.MAX_QA_REWORKS, counts
     assert counts["apply-qa-fixes"] >= Qa.MAX_QA_REWORKS, counts
+    # The resolver is what `MAX_QA_BLOCKS` bounds — every gate lap past it goes straight to a
+    # person, which is why the escalations below keep coming while this number stops.
+    assert counts["resolve-operator"] == Qa.MAX_QA_BLOCKS, counts
     # `context_rework` never moves — the packet never gets repaired — so the context loop's
     # own repair attempts plateau, unlike the unbounded gate/apply pair above.
-    assert counts["repair-qa-context"] < counts["resolve-operator"], counts
+    assert counts["repair-qa-context"] < counts["apply-qa-fixes"], counts
     assert len(seen) > 1, "the identical block must escalate more than once"
 
 
@@ -1617,14 +1624,44 @@ def test_a_fixer_that_reports_blocked_reaches_the_operator(
     assert counts["qa-story"] == 1, counts
     assert counts["plan-qa"] + counts["repair-qa-plan"] == 1, counts
     # One gate lap per refusing fix lap, unboundedly: an answer that never actually unblocks
-    # the fixer just earns the next escalation.
-    assert counts["resolve-operator"] == counts["apply-qa-fixes"], counts
-    assert counts["resolve-operator"] > 1, counts
+    # the fixer just earns the next escalation. The *resolver* is what stops — past
+    # `MAX_QA_BLOCKS` the gate spends no more turns on it and asks a person directly.
+    assert len(seen) == counts["apply-qa-fixes"], counts
+    assert counts["resolve-operator"] == Qa.MAX_QA_BLOCKS, counts
     # Each gate is the composed escalation body, numbered, carrying the resolver's note.
     assert [f"**Escalation #{n} " in body for n, body in enumerate(seen, 1)] == [
         True
     ] * len(seen), seen
-    assert all(ESCALATION_NOTE.strip() in body for body in seen), seen
+    # Only while the resolver still gets a turn: past `MAX_QA_BLOCKS` the gate composes the
+    # body without one, so there is no resolver note in it to carry.
+    assert all(ESCALATION_NOTE.strip() in body for body in seen[: Qa.MAX_QA_BLOCKS]), seen
+
+
+def test_a_resolver_that_grounds_its_answer_settles_a_qa_block(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The `answered` arm, which lands on the same `read_operator` an escalation does.
+
+    What the resolver may answer is narrow — see `coder/shared/resolution.py` — and narrower
+    still here, because in QA it is the interested party: it may apply a written decision
+    about the product, never one about its own evidence. What this proves is the mechanics:
+    an answer is consumed exactly where a human's would be, and nobody is woken.
+    """
+    ostler(context_invalid=1)
+    agent = _Agent(docs, repair="blocked")
+
+    def never(path: Path, **kwargs: Any) -> None:
+        raise AssertionError(f"a grounded answer must not park on {path}")
+
+    with patch.object(pyflow_driver, "wait_for_answer", never):
+        result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
+    assert "STATUS: CONSUMED" in (docs / CONTEXT_REL).read_text()
 
 
 def test_an_escalating_resolver_hands_the_block_to_a_person(
@@ -1759,7 +1796,7 @@ def test_a_fix_that_leaves_the_run_failing_identically_is_not_repeated(
     identical laps.
     """
     ostler(fail_runs=99, scenarios=(_STUCK,))
-    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"))
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
     seen: list[str] = []
 
     with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
@@ -2010,7 +2047,7 @@ def test_the_operator_is_asked_again_after_a_guided_lap_that_does_not_clear_the_
     """
     ostler(context_invalid=9)
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
-    agent = _Agent(docs, repair="repaired")
+    agent = _Agent(docs, repair="repaired", escalate=True)
     seen: list[str] = []
 
     with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
@@ -2022,8 +2059,9 @@ def test_the_operator_is_asked_again_after_a_guided_lap_that_does_not_clear_the_
     # count finally runs out and the run passes. Every one of those is a real ask, not a
     # give-up.
     assert result.status == "passed", result
-    assert agent.counts()["resolve-operator"] > 1, agent.counts()
-    assert len(seen) == agent.counts()["resolve-operator"], seen
+    # Every lap is a real ask; only the first `MAX_QA_BLOCKS` of them buy a resolver turn.
+    assert agent.counts()["resolve-operator"] == Qa.MAX_QA_BLOCKS, agent.counts()
+    assert len(seen) >= agent.counts()["resolve-operator"], seen
 
 
 def test_a_human_operator_mode_still_waits_on_a_spent_budget(
@@ -2499,7 +2537,7 @@ def test_a_journey_suite_that_stays_red_falls_into_the_qa_fix_loop(
     """`mark-regression-unresolved.py`: three fix attempts, then it joins the ordinary QA-fix loop."""
     ostler()
     monkeypatch.setattr(regression_nodes, "_run", _Suite(fail_runs=99))
-    agent = _Agent(docs)
+    agent = _Agent(docs, escalate=True)
     seen: list[str] = []
 
     with (

@@ -79,6 +79,11 @@ from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
 from workhorse_workflows.coder.shared.docs import detect_okf_docs
 from workhorse_workflows.coder.shared.escalation import escalation
+from workhorse_workflows.coder.shared.resolution import (
+    RESOLVER_POWER,
+    answered,
+    resolver_args,
+)
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 from workhorse_workflows.coder.qa.nodes.evidence import verify_qa_evidence
 from workhorse_workflows.coder.qa.nodes.hygiene import check_sentinel_ids, flush_root_screenshots
@@ -374,6 +379,17 @@ class Qa(Workflow):
     #: inside the range where a story is still converging.
     MAX_QA_REWORKS: ClassVar[int] = 8
     MAX_CONTEXT_REWORKS: ClassVar[int] = 3
+    #: Trips through the gate that get a resolver turn before every further block goes
+    #: straight to a human — the same shape `dev`'s `MAX_PLAN_BLOCKS` and `review`'s
+    #: `MAX_REVIEW_BLOCKS` have, and it became load-bearing the moment the resolver was
+    #: allowed to *answer*. An escalating resolver bounds itself: the `Await` underneath it
+    #: is what ends the lap. An answering one hands the flow straight back to
+    #: `read_operator`, so a block whose answer does not clear the underlying failure
+    #: returns to this gate unchanged and is answered again, forever, with no human ever
+    #: reached. This is not a cap on how many times QA may block — there is none, and the
+    #: budget is spent on an answer exactly as it is on an escalation, so a resolver that
+    #: keeps answering the same block walks toward a person rather than lapping behind one.
+    MAX_QA_BLOCKS: ClassVar[int] = 3
     #: The two QA-plan budgets are deliberately separate. `MAX_PLAN_REWORKS` bounds the
     #: gates that judge the plan (the post-run assessment and the audit);
     #: `MAX_PLAN_VALIDATION_REWORKS` bounds repairs of a `qa_plan.py` that does not import.
@@ -1551,34 +1567,38 @@ class Qa(Workflow):
 
     # ── the operator gate ─────────────────────────────────────────────────────────────
 
-    def resolve_operator(self, loop: QaLoop) -> Await:
-        """Diagnose a QA block, then park the run for a human — never decide on their behalf.
+    def resolve_operator(self, loop: QaLoop) -> Continue | Await:
+        """Resolve a QA block from what is already written down, or park the run for a human.
 
-        The resolver may investigate with full tool access, but it cannot answer the block
-        itself and cannot decide that the story is unrecoverable: those are calls only the
-        human who reads the escalation gets to make. A workflow does not give up, it blocks —
-        so every path out of here is the same `Await`, carrying whatever the resolver found.
+        The narrowest of the four lanes, deliberately. The resolver may answer a QA block
+        the way it answers any other — by quoting the decision record, rule or acceptance
+        criterion that settles it — but the resolutions *in its own favour* stay forbidden
+        whatever it can cite: it may not narrow the plan's `covers:` to make a gap
+        uncovered-and-fine, stamp the story's status, edit `qa-evidence.json`, or offer a
+        test suite as evidence about the product. Those are the ones this loop exists to
+        keep out of its hands, and the prompt names them. It also still cannot decide the
+        story is unrecoverable — a workflow does not give up, it blocks.
 
-        `resolve_qa` + the `await_operator_qa` that followed it, folded into one turn because
-        there is no longer a decision between them to split on.
+        `resolve_qa` + the `await_operator_qa` that followed it, folded into one turn.
         """
         self.logger.info("diagnosing the QA block for the operator", extra={"activity": True})
         result = self.agent(
             "prompts/resolve-operator.md",
             returns=OperatorResolution,
-            # high, and unbounded: a full-tool-access investigation ahead of the highest-
-            # stakes decision in the flow — which stays the human's to make.
-            power="high",
+            # smart, and unbounded: a full-tool-access investigation ahead of the highest-
+            # stakes decision in the flow.
+            power=RESOLVER_POWER,
             timeout=UNBOUNDED,
             add_dirs=self._dirs(),
             args={
-                "story_path": self.ctx.story_path,
-                "spec_dir": self.ctx.spec_dir,
+                **resolver_args(
+                self, block_kind="qa", notes=loop.block_notes, docs_path=self.docs_path
+            ),
                 "qa_dir": self.ctx.qa_dir,
-                "block_kind": "qa",
-                "block_notes": loop.block_notes,
             },
         )
+        if answered(self, result, "qa"):
+            return Continue(result, self.read_operator, loop=loop)
         # `Await` writes its `questions` over this file with `write_text`, so the body it is
         # handed has to *contain* the note the resolver just wrote there — which is what
         # `_escalation` does, on top of saying what was tried and what would unblock it.
@@ -1946,10 +1966,12 @@ class Qa(Workflow):
         The counter is bumped here rather than in `resolve_operator`, because this is the
         one place both arms pass through — a `human`-mode gate is an escalation too, and
         numbering only the auto ones would make the second block of a `human` run read as
-        the first.
+        the first. It doubles as the resolver's budget: past `MAX_QA_BLOCKS` this gate stops
+        spending a resolver turn at all and every further block goes to a person. See that
+        constant for why an *answering* resolver makes the difference load-bearing.
         """
         loop = loop.update(escalations=loop.escalations + 1)
-        if self.operator_mode in {"human", "operator"}:
+        if self.operator_mode in {"human", "operator"} or loop.escalations > self.MAX_QA_BLOCKS:
             gate = self._escalation(loop)
             return Await(self._context, gate.body, self.read_operator, loop=loop)
         return Continue(result, self.resolve_operator, loop=loop)

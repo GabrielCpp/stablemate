@@ -233,6 +233,7 @@ class _Agent:
         *,
         services: list[dict[str, Any]] | None = None,
         blocked: int = 0,
+        resolver_answers: bool = False,
         bad_paths: int = 0,
         reuse_rework: int = 0,
         fix_lint: Path | None = None,
@@ -248,6 +249,9 @@ class _Agent:
         self.docs = docs
         self.services = services if services is not None else SERVICES
         self.blocked = blocked
+        #: Whether the resolver settles the block itself rather than parking on it — the
+        #: `answered` arm, which writes the operator's answer where a human would have.
+        self.resolver_answers = resolver_answers
         self.bad_paths = bad_paths
         self.reuse_rework = reuse_rework
         self.fix_lint = fix_lint
@@ -350,6 +354,17 @@ class _Agent:
         return {"status": "ok", "findings": [], "summary": "nothing to reuse"}
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        if self.resolver_answers:
+            (self.docs / CONTEXT_REL).write_text(
+                "STATUS: ANSWERED\nSCOPE: story\n\nUse the staging bucket.\n",
+                encoding="utf-8",
+            )
+            return {
+                "decision": "answered",
+                "summary": "the bucket is named in the epic's acceptance criteria",
+                "grounded": ["docs/epics/EPIC-1/epic.md:12 — 'all writes go to the staging bucket'"],
+                "record": "which-bucket-do-writes-go-to",
+            }
         self._escalate()
         return {
             "decision": "escalated",
@@ -677,6 +692,68 @@ def test_a_service_path_nobody_can_repair_never_gives_up(
 
 
 # --------------------------------------------------------------------------- the operator
+
+
+def test_a_resolver_that_grounds_its_answer_settles_the_block_without_a_person(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The `answered` arm: a question the documents already settle costs nobody a round trip.
+
+    The resolver may only *apply* a decision somebody wrote down — see
+    `coder/shared/resolution.py` — and when it can, it writes the same `context.md` a human
+    would have and the flow rejoins at the same `read_operator`. Nothing waits, which is what
+    patching `wait_for_answer` to fail proves: reaching it at all would mean the block parked.
+    """
+    agent = _Agent(docs, blocked=1, resolver_answers=True)
+
+    def never(path: Path, **kwargs: Any) -> None:
+        raise AssertionError(f"a grounded answer must not park on {path}")
+
+    with patch.object(pyflow_driver, "wait_for_answer", never):
+        result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
+    # The answer reached the refiner exactly as a human's would have, and the marker was
+    # flipped, so the next block re-arms instead of re-consuming this answer.
+    assert "staging bucket" in agent.args_for("refine-plan")[0]["operator_context"]
+    assert "STATUS: CONSUMED" in (docs / CONTEXT_REL).read_text()
+
+
+def test_an_answered_block_still_spends_the_resolver_budget(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An answer that does not clear the block walks toward a person, it does not lap forever.
+
+    This is the failure mode the answering arm introduces: the resolver keeps finding the
+    same written rule, keeps applying it, and the plan keeps coming back blocked. Spending
+    `plan_blocks` on the answering arm too is what makes the cycle terminate at a human
+    rather than at the driver's transition budget.
+    """
+    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "180")
+    agent = _Agent(docs, blocked=99, resolver_answers=True)
+    seen: list[str] = []
+
+    def answered(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text(encoding="utf-8"))
+        agent.blocked = 0
+        path.write_text(
+            "STATUS: ANSWERED\nSCOPE: story\n\nUse the staging bucket.\n", encoding="utf-8"
+        )
+
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
+        result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["resolve-operator"] == Dev.MAX_PLAN_BLOCKS, agent.counts()
+    assert len(seen) == 1, seen
 
 
 def test_a_blocked_plan_goes_to_the_auto_operator_and_is_reworked(

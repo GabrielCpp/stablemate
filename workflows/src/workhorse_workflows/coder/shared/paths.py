@@ -216,6 +216,22 @@ def story_context_path(story_path: str, repo_dir: str | Path = "") -> Path:
     return launch_repo_root(repo_dir) / "context.md"
 
 
+def decisions_dir(docs_root: Path) -> Path:
+    """Where the operator's standing decisions live: `<docs-root>/decisions/`.
+
+    The place a resolver may answer *from*, and the place it writes to when it answers
+    something no record covered yet. It is this workflow's own invention rather than one
+    of ostler's document types, which is why it is joined here: ostler has no opinion
+    about it, the same way it has none about `context.md` or `attempts.md`.
+
+    A decision record is not a spec. A spec says what the product does; a record here says
+    what the operator ruled when two documents disagreed about it, so that the next run to
+    hit the same question reads the ruling instead of parking on it a second time. That
+    accumulation is the whole point: a block answered once should cost a human once.
+    """
+    return docs_root / "decisions"
+
+
 def is_gate_context(path: str | Path) -> bool:
     """Is *path* a file an operator gate wrote, rather than work a story produced?
 
