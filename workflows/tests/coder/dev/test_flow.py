@@ -9,7 +9,7 @@ node.
 the story is a real authored story in a real docs repo, the workspace is two real git repos
 named by a real `.code-workspace` file, `stamp_specs` really stamps the plan files ostler
 then reads back, `branch_code_repos` really moves both repos onto the story branch, and
-`run_lint` really shells out to the command `agents.yml` names. That is what makes the port's
+`run_gate` really shells out to the command `agents.yml` names. That is what makes the port's
 parity claim checkable rather than asserted — the flow is driven against the same artifacts
 the YAML engine drove against, and the same files are on disk afterwards.
 
@@ -42,7 +42,7 @@ from workhorse_workflows.coder.shared.dev import (
     read_operator_context,
     record_plan,
     resolve_impl_context,
-    run_lint,
+    run_gate,
 )
 
 STORY = "STORY-1"
@@ -189,7 +189,7 @@ def lint_gate(
 ) -> Path:
     """Make `api` adopt the lint gate, failing until a marker file exists.
 
-    `run_lint` resolves its command from the orchestrating repo's `agents.yml` before
+    `run_gate` resolves its command from the orchestrating repo's `agents.yml` before
     falling back to `make lint`, and keys the map by the service name and then by the cwd's
     basename — `api` here is the second. The script is the whole gate: it fails while the
     marker is absent, so the `dev-fix` turn has something real to fix and the loop's exit
@@ -890,7 +890,7 @@ def test_the_gate_lane_repairs_and_re_runs_until_clean(
     assert agent.counts()["dev-fix"] == 1, agent.counts()
     assert lint_gate.is_file(), "the fixer did not write what the gate checks for"
     # The last gate run of the run is `web`'s, which adopted nothing.
-    assert _output(run_env, run_lint)["status"] == "skipped"
+    assert _output(run_env, run_gate)["status"] == "skipped"
     # The fixer was handed one `FailureReport`, built in Python off the gate's own output:
     # which gate, what it ran, where, and what it printed.
     report = agent.args_for("dev-fix")[0]["report"]

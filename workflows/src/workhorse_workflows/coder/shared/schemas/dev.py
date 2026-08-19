@@ -248,7 +248,7 @@ class DispatchEntry(CoderResult):
     form the plan's `implementation_order` and every log line use; `label` is the *display*
     name — the repo template's `backend_layer_name`/`mobile_layer_name` when it has one, and
     the service type otherwise. The two are easy to read the wrong way round, and reading
-    them the wrong way round produces a `run_lint` keyed on a display name.
+    them the wrong way round produces a `run_gate` keyed on a display name.
     """
 
     service: str = ""
@@ -348,19 +348,37 @@ class LayerPick(CoderResult):
     dispatch_count: int = 0
 
 
-class LintOutcome(CoderResult):
-    """`run-lint.py` — one service's lint command and what it said.
+class GateOutcome(CoderResult):
+    """`run_gate` — one of a service's declared gate commands and what it said.
 
-    `status` is `clean`, `dirty` or `skipped`, and a blank takes the YAML's `default:` arm,
-    which is "move on to the next layer". `skipped` is the opt-out: a service adopts the
-    gate by defining a `lint` make target or an `agents.yml` override, and one that has
-    neither is never falsely failed.
+    `status` is `clean`, `dirty` or `skipped`, and a blank reads as "move on". `skipped` is
+    the opt-out: a service adopts a gate by declaring its command in `agents.yml`, and one
+    that has declared nothing is never falsely failed.
+
+    `gate` is which gate this was — `lint`, `test`, whatever the repo declared — and it
+    becomes the `FailureReport.source` the repair turn reads, which is what lets one repair
+    role serve every gate and still say what broke.
     """
 
+    gate: str = ""
     status: str = ""
     command: str = ""
     output: str = ""
     reason: str = ""
+
+
+class GateList(CoderResult):
+    """`declared_gates` — the commands that will run after the turn being briefed.
+
+    Rendered into the implement turn so it knows what it is being checked against. The
+    empty case is deliberately spoken aloud (`text` reads "(nothing declared)") rather than
+    left blank: a repo with no gates is a real and legitimate state, and a turn told
+    nothing would assume the usual ones exist.
+    """
+
+    gates: list[str] = []
+    commands: list[str] = []
+    text: str = ""
 
 
 class ChangedFiles(CoderResult):
@@ -402,8 +420,9 @@ __all__ = [
     "FixResult",
     "ImplContext",
     "ImplResult",
+    "GateList",
+    "GateOutcome",
     "LayerPick",
-    "LintOutcome",
     "OperatorAnswer",
     "OperatorGate",
     "OperatorResolution",

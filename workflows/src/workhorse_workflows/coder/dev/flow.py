@@ -85,16 +85,18 @@ from typing import Any, ClassVar
 from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.dev import (
+    GATE_ORDER,
     branch_code_repos,
     changed_files,
+    declared_gates,
     read_operator_context,
     record_plan,
     resolve_impl_context,
-    run_lint,
+    run_gate,
     select_next_layer,
 )
 from workhorse_workflows.coder.shared.escalation import escalation
-from workhorse_workflows.coder.shared.failure import from_lint
+from workhorse_workflows.coder.shared.failure import from_gate
 from workhorse_workflows.coder.shared.resolution import (
     RESOLVER_POWER,
     answered,
@@ -109,6 +111,7 @@ from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 from workhorse_workflows.coder.shared.schemas.dev import (
     DevResult,
     FixResult,
+    GateOutcome,
     ImplResult,
     OperatorGate,
     OperatorResolution,
@@ -557,6 +560,9 @@ class Dev(Workflow):
         """
         layer = self._layer
         impl = self.output(resolve_impl_context)
+        gates = self.call(
+            declared_gates, layer.cwd, layer.service, service_type=layer.type
+        )
         return self.agent(
             "prompts/implement-plan.md",
             returns=ImplResult,
@@ -575,6 +581,7 @@ class Dev(Workflow):
                 "impl_instruction_paths": impl.impl_instruction_paths,
                 "qa_run_plan": impl.qa_run_plan,
                 "qa_stack": impl.qa_stack,
+                "gates": gates.text,
                 "operator_context": operator_context,
             },
         )
@@ -589,21 +596,33 @@ class Dev(Workflow):
     ) -> Continue | Await:
         """Run this service's deterministic gates, and route on the first one that says no.
 
-        Lint is the gate this state runs today; `shared.failure` is the seam the others
-        arrive through, because what `fix` reads is a `FailureReport` and not a lint log.
-        A gate that cannot speak — `skipped`, or a blank status — is not a failure: the
-        service adopts a gate by defining it, and a service that has not is not thereby
-        broken.
+        Which gates exist is the repo's answer, not this package's: `agents.yml` names the
+        command for each of `GATE_ORDER` under the service it belongs to, and `shared.failure`
+        is the seam every one of them arrives through, because what `fix` reads is a
+        `FailureReport` and not a tool's log. A gate that cannot speak — `skipped`, or a
+        blank status — is not a failure: the service adopts a gate by declaring it, and a
+        service that has not is not thereby broken. Nothing here guesses a command, so a
+        stack stablemate has never seen gets gates the moment its repo writes them down.
 
         `digest` is the *previous* lap's evidence fingerprint. Two laps whose reports
         digest the same mean the repair turn changed nothing the gate can see, and the
         answer to that is to spend power rather than another identical turn — which is
         what `fix` does with `stalled`.
         """
-        outcome = self.call(run_lint, self._layer.cwd, self._layer.service)
-        if outcome.status != "dirty":
+        outcome = GateOutcome()
+        for gate in GATE_ORDER:
+            outcome = self.call(
+                run_gate,
+                self._layer.cwd,
+                self._layer.service,
+                gate,
+                service_type=self._layer.type,
+            )
+            if outcome.status == "dirty":
+                break
+        else:
             return Continue(outcome, self.layer, index=index, session_turns=session_turns)
-        report = from_lint(outcome, self._layer.cwd, fix_lap)
+        report = from_gate(outcome, self._layer.cwd, fix_lap)
         if fix_lap >= self.max_fix_laps:
             # The budget bounds the *lap*, never the story: this hands the failing gate to
             # the resolver and, failing that, to a human, exactly as a blocked implement
@@ -613,7 +632,7 @@ class Dev(Workflow):
                 f"{self._layer.service}: `{report.command}` still fails after "
                 f"{fix_lap} repair lap(s).\n\n{report.output}",
                 index,
-                "the lint gate",
+                f"the {outcome.gate} gate",
                 impl_blocks,
                 session_turns,
             )
@@ -648,7 +667,7 @@ class Dev(Workflow):
         mechanical work grounded in exact evidence, and only a lap that has demonstrably
         changed nothing is worth a smarter turn. `stalled` brings that escalation forward.
         """
-        report = from_lint(self.output(run_lint), self._layer.cwd, fix_lap)
+        report = from_gate(self.output(run_gate), self._layer.cwd, fix_lap)
         turns = self._spend_turn(session_turns)
         result = self.agent(
             "prompts/dev-fix.md",

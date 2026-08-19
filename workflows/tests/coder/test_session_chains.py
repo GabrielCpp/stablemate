@@ -277,7 +277,9 @@ def test_a_repair_lap_runs_on_the_story_conversation(spy: _Spy, monkeypatch) -> 
     monkeypatch.setattr(
         Dev,
         "output",
-        lambda *a, **k: SimpleNamespace(status="dirty", command="sh lint.sh", output=""),
+        lambda *a, **k: SimpleNamespace(
+                gate="lint", status="dirty", command="sh lint.sh", output=""
+            ),
     )
     monkeypatch.setattr(Dev, "call", lambda *a, **k: SimpleNamespace(paths=[]))
 

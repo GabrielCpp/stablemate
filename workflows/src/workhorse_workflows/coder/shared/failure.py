@@ -1,7 +1,7 @@
 """Turning whatever a gate returned into the one shape the repair role reads.
 
 There is one repair turn in the dev lane, and this module is why it can be one. Each gate
-reports in its own vocabulary — `LintOutcome` has `status`/`command`/`output`, a review
+reports in its own vocabulary — `GateOutcome` has `status`/`command`/`output`, a review
 hands over `Finding`s, a future check may hand over a process exit and nothing else — and
 each of those used to justify its own result schema, its own prompt and its own budget.
 They differ in a word, and the word is `source`.
@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from workhorse_workflows.coder.shared.schemas._base import Finding
-from workhorse_workflows.coder.shared.schemas.dev import FailureReport, LintOutcome
+from workhorse_workflows.coder.shared.schemas.dev import FailureReport, GateOutcome
 
 #: How much of a gate's output the repair turn is handed. A lint run over a large service
 #: can print thousands of lines, and past this the turn is reading the same class of error
@@ -32,17 +32,20 @@ def _clip(output: str) -> str:
     return "…[earlier output trimmed]…\n" + text[-MAX_OUTPUT:]
 
 
-def from_lint(outcome: LintOutcome, cwd: str, lap: int) -> FailureReport:
-    """The lint gate's `dirty` verdict as a failure the repair role can act on.
+def from_gate(outcome: GateOutcome, cwd: str, lap: int) -> FailureReport:
+    """A declared gate's `dirty` verdict as a failure the repair role can act on.
 
     The first adapter, and the shape the others follow: the command is carried verbatim so
     the fixer re-runs the gate rather than a command it guessed at, and no `Finding`s are
-    synthesised from the output. Parsing linter text into targets and repairs is a per-tool
-    job this package is forbidden to know how to do, and half-parsed findings would read as
-    evidence to `CoderResult.actionable` while naming files a regex invented.
+    synthesised from the output. Parsing a tool's text into targets and repairs is a
+    per-tool job this package is forbidden to know how to do, and half-parsed findings
+    would read as evidence to `CoderResult.actionable` while naming files a regex invented.
+
+    `source` is the gate's own name, so a repo that declared a gate stablemate has never
+    heard of gets a repair turn that can still say which one went red.
     """
     return FailureReport(
-        source="lint",
+        source=outcome.gate or "gate",
         command=outcome.command,
         cwd=cwd,
         output=_clip(outcome.output),
@@ -82,4 +85,4 @@ def from_findings(
     )
 
 
-__all__ = ["MAX_OUTPUT", "from_command", "from_findings", "from_lint"]
+__all__ = ["MAX_OUTPUT", "from_command", "from_findings", "from_gate"]

@@ -55,6 +55,9 @@ PARAMS = {
     "init_cmd": "printf 'module example.com/api\\n' > go.mod",
     "marker": "go.mod",
     "markers": "go.mod",
+    # The gates the dev lane will run against this service. An input, like every other
+    # stack-specific value here — genesis carries no knowledge of what checks a Go service.
+    "gates": "lint=golangci-lint run,test=go test ./...",
 }
 
 
@@ -209,6 +212,11 @@ def test_agents_yml_carries_the_workspace_block_the_planner_reads(
     assert data["workspace"]["service_markers"] == ["go.mod"], data
     assert data["scaffolds"] == ["shared-docs", "go-service"], data
     assert data["packs"] == ["go-service"], data
+    # The gates the dev lane reads. A repo that comes out of genesis with this block is
+    # gated from its first story; one without it is skipped, never guessed at.
+    assert data["services"] == {
+        "api": {"lint": "golangci-lint run", "test": "go test ./..."}
+    }, data
     # `farrier install` hard-exits with "No agents selected in config" without this key.
     assert data["agents"] == {"claude": True, "codex": False, "copilot": False}, data
 

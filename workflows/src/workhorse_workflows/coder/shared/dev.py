@@ -45,9 +45,10 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     BranchOutcome,
     ChangedFiles,
     DispatchEntry,
+    GateList,
+    GateOutcome,
     ImplContext,
     LayerPick,
-    LintOutcome,
     OperatorAnswer,
     PlanSummary,
     PlanValidation,
@@ -66,12 +67,17 @@ from ostler import Ostler
 #: Where the orchestrating repo keeps the logical-name → instruction-path manifest.
 MANIFEST_REL = ".agents/agents-context.json"
 
-#: Cap on the lint output threaded into the fix agent's context. The tail carries the
+#: Cap on the gate output threaded into the fix agent's context. The tail carries the
 #: findings; the head is usually the command echo.
-MAX_LINT_OUTPUT = 4000
+MAX_GATE_OUTPUT = 4000
 
-#: Seconds a service's lint command gets before it is called dirty.
-LINT_TIMEOUT = 300
+#: Seconds a service's gate command gets before it is called failed.
+GATE_TIMEOUT = 600
+
+#: The gates the dev lane runs after every implement and repair turn, cheapest first. A
+#: repo declares the commands; this tuple is only the order they are asked in, and a gate
+#: no service declares costs nothing to ask about.
+GATE_ORDER = ("lint", "test")
 
 #: The three states `<story-folder>/context.md` can be in. The `STATUS:`/`SCOPE:` header that
 #: says which one is read and written through `workhorse.gates`, shared with groom on the
@@ -519,11 +525,53 @@ def select_next_layer(
     return LayerPick(index=index, dispatch_count=total)
 
 
-def _lint_override(service: str, cwd: Path, repo_dir: str = "") -> str:
-    """An explicit lint command for this service from the orchestrating repo's agents.yml.
+def _services_config(repo_dir: str = "") -> dict[str, dict]:
+    """The orchestrating repo's `services:` block — what each service type declares.
 
-    Looked up under `lint:` or `workflow.lint:` as a `{service-or-dir: command}` map, by
-    service name first and then by the cwd's basename.
+    ```yaml
+    services:
+      <type-or-service>: {test: "…", lint: "…", smoke: "…", codegen: "…", tdd: required}
+    ```
+
+    The repo owns this. Which command exercises a service, and whether a missing test is a
+    defect, is a property of the service and not of the workflow — a workflow that guessed
+    `make test` would be right in this repo and wrong in the next one, which is the same
+    class of assumption invariant 1 forbids in the prompts.
+    """
+    cfg_path = find_repo_root(repo_dir) / "agents.yml"
+    if not cfg_path.exists():
+        return {}
+    try:
+        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError:
+        return {}
+    block = cfg.get("services") or (cfg.get("workflow") or {}).get("services") or {}
+    if not isinstance(block, dict):
+        return {}
+    return {str(k): v for k, v in block.items() if isinstance(v, dict)}
+
+
+def service_declaration(
+    service: str = "", service_type: str = "", repo_dir: str = ""
+) -> dict:
+    """One service's declared block, looked up by service name and then by type.
+
+    Name first: a monorepo with two services of the same type may run different commands
+    in each, and the narrower key is the one that can say so.
+    """
+    block = _services_config(repo_dir)
+    for key in (service, service_type):
+        entry = block.get(key) if key else None
+        if isinstance(entry, dict):
+            return entry
+    return {}
+
+
+def _lint_override(service: str, cwd: Path, repo_dir: str = "") -> str:
+    """The legacy `lint:` map — an explicit lint command keyed by service or directory.
+
+    Predates `services:` and is still honoured, below it: a repo that wrote this map is
+    already running the gate it names, and moving the key would turn its gate off.
     """
     if not service:
         return ""
@@ -540,50 +588,111 @@ def _lint_override(service: str, cwd: Path, repo_dir: str = "") -> str:
     return str(lint_map.get(service) or lint_map.get(cwd.name) or "").strip()
 
 
-def _has_make_lint(cwd: Path) -> bool:
-    """Whether this service's Makefile defines a `lint` target."""
+def _has_make_target(cwd: Path, target: str) -> bool:
+    """Whether this service's Makefile defines `target`."""
     if not (cwd / "Makefile").exists() and not (cwd / "makefile").exists():
         return False
     try:
         probe = subprocess.run(
-            ["make", "-n", "lint"], cwd=cwd, capture_output=True, text=True, timeout=30
+            ["make", "-n", target], cwd=cwd, capture_output=True, text=True, timeout=30
         )
     except (OSError, subprocess.SubprocessError):
         return False
     return probe.returncode == 0
 
 
-@blueprint.node
-def run_lint(
-    logger: logging.Logger, cwd: str = "", service: str = "", repo_dir: str = ""
-) -> LintOutcome:
-    """Run one service's lint command and report whether it is clean.
+def gate_command(
+    gate: str, service: str, service_type: str, cwd: Path, repo_dir: str = ""
+) -> str:
+    """The command this service declares for one gate, or `""` when it declares none.
 
-    The deterministic half of the lint gate; the implement agent's own `make lint`
-    done-criterion is the other. Command resolution is convention-plus-override: an explicit
-    `agents.yml` entry wins, otherwise `make lint` when the service's Makefile defines that
-    target, otherwise there is nothing to run and the service is `skipped`. That is what
-    makes the gate opt-in — a service adopts it by adding a target or an entry, and one with
-    neither is never falsely failed.
+    Resolution, most specific first: the `services:` block, then the legacy `lint:` map,
+    then the convention `make <gate>` when the service's Makefile actually defines that
+    target. A service that answers none of the three has not adopted the gate, and an
+    unadopted gate is skipped rather than guessed at — a guessed command that fails is
+    indistinguishable, to every state downstream, from a real regression.
+    """
+    declared = service_declaration(service, service_type, repo_dir).get(gate)
+    if isinstance(declared, str) and declared.strip():
+        return declared.strip()
+    if gate == "lint":
+        legacy = _lint_override(service, cwd, repo_dir)
+        if legacy:
+            return legacy
+    if _has_make_target(cwd, gate):
+        return f"make {gate}"
+    return ""
+
+
+@blueprint.node
+def declared_gates(
+    logger: logging.Logger,
+    cwd: str = "",
+    service: str = "",
+    service_type: str = "",
+    repo_dir: str = "",
+) -> GateList:
+    """Which gates will run after the turn about to be taken — for the turn to be told.
+
+    The prose this replaces told every implementer to run the tests and the linter and
+    called it MANDATORY, in a repo that may have neither. What a turn actually needs to
+    know is what the machine will check afterwards, and that is one line of fact: either
+    the commands, or an honest "nothing declared" — which is the same information the
+    prose was pretending to give, minus the pretence.
+    """
+    service_dir = Path(cwd).expanduser() if cwd else None
+    if service_dir is None or not service_dir.is_dir():
+        return GateList()
+    commands = {
+        gate: gate_command(gate, service, service_type, service_dir, repo_dir)
+        for gate in GATE_ORDER
+    }
+    declared = {gate: cmd for gate, cmd in commands.items() if cmd}
+    if not declared:
+        logger.info("%s declares no gate command — nothing will be run after the turn", service)
+        return GateList(text="(nothing declared)")
+    return GateList(
+        gates=list(declared),
+        commands=list(declared.values()),
+        text=", ".join(f"{gate}: `{cmd}`" for gate, cmd in declared.items()),
+    )
+
+
+@blueprint.node
+def run_gate(
+    logger: logging.Logger,
+    cwd: str = "",
+    service: str = "",
+    gate: str = "lint",
+    service_type: str = "",
+    repo_dir: str = "",
+) -> GateOutcome:
+    """Run one of a service's declared gate commands and report whether it passed.
+
+    The deterministic half of every gate the dev lane runs: the command is the repo's, the
+    verdict is Python's, and the output is what the repair turn is handed. `skipped` is the
+    opt-out — a service adopts a gate by declaring it, and one that has not is never
+    falsely failed.
     """
     if not cwd:
-        logger.info("no cwd given — skipping lint")
-        return LintOutcome(status="skipped", reason="no cwd given")
+        logger.info("no cwd given — skipping the %s gate", gate)
+        return GateOutcome(gate=gate, status="skipped", reason="no cwd given")
 
     service_dir = Path(cwd).expanduser()
     if not service_dir.is_dir():
         logger.warning("cwd does not exist: %s", service_dir)
-        return LintOutcome(status="skipped", reason=f"cwd does not exist: {service_dir}")
+        return GateOutcome(
+            gate=gate, status="skipped", reason=f"cwd does not exist: {service_dir}"
+        )
 
-    command = _lint_override(service, service_dir, repo_dir)
+    command = gate_command(gate, service, service_type, service_dir, repo_dir)
     if not command:
-        if not _has_make_lint(service_dir):
-            logger.info("no lint override and no `make lint` target in %s — skipping", service_dir)
-            return LintOutcome(
-                status="skipped",
-                reason=f"no lint override and no `make lint` target in {service_dir}",
-            )
-        command = "make lint"
+        logger.info("%s declares no %s command in %s — skipping", service, gate, service_dir)
+        return GateOutcome(
+            gate=gate,
+            status="skipped",
+            reason=f"no {gate} command declared for {service or service_dir.name}",
+        )
 
     try:
         result = subprocess.run(
@@ -592,38 +701,43 @@ def run_lint(
             shell=True,
             capture_output=True,
             text=True,
-            timeout=LINT_TIMEOUT,
+            timeout=GATE_TIMEOUT,
         )
     except subprocess.TimeoutExpired:
-        logger.warning("lint command '%s' timed out after %ss", command, LINT_TIMEOUT)
-        return LintOutcome(
+        logger.warning("%s command '%s' timed out after %ss", gate, command, GATE_TIMEOUT)
+        return GateOutcome(
+            gate=gate,
             status="dirty",
             command=command,
-            output=f"lint timed out after {LINT_TIMEOUT}s",
+            output=f"{gate} timed out after {GATE_TIMEOUT}s",
             reason="timeout",
         )
     except OSError as exc:
-        logger.warning("lint command '%s' could not be launched: %s", command, exc)
-        return LintOutcome(
+        logger.warning("%s command '%s' could not be launched: %s", gate, command, exc)
+        return GateOutcome(
+            gate=gate,
             status="skipped",
             command=command,
             output=str(exc),
-            reason="lint command could not be launched",
+            reason=f"{gate} command could not be launched",
         )
 
     if result.returncode == 0:
-        logger.info("lint clean for %s", service_dir)
-        return LintOutcome(status="clean", command=command, reason="lint passed")
+        logger.info("%s clean for %s", gate, service_dir)
+        return GateOutcome(
+            gate=gate, status="clean", command=command, reason=f"{gate} passed"
+        )
 
     output = (result.stdout + result.stderr).strip()
-    if len(output) > MAX_LINT_OUTPUT:
-        output = "…(truncated)…\n" + output[-MAX_LINT_OUTPUT:]
-    logger.warning("lint dirty for %s (exit %s)", service_dir, result.returncode)
-    return LintOutcome(
+    if len(output) > MAX_GATE_OUTPUT:
+        output = "…(truncated)…\n" + output[-MAX_GATE_OUTPUT:]
+    logger.warning("%s dirty for %s (exit %s)", gate, service_dir, result.returncode)
+    return GateOutcome(
+        gate=gate,
         status="dirty",
         command=command,
         output=output,
-        reason=f"lint exited {result.returncode}",
+        reason=f"{gate} exited {result.returncode}",
     )
 
 
@@ -697,11 +811,14 @@ def read_operator_context(logger: logging.Logger, story_path: str = "") -> Opera
 __all__ = [
     "branch_code_repos",
     "changed_files",
+    "declared_gates",
+    "gate_command",
     "plan_document",
     "plan_summary",
     "read_operator_context",
     "record_plan",
     "resolve_impl_context",
-    "run_lint",
+    "run_gate",
     "select_next_layer",
+    "service_declaration",
 ]

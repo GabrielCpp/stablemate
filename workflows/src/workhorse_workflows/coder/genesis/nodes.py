@@ -223,6 +223,7 @@ def write_agents_yml(
     workflows: Sequence[str] = ("coder",),
     scaffolds: Sequence[str] = (),
     assistants: Sequence[str] = ("claude",),
+    gates: Sequence[str] = (),
 ) -> AgentsYml:
     """Merge this service into the repo's `agents.yml` — packs, scaffolds, `workspace:`.
 
@@ -246,6 +247,13 @@ def write_agents_yml(
     dir is `install_farrier`'s business. `farrier scaffold <id>` refuses to render an id
     that is not enabled in this list, so the scaffold step silently renders nothing unless
     this node declares them first.
+
+    `gates` arrives as `"<gate>=<command>"` pairs and is written under `services:` keyed on
+    this service's name — the block the dev lane's deterministic gates read. It is an input
+    for the same reason `init_cmd` is: which command tests this service is a fact about the
+    stack, and genesis is not allowed to know one. A repo that comes out of genesis with a
+    `services:` block has gates from its first story; one that does not has none, and is
+    skipped rather than gated on a guess.
     """
     if not target_dir:
         return AgentsYml(note="no target_dir was provided")
@@ -312,6 +320,22 @@ def write_agents_yml(
         if values:
             _assign_seq(workspace, key, list(dict.fromkeys([*(workspace.get(key) or []), *values])))
 
+    # The dev lane's gates, keyed on the service name — the narrower of the two keys
+    # `service_declaration` accepts, so two services in one monorepo can differ.
+    declared = dict(
+        pair.partition("=")[::2] for pair in gates if "=" in pair
+    )
+    declared = {k.strip(): v.strip() for k, v in declared.items() if k.strip() and v.strip()}
+    if declared and service:
+        if not isinstance(data.get("services"), dict):
+            data["services"] = {}
+        # setdefault per gate: a repo that has already tuned its own test command keeps it
+        # across a config-refresh re-run, exactly as `agents:` does.
+        entry = data["services"].setdefault(service, {})
+        if isinstance(entry, dict):
+            for gate, command in declared.items():
+                entry.setdefault(gate, command)
+
     if data == before and path.is_file():
         note = f"agents.yml for repo '{repo_name}' already carries this service; left untouched"
         logger.info("%s", note)
@@ -327,7 +351,8 @@ def write_agents_yml(
             f"scaffolds: {', '.join(scaffold_ids) or '<none>'}; "
             f"agents: {enabled}; "
             f"service_roots: {', '.join(workspace.get('service_roots') or []) or '<none>'}; "
-            f"service_markers: {', '.join(workspace.get('service_markers') or []) or '<none>'})")
+            f"service_markers: {', '.join(workspace.get('service_markers') or []) or '<none>'}; "
+            f"gates: {', '.join(sorted(declared)) or '<none>'})")
     logger.info("%s", note)
     return AgentsYml(written=True, path="agents.yml", note=note)
 

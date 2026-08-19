@@ -112,6 +112,11 @@ class Genesis(Workflow):
     workflows: str = "coder"
     #: Agent backends to enable. `farrier install` hard-exits with none.
     assistants: str = "claude"
+    #: Comma-separated `"<gate>=<command>"` pairs for the service's `services:` block —
+    #: the deterministic gates the dev lane runs after every implement turn (e.g.
+    #: `"lint=make lint,test=make test"`). Empty leaves the repo ungated, which the dev
+    #: lane skips rather than guesses at.
+    gates: str = ""
 
     # --- classification -----------------------------------------------------
 
@@ -172,6 +177,7 @@ class Genesis(Workflow):
             self._split(self.workflows),
             self._split(self.scaffolds),
             self._split(self.assistants),
+            self._split(self.gates),
         )
         if found.service_state == "existing":
             return Continue(result, self.farrier)

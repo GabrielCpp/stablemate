@@ -14,6 +14,13 @@ The workflow supplies these values. Use them exactly as given:
 - Service path: `{{ workhorse_var('service_path') }}`
 - Service type: `{{ workhorse_var('service_type') }}`
 - Verification command: `{{ workhorse_var('verification') }}`
+- Gates that run after this turn: {{ workhorse_var('gates') or '(nothing declared)' }}
+
+The gate line above is what the workflow will actually run once you report `done`, taken
+from this service's declaration — not a guess, and not a list to add to. Run those commands
+yourself before finishing and leave them green; a red one comes straight back to you as a
+repair turn with its output attached. Where it says nothing is declared, no gate will run
+and there is no command for you to invent.
 
 Your CWD is the repo containing the service above. All code changes go in this repo. The service root is `{{ workhorse_var('service_path') }}` within this repo — focus changes there and its dependencies (shared packages in the same repo).
 
@@ -107,11 +114,10 @@ For **each task**:
 - If this step modifies files that feed into code generation (an OpenAPI/GraphQL spec, a generated API client, mocks, etc., per the plan's **Code Generation & Build Artifacts** section), run the generation command from the plan's **Verification Commands** now.
 - Verify the generated output compiles.
 
-### 3d. Run tests — MANDATORY
+### 3d. Run the checks this service declares
 
-- Run the test command from the layer's instruction files → **"Verification Commands"** section where present.
-- If no specific command is listed, run the test suite for the affected area.
-- **If tests fail, fix the code immediately. Do not move to the next task.**
+- Run the gate commands listed in **Provided Inputs**, plus the test command from the layer's instruction files → **"Verification Commands"** section where present.
+- **If a check fails, fix the code immediately. Do not move to the next task.**
 - Check for regressions in related tests.
 
 ### 3e. Check for errors
@@ -188,7 +194,7 @@ If a touched layer's local environment **genuinely cannot be brought up** here (
 - Mark a task complete before its tests pass.
 - Continue with compile errors or failing tests.
 - **Report `done` when you never ran the code in a local environment.** Green unit tests are not proof the code runs.
-- **Report `done` with lint failing.** Run the service's `make lint` (or its configured lint command) and leave it clean — a deterministic lint gate re-runs it and routes any failure back to rework, so a dirty tree does not actually finish the story faster.
+- **Report `done` with a declared gate red.** The workflow re-runs every gate in **Provided Inputs** and routes a failure straight back to you, so leaving one dirty does not finish the story faster.
 - **Hand-edit the story's `status:` frontmatter or its `## Implementation Status` **Status** line.** See "Story Status" below.
 - Apply the wrong layer's instruction set.
 - Start implementing a consumer layer before the contract/API layer it depends on passes verification.
@@ -196,7 +202,7 @@ If a touched layer's local environment **genuinely cannot be brought up** here (
 **Always do this:**
 
 - Run tests after every implementation step — not just at the end.
-- **Run `make lint` in the service directory before declaring `done`** (where it exists) and fix every finding — formatting, unused imports, and any accessibility findings for UI work (missing labels/roles, unnamed controls). Follow the loaded accessibility skill for UI surfaces.
+- **Run every gate command from Provided Inputs in the service directory before declaring `done`** and fix every finding — formatting, unused imports, and any accessibility findings for UI work (missing labels/roles, unnamed controls). Follow the loaded accessibility skill for UI surfaces.
 - Run code generation before testing when generated files are involved.
 - **Bring up the local stack and exercise the touched story path (Step 5) before declaring `done`.**
 - Use the exact commands from the layer's instruction files → **"Verification Commands"** section where present.
