@@ -443,6 +443,23 @@ class Response:
             ) from exc
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Turns a 3xx response into an `HTTPError` instead of following it.
+
+    `urlopen`'s default opener follows 301/302/303/307 transparently, which is right for a
+    scenario that only cares where a request eventually lands — but a scenario asserting on
+    the redirect itself (`follow-link`'s `Location` header) needs the 3xx response as-is.
+    Returning `None` here is the stdlib's own documented way to decline a redirect; the
+    caller sees it as the `HTTPError` `Http.request` already turns into a `Response`.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001, ANN201
+        return None
+
+
+_NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirectHandler)
+
+
 class Http:
     """A small stdlib HTTP client bound to a target's `base_url`.
 
@@ -488,6 +505,7 @@ class Http:
         headers: Mapping[str, str] | None = None,
         expect_status: int | Sequence[int] | None = None,
         timeout: float | None = None,
+        follow_redirects: bool = True,
     ) -> Response:
         url = self.url_for(path)
         merged = {**self.headers, **(headers or {})}
@@ -497,8 +515,9 @@ class Http:
         request = urllib.request.Request(url, data=data, method=method.upper())  # noqa: S310
         for key, value in merged.items():
             request.add_header(key, value)
+        opener_open = _NO_REDIRECT_OPENER.open if not follow_redirects else urllib.request.urlopen
         try:
-            with urllib.request.urlopen(  # noqa: S310
+            with opener_open(  # noqa: S310
                 request, timeout=timeout or self.timeout
             ) as raw:
                 response = Response(raw.status, dict(raw.headers), raw.read(), url)
