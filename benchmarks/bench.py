@@ -528,7 +528,7 @@ def cmd_author(spec: Spec, *, resume: bool = False, budget_s: float | None = Non
 
 def cmd_coder(spec: Spec, *, resume: bool = False, budget_s: float | None = None) -> int:
     preflight(spec, "coder")
-    if not (spec.target / "docs" / "epics" / "index.md").is_file():
+    if not find_epics(spec.target):
         die("no epic queue — run author first")
     say("coder → implementation" + (" (resuming)" if resume else ""))
     log = spec.logs / "coder.log"
