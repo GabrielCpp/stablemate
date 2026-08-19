@@ -84,11 +84,28 @@ built atop a rejected baseline, and the review nobody stopped to demand never ha
 An `Await` costs the same operator ten minutes it always would have; a give-up spent
 those ten minutes anyway; it just spent them after the run had already moved on.
 
-The auto-resolver a block routes through (`prompts/resolve-operator.md`) may investigate
-and describe the block, but it may not decide, act, or answer on the operator's behalf —
-only a human, or an operator who patches the code/plan/workflow and reloads, resolves a
-block. A resolver that writes `STATUS: ANSWERED` and lets the loop continue on its own
-authority is the same failure mode in a different place.
+The auto-resolver a block routes through (`prompts/resolve-operator.md`) **applies
+decisions; it does not make them.** It may write `STATUS: ANSWERED` and let the loop
+continue only when it can quote the thing that already settles the question — a record
+under `<docs-root>/decisions/`, a convention in `AGENTS.md` or an installed skill, an
+acceptance criterion in the story's own spec — and it publishes that citation in the
+answer and in the run log. A question with a written answer costs a human nothing to be
+asked and teaches them nothing when they answer it the way the document already says.
+
+A question *without* one is theirs by definition, and the resolver escalates: an unwritten
+product or scope call, two sources that genuinely conflict, anything needing a credential
+or a spend, and every block where the resolver is the interested party (it never narrows
+its own QA `covers:`, stamps its own status, or edits its own evidence). "I am not sure" is
+an escalation too. The parking half of this rule is untouched — a block it cannot ground
+`Await`s, as many times as it takes, and never ends the run.
+
+The place decisions accumulate is `<docs-root>/decisions/`
+(`coder/shared/paths.py::decisions_dir`), and answering writes one, so the second run to
+hit the same question reads the ruling instead of parking on it again. Every lane caps the
+*resolver* rather than the block — `MAX_PLAN_BLOCKS`, `MAX_REVIEW_BLOCKS`, `MAX_QA_BLOCKS`
+— and spends that budget on an answer exactly as on an escalation, so a resolver that keeps
+applying a rule the block does not clear walks toward a person instead of lapping forever.
+The branch, the vocabulary and the argument all live in `coder/shared/resolution.py`.
 
 ```bash
 make check-no-giveup    # also runs as part of `make test`
@@ -96,12 +113,12 @@ make check-no-giveup    # also runs as part of `make test`
 
 This guard is narrow: it stops the specific vocabulary of a deleted give-up pattern from
 quietly reappearing, not every way the rule could be broken. It does not cover the
-resolver-authority half of the rule — that a diagnosis prompt must never decide or answer
-on the operator's behalf, at the `operator_mode` sites in `author/workflow.py`,
-`author/surveyor/flow.py`, `coder/dev/flow.py`, `coder/review/flow.py` and
-`coder/docs/flow.py` — which needs the control-flow graph, not a grep, same as everything
-else this check cannot see structurally. See the script's own docstring before widening
-it.
+resolver-authority half of the rule — that an `answered` arm exists only where the answer
+was grounded in something already written, at the `operator_mode` sites in
+`author/workflow.py`, `author/surveyor/flow.py`, `coder/dev/flow.py`,
+`coder/review/flow.py`, `coder/qa/flow.py` and `coder/docs/flow.py` — which needs the
+control-flow graph, not a grep, same as everything else this check cannot see
+structurally. See the script's own docstring before widening it.
 
 ## Python linting (load-bearing)
 

@@ -199,6 +199,28 @@ progress is expressed as a *counter parameter* on the transition — `ci_rework`
 `merge_rework` — checked against a `ClassVar` cap. A cap that runs out does not end the run:
 it escalates to the operator gate, which is an `Await` and is resumable.
 
+### The operator gate applies decisions; it does not make them
+In `operator_mode="auto"` a block first buys a `resolve-operator` turn
+(`coder/shared/resolution.py`, `power="smart"`, no wall clock). It has two arms:
+
+* **`answered`** — it found the thing that already settles the question and quoted it: a
+  record under `<docs-root>/decisions/` (`shared/paths.py::decisions_dir`), a convention in
+  `AGENTS.md` or an installed skill, an acceptance criterion in the story's own spec. It
+  writes the answer into the story's `context.md` exactly as a human would and the flow
+  continues to the same `read_operator` state. Answering also *writes* a decision record, so
+  the next run to hit the question reads the ruling instead of parking on it.
+* **anything else** — it `Await`s. An unwritten product or scope call, two sources that
+  genuinely conflict, a credential or a spend, any block where the resolver is the interested
+  party (QA never narrows its own `covers:`, stamps its own status, or edits its own
+  evidence), and plain "I am not sure" all belong to a person.
+
+Every lane caps the *resolver*, not the block: `MAX_PLAN_BLOCKS`, `MAX_REVIEW_BLOCKS`,
+`MAX_QA_BLOCKS`, and docs' one consult per flow. The budget is spent on an answer exactly as
+on an escalation — otherwise a resolver that keeps applying the same rule to a block the rule
+does not clear laps forever and no person is ever reached. Past the cap the gate stops
+spending resolver turns and asks a human directly, as many times as it takes. There is still
+no cap on blocks, and no arm ends the run.
+
 ### Idempotency
 A resume re-enters a state from the top, so every node that state already called runs again.
 Create-or-checkout the branch, skip the commit with nothing staged, look for the open PR
