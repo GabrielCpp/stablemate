@@ -20,8 +20,9 @@ migration, and a reintroduction under the same name is the cheapest possible sig
 pattern itself is back too.
 
 This is a narrow guard, not a proof. It does not cover the resolver-authority half of the
-rule (a diagnosis prompt must never decide or answer on the operator's behalf) — that
-needs the control-flow graph, not a grep, same as everything else this check cannot see
+rule (a resolver may *apply* a decision somebody already wrote down and must escalate
+every question nobody has answered yet — see `coder/shared/resolution.py`) — that needs
+the control-flow graph, not a grep, same as everything else this check cannot see
 structurally. The scan is now the whole `workflows/` package rather than the handful of
 migrated files it started as: every lane flow routes a blocked verdict to the operator
 gate, `workflow.py`'s docs exhaustions escalate through `docs_operator` the way
