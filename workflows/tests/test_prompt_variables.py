@@ -72,19 +72,48 @@ AMBIENT = {
 }
 
 
-def _dict_keys(node: ast.Dict, spread: str | None) -> set[str] | None:
+def _package_defs() -> dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]]:
+    """Every module-level function in the package, by name.
+
+    Module-level only, and that is the point: a name a turn calls without a receiver is
+    either defined in its own module or imported from another one, and only a top-level
+    `def` can be imported. Methods share names across lanes freely (`_dirs`, `_chain`), so
+    admitting them here would make the index ambiguous exactly where it must not be.
+    """
+    index: dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]] = {}
+    for source in sorted(PACKAGE.rglob("*.py")):
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                index.setdefault(node.name, []).append(node)
+    return index
+
+
+#: Built once — `_defs` consults it for every helper call that is not defined in-module.
+_PACKAGE_DEFS = _package_defs()
+
+
+def _dict_keys(
+    node: ast.Dict, spread: str | None, scope: ast.AST, module: ast.Module
+) -> set[str] | None:
     """The string keys of a dict literal, or `None` if any of them cannot be named.
 
     `spread` is the name of a `**kwargs` parameter whose expansion is expected and ignored:
     a helper that returns `{…, **extra}` names the fixed part here and its caller names the
-    rest. Any other `**` expansion is unreadable.
+    rest. Any *other* `**` expansion is read the same way an `args=` is — `{**helper(…),
+    "qa_dir": …}` is how `coder/qa/flow.py` adds the one argument its lane needs on top of
+    the shared five — and is unreadable only when what it expands is.
     """
     keys: set[str] = set()
     for key, value in zip(node.keys, node.values, strict=True):
         if key is None:
             if spread and isinstance(value, ast.Name) and value.id == spread:
                 continue
-            return None
+            expanded = _keys_of(value, scope, module)
+            if expanded is None:
+                return None
+            keys |= expanded
+            continue
         if not (isinstance(key, ast.Constant) and isinstance(key.value, str)):
             return None
         keys.add(key.value)
@@ -94,14 +123,17 @@ def _dict_keys(node: ast.Dict, spread: str | None) -> set[str] | None:
 def _keys_of(node: ast.expr, scope: ast.AST, module: ast.Module) -> set[str] | None:
     """The keys the expression an `args=` was given resolves to, or `None` if unreadable.
 
-    Three shapes reach it, and all three are load-bearing. A literal `{…}` is the common one.
+    Four shapes reach it, and all four are load-bearing. A literal `{…}` is the common one.
     A local `args` variable is how `coder/qa/flow.py::_apply_fixes` adds `operator_feedback`
     conditionally — the plain fix path's YAML args did not carry the key at all — and reading
     only the literal would report that omission as a hole in the prompt. `self._helper(…)` is
-    how `research/workflow.py` shares the program triple across a dozen turns.
+    how `research/workflow.py` shares the program triple across a dozen turns. A bare
+    `helper(…)` is the same sharing done by a *module-level* function imported from
+    elsewhere in the package — `coder/shared/resolution.py::resolver_args`, which the five
+    operator gates call rather than each repeating the same five-key literal.
     """
     if isinstance(node, ast.Dict):
-        return _dict_keys(node, None)
+        return _dict_keys(node, None, scope, module)
     if isinstance(node, ast.Name):
         return _keys_of_local(node.id, scope, module)
     if (
@@ -110,7 +142,9 @@ def _keys_of(node: ast.expr, scope: ast.AST, module: ast.Module) -> set[str] | N
         and isinstance(node.func.value, ast.Name)
         and node.func.value.id == "self"
     ):
-        return _keys_of_helper(node, module)
+        return _keys_of_helper(node.func.attr, node, module)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        return _keys_of_helper(node.func.id, node, module)
     return None
 
 
@@ -138,22 +172,31 @@ def _keys_of_local(name: str, scope: ast.AST, module: ast.Module) -> set[str] | 
     return keys
 
 
-def _keys_of_helper(call: ast.Call, module: ast.Module) -> set[str] | None:
-    """The keys `self._helper(**kwargs)` yields: what the helper returns, plus this call's own.
+def _defs(name: str, module: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Every definition of `name`, in `module` if it has one, else across the package.
+
+    The two-step is what lets a turn call a helper it imported. A module that defines the
+    name wins outright — a local definition is what the call site resolves to at run time,
+    and searching wider once it exists would let an unrelated same-named function in another
+    lane decide the vocabulary. Only when the module has none is the name necessarily
+    imported, and then the package index is the only place its body can be.
+    """
+    local = [
+        node
+        for node in ast.walk(module)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == name
+    ]
+    return local or _PACKAGE_DEFS.get(name, [])
+
+
+def _keys_of_helper(name: str, call: ast.Call, module: ast.Module) -> set[str] | None:
+    """The keys `helper(**kwargs)` yields: what the helper returns, plus this call's own.
 
     Only a helper whose returns are dict literals is readable, which is the whole population
     today. A `**` expansion at the call site is not: its keys live wherever that mapping came
     from.
     """
-    # The caller matched `self._helper(...)` before handing the call over; restating it
-    # is what makes the attribute a fact here rather than a comment.
-    assert isinstance(call.func, ast.Attribute)
-    name = call.func.attr
-    defs = [
-        node
-        for node in ast.walk(module)
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == name
-    ]
+    defs = _defs(name, module)
     if len(defs) != 1:
         return None
     helper = defs[0]
@@ -165,7 +208,7 @@ def _keys_of_helper(call: ast.Call, module: ast.Module) -> set[str] | None:
     for node in returns:
         if not isinstance(node.value, ast.Dict):
             return None
-        returned = _dict_keys(node.value, spread)
+        returned = _dict_keys(node.value, spread, helper, module)
         if returned is None:
             return None
         keys |= returned
