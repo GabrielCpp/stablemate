@@ -1,21 +1,13 @@
 """Genesis's models: what the target already is, what each step made of it, and the verdict.
 
-Ported from the `genesis` flow's six script nodes and its two agent turns. Genesis takes a
-directory that may be empty, may hold a half-built project, or may already be a configured
-repo, and leaves behind something the author and coder workflows can both stand on.
+Ported from the `genesis` flow's six script nodes. Genesis takes a directory that may be
+empty, may hold a half-built project, or may already be a configured repo, and leaves
+behind something the author and coder workflows can both stand on. It is pure bootstrapping
+— every step here is deterministic tooling, with no agent turn anywhere in the flow.
 
-Two shapes to note:
-
-* every `*_ok` / `*_written` / `*_valid` output was a `"yes"`/`"no"` **string** in the
-  YAML, because a `branch` node compares rendered text. They are `bool` here. Nothing on
-  disk carried the strings — they existed only to be compared by the engine;
-* `notes` are kept verbatim from the scripts, including their remediation sentences. They
-  are the only thing an operator reading a failed genesis run has, and several of them
-  name the exact `--params` to re-run with.
-
-The two agent replies default `status` to `"blocked"` rather than `""`, because the YAML
-declared `default: {status: blocked}` on both nodes. Nothing branches on either, so the
-default is fidelity, not control flow.
+One shape to note: every `*_ok` / `*_written` / `*_valid` output was a `"yes"`/`"no"`
+**string** in the YAML, because a `branch` node compares rendered text. They are `bool`
+here. Nothing on disk carried the strings — they existed only to be compared by the engine.
 """
 from __future__ import annotations
 
@@ -93,9 +85,9 @@ class FarrierInstall(CoderResult):
 class GenesisReport(CoderResult):
     """`validate-genesis.py` — every precondition the main loop assumes, checked.
 
-    `errors` and `warnings` stay newline-joined strings rather than lists: both are handed
-    straight to the fixer agent as prose, and splitting them only to rejoin them at the
-    prompt would be a round trip with no reader in between.
+    `errors` and `warnings` stay newline-joined strings rather than lists: both go straight
+    into the `WorkflowFailed` message when the target is invalid, and splitting them only to
+    rejoin them there would be a round trip with no reader in between.
     """
 
     valid: bool = False
@@ -103,29 +95,9 @@ class GenesisReport(CoderResult):
     warnings: str = ""
 
 
-class ConventionsResult(CoderResult):
-    """`prompts/apply-genesis-conventions.md` — `applied` or `blocked`."""
-
-    status: str = "blocked"
-    notes: str = ""
-
-
-class FixResult(CoderResult):
-    """`prompts/fix-genesis.md` — `fixed` or `blocked`.
-
-    Not branched on: `validate_genesis` runs again after it and decides, which is the only
-    honest reading of whether a repair worked.
-    """
-
-    status: str = "blocked"
-    notes: str = ""
-
-
 __all__ = [
     "AgentsYml",
-    "ConventionsResult",
     "FarrierInstall",
-    "FixResult",
     "GenesisReport",
     "GitInit",
     "Skeleton",

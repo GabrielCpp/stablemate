@@ -56,9 +56,7 @@ from workhorse_workflows.coder.shared.schemas.dream import (
 )
 from workhorse_workflows.coder.shared.schemas.genesis import (
     AgentsYml,
-    ConventionsResult,
     FarrierInstall,
-    FixResult,
     GenesisReport,
     GitInit,
     Skeleton,
@@ -133,7 +131,6 @@ __all__ = [
     "CoderResult",
     "ContextClassification",
     "ContextRepair",
-    "ConventionsResult",
     "DevResult",
     "DispatchEntry",
     "DocsResult",
@@ -152,7 +149,6 @@ __all__ = [
     "FixLintResult",
     "FixPick",
     "FixPruned",
-    "FixResult",
     "FixStorySeed",
     "GenesisReport",
     "GitInit",

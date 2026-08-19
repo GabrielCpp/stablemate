@@ -7,18 +7,22 @@ scaffolds installed, and a service skeleton with its marker file. It is never se
 the main loop — it produces the preconditions the main loop *assumes*, and is entered
 directly.
 
-The shape is a straight line with two skip-ahead branches at the front and a bounded
-repair loop at the back::
+Genesis is pure bootstrapping: every state below is deterministic tooling, with no agent
+turn anywhere in the flow. The two agent turns the YAML carried (a "make it conventional"
+pass and a repair turn) are gone — there is no product code, no story and nothing
+judgement-shaped for an agent to do at this stage, and a repair turn that could only guess
+at a tooling failure was never more than a second, unaccountable roll of the same dice
+`verify` already failed. A target that fails validation now fails the run directly.
 
-    classify → [git init] → agents.yml → [skeleton] → farrier → [conventions]
-             → (verify → fix)* → done
+The shape is a straight line with two skip-ahead branches at the front::
 
-Eighteen nodes become eight states, and every node that disappeared was a branch. All five
+    classify → [git init] → agents.yml → [skeleton] → farrier → verify → done
+
+Eighteen nodes become six states, and every node that disappeared was a branch. All five
 `type: branch` nodes read a value the node directly above them had just produced —
 `decide_target` reads `resolve_target`'s `target_ok`, `decide_farrier` reads
 `install_farrier`'s `farrier_ok`, and so on. That is `if` written across two nodes because
-a script cannot route. `incr_genesis` disappears too: the rework count is a state
-parameter, which is the whole of what the `incr` call node did.
+a script cannot route.
 
 `decide_genesis` and `decide_skeleton` are the two that fold *forward* rather than back:
 each reads a field of the classification (`target_state`, `service_state`) that was
@@ -27,10 +31,9 @@ precedes their target rather than the one that produced their input. Repo state 
 service state are separate questions on purpose — an established monorepo is exactly where
 a new service gets added, so "the repo exists" must not short-circuit the build.
 
-`genesis_failed`, a `type: fail` node reached from three branches, becomes three
-`raise WorkflowFailed(...)` at the sites that decided to fail, each carrying the reason the
-node reported. The YAML's run ends with "reached genesis_failed" and the reason only in a
-log line.
+`genesis_failed`, a `type: fail` node reached from several branches, becomes
+`raise WorkflowFailed(...)` at the site that decided to fail, carrying the reason the node
+reported.
 
 **GENESIS CARRIES ZERO STACK KNOWLEDGE**, and that survives the port unchanged. Every
 stack-specific value — `packs`, `scaffolds`, `init_cmd`, `marker`, `markers` — is an input
@@ -42,22 +45,9 @@ Divergences from the YAML, all deliberate:
 
 * the `*_ok` / `*_valid` outputs were `"yes"`/`"no"` **strings**, because a YAML branch
   compares text. They are `bool` on the models; nothing on disk carried the strings.
-* `max_genesis_reworks` was declared as a var *and* re-typed as the literal `"2"` inside
-  `guard_genesis`, with the comment "literal so no Jinja in branch". There is one value
-  here, `MAX_REWORKS`, and the guard reads it — the duplication existed only because the
-  YAML's branch nodes could not evaluate a template.
-* `genesis_rework_count: {value: 0}` was seeded in `vars` rather than left to the counter
-  node, because `guard_genesis` reads `.value` on the first validation failure, before
-  `incr_genesis` has ever run. A state parameter has a declared default, so the seeding
-  problem does not exist to solve.
 * `git_init` was passed `target_state` as its second argument; `genesis-git-init.py`
   documents the parameter and never reads it. It is omitted, which is faithful rather than
   a narrowing — the same call is made either way.
-* the two agent nodes' `default: {status: blocked}` is kept, on the models rather than at
-  the callsite: neither reply is branched on, and `validate_genesis` running again is the
-  only honest reading of whether a repair *worked*. It is not a reading of whether the
-  conventions turn ever ran, though, which is why `conventions` now logs a blocked status
-  instead of dropping it — see the comment there.
 * the comma-separated inputs stay `str` here and are split before reaching a node. That is
   the operator-facing contract exactly as documented — `--params '{"packs": "go",
   "scaffolds": "shared-docs:docs,go-service:api"}'` — and typing them `list[str]` would
@@ -71,18 +61,14 @@ Divergences from the YAML, all deliberate:
   rename is workflow-side and costs nothing here, since no run has ever checkpointed on
   the name.
 * `refuel: target_dir` on `resolve_target` has no counterpart: pyflow has no gas tank. The
-  flow is linear apart from a repair loop bounded at two, so the transition budget is not
-  in question here; it is recorded in the progress ledger as a driver-level gap rather
-  than worked around per flow.
+  flow is a straight line now, so the transition budget is not in question here; it is
+  recorded in the progress ledger as a driver-level gap rather than worked around per flow.
 """
 from __future__ import annotations
-
-from typing import ClassVar
 
 from workhorse.pyflow import (
     Continue,
     Done,
-    NodeNotRunError,
     Workflow,
     WorkflowFailed,
 )
@@ -94,11 +80,7 @@ from workhorse_workflows.coder.genesis.nodes import (
     validate_genesis,
     write_agents_yml,
 )
-from workhorse_workflows.coder.shared.schemas.genesis import (
-    ConventionsResult,
-    FixResult,
-    TargetClassification,
-)
+from workhorse_workflows.coder.shared.schemas.genesis import TargetClassification
 
 
 class Genesis(Workflow):
@@ -131,25 +113,14 @@ class Genesis(Workflow):
     #: Agent backends to enable. `farrier install` hard-exits with none.
     assistants: str = "claude"
 
-    #: Repair rounds before the run is failed — the literal `"2"` `guard_genesis`
-    #: compared against.
-    #:
-    #: `ClassVar`, so it is not an operator-settable input, and that is the faithful
-    #: reading: the YAML declared `max_genesis_reworks: "2"` as a var *and* re-typed the
-    #: literal in the guard, because a branch node cannot evaluate a template. The var
-    #: was therefore inert — `--params '{"max_genesis_reworks": "5"}'` changed nothing.
-    #: Promoting it to a live input would be an addition, and additions are not this
-    #: loop's.
-    MAX_REWORKS: ClassVar[int] = 2
-
     # --- classification -----------------------------------------------------
 
     def start(self) -> Continue:
         """Classify the target before anything mutates it.
 
         `resolve_target` + `decide_target` + `decide_genesis`. The fail-fast matters: with
-        no target every script below no-ops with a note and the run still reaches the
-        conventions agent, burning a model call to discover there is nothing there.
+        no target every script below no-ops with a note and the run still reaches
+        `verify`, failing there instead of quietly building over nothing.
 
         An existing repo skips `git init` alone. It still flows through the config refresh
         and on to the service-level decision, because a long-established monorepo is
@@ -223,23 +194,11 @@ class Genesis(Workflow):
         return Continue(result, self.farrier)
 
     def farrier(self) -> Continue:
-        """Install the packs and render the scaffolds, then decide what earned the agent.
+        """Install the packs and render the scaffolds, then move on to validation.
 
-        `install_farrier` + `decide_farrier` + `decide_skeleton_ok`. Both branches route to
-        the same place, and both are about *not* spending an agent turn on a repo that
-        cannot benefit from one:
-
-        * a failed install means no skills and no docs tree — there is nothing for the
-          conventions turn to be conventional *about*;
-        * a failed native init must not reach it either. Observed live: `npm create
-          react-router` produced no `package.json`, the flow walked on, and the agent —
-          handed an empty service directory and asked to make it conventional — fabricated
-          a placeholder tree that looked like a service but was not one.
-
-        A skeleton that never ran leaves nothing to read, and that is the config-refresh
-        path: conventions are not re-applied to a live service. It reads as "not ok" here
-        exactly as the YAML's undefined `skeleton_ok` fell to `decide_skeleton_ok`'s
-        `default:` arm.
+        `install_farrier` + `decide_farrier` + `decide_skeleton_ok`, minus the branch: both
+        outcomes used to pick between two agent turns, and there is only one path left now
+        that neither turn exists. `verify` is what decides whether the build succeeded.
         """
         result = self.call(
             install_farrier,
@@ -247,62 +206,19 @@ class Genesis(Workflow):
             self._split(self.scaffolds),
             not self._split(self.packs),
         )
-        if not result.ok or not self._skeleton_ok():
-            return Continue(result, self.verify)
-        return Continue(result, self.conventions)
-
-    def conventions(self) -> Continue:
-        """Make the repo conventional for its stack, guided by the skills farrier installed.
-
-        The one genuinely judgement-shaped step, and structure only: there are no stories
-        yet, so any product code written here is scope nobody asked for. `power: low`
-        because the skills carry the conventions — the turn applies them rather than
-        deciding them.
-        """
-        found = self._target()
-        result = self.agent(
-            "prompts/apply-genesis-conventions.md",
-            returns=ConventionsResult,
-            power="low",
-            cwd=found.target_dir,
-            args={
-                "target_dir": found.target_dir,
-                "service_root": self.service_root,
-                "marker_path": self._marker_path(),
-            },
-        )
-        # A blocked turn used to be discarded: nothing branched on `status`, and the
-        # reasoning was that `validate_genesis` re-running is the honest reading of whether
-        # the work landed. It is not, for this node. Validation asserts the *marker*, and
-        # downgrades a missing root `lint` target to a warning — so a turn that refused to
-        # do any of its four jobs still leaves a valid genesis, the run exits 0, and the
-        # one party who knew the conventions were never applied (the node itself) is the
-        # one party nobody hears. Fail-soft is right for an unattended run; silent is not.
-        # `blocked` and not `!= "applied"`: it is both the value the prompt asks for and
-        # the model's fail-soft default, so it covers the refusal and the no-answer alike
-        # without turning any other string the turn might return into a false alarm.
-        if result.status == "blocked":
-            self.logger.warning(
-                "conventions not applied (status %r) — the repo has no stack conventions "
-                "beyond what the scaffolds seeded, and the coder workflow's lint gate will "
-                "skip rather than fail. Reason: %s",
-                result.status, result.notes or "(none given)",
-                extra={"activity": True},
-            )
         return Continue(result, self.verify)
 
-    # --- the bounded repair loop --------------------------------------------
-
-    def verify(self, reworks: int = 0) -> Continue | Done:
-        """Assert every precondition the main loop assumes, and repair or fail.
+    def verify(self) -> Done:
+        """Assert every precondition the main loop assumes, and fail if it does not hold.
 
         `validate_genesis` + `decide_valid` + `guard_genesis`. Genesis's postcondition *is*
         the main loop's precondition, and they share one assertion implementation
         (`coder.shared.contract`) so they cannot drift apart silently.
 
-        `reworks` is the counter, and being a state parameter it is also the checkpoint: a
-        resume picks up with the same budget spent, which is what the YAML's seeded
-        `genesis_rework_count` var was reaching for.
+        There is no repair turn: genesis is pure bootstrapping, and a target that fails
+        validation is a tooling problem an agent guessing at the same errors would not have
+        fixed more reliably than the tool that already produced them. The operator re-runs
+        with corrected params instead.
         """
         report = self.call(
             validate_genesis,
@@ -310,38 +226,9 @@ class Genesis(Workflow):
             self.service_root,
             self._split(self.markers or self.marker),
         )
-        if report.valid:
-            return Done(report)
-        if reworks >= self.MAX_REWORKS:
-            raise WorkflowFailed(
-                f"genesis still invalid after {reworks} repair round(s): {report.errors}"
-            )
-        return Continue(report, self.fix, reworks=reworks)
-
-    def fix(self, reworks: int) -> Continue:
-        """Hand the validator's errors to a repair turn, then validate again.
-
-        A state of its own, holding nothing but the turn: the checkpoint is written before
-        a state runs, so re-validating downstream is what makes a resume cheap. `power:
-        high` because a broken genesis is a diagnosis problem — the errors name symptoms,
-        and the fix is usually re-running a tool that failed for a reason not stated.
-
-        Its reply is not branched on. `verify` running again decides.
-        """
-        found = self._target()
-        report = self.output(validate_genesis)
-        result = self.agent(
-            "prompts/fix-genesis.md",
-            returns=FixResult,
-            power="high",
-            cwd=found.target_dir,
-            args={
-                "target_dir": found.target_dir,
-                "genesis_errors": report.errors,
-                "genesis_warnings": report.warnings,
-            },
-        )
-        return Continue(result, self.verify, reworks=reworks + 1)
+        if not report.valid:
+            raise WorkflowFailed(f"genesis target is invalid: {report.errors}")
+        return Done(report)
 
     # --- helpers ------------------------------------------------------------
 
@@ -353,25 +240,6 @@ class Genesis(Workflow):
         classification is a fact about the run, not a value any state hands to the next.
         """
         return self.output(resolve_genesis_target)
-
-    def _skeleton_ok(self) -> bool:
-        """Whether the skeleton step ran *and* produced its marker.
-
-        A service that already existed skipped `skeleton` entirely, so there is no output
-        to read — the YAML left `skeleton_ok` undefined there and its branch took the
-        `default:` arm. This returns False for the same case, for the same reason.
-        """
-        try:
-            return self.output(init_skeleton).ok
-        except NodeNotRunError:
-            return False
-
-    def _marker_path(self) -> str:
-        """The marker the skeleton step asserted, or `""` when it did not run."""
-        try:
-            return self.output(init_skeleton).marker_path
-        except NodeNotRunError:
-            return ""
 
     @staticmethod
     def _split(value: str) -> tuple[str, ...]:

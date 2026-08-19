@@ -1242,8 +1242,6 @@ workflow = (
             "fix-merge": {"status": "resolved"},
             "replan-epic": {"status": "complete"},
             "resolve-operator": {"decision": "answered"},
-            "apply-genesis-conventions": {"status": "complete"},
-            "fix-genesis": {"status": "complete"},
             "dream-reflect": {"status": "complete"},
         }
     )
