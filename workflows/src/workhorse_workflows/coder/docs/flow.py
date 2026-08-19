@@ -57,7 +57,11 @@ from typing import Any, ClassVar
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import paths
-from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
+from workhorse_workflows.coder.shared.dev import (
+    plan_summary,
+    read_operator_context,
+    resolve_impl_context,
+)
 from workhorse_workflows.coder.shared.docs import (
     MAX_PROMPT_NOTE_CHARS,
     classify_documentation_context,
@@ -448,6 +452,7 @@ class Docs(Workflow):
             "docs_path": self.docs_path,
             "features_root": self._features_root,
             "epic_path": self._epic_path,
+            "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
             "context_mode": classification.mode,
             "context_notes": classification.notes,
             "gate_notes": _prompt_note(gate_notes),

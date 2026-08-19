@@ -39,6 +39,8 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     OperatorAnswer,
     OperatorResolution,
     PlanResult,
+    PlanService,
+    PlanSummary,
     PlanValidation,
     QaRunEntry,
 )
@@ -168,6 +170,8 @@ __all__ = [
     "OperatorAnswer",
     "OperatorResolution",
     "PlanResult",
+    "PlanService",
+    "PlanSummary",
     "PlanValidation",
     "PrGate",
     "PushOutcome",

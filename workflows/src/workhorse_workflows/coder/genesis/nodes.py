@@ -228,7 +228,7 @@ def write_agents_yml(
 
     The `workspace:` block is what lets the planner target the service at all: it is where
     `service_roots` and `service_markers` come from, and `resolve_workspace` merges it into
-    the repo record `validate_plan_context` reads.
+    the repo record `record_plan` reads.
 
     Existing files are **merged, not overwritten**. On a re-run the repo may carry
     hand-edits, and clobbering them would make genesis unsafe to re-run — which is the
@@ -257,7 +257,7 @@ def write_agents_yml(
 
     # The repo's name is its directory name — NOT the service's. One monorepo holds many
     # services, and two things key off this: `resolve_workspace` keys the workspace on it
-    # (so `validate_plan_context` resolves services under it), and farrier derives the
+    # (so `record_plan` resolves services under it), and farrier derives the
     # generated-skill prefix from it. Using the first surface's service name produced a
     # workspace keyed on "api" and 49 skills named `api-flutter-*`.
     repo_name = target.name
@@ -409,7 +409,7 @@ def init_skeleton(
 
     This is what makes a scaffolded folder into a *service*. Scaffolds seed a directory and
     a `.gitignore`; they do not produce `go.mod` / `package.json` / `pubspec.yaml`, and
-    those marker files are precisely what `validate_plan_context` looks for when deciding
+    those marker files are precisely what `record_plan` looks for when deciding
     whether the planner may target a service. So genesis shells out to the real tool rather
     than templating a fake skeleton — the layout then matches whatever that ecosystem
     currently generates, which is not something a library snapshot can stay correct about.
@@ -488,7 +488,7 @@ def install_farrier(
 
     Scaffolds are deliberately thin — a folder and a `.gitignore`, no marker file — so this
     node establishes *convention and hygiene* only. What makes the service real to
-    `validate_plan_context` is the marker, and that comes from `init_skeleton`. The two are
+    `record_plan` is the marker, and that comes from `init_skeleton`. The two are
     complementary, not redundant.
 
     A scaffold that fails ends the node with the ids rendered so far, rather than
@@ -543,7 +543,7 @@ def validate_genesis(
 
     Genesis's postcondition **is** the main loop's precondition, so the service half is
     checked with the shared `contract.service_problems` — the same call
-    `validate_plan_context` makes. Without that sharing the two drift apart and the only
+    `record_plan` makes. Without that sharing the two drift apart and the only
     symptom is a confusing planner rejection several stages later.
 
     What each check earns its place with:

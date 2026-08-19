@@ -1,7 +1,7 @@
 """What makes a service real to the planner — one assertion, two callers.
 
 Genesis's **postcondition** is the main loop's **precondition**: the thing genesis has to
-leave behind is exactly the thing `validate_plan_context` refuses to plan without. The YAML
+leave behind is exactly the thing `record_plan` refuses to plan without. The YAML
 kept that as `scripts/service_contract.py`, imported by both `validate-genesis.py` and
 `validate-plan-context.py`, with the reason written on it: without the sharing the two drift
 apart and the only symptom is a confusing planner rejection several stages later.

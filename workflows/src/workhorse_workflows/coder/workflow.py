@@ -88,6 +88,7 @@ from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
 from workhorse_workflows.kit.telemetry import counter_labels
 from workhorse_workflows.coder.shared.dev import (
     branch_code_repos,
+    plan_summary,
     resolve_impl_context,
     select_next_layer,
 )
@@ -1194,6 +1195,7 @@ class Coder(Workflow):
             args={
                 "story_path": fix.story_path,
                 "spec_dir": fix.spec_dir,
+                "plan_services": self.call(plan_summary, fix.spec_dir).text,
                 "qa_dir": fix.qa_dir,
                 "docs_path": self.docs_path,
                 "target_env": self.target_env,

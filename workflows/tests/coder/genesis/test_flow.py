@@ -169,7 +169,7 @@ def test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept(
     """One pass through every state, ending on a validator that has nothing to report.
 
     The postconditions asserted here are not this flow's invention: `validate_genesis`
-    shares `contract.service_problems` with the main graph's `validate_plan_context`, so
+    shares `contract.service_problems` with the main graph's `record_plan`, so
     the terminal being `valid` is the same claim the planner makes when it accepts a
     service.
     """

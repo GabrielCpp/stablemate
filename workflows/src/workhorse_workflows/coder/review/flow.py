@@ -54,7 +54,7 @@ from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths
-from workhorse_workflows.coder.shared.dev import read_operator_context
+from workhorse_workflows.coder.shared.dev import plan_summary, read_operator_context
 from workhorse_workflows.coder.shared.escalation import escalation
 from workhorse_workflows.coder.shared.resolution import (
     RESOLVER_POWER,
@@ -264,6 +264,7 @@ class Review(Workflow):
             args={
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
+                "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
                 "code_review_result": code_review,
                 "code_reuse_result": code_reuse,
             },

@@ -14,12 +14,14 @@ progress ledger:
   same reason `fix_ci`'s `processed_repos` was: a workflow var is a string. A state
   parameter is a value, so the encoding has no job left. Nothing on disk carried the encoded
   form — `ostler qa context` is handed the decoded arguments either way.
-* **`PlanResult` has no `services` field.** Both prompts that produce a `plan_result` ask for
-  one and they disagree about its shape: `plan-story.md` specifies a list of `"repo::path"`
-  strings and `refine-plan.md` a list of `{repo, path, type}` objects. Nothing in the flow
-  ever read it — `plan-context.json`, which the same turn writes, is what every downstream
-  node decodes — so modelling it would mean picking a winner between two live formats for a
-  field with no consumer. `CoderResult`'s `extra="ignore"` lets either arrive and be dropped.
+* **`PlanResult` carries the plan's structure.** It used to carry `{status, summary}` and
+  nothing else, because the services lived in a `plan-context.json` the *agent* free-typed
+  into the spec dir and Python then `load_json`ed in four places, rewrote in place, and
+  re-handed to later turns as a path plus "read it". An agent authoring a machine-read file
+  is what produced the "exists but has no `services` array" error path and its rework lap.
+  The turn now returns the structure, the checkpoint validates it, and Python writes
+  `plan-context.json` as a *projection* — one way, for readers outside the producing run
+  (a later QA lane, `ostler artifact vet`, a human in the spec dir).
 
 The tri-states stay strings for the reason `schemas/ci.py` gives at length: each has three
 arms whose `default:` — the one a blank takes — is a *specific* one, and every branch below
@@ -33,16 +35,57 @@ from typing import Any
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 
 
+class PlanService(CoderResult):
+    """One service the plan changes: where it lives, what it is, what to read, what to do.
+
+    A shared package (a library the dependent service's pass implements) is the same shape
+    with no `plan_file` — it is a directory the plan touches, and the only thing that
+    distinguishes it is which list it is in.
+    """
+
+    #: Workspace repo name. Case is repaired against the workspace rather than rejected —
+    #: the planner tends to emit the human-facing brand and the key is the folder name.
+    repo: str = ""
+    #: Path from the repo root to the service directory; `.` for a repo-root service.
+    path: str = ""
+    #: The technology key *this repo's* skills and prompts gate on, not a remembered
+    #: taxonomy — it is read back out of the repo's own `agents.yml`.
+    type: str = ""
+    #: Instruction short-names the implementer must load for this service.
+    skills: list[str] = []
+    #: The per-service plan file, relative to the spec dir. Blank on a shared package.
+    plan_file: str = ""
+    #: The directory does not exist yet and implementation will scaffold it, so the path
+    #: and marker checks are skipped for this entry.
+    new_service: bool = False
+
+
 class PlanResult(CoderResult):
     """`prompts/plan-story.md` and `prompts/refine-plan.md` — the plan, or the blocker.
 
     `status` is `done` or `blocked`. A blank takes the YAML's `default:` arm, which is
     `done` — the plan gate is deliberately permissive, because depth and correctness are
     enforced downstream by implementation review and by QA, not here.
+
+    The structural fields are the ones the turn used to hand-write into `plan-context.json`;
+    see this module's header for why they moved. A malformed one is now a parse retry
+    against a pydantic model rather than a workflow state.
     """
 
     status: str = ""
     summary: str = ""
+
+    #: Every service this story changes, one entry each. An empty list is a legitimate
+    #: single-service story: the dispatcher falls back to a repo-root layer.
+    services: list[PlanService] = []
+    #: Build order as `repo::path` keys — whatever defines a contract before whatever
+    #: implements it, and that before whatever consumes it.
+    implementation_order: list[str] = []
+    #: Non-service directories (libs, shared code) the plan changes.
+    shared_packages: list[PlanService] = []
+    #: The story's `## Verification setup`, machine-readable: `profile`, `fixtures`,
+    #: `capable_of_rendering`. Free-form by design — QA renders it, nothing branches on it.
+    qa_stack: dict[str, Any] = {}
 
 
 class ImplResult(CoderResult):
@@ -181,15 +224,21 @@ class OperatorAnswer(CoderResult):
 
 
 class PlanValidation(CoderResult):
-    """`validate-plan-context.py` — do the planner's service paths point at real services?
+    """`record_plan` — the projection Python wrote, and whether it points at real services.
 
     `status` is `valid` or `invalid`, and a blank takes `valid`: the YAML's `default:` arm
     routed on to implementation, because a validator that cannot speak is not evidence of a
     bad plan. `errors` is what the refiner is handed as its brief.
+
+    `document` is the projected plan itself — the same mapping written to `plan-context.json`
+    — so the states downstream of the gate hand the *value* to the dispatch nodes instead of
+    naming the file back at them. It is the producing run's copy; a lane that did not produce
+    it (QA on a later run, the fix lane) passes nothing and reads the projection off disk.
     """
 
     status: str = ""
     errors: list[str] = []
+    document: dict[str, Any] = {}
 
 
 class DispatchEntry(CoderResult):
@@ -227,6 +276,21 @@ class QaRunEntry(CoderResult):
     qa_mode: str = ""
     qa_skill: str = ""
     qa_skills: list[str] = []
+
+
+class PlanSummary(CoderResult):
+    """The plan's structure as prose, for a turn in a lane that did not produce it.
+
+    `text` is rendered by Python from the projection, and it is what the review, QA, fix and
+    docs prompts are handed instead of the name of a file to go and parse. A turn told to
+    read a path spends a tool call, may not spend it, and may read a different copy than the
+    workflow decided on; a turn handed the content reads what the workflow decided on.
+
+    Blank when there is no projection to read — the prompts fall back to the plan artifacts,
+    which is where a single-service story's scope was legible anyway.
+    """
+
+    text: str = ""
 
 
 class ImplContext(CoderResult):

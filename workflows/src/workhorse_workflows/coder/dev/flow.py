@@ -88,10 +88,10 @@ from workhorse_workflows.coder.shared.dev import (
     branch_code_repos,
     changed_files,
     read_operator_context,
+    record_plan,
     resolve_impl_context,
     run_lint,
     select_next_layer,
-    validate_plan_context,
 )
 from workhorse_workflows.coder.shared.escalation import escalation
 from workhorse_workflows.coder.shared.failure import from_lint
@@ -297,7 +297,9 @@ class Dev(Workflow):
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         if result.status == "blocked":
             return self._gate_plan(result, result.summary, 0)
-        return Continue(result, self.validate_paths, notes=result.summary)
+        return Continue(
+            result, self.validate_paths, notes=result.summary, plan=self._plan_arg(result)
+        )
 
     def _gate_plan(self, result: object, notes: str, plan_blocks: int) -> Continue | Await:
         """`gate_plan`: hand the block to the resolver, or straight to a human.
@@ -414,55 +416,52 @@ class Dev(Workflow):
         # a plan this state has just replaced, and the next block is a different one.
         self.reset_session(self._chain("block-repair"))
         return Continue(
-            result, self.validate_paths, notes=result.summary, plan_blocks=plan_blocks
+            result,
+            self.validate_paths,
+            notes=result.summary,
+            plan=self._plan_arg(result),
+            plan_blocks=plan_blocks,
         )
 
     # --- the path gate ------------------------------------------------------
 
     def validate_paths(
-        self, notes: str, plan_rework: int = 0, plan_blocks: int = 0
+        self,
+        notes: str,
+        plan: dict | None = None,
+        plan_rework: int = 0,
+        plan_blocks: int = 0,
     ) -> Continue | Await:
-        """Do the planner's declared service paths point at real services?
+        """Write the plan projection, and answer whether its service paths are real.
 
-        `validate_plan` + `decide_validation` + `guard_validate`. A validator that cannot
-        speak is not evidence of a bad plan, so a blank status takes the `valid` arm.
-        Deterministic case repair happens inside the node, so what survives to a `invalid`
-        verdict is genuinely unfixable by a blind refine pass — a missing marker, a
-        nonexistent path, an unresolvable repo — which is why the exhausted budget escalates
-        to the operator rather than proceeding.
+        `validate_plan` + `decide_validation` + `guard_validate` + the `rework_plan_paths`
+        that used to be its own state. The rework turn is inlined because the two were never
+        independently reachable: every `invalid` verdict routed to it and it routed nothing
+        back but here. One state re-planning against its own errors is the loop the counter
+        was always describing, and `plan` is the refined structure going back into the same
+        gate rather than a file the next state re-reads.
+
+        A validator that cannot speak is not evidence of a bad plan, so a blank status takes
+        the `valid` arm. What survives to an `invalid` verdict is unfixable by a blind refine
+        pass — a missing marker, a nonexistent path, an unresolvable repo — which is why the
+        exhausted budget escalates to the operator rather than proceeding.
         """
-        result = self.call(validate_plan_context, self.ctx.spec_dir)
+        result = self.call(record_plan, plan, self.ctx.spec_dir)
         if result.status != "invalid":
             self.reset_session(self._chain("path-repair"))
             return Continue(result, self.dispatch)
         if plan_rework >= self.MAX_VALIDATE_REWORKS:
             return self._gate_plan(result, notes, plan_blocks)
-        return Continue(
-            result,
-            self.rework_paths,
-            notes=notes,
-            plan_rework=plan_rework,
-            errors=str(result.errors),
-            plan_blocks=plan_blocks,
-        )
-
-    def rework_paths(
-        self, notes: str, plan_rework: int, errors: str, plan_blocks: int = 0
-    ) -> Continue:
-        """Re-plan against the validation errors, then re-validate.
-
-        `rework_plan_paths` + `incr_plan_rework`. The counter the YAML bumped in a separate
-        node — agent nodes could not also emit one — is the parameter on the way back.
-        """
-        result = self._refine(
-            review_notes=f"Service path validation failed: {errors}",
+        refined = self._refine(
+            review_notes=f"Service path validation failed: {result.errors}",
             operator_context="",
             worklist="path-repair",
         )
         return Continue(
-            result,
+            refined,
             self.validate_paths,
-            notes=result.summary or notes,
+            notes=refined.summary or notes,
+            plan=self._plan_arg(refined),
             plan_rework=plan_rework + 1,
             plan_blocks=plan_blocks,
         )
@@ -479,12 +478,21 @@ class Dev(Workflow):
         did: the docs repo was branched much earlier, when it was the only thing the run
         knew about.
         """
+        plan = self.output(record_plan).document
         impl = self.call(
-            resolve_impl_context, self.ctx.spec_dir, self.target_env, self.docs_path
+            resolve_impl_context,
+            self.ctx.spec_dir,
+            self.target_env,
+            self.docs_path,
+            plan=plan,
         )
         self.logger.info("implementing %d service layer(s)", impl.dispatch_count)
         self.call(
-            branch_code_repos, self.ctx.spec_dir, self.branch or self.story, self.docs_path
+            branch_code_repos,
+            self.ctx.spec_dir,
+            self.branch or self.story,
+            self.docs_path,
+            plan=plan,
         )
         return Continue(impl, self.layer)
 
@@ -495,7 +503,12 @@ class Dev(Workflow):
         `current_layer_index`; an exhausted dispatch list is the loop's success exit, and
         the only other way out of this flow is the operator's epic-scoped replan.
         """
-        pick = self.call(select_next_layer, self.ctx.spec_dir, index)
+        pick = self.call(
+            select_next_layer,
+            self.ctx.spec_dir,
+            index,
+            plan=self.output(record_plan).document,
+        )
         if not pick.has_layer:
             self.logger.info("every service layer implemented")
             return self._ends(DevResult())
@@ -827,6 +840,18 @@ class Dev(Workflow):
                 "operator_context": operator_context,
             },
             session=self._chain(worklist),
+        )
+
+    @staticmethod
+    def _plan_arg(result: PlanResult) -> dict:
+        """The structural half of a plan turn's reply, as the transition carries it.
+
+        `status` and `summary` are this turn's report on itself and say nothing about what
+        was planned; the rest is the plan. Splitting them here keeps a checkpoint's
+        transition arguments to the value the next state actually needs.
+        """
+        return result.model_dump(
+            include={"services", "implementation_order", "shared_packages", "qa_stack"}
         )
 
     @property

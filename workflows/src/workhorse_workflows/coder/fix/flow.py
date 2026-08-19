@@ -68,6 +68,7 @@ from workhorse_workflows.coder.shared.backlog import (
 )
 from workhorse_workflows.coder.shared.dev import (
     branch_code_repos,
+    plan_summary,
     resolve_impl_context,
     select_next_layer,
 )
@@ -335,6 +336,7 @@ class Fix(Workflow):
             args={
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
+                "plan_services": self.call(plan_summary, self._story.spec_dir).text,
                 "qa_dir": self._story.qa_dir,
                 "docs_path": self.docs_path,
                 "target_env": self.target_env,

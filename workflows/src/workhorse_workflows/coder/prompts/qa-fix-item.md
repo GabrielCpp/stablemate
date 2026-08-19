@@ -26,8 +26,11 @@ Read:
 - `AGENTS.md`
 - this repo's developer / local-stack runbook: {{ find_by_tags("runbook") | default("(none installed — follow `AGENTS.md` and the repo's own documented commands)", true) }}
 - the story file, for its acceptance criteria
-- the plan artifacts under the spec directory (`plan-context.json` names the services the
-  fix touched — verify those, not the whole repository)
+- the plan artifacts under the spec directory. Verify the services the fix touched, not
+  the whole repository:
+{% if plan_services %}
+{{ plan_services }}
+{% endif %}
 - the testing instruction files for the layers the fix touched, from those this repository
   installs: {{ find_by_tags("tests") | default("(none installed — follow the conventions the layer's existing tests establish)", true) }}
 

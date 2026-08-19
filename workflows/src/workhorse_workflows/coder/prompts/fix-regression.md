@@ -29,8 +29,10 @@ You are **not** re-checking this story's ACs.
   whichever of these this repository installs: {{ find_by_tags("qa") | default("(none installed — follow the repo's own QA documentation)", true) }}
 - The documented journeys under `docs/features/journeys/<platform>/` and their convention
   (`docs/features/journeys/README.md`). Each journey is one flow.
-- `{{ workhorse_var('spec_dir') }}/plan-context.json` (`qa_stack`, `services`) — the stack/fixtures
-  the surface needs, and which per-repo/per-service surfaces this story actually changed.
+- the surfaces this story actually changed, and the stack/fixtures they need:
+{% if plan_services %}
+{{ plan_services }}
+{% endif %}
 - The committed regression suite for the platform (web: `web/e2e/journeys/*.journey.spec.ts`,
   `make e2e-journeys`; mobile: the Maestro journey flows).
 - The raw run log at the path above, and the story diff (`git diff` against the epic base).

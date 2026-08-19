@@ -76,7 +76,11 @@ from typing import Any, ClassVar, NamedTuple
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths, qa_support
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
-from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_impl_context
+from workhorse_workflows.coder.shared.dev import (
+    plan_summary,
+    read_operator_context,
+    resolve_impl_context,
+)
 from workhorse_workflows.coder.shared.docs import detect_okf_docs
 from workhorse_workflows.coder.shared.escalation import escalation
 from workhorse_workflows.coder.shared.resolution import (
@@ -853,6 +857,7 @@ class Qa(Workflow):
             "target_env": self.target_env,
             "qa_stack": impl.qa_stack,
             "shared_packages": impl.shared_packages,
+            "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
             "qa_only_scenarios": [
                 {"title": s.title, "ac": s.ac, "level": s.level}
                 for s in qa_only_scenarios(spec_abs, "")
@@ -1423,6 +1428,7 @@ class Qa(Workflow):
                 "spec_dir": self.ctx.spec_dir,
                 "platform": platform.platform,
                 "service_paths": platform.paths,
+                "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
                 "regression_run_status": run.status,
                 "regression_run_failing_tests": run.failing_tests,
                 "regression_run_notes": run.notes,

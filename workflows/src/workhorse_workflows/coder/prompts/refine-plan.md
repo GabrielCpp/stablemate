@@ -265,37 +265,39 @@ The plan is ready when:
 - [ ] Test scenarios cover happy paths, errors, edge cases, and integration boundaries.
 - [ ] Safety, privacy, and production/debug constraints are represented where relevant.
 - [ ] The plan remains scoped to the story and does not implement future stories.
-- [ ] Rewrote `docs/specs/<story-name>/plan-context.json` so its `services` array + `required_instructions` match the refined plan (add/drop a service, its `skills`, or an instruction if refinement changed scope) — **preserve the `services` structure the planner wrote; do not collapse it back to a flat layer list.**
-
-## Update `plan-context.json` (required)
-
-Rewrite `docs/specs/<story-name>/plan-context.json` to match the refined plan — a deterministic workflow step reads it to bootstrap the implementer/QA with the instructions and run/QA tooling this story needs. Keep the **`services`** array as the source of truth (one entry per repo::service the story changes); the workflow derives the touched layers and regression platform from each service's `type` and `path`:
-
-```json
-{
-  "services": [
-    {"repo": "acme", "path": "api", "type": "go",           "skills": ["go", "go-architecture", "go-testing", "go-openapi"], "plan_file": "plan.md"},
-    {"repo": "acme", "path": "web", "type": "react-router", "skills": ["react-router", "react-router-testing", "web-api"], "plan_file": "plan.md"}
-  ],
-  "implementation_order": ["acme::api", "acme::web"],
-  "required_instructions": ["go", "go-architecture", "go-testing", "go-openapi", "react-router", "react-router-testing", "web-api"]
-}
-```
-
-- `services`: one entry per **service** (concrete deployable unit) the refined plan changes. Each has `repo` (workspace/CWD repo name), `path` (relative path from repo root to the service folder — e.g. `web`, `api`, `report`, `pulumi`, `.` for root), `type` — the vocabulary the workflow understands is `go`, `react-router`, `svelte`, `flutter`, `terraform` and `docs`, and you pick from it only for the layers this repo actually has (`docs` for a documentation-only service) — `skills` (instruction short-names for that service), and `plan_file`. This is where a layer is pinned to *where* it lives — e.g. `react-router` → the `web/` folder.
-- `required_instructions` is the union of all services' `skills` (kept for backwards-compatible instruction resolution). Keep it in sync with the human-facing **Required Skill Files Read** section.
-
-If refinement changed scope, add/drop a `services` entry or adjust its `skills` — do not hand-author a flat `touched_layers` list (it is derived from `services`).
+- [ ] Returned a `services` array matching the refined plan (add/drop a service or adjust its `skills` if refinement changed scope) — **preserve the structure the planner returned; do not collapse it to a flat layer list.**
 
 ## Machine-Readable Result (required)
 
-After refining the plan artifacts, return this exact JSON object as the LAST thing in your final response — these two keys at its top level, with no wrapper object around them. Any other shape fails to parse and the node is retried:
+After refining the plan artifacts, return this exact JSON object as the LAST thing in your final response — these keys at its top level, with no wrapper object around them. Any other shape fails to parse and the node is retried:
 
 ```json
-{"status": "done|blocked", "summary": "<one-line summary of the refinements, or the blocker>"}
+{
+  "status": "done|blocked",
+  "summary": "<one-line summary of the refinements, or the blocker>",
+  "services": [
+    {"repo": "acme", "path": "api", "type": "<type>", "skills": ["<skill>"], "plan_file": "plan.md"},
+    {"repo": "acme", "path": "web", "type": "<type>", "skills": ["<skill>"], "plan_file": "plan.md"}
+  ],
+  "implementation_order": ["acme::api", "acme::web"],
+  "shared_packages": [],
+  "qa_stack": {}
+}
 ```
 
 - `status`: `"done"` when the plan is refined and ready for re-review, or `"blocked"` if refinement cannot proceed.
 - `summary`: a one-line description of what was refined (or the blocker).
+- `services`: one entry per **service** (concrete deployable unit) the refined plan changes.
+  Each has `repo` (workspace/CWD repo name), `path` (relative path from repo root to the
+  service folder, `.` for root), `type` (the key this repo's instructions gate on — take it
+  from the repo's own `agents.yml` and skill short-names, not from a taxonomy you remember),
+  `skills` (instruction short-names for that service), and `plan_file`. This is where a layer
+  is pinned to *where* it lives. Set `new_service: true` on a directory this story scaffolds.
+- `implementation_order`: `repo::path` keys in build order; every entry must name a declared service.
+- `shared_packages`: non-service directories (libs, shared code) changed as part of a dependent service's pass.
+- `qa_stack`: the story's verification setup in machine-readable form.
 
-The services are **not** part of this reply. The workflow derives the touched layers and the per-service run/regression scope from the `services` array in `plan-context.json` — so a refinement that changed scope has to land there, in the file, or it does not land at all.
+**This reply is the whole of the refinement's structure.** The workflow derives the touched
+layers and the per-service run/regression scope from it — a refinement that changed scope and
+did not say so here did not change scope. Re-state the full `services` array every time, not
+just the delta: what you return replaces what the previous turn returned.

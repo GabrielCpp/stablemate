@@ -27,7 +27,11 @@ All three sets of findings are combined into the final verdict.
 
 1. Read the **story** at `story_path` to understand the acceptance criteria and scope.
 2. Read the **plan** in `spec_dir` (look for `plan.md` or the service-specific plan files) to understand the intended approach.
-3. If a `plan-context.json` exists in the spec dir, read it to identify affected repos and instruction files.
+3. The affected repos and their instruction files, as the plan resolved them:
+{% if plan_services %}
+{{ plan_services }}
+{% endif %}
+   When that is blank, take the scope from the plan artifacts themselves.
 
 ### 2. Examine the Changes
 
@@ -47,8 +51,8 @@ and collected in Step 4b; do not re-derive them.
 
 - Read the coding-standard files that govern the changed code. Take the list from the
   repo itself, not from memory:
-  - the `skills` on each service entry in `plan-context.json` — that is the set the
-    implementer was held to, so it is the set to review against
+  - the `skills` listed for each service above — that is the set the implementer was
+    held to, so it is the set to review against
   - any further skills those files themselves point at for the areas the diff touches
   - any other repo-specific standards listed in that repo's `AGENTS.md`/`CLAUDE.md`
   - if a repo names no skills for a changed file, say so in the review rather than

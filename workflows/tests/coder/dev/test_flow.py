@@ -16,8 +16,8 @@ the YAML engine drove against, and the same files are on disk afterwards.
 The scripted agent is scripted the way `surveyor`'s is: it dispatches on the prompt's
 filename, which is the same key the engine derives its node id from, and every handler leaves
 behind the artifacts its reply claims to have written — the plan turn writes
-`plan-context.json` and the per-service plan files, the resolver writes the operator's answer
-into `context.md`, the lint fixer writes the file that makes the linter pass. A handler that
+the per-service plan files and returns the structure Python projects, the resolver
+writes the operator's answer into `context.md`, the lint fixer writes the file that makes the linter pass. A handler that
 only returned a status would be testing the state machine against a fiction.
 """
 from __future__ import annotations
@@ -40,9 +40,9 @@ from workhorse.records import parse_checkpoint
 from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.shared.dev import (
     read_operator_context,
+    record_plan,
     resolve_impl_context,
     run_lint,
-    validate_plan_context,
 )
 
 STORY = "STORY-1"
@@ -127,7 +127,7 @@ SERVICES: list[dict[str, Any]] = [
     },
 ]
 
-#: The same plan naming a repo the workspace does not carry. `validate_plan_context` rejects
+#: The same plan naming a repo the workspace does not carry. `record_plan` rejects
 #: it on the workspace lookup, which is the one failure mode no blind refine pass can repair
 #: by luck — the path gate's escalation arm needs an error that stays an error.
 GHOST: list[dict[str, Any]] = [
@@ -275,7 +275,7 @@ class _Agent:
         return self._plan(data)
 
     def _plan(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Write the spec dir the way both planning prompts are told to, then report.
+        """Write the plan files both planning prompts are told to, then report the structure.
 
         The plan files are written *untyped*: `stamp_specs` runs right after the first plan
         turn and is what gives them their OKF `type`, so writing them with front-matter
@@ -290,21 +290,13 @@ class _Agent:
                 f"# Plan for {svc['repo']}::{svc['path']}\n",
                 encoding="utf-8",
             )
-        (spec / "plan-context.json").write_text(
-            json.dumps(
-                {
-                    "story": STORY,
-                    "services": services,
-                    "implementation_order": [f"{s['repo']}::{s['path']}" for s in services],
-                },
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+        structure = {
+            "services": services,
+            "implementation_order": [f"{s['repo']}::{s['path']}" for s in services],
+        }
         if self.plans <= self.blocked:
-            return {"status": "blocked", "summary": "the prod bucket may not exist"}
-        return {"status": "done", "summary": f"plan {self.plans}"}
+            return {"status": "blocked", "summary": "the prod bucket may not exist", **structure}
+        return {"status": "done", "summary": f"plan {self.plans}", **structure}
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if self.resolver_answers:
@@ -500,7 +492,7 @@ def test_an_unresolvable_service_path_reworks_the_plan(
     assert agent.counts()["refine-plan"] == 1, agent.counts()
     assert "ghost" in agent.args_for("refine-plan")[0]["review_notes"]
     # The gate's verdict is the node's, recorded: the second validation passed.
-    assert _output(run_env, validate_plan_context)["status"] == "valid"
+    assert _output(run_env, record_plan)["status"] == "valid"
 
 
 def test_an_unfixable_plan_exhausts_the_budget_and_reaches_the_operator(

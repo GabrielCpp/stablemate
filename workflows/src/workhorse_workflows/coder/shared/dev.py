@@ -13,6 +13,12 @@ on a stale answer. That is `read_operator_context` below. The *decision* the scr
 driver's `Await` waits unconditionally and would otherwise block on a resolution that had
 already happened; that is the same split `author` and `surveyor` settled on.
 
+**`plan-context.json` is written here and read nowhere that produced it.** `record_plan`
+projects the checkpointed `PlanResult` onto disk; the dispatch nodes take that same value as
+an argument and only fall back to reading the file when the caller is not the run that
+produced it (QA on a later run, the fix lane, docs). The file is the artifact other readers
+were built against — `ostler artifact vet`, a human in the spec dir — not the flow's channel.
+
 Two things the scripts did with paths are kept exactly, and one is worth naming.
 `validate-plan-context.py` and `select-next-layer.py` resolve `<spec_dir>/plan-context.json`
 against `find_repo_root(repo_dir)` while `branch-code-repos.py` resolves it against
@@ -31,7 +37,6 @@ from typing import Any
 
 import yaml
 from workhorse import gates
-from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.kit import find_docs_root, find_repo_root, load_json
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.contract import service_problems
@@ -44,6 +49,7 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     LayerPick,
     LintOutcome,
     OperatorAnswer,
+    PlanSummary,
     PlanValidation,
     QaRunEntry,
 )
@@ -81,55 +87,117 @@ def _spec_dir(spec_dir: str, root: Path) -> Path:
     return path if path.is_absolute() else root / path
 
 
+def plan_document(plan: dict[str, Any], repos: dict[str, dict]) -> dict[str, Any]:
+    """The plan-context mapping, built from a `PlanResult` and the resolved workspace.
+
+    One function, because there are two consumers of the same derivation: the projection
+    written to disk and the dispatch decoded in memory. They cannot be allowed to disagree
+    — the whole point of Python owning the document is that there is one of it.
+
+    Repo names are canonicalized case-insensitively against the workspace keys. The planner
+    tends to emit the human-facing project name ("Acme") while the key is the folder name
+    ("acme"), and repairing that is strictly better than routing a symptom-only error back
+    to a model that re-authors the same casing from the title-cased branding in its prompt.
+    """
+    canon_by_lower = {name.lower(): name for name in repos}
+
+    def canon(repo_name: str) -> str:
+        return repo_name if repo_name in repos else canon_by_lower.get(repo_name.lower(), repo_name)
+
+    def entry(svc: Any) -> dict[str, Any]:
+        svc = dict(svc or {})
+        svc["repo"] = canon(str(svc.get("repo", "")))
+        return svc
+
+    services = [entry(svc) for svc in plan.get("services") or []]
+    order = [
+        f"{canon(str(item).split('::', 1)[0])}::{str(item).split('::', 1)[1]}"
+        if "::" in str(item)
+        else str(item)
+        for item in plan.get("implementation_order") or []
+    ]
+    instructions: list[str] = []
+    for svc in services:
+        for skill in svc.get("skills") or []:
+            if str(skill) not in instructions:
+                instructions.append(str(skill))
+    return {
+        "services": services,
+        "implementation_order": order,
+        "shared_packages": [entry(pkg) for pkg in plan.get("shared_packages") or []],
+        # Derived, never asked for: it was always the union of the services' skills, and a
+        # hand-written union is a hand-written way to disagree with itself.
+        "required_instructions": instructions,
+        "qa_stack": plan.get("qa_stack") or {},
+    }
+
+
+def _plan_context(
+    plan: dict[str, Any] | None, spec_dir: str, root: Path, repos: dict[str, dict],
+    logger: logging.Logger,
+) -> tuple[dict[str, Any], bool]:
+    """The plan document and whether it had to be read off disk.
+
+    The producing run passes the checkpointed `PlanResult`; a lane that did not produce it
+    — QA on a later run, the fix flow, docs — reads the projection. The second return value
+    is "there was nothing to read either", which is what the dispatcher's repo-root fallback
+    keys on.
+    """
+    if plan:
+        return plan_document(plan, repos), False
+    path = _spec_dir(spec_dir, root) / "plan-context.json" if spec_dir else None
+    on_disk = load_json(path, "plan-context.json", logger) if path else {}
+    return on_disk, path is None or not path.exists()
+
+
 @blueprint.node
-def validate_plan_context(
-    logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace_file: str = ""
+def record_plan(
+    logger: logging.Logger,
+    plan: dict[str, Any] | None = None,
+    spec_dir: str = "",
+    repo_dir: str = "",
+    workspace_file: str = "",
 ) -> PlanValidation:
-    """Do the planner's declared service paths point at real services?
+    """Write the plan-context projection, and answer whether the plan is implementable.
 
-    Three checks per service: the path exists in the resolved workspace, it carries the
-    marker file its type implies, and its plan file was written to the spec dir. A failure
-    routes back to the planner with the errors as its brief rather than letting an
-    unimplementable plan reach the implementer.
+    Two jobs, one node, because the second is a check on the first: the document Python
+    writes is the document Python then validates, so a plan cannot pass a check run against
+    a different copy of itself. The *shape* is no longer checked at all — the turn returns a
+    `PlanResult` and a malformed one is a parse retry against the model, not a workflow
+    state with a rework lap of its own.
 
-    A *missing* plan-context.json is a single-service story and is valid. One that **exists
-    and declares no services** is a planner schema error, not a single-service story, and is
-    rejected with the schema spelled out: waving it through used to skip the whole implement
-    stage and send an unimplemented story into review and QA.
+    What is left is semantic, and none of it is knowable from the schema: the declared path
+    exists in the resolved workspace, it carries the marker file its type implies, its plan
+    file was written to the spec dir, and the build order references services the plan
+    actually declares. A failure routes back to the planner with the errors as its brief
+    rather than letting an unimplementable plan reach the implementer.
+
+    A plan naming no services is a single-service story and is valid — the dispatcher falls
+    back to a repo-root layer.
     """
     if not spec_dir:
         return PlanValidation(status="invalid", errors=["spec_dir argument is empty"])
 
     root = find_repo_root(repo_dir)
     spec_abs = _spec_dir(spec_dir, root)
-
-    plan_ctx = load_json(spec_abs / "plan-context.json", "plan-context.json", logger)
-    if not plan_ctx:
-        return PlanValidation(status="valid")
-
-    services = plan_ctx.get("services")
-    if not services:
-        return PlanValidation(
-            status="invalid",
-            errors=[
-                "plan-context.json exists but has no 'services' array "
-                f"(found keys: {sorted(plan_ctx.keys())}). Rewrite plan-context.json "
-                "so it declares every layer to implement as "
-                '{"services": [{"repo": "<workspace repo name>", "path": "<service dir, '
-                'e.g. api or web>", "type": "<go|react-router|...>", "plan_file": "<plan '
-                'file in the spec dir>", "skills": [...]}], '
-                '"implementation_order": ["<repo>::<path>", ...]} — '
-                "keys like 'touched_layers' are not read by the implementation dispatcher.",
-            ],
-        )
-
     repos = resolve_workspace(workspace_file, repo_dir)
+    doc = plan_document(plan or {}, repos)
+
+    spec_abs.mkdir(parents=True, exist_ok=True)
+    (spec_abs / "plan-context.json").write_text(
+        json.dumps(doc, indent=2) + "\n", encoding="utf-8"
+    )
+    logger.info("wrote plan-context.json projection (%d service(s))", len(doc["services"]))
+
+    services = doc["services"]
+    if not services:
+        return PlanValidation(status="valid", document=doc)
+
     errors: list[str] = []
 
-    # Producer-contract pre-check: `ostler artifact vet plan-context` applies the structural
-    # contract (services shape, plan_file existence, order refs) the planner was told to
-    # self-check against; workspace-specific repo resolution stays below, because ostler has
-    # no workspace context.
+    # The published artifact contract, applied to what we just wrote. It is no longer
+    # policing an agent's typing — it is the one check that catches this writer drifting
+    # from the schema every *other* reader of the file was built against.
     #
     # `status == "error"` means the contract could not be evaluated at all, which is not
     # the same answer as "no problems" — it is reported rather than swallowed, so a plan
@@ -139,25 +207,17 @@ def validate_plan_context(
         errors.append(f"[ostler] plan-context could not be vetted ({vetted.data['error']}).")
     errors.extend(f"[ostler] {p}" for p in vetted.data.get("problems", []))
 
-    # Case-insensitive lookup of the real workspace keys. The planner tends to emit the
-    # human-facing project name ("Acme") while the workspace key is the folder name
-    # ("acme"); resolve that here rather than routing a symptom-only error back to the
-    # model, which re-authors the same casing from the title-cased branding in its prompt.
-    # Repair, don't just reject.
-    canon_by_lower = {name.lower(): name for name in repos}
-    rewrites: dict[str, str] = {}
-
-    def canonicalize(repo_name: str) -> str:
-        if repo_name in repos:
-            return repo_name
-        canon = canon_by_lower.get(repo_name.lower())
-        if canon is not None and canon != repo_name:
-            rewrites[repo_name] = canon
-        return canon if canon is not None else repo_name
+    declared = {f"{svc.get('repo', '')}::{svc.get('path', '')}" for svc in services}
+    for item in doc["implementation_order"]:
+        if item not in declared:
+            known = ", ".join(sorted(declared))
+            errors.append(
+                f"implementation_order names '{item}', which is not a declared service "
+                f"(declared: {known})"
+            )
 
     for svc in services:
-        repo_name = canonicalize(svc.get("repo", ""))
-        svc["repo"] = repo_name  # normalized in place; persisted below if anything changed
+        repo_name = svc.get("repo", "")
         svc_path = svc.get("path", "")
         svc_type = svc.get("type", "")
         plan_file = svc.get("plan_file", "")
@@ -185,30 +245,21 @@ def validate_plan_context(
         if plan_file and not (spec_abs / plan_file).exists():
             errors.append(f"{label}: plan file '{plan_file}' not found in spec dir")
 
-    # Persist any case normalization so downstream consumers and any re-validation see the
-    # canonical key. `services[].repo` was rewritten above; the `repo::path` prefixes in
-    # `implementation_order` have to be fixed too.
-    if rewrites:
-        order = plan_ctx.get("implementation_order")
-        if isinstance(order, list):
-            plan_ctx["implementation_order"] = [
-                _rewrite_order_entry(entry, rewrites) for entry in order
-            ]
-        (spec_abs / "plan-context.json").write_text(
-            json.dumps(plan_ctx, indent=2) + "\n", encoding="utf-8"
-        )
-        for emitted, canon in sorted(rewrites.items()):
-            logger.info("normalized repo '%s' -> '%s' in plan-context.json", emitted, canon)
-
-    return PlanValidation(status="invalid" if errors else "valid", errors=errors)
+    return PlanValidation(
+        status="invalid" if errors else "valid", errors=errors, document=doc
+    )
 
 
-def _rewrite_order_entry(entry: Any, rewrites: dict[str, str]) -> Any:
-    """One `implementation_order` entry with its repo prefix canonicalized."""
-    if not isinstance(entry, str) or "::" not in entry:
-        return entry
-    repo_name, rest = entry.split("::", 1)
-    return f"{rewrites.get(repo_name, repo_name)}::{rest}"
+def _package_label(item: Any) -> str:
+    """One shared package as the `repo::path` string the QA prompts render.
+
+    A string arrives from a legacy projection on disk and is passed through; the structured
+    form is what a `PlanResult` carries.
+    """
+    if isinstance(item, dict):
+        repo, path = str(item.get("repo", "")), str(item.get("path", ""))
+        return f"{repo}::{path}" if repo and path else repo or path
+    return str(item)
 
 
 @blueprint.node
@@ -219,12 +270,15 @@ def resolve_impl_context(
     docs_path: str = "",
     repo_dir: str = "",
     workspace_file: str = "",
+    plan: dict[str, Any] | None = None,
 ) -> ImplContext:
     """Decode the approved plan against the workspace into everything downstream needs.
 
-    Deterministic and side-effect-free, and deliberately degrading: a missing or garbled
-    plan-context yields empty lists (logged) so the implementer falls back to reading the
-    plan text, rather than a hard failure that aborts the run.
+    `plan` is the producing run's checkpointed `PlanResult`; a lane that did not produce it
+    reads the projection off the spec dir instead. Deterministic and side-effect-free, and
+    deliberately degrading: nothing on either channel yields empty lists (logged) so the
+    implementer falls back to reading the plan text, rather than a hard failure that aborts
+    the run.
 
     Two roots, never conflated. `find_repo_root(repo_dir)` is the *orchestrating* repo, where
     the context manifest and the instruction library live; `find_docs_root(docs_path, repo_dir)`
@@ -235,15 +289,12 @@ def resolve_impl_context(
     root = find_repo_root(repo_dir)
     docs_root = find_docs_root(docs_path, repo_dir)
 
-    plan_ctx_path = _spec_dir(spec_dir, root) / "plan-context.json" if spec_dir else None
-    plan_ctx = load_json(plan_ctx_path, "plan-context.json", logger) if plan_ctx_path else {}
-    plan_ctx_absent = plan_ctx_path is None or not plan_ctx_path.exists()
+    repos = resolve_workspace(workspace_file, repo_dir)
+    plan_ctx, plan_ctx_absent = _plan_context(plan, spec_dir, root, repos, logger)
 
     manifest = load_json(root / MANIFEST_REL, "context manifest", logger)
     instructions: dict[str, str] = manifest.get("instructions") or {}
     services = plan_ctx.get("services") or []
-
-    repos = resolve_workspace(workspace_file, repo_dir)
 
     # Instruction paths from every service's skills, deduplicated in order.
     impl_instruction_paths: list[str] = []
@@ -310,12 +361,57 @@ def resolve_impl_context(
         impl_instruction_paths=impl_instruction_paths,
         qa_run_plan=qa_run_plan,
         qa_stack=plan_ctx.get("qa_stack") or {},
-        shared_packages=[str(item) for item in plan_ctx.get("shared_packages") or []],
+        shared_packages=[_package_label(item) for item in plan_ctx.get("shared_packages") or []],
         dispatch_list=dispatch,
         affected_repos=affected_repos,
         affected_repo_paths=affected_repo_paths,
         qa_source_roots=qa_source_roots,
     )
+
+
+@blueprint.node
+def plan_summary(
+    logger: logging.Logger,
+    spec_dir: str = "",
+    repo_dir: str = "",
+    workspace_file: str = "",
+) -> PlanSummary:
+    """The plan's structure, rendered for a turn in a lane that did not plan it.
+
+    The review, QA, fix and docs lanes each ran after — often long after — the run that
+    planned the story, so they read the projection. They read it *here*, once, in Python,
+    and their prompts are handed the rendering: a prompt that names a file is a prompt that
+    has to be right about where the file is, and it is a tool call spent re-deriving what
+    the workflow already knows.
+
+    A missing or empty projection renders blank rather than failing. A single-service story
+    legitimately declares no services, and no lane's turn is worth failing over the absence
+    of a summary of nothing.
+    """
+    root = find_repo_root(repo_dir)
+    repos = resolve_workspace(workspace_file, repo_dir)
+    plan_ctx, _ = _plan_context(None, spec_dir, root, repos, logger)
+
+    services = plan_ctx.get("services") or []
+    if not services:
+        return PlanSummary()
+
+    lines = ["Services this story changes (from the plan):"]
+    for svc in services:
+        label = f"{svc.get('repo', '')}::{svc.get('path', '')}"
+        skills = ", ".join(str(s) for s in svc.get("skills") or []) or "none"
+        plan_file = svc.get("plan_file", "") or "plan.md"
+        lines.append(f"- {label} (type: {svc.get('type', '')}) — skills: {skills} — plan: {plan_file}")
+    order = plan_ctx.get("implementation_order") or []
+    if order:
+        lines.append("Build order: " + " → ".join(str(item) for item in order))
+    shared = [_package_label(item) for item in plan_ctx.get("shared_packages") or []]
+    if shared:
+        lines.append("Shared packages: " + ", ".join(shared))
+    qa_stack = plan_ctx.get("qa_stack") or {}
+    if qa_stack:
+        lines.append("Verification setup: " + json.dumps(qa_stack))
+    return PlanSummary(text="\n".join(lines))
 
 
 def _branch_repo(repo_path: Path, repo_name: str, branch: str, logger: logging.Logger) -> str:
@@ -343,20 +439,18 @@ def branch_code_repos(
     docs_path: str = "",
     repo_dir: str = "",
     workspace_file: str = "",
+    plan: dict[str, Any] | None = None,
 ) -> BranchOutcome:
     """Put every code repo the plan names onto the story branch.
 
-    Runs after planning, when plan-context.json exists and the affected-repo list is
-    authoritative — the docs repo was branched much earlier, when it was the only thing the
-    run knew about. Idempotent: a repo already on the branch is left alone, and one that is
-    not a git repo is skipped rather than failing the run.
+    Runs after planning, when the affected-repo list is authoritative — the docs repo was
+    branched much earlier, when it was the only thing the run knew about. Idempotent: a repo
+    already on the branch is left alone, and one that is not a git repo is skipped rather
+    than failing the run.
     """
     docs_root = find_docs_root(docs_path, repo_dir)
-    plan_ctx = (
-        load_json(_spec_dir(spec_dir, docs_root) / "plan-context.json", "plan-context.json", logger)
-        if spec_dir
-        else {}
-    )
+    repos = resolve_workspace(workspace_file, repo_dir)
+    plan_ctx, _ = _plan_context(plan, spec_dir, docs_root, repos, logger)
 
     if not branch:
         if (docs_root / ".git").exists():
@@ -368,7 +462,6 @@ def branch_code_repos(
                 docs_root,
             )
 
-    repos = resolve_workspace(workspace_file, repo_dir)
     branched: list[str] = []
     already: list[str] = []
     for repo_name in get_affected_repos(plan_ctx, repos):
@@ -391,33 +484,28 @@ def select_next_layer(
     index: int = -1,
     repo_dir: str = "",
     workspace_file: str = "",
+    plan: dict[str, Any] | None = None,
 ) -> LayerPick:
     """The next service to implement, or "the dispatch list is exhausted".
 
     `index` is the position of the last completed layer, `-1` before the first.
 
-    A plan-context that **exists, has no `services` key at all, and yields no dispatch
-    records** means the planner wrote a nonconforming schema. `validate_plan_context` rejects
-    that shape and routes it back, so reaching this point means the gate was bypassed or
-    regressed — and guessing a fallback repo, silently dispatching the wrong layer or
-    skipping implementation entirely, is worse than halting. An explicit `"services": []` is
-    a legitimate already-exhausted plan (a story touching no code repos) and is not an error.
+    **An empty `services` means different things on the two channels, and both are meant.**
+    A planning turn that named none is a single-service story — there was nothing to
+    enumerate — so the value channel dispatches the one repo-root layer, which is the same
+    fallback `resolve_impl_context` applies to it. A projection *on disk* naming none is a
+    plan that deliberately dispatches nothing, which is how a documents-only fix reaches its
+    check turn without an implement turn in front of it.
+
+    The nonconforming-schema halt this node used to carry is gone with the shape it guarded
+    against. Python writes the projection now, so "the planner emitted a document with no
+    `services` key" is not a state a run can be in.
     """
     root = find_repo_root(repo_dir)
-    plan_ctx_path = _spec_dir(spec_dir, root) / "plan-context.json" if spec_dir else None
-    plan_ctx = load_json(plan_ctx_path, "plan-context.json", logger) if plan_ctx_path else {}
-    plan_ctx_absent = plan_ctx_path is None or not plan_ctx_path.exists()
-
     repos = resolve_workspace(workspace_file, repo_dir)
-    dispatch = build_dispatch_list(plan_ctx, repos, fallback=plan_ctx_absent)
-
-    if not dispatch and plan_ctx and not plan_ctx_absent and "services" not in plan_ctx:
-        raise WorkflowFailed(
-            f"plan-context.json at {plan_ctx_path} has no usable 'services' entries "
-            f"(keys: {sorted(plan_ctx.keys())}). This should have been rejected by the "
-            "plan-context validation gate and sent back to the planner; refusing to guess "
-            "a dispatch. Fix plan-context.json's schema and resume."
-        )
+    plan_ctx, plan_ctx_absent = _plan_context(plan, spec_dir, root, repos, logger)
+    planned_none = plan is not None and not (plan.get("services") or [])
+    dispatch = build_dispatch_list(plan_ctx, repos, fallback=plan_ctx_absent or planned_none)
 
     total = len(dispatch)
     nxt = index + 1
@@ -609,9 +697,11 @@ def read_operator_context(logger: logging.Logger, story_path: str = "") -> Opera
 __all__ = [
     "branch_code_repos",
     "changed_files",
+    "plan_document",
+    "plan_summary",
     "read_operator_context",
+    "record_plan",
     "resolve_impl_context",
     "run_lint",
     "select_next_layer",
-    "validate_plan_context",
 ]

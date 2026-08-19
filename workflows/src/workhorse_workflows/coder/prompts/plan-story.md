@@ -107,50 +107,12 @@ Do not put plan artifacts beside the story unless the caller explicitly override
 write your content **below the `---` frontmatter block, leaving that block in place** — a doc with
 no `type:` is an `okf-missing-type` error against the graph.
 
-#### `plan-context.json` (REQUIRED machine-readable resolution)
+#### The plan's structure (returned, not written)
 
-Also write `docs/specs/<story-name>/plan-context.json` next to `plan.md`. A deterministic workflow step reads it to bootstrap the implementer and QA with the services, instructions, and run/QA tooling this story needs.
-
-**Scaffold it, don't type it from memory** (when `ostler` is on PATH): run
-`timeout 30 ostler artifact scaffold plan-context --spec docs/specs/<story-name>` to get the
-exact skeleton, fill in the values, then **self-check before you return** with
-`timeout 30 ostler artifact vet plan-context --spec docs/specs/<story-name>` — a vet failure is
-YOUR bug to fix in this round; a malformed plan-context silently breaks the implementation
-dispatcher stages later. Write it as:
-
-```json
-{
-  "services": [
-    {
-      "repo": "api-service",
-      "path": "cmd/alert",
-      "type": "go",
-      "skills": ["api-service", "api-service-grpc", "api-service-events"],
-      "plan_file": "plan-api-service-alert.md"
-    },
-    {
-      "repo": "web-app",
-      "path": "packages/discover",
-      "type": "svelte",
-      "skills": ["web-app", "web-app-component"],
-      "plan_file": "plan-web-app-discover.md"
-    }
-  ],
-  "implementation_order": [
-    "api-service::cmd/alert",
-    "web-app::packages/discover"
-  ],
-  "shared_packages": [
-    {"repo": "api-service", "path": "pkg/db/alert", "type": "go-lib"}
-  ],
-  "required_instructions": ["api-service", "api-service-grpc", "web-app", "web-app-component"],
-  "qa_stack": {
-    "profile": "the stack/compose-profile/seed that renders this surface with realistic data",
-    "fixtures": ["the specific records/rows the surface needs to display, and how to create them"],
-    "capable_of_rendering": "the surface this stack can actually show (not a thin/empty default)"
-  }
-}
-```
+Your final reply carries the machine-readable resolution of this plan — the services it
+changes, the order they are built in, and the run/QA tooling it needs. The workflow validates
+that structure and writes it to disk itself; you do not author a machine-read file. The exact
+shape is under "Machine-Readable Result" at the end of this prompt, and it is:
 
 - `services`: one entry per **service** (concrete deployable unit) this story changes. Each has:
   - `repo`: the repo name (must match a folder name in the workspace or the CWD repo name)
@@ -158,10 +120,10 @@ dispatcher stages later. Write it as:
   - `type`: the technology, using the key **this repo's** instructions/prompts gate on — take it from the skill short-names listed under "Instruction Set Resolution" above and from the repo's own `agents.yml`, not from a taxonomy you remember. `docs` is the type for documentation-only services in every repo.
   - `skills`: instruction short-names the implementer must load for this service
   - `plan_file`: the plan file for this service (relative to spec dir)
-- `implementation_order`: ordered list of `repo::path` keys specifying build order. Dependencies first: whatever defines a shared contract before whatever implements it, and whatever implements it before whatever consumes it.
+  - `new_service`: `true` only when the directory does not exist yet and this story scaffolds it
+- `implementation_order`: ordered list of `repo::path` keys specifying build order. Dependencies first: whatever defines a shared contract before whatever implements it, and whatever implements it before whatever consumes it. Every entry must name a service you declared.
 - `shared_packages`: non-service directories that need changes (libs, shared code). These are implemented as part of their dependent service's pass.
-- `required_instructions`: union of all services' skills (for backwards-compatible instruction resolution).
-- `qa_stack`: copy the story's **`## Verification setup`** into machine-readable form.
+- `qa_stack`: the story's **`## Verification setup`** in machine-readable form.
 
 **How to identify services**: A service is a directory with a marker file. The repo's own
 `agents.yml` (`workspace.service_roots`/`service_markers` and the `template.*_path` hints)
@@ -413,8 +375,8 @@ All items must be checked:
 - [ ] Identified code generation dependencies and listed exact regen commands (or "None")
 - [ ] Copied verification commands from each service's instructions files → "Verification Commands" section
 - [ ] Specified a **Local run (smoke)** command + observable success signal for every service with a runnable surface (or "None" for docs-only)
-- [ ] Wrote `docs/specs/<story-name>/plan-context.json` with `services` array (concrete paths with repo, type, skills, plan_file) — drives the implementer's per-service iteration
-- [ ] Listed every changed service in `plan-context.json`'s `services` array — it is the only place the workflow reads them from
+- [ ] Returned a `services` array (concrete paths with repo, type, skills, plan_file) — it drives the implementer's per-service iteration
+- [ ] Listed **every** changed service in it, and nothing the story does not change
 - [ ] Verified every service path exists and carries the marker file its `type` implies (see "How to identify services")
 - [ ] Added **Given / When / Should** test scenarios for all affected code paths, each with its **AC** reference and **Level** — every acceptance criterion covered by at least one scenario (or the story declared regression-only, with justification)
 - [ ] Confirmed no breaking changes to external APIs
@@ -435,15 +397,44 @@ All items must be checked:
 
 ## Machine-Readable Result (required)
 
-After writing the plan artifacts, return this exact JSON object as the LAST thing in your final response — these two keys at its top level, with no wrapper object around them. Any other shape fails to parse and the node is retried:
+After writing the plan artifacts, return this exact JSON object as the LAST thing in your final response — these keys at its top level, with no wrapper object around them. Any other shape fails to parse and the node is retried:
 
 ```json
-{"status": "done|blocked", "summary": "<one-line summary of the plan, or the blocker>"}
+{
+  "status": "done|blocked",
+  "summary": "<one-line summary of the plan, or the blocker>",
+  "services": [
+    {
+      "repo": "api-service",
+      "path": "cmd/alert",
+      "type": "go",
+      "skills": ["api-service", "api-service-grpc", "api-service-events"],
+      "plan_file": "plan-api-service-alert.md"
+    },
+    {
+      "repo": "web-app",
+      "path": "packages/discover",
+      "type": "svelte",
+      "skills": ["web-app", "web-app-component"],
+      "plan_file": "plan-web-app-discover.md"
+    }
+  ],
+  "implementation_order": ["api-service::cmd/alert", "web-app::packages/discover"],
+  "shared_packages": [{"repo": "api-service", "path": "pkg/db/alert", "type": "go-lib"}],
+  "qa_stack": {
+    "profile": "the stack/compose-profile/seed that renders this surface with realistic data",
+    "fixtures": ["the specific records/rows the surface needs to display, and how to create them"],
+    "capable_of_rendering": "the surface this stack can actually show (not a thin/empty default)"
+  }
+}
 ```
 
 - `status`: `"done"` when the plan artifacts are written and ready for review — including when
   they were already there and you left them standing — or `"blocked"` if you could not produce
   a plan at all.
 - `summary`: a one-line description of the plan (or the blocker).
-
-The set of services this story changes is **not** part of this reply — the workflow reads it from the `services` array you wrote into `docs/specs/<story-name>/plan-context.json`, which is what drives the implementer's per-service iteration. Get it right there: a frontend-only story lists only its web service, so the implementer never builds a backend one.
+- the remaining keys are the plan's structure, described under "The plan's structure" above.
+  This is the only place the workflow learns which services the story changes, and it drives
+  the implementer's per-service iteration: a frontend-only story lists only its web service,
+  so the implementer never builds a backend one. A story that changes exactly one service in
+  one repo may return `services: []` — the implementer then gets one repo-root layer.

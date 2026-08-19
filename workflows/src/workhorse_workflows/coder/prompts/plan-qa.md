@@ -73,7 +73,10 @@ Read all of:
   `--offset`/`--limit` page a long section. `--json` emits the same slice as records. The
   built files — `<spec_dir>/qa-okf-context.json`, the machine-readable impact authority, and
   `<spec_dir>/qa-okf-context.md`, its rendering — remain beside the spec for a targeted look;
-- `plan-context.json`, implementation plans, review results, and applicable QA skills;
+- the implementation plans, review results, and applicable QA skills;
+{% if plan_services %}
+{{ plan_services }}
+{% endif %}
 - `docs/qa/lessons.md`, when present; and
 - static inputs under `<spec_dir>/qa-inputs/`, when present.
 

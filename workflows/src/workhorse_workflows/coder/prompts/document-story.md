@@ -75,10 +75,13 @@ without a product or author decision, return `blocked` and name that item.
 ## Steps
 
 1. **Scope what changed.** Read the story's acceptance criteria, its parent epic's `## User
-   Journeys`, and the story's `spec_dir` (`plan-context.json` lists the services/repos it
-   touched). Inspect both the working tree and commits made on the current story/epic branch
-   since its base, including QA, regression, CI, and merge remediation. From that complete
-   implementation delta,
+   Journeys`, and the story's `spec_dir`. Inspect both the working tree and commits made on
+   the current story/epic branch since its base, including QA, regression, CI, and merge
+   remediation. The services/repos the story touched:
+{% if plan_services %}
+{{ plan_services }}
+{% endif %}
+   From that complete implementation delta,
    identify what *user-facing surface, element, behavior, concept, or format* the story
    added or changed — a screen/component/interaction (GUI), a cli/command (CLI), a
    server/endpoint/invocation (HTTP/WS), a domain or code `concept`, a `flow`, or a
