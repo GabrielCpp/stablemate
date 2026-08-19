@@ -18,23 +18,13 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-#: The `## 5. Test Scenarios` heading, however the planner numbered or cased it.
-_SECTION_HEADING = re.compile(r"^#{2,3}\s*(?:\d+\.\s*)?test scenarios\b", re.IGNORECASE)
+from ostler import markdown
 
-#: Any heading at the same level or shallower ends the section.
-_ANY_HEADING = re.compile(r"^#{1,3}\s")
-
-#: One scenario inside the section: `### Scenario 3: Manual fallback covers gaps`.
-_SCENARIO_HEADING = re.compile(r"^#{3,4}\s*scenario\b[^:\n]*:?\s*(?P<title>.*)$", re.IGNORECASE)
-
-#: A `- **Level:** QA-only — reason` / `- **AC**: 2. …` bullet. Both bold spellings are in
-#: live plans and they put the colon on opposite sides of the closing `**`, so the emphasis
-#: is stripped on both sides of it — otherwise the level reads as `** QA-only` and matches
-#: nothing.
-_FIELD = re.compile(
-    r"^\s*[-*]\s*\*{0,2}(?P<field>AC|Level)\*{0,2}\s*:\s*\*{0,2}\s*(?P<value>.*?)\s*\*{0,2}$",
-    re.IGNORECASE,
-)
+#: Emphasis around a bullet's *value*. `Bullet.label` already strips it from the key, and
+#: both bold spellings are in live plans — `- **Level:** QA-only` puts the closing `**` on
+#: the value's side of the colon, so without this the level reads as `** QA-only` and
+#: matches no level name.
+_EMPHASIS = "*_` "
 
 #: The dash between a level's name and the planner's justification for it.
 _LEVEL_REASON = re.compile(r"\s+[—–]\s*|\s+-\s+|\s*[(,]")
@@ -66,42 +56,73 @@ class Scenario:
         return head.strip().lower() in _NO_TEST_LEVELS
 
 
-def _section(text: str) -> list[str]:
-    """The lines of the plan's Test Scenarios section, or none when it has none."""
-    lines = text.splitlines()
-    for start, line in enumerate(lines):
-        if _SECTION_HEADING.match(line):
+def _words(title: str) -> list[str]:
+    """A heading's words, lowercased, with a leading `5.`-style number dropped.
+
+    The planner numbers this section as often as not, and the number is not part of what
+    the heading says.
+    """
+    words = title.strip().lower().split()
+    if words and words[0].rstrip(".").isdigit():
+        words = words[1:]
+    return words
+
+
+def _is_scenarios_heading(title: str) -> bool:
+    """Whether a heading opens the plan's scenario list — `## 5. Test Scenarios`."""
+    return _words(title)[:2] == ["test", "scenarios"]
+
+
+def _is_scenario_heading(title: str) -> bool:
+    """Whether a heading opens one scenario — `### Scenario 3: Manual fallback`."""
+    return _words(title)[:1] == ["scenario"]
+
+
+def _scenario_sections(doc: markdown.MarkdownDoc) -> list[markdown.Section]:
+    """The sections that are scenarios of the plan's Test Scenarios list, in source order.
+
+    Scenario headings are written both a level below the list's own heading and level with
+    it — `## 5. Test Scenarios` with `### Scenario 1: …` beneath, and `### Test Scenarios`
+    with `### Scenario 1: …` beside. Nesting tells those apart and source order does not, so
+    the walk takes both: anything titled `Scenario …` after the list's heading, plus any
+    other heading still *inside* the list's span (a `#### Notes` under one scenario ends
+    nothing). The first heading that is neither is where the list stops.
+    """
+    ordered = sorted(doc.walk_sections(), key=lambda section: section.line_start)
+    for index, section in enumerate(ordered):
+        if section.level and _is_scenarios_heading(section.title):
             break
     else:
         return []
-    body: list[str] = []
-    for line in lines[start + 1 :]:
-        if _ANY_HEADING.match(line) and not _SCENARIO_HEADING.match(line):
+    found: list[markdown.Section] = []
+    for other in ordered[index + 1 :]:
+        if _is_scenario_heading(other.title):
+            found.append(other)
+        elif other.line_start >= section.line_end:
             break
-        body.append(line)
-    return body
+    return found
+
+
+def _field(section: markdown.Section, label: str) -> str:
+    """The value of this scenario's `- **Level**: …` bullet, or `""` when it has none."""
+    bullet = section.labelled(label)
+    return bullet.value.strip(_EMPHASIS).strip() if bullet else ""
 
 
 def parse_scenarios(text: str) -> list[Scenario]:
     """Every scenario the plan's Test Scenarios section declares, with AC and level.
 
     A scenario is recognised by its heading, so a section written as prose yields
-    nothing, which is the same answer as a plan with no such section at all.
+    nothing, which is the same answer as a plan with no such section at all. A heading
+    that names no scenario after its colon — `### Scenario 3` — is skipped for the same
+    reason: there is nothing for the QA lane to name in its plan.
     """
+    doc = markdown.split(text)
     found: list[Scenario] = []
-    title, fields = "", {"ac": "", "level": ""}
-    for line in _section(text):
-        heading = _SCENARIO_HEADING.match(line)
-        if heading:
-            if title:
-                found.append(Scenario(title, fields["ac"], fields["level"]))
-            title, fields = heading.group("title").strip(), {"ac": "", "level": ""}
-            continue
-        field = _FIELD.match(line)
-        if field and title:
-            fields[field.group("field").lower()] = field.group("value").strip()
-    if title:
-        found.append(Scenario(title, fields["ac"], fields["level"]))
+    for section in _scenario_sections(doc):
+        title = section.title.partition(":")[2].strip()
+        if title:
+            found.append(Scenario(title, _field(section, "ac"), _field(section, "level")))
     return found
 
 
