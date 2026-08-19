@@ -144,6 +144,9 @@ class Docs(Workflow):
     #: resolver turn standing in for the author that wrote this product's specs; the other
     #: two park on the driver's `Await` and wait for a person. See `_blocked`.
     operator_mode: str = "auto"
+    #: The CLI session id to resume for the story's backbone turns, threaded in from a
+    #: prior stage's turn across a `handoff()` boundary. Empty starts a fresh chain.
+    session_id: str = ""
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
     #: fill each one in for any node or sub-flow that declares a parameter of the same
@@ -183,13 +186,26 @@ class Docs(Workflow):
         """
         return f"docs-repair:{self.ctx.story_slug}"
 
+    def _story_chain(self) -> str:
+        """The backbone conversation this story's primary turn runs on.
+
+        An incoming session id (threaded from a prior stage across a handoff boundary) is
+        resumed directly; otherwise a fresh per-story chain is named and the CLI mints one
+        the first time it is used. Distinct from `_chain`: that names the narrower,
+        intentionally-isolated repair loop, and stays untouched by this one.
+        """
+        return self.session_id or f"story:{self.ctx.story_slug}"
+
     def _ends(self, result: DocsResult) -> Done:
         """End the flow, and the story's repair chain with it.
 
         Every terminal goes through here so no exit can forget: a chain left behind is a
-        conversation about a book as it was, waiting for the next entry to resume it.
+        conversation about a book as it was, waiting for the next entry to resume it. The
+        backbone chain is the exception: `result.session_id` is stamped with whatever id it
+        resolved to, so the parent can thread it into the next stage.
         """
         self.reset_session(self._chain)
+        result.session_id = self._require_engine().session_id(self._story_chain())
         return Done(result)
 
     #: The two budgets, split because the grounding gate and the reviewer fail for
@@ -317,6 +333,7 @@ class Docs(Workflow):
             # medium: folding a known change into an existing graph, against a schema and a
             # gate that will check the result. Not a discovery task.
             power="medium",
+            session=self._story_chain(),
             add_dirs=self._dirs(),
             args=self._author_args(gate_notes, review_notes, obligations),
         )

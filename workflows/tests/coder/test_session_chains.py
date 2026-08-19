@@ -57,11 +57,17 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
     def fake_reset(self: Any, key: str) -> None:
         seen.resets.append(key)
 
+    def fake_require_engine(self: Any) -> Any:
+        # `_ends` resolves the backbone chain's id through the engine; no turn in these
+        # tests reaches a real one, so the resolved id is the chain name itself.
+        return SimpleNamespace(session_id=lambda key: key)
+
     for flow in (Docs, Qa, Dev):
         monkeypatch.setattr(flow, "agent", fake_agent)
         monkeypatch.setattr(flow, "reset_session", fake_reset)
         monkeypatch.setattr(flow, "logger", property(lambda _: logging.getLogger("test")))
         monkeypatch.setattr(flow, "_dirs", lambda _: [])
+        monkeypatch.setattr(flow, "_require_engine", fake_require_engine)
     monkeypatch.setattr(Docs, "_author_args", lambda *a, **k: {})
     monkeypatch.setattr(Qa, "_plan_args", lambda *a, **k: {})
     return seen
@@ -133,6 +139,19 @@ def test_ending_the_docs_flow_ends_its_chain(spy: _Spy) -> None:
 
     assert isinstance(done.result, DocsResult) and done.result.status == "passed"
     assert spy.resets == [f"docs-repair:{STORY}"]
+    # The backbone chain is stamped on the way out, not dropped like the repair chains.
+    assert done.result.session_id == f"story:{STORY}"
+
+
+def test_the_docs_backbone_resumes_an_incoming_session_rather_than_naming_a_fresh_one(
+    spy: _Spy,
+) -> None:
+    """A `session_id` threaded in from `dev` is the conversation to continue — not a
+    reason to open a second one keyed on the story slug."""
+    flow = _docs()
+    flow.session_id = "story:from-dev"
+
+    assert flow._story_chain() == "story:from-dev"
 
 
 # ── the QA-plan lane ─────────────────────────────────────────────────────────────────
@@ -188,6 +207,16 @@ def test_ending_the_qa_flow_ends_every_chain_it_opened(spy: _Spy) -> None:
         f"qa-feedback:{STORY}",
         f"qa-regression-fix:{STORY}",
     ]
+    assert done.result.session_id == f"story:{STORY}"
+
+
+def test_the_qa_backbone_resumes_an_incoming_session_rather_than_naming_a_fresh_one(
+    spy: _Spy,
+) -> None:
+    flow = _qa()
+    flow.session_id = "story:from-docs"
+
+    assert flow._story_chain() == "story:from-docs"
 
 
 # ── the QA fix lane ──────────────────────────────────────────────────────────────────
@@ -266,3 +295,13 @@ def test_ending_the_dev_flow_ends_every_plan_chain(spy: _Spy) -> None:
         f"plan-reuse-repair:{STORY}",
         f"plan-path-repair:{STORY}",
     ]
+    assert done.result.session_id == f"story:{STORY}"
+
+
+def test_the_dev_backbone_resumes_an_incoming_session_rather_than_naming_a_fresh_one(
+    spy: _Spy,
+) -> None:
+    flow = _dev()
+    flow.session_id = "story:from-a-resumed-run"
+
+    assert flow._story_chain() == "story:from-a-resumed-run"

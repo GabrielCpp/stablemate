@@ -361,6 +361,9 @@ class Qa(Workflow):
     #: `resolve_operator`, `apply_feedback` and `report_dev`.
     qa_lane_budget_s: int = 3300
     plan_lane_budget_s: int = 2400
+    #: The CLI session id to resume for the story's backbone turns, threaded in from a
+    #: prior stage's turn across a `handoff()` boundary. Empty starts a fresh chain.
+    session_id: str = ""
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
     #: fill each one in for any node or sub-flow that declares a parameter of the same
@@ -462,6 +465,16 @@ class Qa(Workflow):
         """
         return f"qa-plan-repair:{self.ctx.story_slug}"
 
+    def _story_chain(self) -> str:
+        """The backbone conversation this story's primary turns run on.
+
+        An incoming session id (threaded from a prior stage across a handoff boundary) is
+        resumed directly; otherwise a fresh per-story chain is named and the CLI mints one
+        the first time it is used. Distinct from `_chain`/`_WORKLISTS`: those name the
+        narrower, intentionally-isolated repair loops, and stay untouched by this one.
+        """
+        return self.session_id or f"story:{self.ctx.story_slug}"
+
     #: The repair loops that run on a chain, as the worklist half of their key. `_apply_fixes`
     #: and `fix_regression` build theirs the same way; the plan-repair chain is `_chain`,
     #: which several states reset on its own.
@@ -481,6 +494,7 @@ class Qa(Workflow):
         conversation about a plan and a diff that have both moved on since.
         """
         self._reset_chains()
+        result.session_id = self._require_engine().session_id(self._story_chain())
         return Done(result)
 
     #: `ensure_stack` brings a durable app stack up and health-gates it — on a real run
@@ -684,6 +698,7 @@ class Qa(Workflow):
                 # medium: writing a runnable plan against a schema, from a story and an
                 # obligation packet that both already exist.
                 power="medium",
+                session=self._story_chain(),
                 # 20 min. Without a cap this node inherits the run's 3600s watchdog, and it
                 # used it: over four days its longest turns were exactly 60.0 min, and two
                 # thirds of the whole node's wall clock was spent past the 15-min mark by the
@@ -1012,6 +1027,7 @@ class Qa(Workflow):
             # medium: judging a runner's output against a plan that already passed two
             # gates. The adversarial read is `audit_qa`'s job, at high.
             power="medium",
+            session=self._story_chain(),
             add_dirs=self._dirs(),
             args={
                 "story_path": self.ctx.story_path,
@@ -1196,6 +1212,7 @@ class Qa(Workflow):
             # medium: sorting findings into in-AC and adjacent, against a story whose ACs
             # are written down.
             power="medium",
+            session=self._story_chain(),
             add_dirs=self._dirs(),
             args={
                 "story_path": self.ctx.story_path,
@@ -1243,6 +1260,7 @@ class Qa(Workflow):
             returns=QaReport,
             # medium: summarising findings that are already written down, into a tracker.
             power="medium",
+            session=self._story_chain(),
             add_dirs=self._dirs(),
             args={
                 "story_path": self.ctx.story_path,
@@ -1458,6 +1476,7 @@ class Qa(Workflow):
             returns=QaReport,
             # medium: the same summarising job as `report_qa_dev`, on a green story.
             power="medium",
+            session=self._story_chain(),
             add_dirs=self._dirs(),
             args={
                 "story_path": self.ctx.story_path,

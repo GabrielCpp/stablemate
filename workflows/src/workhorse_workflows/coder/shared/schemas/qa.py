@@ -782,6 +782,10 @@ class QaFlowResult(CoderResult):
     operator_notes: str = ""
     #: Whether the parent must document again before committing. Missing old results recheck.
     docs_recheck_required: bool = True
+    #: The CLI session id the story's backbone turns ended on — empty when none ran. Threaded
+    #: back to the parent so a `rescope` return to `Dev`, or the next docs recheck, resumes
+    #: this conversation instead of reopening one. See `Qa._story_chain`.
+    session_id: str = ""
 
 
 __all__ = [

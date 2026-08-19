@@ -337,14 +337,21 @@ class Coder(Workflow):
         self.call(snapshot_worktree_state, self.docs_path)
         story = self.call(prepare_story, self.docs_path, slug, epic)
         self.logger.info("preparing %s%s", slug, self._progress(), extra={"activity": True})
+        # No `session_id` here: a new story starts a fresh backbone chain, which is
+        # `dev`'s default when none is threaded in.
         return Continue(story, self.dev, epic=epic)
 
-    def dev(self, epic: str = "", triage: int = 0) -> Continue:
+    def dev(self, epic: str = "", triage: int = 0, session_id: str = "") -> Continue:
         """`dev` + `decide_dev`: plan and implement the story.
 
         `replan` is the sub-flow saying the *story* was the wrong thing to build — an
         operator answered a block with an epic-scoped answer — so the epic gets rewritten
         rather than the story retried.
+
+        `session_id` is the story's backbone conversation — empty on a fresh story, or the
+        chain a `rescope` return from `qa` handed back. It crosses into `Dev` and the id
+        that chain ends up on is threaded into `review`, past `Review` (which never shares
+        this conversation — see `review`'s docstring), and on into `document`.
         """
         slug = self._story.story_slug
         self.logger.info("implementing %s%s", slug, self._progress(), extra={"activity": True})
@@ -355,19 +362,26 @@ class Coder(Workflow):
             epic=self._story_epic(epic),
             operator_mode=self.operator_mode,
             target_env=self.target_env,
+            session_id=session_id,
         )
         if result.status == "replan":
             return Continue(result, self.replan, epic=epic, notes=result.operator_notes)
         # `ready` and the YAML's `default:` arm, which was also `review`.
-        return Continue(result, self.review, epic=epic, triage=triage)
+        return Continue(result, self.review, epic=epic, triage=triage, session_id=result.session_id)
 
-    def review(self, epic: str = "", triage: int = 0) -> Continue:
+    def review(self, epic: str = "", triage: int = 0, session_id: str = "") -> Continue:
         """`review`: code review and reuse, with no branch on the outcome.
 
         The YAML declared `outputs: []` here and went straight to `docs`. That is not an
         oversight: the review flow either converges or fails the run from inside itself, so
         there is no verdict left for the caller to read. It also takes no `target_env` —
         review reads code, it does not run it.
+
+        `session_id` passes through untouched — `Review` stays independent of the story's
+        backbone conversation, on purpose: it is the one lane that must judge the diff on
+        its own, not one that already knows what `dev` said about it. So it is neither
+        handed to `Review`'s handoff nor read back from its result; what reaches `document`
+        below is exactly what `dev` produced.
         """
         slug = self._story.story_slug
         self.logger.info("reviewing %s%s", slug, self._progress(), extra={"activity": True})
@@ -378,9 +392,11 @@ class Coder(Workflow):
             epic=self._story_epic(epic),
             operator_mode=self.operator_mode,
         )
-        return Continue(result, self.document, epic=epic, triage=triage)
+        return Continue(result, self.document, epic=epic, triage=triage, session_id=session_id)
 
-    def document(self, epic: str = "", triage: int = 0) -> Continue:
+    def document(
+        self, epic: str = "", triage: int = 0, session_id: str = ""
+    ) -> Continue:
         """`docs` + `decide_docs_outcome`: fold the story into the OKF book.
 
         `not_applicable` — a repo with no book — passes, because the alternative is that
@@ -395,6 +411,11 @@ class Coder(Workflow):
         differently — one is the book refusing the code, the other is the documenting turn
         not finishing — and neither is answerable by trying again unchanged, so both park
         for the operator rather than one parking and the other ending the run.
+
+        `session_id` is the story's backbone chain, carried past `review` from `dev`. Both
+        exits thread the id `Docs` ends up on — the blocked one too, because a resume lands
+        back at this same state (see `blocked_docs`) and should reopen the conversation the
+        first pass left, not a fresh one.
         """
         result = self.handoff(
             Docs,
@@ -404,11 +425,12 @@ class Coder(Workflow):
             target_env=self.target_env,
             preexisting=self._preexisting(),
             operator_mode=self.operator_mode,
+            session_id=session_id,
         )
         if not _documented(result):
             return Continue(result, self.blocked_docs, epic=epic, triage=triage,
-                            notes=_docs_notes(result, "story"))
-        return Continue(result, self.qa, epic=epic, triage=triage)
+                            notes=_docs_notes(result, "story"), session_id=result.session_id)
+        return Continue(result, self.qa, epic=epic, triage=triage, session_id=result.session_id)
 
     def blocked_docs(
         self,
@@ -417,6 +439,7 @@ class Coder(Workflow):
         notes: str = "",
         resume_at: str = "document",
         attempts: int | str = 0,
+        session_id: str = "",
     ) -> Await:
         """The docs phase would not pass the story: the run parks for a human, not ends failed.
 
@@ -459,6 +482,7 @@ class Coder(Workflow):
             triage=triage,
             resume_at=resume_at,
             attempts=attempts,
+            session_id=session_id,
         )
 
     def docs_operator(
@@ -467,18 +491,19 @@ class Coder(Workflow):
         triage: int = 0,
         resume_at: str = "document",
         attempts: int | str = 0,
+        session_id: str = "",
     ) -> Continue:
         """The consume half of the docs gate: re-document on the operator's fix."""
         self.logger.info(
             "operator answered the docs gate — redocumenting %s", self._story.story_slug
         )
         if resume_at == "give_up":
-            return Continue(None, self.give_up, epic=epic, attempts=attempts)
+            return Continue(None, self.give_up, epic=epic, attempts=attempts, session_id=session_id)
         if resume_at == "finalize":
-            return Continue(None, self.finalize, epic=epic)
-        return Continue(None, self.document, epic=epic, triage=triage)
+            return Continue(None, self.finalize, epic=epic, session_id=session_id)
+        return Continue(None, self.document, epic=epic, triage=triage, session_id=session_id)
 
-    def qa(self, epic: str = "", triage: int = 0) -> Continue:
+    def qa(self, epic: str = "", triage: int = 0, session_id: str = "") -> Continue:
         """`qa_phase` + `decide_qa_outcome`: the four-way gate the whole loop turns on.
 
         `rescope` is the interesting arm. It sends the story back to `dev` carrying the
@@ -489,6 +514,13 @@ class Coder(Workflow):
         `preexisting` goes in for the same reason `document` takes it: QA builds its
         obligation packet from the same `HEAD..WORKTREE` diff, so without the snapshot an
         abandoned story's uncommitted code becomes scenarios this story has to write.
+
+        `session_id` is the story's backbone chain, carried from `document`. A `rescope`
+        hands it straight back into `dev` — the same story, the same conversation. A
+        `passed` verdict threads it through the backlog drain (an unrelated, differently
+        shaped unit of work whose own turns never share it) purely so it survives to reach
+        `finalize`'s recheck; the next story `select_story` picks up afterward gets none of
+        it, because nothing past `commit` threads it further.
         """
         result = self.handoff(
             Qa,
@@ -502,23 +534,31 @@ class Coder(Workflow):
             plan_lane_budget_s=self.plan_lane_budget_s,
             triage_scope_count=triage,
             preexisting=self._preexisting(),
+            session_id=session_id,
         )
         if result.status == "replan":
             return Continue(result, self.replan, epic=epic, notes=result.operator_notes)
         if result.status == "rescope":
             self.logger.info("QA rescoped %s — back to dev", self._story.story_slug)
-            return Continue(result, self.dev, epic=epic, triage=result.triage_scope)
+            return Continue(
+                result, self.dev, epic=epic, triage=result.triage_scope,
+                session_id=result.session_id,
+            )
         if result.status == "inconclusive":
             # The only mode that still lands here is `target_env="dev"`: every other
             # exhaustion now escalates to the operator gate inside the QA sub-flow itself
             # and never returns with this status at all.
-            return Continue(result, self.give_up, epic=epic, attempts=result.qa_rework)
+            return Continue(
+                result, self.give_up, epic=epic, attempts=result.qa_rework,
+                session_id=result.session_id,
+            )
         # `passed`, and the YAML's `default:` arm, which was also the drain.
         return Continue(
             result,
             self.drain,
             epic=epic,
             docs_recheck_required=result.docs_recheck_required,
+            session_id=result.session_id,
         )
 
     def replan(self, epic: str = "", notes: str = "") -> Continue:
@@ -545,7 +585,9 @@ class Coder(Workflow):
         )
         return Continue(result, self.select_story, epic=epic)
 
-    def give_up(self, epic: str = "", attempts: int | str = 0) -> Continue:
+    def give_up(
+        self, epic: str = "", attempts: int | str = 0, session_id: str = ""
+    ) -> Continue:
         """`decide_qa_fail` → `failed_docs`: the dev-target report ends here; the run stops.
 
         Real QA exhaustion no longer reaches this method: every budget the QA sub-flow can
@@ -577,6 +619,7 @@ class Coder(Workflow):
             target_env=self.target_env,
             preexisting=self._preexisting(),
             operator_mode=self.operator_mode,
+            session_id=session_id,
         )
         if not _documented(result):
             return Continue(
@@ -586,6 +629,7 @@ class Coder(Workflow):
                 notes=_docs_notes(result, "failed story"),
                 resume_at="give_up",
                 attempts=attempts,
+                session_id=result.session_id,
             )
         if _docs_changed_qa_retry_artifact(result, self._story.spec_dir):
             self.logger.info(
@@ -593,7 +637,7 @@ class Coder(Workflow):
                 self._story.story_slug,
                 extra={"activity": True},
             )
-            return Continue(result, self.qa, epic=epic)
+            return Continue(result, self.qa, epic=epic, session_id=result.session_id)
         raise WorkflowFailed(
             f"QA never passed for story {self._story.story_slug!r} after {attempts} "
             f"attempt(s); nothing was committed for this story.",
@@ -603,7 +647,9 @@ class Coder(Workflow):
 
     # ── the backlog drain, nested inside the story ────────────────────────────────────
 
-    def drain(self, epic: str = "", docs_recheck_required: bool = True) -> Continue:
+    def drain(
+        self, epic: str = "", docs_recheck_required: bool = True, session_id: str = ""
+    ) -> Continue:
         """`decide_post_sentinel` + `select_fix_item` + `seed_fix_story` + the seeding.
 
         The draw does not touch the backlog file — a bullet leaves it only at `_fix_prune`
@@ -614,6 +660,12 @@ class Coder(Workflow):
         run scope, so calling the same node would overwrite the record the commit below
         reads to know which story it is committing. The YAML registered the script twice for
         this reason and said so.
+
+        `session_id` is only a pass-through here: the drain works a different, unnamed fix
+        story (`self._fix_story`, not `self._story`), and none of its own turns below share
+        it — they never have, laps or not. It rides through this whole loop only so it
+        survives to reach `finalize`'s recheck of the *original* story once the backlog is
+        empty.
         """
         pick = self.call(select_fix_item, self.docs_path)
         if not pick.has_fix:
@@ -622,15 +674,16 @@ class Coder(Workflow):
                 self.finalize,
                 epic=epic,
                 docs_recheck_required=docs_recheck_required,
+                session_id=session_id,
             )
         self.logger.info("draining %s: %s", pick.fix_bullet_id, pick.fix_bullet_text)
         seed = self.call(
             seed_fix_story, pick.fix_bullet_id, pick.fix_bullet_text, "", "", self.docs_path
         )
         self.call(prepare_fix_story, self.docs_path, seed.story_slug, seed.epic)
-        return Continue(seed, self.fix_plan, epic=epic)
+        return Continue(seed, self.fix_plan, epic=epic, session_id=session_id)
 
-    def fix_plan(self, epic: str = "") -> Continue:
+    def fix_plan(self, epic: str = "", session_id: str = "") -> Continue:
         """`plan_fix` + `decide_plan_fix`: plan the one-AC fix story."""
         fix = self._fix_story
         self.logger.info("planning %s", fix.story_slug, extra={"activity": True})
@@ -644,11 +697,11 @@ class Coder(Workflow):
             args={"story_path": fix.story_path, "spec_dir": fix.spec_dir},
         )
         if result.status == "blocked":
-            return self._fix_flag(result, epic)
+            return self._fix_flag(result, epic, session_id)
         # The YAML's `default:` arm was `resolve_fix_impl_context`, not the give-up.
-        return Continue(result, self.fix_dispatch, epic=epic)
+        return Continue(result, self.fix_dispatch, epic=epic, session_id=session_id)
 
-    def fix_dispatch(self, epic: str = "") -> Continue:
+    def fix_dispatch(self, epic: str = "", session_id: str = "") -> Continue:
         """`resolve_fix_impl_context` + `branch_fix_code_repos` + `select_fix_layer`.
 
         `branch_code_repos` is called with `spec_dir` alone here, as the YAML's nested copy
@@ -661,10 +714,10 @@ class Coder(Workflow):
         pick = self.call(select_next_layer, fix.spec_dir, -1)
         if not pick.has_layer:
             self.logger.info("no service layer dispatched — checking the fix as it stands")
-            return Continue(pick, self.fix_check, epic=epic)
-        return Continue(pick, self.fix_implement, epic=epic)
+            return Continue(pick, self.fix_check, epic=epic, session_id=session_id)
+        return Continue(pick, self.fix_implement, epic=epic, session_id=session_id)
 
-    def fix_implement(self, epic: str = "") -> Continue:
+    def fix_implement(self, epic: str = "", session_id: str = "") -> Continue:
         """`implement_fix`: the first dispatched layer, and only it.
 
         Only it, because the nested drain has no loop back to `select_fix_layer` — the YAML
@@ -694,16 +747,16 @@ class Coder(Workflow):
                 "verification": layer.verification,
             },
         )
-        return Continue(result, self.fix_check, epic=epic)
+        return Continue(result, self.fix_check, epic=epic, session_id=session_id)
 
-    def fix_check(self, epic: str = "") -> Continue:
+    def fix_check(self, epic: str = "", session_id: str = "") -> Continue:
         """`check_fix` + `decide_fix_check`: one QA turn on the drained item."""
         result = self._fix_qa()
         if result.status == "passed":
-            return self._fix_prune(result, epic)
-        return Continue(result, self.fix_apply, epic=epic, notes=result.notes)
+            return self._fix_prune(result, epic, session_id)
+        return Continue(result, self.fix_apply, epic=epic, notes=result.notes, session_id=session_id)
 
-    def fix_apply(self, epic: str = "", notes: str = "") -> Continue:
+    def fix_apply(self, epic: str = "", notes: str = "", session_id: str = "") -> Continue:
         """`apply_fix_once`: the single retry, on what the QA turn found.
 
         `notes` crosses from one agent turn to the next, and agent turns are not nodes, so
@@ -727,9 +780,9 @@ class Coder(Workflow):
                 "qa_notes": notes,
             },
         )
-        return Continue(result, self.fix_recheck, epic=epic)
+        return Continue(result, self.fix_recheck, epic=epic, session_id=session_id)
 
-    def fix_recheck(self, epic: str = "") -> Continue:
+    def fix_recheck(self, epic: str = "", session_id: str = "") -> Continue:
         """`recheck_fix` + `decide_recheck`: settle the item either way.
 
         Only `passed` prunes; everything else, blank included, flags the bullet and moves
@@ -738,17 +791,23 @@ class Coder(Workflow):
         """
         result = self._fix_qa()
         if result.status == "passed":
-            return self._fix_prune(result, epic)
-        return self._fix_flag(result, epic)
+            return self._fix_prune(result, epic, session_id)
+        return self._fix_flag(result, epic, session_id)
 
     # ── the far end of a story ────────────────────────────────────────────────────────
 
-    def finalize(self, epic: str = "", docs_recheck_required: bool = True) -> Continue:
+    def finalize(
+        self, epic: str = "", docs_recheck_required: bool = True, session_id: str = ""
+    ) -> Continue:
         """Recheck documentation after a mutation, then commit the story.
 
         A clean QA pass needs no redundant second Docs handoff. QA repairs and the nested
         backlog drain set a monotonic taint; only those paths re-enter Docs. Defaults are
         fail-closed so an old checkpoint with no taint still performs the recheck.
+
+        `session_id` is the story's backbone chain, threaded all the way from `document`
+        through `qa` and the backlog drain. Nothing downstream of this state needs it —
+        `commit`/`commit_pr` lead to the next story, which starts its own chain.
         """
         if not docs_recheck_required:
             if self.mode == "epic":
@@ -762,6 +821,7 @@ class Coder(Workflow):
             target_env=self.target_env,
             preexisting=self._preexisting(),
             operator_mode=self.operator_mode,
+            session_id=session_id,
         )
         if not _documented(result):
             return Continue(
@@ -770,6 +830,7 @@ class Coder(Workflow):
                 epic=epic,
                 notes=_docs_notes(result, "story (final pass)"),
                 resume_at="finalize",
+                session_id=result.session_id,
             )
         if self.mode == "epic":
             return Continue(result, self.commit, epic=epic)
@@ -1090,7 +1151,7 @@ class Coder(Workflow):
         """
         return f"settle-worktree:{self._story.story_slug}"
 
-    def _fix_prune(self, result: object, epic: str) -> Continue:
+    def _fix_prune(self, result: object, epic: str, session_id: str = "") -> Continue:
         """`prune_fix_item`: the drained fix shipped, so its bullet leaves the backlog."""
         bullet = self.output(select_fix_item).fix_bullet_id
         self.call(prune_fix_item, bullet, self.docs_path)
@@ -1099,9 +1160,10 @@ class Coder(Workflow):
             self.drain,
             epic=epic,
             docs_recheck_required=True,
+            session_id=session_id,
         )
 
-    def _fix_flag(self, result: object, epic: str) -> Continue:
+    def _fix_flag(self, result: object, epic: str, session_id: str = "") -> Continue:
         """`fix_give_up`: annotate the bullet in place and draw the next one."""
         bullet = self.output(select_fix_item).fix_bullet_id
         self.logger.info("flagging %s as blocked", bullet)
@@ -1111,6 +1173,7 @@ class Coder(Workflow):
             self.drain,
             epic=epic,
             docs_recheck_required=True,
+            session_id=session_id,
         )
 
     def _fix_qa(self) -> QaResult:

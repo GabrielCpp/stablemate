@@ -147,6 +147,9 @@ class Dev(Workflow):
     max_lint_reworks: int = 2
     #: Plan-level code-reuse rework passes before implementation proceeds anyway.
     max_reuse_reworks: int = 2
+    #: The CLI session id to resume for the story's backbone turns, threaded in from a
+    #: prior stage's turn across a `handoff()` boundary. Empty starts a fresh chain.
+    session_id: str = ""
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
     #: fill each one in for any node or sub-flow that declares a parameter of the same
@@ -209,6 +212,16 @@ class Dev(Workflow):
         """
         return f"plan-{worklist}:{self.ctx.story_slug}"
 
+    def _story_chain(self) -> str:
+        """The backbone conversation this story's primary turns run on.
+
+        An incoming session id (threaded from a prior stage across a handoff boundary) is
+        resumed directly; otherwise a fresh per-story chain is named and the CLI mints one
+        the first time it is used. Distinct from `_chain`/`_lint_chain`: those name the
+        narrower, intentionally-isolated repair loops, and stay untouched by this one.
+        """
+        return self.session_id or f"story:{self.ctx.story_slug}"
+
     def _lint_chain(self) -> str:
         """The chain the lint-fix laps for the *current* service layer run on.
 
@@ -221,10 +234,13 @@ class Dev(Workflow):
         """End the flow, and every chain it opened with it.
 
         A chain outliving its flow is what makes a re-run of the same story resume a
-        conversation about a plan that has since been rewritten.
+        conversation about a plan that has since been rewritten. The backbone chain is the
+        exception: `result.session_id` is stamped with whatever id it resolved to, so the
+        parent can thread it into the next stage instead of reopening a conversation.
         """
         for worklist in ("block-repair", "reuse-repair", "path-repair"):
             self.reset_session(self._chain(worklist))
+        result.session_id = self._require_engine().session_id(self._story_chain())
         return Done(result)
 
     # --- planning -----------------------------------------------------------
@@ -246,6 +262,7 @@ class Dev(Workflow):
             # high: authors the plan, including high-stakes prod operations (deploys,
             # security-group / egress changes) — worth the stronger reasoning.
             power="high",
+            session=self._story_chain(),
             add_dirs=self._dirs(),
             args={"story_path": self.ctx.story_path, "spec_dir": self.ctx.spec_dir},
         )
@@ -394,6 +411,7 @@ class Dev(Workflow):
             # high: a semantic "does this already exist?" search across the codebase is a
             # genuine reasoning and discovery task.
             power="high",
+            session=self._story_chain(),
             add_dirs=self._dirs(),
             args={"story_path": self.ctx.story_path, "spec_dir": self.ctx.spec_dir},
         )
@@ -566,6 +584,7 @@ class Dev(Workflow):
             returns=ImplResult,
             # high: writes the production change, across whatever the plan touches.
             power="high",
+            session=self._story_chain(),
             cwd=layer.cwd,
             add_dirs=self._dirs(),
             args={

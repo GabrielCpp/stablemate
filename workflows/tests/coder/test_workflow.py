@@ -234,6 +234,7 @@ class _StubFlow(Workflow):
     repo: str = ""
     branch: str = ""
     ci_summary: str = ""
+    session_id: str = ""
 
 
 class _Sub:
@@ -304,7 +305,15 @@ class _Sub:
                 raise RuntimeError(f"killed during {name}")
             return Done(reply(child))
 
-        return type(name, (_StubFlow,), {"start": start})
+        # Redeclared, not just inherited: pydantic only re-resolves a shadowed field's
+        # default against the *defining* class's own namespace, so a dynamic subclass
+        # that never repeats the annotation would see `Workflow.session_id`'s method,
+        # not `_StubFlow`'s "" default, whenever nothing overrides it at construction.
+        return type(
+            name,
+            (_StubFlow,),
+            {"start": start, "__annotations__": {"session_id": str}, "session_id": ""},
+        )
 
     def calls_to(self, name: str) -> list[_StubFlow]:
         return [c for n, c in zip(self.calls, self.seen, strict=True) if n == name]
@@ -468,6 +477,52 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
     assert EPIC not in (repo / "docs" / "epics" / "index.md").read_text(encoding="utf-8")
     # ...and the run ended because the queue is empty, not because anything failed.
     assert _output(run_env, select_epic)["reason"], _output(run_env, select_epic)
+
+
+def test_the_backbone_session_threads_past_review_but_not_through_it(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`dev`, `document` and `qa` share one conversation; `review` never joins it.
+
+    `Review`'s handoff carries no `session_id` at all — it is the one lane that must judge
+    the diff on its own — and what `document` resumes is exactly what `dev` produced,
+    unread and unchanged by whatever `Review` did with its own turn.
+    """
+    repo = epic()
+
+    class _ChainingSub(_Sub):
+        def _dev(self, child: _StubFlow) -> DevResult:
+            super()._dev(child)
+            return DevResult(status="ready", session_id="story:from-dev")
+
+        def _docs(self, child: _StubFlow) -> DocsResult:
+            return DocsResult(status="passed", session_id="story:from-docs")
+
+    sub = _ChainingSub(repo).install(monkeypatch)
+
+    drive_flow(Coder(), env(), _Agent())
+
+    assert sub.calls_to("Review")[0].session_id == ""
+    assert sub.calls_to("Docs")[0].session_id == "story:from-dev"
+    assert sub.calls_to("Qa")[0].session_id == "story:from-docs"
+
+
+def test_a_fresh_story_starts_with_no_backbone_session(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`prepare` hands `dev` nothing to resume — the chain is `dev`'s own to open."""
+    repo = epic()
+    sub = _Sub(repo).install(monkeypatch)
+
+    drive_flow(Coder(), env(), _Agent())
+
+    assert sub.calls_to("Dev")[0].session_id == ""
 
 
 def test_a_qa_mutation_requires_final_documentation_before_commit(

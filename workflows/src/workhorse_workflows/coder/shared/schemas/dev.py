@@ -278,6 +278,11 @@ class DevResult(CoderResult):
 
     status: str = "ready"
     operator_notes: str = ""
+    #: The CLI session id the story's backbone turns ended on — empty when none ran, or
+    #: when a checkpoint predates this field. The parent threads it into `Review`'s
+    #: successor stages so `Docs` and `Qa` resume the same conversation instead of
+    #: reopening one. See `Dev._story_chain`.
+    session_id: str = ""
 
 
 __all__ = [
