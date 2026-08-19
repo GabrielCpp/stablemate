@@ -1,4 +1,4 @@
-"""The dev flow's deterministic work: validate, dispatch, branch, iterate, lint.
+"""The dev flow's deterministic work: validate, dispatch, branch, iterate, gate.
 
 Ports `validate-plan-context.py`, `resolve-impl-context.py`, `branch-code-repos.py`,
 `select-next-layer.py`, `run-lint.py` and the *consume* half of `await_operator.py`.
@@ -38,6 +38,7 @@ from workhorse_workflows.coder.shared.contract import service_problems
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.dev import (
     BranchOutcome,
+    ChangedFiles,
     DispatchEntry,
     ImplContext,
     LayerPick,
@@ -539,6 +540,42 @@ def run_lint(
 
 
 @blueprint.node
+def changed_files(logger: logging.Logger, cwd: str = "", story_slug: str = "") -> ChangedFiles:
+    """Which files this story has already written in one service checkout.
+
+    The re-seed for a recycled conversation — see `ChangedFiles`. Both halves count, and the
+    two are found differently: what is still in the tree is a plain diff, and what has been
+    committed is found by the `Story:` trailer every prompt in this lane is required to
+    write. The trailer rather than a branch comparison because the base branch is not
+    something this node is given, and a story branch carrying two stories would otherwise
+    report the first one's files as this one's.
+
+    Degrades to empty on anything unexpected. It is a courtesy to the next turn, which reads
+    the code itself when told nothing; a service that is not a git checkout must not fail the
+    lane over it.
+    """
+    if not cwd or not Path(cwd).expanduser().is_dir():
+        return ChangedFiles()
+    commands = [["diff", "--name-only", "HEAD"]]
+    if story_slug:
+        commands.append(
+            ["log", "--name-only", "--pretty=format:", f"--grep=Story: {story_slug}"]
+        )
+    found: list[str] = []
+    for args in commands:
+        try:
+            done = subprocess.run(
+                ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=30
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.info("could not list changed files in %s: %s", cwd, exc)
+            break
+        if done.returncode == 0:
+            found += [line.strip() for line in done.stdout.splitlines() if line.strip()]
+    return ChangedFiles(paths=sorted(set(found)))
+
+
+@blueprint.node
 def read_operator_context(logger: logging.Logger, story_path: str = "") -> OperatorAnswer:
     """Take the operator's answer off `<story-folder>/context.md` and consume it.
 
@@ -571,6 +608,7 @@ def read_operator_context(logger: logging.Logger, story_path: str = "") -> Opera
 
 __all__ = [
     "branch_code_repos",
+    "changed_files",
     "read_operator_context",
     "resolve_impl_context",
     "run_lint",

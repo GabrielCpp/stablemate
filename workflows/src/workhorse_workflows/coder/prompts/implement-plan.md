@@ -51,7 +51,8 @@ Before writing any code:
 5. **For multi-layer plans**: read the plan-overview.md first. Note the **implementation order** and **integration contracts**. Implement one layer at a time in the specified order.
 6. Track the generated skill or instruction files you read. The implementation notes or story status update must include `Required Skill Files Read`.
 7. Check that referenced files exist and dependencies are available.
-8. If anything is ambiguous, ask before proceeding.
+8. **Search before you build.** List the concrete units the plan says it will create — endpoints, service methods, models, components, screens, validators, formatters, any "helper" or "util" it names — and search the affected repos for each one before writing it. Match on **behaviour, not name**: the existing version is often called something else, and shared utility trees are where reinvention concentrates. Reuse or extend what you find; where you deliberately do not, say why in the implementation notes. A capability rebuilt beside the one that already does it is the single most common defect this stage produces, and it is cheapest to catch here — you are about to read this code anyway.
+9. If anything is ambiguous, ask before proceeding.
 
 ---
 

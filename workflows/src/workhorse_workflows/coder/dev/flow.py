@@ -4,7 +4,7 @@
 It is reached from the main graph as a `type: flow` node, and standalone as
 `workhorse-coder run dev`. Three loops share the same states rather than nesting::
 
-    plan → (reuse gate)* → (path gate)* → dispatch → (layer → implement → (lint → fix)* )*
+    plan → (path gate)* → dispatch → (layer → implement → (gates → fix)* )*
 
 Thirty-five nodes become twelve states. Six of the thirty-five are `type: branch` routers
 that read a value the node directly above them had just produced, so each folds into the
@@ -33,8 +33,8 @@ land on, because a resolver that answers writes the same file a human would have
 Divergences from the YAML, all deliberate:
 
 * `current_layer_index` was a var; it is the `layer` state's parameter, which is the port
-  rule for a loop cursor. `plan_rework_count`, `reuse_rework_count` and `lint_rework_count`
-  go the same way, and their `seed`/`incr` nodes go with them.
+  rule for a loop cursor. `plan_rework_count` and the repair-lap counter go the same way,
+  and their `seed`/`incr` nodes go with them.
 * **`branch` is an input.** `branch_code_repos`'s YAML argument was
   `get_node_output('branch_story', 'story_branch') or story` — a read across the flow
   boundary into a node the *main graph* runs. The main graph passes it in explicitly now,
@@ -71,8 +71,8 @@ Divergences from the YAML, all deliberate:
   plan stage whose `plan_rework` has been reset to 0 (see its docstring: the YAML
   re-emitted `plan_rework_count: 0`, and that reset is deliberate), so the same three
   reworks are spent again. Both laps run the unbounded-timeout resolver at
-  `power=RESOLVER_POWER`. `plan_blocks` is therefore threaded through the reuse and path
-  gates too, not just the operator states — and it is spent on a resolver *answer* as
+  `power=RESOLVER_POWER`. `plan_blocks` is therefore threaded through the path gate
+  too, not just the operator states — and it is spent on a resolver *answer* as
   well as on an escalation, so a resolver that keeps answering the same block keeps
   approaching the human arm rather than laping behind it forever.
 """
@@ -86,6 +86,7 @@ from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.dev import (
     branch_code_repos,
+    changed_files,
     read_operator_context,
     resolve_impl_context,
     run_lint,
@@ -93,6 +94,7 @@ from workhorse_workflows.coder.shared.dev import (
     validate_plan_context,
 )
 from workhorse_workflows.coder.shared.escalation import escalation
+from workhorse_workflows.coder.shared.failure import from_lint
 from workhorse_workflows.coder.shared.resolution import (
     RESOLVER_POWER,
     answered,
@@ -103,15 +105,14 @@ from workhorse_workflows.coder.shared.story import (
     resolve_workspace_dirs,
     stamp_specs,
 )
-from workhorse_workflows.coder.shared.schemas._base import Finding
+from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 from workhorse_workflows.coder.shared.schemas.dev import (
     DevResult,
-    FixLintResult,
+    FixResult,
     ImplResult,
     OperatorGate,
     OperatorResolution,
     PlanResult,
-    ReuseResult,
 )
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.kit.telemetry import counter_labels
@@ -122,7 +123,7 @@ UNBOUNDED = float("inf")
 
 
 class Dev(Workflow):
-    """Plan a story, gate the plan three ways, then implement it service by service."""
+    """Plan a story, gate the plan, then implement and repair it service by service."""
 
     #: The story slug. ostler resolves the story path and spec dir from it.
     story: str = ""
@@ -142,10 +143,21 @@ class Dev(Workflow):
     #: The story branch every code repo should be on. Empty falls back to the story slug.
     #: See the module docstring: the YAML read this off the main graph's `branch_story`.
     branch: str = ""
-    #: Per-layer lint fix attempts before the loop moves on. QA re-runs lint as the binding
-    #: gate, so the dev-time one is self-healing best-effort and never a dead end.
+    #: Repair laps a service layer gets across **all** its gates before the block goes to
+    #: the operator. One budget rather than one per gate: three failing gates repaired twice
+    #: each is six turns on one layer, and what the budget is protecting against is the lap,
+    #: not the linter.
+    max_fix_laps: int = 3
+    #: How many turns the story's conversation carries before it is recycled. A conversation
+    #: that has read the whole service is what makes lap two cheap, and — several layers and
+    #: several laps later — it is also what makes every later turn re-read a context nobody
+    #: has needed since. `changed_files` re-seeds the fresh one. 0 never recycles.
+    max_session_turns: int = 8
+    #: Deprecated and ignored — the two per-gate budgets `max_fix_laps` replaced. Kept as
+    #: fields for one release because a checkpoint written before that change carries them,
+    #: and a `Workflow` that no longer declares a param a checkpoint holds fails every
+    #: in-flight run on reload with a bare pydantic `extra_forbidden`.
     max_lint_reworks: int = 2
-    #: Plan-level code-reuse rework passes before implementation proceeds anyway.
     max_reuse_reworks: int = 2
     #: The CLI session id to resume for the story's backbone turns, threaded in from a
     #: prior stage's turn across a `handoff()` boundary. Empty starts a fresh chain.
@@ -188,8 +200,7 @@ class Dev(Workflow):
     #: The three bounded budgets, each already a parameter of the state that guards it.
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = (
         "plan_rework",
-        "reuse_rework",
-        "lint_rework",
+        "fix_lap",
         "plan_blocks",
     )
 
@@ -197,7 +208,7 @@ class Dev(Workflow):
         """The same, plus which attempt of which budget the next state is on.
 
         A state that does not take a given counter reports nothing for it rather than
-        zero — `implement` has no opinion about the reuse budget.
+        zero — `implement` has no opinion about the repair-lap budget.
         """
         return self.labels() | counter_labels(params, "dev", self.BUDGET_LABELS)
 
@@ -205,10 +216,10 @@ class Dev(Workflow):
         """The session chain a repair loop runs on, keyed per story and per worklist.
 
         Per story because two stories planned by one run are two different plans against
-        two different diffs; per worklist because the three loops that re-plan are asking
-        for three unrelated things. Sharing one key across them would hand the reuse pass
-        the operator's answer to a block it was never told about — the exact stale context
-        `rework_reuse` deliberately withholds through its arguments.
+        two different diffs; per worklist because the loops that re-plan are asking for
+        unrelated things. Sharing one key across them would hand the path-repair pass the
+        operator's answer to a block it was never told about — stale context the arguments
+        of each loop deliberately withhold.
         """
         return f"plan-{worklist}:{self.ctx.story_slug}"
 
@@ -217,18 +228,32 @@ class Dev(Workflow):
 
         An incoming session id (threaded from a prior stage across a handoff boundary) is
         resumed directly; otherwise a fresh per-story chain is named and the CLI mints one
-        the first time it is used. Distinct from `_chain`/`_lint_chain`: those name the
-        narrower, intentionally-isolated repair loops, and stay untouched by this one.
+        the first time it is used. Distinct from `_chain`: that names the narrower,
+        intentionally-isolated plan-repair loops, and stays untouched by this one.
+
+        **The implementation half of the lane shares it.** Implement and every repair turn
+        for every layer run here, where each used to open its own conversation: a fixer in a
+        fresh context spends its first minutes reading the code the implementer wrote
+        minutes earlier, and then reports on a diff it has only just met. `max_session_turns`
+        is what keeps that from growing without end.
         """
         return self.session_id or f"story:{self.ctx.story_slug}"
 
-    def _lint_chain(self) -> str:
-        """The chain the lint-fix laps for the *current* service layer run on.
+    def _spend_turn(self, session_turns: int) -> int:
+        """Count one turn onto the story conversation, recycling it when it is full.
 
-        Keyed by service as well as story: the next layer's linter reports on a different
-        cwd, and resuming there would open on the previous service's findings.
+        Called immediately *before* the turn it counts, so the recycling lands on the turn
+        that would otherwise have opened the over-long context. The count restarts at one
+        rather than zero because the turn about to run is the first of the new conversation.
         """
-        return f"lint-repair:{self.ctx.story_slug}:{self._layer.service}"
+        if self.max_session_turns and session_turns >= self.max_session_turns:
+            self.logger.info(
+                "the story conversation reached %d turns — starting a fresh one",
+                self.max_session_turns,
+            )
+            self.reset_session(self._story_chain())
+            return 1
+        return session_turns + 1
 
     def _ends(self, result: DevResult) -> Done:
         """End the flow, and every chain it opened with it.
@@ -238,7 +263,7 @@ class Dev(Workflow):
         exception: `result.session_id` is stamped with whatever id it resolved to, so the
         parent can thread it into the next stage instead of reopening a conversation.
         """
-        for worklist in ("block-repair", "reuse-repair", "path-repair"):
+        for worklist in ("block-repair", "path-repair"):
             self.reset_session(self._chain(worklist))
         result.session_id = self._require_engine().session_id(self._story_chain())
         return Done(result)
@@ -272,7 +297,7 @@ class Dev(Workflow):
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         if result.status == "blocked":
             return self._gate_plan(result, result.summary, 0)
-        return Continue(result, self.check_reuse, notes=result.summary)
+        return Continue(result, self.validate_paths, notes=result.summary)
 
     def _gate_plan(self, result: object, notes: str, plan_blocks: int) -> Continue | Await:
         """`gate_plan`: hand the block to the resolver, or straight to a human.
@@ -389,77 +414,7 @@ class Dev(Workflow):
         # a plan this state has just replaced, and the next block is a different one.
         self.reset_session(self._chain("block-repair"))
         return Continue(
-            result, self.check_reuse, notes=result.summary, plan_blocks=plan_blocks
-        )
-
-    # --- the reuse gate -----------------------------------------------------
-
-    def check_reuse(self, notes: str, reuse_rework: int = 0, plan_blocks: int = 0) -> Continue:
-        """Does the approved plan propose to build something that already exists?
-
-        `seed_reuse` + `check_code_reuse` + `decide_reuse` + `guard_reuse`. Checked against
-        the existing codebase *before* any code is written, which is the whole point — this
-        is the mitigation for the workflow re-implementing what it never looked for.
-
-        Fail-open and bounded: a check that did not run takes the `ok` arm, and once the
-        rework budget is spent implementation proceeds anyway, because the findings are
-        advisory and review and QA re-check reuse against the real diff.
-        """
-        result = self.agent(
-            "prompts/check-code-reuse.md",
-            returns=ReuseResult,
-            # high: a semantic "does this already exist?" search across the codebase is a
-            # genuine reasoning and discovery task.
-            power="high",
-            session=self._story_chain(),
-            add_dirs=self._dirs(),
-            args={"story_path": self.ctx.story_path, "spec_dir": self.ctx.spec_dir},
-        )
-        # A reuse check that reports it could not run is not an escalation either: its
-        # findings are advisory, and review and QA re-check reuse against the real diff.
-        # It skips the rework lap, which is the only thing re-asking it would buy.
-        if (
-            result.status == "needs_rework"
-            and not result.blocked
-            and reuse_rework < self.max_reuse_reworks
-        ):
-            return Continue(
-                result,
-                self.rework_reuse,
-                notes=notes,
-                reuse_rework=reuse_rework,
-                findings=str(result.findings),
-                plan_blocks=plan_blocks,
-            )
-        # Whichever arm this is, the reuse loop is over: either the plan reuses what exists
-        # or the budget is spent, and both leave nothing for a next lap to remember.
-        self.reset_session(self._chain("reuse-repair"))
-        return Continue(result, self.validate_paths, notes=notes, plan_blocks=plan_blocks)
-
-    def rework_reuse(
-        self, notes: str, reuse_rework: int, findings: str, plan_blocks: int = 0
-    ) -> Continue:
-        """Re-plan to reuse what the check found, then re-check.
-
-        `rework_plan_reuse` + `incr_reuse`. No operator context: this is a plan-quality
-        rework, not a resolved block, and handing the refiner a stale operator answer would
-        invite it to re-litigate a decision that was already made.
-        """
-        result = self._refine(
-            review_notes=(
-                "The plan re-implements functionality that already exists in the codebase. "
-                "Rework it to REUSE the existing code instead of rebuilding it, or justify "
-                f"per-finding why reuse is not possible. Reuse findings: {findings}"
-            ),
-            operator_context="",
-            worklist="reuse-repair",
-        )
-        return Continue(
-            result,
-            self.check_reuse,
-            notes=notes,
-            reuse_rework=reuse_rework + 1,
-            plan_blocks=plan_blocks,
+            result, self.validate_paths, notes=result.summary, plan_blocks=plan_blocks
         )
 
     # --- the path gate ------------------------------------------------------
@@ -533,7 +488,7 @@ class Dev(Workflow):
         )
         return Continue(impl, self.layer)
 
-    def layer(self, index: int = -1) -> Continue | Done:
+    def layer(self, index: int = -1, session_turns: int = 1) -> Continue | Done:
         """Take the next service to implement, or finish.
 
         `select_impl_layer` + `decide_impl_layer`. `index` is the cursor the YAML kept in
@@ -547,10 +502,16 @@ class Dev(Workflow):
         self.logger.info(
             "implementing %s (%d/%d)", pick.layer.label, pick.index + 1, pick.dispatch_count
         )
-        return Continue(pick, self.implement, index=pick.index)
+        return Continue(
+            pick, self.implement, index=pick.index, session_turns=session_turns
+        )
 
     def implement(
-        self, index: int, operator_context: str = "", impl_blocks: int = 0
+        self,
+        index: int,
+        operator_context: str = "",
+        impl_blocks: int = 0,
+        session_turns: int = 1,
     ) -> Continue | Await:
         """Implement one service layer with the single `implement-plan.md` turn.
 
@@ -558,13 +519,17 @@ class Dev(Workflow):
         threaded rather than read off `read_operator_context`'s output because the layer
         loop re-enters this state for *every* layer: an answer about one service must not
         silently brief the next one's turn.
+
+        `session_turns` counts this story's backbone conversation, which the repair turns
+        share — see `_spend_turn`.
         """
+        turns = self._spend_turn(session_turns)
         result = self._implement_classic(operator_context)
         if result.blocked:
             return self._gate_impl(
-                result, result.notes, index, "the implementation turn", impl_blocks
+                result, result.notes, index, "the implementation turn", impl_blocks, turns
             )
-        return Continue(result, self.lint, index=index)
+        return Continue(result, self.gates, index=index, session_turns=turns)
 
     def _implement_classic(self, operator_context: str = "") -> ImplResult:
         """The `implement-plan.md` turn.
@@ -601,85 +566,136 @@ class Dev(Workflow):
             },
         )
 
-    def lint(self, index: int, lint_rework: int = 0) -> Continue:
-        """Run this service's lint, and route on whether it is clean.
+    def gates(
+        self,
+        index: int,
+        fix_lap: int = 0,
+        session_turns: int = 1,
+        digest: str = "",
+        impl_blocks: int = 0,
+    ) -> Continue | Await:
+        """Run this service's deterministic gates, and route on the first one that says no.
 
-        `lint_layer` + `decide_lint_layer` + `guard_lint`. A deterministic backstop to the
-        implement turn's own `make lint` done-criterion. `skipped` is the opt-out — a
-        service adopts the gate by defining the target or an `agents.yml` override — and a
-        blank status takes the YAML's `default:` arm, which is "move on to the next layer".
+        Lint is the gate this state runs today; `shared.failure` is the seam the others
+        arrive through, because what `fix` reads is a `FailureReport` and not a lint log.
+        A gate that cannot speak — `skipped`, or a blank status — is not a failure: the
+        service adopts a gate by defining it, and a service that has not is not thereby
+        broken.
+
+        `digest` is the *previous* lap's evidence fingerprint. Two laps whose reports
+        digest the same mean the repair turn changed nothing the gate can see, and the
+        answer to that is to spend power rather than another identical turn — which is
+        what `fix` does with `stalled`.
         """
-        result = self.call(run_lint, self._layer.cwd, self._layer.service)
-        if result.status == "dirty" and lint_rework < self.max_lint_reworks:
-            return Continue(result, self.fix_lint, index=index, lint_rework=lint_rework)
-        # Clean, skipped, or out of laps — this service's lint conversation is finished, and
-        # the next layer's findings are about a different cwd.
-        self.reset_session(self._lint_chain())
-        return Continue(result, self.layer, index=index)
+        outcome = self.call(run_lint, self._layer.cwd, self._layer.service)
+        if outcome.status != "dirty":
+            return Continue(outcome, self.layer, index=index, session_turns=session_turns)
+        report = from_lint(outcome, self._layer.cwd, fix_lap)
+        if fix_lap >= self.max_fix_laps:
+            # The budget bounds the *lap*, never the story: this hands the failing gate to
+            # the resolver and, failing that, to a human, exactly as a blocked implement
+            # turn does. See AGENTS.md, "a workflow never gives up".
+            return self._gate_impl(
+                report,
+                f"{self._layer.service}: `{report.command}` still fails after "
+                f"{fix_lap} repair lap(s).\n\n{report.output}",
+                index,
+                "the lint gate",
+                impl_blocks,
+                session_turns,
+            )
+        return Continue(
+            report,
+            self.fix,
+            index=index,
+            fix_lap=fix_lap,
+            session_turns=session_turns,
+            stalled=bool(digest) and report.digest == digest,
+            impl_blocks=impl_blocks,
+        )
 
-    def fix_lint(self, index: int, lint_rework: int) -> Continue:
-        """Satisfy the linter, then re-run it.
+    def fix(
+        self,
+        index: int,
+        fix_lap: int,
+        session_turns: int = 1,
+        stalled: bool = False,
+        impl_blocks: int = 0,
+    ) -> Continue | Await:
+        """Repair whatever the gate reported, then re-run the gates.
 
-        `fix_lint` + `incr_lint`. The findings come off the lint node's own output rather
-        than through the transition: they are what this state *consumes*, not what the
-        routing decision was made on, and a lint log is exactly the sort of thing that
-        should not be copied through a checkpoint.
+        One repair role for every gate, on the story's own conversation: the turn that
+        wrote this code is the cheapest turn to fix it, and a fixer in a fresh context
+        spends its first minutes re-reading a diff it has only just met. The report is
+        rebuilt here from the gate node's recorded output rather than copied through the
+        transition — a gate log is exactly the sort of thing that should not go into a
+        checkpoint.
 
-        A turn that reports it cannot satisfy the linter does not reach the operator from
-        here, and that is deliberate rather than an omission: this gate is fail-open by
-        design — QA re-runs lint as the binding one — so the block already has an owner
-        downstream. What it does buy is skipping the remaining laps, because re-asking a
-        turn that just said "not possible" is the churn this whole change is against.
+        The power ladder is low, low, then high: a linter or a failing assertion is
+        mechanical work grounded in exact evidence, and only a lap that has demonstrably
+        changed nothing is worth a smarter turn. `stalled` brings that escalation forward.
         """
-        outcome = self.output(run_lint)
+        report = from_lint(self.output(run_lint), self._layer.cwd, fix_lap)
+        turns = self._spend_turn(session_turns)
         result = self.agent(
-            "prompts/fix-lint.md",
-            returns=FixLintResult,
-            # medium: mechanical — satisfy the linter in one service cwd, grounded in the
-            # exact findings. Not a design task.
-            power="medium",
+            "prompts/dev-fix.md",
+            returns=FixResult,
+            power="high" if stalled or fix_lap >= 2 else "low",
             cwd=self._layer.cwd,
             add_dirs=self._dirs(),
             args={
+                # Dumped rather than passed as a model: everything in `args` is
+                # checkpointed, and a checkpoint holds JSON.
+                "report": report.model_dump(),
+                "changed_files": self.call(
+                    changed_files, self._layer.cwd, self.ctx.story_slug
+                ).paths,
                 "service": self._layer.service,
-                "cwd": self._layer.cwd,
-                "lint_command": outcome.command,
-                "lint_output": outcome.output,
                 # The prompt commits its own fix now, and these two are the trailers that
                 # tie that commit back to the story it belongs to.
                 "epic": self.epic,
                 "story_slug": self.ctx.story_slug,
             },
-            # Lap two of this loop is handed the same service's findings minus whatever lap
-            # one fixed, so a fresh context would spend its first minutes re-reading the
-            # code it had just edited.
-            session=self._lint_chain(),
+            session=self._story_chain(),
         )
         if result.blocked:
-            self.logger.warning(
-                "the lint fixer reported it cannot satisfy %s — leaving it to QA's lint gate",
-                self._layer.service,
+            return self._gate_impl(
+                result,
+                result.notes or f"the repair turn could not satisfy `{report.command}`",
+                index,
+                "the repair turn",
+                impl_blocks,
+                turns,
             )
-            self.reset_session(self._lint_chain())
-            return Continue(result, self.layer, index=index)
-        return Continue(result, self.lint, index=index, lint_rework=lint_rework + 1)
+        return Continue(
+            result,
+            self.gates,
+            index=index,
+            fix_lap=fix_lap + 1,
+            session_turns=turns,
+            digest=report.digest,
+            impl_blocks=impl_blocks,
+        )
 
     # --- the implementation gate --------------------------------------------
 
     def _gate_impl(
         self,
-        result: ImplResult,
+        result: CoderResult,
         notes: str,
         index: int,
         where: str,
         impl_blocks: int,
+        session_turns: int = 1,
     ) -> Continue | Await:
         """`implement` said it could not — hand that to the resolver, or to a human.
 
         The mirror of `_gate_plan` for the implementation half, and the reason this change
         exists: an implementation turn reporting `blocked` used to be discarded, so the
         layer went on to lint a change nobody had written and the run reported success
-        several stages later.
+        several stages later. A gate whose repair budget is spent, and a repair turn that
+        reports it cannot repair, arrive here too — a spent budget is a block, not a
+        failure, so it parks for someone who can decide it rather than ending the run.
 
         There is no fix-demand arm here even when the turn carried findings. The evidence
         test in `CoderResult.actionable` decides *who* a block is routed to, and an
@@ -700,6 +716,7 @@ class Dev(Workflow):
                 self.read_operator_impl,
                 index=index,
                 impl_blocks=impl_blocks,
+                session_turns=session_turns,
             )
         return Continue(
             result,
@@ -708,10 +725,16 @@ class Dev(Workflow):
             index=index,
             where=where,
             impl_blocks=impl_blocks,
+            session_turns=session_turns,
         )
 
     def resolve_impl(
-        self, notes: str, index: int, where: str, impl_blocks: int = 0
+        self,
+        notes: str,
+        index: int,
+        where: str,
+        impl_blocks: int = 0,
+        session_turns: int = 1,
     ) -> Continue | Await:
         """Resolve an implementation block from the record, or park for the operator.
 
@@ -734,7 +757,11 @@ class Dev(Workflow):
         )
         if answered(self, result, "implementation"):
             return Continue(
-                result, self.read_operator_impl, index=index, impl_blocks=impl_blocks + 1
+                result,
+                self.read_operator_impl,
+                index=index,
+                impl_blocks=impl_blocks + 1,
+                session_turns=session_turns,
             )
         gate = self._escalation(
             notes, impl_blocks, result, block_kind="implementation", where=where
@@ -745,9 +772,12 @@ class Dev(Workflow):
             self.read_operator_impl,
             index=index,
             impl_blocks=impl_blocks + 1,
+            session_turns=session_turns,
         )
 
-    def read_operator_impl(self, index: int, impl_blocks: int = 0) -> Continue | Done:
+    def read_operator_impl(
+        self, index: int, impl_blocks: int = 0, session_turns: int = 1
+    ) -> Continue | Done:
         """Consume the answer and re-enter the layer with it in hand.
 
         A thin consume-the-answer state, which is what `Await` asks for: resume replays
@@ -769,6 +799,7 @@ class Dev(Workflow):
             index=index,
             operator_context=answer.content,
             impl_blocks=impl_blocks,
+            session_turns=session_turns,
         )
 
     # --- shared -------------------------------------------------------------

@@ -39,13 +39,13 @@ def test_counters_are_prefixed_and_stringified():
 
 
 def test_a_counter_the_state_does_not_carry_is_absent_not_zero():
-    """`implement` has no reuse budget parameter, so it has no opinion about that budget.
+    """`implement` has no repair-lap parameter, so it has no opinion about that budget.
 
     Stamping a zero would read as "first attempt" on every span of every state that never
     sees the counter, which is a wrong answer rather than a missing one — and it would put
     those spans in the attempt-0 bucket of any group-by.
     """
-    labels = counter_labels({"plan_rework": 1}, "dev", ("plan_rework", "reuse_rework"))
+    labels = counter_labels({"plan_rework": 1}, "dev", ("plan_rework", "fix_lap"))
     assert labels == {"dev.plan_rework": "1"}
 
 

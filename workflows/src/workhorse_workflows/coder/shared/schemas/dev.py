@@ -1,4 +1,4 @@
-"""The dev flow's models: plan, reuse, path validation, dispatch, implement, lint.
+"""The dev flow's models: plan, path validation, dispatch, implement, gate, fix.
 
 Ported from `flows.dev`'s six agent turns and seven script nodes.
 
@@ -27,9 +27,10 @@ names the arm a blank falls into.
 """
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
-from workhorse_workflows.coder.shared.schemas._base import CoderResult
+from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 
 
 class PlanResult(CoderResult):
@@ -41,22 +42,6 @@ class PlanResult(CoderResult):
     """
 
     status: str = ""
-    summary: str = ""
-
-
-class ReuseResult(CoderResult):
-    """`prompts/check-code-reuse.md` — does the plan propose to build what already exists?
-
-    `status` is `ok`, `needs_rework` or `blocked`, and a blank takes `ok`: the gate is
-    advisory and fail-open by design, because review and QA re-check reuse against the real
-    diff. `blocked` is the plan that could not be read at all, which `ok` would otherwise
-    report as "found nothing" about something nobody looked at.
-    `findings` is left loosely typed — it is stringified into the refiner's review notes and
-    never read field by field.
-    """
-
-    status: str = ""
-    findings: list[dict[str, Any]] = []
     summary: str = ""
 
 
@@ -74,13 +59,60 @@ class ImplResult(CoderResult):
     notes: str = ""
 
 
-class FixLintResult(CoderResult):
-    """`prompts/fix-lint.md` — the lint repair turn's own report.
+class FailureReport(CoderResult):
+    """A gate said no. Which gate, what it ran, what it printed — one shape for all of them.
 
-    `fixed` and `failed` are not branched on; the next `run_lint` is what decides.
-    `blocked` is, and only to stop the laps: this gate is fail-open by design — QA re-runs
-    lint as the binding one — so the block already has an owner downstream, and what the
-    signal buys is not re-asking a turn that has just said it cannot.
+    This is the argument for there being *one* repair role. Lint, verification and
+    regression each produced their own result schema, their own prompt and their own budget,
+    and the three differed in nothing a fixer acts on: a command, its output, and which lap
+    this is. `source` is the only thing that varies, and it varies by a word.
+
+    It is built in Python from whatever the gate returned (`shared.failure`), never asked of
+    an agent — the gate's output is evidence, and evidence a turn paraphrased is no longer
+    evidence.
+    """
+
+    #: Which gate failed: `lint`, `verify`, `regression`, `tdd`. Named rather than typed as
+    #: an enum because a repo's `agents.yml` may declare gates this package has never heard
+    #: of, and an unknown source is still a command with output — the generic arm handles it.
+    source: str = ""
+    #: The command the gate ran, verbatim, so the fixer re-runs the same thing rather than
+    #: guessing at one.
+    command: str = ""
+    #: Where it ran. A repair turn that fixes the right file in the wrong service passes
+    #: nothing.
+    cwd: str = ""
+    #: What the gate printed, truncated by whoever captured it.
+    output: str = ""
+    #: Structured findings, when the source has them (a review or QA hand-off does; a lint
+    #: command's stdout does not). Typed as `Finding` so `CoderResult.actionable` applies.
+    findings: list[Finding] = []
+    #: Which repair lap this is, 1-based. Carried so the prompt can say it and so the log
+    #: reads as a sequence rather than as a repetition.
+    lap: int = 0
+
+    @property
+    def digest(self) -> str:
+        """A stable fingerprint of *this failure*, for detecting a stalled loop.
+
+        Two consecutive laps with the same digest mean the repair changed nothing the gate
+        can see, and the ladder answers that by spending power rather than another identical
+        turn. Whitespace is collapsed and the lap number is excluded on purpose: the lap is
+        the one field guaranteed to differ between two otherwise identical failures.
+        """
+        material = "\n".join(
+            (self.source, self.command, " ".join(self.output.split()))
+        )
+        return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
+
+
+class FixResult(CoderResult):
+    """`prompts/dev-fix.md` — the repair turn's own report, whatever the gate was.
+
+    `fixed` and `failed` are not branched on; re-running the gate is what decides, and an
+    agent's claim to have fixed something is not evidence that the gate agrees. `blocked` is
+    branched on, and only to stop the laps — re-asking a turn that has just said it cannot
+    buys a budget and no repair.
     """
 
     status: str = ""
@@ -267,6 +299,18 @@ class LintOutcome(CoderResult):
     reason: str = ""
 
 
+class ChangedFiles(CoderResult):
+    """What this story has already written into one service, by path.
+
+    The re-seed a fresh conversation is handed when the story's own conversation is recycled
+    at `max_session_turns`: the turn that opens next has none of the history, and the
+    cheapest true thing to tell it is which files the work so far touched. Deliberately paths
+    only — a diff would reintroduce, in one prompt, the context the recycling exists to drop.
+    """
+
+    paths: list[str] = []
+
+
 class DevResult(CoderResult):
     """What the dev flow hands back: `ready`, or `replan` when the epic premise was wrong.
 
@@ -287,9 +331,11 @@ class DevResult(CoderResult):
 
 __all__ = [
     "BranchOutcome",
+    "ChangedFiles",
     "DevResult",
     "DispatchEntry",
-    "FixLintResult",
+    "FailureReport",
+    "FixResult",
     "ImplContext",
     "ImplResult",
     "LayerPick",
@@ -300,5 +346,4 @@ __all__ = [
     "PlanResult",
     "PlanValidation",
     "QaRunEntry",
-    "ReuseResult",
 ]

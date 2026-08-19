@@ -255,45 +255,47 @@ def _refine(flow: Dev, worklist: str) -> None:
         flow._refine(review_notes="", operator_context="", worklist=worklist)
 
 
-def test_the_three_re_planning_loops_never_share_a_conversation(spy: _Spy) -> None:
-    """One prompt, three call sites, three unrelated worklists. Sharing a key would hand
-    the reuse pass the operator's answer to a block it was never told about — the stale
-    context `rework_reuse` deliberately withholds through its arguments."""
+def test_the_re_planning_loops_never_share_a_conversation(spy: _Spy) -> None:
+    """One prompt, several call sites, unrelated worklists. Sharing a key would hand the
+    path-repair pass the operator's answer to a block it was never told about — the stale
+    context each loop deliberately withholds through its arguments."""
     flow = _dev()
-    for worklist in ("block-repair", "reuse-repair", "path-repair"):
+    for worklist in ("block-repair", "path-repair"):
         _refine(flow, worklist)
 
     assert [turn["session"] for turn in spy.turns] == [
-        f"plan-{worklist}:{STORY}"
-        for worklist in ("block-repair", "reuse-repair", "path-repair")
+        f"plan-{worklist}:{STORY}" for worklist in ("block-repair", "path-repair")
     ]
 
 
-def test_a_lint_fix_lap_is_keyed_per_service(spy: _Spy, monkeypatch) -> None:
-    """The next layer's linter reports on a different cwd, so resuming there would open
-    on the previous service's findings."""
+def test_a_repair_lap_runs_on_the_story_conversation(spy: _Spy, monkeypatch) -> None:
+    """The turn that wrote the code is the cheapest turn to fix it: a fixer in a fresh
+    context spends its first minutes re-reading a diff it has only just met."""
     flow = _dev()
     layer = SimpleNamespace(cwd="/tmp/api", service="api-service")
     monkeypatch.setattr(Dev, "_layer", property(lambda _: layer))
     monkeypatch.setattr(
-        Dev, "output", lambda *a, **k: SimpleNamespace(command="make lint", output="")
+        Dev,
+        "output",
+        lambda *a, **k: SimpleNamespace(status="dirty", command="sh lint.sh", output=""),
     )
+    monkeypatch.setattr(Dev, "call", lambda *a, **k: SimpleNamespace(paths=[]))
 
     with pytest.raises(_Reached):
-        flow.fix_lint(index=0, lint_rework=0)
+        flow.fix(index=0, fix_lap=0)
 
-    assert spy.turns[0]["session"] == f"lint-repair:{STORY}:api-service"
+    assert spy.turns[0]["prompt"] == "prompts/dev-fix.md"
+    assert spy.turns[0]["session"] == f"story:{STORY}"
 
 
 def test_ending_the_dev_flow_ends_every_plan_chain(spy: _Spy) -> None:
-    """The lint chain is not here because it is dropped per layer, by the state that
-    leaves it — by the time the flow ends there is none left to drop."""
+    """The story chain is not reset here: its id is stamped onto the result instead, so
+    the next stage resumes the conversation rather than reopening one."""
     done = _dev()._ends(DevResult())
 
     assert isinstance(done.result, DevResult)
     assert spy.resets == [
         f"plan-block-repair:{STORY}",
-        f"plan-reuse-repair:{STORY}",
         f"plan-path-repair:{STORY}",
     ]
     assert done.result.session_id == f"story:{STORY}"

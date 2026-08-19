@@ -1,9 +1,9 @@
-"""End-to-end tests for the `dev` flow — the three gates, the layer loop, the operator.
+"""End-to-end tests for the `dev` flow — the gates, the layer loop, the operator.
 
-Several YAML nodes collapsed into states holding three loops that share them — the reuse
-gate, the path gate and the per-layer implement/lint loop. What is worth testing is which arm
-each verdict takes and what makes each loop terminate, so the tests are organised by gate
-rather than by node.
+Several YAML nodes collapsed into states holding the loops that share them — the path gate
+and the per-layer implement/gates/fix loop. What is worth testing is which arm each verdict
+takes and what makes each loop terminate, so the tests are organised by gate rather than by
+node.
 
 **There are no seams here beyond the agent turn.** Every deterministic node runs for real:
 the story is a real authored story in a real docs repo, the workspace is two real git repos
@@ -192,7 +192,7 @@ def lint_gate(
     `run_lint` resolves its command from the orchestrating repo's `agents.yml` before
     falling back to `make lint`, and keys the map by the service name and then by the cwd's
     basename — `api` here is the second. The script is the whole gate: it fails while the
-    marker is absent, so the `fix-lint` turn has something real to fix and the loop's exit
+    marker is absent, so the `dev-fix` turn has something real to fix and the loop's exit
     is a genuinely clean lint rather than a scripted claim of one.
 
     Returns the marker path so the lint-fixer handler can create it.
@@ -210,8 +210,8 @@ class _Agent:
 
     The knobs are the flow's branches: `blocked` makes the first N planning turns report a
     block, `bad_paths` makes the first N plan writes name a repo the workspace has not got,
-    `reuse_rework` makes the first N reuse checks demand a rework, `fix_lint` decides
-    whether the lint repair turn actually repairs anything, and `explode` raises on a named
+    `fix_gate` decides whether the repair turn actually repairs anything, and `explode`
+    raises on a named
     prompt — a run killed mid-turn. There is no `escalate` knob: the resolver never decides
     on the operator's behalf, so every resolved block investigates and then waits, the same
     way every time — and no `scope` knob either, since the answer's `SCOPE:` now comes from
@@ -229,8 +229,7 @@ class _Agent:
         blocked: int = 0,
         resolver_answers: bool = False,
         bad_paths: int = 0,
-        reuse_rework: int = 0,
-        fix_lint: Path | None = None,
+        fix_gate: Path | None = None,
         explode: set[str] | None = None,
         impl_blocked: int = 0,
     ) -> None:
@@ -241,8 +240,7 @@ class _Agent:
         #: `answered` arm, which writes the operator's answer where a human would have.
         self.resolver_answers = resolver_answers
         self.bad_paths = bad_paths
-        self.reuse_rework = reuse_rework
-        self.fix_lint = fix_lint
+        self.fix_gate = fix_gate
         self.explode = explode or set()
         self.impl_blocked = impl_blocked
         self.calls: list[str] = []
@@ -308,15 +306,6 @@ class _Agent:
             return {"status": "blocked", "summary": "the prod bucket may not exist"}
         return {"status": "done", "summary": f"plan {self.plans}"}
 
-    def _check_code_reuse(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        if nth <= self.reuse_rework:
-            return {
-                "status": "needs_rework",
-                "findings": [{"path": "pkg/store", "note": "already implemented"}],
-                "summary": "reuse the store",
-            }
-        return {"status": "ok", "findings": [], "summary": "nothing to reuse"}
-
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if self.resolver_answers:
             (self.docs / CONTEXT_REL).write_text(
@@ -342,11 +331,11 @@ class _Agent:
             return {"status": "blocked", "notes": "the plan names a migration nobody has run"}
         return {"status": "done", "notes": f"implemented {data['service_path']}"}
 
-    def _fix_lint(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        if self.fix_lint is None:
+    def _dev_fix(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        if self.fix_gate is None:
             return {"status": "failed", "notes": "the finding is in vendored code"}
-        self.fix_lint.write_text("", encoding="utf-8")
-        return {"status": "fixed", "notes": "satisfied the linter"}
+        self.fix_gate.write_text("", encoding="utf-8")
+        return {"status": "fixed", "notes": "satisfied the gate"}
 
     # -- what the resolver leaves behind ----------------------------------
 
@@ -412,7 +401,6 @@ def test_plans_stamps_branches_and_implements_every_layer(
     assert result.status == "ready", result
     assert agent.counts() == {
         "plan-story": 1,
-        "check-code-reuse": 1,
         "implement-plan": 2,
     }, agent.counts()
 
@@ -479,51 +467,6 @@ def test_an_unauthored_story_is_refused_before_anything_is_planned(
         drive_flow(Dev(story=STORY), env(), agent)
 
     assert agent.calls == []
-
-
-# --------------------------------------------------------------------------- reuse gate
-
-
-def test_the_reuse_gate_reworks_the_plan_and_re_checks(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """One `needs_rework` sends the plan back to the refiner and the check runs again."""
-    agent = _Agent(docs, reuse_rework=1)
-
-    result = drive_flow(Dev(story=STORY), env(), agent)
-
-    assert result.status == "ready", result
-    assert agent.counts()["check-code-reuse"] == 2, agent.counts()
-    assert agent.counts()["refine-plan"] == 1, agent.counts()
-    # The refiner is handed the findings, and no operator context: this is a plan-quality
-    # rework, not a resolved block.
-    notes = agent.args_for("refine-plan")[0]
-    assert "already implemented" in notes["review_notes"]
-    assert notes["operator_context"] == ""
-
-
-def test_the_reuse_gate_is_bounded_and_then_proceeds_anyway(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """The findings are advisory: a spent budget implements the plan rather than failing.
-
-    `max_reuse_reworks=2` buys two reworks, so the check runs three times — the off-by-one
-    the `<` in `reuse_rework < self.max_reuse_reworks` decides.
-    """
-    agent = _Agent(docs, reuse_rework=99)
-
-    result = drive_flow(Dev(story=STORY, max_reuse_reworks=2), env(), agent)
-
-    assert result.status == "ready", result
-    assert agent.counts()["check-code-reuse"] == 3, agent.counts()
-    assert agent.counts()["refine-plan"] == 2, agent.counts()
-    assert agent.counts()["implement-plan"] == 2, agent.counts()
 
 
 # --------------------------------------------------------------------------- path gate
@@ -934,53 +877,70 @@ def test_an_unanswered_context_file_is_not_treated_as_an_answer(
 # --------------------------------------------------------------------------- lint loop
 
 
-def test_the_lint_gate_fixes_and_re_runs_until_clean(
+def test_the_gate_lane_repairs_and_re_runs_until_clean(
     docs: Path,
     workspace: dict[str, Path],
     lint_gate: Path,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A dirty layer is repaired and re-linted; the second run is genuinely clean.
+    """A dirty layer is repaired and re-gated; the second run is genuinely clean.
 
     `web` has adopted no gate, so it is `skipped` and moves straight on — which is the
     opt-in half of the same behavior.
     """
-    agent = _Agent(docs, fix_lint=lint_gate)
+    agent = _Agent(docs, fix_gate=lint_gate)
     run_env = env()
 
     result = drive_flow(Dev(story=STORY), run_env, agent)
 
     assert result.status == "ready", result
-    assert agent.counts()["fix-lint"] == 1, agent.counts()
-    assert lint_gate.is_file(), "the fixer did not write what the linter checks for"
-    # The last lint of the run is `web`'s, which adopted nothing.
+    assert agent.counts()["dev-fix"] == 1, agent.counts()
+    assert lint_gate.is_file(), "the fixer did not write what the gate checks for"
+    # The last gate run of the run is `web`'s, which adopted nothing.
     assert _output(run_env, run_lint)["status"] == "skipped"
-    # The fixer was handed the real command and the real findings, off the node's output.
-    assert agent.args_for("fix-lint")[0]["lint_command"] == "sh lint.sh"
-    assert agent.args_for("fix-lint")[0]["cwd"] == str(workspace["api"])
+    # The fixer was handed one `FailureReport`, built in Python off the gate's own output:
+    # which gate, what it ran, where, and what it printed.
+    report = agent.args_for("dev-fix")[0]["report"]
+    assert report["source"] == "lint", report
+    assert report["command"] == "sh lint.sh", report
+    assert report["cwd"] == str(workspace["api"]), report
 
 
-def test_the_lint_gate_is_bounded_and_moves_on_dirty(
+def test_a_gate_no_repair_lap_can_satisfy_never_gives_up_either(
     docs: Path,
     workspace: dict[str, Path],
     lint_gate: Path,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A fixer that fixes nothing costs two attempts and then the layer moves on.
+    """A spent repair budget is a block, not a give-up.
 
-    Never a dead end: QA re-runs lint as the binding gate, so the dev-time one is
-    best-effort. `max_lint_reworks=2` buys two fix turns and a third lint.
+    The old lint loop was fail-open: two fruitless fix turns and the layer moved on, on the
+    argument that QA re-runs lint as the binding gate. That is the shape AGENTS.md rules
+    out — the run went on to report success over a service nobody had looked at. The budget
+    bounds the *lap* now; the block goes to the operator, as many times as it takes, and the
+    run finishes once something actually clears the gate.
     """
-    agent = _Agent(docs, fix_lint=None)
+    monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "240")
+    agent = _Agent(docs, fix_gate=None)
+    seen: list[str] = []
 
-    result = drive_flow(Dev(story=STORY, max_lint_reworks=2), env(), agent)
+    def answered(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text(encoding="utf-8"))
+        if len(seen) >= 2:
+            lint_gate.write_text("", encoding="utf-8")
+        path.write_text(
+            "STATUS: ANSWERED\nSCOPE: story\n\nVendored code is exempt.\n", encoding="utf-8"
+        )
+
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
+        result = drive_flow(Dev(story=STORY, max_fix_laps=2), env(), agent)
 
     assert result.status == "ready", result
-    assert agent.counts()["fix-lint"] == 2, agent.counts()
-    assert agent.counts()["implement-plan"] == 2, agent.counts()
-    assert not lint_gate.exists()
+    assert agent.counts()["dev-fix"] == 4, agent.counts()
+    assert len(seen) == 2, seen
 
 
 # --------------------------------------------------------------------------- resume
@@ -1008,9 +968,10 @@ def test_a_run_killed_mid_implement_resumes_on_that_layer(
     resume = read_resume(checkpoint)
     assert resume.state == "implement", resume
     assert resume.flow == "Dev", resume
-    # Only the cursor: the layer loop's `operator_context`/`impl_blocks` are still at their
-    # defaults on a first pass, so nothing carries them into the checkpoint.
-    assert resume.params == {"index": 0}, resume.params
+    # The cursor and the story conversation's turn count: the layer loop's
+    # `operator_context`/`impl_blocks` are still at their defaults on a first pass, so
+    # nothing carries them into the checkpoint.
+    assert resume.params == {"index": 0, "session_turns": 1}, resume.params
 
     agent = _Agent(docs)
     result = drive_flow(Dev(**resume.inputs), env(run_dir=run_dir), agent, resume)
