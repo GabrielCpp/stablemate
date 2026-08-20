@@ -332,6 +332,20 @@ class Qa(Workflow):
     #: `local` — we own the code and fix it here; `dev` — we do not, so findings are
     #: reported to the tracker and the flow ends.
     target_env: str = "local"
+    #: Measurement mode: end at the first verdict instead of repairing toward green.
+    #: A benchmark trial asks what one plan and one suite run say about the product, and
+    #: every repair lap after the first red answers a different question while spending
+    #: the trial's clock on it. `report_dev` is the precedent: a mode that does not own
+    #: the code reports what it saw, and reporting *is* the terminal action — so a red or
+    #: unverifiable run ends the flow `inconclusive` (the vocabulary's existing
+    #: no-verdict arm) with the runner's verdict in `qa` and the assessment's
+    #: classification in telemetry, after exactly one classification turn. A green run
+    #: still passes the deterministic gates (`verify_qa_evidence`, the sentinel check)
+    #: and finishes `passed`; only the agent gates that exist to *repair or refute* are
+    #: skipped. Environment failures are the exception and keep the setup loop: a stack
+    #: that never came up says nothing about the product, so ending on it would report a
+    #: verdict about the harness.
+    first_verdict: bool = False
     #: Repo-relative stack manifest `ensure_stack` reads. Passed rather than assumed: a
     #: fixer that authors it at the root while the run reads `<service>/qa-stack.yml` loops.
     qa_stack_manifest: str = "qa-stack.yml"
@@ -514,6 +528,24 @@ class Qa(Workflow):
         self._reset_chains()
         result.session_id = self._require_engine().session_id(self._story_chain())
         return Done(result)
+
+    def _first_verdict_ends(self, loop: QaLoop) -> Done:
+        """`first_verdict`'s terminal: report the verdict as it stands, `inconclusive`.
+
+        `inconclusive` and not a new status, because the vocabulary is closed and this
+        is exactly what its existing arm means — the flow ends without repairing,
+        refuting or triaging anything, so no verdict was reached *by the flow*. The
+        runner's own verdict travels in `qa`, which is what the caller reads.
+        """
+        return self._ends(
+            QaFlowResult(
+                status="inconclusive",
+                qa=loop.qa,
+                qa_rework=loop.qa_rework,
+                triage_scope=loop.triage_scope,
+                docs_recheck_required=loop.docs_recheck_required,
+            )
+        )
 
     #: `ensure_stack` brings a durable app stack up and health-gates it — on a real run
     #: that is minutes of `booting app: … waiting up to 2400s`, and it is the model
@@ -720,6 +752,7 @@ class Qa(Workflow):
         as it was before — but a draft that names an id it did not run is.
         """
         self.logger.info("planning QA for %s", self.ctx.story_slug, extra={"activity": True})
+        standing = self._standing_plan()
         overran = ""
         started = time.monotonic()
         drafted: QaPlanResult | None = None
@@ -729,8 +762,10 @@ class Qa(Workflow):
                 turn.prompt,
                 returns=QaPlanResult,
                 # medium: writing a runnable plan against a schema, from a story and an
-                # obligation packet that both already exist.
-                power="medium",
+                # obligation packet that both already exist. low when a validated plan
+                # already stands — confirming it still answers the packet is a read,
+                # not an authoring job.
+                power="low" if standing else "medium",
                 session=self._story_chain(),
                 # 20 min. Without a cap this node inherits the run's 3600s watchdog, and it
                 # used it: over four days its longest turns were exactly 60.0 min, and two
@@ -743,7 +778,7 @@ class Qa(Workflow):
                 # turn is worth more to this flow than any number of fresh ones.
                 retries=0,
                 add_dirs=self._dirs(),
-                args=turn.args | self._plan_args(loop),
+                args=turn.args | self._plan_args(loop) | {"standing_plan": standing},
             )
         except AgentTimeout:
             self.logger.info(
@@ -840,6 +875,27 @@ class Qa(Workflow):
             overran=overran,
             dry_run=tuple(sorted({*loop.failed_scenarios, *repaired})),
         )
+
+    def _standing_plan(self) -> bool:
+        """Does a `qa_plan.py` already stand that lints and validates against the packet?
+
+        The plan turn re-authors from the story every time it runs today, because
+        `build_context` clears `plan_authored` on every rejoin — so a re-QA of a story
+        whose accepted plan is sitting on disk pays a full authoring turn to write it
+        again, and the benchmark's frozen fixtures pay the same turn to reproduce a plan
+        they shipped with. Both machine gates run here, fresh, against the packet the
+        context stage just rebuilt: a plan that passes them is the same plan the
+        validation tail would wave through, so the turn's job collapses to confirming
+        coverage (or amending the minimum), which `standing_plan` in the brief and the
+        low power tier both say. A plan that fails either gate gets the full authoring
+        turn exactly as before — this is a fast path, never a new outcome.
+        """
+        spec_dir = self.ctx.spec_dir
+        if not spec_dir or not (Path(spec_dir) / "qa_plan.py").is_file():
+            return False
+        if self.call(lint_qa_plan, spec_dir, self.docs_path).status != "passed":
+            return False
+        return self.call(validate_qa_plan, spec_dir, self.docs_path).status == "passed"
 
     def _plan_args(self, loop: QaLoop) -> dict[str, object]:
         """Every diagnostic the loop collected, for whichever plan turn is about to run.
@@ -1043,15 +1099,23 @@ class Qa(Workflow):
         result = self.call(
             run_qa_plan, self.ctx.spec_dir, self.docs_path, manifest_path=self.qa_stack_manifest
         )
-        return Continue(
-            result,
-            self.assess,
-            loop=loop.with_qa(result).update(
-                blocked_problems=_blocked_problems(result),
-                run_failures=_failure_signature(result),
-                failed_scenarios=_failed_scenario_ids(result),
-            ),
+        loop = loop.with_qa(result).update(
+            blocked_problems=_blocked_problems(result),
+            run_failures=_failure_signature(result),
+            failed_scenarios=_failed_scenario_ids(result),
         )
+        if result.status == "passed":
+            # A green runner leaves the assessment sieve nothing to classify: every arm
+            # below its refusal check routes a failure, a block or a disposition, and
+            # the two gates ahead are the ones that judge a pass — `verify_qa_evidence`
+            # fail-closed on the artifacts, the audit adversarially on their content.
+            # The same contractual-QA argument that deleted the semantic pre-run review
+            # applies: the obligations are machine-checked, so a `power="medium"` read
+            # of a green log re-derives what they already carry. The `assessment_*`
+            # loop fields stay blank, which is the documented "this gate has not run".
+            self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
+            return Continue(result, self.verify_evidence, loop=loop)
+        return Continue(result, self.assess, loop=loop)
 
     def assess(self, loop: QaLoop) -> Continue | Await | Done:
         """Read the runner's verdict for what it means — four chained decisions, one state.
@@ -1099,6 +1163,18 @@ class Qa(Workflow):
             assessment_disposition=assessment.disposition,
             assessment_failure_class=assessment.failure_class,
         )
+
+        if self.first_verdict:
+            # This turn was the one classification the mode budgets for. Environment
+            # failures keep the setup loop — the harness is not the product — and
+            # everything else is reported as it stands; see the `first_verdict` field.
+            if (
+                assessment.disposition == "repair_setup"
+                or loop.qa.status == "blocked"
+                or assessment.failure_class == "environment"
+            ):
+                return self._guard_setup(assessment, loop)
+            return self._first_verdict_ends(loop)
 
         if assessment.disposition == "repair_setup":
             return self._guard_setup(assessment, loop)
@@ -1152,7 +1228,15 @@ class Qa(Workflow):
         )
         loop = loop.with_qa(result)
         if result.status == "passed":
+            if self.first_verdict:
+                # Straight to the hygiene gates: the audit exists to refute a pass into
+                # a repair, and this mode reports rather than repairs. The deterministic
+                # evidence gate above still ran — a pass this mode reports is still one
+                # whose artifacts exist on disk.
+                return Continue(result, self.finalize, loop=loop)
             return Continue(result, self.audit, loop=loop)
+        if self.first_verdict:
+            return self._first_verdict_ends(loop)
         if result.status in {"failed", "blocked"}:
             return Continue(result, self.backlog, loop=loop)
         return self._guard_plan(result, loop)
@@ -1521,6 +1605,8 @@ class Qa(Workflow):
         result = self.call(check_sentinel_ids, self.ctx.story_slug)
         loop = loop.with_qa(result)
         if result.status != "passed":
+            if self.first_verdict:
+                return self._first_verdict_ends(loop)
             return self._guard_qa(result, loop)
         if self.target_env == "dev":
             return Continue(result, self.report_dev_pass, loop=loop)

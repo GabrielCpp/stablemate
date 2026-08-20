@@ -830,7 +830,12 @@ def test_one_clean_pass_through_every_gate(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """Context, plan, run, assessment, evidence, audit, sentinels — all first try."""
+    """Context, plan, run, evidence, audit, sentinels — all first try, no assessment.
+
+    A green runner skips the `qa-story` assessment turn entirely: the sieve's arms all
+    route failures, blocks and dispositions, and the pass is judged by the evidence gate
+    and the audit. The clean path spends exactly two agent turns.
+    """
     okf = ostler()
     agent = _Agent(docs)
     run_env = env()
@@ -842,9 +847,10 @@ def test_one_clean_pass_through_every_gate(
     assert result.docs_recheck_required is False
     assert agent.counts() == {
         "plan-qa": 1,
-        "qa-story": 1,
         "audit-qa": 1,
     }, agent.counts()
+    # A fresh story has no plan on disk, so the turn is briefed to author, not confirm.
+    assert agent.args_for("plan-qa")[0]["standing_plan"] is False
     # One packet build, one run, and the evidence contract really was vetted.
     assert (okf.contexts, okf.runs, okf.vets) == (1, 1, 1)
     # The runner's artifacts are on disk and the gate accepted them on their own terms.
@@ -2645,9 +2651,10 @@ def test_an_extend_plan_naming_a_product_test_gap_sends_the_fixer(
 
     `extend_plan` reads as a plan instruction and was routed as one unconditionally. It is
     routinely the opposite: the run exposed an untested claim whose proof belongs in a
-    committed test, and appending scenarios to `qa_plan.py` cannot supply it.
+    committed test, and appending scenarios to `qa_plan.py` cannot supply it. The runner
+    stays red here because a green run no longer reaches the assessment at all.
     """
-    ostler()
+    ostler(fail_runs=99)
     agent = _Agent(
         docs,
         disposition="extend_plan",
@@ -3008,8 +3015,11 @@ def test_a_turn_that_says_it_cannot_proceed_reaches_the_operator(
     that re-ran the same turn would get the same answer for the same reason. The refusal's
     own words are what the operator is shown — that is the only thing in the run that says
     *why* it stopped.
+
+    `qa-story` needs a red run to be on the path at all: a green runner skips the
+    assessment turn, so its refusal is only reachable downstream of a failure.
     """
-    ostler()
+    ostler(fail_runs=99 if stem == "qa-story" else 0)
     agent = _Agent(docs, refuses={stem})
     seen: list[str] = []
 
@@ -3039,3 +3049,107 @@ def test_a_triage_that_cannot_proceed_reaches_the_operator(
     # The fix loop never opened: a triage that refused named no target to fix.
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
     assert len(seen) == 1 and "needs a credential this run does not hold" in seen[0], seen
+
+
+# ------------------------------------------------------- a standing plan, and first verdicts
+
+
+def test_a_standing_valid_plan_briefs_the_confirm_turn_not_the_author(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write: Callable[[Path, str], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A `qa_plan.py` that lints and validates is confirmed, never re-authored.
+
+    `build_context` clears `plan_authored` on every entry, so before this a re-QA of a
+    story whose accepted plan sat on disk paid a full authoring turn to write it again.
+    The gates run *before* the turn now: a plan that passes both flips the brief to
+    `standing_plan` and drops the turn to the cheap tier, and the validation tail still
+    re-checks whatever the turn left behind.
+    """
+    ostler()
+    write(docs / SPEC_REL / "qa_plan.py", QA_PLAN)
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    # Still exactly one plan turn — the fast path changes its brief, not its count.
+    assert agent.planned() == 1, agent.counts()
+    assert agent.args_for("plan-qa")[0]["standing_plan"] is True
+
+
+def test_first_verdict_finishes_a_green_run_with_no_post_run_agent_turns(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`first_verdict`: a pass is still gated deterministically, and only deterministically.
+
+    The evidence gate and the sentinel check both run — a pass this mode reports is one
+    whose artifacts exist on disk — but the audit exists to refute a pass into a repair,
+    and this mode reports rather than repairs.
+    """
+    okf = ostler()
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY, first_verdict=True), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts() == {"plan-qa": 1}, agent.counts()
+    assert (okf.contexts, okf.runs, okf.vets) == (1, 1, 1)
+
+
+def test_first_verdict_reports_the_first_red_without_entering_repair(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`first_verdict`: one classification turn, then the red verdict is the report.
+
+    `report_dev` is the precedent — a mode that does not own the outcome reports what it
+    saw, and reporting is the terminal action. The flow ends `inconclusive` (nothing was
+    repaired, refuted or triaged) with the runner's own verdict in `qa`.
+    """
+    okf = ostler(fail_runs=99)
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY, first_verdict=True), env(), agent)
+
+    assert result.status == "inconclusive", result
+    assert result.qa.status == "failed", result
+    # One plan, one run, one classification — and not a single repair or triage turn.
+    assert agent.counts() == {"plan-qa": 1, "qa-story": 1}, agent.counts()
+    assert okf.runs == 1, "the red run was retried — first_verdict must not repair"
+
+
+def test_first_verdict_still_repairs_the_environment(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`first_verdict` reports verdicts about the product, never about the harness.
+
+    A blocked run says nothing about the product, so ending on it would report the
+    stack's failure as the story's. The setup loop keeps its job, and the retried run's
+    verdict is the one reported.
+    """
+    okf = ostler(block_runs=1)
+    write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
+    monkeypatch.setattr(
+        workhorse_stack, "ensure_stack", lambda *a, **k: {"ready": "yes", "entry_url": "http://x"}
+    )
+    agent = _Agent(docs, setup="fixed")
+
+    result = drive_flow(Qa(story=STORY, first_verdict=True), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["setup-fix"] == 1, agent.counts()
+    assert okf.runs == 2, "the repaired run was never retried"
