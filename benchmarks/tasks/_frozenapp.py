@@ -33,7 +33,7 @@ from urllib.parse import urlsplit
 
 import yaml
 import _forensics as fx
-from _stablemate import TrialError, effective, git, stablemate_checkout
+from _stablemate import TrialError, effective, git, no_leaks, stablemate_checkout
 from paddock import Run, Score
 
 # ── the app tree ──────────────────────────────────────────────────────────────────────
@@ -854,77 +854,65 @@ def run_round(run: Run, fixture: Fixture) -> None:
     budget = run.param_float("budget", fixture.budget_s)
     config = effective(run)
     runs_dir = trials_dir(run) / "runs"
-    before = git("rev-parse", "HEAD", cwd=checkout).strip()
 
-    ledger: list[dict[str, Any]] = []
-    for index, (story, row) in enumerate(plan_round(run, app), start=1):
-        variant = str(row["id"]) if row else CLEAN
-        run_id = f"{fixture.repo_dir}-{run.label}-qa-{story}-{variant}-{index}"
-        # farrier regenerates `.agents/agents-context.json`, which is gitignored and so is
-        # absent from a materialized tree; every prompt path in the run would fail to
-        # resolve without it. It is also where the unpacked seed's machine-local paths get
-        # re-pointed at this machine. It runs *inside* materialize, before the before-commit,
-        # so the layer it generates is part of the baseline rather than of the story's diff.
-        def install(repo: Path, run_id: str = run_id) -> None:
-            run.cli(
-                "uv", "run", "--project", str(checkout), "farrier", "install", "--repo", str(repo),
-                cwd=checkout, log_name=f"{run_id}-farrier", check=True,
+    with no_leaks(checkout):
+        ledger: list[dict[str, Any]] = []
+        for index, (story, row) in enumerate(plan_round(run, app), start=1):
+            variant = str(row["id"]) if row else CLEAN
+            run_id = f"{fixture.repo_dir}-{run.label}-qa-{story}-{variant}-{index}"
+            # farrier regenerates `.agents/agents-context.json`, which is gitignored and so is
+            # absent from a materialized tree; every prompt path in the run would fail to
+            # resolve without it. It is also where the unpacked seed's machine-local paths get
+            # re-pointed at this machine. It runs *inside* materialize, before the before-commit,
+            # so the layer it generates is part of the baseline rather than of the story's diff.
+            def install(repo: Path, run_id: str = run_id) -> None:
+                run.cli(
+                    "uv", "run", "--project", str(checkout),
+                    "farrier", "install", "--repo", str(repo),
+                    cwd=checkout, log_name=f"{run_id}-farrier", check=True,
+                )
+
+            repo = materialize(run.repo, story, run.workdir(run_id) / fixture.repo_dir, install)
+            if row:
+                seed_defect(app, row, repo)
+            reset_stack_state(repo)
+
+            started = time.monotonic()
+            result = run.cli(
+                # `--project` rather than an inherited cwd: the trial process stands *in the
+                # tree under test* (see `cwd=repo`), so uv is told where its workspace is
+                # instead of finding it underfoot.
+                "uv", "run", "--project", str(checkout),
+                "workhorse-coder", "run", "qa",
+                "--runs-dir", str(runs_dir), "--run-id", run_id,
+                # Whole-file: the round's models are the tracked config's, not whatever this
+                # machine happens to have set. A label whose trials inherited the shell is not
+                # a configuration anyone can compare against.
+                "--config", str(config),
+                "--params", json.dumps({"story": story, "docs_path": str(repo)}),
+                cwd=repo,
+                # Enforced by workhorse between states rather than by killing the process, so an
+                # over-budget trial stops at a node boundary with its spans intact.
+                env={**os.environ, "WORKHORSE_MAX_RUNTIME_S": str(budget), "AGENT_REPO_DIR": str(repo)},
+                log_name=f"{run_id}-qa",
             )
+            wall = time.monotonic() - started
 
-        repo = materialize(run.repo, story, run.workdir(run_id) / fixture.repo_dir, install)
-        if row:
-            seed_defect(app, row, repo)
-        reset_stack_state(repo)
-
-        started = time.monotonic()
-        result = run.cli(
-            # `--project` rather than an inherited cwd: the trial process stands *in the
-            # tree under test* (see `cwd=repo`), so uv is told where its workspace is
-            # instead of finding it underfoot.
-            "uv", "run", "--project", str(checkout),
-            "workhorse-coder", "run", "qa",
-            "--runs-dir", str(runs_dir), "--run-id", run_id,
-            # Whole-file: the round's models are the tracked config's, not whatever this
-            # machine happens to have set. A label whose trials inherited the shell is not
-            # a configuration anyone can compare against.
-            "--config", str(config),
-            "--params", json.dumps({"story": story, "docs_path": str(repo)}),
-            cwd=repo,
-            # Enforced by workhorse between states rather than by killing the process, so an
-            # over-budget trial stops at a node boundary with its spans intact.
-            env={**os.environ, "WORKHORSE_MAX_RUNTIME_S": str(budget), "AGENT_REPO_DIR": str(repo)},
-            log_name=f"{run_id}-qa",
-        )
-        wall = time.monotonic() - started
-
-        witness = capture_witness(
-            repo,
-            trials_dir(run) / run_id / "witness",
-            extra=(str(row["path"]),) if row else (),
-        )
-        ledger.append({
-            "run_id": run_id, "story": story, "defect": variant,
-            "obligation": str(row["obligation"]) if row else "",
-            "path": str(row["path"]) if row else "",
-            "rc": result.returncode,
-            "witness": str(witness.relative_to(run.stage)),
-            "timing": fx.timing_of(run_id, wall),
-            "laps": fx.laps_of(run_id),
-        })
-        run.write_json(trials_dir(run) / "trials.json", ledger)
-
-    leaked = git("log", "--oneline", f"{before}..HEAD", cwd=checkout).strip()
-    if leaked:
-        # Not a warning. An agent that resolved its project root to the harness's own
-        # checkout committed the trial's work there, which means the tree it was measured
-        # on is not the tree it wrote to — every verdict in the round is void.
-        # Read against the tree paddock pinned for this round, which nobody else
-        # writes to — so a commit here is a leak by construction rather than by
-        # heuristic, and an operator committing in their own checkout is invisible.
-        raise TrialError(
-            f"the round committed into {checkout} instead of its sandboxes:\n{leaked}\n"
-            f"drop those commits before believing any number here"
-        )
+            witness = capture_witness(
+                repo,
+                trials_dir(run) / run_id / "witness",
+                extra=(str(row["path"]),) if row else (),
+            )
+            ledger.append({
+                "run_id": run_id, "story": story, "defect": variant,
+                "obligation": str(row["obligation"]) if row else "",
+                "path": str(row["path"]) if row else "",
+                "rc": result.returncode,
+                "witness": str(witness.relative_to(run.stage)),
+                "timing": fx.timing_of(run_id, wall),
+                "laps": fx.laps_of(run_id),
+            })
+            run.write_json(trials_dir(run) / "trials.json", ledger)
 
 
 def score_round(run: Run, fixture: Fixture) -> Score:

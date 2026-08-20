@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import _forensics as fx
-from _stablemate import TrialError, effective, git, stablemate_checkout
+from _stablemate import TrialError, effective, no_leaks, stablemate_checkout
 from ostler import markdown
 from paddock import Run, Score
 from workhorse.config_run import AgentResilience
@@ -324,26 +324,11 @@ def run_round(run: Run, fixture: Fixture) -> None:
     One step rather than five, so a round is one entry in the ledger and one thing to
     resume thinking about. The phases are still separately recorded — see `build.json`.
     """
-    checkout = stablemate_checkout(run)
-    before = git("rev-parse", "HEAD", cwd=checkout).strip()
-
-    run_genesis(run, fixture)
-    run_author(run, fixture)
-    run_coder(run, fixture)
-    run_gates(run, fixture)
-
-    leaked = git("log", "--oneline", f"{before}..HEAD", cwd=checkout).strip()
-    if leaked:
-        # Not a warning. An agent that resolved its project root to the harness's own
-        # checkout committed the round's work there, which means the tree it was measured
-        # on is not the tree it wrote to — every number in the report is void.
-        # Read against the tree paddock pinned for this round, which nobody else
-        # writes to — so a commit here is a leak by construction rather than by
-        # heuristic, and an operator committing in their own checkout is invisible.
-        raise TrialError(
-            f"the round committed into {checkout} instead of its sandbox:\n{leaked}\n"
-            f"drop those commits before believing any number here"
-        )
+    with no_leaks(stablemate_checkout(run)):
+        run_genesis(run, fixture)
+        run_author(run, fixture)
+        run_coder(run, fixture)
+        run_gates(run, fixture)
 
 
 # ── evidence: what the round actually produced ────────────────────────────────────────

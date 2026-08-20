@@ -12,6 +12,8 @@ The leading underscore keeps `paddock.loader` from treating this as a task modul
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from paddock import Run
@@ -29,6 +31,29 @@ def git(*args: str, cwd: Path) -> str:
     if proc.returncode != 0:
         raise TrialError(f"git {' '.join(args)} in {cwd}: {proc.stderr.strip()}")
     return proc.stdout
+
+
+@contextmanager
+def no_leaks(checkout: Path) -> Iterator[None]:
+    """Fail the round if anything it ran committed into *checkout* instead of its sandbox.
+
+    Not a warning. An agent that resolved its project root to the harness's own checkout
+    committed the work there, which means the tree the round was measured on is not the
+    tree it wrote to — every number it produced is void.
+
+    Read against the tree paddock pinned for this round, which nobody else writes to, so a
+    commit here is a leak by construction rather than by heuristic and an operator
+    committing in their own checkout is invisible. Raising rather than returning a flag is
+    deliberate: the caller that forgot to look is exactly the caller this exists for.
+    """
+    before = git("rev-parse", "HEAD", cwd=checkout).strip()
+    yield
+    leaked = git("log", "--oneline", f"{before}..HEAD", cwd=checkout).strip()
+    if leaked:
+        raise TrialError(
+            f"the round committed into {checkout} instead of its sandboxes:\n{leaked}\n"
+            f"drop those commits before believing any number here"
+        )
 
 
 def stablemate_dir() -> Path:
