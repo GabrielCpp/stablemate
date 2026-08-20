@@ -217,10 +217,21 @@ first**; if an item is already fully done, tick it with the existing commit hash
     author judged nothing risky" becomes a repair lap nothing can clear.
   - The test fake needed a second dry-run knob (`plan_dry_run`), because half the existing
     suite asks for a *repair* refused and wants the draft before it to have gone through.
-- [ ] Q7 — §5 lap discipline: `_repeating()` (qa/flow.py) gains an Await arm — two
+- [x] Q7 — §5 lap discipline: `_repeating()` (qa/flow.py) gains an Await arm — two
   identical rejections → block through the MAX_QA_BLOCKS resolver path; finish power
   tiering on the repair laps. Done when: a test drives two identical rejections into an
-  `Await`, not a third lap.
+  `Await`, not a third lap. (33c5747)
+  - The post-run half of this was already built: `_repeating` → `_stalled` → one class
+    switch → `_gate`. The gap was the *pre-run* half, and `_repeating` cannot serve it —
+    it fingerprints a suite run, and no run happens between a repair and the schema or
+    dry-run refusal that sends it round again. So the detector is a second field,
+    `QaLoop.plan_rejections`, over the gate's own rendered notes.
+  - Half the plan-gate suite asserted ceilings by refusing every pass with the *identical*
+    message, which the new rule now stops at lap two. The fixture varies the finding per
+    pass by default (a lane still moving) and `plan_invalid_stuck` asks for the identical
+    one, so both directions are tested rather than one of them silently relaxed.
+  - The tiering half was one line: `fix-qa-scenario` was still `power="high"`. Left
+    provisional in the comment, because the plan makes it conditional on §1's measurement.
 - [ ] Q8 — §4 scenario budget derived from the qa-okf-context.json obligation packet; the
   plan gate rejects over-planning; the `covers:` fail-closed direction untouched.
 - [ ] Q9 — re-measure: `replay.py run --flow qa --story expense-list -n 3 --label after`,
