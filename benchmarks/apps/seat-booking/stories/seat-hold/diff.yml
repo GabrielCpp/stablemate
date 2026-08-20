@@ -2,13 +2,17 @@
 #
 # The transitions arrive as their own module — `app/hold.py`, holding `hold` and `release` —
 # so the book grounds each of them at a symbol in a file nothing else owns, and a defect
-# seeded in one localizes there. Only the routing grows in place.
+# seeded in one localizes there.
+#
+# Nothing is `changed:`. The routing was authored once, in story 1 (see that story's
+# manifest for why), and the endpoint nodes for hold and release cite `app/hold.py` rather
+# than the handler, so this story's obligations are the same ones the split was drawn to
+# give it.
 #
 # The ledger, the seat projection and the page are untouched here: holding a seat is a
-# transition and a route, and a story that also rewrote the storage layer would make an
-# `unchanged` scenario ambiguous about which change it caught.
+# transition, and a story that also rewrote the storage layer would make an `unchanged`
+# scenario ambiguous about which change it caught.
 story: seat-hold
 added:
   - app/hold.py
-changed:
-  - app/service.py
+changed: []

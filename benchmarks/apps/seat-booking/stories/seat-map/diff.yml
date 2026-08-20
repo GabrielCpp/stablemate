@@ -5,14 +5,24 @@
 # worktree. In both cases the worktree content comes from `post/<path>` when that file
 # exists, and from the app tree otherwise.
 #
-# No file here carries a `post/` image, because no later story rewrites one: the transitions
-# stories 2 and 3 add live in their own modules — `app/hold.py`, `app/confirm.py` — and only
-# `app/service.py` grows in place, which is why that one has an image under each story.
+# No file here carries a `post/` image, and neither does any other story: every story's
+# worktree content is the app tree, so the app tree is the one thing a reader checks the
+# book against rather than a fourth variant of it.
 #
-# That is the point of the split rather than a tidiness argument. The frozen book is not
-# story-scoped: every trial checks out all of it, so every symbol it cites has to exist in
-# every story's worktree. A `post/` image that trimmed a cited symbol out of a file would
-# dangle the citation, and the trial would block on a broken book before reaching a verdict.
+# That includes `app/service.py`, which this story authors whole — every documented route,
+# including the two whose logic arrives in stories 2 and 3. It reads like a story reaching
+# forward, and it is the opposite: `app/hold.py` and `app/confirm.py` are *already* in this
+# story's worktree, because a trial materializes one story's diff and not a truncated app.
+# Routing them from a later story bought nothing and cost the fixture its coherence — the
+# frozen book documented `POST /api/seats/{id}/hold`, the seat-map trial answered `501`, and
+# a QA agent reading that book found a contradiction that is real, permanent, and nothing to
+# do with the defect under measurement. It also left this story's own acceptance criteria
+# unreachable: three of them describe a seat that is *not* free, and nothing in a trial that
+# refuses every mutation can produce one.
+#
+# What stays story-scoped is the diff, which is what QA is obligated over. The transitions
+# still land in their own modules, and the endpoint nodes cite those modules rather than the
+# handler, so the hold and booking obligations still arrive with stories 2 and 3.
 story: seat-map
 added:
   - app/__init__.py

@@ -1,8 +1,8 @@
 name = "seat-booking"
 repo_dir = "seat-booking"
-sha256 = "51de0b4af36455573e6dc6f19f43d9508f45707a1c8c9de250e60cd5d1dfce60"
-bytes = 64023
-head = "6c043247b01dd2713778e596134bd6ee53c8571c"
+sha256 = "6a37f91adae3094bf899ddd270b073c6b51f5c162952cc4aad155aca7075fd2b"
+bytes = 54105
+head = "32e08cb42a23887d7a48ddd523b619932abb28df"
 dirty = true
 url = ""
 note = ""

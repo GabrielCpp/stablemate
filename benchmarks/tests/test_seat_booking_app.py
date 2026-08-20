@@ -22,6 +22,7 @@ from __future__ import annotations
 import contextlib
 import difflib
 import importlib.util
+import re
 import shutil
 import subprocess
 import sys
@@ -114,6 +115,33 @@ def test_the_book_is_already_canonical() -> None:
 
     unformatted = Ostler(APP).fmt(check=True)
     assert not unformatted, f"run `ostler fmt` in {APP}: {unformatted}"
+
+
+def test_every_screen_selector_is_one_the_render_scan_can_address() -> None:
+    """A documented selector must be a form `ostler vet` can resolve, or the node reads missing.
+
+    The scan mints `#id` or `tag.class:nth(i)` for each element it measures, and vet matches a
+    documented selector against those strings — with one extra vocabulary, `tag[role="..."]`,
+    resolved against the role the scan recorded. Any other attribute predicate matches nothing,
+    however faithfully it describes the DOM: `section[aria-label="Seat map"]` addressed exactly
+    the right element and vet reported it `missing` on a clean render, which put a standing
+    failure in every control and made the one defect that moves that region unmeasurable —
+    a misplacement cannot be seen on an element vet never finds.
+    """
+    screens = sorted((APP / "docs" / "features").rglob("gui/screens/*.md"))
+    assert screens, "the fixture documents no screens"
+    addressable = re.compile(
+        r"""^(?:\#[\w-]+|[a-zA-Z][\w-]*(?:\.[\w-]+)*(?:\[role=["'][\w-]+["']\])?)$"""
+    )
+    for screen in screens:
+        for line in screen.read_text(encoding="utf-8").splitlines():
+            if not line.startswith("- selector:"):
+                continue
+            selector = line.split(":", 1)[1].strip().strip("`")
+            assert addressable.match(selector), (
+                f"{screen.name}: `{selector}` is a form the render scan never mints — "
+                "address the element by id, by tag and class, or by its ARIA role"
+            )
 
 
 def test_the_fixture_ships_the_stories_it_claims() -> None:

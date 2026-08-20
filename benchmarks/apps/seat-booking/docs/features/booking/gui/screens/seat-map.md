@@ -27,7 +27,7 @@ server wrote, and every locator the book names is addressable the moment the pag
 
 ### seat-map-region
 
-- selector: `section[aria-label="Seat map"]`
+- selector: `section[role="region"]`
 - role: region
 - name: Seat map
 - placement: width 40-100%, x 0-30%, y 10-100%

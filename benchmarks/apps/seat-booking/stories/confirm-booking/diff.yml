@@ -1,14 +1,13 @@
 # The implementation diff a trial materializes for the `confirm-booking` story.
 #
 # `app/confirm.py` is new — the compare-and-swap rule gets its own module for the same
-# reason `hold.py` is one — and `app/service.py` gains the POST booking route. The seat
-# projection is untouched: the `booking` field the durability criterion is read through has
-# been part of the payload since story 1, so nothing here rewrites a file story 1 owns.
+# reason `hold.py` is one — and `#post-seat-booking` cites it, so the booking obligations
+# arrive with this story even though the route itself was authored in story 1.
 #
-# The last story carries no `post/`: its post-image *is* the app tree, which is what makes
-# the app tree the thing a reader checks the book against rather than a fourth variant of it.
+# The seat projection is untouched: the `booking` field the durability criterion is read
+# through has been part of the payload since story 1, so nothing here rewrites a file story
+# 1 owns.
 story: confirm-booking
 added:
   - app/confirm.py
-changed:
-  - app/service.py
+changed: []
