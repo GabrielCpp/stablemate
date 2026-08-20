@@ -707,6 +707,14 @@ class Qa(Workflow):
         about the file: a planner that says it cannot write a plan for this story has written
         no file for the tail to read, and every validation-repair lap after it is spent
         discovering that.
+
+        `proved_scenarios` is the second exception, and the reason the stack now stands up
+        before this node: the author is asked to nominate the one or two scenarios it judged
+        riskiest and to execute them itself before it answers. Those ids go into the same
+        dry-run gate the repair path uses, so a draft whose riskiest locator resolves to
+        nothing is refused here, at the cost of one repair lap, instead of after a full
+        suite run. A draft that names nothing is not refused — the gate is skipped, exactly
+        as it was before — but a draft that names an id it did not run is.
         """
         self.logger.info("planning QA for %s", self.ctx.story_slug, extra={"activity": True})
         overran = ""
@@ -743,7 +751,12 @@ class Qa(Workflow):
         loop = loop.charged(time.monotonic() - started, plan=True)
         if drafted is not None and drafted.blocked:
             return self._refused(drafted, loop, "the QA planner")
-        return self._validated(loop, overran=overran)
+        proved: tuple[str, ...] = ()
+        if drafted is not None:
+            proved = tuple(
+                dict.fromkeys(str(s).strip() for s in drafted.proved_scenarios if str(s).strip())
+            )
+        return self._validated(loop, overran=overran, dry_run=proved)
 
     def repair_plan(self, loop: QaLoop) -> Continue | Await | Done:
         """Edit the cited part of a plan that already exists, leaving the rest byte-identical.
@@ -917,11 +930,14 @@ class Qa(Workflow):
         It is only ever a brief: a plan that validates goes to the runner regardless, because
         a plan that parses is a plan that runs whatever cut its author short.
 
-        `dry_run` is the one thing the two turns do not share. A repair is dispatched against
-        a named set of failing scenarios, so it can be *asked to prove it worked* before the
-        suite is spent finding out — which is what `verify_qa_dry_run` reads. The `plan` turn
-        has no failing set to prove anything about and passes nothing here, so the gate is
-        skipped rather than vacuously passed.
+        `dry_run` is a set of scenario ids the turn that just ran claims to have executed
+        itself, and it means something slightly different on each path. A repair is
+        dispatched against a named set of failing scenarios, so it can be *asked to prove it
+        worked* before the suite is spent finding out. The `plan` turn has no failing set, so
+        it nominates instead: the one or two scenarios it judged riskiest, executed before
+        it answered. Either way what arrives here is a claim, and `verify_qa_dry_run` reads
+        the scratch run log for each id rather than believing it. An empty tuple skips the
+        gate, which is what a draft with nothing worth proving passes.
         """
         loop = loop.cleared()
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
@@ -943,7 +959,7 @@ class Qa(Workflow):
             gate = self.call(verify_qa_dry_run, self.ctx.spec_dir, dry_run)
             if gate.status != "passed":
                 self.logger.info(
-                    "the QA-plan repair did not dry-run clean — repairing again without "
+                    "the QA plan did not dry-run clean — repairing again without "
                     "spending a suite run",
                     extra={"activity": True},
                 )

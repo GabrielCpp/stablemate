@@ -131,6 +131,10 @@ WEB_SERVICE: dict[str, Any] = {
     "skills": [],
 }
 
+#: The one scenario `QA_PLAN` declares, and therefore the one the draft nominates as its
+#: riskiest when the fake author answers.
+DRAFT_SCENARIO = "the-thing-exists"
+
 QA_PLAN = '''from ostler_qa import Qa, plan, scenario, target
 
 plan(run_id="qa-story", story="the-story")
@@ -490,6 +494,8 @@ class _Agent:
         explode: set[str] | None = None,
         cut: set[str] | None = None,
         dry_run: str = "passed",
+        plan_dry_run: str = "passed",
+        plan_proves: tuple[str, ...] = (DRAFT_SCENARIO,),
         item_dry_run: str | tuple[str, ...] = "passed",
         refuses: set[str] | None = None,
     ) -> None:
@@ -499,6 +505,15 @@ class _Agent:
         #: assertion in it, and `missing` writes nothing at all. Only `passed` gets past
         #: `verify_qa_dry_run`; the other three are the refusals it exists to make.
         self.dry_run = dry_run
+        #: The same four shapes, for the *first draft*, which nominates the scenarios it
+        #: judged riskiest and proves them the same way. A knob of its own because the two
+        #: turns are gated separately: a test that wants a repair refused wants the draft
+        #: that preceded it to have reached the runner normally.
+        self.plan_dry_run = plan_dry_run
+        #: What the draft *names* as proved, which the flow gates it on. Separate from the
+        #: shape it leaves on disk, because the two disagreeing is the whole failure mode:
+        #: an empty nomination is a plan with nothing worth proving, not a plan that lied.
+        self.plan_proves = plan_proves
         #: The same four shapes, for the *per-scenario* fixer. A separate knob because the
         #: two turns prove different things — a plan repair proves the scenarios it rewrote,
         #: a scenario fix proves the one item it was handed — and a test that wants one
@@ -619,8 +634,41 @@ class _Agent:
         }
 
     def _plan_qa(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """The draft, and the proof of the scenarios it nominated as its riskiest.
+
+        `QA_PLAN` holds exactly one scenario, so the nomination is that one. A fake that
+        wrote the file and named nothing would stand in for a turn its own prompt refuses,
+        and every draft in this suite would reach the runner unproven — which is the
+        behaviour this knob exists to be able to ask for on purpose.
+        """
         (Path(data["spec_dir"]) / "qa_plan.py").write_text(QA_PLAN, encoding="utf-8")
-        return {"status": "planned", "notes": f"plan pass {nth}"}
+        for scenario in self.plan_proves:
+            self._prove(data, scenario, self.plan_dry_run)
+        return {
+            "status": "planned",
+            "notes": f"plan pass {nth}",
+            "proved_scenarios": list(self.plan_proves),
+        }
+
+    def _prove(self, data: dict[str, Any], scenario: str, shape: str) -> None:
+        """Write one scenario's scratch dry-run log, in whichever of the four shapes.
+
+        `passed` is a log with a green assertion in it, `failed` a red one, `empty` a log
+        that reached no assertion at all, and `missing` no log — the three refusals
+        `verify_qa_dry_run` exists to make, plus the one that gets past it.
+        """
+        if shape == "missing":
+            return
+        out = Path(data["spec_dir"]) / QA_SCRATCH_DIRNAME / scenario
+        out.mkdir(parents=True, exist_ok=True)
+        records = [] if shape == "empty" else [
+            {"kind": "assert", "id": f"{scenario}-1", "result": (
+                "FAIL" if shape == "failed" else "PASS"
+            )}
+        ]
+        (out / qa_support.QA_RUN_LOG).write_text(
+            "".join(json.dumps(r) + "\n" for r in records), encoding="utf-8"
+        )
 
     def _repair_qa_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """The repair turn rewrites the plan *and* proves it, exactly as its prompt demands.
@@ -631,22 +679,15 @@ class _Agent:
         every repair lap in this suite would be a gate failure rather than the loop under
         test. `self.dry_run` is what lets a test ask for the refused shapes on purpose.
         """
-        answer = self._plan_qa(data, nth)
+        (Path(data["spec_dir"]) / "qa_plan.py").write_text(QA_PLAN, encoding="utf-8")
         scenarios = [str(s["id"]) for s in data.get("failed_scenarios") or []]
-        if self.dry_run != "missing":
-            scratch = Path(data["spec_dir"]) / QA_SCRATCH_DIRNAME
-            for scenario in scenarios:
-                out = scratch / scenario
-                out.mkdir(parents=True, exist_ok=True)
-                records = [] if self.dry_run == "empty" else [
-                    {"kind": "assert", "id": f"{scenario}-1", "result": (
-                        "FAIL" if self.dry_run == "failed" else "PASS"
-                    )}
-                ]
-                (out / qa_support.QA_RUN_LOG).write_text(
-                    "".join(json.dumps(r) + "\n" for r in records), encoding="utf-8"
-                )
-        return {**answer, "repaired_scenarios": scenarios}
+        for scenario in scenarios:
+            self._prove(data, scenario, self.dry_run)
+        return {
+            "status": "planned",
+            "notes": f"plan pass {nth}",
+            "repaired_scenarios": scenarios,
+        }
 
     def _qa_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         # A runner failure the assessment confirms is a product defect unless the test says
@@ -686,18 +727,7 @@ class _Agent:
         names a single scenario, and `verify_qa_dry_run` is called for that one id.
         """
         scenario = str(data["scenario"])
-        shape = self.item_dry_run[min(nth, len(self.item_dry_run)) - 1]
-        if shape != "missing":
-            out = Path(data["spec_dir"]) / QA_SCRATCH_DIRNAME / scenario
-            out.mkdir(parents=True, exist_ok=True)
-            records = [] if shape == "empty" else [
-                {"kind": "assert", "id": f"{scenario}-1", "result": (
-                    "FAIL" if shape == "failed" else "PASS"
-                )}
-            ]
-            (out / qa_support.QA_RUN_LOG).write_text(
-                "".join(json.dumps(r) + "\n" for r in records), encoding="utf-8"
-            )
+        self._prove(data, scenario, self.item_dry_run[min(nth, len(self.item_dry_run)) - 1])
         return {"status": self.qa_fix, "notes": f"scenario {scenario} pass {nth}"}
 
     def _fix_regression(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -1090,25 +1120,89 @@ def test_the_repair_turn_is_told_which_scenarios_failed_and_on_which_assertions(
     ], brief["failed_scenarios"]
 
 
-def test_the_first_draft_carries_no_failing_scenarios_and_proves_nothing(
+def test_the_first_draft_carries_no_failing_scenarios_and_proves_its_own(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The draft has no run behind it, so there is nothing to dry-run and nothing to prove.
+    """The draft has no *failing* set — but it does have scenarios it nominated and ran.
 
-    `dry_run="missing"` is the seam: an author turn that leaves no scratch evidence at all.
-    If the gate ran on this path the story could never reach the runner.
+    The two halves of the same brief: `failed_scenarios` is the repair turn's contract and is
+    empty here, while the ids the draft proved come back in its own reply and are gated on
+    the way to the runner. A draft that proves what it nominated reaches the runner once.
     """
     okf = ostler()
-    agent = _Agent(docs, dry_run="missing")
+    agent = _Agent(docs)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
-    assert okf.runs == 1, "the draft went straight to the runner"
+    assert okf.runs == 1, "a proven draft goes straight to the runner"
     assert agent.args_for("plan-qa")[0]["failed_scenarios"] == []
+    assert agent.counts()["repair-qa-plan"] == 0, agent.counts()
+
+
+def test_a_draft_that_did_not_run_what_it_named_is_repaired_before_any_suite_run(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The lever: the first draft is proof-gated too, and its refusal costs no suite run.
+
+    `plan_dry_run="missing"` is an author that named the scenario it judged riskiest and
+    never executed it. That used to be free — the draft went to the runner on its own word,
+    and a locator matching nothing was discovered by a full suite run and a repair lap. Here
+    the same defect is caught before the runner is reached at all.
+    """
+    okf = ostler()
+    agent = _Agent(docs, plan_dry_run="missing")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.calls[:2] == ["plan-qa", "repair-qa-plan"], agent.calls
+    assert okf.runs == 1, "the refusal must not have cost a suite run of its own"
+
+
+def test_a_draft_whose_named_scenario_dry_ran_red_is_not_a_finished_plan(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The other refusal: it ran, and it failed. Same gate, same lap, still no suite run."""
+    okf = ostler()
+    agent = _Agent(docs, plan_dry_run="failed")
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["repair-qa-plan"] == 1, agent.counts()
+    assert okf.runs == 1, okf.runs
+
+
+def test_a_draft_that_nominates_nothing_is_not_gated(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A plan with nothing worth proving must still reach the runner.
+
+    The gate is over the ids the turn named, not over the existence of a dry run: an empty
+    nomination skips it exactly as the repair path's empty failing set does. Without this
+    the lever would turn "the author judged nothing risky" into an unfixable repair lap.
+    """
+    okf = ostler()
+    agent = _Agent(docs, plan_dry_run="missing", plan_proves=())
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["repair-qa-plan"] == 0, agent.counts()
+    assert okf.runs == 1, okf.runs
 
 
 def test_a_repair_that_never_dry_ran_is_repaired_again_and_costs_no_suite_run(
