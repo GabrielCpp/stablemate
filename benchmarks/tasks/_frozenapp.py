@@ -1,4 +1,4 @@
-"""The policy-desk trial machinery: materialize a story, seed a defect, score the round.
+"""The frozen-app trial machinery: materialize a story, seed a defect, score the round.
 
 Moved out of `benchmarks/replay.py` rather than rewritten. Everything here was already
 paid for in blood — the pre-image commit that makes a story's diff uncommitted, the
@@ -9,20 +9,30 @@ paddock seed, the fan-out lives in one task's steps, and the evidence a trial le
 behind is copied into the result so the score can be recomputed from the sealed zip.
 
 The leading underscore keeps `paddock.loader` from treating this as a task module: it is
-the library `policy_desk_qa.py` imports, not a second declaration.
+the library each frozen-app task module imports, not a second declaration.
+
+Nothing here names an app. `policy-desk` and `seat-booking` are the same fixture wearing
+different code — one answer-key schema, one story-image layout, one evidence map — so the
+app is an argument (`app: Path`) everywhere it appears, and a task module is the round and
+the paths, not a second copy of this.
 """
 
 from __future__ import annotations
 
 import ast
 import json
+import os
 import shutil
 import subprocess
+import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 import yaml
+from paddock import Run, Score
+from stablemate_core import config as core_config
 
 # ── the app tree ──────────────────────────────────────────────────────────────────────
 
@@ -136,7 +146,7 @@ def materialize(app: Path, story: str, dest: Path) -> Path:
     # Identity on the repo rather than the machine: a trial must not depend on whether the
     # host has a global git config, and must not write to it either.
     git("config", "user.email", "benchmark@example.com", cwd=dest)
-    git("config", "user.name", "policy-desk benchmark", cwd=dest)
+    git("config", "user.name", "stablemate benchmark", cwd=dest)
     git("add", "--all", cwd=dest)
     git("commit", "--quiet", "-m", f"before {story}", cwd=dest)
 
@@ -792,7 +802,7 @@ def leverage_line(metrics: dict[str, Any]) -> str:
     return "leverage: " + "  ".join(parts)
 
 
-# ── the round ─────────────────────────────────────────────────────────────────────────
+# ── the round, rendered ───────────────────────────────────────────────────────────────
 
 
 def money(rows: list[dict[str, Any]]) -> str:
@@ -932,3 +942,242 @@ def detail(trials: list[dict[str, Any]]) -> list[str]:
     lines.append("")
     lines.extend(node_table(trials))
     return lines
+
+
+# ── the round, run ────────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class Fixture:
+    """Everything that distinguishes one frozen-app task from another.
+
+    Two paths and a budget. The round itself — a control per story, a trial per row of the
+    answer key, a witness per trial — is identical across apps because the fixtures are:
+    same answer-key schema, same story-image layout, same evidence map. A task module that
+    re-implemented the loop would be a second place to fix every change to it.
+    """
+
+    #: The tracked app tree, relative to the data directory.
+    app: str
+    #: The basename every trial materializes into. Load-bearing and therefore constant
+    #: across trials: farrier derives the generated skill filenames from the repo
+    #: directory's name and the app's compose project is named after it, so a directory
+    #: named per defect would give each trial a different skill set and a different stack.
+    repo_dir: str
+    #: The default wall-clock budget for one trial, in seconds. Enforced by workhorse
+    #: between states, so an over-budget trial stops at a node boundary with its telemetry
+    #: intact and still reports a partial lap count — a budget death is a measurement.
+    budget_s: float = 2400.0
+
+
+#: Where a round's own ledger lives inside the stage. Named explicitly rather than via
+#: `run.artifacts`, because that property is relative to the *current step* and `score`
+#: runs outside every step.
+TRIALS = ("artifacts", "trials")
+
+
+def key_dir(run: Run, fixture: Fixture) -> Path:
+    """The tracked app tree, which is where `defects.yml` and the variants are read from.
+
+    The seed is a capture of exactly this tree and the trials run against the capture — but
+    the **answer key** is read from here, from the copy git tracks and `check_public.py`
+    scans. A score that read its key out of the unpacked zip would be a score whose ruler
+    travels inside the thing being measured.
+    """
+    directory = run.data_dir / fixture.app
+    if not (directory / "defects.yml").is_file():
+        raise TrialError(f"no answer key under {directory} — is --data-dir the repo's benchmarks/?")
+    return directory
+
+
+def trials_dir(run: Run) -> Path:
+    directory = run.stage.joinpath(*TRIALS)
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def stablemate_dir() -> Path:
+    """The stablemate checkout the trials drive `workhorse-coder` out of.
+
+    Read from the machine's own stablemate config rather than from anything tracked: it is
+    an absolute path on this disk, it differs on every machine, and in a public repo it is
+    also somebody's directory name.
+    """
+    resolved = core_config.resolve_stablemate_dir()
+    if resolved is None or not (resolved / "pyproject.toml").is_file():
+        raise TrialError(
+            "no `stablemate_dir` in the machine's stablemate config — the trials need a "
+            "checkout to run `workhorse-coder` out of (set it with `farrier config`)"
+        )
+    return resolved
+
+
+def effective(run: Run) -> Path:
+    return run.scratch / "stablemate-config.toml"
+
+
+def pin_config(run: Run) -> None:
+    """Write the effective stablemate config the trials run under, into `scratch/`.
+
+    `--config` is whole-file replacement, not a merge, so the file handed to workhorse must
+    carry the machine-local roots (`library_dir`, `stablemate_dir`, …) as well as the model
+    tables. The tracked config carries only the models, deliberately: an absolute path baked
+    into it is wrong on every other machine, and in this repo it is also a private name in a
+    public tree.
+
+    So the two halves are joined here, at run time, and the join lands in `scratch/` — which
+    is not sealed into the result. A rendered config is the one artifact of a run that is
+    guaranteed to contain somebody's home directory.
+    """
+    machine = core_config.load_config()
+    local = {
+        name: str(value)
+        for name in ("library_dir", "base_dir", "stablemate_dir", "worktree_dir")
+        if isinstance(value := core_config.get_config_value(name, machine), str) and value
+    }
+    if "library_dir" not in local:
+        raise TrialError(
+            "no `library_dir` in the machine's stablemate config — a run given --config "
+            "inherits nothing from the machine's, so the library root has to come from here"
+        )
+    header = (
+        "# Generated by a paddock frozen-app task. The model tables come from the tracked\n"
+        "# config; the paths below are this machine's and are why this file is not tracked.\n"
+    )
+    rendered = "\n".join(f'{name} = "{path}"' for name, path in sorted(local.items()))
+    effective(run).write_text(
+        f"{header}{rendered}\n\n{run.config.read_text(encoding='utf-8')}", encoding="utf-8"
+    )
+
+
+def plan_round(run: Run, app: Path) -> list[tuple[str, dict[str, str] | None]]:
+    """The trials to run: one control per story, then one per selected defect.
+
+    One control per *story*, not one per round: the obligations a trial owes are minted
+    from that story's diff, so a control for one story says nothing about whether another
+    raises a false alarm. The control is what makes the detection number readable at all —
+    a lane that refuted everything would score every defect caught, and only a trial with
+    nothing wrong in it tells the two apart.
+    """
+    rows = select_defects(app, run.param_list("defects"))
+    stories = sorted({str(row["story"]) for row in rows})
+    control: list[tuple[str, dict[str, str] | None]] = (
+        [] if run.param_bool("no_control") else [(story, None) for story in stories]
+    )
+    return [*control, *[(str(row["story"]), row) for row in rows]]
+
+
+def run_round(run: Run, fixture: Fixture) -> None:
+    """Run the round: materialize, seed, drive `workhorse-coder run qa`, keep the witness."""
+    app = key_dir(run, fixture)
+    checkout = stablemate_dir()
+    budget = run.param_float("budget", fixture.budget_s)
+    config = effective(run)
+    runs_dir = trials_dir(run) / "runs"
+    before = git("rev-parse", "HEAD", cwd=checkout).strip()
+
+    ledger: list[dict[str, Any]] = []
+    for index, (story, row) in enumerate(plan_round(run, app), start=1):
+        variant = str(row["id"]) if row else CLEAN
+        run_id = f"{fixture.repo_dir}-{run.label}-qa-{story}-{variant}-{index}"
+        repo = materialize(run.repo, story, run.workdir(run_id) / fixture.repo_dir)
+        if row:
+            seed_defect(app, row, repo)
+        reset_stack_state(repo)
+
+        # farrier regenerates `.agents/agents-context.json`, which is gitignored and so is
+        # absent from a materialized tree; every prompt path in the run would fail to
+        # resolve without it. It is also where the unpacked seed's machine-local paths get
+        # re-pointed at this machine.
+        run.cli(
+            "uv", "run", "--project", str(checkout), "farrier", "install", "--repo", str(repo),
+            cwd=checkout, log_name=f"{run_id}-farrier", check=True,
+        )
+
+        started = time.monotonic()
+        result = run.cli(
+            # `--project` rather than an inherited cwd: the trial process stands *in the
+            # tree under test* (see `cwd=repo`), so uv is told where its workspace is
+            # instead of finding it underfoot.
+            "uv", "run", "--project", str(checkout),
+            "workhorse-coder", "run", "qa",
+            "--runs-dir", str(runs_dir), "--run-id", run_id,
+            # Whole-file: the round's models are the tracked config's, not whatever this
+            # machine happens to have set. A label whose trials inherited the shell is not
+            # a configuration anyone can compare against.
+            "--config", str(config),
+            "--params", json.dumps({"story": story, "docs_path": str(repo)}),
+            cwd=repo,
+            # Enforced by workhorse between states rather than by killing the process, so an
+            # over-budget trial stops at a node boundary with its spans intact.
+            env={**os.environ, "WORKHORSE_MAX_RUNTIME_S": str(budget), "AGENT_REPO_DIR": str(repo)},
+            log_name=f"{run_id}-qa",
+        )
+        wall = time.monotonic() - started
+
+        witness = capture_witness(
+            repo,
+            trials_dir(run) / run_id / "witness",
+            extra=(str(row["path"]),) if row else (),
+        )
+        ledger.append({
+            "run_id": run_id, "story": story, "defect": variant,
+            "obligation": str(row["obligation"]) if row else "",
+            "path": str(row["path"]) if row else "",
+            "rc": result.returncode,
+            "witness": str(witness.relative_to(run.stage)),
+            "timing": timing_of(run_id, wall),
+            "laps": laps_of(run_id),
+        })
+        run.write_json(trials_dir(run) / "trials.json", ledger)
+
+    leaked = git("log", "--oneline", f"{before}..HEAD", cwd=checkout).strip()
+    if leaked:
+        # Not a warning. An agent that resolved its project root to the harness's own
+        # checkout committed the trial's work there, which means the tree it was measured
+        # on is not the tree it wrote to — every verdict in the round is void.
+        raise TrialError(
+            f"the round committed into {checkout} instead of its sandboxes:\n{leaked}\n"
+            f"drop those commits before believing any number here"
+        )
+
+
+def score_round(run: Run, fixture: Fixture) -> Score:
+    """Detection beside cost beside leverage — exactly the round `replay.py` printed.
+
+    Read-only over the stage, and read entirely from what the trials left in it: the
+    verdicts are recomputed here rather than recorded by the step, so a result zip can be
+    re-scored after the classifier changes without re-running the whole round.
+    """
+    ledger = run.stage.joinpath(*TRIALS) / "trials.json"
+    if not ledger.is_file():
+        return Score(headline="no trials recorded — the round did not reach a run", detail=())
+
+    app = key_dir(run, fixture)
+    by_id = {str(row["id"]): row for row in load_defects(app)}
+    trials: list[dict[str, Any]] = []
+    for entry in json.loads(ledger.read_text(encoding="utf-8")):
+        row = by_id.get(str(entry["defect"]))
+        witness = run.stage / str(entry["witness"])
+        statuses = evidence_statuses(witness, str(entry["story"]))
+        verdict, because = classify(
+            row,
+            statuses,
+            audit_result(run.stage.joinpath(*TRIALS) / "runs", str(entry["run_id"])),
+            survived=defect_survived(app, row, witness) if row else True,
+        )
+        trials.append({
+            **entry,
+            "verdict": verdict,
+            "because": because,
+            # In the same row the verdict lands in, because the two are read together: a
+            # round that caught everything by fetching URLs and one that caught everything
+            # by walking the product are the same headline and different products.
+            "leverage": leverage(witness, str(entry["story"]), statuses),
+        })
+
+    return Score(
+        headline=headline(trials),
+        detail=tuple(detail(trials)),
+        data={"trials": trials, "leverage": pool_leverage(trials)},
+    )
