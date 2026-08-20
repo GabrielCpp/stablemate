@@ -118,6 +118,56 @@ retry, because every field of a `returns=` model was a required output key and t
 turn had sensibly omitted a branch-specific one (`d55ea6e`). It is a workhorse fix, not a
 dev-flow one, so it only removes a way of losing the 2-turn happy path.
 
+### Filled in after step 11 (Plan B's re-measure)
+
+Same repo, same story, same starting commit, same model tier as every row above:
+`expense-list` in `/tmp/bench-expense-split` from `3fa416f`. The two runs on the B-side tree
+are `c1` (today's HEAD as of 07:09, before `e4e814a`) and `d1` (07:25, after it); both are
+re-derivable with `devlane.py table --run-id <id>`.
+
+| run | tree | turns | happy | repair | wall | cost |
+| --- | ---- | ----: | ----: | ------ | ---: | ---: |
+| `c1` | steps 8–10 | 5 | 2 | 1 × `refine-plan`, 2 × `test` | 23.2 min | $8.29 |
+| `d1` | steps 8–10 + `e4e814a` | 4 | 2 | 2 × `test` | 16.0 min | $6.69 |
+
+| Metric                                            | Baseline | Target       | Measured (B)                | |
+| ------------------------------------------------- | -------- | ------------ | --------------------------- | - |
+| High-power agent turns on the happy path          | 3        | 2            | **2** (`plan-story`, `implement-plan`) in both runs | ✅ |
+| Agent turns on a one-failure path                 | 4        | 3            | **not measured on B** — neither run failed a gate exactly once | ⚠️ |
+| Distinct result schemas parsed by `dev`           | 5+       | 3            | **3** — `PlanResult`, `ImplResult`, `FixResult` | ✅ |
+| Lines under `coder/prompts/` naming a stack/tool  | many     | 0 (guarded)  | **0**, `make check-prompt-agnostic` | ✅ |
+| Wall-clock, median story, happy path              | 22.7 min (n=1) | ≥ 30 % lower | **B claims nothing here** (n=2, both slower than A's median) | — |
+| Stories ending `WorkflowFailed` on a budget       | 0        | 0            | **0**                       | ✅ |
+| Fix-lap success rate, per `FailureReport.source`  | no data  | not lower    | `test` 2/4 on B, `goal` 3/3 on A — **no shared source, so no comparison** | ⚠️ |
+
+Step 11 said B may claim only the turn-count and schema rows unless the table says otherwise.
+The table does not say otherwise, and three of the seven rows are worth reading carefully.
+
+**The happy path held at two turns, and `e4e814a` bought back the third.** `c1` spent a 203 s
+high-power `refine-plan` lap because the planner wrote `plan_file` as the repo-relative
+`docs/specs/expense-list/plan.md` while `validate_plan` and `ostler artifact vet` both resolve
+it under the spec directory. `d1` is the same tree with that interface defect repaired, and
+the lap is gone: four turns, not five, and no `refine-plan` at all. That is one run's evidence,
+not a rate, but it is the run the fix was written for and it is on the record either way.
+
+**B does not claim the wall-clock row and the table is why.** `c1` at 23.2 min is the slowest
+run in the whole set and `d1` at 16.0 min the fourth-slowest; `c1` was already counted in step
+7's median, and adding `d1` moves the overall median from 13.9 min (n=8) to 14.5 min (n=9) —
+still 36 % under the 22.7 min baseline, but moving in the wrong direction. Two runs cannot
+separate a real regression from the 11.0–23.2 min spread that an identical starting tree
+already produces, so the honest reading is that A's median stands as the measured result and
+B has not been shown to change it.
+
+**The fix-lap row is still owed, and now for a second reason.** Step 7 left it owed because no
+lap ran on the baseline. Step 11 was supposed to settle it "on a story seeded to fail its gate
+once per source" — that story was never constructed. The bench at `3fa416f` seeds a lint-red
+and a test-red defect in `member`, and the other sources (`goal`, `tdd`, `regression`) only
+fire opportunistically, so what the two sides actually produced was `goal` laps on A and
+`test` laps on B, with **no source appearing on both**. There is no per-source rate to compare
+and averaging across sources is exactly what this row was written to prevent. What is on
+record is each side's own rate: A `goal` 3/3, B `test` 2/4 — where both B laps are the same
+shape, a first lap that came back and a second that closed the gate.
+
 ## Three invariants
 
 1. **The workflow assumes nothing about where it is deployed.** No stack name, no tool name,
@@ -471,6 +521,13 @@ are a separate project. Splitting them is what makes "confident in full success"
    `max_session_turns` earns its keep; it was landed in A so B can lean on it).
 11. Re-measure once more; B may claim only the turn-count and schema rows, never wall-clock,
     unless the table says otherwise.
+
+    > **Done (2026-08-20).** The table is above, under *Filled in after step 11*. B claimed the
+    > turn-count and schema rows and nothing else: the happy path held at two high-power turns
+    > across `c1` and `d1`, `dev` parses three schemas, and `e4e814a` removed the one extra lap
+    > `c1` had spent. The wall-clock row stays A's, and the fix-lap row stays owed — the
+    > "seeded to fail once per source" story this step called for was never built, and the two
+    > sides produced disjoint sources, so there is nothing to compare.
 
 If A's re-measure does not hit the wall-clock target, B still happens — the ownership
 argument stands on its own — but the shortfall is diagnosed from the table first, not papered
