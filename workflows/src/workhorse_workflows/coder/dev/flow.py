@@ -623,6 +623,7 @@ class Dev(Workflow):
             conditions.get("files") or [],
             changed=changed,
             already_run=already_run,
+            service=self._layer.service,
         )
         if outcome.status == "dirty":
             return outcome

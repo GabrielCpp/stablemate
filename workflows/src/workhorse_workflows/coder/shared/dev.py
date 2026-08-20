@@ -584,6 +584,30 @@ def service_declaration(
     return {}
 
 
+def service_dir(cwd: str | Path, service: str = "") -> Path:
+    """Where one service's declared commands run: its own directory, not its repo's.
+
+    The dispatch hands every state the *repo* checkout as `cwd`, and for an agent turn
+    that is right — a story spans the repo, and the implementer has to be able to see all
+    of it. A gate declared under `services.<name>` is the narrower thing. `api`'s
+    `go test ./...` is written the way `api/Makefile` writes it, and from the repo root it
+    does not fail the story, it fails to run at all: "directory prefix . does not contain
+    main module". The repair turn is then handed an error about the harness and asked to
+    fix the code, which is how a green story reached the operator gate thirteen turns in.
+
+    The service id carries the directory (`<repo>::api`), so this is derivable rather than
+    guessed, and it agrees with `workspace.service_roots` by construction — that is where
+    the plan's `path` came from. A repo that is one service (`<repo>::`, `<repo>::.`) and
+    a path that is not there resolve back to `cwd` unchanged.
+    """
+    root = Path(cwd).expanduser()
+    path = service.partition("::")[2].strip().strip("/")
+    if not path or path == ".":
+        return root
+    candidate = root / path
+    return candidate if candidate.is_dir() else root
+
+
 def _lint_override(service: str, cwd: Path, repo_dir: str = "") -> str:
     """The legacy `lint:` map — an explicit lint command keyed by service or directory.
 
@@ -657,11 +681,11 @@ def declared_gates(
     the commands, or an honest "nothing declared" — which is the same information the
     prose was pretending to give, minus the pretence.
     """
-    service_dir = Path(cwd).expanduser() if cwd else None
-    if service_dir is None or not service_dir.is_dir():
+    if not cwd or not Path(cwd).expanduser().is_dir():
         return GateList()
+    where = service_dir(cwd, service)
     commands = {
-        gate: gate_command(gate, service, service_type, service_dir, repo_dir)
+        gate: gate_command(gate, service, service_type, where, repo_dir)
         for gate in GATE_ORDER
     }
     tdd = tdd_mode(service, service_type, repo_dir)
@@ -669,10 +693,15 @@ def declared_gates(
     if not declared:
         logger.info("%s declares no gate command — nothing will be run after the turn", service)
         return GateList(text="(nothing declared)", tdd=tdd)
+    # Where, when it is not the checkout the turn is sitting in. A turn told
+    # `test: go test ./...` and nothing else will run it from the repo root, watch it fail
+    # for a reason that has nothing to do with its code, and start repairing the code.
+    root = Path(cwd).expanduser()
+    at = "" if where == root else f" (run in `{where.relative_to(root)}/`)"
     return GateList(
         gates=list(declared),
         commands=list(declared.values()),
-        text=", ".join(f"{gate}: `{cmd}`" for gate, cmd in declared.items()),
+        text=", ".join(f"{gate}: `{cmd}`" for gate, cmd in declared.items()) + at,
         tdd=tdd,
     )
 
@@ -726,26 +755,24 @@ def run_gate(
         logger.info("no cwd given — skipping the %s gate", gate)
         return GateOutcome(gate=gate, status="skipped", reason="no cwd given")
 
-    service_dir = Path(cwd).expanduser()
-    if not service_dir.is_dir():
-        logger.warning("cwd does not exist: %s", service_dir)
-        return GateOutcome(
-            gate=gate, status="skipped", reason=f"cwd does not exist: {service_dir}"
-        )
+    if not Path(cwd).expanduser().is_dir():
+        logger.warning("cwd does not exist: %s", cwd)
+        return GateOutcome(gate=gate, status="skipped", reason=f"cwd does not exist: {cwd}")
 
-    command = gate_command(gate, service, service_type, service_dir, repo_dir)
+    where = service_dir(cwd, service)
+    command = gate_command(gate, service, service_type, where, repo_dir)
     if not command:
-        logger.info("%s declares no %s command in %s — skipping", service, gate, service_dir)
+        logger.info("%s declares no %s command in %s — skipping", service, gate, where)
         return GateOutcome(
             gate=gate,
             status="skipped",
-            reason=f"no {gate} command declared for {service or service_dir.name}",
+            reason=f"no {gate} command declared for {service or where.name}",
         )
 
     try:
         result = subprocess.run(
             command,
-            cwd=service_dir,
+            cwd=where,
             shell=True,
             capture_output=True,
             text=True,
@@ -771,7 +798,7 @@ def run_gate(
         )
 
     if result.returncode == 0:
-        logger.info("%s clean for %s", gate, service_dir)
+        logger.info("%s clean for %s", gate, where)
         return GateOutcome(
             gate=gate, status="clean", command=command, reason=f"{gate} passed"
         )
@@ -779,7 +806,7 @@ def run_gate(
     output = (result.stdout + result.stderr).strip()
     if len(output) > MAX_GATE_OUTPUT:
         output = "…(truncated)…\n" + output[-MAX_GATE_OUTPUT:]
-    logger.warning("%s dirty for %s (exit %s)", gate, service_dir, result.returncode)
+    logger.warning("%s dirty for %s (exit %s)", gate, where, result.returncode)
     return GateOutcome(
         gate=gate,
         status="dirty",
@@ -814,6 +841,7 @@ def check_promises(
     files: list[str] | None = None,
     changed: list[str] | None = None,
     already_run: list[str] | None = None,
+    service: str = "",
 ) -> GateOutcome:
     """Hold the implement turn to the exit conditions it stated before it began.
 
@@ -836,9 +864,9 @@ def check_promises(
         logger.info("the turn stated no exit conditions — nothing to hold it to")
         return GateOutcome(gate="goal", status="skipped", reason="no exit conditions stated")
 
-    service_dir = Path(cwd).expanduser() if cwd else None
-    if service_dir is None or not service_dir.is_dir():
+    if not cwd or not Path(cwd).expanduser().is_dir():
         return GateOutcome(gate="goal", status="skipped", reason="no service directory")
+    where = service_dir(cwd, service)
 
     proven = {c.strip() for c in (already_run or []) if c and c.strip()}
     for command in commands:
@@ -848,7 +876,7 @@ def check_promises(
         try:
             result = subprocess.run(
                 command,
-                cwd=service_dir,
+                cwd=where,
                 shell=True,
                 capture_output=True,
                 text=True,

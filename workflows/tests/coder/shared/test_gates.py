@@ -234,3 +234,73 @@ def test_the_report_names_the_gate_that_went_red(repo: Path) -> None:
     assert report.source == "test"
     assert report.command == "exit 1"
     assert report.lap == 1
+
+
+# ------------------------------------------------------- where the gate runs
+
+
+def test_a_services_gate_runs_in_the_service_directory_not_the_repo_root(
+    repo: Path,
+) -> None:
+    """The defect this closes cost a benchmark story thirteen repair turns.
+
+    The dispatch hands every state the repo checkout as `cwd`, because that is what an
+    agent turn needs. A command declared under `services.api` is written the way `api`'s
+    own Makefile writes it, and from the root it does not fail the story — it fails to
+    start, and the repair loop is then asked to fix code over a harness error.
+    """
+    _agents(repo, "services:\n  api-service: {test: 'test -f here.marker'}\n")
+    (repo / "api-service" / "here.marker").write_text("", encoding="utf-8")
+
+    outcome = _call(
+        run_gate,
+        cwd=str(repo),
+        service=f"{repo.name}::api-service",
+        gate="test",
+        repo_dir=str(repo),
+    )
+
+    assert outcome.status == "clean"
+
+
+def test_a_repo_that_is_one_service_still_runs_its_gates_at_the_root(repo: Path) -> None:
+    """`<repo>::`, `<repo>::.` and a path that is not there all mean "here"."""
+    (repo / "root.marker").write_text("", encoding="utf-8")
+
+    for service in (f"{repo.name}::", f"{repo.name}::.", f"{repo.name}::not-a-dir"):
+        _agents(repo, f"services:\n  {service!r}: {{test: 'test -f root.marker'}}\n")
+        outcome = _call(
+            run_gate, cwd=str(repo), service=service, gate="test", repo_dir=str(repo)
+        )
+        assert outcome.status == "clean", service
+
+
+def test_the_turn_is_told_which_directory_its_gates_run_in(repo: Path) -> None:
+    """A turn told only the command runs it where it is standing, and watches it fail."""
+    _agents(repo, "services:\n  api-service: {test: 'go test ./...'}\n")
+
+    gates = _call(
+        declared_gates,
+        cwd=str(repo),
+        service=f"{repo.name}::api-service",
+        repo_dir=str(repo),
+    )
+
+    assert gates.text == "test: `go test ./...` (run in `api-service/`)"
+
+
+def test_the_convention_looks_for_the_makefile_in_the_service_directory(
+    repo: Path,
+) -> None:
+    """`make <gate>` is adopted by the service's Makefile, not by the repo's."""
+    _agents(repo, "services: {}\n")
+    (repo / "api-service" / "Makefile").write_text("test:\n\t@true\n", encoding="utf-8")
+
+    gates = _call(
+        declared_gates,
+        cwd=str(repo),
+        service=f"{repo.name}::api-service",
+        repo_dir=str(repo),
+    )
+
+    assert gates.commands == ["make test"]
