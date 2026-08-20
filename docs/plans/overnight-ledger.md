@@ -164,11 +164,19 @@ first**; if an item is already fully done, tick it with the existing commit hash
   - The trap: the packet and its stamp are written *inside* the docs repo and are untracked,
     so the first signature counted them and every later visit missed. They are now excluded
     from the diff pathspec and the untracked scan they feed.
-- [ ] Q3 — on-disk snapshot cache in `ostler/ostler/api.py` keyed by
+- [x] Q3 — on-disk snapshot cache in `ostler/ostler/api.py` keyed by
   (docs_root, HEAD, dirty-digest), so a fresh `Ostler` instance and the CLI stop paying the
   ~28s rebuild when nothing changed. Invalidation on any key component change; corruption →
   silent rebuild, never a wrong answer. Done when: ostler tests cover hit/invalidation/
   corruption; second construction in a test is >5x faster than the first on a warm cache.
+  (ef8948f)
+  Notes: the key is NOT (docs_root, HEAD, dirty-digest) as written. A git-shaped key is
+  moved by every write into `docs/specs/`, which is exactly what a coder run does between
+  two loads that want the same graph — the cache would have missed on every lap of the
+  workflow it exists for. The entry instead records its own dependencies: the files read,
+  the story paths probed and not found, and a listing digest of the three doc roots `load`
+  actually reads. Measured on a generated 550-document book: 0.97s cold, 0.35s from a warm
+  parse index, 0.023s from a snapshot — 15x over the leg the ledger's 5x bar is about.
 - [ ] Q4 — profile before anything cleverer: py-spy (or cProfile) one cold `ostler qa
   validate` on a real docs root; commit the findings as a short note in optimize-qa.md §6.
   If the cache from Q3 already makes cold-start irrelevant in the replay numbers, record
