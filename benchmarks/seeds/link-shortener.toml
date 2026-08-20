@@ -1,0 +1,8 @@
+name = "link-shortener"
+repo_dir = "link-shortener"
+sha256 = "a2ffd921d0ba752e1783bb239eeee98e0948a8717178672ade83debdb8c2244b"
+bytes = 18271
+head = "4063cc81668af42d203532bf8f9bc3f37d5a6f34"
+dirty = false
+url = ""
+note = "an empty git repo: the greenfield round starts from nothing but a branch"
