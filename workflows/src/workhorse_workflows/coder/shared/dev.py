@@ -94,7 +94,47 @@ def _spec_dir(spec_dir: str, root: Path) -> Path:
     return path if path.is_absolute() else root / path
 
 
-def plan_document(plan: dict[str, Any], repos: dict[str, dict]) -> dict[str, Any]:
+def _spec_relative(plan_file: str, spec_abs: Path | None, root: Path | None) -> str:
+    """`plan_file` as the spec-relative path it is declared to be, under either reading.
+
+    The field means "relative to the spec dir", and `plan-story.md` says so — but the turn
+    that fills it has just *written* `docs/specs/<story>/plan.md`, and a planner holding
+    that repo-relative string in its hand hands the same string back. The two readings name
+    the same file on disk, so the disagreement is about notation and nothing else. It was
+    not free: in benchmark run `c1` it cost a 203 s high-power `refine-plan` lap whose whole
+    output was one string rewritten into another string for the same file, and the errors it
+    was sent came from two checkers at once — this module's own, and `ostler artifact vet`'s
+    (`artifact/kinds.py`), which resolves the field the same way. Normalising here fixes
+    both, because ostler vets the projection Python writes.
+
+    Only a path that resolves to a file *inside* the spec dir is repaired. One that points
+    anywhere else is passed through verbatim, so the check downstream still fails on it and
+    the error still names what the planner actually wrote.
+    """
+    if not plan_file or spec_abs is None or root is None:
+        return plan_file
+    if (spec_abs / plan_file).is_file():
+        return plan_file
+    candidate = Path(plan_file)
+    # Both sides are resolved before they are compared: `story.py` hands the spec dir over
+    # already resolved while the repo root arrives as it was given, so on any tree reached
+    # through a symlink (a `/tmp` checkout, a worktree) the two would not share a prefix and
+    # a repairable path would fall through to the error.
+    resolved = (candidate if candidate.is_absolute() else root / candidate).resolve()
+    if not resolved.is_file():
+        return plan_file
+    try:
+        return resolved.relative_to(spec_abs.resolve()).as_posix()
+    except ValueError:
+        return plan_file
+
+
+def plan_document(
+    plan: dict[str, Any],
+    repos: dict[str, dict],
+    spec_abs: Path | None = None,
+    root: Path | None = None,
+) -> dict[str, Any]:
     """The plan-context mapping, built from a `PlanResult` and the resolved workspace.
 
     One function, because there are two consumers of the same derivation: the projection
@@ -105,6 +145,10 @@ def plan_document(plan: dict[str, Any], repos: dict[str, dict]) -> dict[str, Any
     tends to emit the human-facing project name ("Acme") while the key is the folder name
     ("acme"), and repairing that is strictly better than routing a symptom-only error back
     to a model that re-authors the same casing from the title-cased branding in its prompt.
+
+    `plan_file` is repaired for the same reason and under the same rule — see
+    `_spec_relative`. Both repairs need the spec dir and the repo root; without them the
+    values pass through, which is what a caller that has neither wants.
     """
     canon_by_lower = {name.lower(): name for name in repos}
 
@@ -114,6 +158,8 @@ def plan_document(plan: dict[str, Any], repos: dict[str, dict]) -> dict[str, Any
     def entry(svc: Any) -> dict[str, Any]:
         svc = dict(svc or {})
         svc["repo"] = canon(str(svc.get("repo", "")))
+        if "plan_file" in svc:
+            svc["plan_file"] = _spec_relative(str(svc.get("plan_file", "")), spec_abs, root)
         return svc
 
     services = [entry(svc) for svc in plan.get("services") or []]
@@ -164,7 +210,8 @@ def _plan_context(
     keys on.
     """
     if plan:
-        return plan_document(plan, repos), False
+        spec_abs = _spec_dir(spec_dir, root) if spec_dir else None
+        return plan_document(plan, repos, spec_abs, root), False
     path = _spec_dir(spec_dir, root) / "plan-context.json" if spec_dir else None
     on_disk = load_json(path, "plan-context.json", logger) if path else {}
     return on_disk, path is None or not path.exists()
@@ -201,7 +248,7 @@ def record_plan(
     root = find_repo_root(repo_dir)
     spec_abs = _spec_dir(spec_dir, root)
     repos = resolve_workspace(workspace_file, repo_dir)
-    doc = plan_document(plan or {}, repos)
+    doc = plan_document(plan or {}, repos, spec_abs, root)
 
     spec_abs.mkdir(parents=True, exist_ok=True)
     (spec_abs / "plan-context.json").write_text(

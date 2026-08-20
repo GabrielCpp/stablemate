@@ -236,6 +236,7 @@ class _Agent:
         explode: set[str] | None = None,
         impl_blocked: int = 0,
         promise: dict[str, Any] | None = None,
+        repo_relative_plans: bool = False,
     ) -> None:
         self.docs = docs
         self.services = services if services is not None else SERVICES
@@ -253,6 +254,10 @@ class _Agent:
         #: What the implement turn states its exit conditions are — the promise the `goal`
         #: gate then holds it to.
         self.promise = promise or {}
+        #: Report `plan_file` the other way it can legally be read — repo-relative, the form
+        #: the turn was holding when it wrote the file — while writing the file itself
+        #: exactly where it belongs.
+        self.repo_relative_plans = repo_relative_plans
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         self.plans = 0
@@ -300,6 +305,11 @@ class _Agent:
                 f"# Plan for {svc['repo']}::{svc['path']}\n",
                 encoding="utf-8",
             )
+        if self.repo_relative_plans:
+            services = [
+                {**svc, "plan_file": (spec / svc["plan_file"]).relative_to(self.docs).as_posix()}
+                for svc in services
+            ]
         structure = {
             "services": services,
             "implementation_order": [f"{s['repo']}::{s['path']}" for s in services],
@@ -555,6 +565,64 @@ def test_an_unresolvable_service_path_reworks_the_plan(
     assert "ghost" in agent.args_for("refine-plan")[0]["review_notes"]
     # The gate's verdict is the node's, recorded: the second validation passed.
     assert _output(run_env, record_plan)["status"] == "valid"
+
+
+def test_a_repo_relative_plan_file_costs_no_refine_lap(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The two readings of `plan_file` name the same file, so neither is a plan defect.
+
+    `plan-story.md` asks for it relative to the spec dir, and the turn that fills it has
+    just written `docs/specs/<story>/plan.md` — so it hands that string back about as often
+    as the short one. Benchmark run `c1` spent a 203 s high-power `refine-plan` lap on the
+    difference, and produced one string rewritten into another string for the same file.
+    """
+    agent = _Agent(docs, repo_relative_plans=True)
+    run_env = env()
+
+    result = drive_flow(Dev(story=STORY), run_env, agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["refine-plan"] == 0, agent.counts()
+    assert _output(run_env, record_plan)["status"] == "valid"
+    # Repaired on the way in, not tolerated at the check: every later reader of the
+    # projection — `ostler artifact vet`, QA on a later run — sees the one spelling.
+    written = json.loads((docs / SPEC_REL / "plan-context.json").read_text())
+    assert [svc["plan_file"] for svc in written["services"]] == ["plan-api.md", "plan-web.md"]
+
+
+def test_a_plan_file_outside_the_spec_dir_is_still_an_error(
+    tmp_path: Path,
+    write: Callable[[Path, str], Path],
+) -> None:
+    """The repair is narrow on purpose: only a path that lands *inside* the spec dir.
+
+    A file that exists somewhere else entirely is not the same file under another notation,
+    it is the wrong file — and passing it through verbatim is what keeps the downstream
+    error naming what the planner actually wrote.
+    """
+    root = tmp_path / "book"
+    spec = root / "docs" / "specs" / "thing"
+    write(spec / "plan-api.md", "# in\n")
+    write(root / "elsewhere" / "plan-api.md", "# out\n")
+    plan = {
+        "services": [
+            {"repo": "api", "path": ".", "plan_file": "elsewhere/plan-api.md"},
+            {"repo": "api", "path": ".", "plan_file": "docs/specs/thing/plan-api.md"},
+            {"repo": "api", "path": ".", "plan_file": "nowhere/plan-api.md"},
+        ]
+    }
+
+    doc = plan_document(plan, {}, spec, root)
+
+    assert [svc["plan_file"] for svc in doc["services"]] == [
+        "elsewhere/plan-api.md",
+        "plan-api.md",
+        "nowhere/plan-api.md",
+    ]
 
 
 def test_an_unfixable_plan_exhausts_the_budget_and_reaches_the_operator(
