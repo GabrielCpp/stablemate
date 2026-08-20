@@ -1,0 +1,52 @@
+[project]
+name = "paddock"
+version = "0.1.0"
+description = "The benchmark harness: unpack a captured repo state, run real CLI steps against it, stage the result, and score it when the task brought its own ruler."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Gabriel Côté" }]
+keywords = ["benchmark", "agents", "workflow", "evaluation", "fixtures"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Testing",
+  "Topic :: Utilities",
+]
+dependencies = [
+  # Pointers are outside data — hand-edited, fetched over the network, read back a
+  # release later — so they are parsed and validated rather than `.get()`-ed.
+  "pydantic>=2.0",
+  # `tomllib` reads and does not write; a pointer is written by `seed capture` and by
+  # every sealed result.
+  "tomli-w>=1.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+[project.urls]
+Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/paddock"
+Repository = "https://github.com/GabrielCpp/stablemate"
+Issues = "https://github.com/GabrielCpp/stablemate/issues"
+
+[project.scripts]
+paddock = "paddock.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["paddock"]
+
+[tool.hatch.build.targets.sdist]
+include = ["paddock", "README.md", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+tmp_path_retention_policy = "failed"

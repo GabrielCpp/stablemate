@@ -9,6 +9,8 @@
 #                                       workhorse operator gates)
 #   - saddlebag/  -> saddlebag        (runtime credential pool: scan, select,
 #                                       lease and release test identities)
+#   - paddock/    -> paddock          (the benchmark harness: seeds, tasks, results —
+#                                       benchmarks/ is its data)
 #   - core/       -> (no distribution)  (shared plumbing: the home config, base-library
 #                                       discovery, the base-library cache. A member so it
 #                                       can be tested and imported in a checkout, but it
@@ -42,7 +44,7 @@ description = "Workspace anchor for the workhorse-agent, farrier, ostler, groom 
 requires-python = ">=3.12"
 
 [tool.uv.workspace]
-members = ["core", "workhorse", "workflows", "farrier", "ostler", "groom", "saddlebag"]
+members = ["core", "workhorse", "workflows", "farrier", "ostler", "groom", "saddlebag", "paddock"]
 
 [dependency-groups]
 dev = [

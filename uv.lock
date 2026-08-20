@@ -7,6 +7,7 @@ members = [
     "farrier",
     "groom",
     "ostler",
+    "paddock",
     "saddlebag",
     "stablemate",
     "stablemate-core",
@@ -1153,6 +1154,28 @@ sdist = { url = "https://files.pythonhosted.org/packages/d7/f1/e7a6dd94a8d4a5626
 wheels = [
     { url = "https://files.pythonhosted.org/packages/df/b2/87e62e8c3e2f4b32e5fe99e0b86d576da1312593b39f47d8ceef365e95ed/packaging-26.2-py3-none-any.whl", hash = "sha256:5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e", size = 100195, upload-time = "2026-04-24T20:15:22.081Z" },
 ]
+
+[[package]]
+name = "paddock"
+version = "0.1.0"
+source = { editable = "paddock" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "tomli-w" },
+]
+
+[package.optional-dependencies]
+test = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "tomli-w", specifier = ">=1.0" },
+]
+provides-extras = ["test"]
 
 [[package]]
 name = "pillow"

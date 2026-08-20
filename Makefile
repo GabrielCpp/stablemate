@@ -76,6 +76,7 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) -C farrier test
 	$(MAKE) -C groom test
 	$(MAKE) -C saddlebag test
+	$(MAKE) -C paddock test
 	$(MAKE) test-bench
 	$(MAKE) test-scripts
 	$(MAKE) check-public
