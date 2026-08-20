@@ -304,9 +304,20 @@ tree/plan for evidence it already landed; tick `(pre-existing)` if so.
   Note: the plan's own third clause for step 3 — "one-lint-failure path is three turns in the
   bench telemetry" — is a measurement, not a code state, and the ledger item deliberately
   omits it; D5 is where it gets measured.
-- [ ] D2 — Plan A step 4: `PlanResult` carries the structure; `plan-context.json` becomes a
+- [x] D2 — Plan A step 4: `PlanResult` carries the structure; `plan-context.json` becomes a
   Python-written projection; `validate_plan_context` shape checks and `rework_paths` go;
   no prompt under `coder/` names `plan-context.json`.
+  (pre-existing: 368c58e) — all four criteria hold. `PlanResult`
+  (`coder/shared/schemas/dev.py`) carries `services` / `implementation_order` /
+  `shared_packages` / `verification_setup`, so a malformed plan is a pydantic parse retry
+  rather than a workflow state; `coder/shared/dev.py::validate_plan` writes the projection
+  itself (`json.dumps(doc)` into `<spec>/plan-context.json`) and then validates *that*
+  document, keeping only the semantic checks — declared path exists, marker file present,
+  build order references declared services. `validate_plan_context` and `rework_paths` no
+  longer exist anywhere in `workflows/src` or `base-library`, and no prompt under
+  `coder/prompts/` mentions `plan-context.json`; the remaining mentions are Python readers
+  (`shared/queue.py`) and docstrings explaining the projection. `make lint` green;
+  1343 workflow tests pass.
 - [ ] D3 — Plan A step 5: `agents.yml` service commands + deterministic test/lint/smoke
   nodes; genesis writes the block; farrier doctor warns; delete the "MANDATORY" prose.
 - [ ] D4 — Plan A step 6: goal setting in the envelope + `goal` adapter; TDD gate with the
