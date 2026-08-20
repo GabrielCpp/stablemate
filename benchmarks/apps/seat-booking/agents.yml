@@ -16,3 +16,26 @@ agents:
 
 packs:
   - stablemate
+
+# The one QA tool this fixture opts into, and the reason it has to exist.
+#
+# `confirm-booking`'s AC5 — "a confirmed booking survives a restart" — is an obligation no
+# HTTP call can discharge: the plan API exposes requests, assertions and captures, and
+# nothing that stops and starts the service. With no tool declared here, the catalog the
+# planner reads is empty, the honest plan blocks rather than passing off an immediate
+# read-after-write as durability, and every trial on that story parks at the operator gate.
+# A book obligation no declared tool can prove is fixture debt, not a QA failure.
+#
+# `docker` rather than a bespoke `restart` shim because the tool contract resolves a name
+# to one command on PATH (`ostler.qa.tools`), and a wrapper script committed here would
+# have to be found by a path that differs in every trial's checkout. A scenario reaches it
+# as `qa.tool("docker").run("compose", "-f", "compose.yml", "restart")`, from the repo root
+# — the same compose file `qa-stack.yml` boots the app with.
+#
+# Its definition is machine-side, in the config a task pins (`benchmarks/configs/`), which
+# is the opt-in/definition split the tool registry is built around: this file says which
+# tools the fixture may reach for, the config says what they are on this host.
+
+qa:
+  tools:
+    - docker

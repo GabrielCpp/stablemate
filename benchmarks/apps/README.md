@@ -84,6 +84,14 @@ collide on a machine running both.
   Chosen because its natural failure modes are the check vocabulary itself: a compare-and-swap
   refusal, a count over a map, a neighbour left unperturbed, a booking that survives a restart.
 
+  That last one needed a seam the fixture did not have. D1 and D2 sit on `confirm-booking`,
+  whose AC5 is durability across a service restart, and until this app's `agents.yml` opted
+  into the `docker` QA tool there was no sanctioned way for a plan to restart anything: the
+  planner blocked rather than pass an immediate read-after-write off as proof, and the trial
+  parked at the operator gate instead of reaching a verdict. **D1/D2 detection numbers only
+  exist from that opt-in onward** — a round predating it scored no `confirm-booking` trial at
+  all, so a scorecard from before it is not a baseline for one from after.
+
 - **[`policy-desk/`](policy-desk/)** — an insurance policy register: a Go JSON API behind a React
   single-page client, three stories (create, list, amend) over the same ledger. Port **18084**.
   Chosen for the interest cases one Python module cannot pose — a deep link that has to survive a
