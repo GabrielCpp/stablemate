@@ -238,3 +238,36 @@ Each lands as its own commit(s) per the commit procedure, measured against §1 b
 next starts.
 
 ## Progress
+
+### 2026-08-20 — QA-lane baseline, label `before`
+
+`replay.py run --flow qa --story expense-list -n 3 --label before`, `opencode` /
+`openrouter/openai/gpt-5.6-luna`, fixture `expense-split` @ `c0478a9`. All three trials
+exited 0.
+
+```
+node                           items turns   exit  mean  max    cost$
+plan-qa                             3     3  100%  1.00    1    $0.29
+audit-qa                            3     3  100%  1.00    1    $0.12
+repair-qa-context                   3     3  100%  1.00    1    $0.12
+qa-story                            3     3  100%  1.00    1    $0.10
+———————————————————————————————————————————————————————————————————
+TOTAL                                                           $0.64   (0 excess turns)
+```
+
+Wall clock: ~35 min for three trials, ≈11–12 min per trial (03:16 → 03:51 EDT).
+
+**Read this baseline as a floor, not as a refutation of the plan.** `groom loops` measured
+`plan-qa` at an 18% exit rate *across every run on this machine*; here it exits first lap
+three times out of three, and `apply-qa-fixes` — §2's 50% lever — never ran at all,
+because the frozen tree's QA passes. One story that converges cleanly cannot show a
+convergence problem, so this label is only useful as the "did a change make it worse"
+control: any after-label that turns one of these 100%s into a loop is a regression, and
+§2/§3's real evidence has to come from a story whose QA fails, or from `score` against a
+seeded-defect `app:` fixture.
+
+Two fixture defects had to be fixed before a trial could reach an agent turn at all, both
+recorded in the commits alongside this note: the `expense-list` pin (`2c2b1b2`) was
+reachable from no ref in the source repo, so `git bundle --all` had been silently dropping
+it, and the story it pins predates the `## Dependencies` section `prepare_story` now
+requires — `expense-list` is re-pinned at `c0478a9`, that commit plus the missing section.
