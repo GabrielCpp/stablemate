@@ -1,0 +1,77 @@
+# Stack, tool and test-framework names the coder workflow may not assume.
+#
+# Invariant 1: the workflow assumes nothing about where it is deployed. Which linter runs,
+# what a test file is called, how a service is brought up — that is the repo's body, reached
+# through `agents.yml` and the skills the repo installed, never a word baked into a prompt
+# stablemate ships to everyone who installs it.
+#
+# These are public names, so unlike `check_public.py`'s list they live in the tree: banning
+# `pytest` publishes nothing anybody did not already know. One token per line; `#` comments
+# and blank lines ignored. Matching is whole-token and case-sensitive.
+#
+# A line beginning `re:` is a regular expression instead, which is how a name whose bare form
+# is an ordinary English word earns its place: `go` and `make` are unusable as tokens — this
+# codebase says "proposals go in" and "make it conventional" constantly — but `go test` and
+# `make lint` are unambiguously a toolchain, and they are what the prompts actually said.
+
+# --- languages and their toolchains
+re:\bgo (test|build|run|mod|vet|fmt|generate|install)\b
+golang
+gofmt
+gopls
+go\.mod
+python
+python3
+pytest
+pip install
+re:\buv (run|tool|sync|pip)\b
+ruff
+mypy
+dart
+flutter
+pubspec\.yaml
+cargo
+rustfmt
+rails
+bundler
+composer
+twig
+gradle
+maven
+
+# --- javascript and its neighbourhood
+npm
+npx
+pnpm
+yarn
+package\.json
+eslint
+prettier
+jest
+vitest
+typescript
+svelte
+react
+react-router
+vue
+nextjs
+
+# --- test and QA drivers
+playwright
+cypress
+selenium
+maestro
+appium
+
+# --- infrastructure and orchestration
+docker
+docker-compose
+kubectl
+helm
+terraform
+pulumi
+ansible
+
+# --- the build entry point a repo declares in `agents.yml`, not one the workflow guesses
+re:`make [a-z][\w-]*
+Makefile

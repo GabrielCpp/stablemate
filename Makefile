@@ -80,6 +80,7 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) check-public
 	$(MAKE) check-no-env
 	$(MAKE) check-no-giveup
+	$(MAKE) check-prompt-agnostic
 	$(MAKE) check-parsers
 	$(MAKE) check-portability
 	$(MAKE) check-library
@@ -141,6 +142,14 @@ check-no-giveup: ## Guard the "a workflow never gives up" rule (blocked, not fai
 	# This can only catch the vocabulary of the deleted pattern reappearing, not every
 	# way the rule could be broken again — see the script's docstring for what it misses.
 	uv run python scripts/check_no_giveup.py
+
+.PHONY: check-prompt-agnostic
+check-prompt-agnostic: ## Guard invariant 1 (the coder workflow names no stack of its own)
+	# A stack name in a coder prompt is a deployment assumption the workflow charges every
+	# repo for: a Go command sent to a Python service, a `package.json` marker offered to a
+	# repo that has none. What runs comes out of the repo's own `agents.yml`; this is what
+	# stops the guessed list from growing back, one helpful example at a time.
+	uv run python scripts/check_prompt_agnostic.py
 
 .PHONY: check-parsers
 check-parsers: ## Guard the parse-don't-match rule (a format with a grammar gets its parser)
