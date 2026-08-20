@@ -62,8 +62,6 @@ The journeys that stitch these routes together are
   - returns every policy on the books, ordered by policy number, whatever status it is in.
 - does:
   - gives each policy its `id`, `policy_number`, `holder_email`, `coverage_type`, term, `premium`, `status` and `version`, so the register can be rendered and an edit prepared without a second request.
-- does:
-  - lists a cancelled policy with its status rather than dropping it, so the register keeps its shape as policies are cancelled.
 - code: app/api/list.go
 - verify: http_status(200, path="/api/policies")
 - verify: json_path("policies[0].id", equals="pn-1001")
@@ -187,6 +185,8 @@ The journeys that stitch these routes together are
 
 - does:
   - moves the named policy to status `Cancelled`, increments its version, and answers `200` with the stored record.
+- does:
+  - keeps the cancelled policy on the books rather than dropping it: `GET /api/policies` still lists it, with status `Cancelled`, so the register keeps its shape as policies are cancelled.
 - code: app/api/cancel.go
 - verify: http_status(200, path="/api/policies/pn-1001/cancel")
 - verify: json_path("policy.status", equals="Cancelled")
