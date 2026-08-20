@@ -1,0 +1,173 @@
+# The answer key: eleven seeded defects, each naming the obligation it contradicts.
+#
+# The schema is seat-booking's, and so is the mechanism — a trial applies one row by copying
+# `defects/<id>/<path>` over the materialized worktree, a whole-file overwrite rather than a
+# patch, because a patch stops applying the moment the app is edited and does so *silently*:
+# the trial still runs, the defect is simply not there, and the score reads as a catch.
+#
+# `obligation` is the OKF id the defect makes false, and `expect` is an **evidence-map
+# status** rather than a prose verdict, so scoring is a lookup rather than a reading of the
+# QA report. Every id here is one the book mints *and owes* for that row's story —
+# `build_evidence_map` reports only the obligations a change is required to evidence, so a
+# row pointed at a context-only id could never be anything but inconclusive.
+# `benchmarks/tests/` asserts both properties, because an id that stops resolving turns a
+# scored row into a permanent miss.
+#
+# `caught_by` is the route the defect is *expected* to travel, recorded so a surprise is
+# legible — it is not a scoring gate:
+#
+#   run    — a declared check the plan runs should assert this and fail
+#   audit  — no assertion fails; only the auditor reading evidence against the clause sees it
+#
+# Every defect is a plausible implementation, not a syntax error or a crash: each variant
+# builds (`go build ./...`) or type-checks (`tsc --noEmit`), serves, and answers. A defect
+# that takes the service down is caught by any check at all and measures nothing.
+#
+# What this fixture is for, and what it is expected to expose
+# ----------------------------------------------------------
+# Where seat-booking asks whether QA notices a wrong answer, policy-desk asks whether QA
+# *worked the product*. Four rows carry that question:
+#
+#   P1 is expected to be MISSED by today's QA. The register's "New policy" action renders
+#   with the right role and the right name and does not navigate; the form is still reachable
+#   by its URL. A plan that opens each screen by address rather than by clicking the link the
+#   book documents as its entry proves every obligation on the form and never touches the one
+#   that is broken. Nothing gates that today — the `entry` bullet is consumed by no check —
+#   so a missed P1 printed on the same line as `leverage: deep-links ≥ 1` is the fixture
+#   working, not the fixture failing. That pair of numbers is the whole point of the app.
+#
+#   P9, P10 and P11 are catchable only by the auditor's perception of the evidence: a
+#   refusal rendered in the wrong shape while carrying the right sentence, a route change
+#   that throws into the console while the screen recovers, and a re-read that fails and is
+#   swallowed behind rows that look current. No declared check fails in any of the three.
+#
+# The remaining seven (P2–P8) are ordinary contradictions, present so the leverage numbers
+# are read against a detection rate that is not zero.
+
+defects:
+  - id: P1
+    story: policy-list
+    path: app/web/src/Nav.tsx
+    obligation: okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:contract
+    expect: contradicted
+    caught_by: run
+    why: >
+      the register's "New policy" action is an anchor whose click handler only prevents the
+      default, so the link is present, focusable and correctly named — and goes nowhere. Every
+      screen it leads to is still reachable by its address, which is what makes this the
+      canary: a plan that navigates by URL proves the whole form and never sees this.
+
+  - id: P2
+    story: create-policy
+    path: app/web/src/NewPolicy.tsx
+    obligation: okf:docs/features/policy/gui/screens/policy-detail.md#policy-summary:contract
+    expect: contradicted
+    caught_by: run
+    why: >
+      the creation succeeds and the browser lands on the register instead of the policy it
+      just wrote, so the journey's end state — the new policy's own detail screen — is never
+      shown. A plan that walks the flow sees a register where a summary should be; a plan that
+      goes straight to `/policies/pn-1001` sees the summary and reports it covered.
+
+  - id: P3
+    story: create-policy
+    path: app/api/validate.go
+    obligation: okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      the term's ordering rule is gone from the server — the end date is checked for its shape
+      and never against the start date — so a policy that ends before it begins is written at
+      `201` with no `errors.end_date` to read.
+
+  - id: P4
+    story: create-policy
+    path: app/api/validate.go
+    obligation: okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      auto coverage no longer requires the VIN, so an auto policy is accepted with no vehicle
+      on it. The record is silently incomplete rather than refused, and every other field of
+      the same request is still validated.
+
+  - id: P5
+    story: create-policy
+    path: app/api/validate.go
+    obligation: okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      the umbrella prerequisite is no longer asked about, so umbrella coverage is written for a
+      holder with nothing underneath it. It is the one rule that cannot be decided from the
+      form alone, so only a scenario that drives the documented route with a holder who has no
+      other policy observes it.
+
+  - id: P6
+    story: create-policy
+    path: app/api/create.go
+    obligation: okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:2
+    expect: contradicted
+    caught_by: run
+    why: >
+      a repeat policy number is treated as a re-submission: the create answers `201` and
+      overwrites the record already on file instead of refusing with `409 Duplicate Policy
+      Number`. The response looks like a success and the ledger quietly loses a policy.
+
+  - id: P7
+    story: edit-policy
+    path: app/api/update.go
+    obligation: okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      the edit still demands a `version` and no longer compares it, so last write wins: an
+      editor who opened the form, went away and came back overwrites the edit that landed
+      meanwhile. Every single-writer scenario passes; only two writes from one reading show it.
+
+  - id: P8
+    story: create-policy
+    path: app/api/store.go
+    obligation: okf:docs/features/policy/http/policy-desk-api.md#post-policies:persistence:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      the ledger is held in the memory of the process that wrote it and the file is never
+      updated, so every read inside one run agrees with every write and the books are empty
+      after a restart. Invisible to everything but `persists`.
+
+  - id: P9
+    story: create-policy
+    path: app/web/src/FieldError.tsx
+    obligation: okf:docs/features/policy/gui/screens/new-policy.md#field-error-message:contract
+    expect: contradicted
+    caught_by: audit
+    why: >
+      the field's refusal renders the service's payload rather than the sentence pulled out of
+      it — `{"message":"End date must be after the start date."}` beside the input. The span,
+      its class, its place beside the field and the service's own words are all still there,
+      so a check looking for that text still matches; what a reader gets is a JSON blob.
+
+  - id: P10
+    story: edit-policy
+    path: app/web/src/PolicyDetail.tsx
+    obligation: okf:docs/features/policy/gui/screens/policy-detail.md#policy-summary:contract
+    expect: contradicted
+    caught_by: audit
+    why: >
+      every route change into the detail screen schedules a usage-counter call through a global
+      the page never installs, so each navigation throws an uncaught `TypeError`. It is thrown
+      off the render path, so the summary loads and reads correctly and no assertion fails —
+      the console slice in the diagnostics is the only place it exists.
+
+  - id: P11
+    story: policy-list
+    path: app/web/src/PolicyList.tsx
+    obligation: okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:contract
+    expect: contradicted
+    caught_by: audit
+    why: >
+      the register's periodic re-read goes to an endpoint no route claims, gets a `404` and
+      swallows it, leaving the rows from the first load on screen with no alert beside them.
+      The table is correct at the moment it is drawn and stale from then on, and the polling
+      interval is short enough that a run's network evidence carries several of the failures.

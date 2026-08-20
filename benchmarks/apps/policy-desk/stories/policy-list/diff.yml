@@ -9,6 +9,7 @@ added:
   - app/api/list.go
   - app/web/src/Nav.tsx
   - app/web/src/PolicyList.tsx
+  - app/web/src/RegisterError.tsx
 changed:
   - app/api/service.go
   - app/web/src/routes.tsx

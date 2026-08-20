@@ -90,7 +90,7 @@ one rule (the umbrella prerequisite) depends on a record that is not on this scr
 - placement: width 20-80%, x 0-30%, y 10-100%
 - keyboard: none, because it is read beside the field it belongs to.
 - parent: [New policy form](#new-policy-form)
-- code: app/web/src/NewPolicy.tsx
+- code: app/web/src/FieldError.tsx
 - does: shows the refusal for one field, next to that field, in the words the service used.
 - verify: visible(locator="text=End date must be after the start date.")
 

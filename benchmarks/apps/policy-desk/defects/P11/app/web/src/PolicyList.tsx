@@ -10,7 +10,7 @@ export function PolicyList() {
   const [policies, setPolicies] = useState<Policy[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  const load = useCallback(async () => {
     try {
       const body = await listPolicies();
       setPolicies(body.policies);
@@ -20,13 +20,29 @@ export function PolicyList() {
     }
   }, []);
 
+  // The periodic re-read goes through the register's own endpoint, which answers only the
+  // rows that moved. A re-read that does not land is not worth interrupting the desk over:
+  // the rows already on screen are the last ones the service confirmed.
+  const refresh = useCallback(async () => {
+    try {
+      const response = await fetch("/api/policies/refresh");
+      if (!response.ok) {
+        throw new Error(`register refresh: ${response.status}`);
+      }
+      const body = (await response.json()) as { policies: Policy[] };
+      setPolicies(body.policies);
+    } catch {
+      return;
+    }
+  }, []);
+
   useEffect(() => {
-    void refresh();
+    void load();
     const timer = window.setInterval(() => {
       void refresh();
-    }, 15000);
+    }, 2000);
     return () => window.clearInterval(timer);
-  }, [refresh]);
+  }, [load, refresh]);
 
   return (
     <>

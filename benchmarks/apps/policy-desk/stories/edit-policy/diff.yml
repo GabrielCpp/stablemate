@@ -5,7 +5,8 @@
 # it.
 story: edit-policy
 added:
-  - app/api/amend.go
+  - app/api/update.go
+  - app/api/cancel.go
   - app/web/src/EditPolicy.tsx
   - app/web/src/PolicyActions.tsx
 changed:

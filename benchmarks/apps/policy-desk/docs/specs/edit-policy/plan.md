@@ -21,7 +21,8 @@ and the writes against it stay one file.
 
 ## 2. Files
 
-- `app/api/amend.go` — `PUT /api/policies/{id}` and `POST /api/policies/{id}/cancel`.
+- `app/api/update.go` — `PUT /api/policies/{id}`.
+- `app/api/cancel.go` — `POST /api/policies/{id}/cancel`.
 - `app/api/service.go` — the route table gains both routes.
 - `app/api/validate.go` — the policy number is create-only, so an amendment neither sends it nor may
   change it.

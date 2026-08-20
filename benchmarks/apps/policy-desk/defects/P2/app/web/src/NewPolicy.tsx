@@ -32,7 +32,7 @@ export function NewPolicy() {
     }
     setSaving(true);
     try {
-      const body = await createPolicy({
+      await createPolicy({
         policy_number: policyNumber,
         holder_email: holderEmail,
         coverage_type: coverageType,
@@ -42,7 +42,7 @@ export function NewPolicy() {
         end_date: endDate,
         premium: Number(premium),
       });
-      navigate(`/policies/${body.policy.id}`);
+      navigate("/policies");
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 422) {
         setErrors(cause.errors);

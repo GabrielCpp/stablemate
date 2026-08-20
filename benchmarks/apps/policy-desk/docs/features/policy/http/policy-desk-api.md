@@ -144,7 +144,7 @@ The journeys that stitch these routes together are
   - applies an acceptable edit to the named policy, increments its version, and answers `200` with the stored record.
 - does:
   - touches the edited policy and no other — every other record keeps its fields, its status and its version.
-- code: app/api/amend.go
+- code: app/api/update.go
 - verify: http_status(200, path="/api/policies/pn-1001")
 - verify: json_path("policy.version", equals="2")
 - verify: unchanged(subject="policy pn-1002", except_fields=[])
@@ -181,7 +181,7 @@ The journeys that stitch these routes together are
 
 - does:
   - moves the named policy to status `Cancelled`, increments its version, and answers `200` with the stored record.
-- code: app/api/amend.go
+- code: app/api/cancel.go
 - verify: http_status(200, path="/api/policies/pn-1001/cancel")
 - verify: json_path("policy.status", equals="Cancelled")
 - errors: `422` with `errors.confirm` when the body's `confirm` is not the policy's own number, so a
