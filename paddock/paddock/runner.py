@@ -86,10 +86,45 @@ class Run:
     data_dir: Path
     store: Path
     seed: Pointer
+    params: Mapping[str, str] = field(default_factory=dict)
     project: Path | None = None
     step_name: str = ""
     commands: list[tuple[str, ...]] = field(default_factory=list)
     outcomes: list[StepOutcome] = field(default_factory=list)
+
+    def param(self, name: str, default: str = "") -> str:
+        """A `--param name=value` given on the command line, or *default*.
+
+        Params are how a task is run *smaller* than its full self — one defect instead of
+        eleven, a shorter budget — without editing the module or growing a second task.
+        They are recorded in the ledger and in the result pointer's note, because a round
+        run with a param is a different measurement and a result that does not say so is
+        the one that gets compared against a full one.
+        """
+        return str(self.params.get(name, default))
+
+    def param_list(self, name: str) -> tuple[str, ...]:
+        """A comma-separated param as a tuple; `()` when it was not given."""
+        return tuple(part.strip() for part in self.param(name).split(",") if part.strip())
+
+    def param_float(self, name: str, default: float = 0.0) -> float:
+        raw = self.param(name)
+        if not raw:
+            return default
+        try:
+            return float(raw)
+        except ValueError as exc:
+            raise RunError(f"--param {name}={raw!r} is not a number") from exc
+
+    def param_bool(self, name: str, default: bool = False) -> bool:
+        raw = self.param(name).strip().lower()
+        if not raw:
+            return default
+        if raw in ("1", "true", "yes", "on"):
+            return True
+        if raw in ("0", "false", "no", "off"):
+            return False
+        raise RunError(f"--param {name}={raw!r} is not a boolean")
 
     @property
     def artifacts(self) -> Path:
@@ -182,6 +217,7 @@ def execute(
     label: str,
     data_dir: Path,
     store: Path,
+    params: Mapping[str, str] | None = None,
     project: Path | None = None,
     seal: bool = True,
     keep: bool = False,
@@ -212,6 +248,7 @@ def execute(
         data_dir=data_dir,
         store=store,
         seed=pointer,
+        params=dict(params or {}),
         project=project,
     )
     outcomes = _run_steps(run)
@@ -224,7 +261,9 @@ def execute(
     zip_path: Path | None = None
     pointer_path: Path | None = None
     if seal:
-        zip_path, pointer_path = _seal(task, label, stage, data_dir, store, pointer, outcomes, score)
+        zip_path, pointer_path = _seal(
+            task, label, stage, data_dir, store, pointer, outcomes, score, run.params
+        )
 
     return RunResult(
         task=task.name,
@@ -289,6 +328,7 @@ def _write_ledger(run: Run, outcomes: Sequence[StepOutcome]) -> None:
             "label": run.label,
             "seed": {"name": run.seed.name, "sha256": run.seed.sha256, "head": run.seed.head},
             "config": str(run.config),
+            "params": dict(run.params),
             "steps": [
                 {
                     "name": outcome.name,
@@ -347,9 +387,16 @@ def _seal(
     seed: Pointer,
     outcomes: Sequence[StepOutcome],
     score: Score | None,
+    params: Mapping[str, str],
 ) -> tuple[Path, Path]:
     zip_path = paths.result_zip(store, task.name, label)
     archive.create(stage, zip_path, prefix=label)
+    # The note is what a human reads in the tracked pointer without fetching the zip, so
+    # a run narrowed by `--param` says so there: the same task under a smaller selection
+    # is a different measurement, and one that does not announce it invites a comparison
+    # against a full run that nobody would have made on purpose.
+    given = ", ".join(f"{key}={value}" for key, value in sorted(params.items()))
+    note = " ".join(part for part in (score.headline if score else "", f"[{given}]" if given else "") if part)
     pointer = ResultPointer(
         name=f"{task.name}/{label}",
         # A result zip roots at the label, not at the repo: the tree inside it is one
@@ -358,7 +405,7 @@ def _seal(
         sha256=archive.digest(zip_path),
         bytes=zip_path.stat().st_size,
         head=seed.head,
-        note=score.headline if score else "",
+        note=note,
         task=task.name,
         label=label,
         steps=sum(1 for outcome in outcomes if outcome.status == "ok"),

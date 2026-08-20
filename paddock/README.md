@@ -141,9 +141,16 @@ survive a reboot. A fixture that evaporates is not a fixture.
 paddock seed capture <repo> --name X   # repo state -> zip + tracked pointer
 paddock seed unpack <name> --to DIR    # pointer -> verified local tree
 paddock fetch <name>                   # url -> local store, sha256-verified
-paddock run <task> [--label L]         # unpack, steps, stage, (score), seal
+paddock run <task> [--label L] [--param K=V]   # unpack, steps, stage, (score), seal
 paddock list                           # tasks and their seeds
 ```
+
+`--param KEY=VALUE` (repeatable) is how a task is run *smaller* than its full self — one
+defect instead of eleven, a shorter budget — without editing the module or growing a
+second task. A step reads it with `run.param("name")` (plus `param_list` / `param_float` /
+`param_bool`), and the value is recorded in `steps.json` and in the result pointer's note,
+because a narrowed run is a different measurement and one that does not say so invites a
+comparison against a full run nobody would have made on purpose.
 
 Seeds are born by `capture`, not by hand: hand-zipping is what lets a `.venv` into a
 fixture, and the command is the contract's enforcement point — it refuses build output and

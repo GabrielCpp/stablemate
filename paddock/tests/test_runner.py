@@ -144,3 +144,59 @@ def test_a_missing_config_is_named_before_anything_runs(
     body = TASK.replace("benchmarks/configs/test.toml", "benchmarks/configs/absent.toml")
     with pytest.raises(RunError, match="does not exist"):
         run(repo, data_dir, store, body)
+
+
+PARAMS_TASK = '''
+from paddock import Score, step, task
+
+task(name="demo", seed="acme", config="benchmarks/configs/test.toml")
+
+@step()
+def record(run):
+    run.write_json(run.artifacts / "seen.json", {
+        "defects": list(run.param_list("defects")),
+        "budget": run.param_float("budget", 2400.0),
+        "control": run.param_bool("control", True),
+        "missing": run.param("nobody", "fallback"),
+    })
+
+def score(run):
+    return Score(headline="read the knobs", detail=(), data={})
+'''
+
+
+def test_params_reach_the_steps_and_are_recorded(repo: Path, data_dir: Path, store: Path) -> None:
+    result = run(
+        repo,
+        data_dir,
+        store,
+        PARAMS_TASK,
+        params={"defects": "PD-1, PD-2", "budget": "600", "control": "no"},
+    )
+    seen = json.loads((result.stage / "artifacts" / "record" / "seen.json").read_text(encoding="utf-8"))
+    assert seen == {
+        "defects": ["PD-1", "PD-2"],
+        "budget": 600.0,
+        "control": False,
+        "missing": "fallback",
+    }
+    ledger = json.loads((result.stage / "steps.json").read_text(encoding="utf-8"))
+    assert ledger["params"] == {"defects": "PD-1, PD-2", "budget": "600", "control": "no"}
+    # The tracked pointer says the run was narrowed, so it is never silently compared
+    # against a full one.
+    assert result.pointer_path is not None
+    assert "budget=600" in ResultPointer.load(result.pointer_path).note
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [("budget", "not a number"), ("control", "not a boolean")],
+)
+def test_a_malformed_param_is_named(
+    repo: Path, data_dir: Path, store: Path, body: str, message: str
+) -> None:
+    # A knob that does not parse fails the step that read it, by name — it is not
+    # silently coerced into the default the task would have used anyway.
+    result = run(repo, data_dir, store, PARAMS_TASK, params={body: "sideways"})
+    assert not result.ok
+    assert message in (result.outcomes[0].error or "")

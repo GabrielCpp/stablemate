@@ -4,7 +4,7 @@
 paddock seed capture <repo> --name X     # repo state -> zip + tracked pointer
 paddock seed unpack <name> --to DIR      # pointer -> verified local tree
 paddock fetch <name>                     # url -> local store, sha256-verified
-paddock run <task> [--label L]           # unpack, steps, stage, (score), seal
+paddock run <task> [--label L] [--param K=V]  # unpack, steps, stage, (score), seal
 paddock list                             # tasks and their seeds
 ```
 
@@ -81,6 +81,13 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--label", default="", help="names the result; default: the task name")
     run.add_argument("--no-seal", action="store_true", help="leave the staging area, write no zip")
     run.add_argument("--keep", action="store_true", help="reuse the existing work directory")
+    run.add_argument(
+        "--param",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="a knob the task reads with run.param(); repeatable",
+    )
     run.set_defaults(handler=cmd_run)
 
     listing = sub.add_parser("list", help="tasks and seeds in the data directory")
@@ -90,6 +97,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _data_dir(args: argparse.Namespace) -> Path:
     return (args.data_dir or paths.default_data_dir()).resolve()
+
+
+def _params(given: list[str]) -> dict[str, str]:
+    params: dict[str, str] = {}
+    for item in given:
+        key, sep, value = item.partition("=")
+        if not sep or not key.strip():
+            raise RunError(f"--param must be KEY=VALUE, got {item!r}")
+        params[key.strip()] = value
+    return params
 
 
 def _project(data_dir: Path) -> Path:
@@ -147,6 +164,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         label=label,
         data_dir=data_dir,
         store=args.store,
+        params=_params(args.param),
         project=_project(data_dir),
         seal=not args.no_seal,
     )
