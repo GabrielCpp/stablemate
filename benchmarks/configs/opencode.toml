@@ -1,0 +1,40 @@
+# The model tables a benchmark task pins, and nothing else.
+#
+# `workhorse-coder run --config` replaces the machine's stablemate config whole — no
+# merge — so a task that names this file measures these models rather than whatever the
+# operator happens to have selected today. That is the entire point: a scorecard produced
+# under an unpinned config compares against nothing.
+#
+# What is deliberately absent is every path. `library_dir`, `stablemate_dir` and
+# `worktree_dir` are machine-local, and a tracked absolute path is a lie on every machine
+# but the one it was written on — and, in a public repo, a lie that names a private
+# directory. A task fills them at run time from `stablemate_core.config`, rendering the
+# effective config into its scratch directory; this file stays the part that is the same
+# everywhere.
+
+config_version = 1
+default_cli = "opencode"
+
+[power.high.opencode]
+model = "openrouter/openai/gpt-5.6-luna"
+effort = "medium"
+
+[power.smart.opencode]
+model = "openrouter/openai/gpt-5.6-luna"
+effort = "high"
+
+[power.extra-smart.opencode]
+model = "openrouter/openai/gpt-5.6-luna"
+effort = "high"
+
+[power.medium.opencode]
+model = "openrouter/openai/gpt-5.6-luna"
+effort = "medium"
+
+[power.low.opencode]
+model = "openrouter/openai/gpt-5.6-luna"
+effort = "low"
+
+[default.opencode]
+model = "openrouter/openai/gpt-5.6-luna"
+effort = "medium"
