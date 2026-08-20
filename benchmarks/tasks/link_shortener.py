@@ -52,7 +52,7 @@ FIXTURE = gf.Fixture(
     # judge switches with whatever `$AGENT_CLI` holds, and two rounds graded by two
     # graders differ by an unknown amount of grader.
     judge_cli="opencode",
-    judge_model="openrouter/openai/gpt-5.6-luna",
+    judge_model="openai/gpt-5.6-sol",
     judge_effort="medium",
     # One hour per phase, except coder. Checked between states, so an over-budget phase
     # stops on a node boundary with its checkpoint intact — score it, then resume.
