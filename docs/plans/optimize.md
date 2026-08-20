@@ -51,37 +51,72 @@ and not averaged away by lint.
 
 ### Filled in after step 7 (Plan A's re-measure)
 
-Same repo, same story, same model tier as the baseline. Runs are `benchmarks/devlane.py`
-run-ids under `/tmp/bench-expense-split`; `a14` is the reference happy path.
+Same repo, same story, same model tier as the baseline, and the same starting commit for
+every run: `expense-list` in `/tmp/bench-expense-split` from `3fa416f`, a single Go service.
+Run-ids are `benchmarks/devlane.py` runs under that repo, re-derivable with
+`devlane.py table --run-id <id>` long after the console output is gone.
+
+| run | tree | turns | happy | repair | wall | cost |
+| --- | ---- | ----: | ----: | ------ | ---: | ---: |
+| `a12` | step 6 | 3 | 2 | 1 × `goal` | 11.0 min | $3.98 |
+| `a13` | step 6 | 3 | 2 | 1 × `goal` | 13.3 min | $5.61 |
+| `a14` | step 6 | 2 | 2 | — | 11.7 min | $4.64 |
+| `a15` | step 6 | 3 | 3 | — (schema retry) | 14.5 min | $5.51 |
+| `b1` | + role resolver | 3 | 2 | 1 × `goal` | 21.5 min | $8.86 |
+| `b2` | + role resolver | 2 | 2 | — | 16.5 min | $5.61 |
+| `b3` | + role resolver | 2 | 2 | — | 11.8 min | $4.74 |
+| `c1` | today's HEAD | 5 | 2 | 1 × `refine-plan`, 2 × `test` | 23.2 min | $8.29 |
 
 | Metric                                            | Baseline | Target       | Measured (A)                | |
 | ------------------------------------------------- | -------- | ------------ | --------------------------- | - |
-| High-power agent turns on the happy path          | 3        | 2            | **2** (`a14`)               | ✅ |
-| Agent turns on a one-failure path                 | 4        | 3            | **3**, twice (`a12`, `a13`) | ✅ |
-| Distinct result schemas parsed by `dev`           | 5+       | 3            | **3** — plan, impl, fix     | ✅ |
-| Lines under `coder/prompts/` naming a stack/tool  | many     | 0 (guarded)  | **0**, `make check-prompt-agnostic` over 90 files | ✅ |
-| Wall-clock, median story, happy path              | 22.7 min | ≥ 30 % lower | **11.7 min — 48 % lower**   | ✅ |
+| High-power agent turns on the happy path          | 3        | 2            | **2** in seven of eight runs | ✅ |
+| Agent turns on a one-failure path                 | 4        | 3            | **3**, three times (`a12`, `a13`, `b1`) | ✅ |
+| Distinct result schemas parsed by `dev`           | 5+       | 3            | **3** lane schemas — plan, impl, fix | ✅ |
+| Lines under `coder/prompts/` naming a stack/tool  | many     | 0 (guarded)  | **0**, `make check-prompt-agnostic` over 91 files | ✅ |
+| Wall-clock, median story, happy path              | 22.7 min (n=1) | ≥ 30 % lower | **13.9 min — 39 % lower** (median of n=8) | ✅ |
 | Stories ending `WorkflowFailed` on a budget       | 0        | 0            | **0**                       | ✅ |
-| Fix-lap success rate, per `FailureReport.source`  | measured | not lower    | **not measurable on A** — see below | ⚠️ |
+| Fix-lap success rate, per `FailureReport.source`  | no data  | not lower    | `goal` 3/3, `test` 1/2 — **no baseline to be lower than** | ⚠️ |
 
-Cost tracks the turn count: $6.22 baseline → $4.64 on `a14`.
+Median cost tracks the same way: $6.22 baseline → **$5.56** median. The eighth run is
+`a15`, whose happy path was three turns rather than two — a schema retry, described at the
+end of this section, and fixed in workhorse since.
 
-The last row is owed rather than met, and saying so is the point of having written it
-down. Neither re-measured happy path ran a fix lap at all, so there is no A-side rate to
-compare. Every lap the re-measure did produce came from a **gate defect rather than the
-code** — all `source: "goal"`, all four fixed as they were found: untracked files invisible
-to the gates (`00abb0c`), a promise written from the repo root but run in the service
-directory (`a72b117`), a promised command that can never terminate (`d3ed91f`), and a
-promised command with its outcome written beside it (`68a3e35`). A rate computed over laps
-that were repairing the harness would say nothing about the one the row is about. The row
-is carried to step 11, where it is measured on a story seeded to fail its gate once per
-source.
+Three honesty notes the single-run version of this table did not carry.
 
-One more turn was bought back after `a15` and is not in the table above: `a15` spent a
-third high-power turn on a schema retry, because every field of a `returns=` model was a
-required output key and the implement turn had sensibly omitted a branch-specific one
-(`d55ea6e`). It is a workhorse fix, not a dev-flow one, so the 2-turn happy path stands on
-`a14` and this only removes a way of losing it.
+**The schema row counts different things on each side unless you say which.** The baseline's
+"5 agent results" included `OperatorResolution`, which is the operator gate and not a step of
+the lane; the three above are `PlanResult`, `ImplResult` and `FixResult`. Like for like, the
+count went 5 → 4 with `OperatorResolution` in it, or 4 → 3 without. Either way `ReuseResult`
+and `FixLintResult` are gone and no `dev` turn parses a schema the fix loop does not reuse.
+
+**n matters more than the best run.** Quoting `a14`'s 11.7 min alone would have claimed 48 %,
+and the spread here is 11.0–23.2 min on an identical starting tree — wider than the effect
+being measured. The median over every run is the defensible number, and the slowest run in
+the set is the newest one.
+
+**`c1` is that run, and it says what the remaining cost is.** On today's HEAD the lane still
+spent two high-power turns getting to a plan and an implementation, and then three more on
+repair: one `refine-plan`, because the planner wrote `plan_file` as the repo-relative
+`docs/specs/expense-list/plan.md` where `validate_plan` resolves it under the spec directory
+and so found nothing; and two `dev-fix` laps on the `test` gate, the first of which came back
+before the second closed it. The plan-validation lap is an interface defect rather than a bad
+plan — the same string is correct under one reading and unresolvable under the other — and it
+cost a 203 s high-power turn. It is tracked as its own ledger item; it is not evidence about
+turn count, and it is not excluded from the table either.
+
+The fix-lap row remains owed rather than met, for the reason the baseline gave: no lap ran on
+the baseline, so there is no rate to be "not lower" than. What is now on record is the A-side
+rate itself — `goal` 3/3, `test` 1/2 — measured over laps that repaired the *code*, unlike
+the earlier `goal` laps that were repairing the harness (untracked files invisible to the
+gates, `00abb0c`; a promise written from the repo root but run in the service directory,
+`a72b117`; a promised command that can never terminate, `d3ed91f`; a promised command with
+its outcome written beside it, `68a3e35`). Step 11 measures it on a story seeded to fail its
+gate once per source, which is the comparison this row actually wants.
+
+One more turn was bought back after `a15`: it spent a third high-power turn on a schema
+retry, because every field of a `returns=` model was a required output key and the implement
+turn had sensibly omitted a branch-specific one (`d55ea6e`). It is a workhorse fix, not a
+dev-flow one, so it only removes a way of losing the 2-turn happy path.
 
 ## Three invariants
 
