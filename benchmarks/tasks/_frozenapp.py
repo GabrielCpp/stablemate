@@ -32,7 +32,7 @@ from urllib.parse import urlsplit
 
 import yaml
 import _forensics as fx
-from _stablemate import TrialError, effective, git, stablemate_dir
+from _stablemate import TrialError, effective, git, stablemate_checkout
 from paddock import Run, Score
 
 # ── the app tree ──────────────────────────────────────────────────────────────────────
@@ -837,7 +837,7 @@ def plan_round(run: Run, app: Path) -> list[tuple[str, dict[str, str] | None]]:
 def run_round(run: Run, fixture: Fixture) -> None:
     """Run the round: materialize, seed, drive `workhorse-coder run qa`, keep the witness."""
     app = key_dir(run, fixture)
-    checkout = stablemate_dir()
+    checkout = stablemate_checkout(run)
     budget = run.param_float("budget", fixture.budget_s)
     config = effective(run)
     runs_dir = trials_dir(run) / "runs"
@@ -903,6 +903,9 @@ def run_round(run: Run, fixture: Fixture) -> None:
         # Not a warning. An agent that resolved its project root to the harness's own
         # checkout committed the trial's work there, which means the tree it was measured
         # on is not the tree it wrote to — every verdict in the round is void.
+        # Read against the tree paddock pinned for this round, which nobody else
+        # writes to — so a commit here is a leak by construction rather than by
+        # heuristic, and an operator committing in their own checkout is invisible.
         raise TrialError(
             f"the round committed into {checkout} instead of its sandboxes:\n{leaked}\n"
             f"drop those commits before believing any number here"

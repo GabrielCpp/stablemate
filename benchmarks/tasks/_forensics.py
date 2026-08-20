@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from _stablemate import TrialError, stablemate_dir
+from _stablemate import TrialError
 
 
 # ── the vocabulary ────────────────────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ DRIVING_NODE = "run_qa_plan"
 # ── reliability: did the machinery get there on its own? ──────────────────────────────
 
 
-def workflow_src() -> Path:
+def workflow_src(checkout: Path) -> Path:
     """The workflow source tree, located only to *date* the code a round was produced by.
 
     A report that can describe a round older than the code under test is the same vacuous
@@ -74,23 +74,23 @@ def workflow_src() -> Path:
     the deleted YAML layout, it matched nothing, and every staleness verdict silently
     became False in exactly the way the check was written to catch.
     """
-    source = stablemate_dir() / "workflows" / "src" / "workhorse_workflows"
+    source = checkout / "workflows" / "src" / "workhorse_workflows"
     if not source.is_dir():
         raise TrialError(f"no workflow source at {source} — the round is out of date with the tree")
     return source
 
 
-def newest_source_mtime() -> float:
+def newest_source_mtime(checkout: Path) -> float:
     return max(
         (f.stat().st_mtime
          for pat in ("**/*.py", "**/*.md", "**/*.j2")
-         for f in workflow_src().glob(pat)
+         for f in workflow_src(checkout).glob(pat)
          if "__pycache__" not in f.parts),
         default=0.0,
     )
 
 
-def read_runs(runs_root: Path) -> list[dict[str, Any]]:
+def read_runs(runs_root: Path, checkout: Path) -> list[dict[str, Any]]:
     """One row per recorded run: nodes entered, repair loops, escalations, staleness.
 
     The reliability question is not "did a valid repo appear" but "did the machinery get
@@ -98,7 +98,7 @@ def read_runs(runs_root: Path) -> list[dict[str, Any]]:
     and repair a deterministic gap still ends with a valid repo, and reading only the end
     state scores that as success.
     """
-    newest = newest_source_mtime()
+    newest = newest_source_mtime(checkout)
     rows: list[dict[str, Any]] = []
     for directory in sorted(p for p in runs_root.glob("*") if p.is_dir()):
         events = directory / "events.jsonl"

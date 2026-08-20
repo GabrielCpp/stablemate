@@ -47,6 +47,25 @@ def stablemate_dir() -> Path:
     return resolved
 
 
+def stablemate_checkout(run: Run) -> Path:
+    """The checkout *this run* drives, which is not always the operator's.
+
+    paddock pins the project to a detached worktree at the checkout's HEAD, so a round
+    measures one commit of the code even while the operator keeps editing theirs. When it
+    is pinned, `run.project` is that worktree and everything the round reads about the
+    code — the workflow source it dates itself against, the git log the leak check reads —
+    has to come from there, or the trial is measured against a tree it never ran.
+
+    Falls back to the machine's configured checkout when the run was given no project (a
+    task invoked outside `paddock run`, or `--no-pin-project` on a source git could not
+    make a worktree of).
+    """
+    project = run.project
+    if project is not None and (project / "pyproject.toml").is_file():
+        return project
+    return stablemate_dir()
+
+
 def effective(run: Run) -> Path:
     return run.scratch / "stablemate-config.toml"
 

@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import _forensics as fx
-from _stablemate import TrialError, effective, git, stablemate_dir
+from _stablemate import TrialError, effective, git, stablemate_checkout
 from ostler import markdown
 from paddock import Run, Score
 from workhorse.config_run import AgentResilience
@@ -212,7 +212,7 @@ def run_genesis(run: Run, fixture: Fixture) -> None:
     # `--project` rather than an inherited cwd, and `cwd=run.repo` for every phase: the
     # round's processes stand *in the tree under test*, so uv is told where its workspace
     # is instead of finding it underfoot. The same rule the frozen-app round follows.
-    checkout = stablemate_dir()
+    checkout = stablemate_checkout(run)
     for surface in fixture.surfaces:
         started = time.monotonic()
         result = run.cli(
@@ -259,7 +259,7 @@ def run_phase(run: Run, fixture: Fixture, phase: str, *argv: str) -> None:
     budget-exhausted `coder` is a measurement, not an aborted round. What must never
     happen is *silence*, so the rc travels in the ledger and into the score's detail.
     """
-    checkout = stablemate_dir()
+    checkout = stablemate_checkout(run)
     started = time.monotonic()
     result = run.cli(
         "uv", "run", "--project", str(checkout),
@@ -324,7 +324,7 @@ def run_round(run: Run, fixture: Fixture) -> None:
     One step rather than five, so a round is one entry in the ledger and one thing to
     resume thinking about. The phases are still separately recorded — see `build.json`.
     """
-    checkout = stablemate_dir()
+    checkout = stablemate_checkout(run)
     before = git("rev-parse", "HEAD", cwd=checkout).strip()
 
     run_genesis(run, fixture)
@@ -337,6 +337,9 @@ def run_round(run: Run, fixture: Fixture) -> None:
         # Not a warning. An agent that resolved its project root to the harness's own
         # checkout committed the round's work there, which means the tree it was measured
         # on is not the tree it wrote to — every number in the report is void.
+        # Read against the tree paddock pinned for this round, which nobody else
+        # writes to — so a commit here is a leak by construction rather than by
+        # heuristic, and an operator committing in their own checkout is invisible.
         raise TrialError(
             f"the round committed into {checkout} instead of its sandbox:\n{leaked}\n"
             f"drop those commits before believing any number here"
@@ -691,7 +694,7 @@ def score_round(run: Run, fixture: Fixture) -> Score:
     tally: dict[int, int] = defaultdict(int)
     for b in bullets:
         tally[int(b["level"])] += 1
-    runs = fx.read_runs(runs_dir(run))
+    runs = fx.read_runs(runs_dir(run), stablemate_checkout(run))
     nodes = fx.hang_candidates(runs_dir(run), run.stage / "artifacts")
     detail = [
         *bullet_table(bullets),
