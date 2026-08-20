@@ -232,6 +232,9 @@ def phases_of(run: Run) -> list[dict[str, Any]]:
 
 def run_genesis(run: Run, fixture: Fixture) -> None:
     """Scaffold every surface, then seed the backlog into the tree genesis just made."""
+    # `--project` rather than an inherited cwd, and `cwd=run.repo` for every phase: the
+    # round's processes stand *in the tree under test*, so uv is told where its workspace
+    # is instead of finding it underfoot. The same rule the frozen-app round follows.
     checkout = stablemate_dir()
     for surface in fixture.surfaces:
         started = time.monotonic()
@@ -241,7 +244,7 @@ def run_genesis(run: Run, fixture: Fixture) -> None:
             "--runs-dir", str(runs_dir(run)),
             "--config", str(effective(run)),
             "--params", fixture.params(run.repo, surface),
-            cwd=checkout,
+            cwd=run.repo,
             env=phase_env(run, fixture, "genesis"),
             log_name=f"genesis-{surface.service}",
         )
