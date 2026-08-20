@@ -31,6 +31,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import yaml
+import _forensics as fx
 from _stablemate import TrialError, effective, git, stablemate_dir
 from paddock import Run, Score
 
@@ -51,15 +52,6 @@ QA_OUTPUTS = (
     "qa-plan.yml", "qa-plan.md", "qa.md", "qa-evidence.json",
     "qa-okf-verification-index.json", "qa",
 )
-
-#: The nodes the round exists to move. Others still print — a change that fixes one loop
-#: by pushing the work into another has not fixed anything — but these are the headline.
-WATCHED = ("plan-qa", "audit-qa", "document-story", "review-story-documentation")
-
-#: The deterministic node that drives the product: the QA plan actually executing against
-#: a running app. Its share of the trial's wall clock is the time-leverage numerator —
-#: everything else is the loop talking to itself about what it is going to do.
-DRIVING_NODE = "run_qa_plan"
 
 #: The label a trial with nothing seeded in it carries.
 CLEAN = "clean"
@@ -270,57 +262,6 @@ def capture_witness(repo: Path, dest: Path, extra: tuple[str, ...] = ()) -> Path
             (dest / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, dest / rel)
     return dest
-
-
-def timing_of(run_id: str, wall_s: float) -> dict[str, Any]:
-    """Per-trial wall clock, the run's own time partition, and per-node seconds.
-
-    Two clocks on purpose. `wall_s` is measured around the subprocess and includes
-    everything the harness paid for — materialization, compose bring-up, the run, the
-    teardown. groom's partition is what happened *inside* the run, and it is the only one
-    that can separate the agent thinking from the product being driven.
-
-    Per-node seconds come from the spans directly rather than from `node_costs`, which
-    counts `agent_turn` spans only: the node this instrument is about, `run_qa_plan`, is
-    deterministic and has no turn under it. A node span is named after its node, so
-    selecting `name == node` sums each node once instead of once per nested turn.
-    """
-    from groom import store
-
-    profile = store.run_profile(run_id) or {}
-    nodes: dict[str, float] = {}
-    for span in store.query_spans(run=run_id, limit=100000):
-        if span.get("name") != span.get("node") or not span.get("node"):
-            continue
-        seconds = float(span.get("end_ts") or 0.0) - float(span.get("start_ts") or 0.0)
-        if seconds > 0:
-            nodes[str(span["node"])] = nodes.get(str(span["node"]), 0.0) + seconds
-    return {
-        "wall_s": round(wall_s, 1),
-        "time_s": {
-            key: round(value, 1)
-            for key, value in (profile.get("time_s") or {}).items()
-            if isinstance(value, (int, float))
-        },
-        "nodes_s": {node: round(seconds, 1) for node, seconds in sorted(nodes.items())},
-        "driving_s": round(nodes.get(DRIVING_NODE, 0.0), 1),
-    }
-
-
-def laps_of(run_id: str) -> list[dict[str, Any]]:
-    """This trial's per-node lap rows, persisted so the round can be re-scored later.
-
-    `min_work_items=1` because a trial is ONE story, so every node has exactly one work
-    item; `groom loops`' default of 3 exists to keep one-off nodes out of a whole-machine
-    report and would silence this one entirely.
-    """
-    from groom import store
-
-    keep = ("node", "work_items", "turns", "max_laps", "cost_usd", "est_cost_usd")
-    return [
-        {key: row.get(key) for key in keep}
-        for row in store.loop_convergence(run=run_id, min_work_items=1)
-    ]
 
 
 # ── classification ────────────────────────────────────────────────────────────────────
@@ -792,120 +733,13 @@ def leverage_line(metrics: dict[str, Any]) -> str:
 # ── the round, rendered ───────────────────────────────────────────────────────────────
 
 
-def money(rows: list[dict[str, Any]]) -> str:
-    """`$0.94`, or `~$0.71` when the estimate is standing in, or `$?` when neither exists.
-
-    `?` rather than `$0.00`: a backend that reports nothing and a model the rate card does
-    not name leave the round genuinely unpriced, and a zero there is a claim. A backend
-    under subscription auth reports a literal `$0` over millions of tokens, which is not a
-    cheap round, it is an unpriced one.
-    """
-    billed = sum(row.get("cost_usd") or 0.0 for row in rows)
-    if billed:
-        return f"${billed:.2f}"
-    estimated = sum(row.get("est_cost_usd") or 0.0 for row in rows)
-    return f"~${estimated:.2f}" if estimated else "$?"
-
-
-def convergence(trials: list[dict[str, Any]]) -> str:
-    """The cost half of the headline: `| plan-qa 2.1 laps ~$0.94`, pooled over the round.
-
-    Detection and convergence belong on one line because either alone is gameable in the
-    direction of the other — a flow that refutes everything catches every defect and never
-    terminates, and one that approves everything converges in a single lap.
-    """
-    rows = [
-        row
-        for trial in trials
-        for row in (trial.get("laps") or [])
-        if row.get("node") == "plan-qa"
-    ]
-    if not rows:
-        return ""
-    items = sum(row.get("work_items") or 0 for row in rows)
-    turns = sum(row.get("turns") or 0 for row in rows)
-    return f" | plan-qa {turns / items:.1f} laps {money(rows)}" if items else ""
-
-
-def time_leverage(trials: list[dict[str, Any]]) -> str:
-    """`time-leverage: 8% (12m driving / 148m)` — the product-facing share of the round.
-
-    The question the number answers is what a QA lane spends its hour on. `run_qa_plan` is
-    the only node that touches the running application; everything else is the loop
-    authoring, reviewing and repairing its intention to do so. A round that catches every
-    defect at 3% time-leverage and one that catches them at 30% are the same scorecard and
-    very different products, which is the same reason the leverage line sits under the
-    detection line rather than replacing it.
-
-    Wall clock is summed across trials rather than measured end to end: the round is
-    sequential today, and a sum stays honest if it ever stops being.
-    """
-    wall = sum(float((trial.get("timing") or {}).get("wall_s") or 0.0) for trial in trials)
-    driving = sum(float((trial.get("timing") or {}).get("driving_s") or 0.0) for trial in trials)
-    if not wall:
-        return ""
-    return (
-        f"time-leverage: {driving / wall:.0%} "
-        f"({driving / 60:.0f}m driving / {wall / 60:.0f}m)"
-    )
-
-
-def node_table(trials: list[dict[str, Any]]) -> list[str]:
-    """The per-node convergence table, pooled over every trial in the round.
-
-    Laps are summed rather than averaged, which is the right aggregation for this
-    statistic: the exit rate is a per-lap acceptance probability, and pooling the laps is
-    its maximum-likelihood estimate over the whole sample. Averaging per-trial rates would
-    weight a one-lap story the same as a thirteen-lap one.
-    """
-    pooled: dict[str, list[dict[str, Any]]] = {}
-    seconds: dict[str, float] = {}
-    for trial in trials:
-        for row in trial.get("laps") or []:
-            pooled.setdefault(str(row.get("node")), []).append(row)
-        for node, value in ((trial.get("timing") or {}).get("nodes_s") or {}).items():
-            seconds[node] = seconds.get(node, 0.0) + float(value)
-    if not pooled:
-        return ["no laps recorded — did the runs reach an agent turn?"]
-
-    lines = [f"  {'node':<30} {'items':>5} {'turns':>5} {'exit':>6} {'mean':>5} "
-             f"{'max':>4} {'cost$':>8} {'min':>6}"]
-    order = sorted(
-        pooled.items(),
-        key=lambda kv: (kv[0] not in WATCHED, -sum(row.get("turns") or 0 for row in kv[1])),
-    )
-    for node, rows in order:
-        items = sum(row.get("work_items") or 0 for row in rows)
-        turns = sum(row.get("turns") or 0 for row in rows)
-        if not items or not turns:
-            continue
-        mark = "*" if node in WATCHED else " "
-        lines.append(
-            f"{mark} {node:<30} {items:>5} {turns:>5} {items / turns:>5.0%} "
-            f"{turns / items:>5.2f} {max(row.get('max_laps') or 0 for row in rows):>4} "
-            f"{money(rows):>8} {seconds.get(node, 0.0) / 60:>6.1f}"
-        )
-    excess = sum(
-        (row.get("turns") or 0) - (row.get("work_items") or 0)
-        for rows in pooled.values()
-        for row in rows
-    )
-    every = [row for rows in pooled.values() for row in rows]
-    lines.append(f"  {'-' * 75}")
-    lines.append(
-        f"  {'TOTAL':<30} {'':>5} {'':>5} {'':>6} {'':>5} {'':>4} {money(every):>8} "
-        f"{'':>6}   ({excess} excess turns)"
-    )
-    return lines
-
-
 def headline(trials: list[dict[str, Any]]) -> str:
     seeded = [trial for trial in trials if trial["defect"] != CLEAN]
     caught = sum(1 for trial in seeded if trial["verdict"] == "caught")
     missed = sum(1 for trial in seeded if trial["verdict"] == "missed")
     false = sum(1 for trial in trials if trial["verdict"] == "false")
     unknown = sum(1 for trial in trials if trial["verdict"] == "inconclusive")
-    line = f"caught {caught}/{len(seeded)}  missed {missed}  false {false}{convergence(trials)}"
+    line = f"caught {caught}/{len(seeded)}  missed {missed}  false {false}{fx.convergence(trials)}"
     if unknown:
         # Loudly, and never folded into a miss: an inconclusive trial is the harness
         # failing, and averaging it into the detection rate hides the outage as a result.
@@ -924,10 +758,10 @@ def detail(trials: list[dict[str, Any]]) -> list[str]:
         lines.append(f"    {trial['obligation'] or '(control)'}")
     lines.append("")
     lines.append("  " + leverage_line(pool_leverage(trials)))
-    if (leveraged := time_leverage(trials)):
+    if (leveraged := fx.time_leverage(trials)):
         lines.append("  " + leveraged)
     lines.append("")
-    lines.extend(node_table(trials))
+    lines.extend(fx.node_table(trials))
     return lines
 
 
@@ -1059,8 +893,8 @@ def run_round(run: Run, fixture: Fixture) -> None:
             "path": str(row["path"]) if row else "",
             "rc": result.returncode,
             "witness": str(witness.relative_to(run.stage)),
-            "timing": timing_of(run_id, wall),
-            "laps": laps_of(run_id),
+            "timing": fx.timing_of(run_id, wall),
+            "laps": fx.laps_of(run_id),
         })
         run.write_json(trials_dir(run) / "trials.json", ledger)
 
