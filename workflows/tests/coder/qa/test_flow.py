@@ -849,8 +849,8 @@ def test_one_clean_pass_through_every_gate(
         "plan-qa": 1,
         "audit-qa": 1,
     }, agent.counts()
-    # A fresh story has no plan on disk, so the turn is briefed to author, not confirm.
-    assert agent.args_for("plan-qa")[0]["standing_plan"] is False
+    # A fresh story has no plan on disk, so an authoring turn ran at all.
+    assert agent.planned() == 1, agent.counts()
     # One packet build, one run, and the evidence contract really was vetted.
     assert (okf.contexts, okf.runs, okf.vets) == (1, 1, 1)
     # The runner's artifacts are on disk and the gate accepted them on their own terms.
@@ -1459,9 +1459,12 @@ def test_a_context_rebuild_past_the_plan_budget_still_authors_against_it(
     """The join point is an entry into the plan lane, bounded by `MAX_CONTEXT_REWORKS`.
 
     `build_context` clears `plan_authored` because a rebuilt packet changed what the diff
-    obligates, so the plan answering the old obligations must not be the one that runs. The
-    clock used to override that and send the stale plan to the runner anyway; what bounds
-    the rejoin now is the ceiling on the rebuilds themselves.
+    obligates, so the plan answering the old obligations must not be the one that runs.
+    What decides whether the plan on disk still answers is the validate gate, re-run
+    against the rebuilt packet: here it still passes, so the rejoin adopts the standing
+    plan rather than paying a turn to reproduce it — a packet whose obligations really
+    moved fails that gate and buys the authoring turn. The clock overrides none of it;
+    what bounds the rejoin is the ceiling on the rebuilds themselves.
     """
     okf = ostler(fail_runs=1)
     agent = _Agent(docs, assessment_class="product")
@@ -1470,7 +1473,7 @@ def test_a_context_rebuild_past_the_plan_budget_still_authors_against_it(
 
     assert result.status == "passed", result
     assert agent.counts()["apply-qa-fixes"] == 1, agent.counts()
-    assert agent.planned() == 2, "the rebuilt packet bought its own authoring turn"
+    assert agent.planned() == 1, "the plan still validating against the rebuilt packet is adopted"
     assert okf.runs == 2, agent.counts()
 
 
@@ -3054,20 +3057,21 @@ def test_a_triage_that_cannot_proceed_reaches_the_operator(
 # ------------------------------------------------------- a standing plan, and first verdicts
 
 
-def test_a_standing_valid_plan_briefs_the_confirm_turn_not_the_author(
+def test_a_standing_valid_plan_is_adopted_without_an_authoring_turn(
     docs: Path,
     ostler: Callable[..., _Ostler],
     write: Callable[[Path, str], Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A `qa_plan.py` that lints and validates is confirmed, never re-authored.
+    """A `qa_plan.py` that lints and validates goes to the runner with no plan turn at all.
 
     `build_context` clears `plan_authored` on every entry, so before this a re-QA of a
     story whose accepted plan sat on disk paid a full authoring turn to write it again.
-    The gates run *before* the turn now: a plan that passes both flips the brief to
-    `standing_plan` and drops the turn to the cheap tier, and the validation tail still
-    re-checks whatever the turn left behind.
+    The gates run *before* the turn now, and they are the whole question: lint vouches
+    for the AST, validate fail-closes on any uncovered required obligation — so a plan
+    that passes both is adopted outright, and the validation tail still re-checks what
+    is on disk before the runner spends anything on it.
     """
     ostler()
     write(docs / SPEC_REL / "qa_plan.py", QA_PLAN)
@@ -3076,9 +3080,9 @@ def test_a_standing_valid_plan_briefs_the_confirm_turn_not_the_author(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
-    # Still exactly one plan turn — the fast path changes its brief, not its count.
-    assert agent.planned() == 1, agent.counts()
-    assert agent.args_for("plan-qa")[0]["standing_plan"] is True
+    # No plan turn: the standing plan is the plan. The runner still ran it.
+    assert agent.planned() == 0, agent.counts()
+    assert agent.args_for("plan-qa") == [], agent.counts()
 
 
 def test_first_verdict_finishes_a_green_run_with_no_post_run_agent_turns(

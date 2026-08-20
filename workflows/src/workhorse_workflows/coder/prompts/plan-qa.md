@@ -6,27 +6,6 @@ agent: agent
 
 Author the complete, machine-executable QA plan for one reviewed story. Do not execute
 QA. Ostler is the only primary executor for command, browser, and mobile scenarios.
-{% if standing_plan %}
-## A validated plan already stands — confirm it, do not re-author
-
-`{{ workhorse_var('spec_dir') }}/qa_plan.py` already exists, and the workflow just
-re-checked it against the current obligation packet before this turn: it lints and it
-validates. Your job this turn is **not** to write a plan. It is to confirm the standing
-one still answers the story and the diagnostics below, and to amend the minimum where it
-does not.
-
-- Read the standing plan against the story and the inputs. If it covers them, change
-  nothing: leave the file byte-identical, leave `proved_scenarios` empty, and return
-  `status: done` with a one-line note saying you confirmed the standing plan.
-- If something has moved underneath it — an obligation the packet added, a diagnostic
-  below naming a real gap — edit **only** that part, dry-run **only** the scenarios you
-  changed, and name those ids in `proved_scenarios`. An untouched scenario needs no
-  re-proof, and an empty list skips the dry-run gate entirely.
-- Do not regenerate the file, reorder it, or restyle it. A rewrite resamples scenarios
-  the downstream gates have already accepted, which is exactly the churn this fast path
-  exists to remove. Everything below this section describes the authoring job; read it
-  as the contract the standing plan already meets, not as work to redo.
-{% endif %}
 
 ## Time budget — {{ node_timeout_min }} minutes
 

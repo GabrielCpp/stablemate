@@ -726,6 +726,10 @@ class Qa(Workflow):
         `plan_qa` + `clear_qa_gate_state` + `stamp_specs_qa_plan` + `lint_qa_plan` +
         `validate_qa_plan` + `decide_qa_plan_validation`.
 
+        Unless a standing `qa_plan.py` already passes both machine gates against the
+        packet — then no turn runs at all and the plan goes straight to the validation
+        tail; see `_standing_plan` for why the gates are the whole question.
+
         The plan turn is handed every diagnostic the loop collected — the packet's status,
         the last validation, the last run assessment, the last audit, the last evidence
         verdict — and then those are cleared, because they describe a plan that no longer
@@ -752,7 +756,21 @@ class Qa(Workflow):
         as it was before — but a draft that names an id it did not run is.
         """
         self.logger.info("planning QA for %s", self.ctx.story_slug, extra={"activity": True})
-        standing = self._standing_plan()
+        if self._standing_plan():
+            # Both machine gates just passed against the packet this context stage built:
+            # the lint gate vouches for the AST and the validate gate fail-closes on any
+            # required obligation no asserted scenario covers, which is the whole coverage
+            # question the low-power confirm turn used to answer by reading. That turn's
+            # observed output was a rubber stamp ("no plan changes were needed") bought at
+            # the price of the suite run it stood in front of — so a standing plan now goes
+            # straight to the validation tail, and the authoring turn is reserved for the
+            # stories that have no accepted plan or whose plan a gate just refused.
+            self.logger.info(
+                "a standing qa_plan.py lints and validates against the packet — "
+                "adopting it without an authoring turn",
+                extra={"activity": True},
+            )
+            return self._validated(loop)
         overran = ""
         started = time.monotonic()
         drafted: QaPlanResult | None = None
@@ -762,10 +780,9 @@ class Qa(Workflow):
                 turn.prompt,
                 returns=QaPlanResult,
                 # medium: writing a runnable plan against a schema, from a story and an
-                # obligation packet that both already exist. low when a validated plan
-                # already stands — confirming it still answers the packet is a read,
-                # not an authoring job.
-                power="low" if standing else "medium",
+                # obligation packet that both already exist. (A standing validated plan
+                # never reaches this turn any more — it is adopted above.)
+                power="medium",
                 session=self._story_chain(),
                 # 20 min. Without a cap this node inherits the run's 3600s watchdog, and it
                 # used it: over four days its longest turns were exactly 60.0 min, and two
@@ -778,7 +795,7 @@ class Qa(Workflow):
                 # turn is worth more to this flow than any number of fresh ones.
                 retries=0,
                 add_dirs=self._dirs(),
-                args=turn.args | self._plan_args(loop) | {"standing_plan": standing},
+                args=turn.args | self._plan_args(loop),
             )
         except AgentTimeout:
             self.logger.info(
@@ -879,16 +896,17 @@ class Qa(Workflow):
     def _standing_plan(self) -> bool:
         """Does a `qa_plan.py` already stand that lints and validates against the packet?
 
-        The plan turn re-authors from the story every time it runs today, because
+        The plan turn used to re-author from the story every time it ran, because
         `build_context` clears `plan_authored` on every rejoin — so a re-QA of a story
-        whose accepted plan is sitting on disk pays a full authoring turn to write it
-        again, and the benchmark's frozen fixtures pay the same turn to reproduce a plan
+        whose accepted plan was sitting on disk paid a full authoring turn to write it
+        again, and the benchmark's frozen fixtures paid the same turn to reproduce a plan
         they shipped with. Both machine gates run here, fresh, against the packet the
-        context stage just rebuilt: a plan that passes them is the same plan the
-        validation tail would wave through, so the turn's job collapses to confirming
-        coverage (or amending the minimum), which `standing_plan` in the brief and the
-        low power tier both say. A plan that fails either gate gets the full authoring
-        turn exactly as before — this is a fast path, never a new outcome.
+        context stage just rebuilt: the lint gate vouches for the AST, and the validate
+        gate refuses a plan that leaves any required packet obligation uncovered or that
+        claims one without invoking its declared `verify:` check — so a plan that passes
+        them is the same plan the validation tail would wave through, and `plan` adopts
+        it without an authoring turn. A plan that fails either gate gets the full
+        authoring turn exactly as before — this is a fast path, never a new outcome.
         """
         spec_dir = self.ctx.spec_dir
         if not spec_dir or not (Path(spec_dir) / "qa_plan.py").is_file():
