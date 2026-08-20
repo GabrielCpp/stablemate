@@ -106,6 +106,19 @@ class Workflow(BaseModel):
     #: `AGENT_REPO_DIR` is none of. A state passes it on to the nodes that need it.
     repo_dir: str = ""
 
+    #: The library roots a workflow resolves *content* against, highest precedence
+    #: first: the overlay a machine configured, then the base library. Empty when
+    #: neither is installed, which is a legal state for a workflow that resolves no
+    #: content — and a run-stopping one for a workflow whose prompt bodies live there.
+    #:
+    #: Here for the same reason `repo_dir` is: the discovery ladder reads
+    #: `$STABLEMATE_BASE_DIR`, `$FARRIER_LIBRARY_DIR` and the shared config, and a
+    #: workflow may read none of them. The CLI walks that ladder once, at the process
+    #: boundary, and hands the answer down as an ordinary parameter — so the library a
+    #: run resolved against is in its checkpoint and in its telemetry, and a resume
+    #: cannot silently land on a different one.
+    library_dirs: tuple[str, ...] = ()
+
     #: Input fields the seams *fill in* — for a node (or a sub-workflow) that declares a
     #: parameter of the same name and was not passed one at the callsite.
     #:

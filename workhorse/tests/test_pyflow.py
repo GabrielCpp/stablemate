@@ -288,9 +288,13 @@ def test_the_checkpoint_is_the_state_and_its_params():
         assert cp["state"] == "boom", cp
         assert cp["params"] == {"attempt": 2}, cp
         assert cp["flow"] == "Stops", cp
-        # `repo_dir` rides along because the base declares it: every run works on a
-        # checkout, so it is an input of every workflow whether or not one was passed.
-        assert cp["inputs"] == {"subject": "login", "repo_dir": ""}, cp
+        # `repo_dir` and `library_dirs` ride along because the base declares them: every
+        # run works on a checkout, and resolves its content against whatever library
+        # layers the machine has, so both are inputs of every workflow whether or not
+        # one was passed — and both are therefore in the checkpoint a resume reads.
+        assert cp["inputs"] == {
+            "subject": "login", "repo_dir": "", "library_dirs": []
+        }, cp
         assert cp["waiting_on"] is None, cp
 
 

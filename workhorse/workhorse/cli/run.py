@@ -36,6 +36,7 @@ from workhorse._vendor.stablemate_core.config import (
     resolve_default_cli,
     select_profile,
 )
+from workhorse._vendor.stablemate_core.discovery import base_library_dir
 from workhorse.cli.params import load_params
 from workhorse.config_run import RunConfig
 # Bound under its historical private name, which is also what lets a test patch the
@@ -246,6 +247,10 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     # directory expressible at all.
     params = load_params(args.params, args.params_file)
     params.setdefault("repo_dir", os.environ.get("AGENT_REPO_DIR") or str(Path.cwd().resolve()))
+    # Same boundary, same reason: the library ladder is three environment variables and a
+    # config file deep, and a workflow may read none of them. It is walked here and handed
+    # down as a parameter, so `--param library_dirs=[…]` can point a run at a checkout.
+    params.setdefault("library_dirs", _library_dirs(cfg))
 
     return RunInvocation(
         registry=registry,
@@ -264,6 +269,30 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         ),
         telemetry=otel.TelemetryHost(otel.OtelSettings.from_env(os.environ)),
     )
+
+
+def _library_dirs(cfg: dict[str, Any]) -> list[str]:
+    """The library roots this run resolves content against, highest precedence first.
+
+    The same two layers farrier renders across, in the same order: the *overlay*
+    (`$FARRIER_LIBRARY_DIR`, else the shared config's `library_dir`), then the *base*
+    (`stablemate_core.discovery.base_library_dir`, itself a four-rung ladder ending at
+    the fetched cache). A layer that is not on disk is dropped rather than passed on as
+    a path that will not resolve — an absent overlay is the normal state, not an error.
+
+    Lookup only, exactly as `base_library_dir` is: a run that needs a base library it
+    has not got says so where that is the actual problem, and never as a 16M download
+    triggered by building an invocation.
+    """
+    roots: list[str] = []
+    overlay = os.environ.get("FARRIER_LIBRARY_DIR") or get_config_value("library_dir", cfg)
+    for candidate in (overlay, base_library_dir()):
+        if not candidate:
+            continue
+        path = Path(str(candidate)).expanduser()
+        if path.is_dir() and str(path) not in roots:
+            roots.append(str(path))
+    return roots
 
 
 def _configured_default_cli(cfg: dict[str, Any], profile: dict[str, Any]) -> str:

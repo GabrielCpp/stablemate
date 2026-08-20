@@ -292,9 +292,18 @@ def render(template_path: str | Path, context: dict[str, Any], workflow_dir: str
     A repo may override a node prompt via a flavor file (see :func:`_flavor_override`);
     when present it is rendered instead, with the base prompt on the loader path so its
     ``{% extends %}`` resolves. Otherwise the base prompt renders exactly as authored.
+
+    ``_body_dir`` in the context puts one further directory on the loader path, *after*
+    everything above. That is how a workflow-owned **envelope** — provided inputs, the
+    exit-condition stage, the result schema — pulls in a **body** the workflow does not
+    own and did not ship: the state resolves which body applies (the repo's override,
+    the library layer it came from), passes the directory here and the name as an
+    ordinary variable, and the envelope says ``{% include body_template %}``. Last on
+    the path, so a body can never shadow a template the workflow ships.
     """
     workflow_dir = Path(workflow_dir)
     template_path = Path(template_path)
+    body_dir = str(context.get("_body_dir") or "")
 
     # Support both absolute paths and paths relative to the workflow directory
     if template_path.is_absolute():
@@ -310,6 +319,9 @@ def render(template_path: str | Path, context: dict[str, Any], workflow_dir: str
             # second so the override's `{% extends "prompts/<node>.md" %}` finds the base.
             search_paths = [flavor_dir, str(workflow_dir)]
             template_name = node_name
+
+    if body_dir and body_dir not in search_paths:
+        search_paths.append(body_dir)
 
     env = Environment(
         loader=FileSystemLoader(search_paths),

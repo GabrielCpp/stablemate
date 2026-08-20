@@ -239,7 +239,12 @@ def test_every_flag_reaches_the_engine(tmp_path: Path) -> None:
     # `repo_dir` is defaulted in by the CLI itself — a run always has a checkout, and
     # every workflow declares it — so it reaches the engine alongside what was passed.
     # With no `AGENT_REPO_DIR` set (the helper unsets it), the default is the launch cwd.
-    assert seen["params"] == {"story": "AUTH-12", "repo_dir": str(Path.cwd().resolve())}
+    # `library_dirs` is defaulted in beside it and asserted on its own below: what the
+    # discovery ladder finds depends on the machine, so pinning it here would make this
+    # test a statement about whether a base library happens to be installed.
+    params_seen = dict(seen["params"])
+    assert isinstance(params_seen.pop("library_dirs"), list)
+    assert params_seen == {"story": "AUTH-12", "repo_dir": str(Path.cwd().resolve())}
     # Every flag the parser grows has to reach the engine, or the command quietly
     # becomes a poorer CLI than the driver it feeds.
     assert seen["dry_run"] is True
@@ -316,6 +321,41 @@ def test_the_command_table_is_run_dot_control_inbox_version() -> None:
     assert [c.name for c in parser_mod.COMMANDS] == [
         "run", "dot", "control", "inbox", "version",
     ]
+
+
+# --------------------------------------------------------------------------------
+# the library ladder, walked once at the boundary
+# --------------------------------------------------------------------------------
+
+
+def test_the_overlay_precedes_the_base_and_absent_layers_are_dropped(tmp_path: Path) -> None:
+    """The two layers farrier renders across, in farrier's order, resolved here instead.
+
+    A path that is not on disk is dropped rather than handed down: an absent overlay is
+    the normal state, and a run that receives a directory which is not there would fail
+    at its first body read with a message about a template rather than about a library.
+    """
+    overlay = tmp_path / "overlay"
+    overlay.mkdir()
+    base = tmp_path / "base"
+    base.mkdir()
+
+    with patch.dict(os.environ, {"FARRIER_LIBRARY_DIR": str(overlay)}, clear=False):
+        with patch.object(run_cmd, "base_library_dir", lambda: base):
+            assert run_cmd._library_dirs({}) == [str(overlay), str(base)]
+        with patch.object(run_cmd, "base_library_dir", lambda: tmp_path / "gone"):
+            assert run_cmd._library_dirs({}) == [str(overlay)]
+
+    environ = {k: v for k, v in os.environ.items() if k != "FARRIER_LIBRARY_DIR"}
+    with patch.dict(os.environ, environ, clear=True):
+        with patch.object(run_cmd, "base_library_dir", lambda: base):
+            # The config's `library_dir` is the persisted spelling of the same overlay.
+            assert run_cmd._library_dirs({"library_dir": str(overlay)}) == [
+                str(overlay), str(base)
+            ]
+            assert run_cmd._library_dirs({}) == [str(base)]
+        with patch.object(run_cmd, "base_library_dir", lambda: None):
+            assert run_cmd._library_dirs({}) == []
 
 
 # --------------------------------------------------------------------------------
