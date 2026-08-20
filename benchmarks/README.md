@@ -274,9 +274,24 @@ converges in one lap — so `score` answers *did QA catch what was actually wron
 app whose defects are known in advance ([`apps/`](apps/README.md)), and prints both numbers
 together: `caught 6/8  missed 2  false 1 | plan-qa 2.1 laps ~$0.94`.
 
+Detection is still only half of what a QA plan can get wrong, so the same line carries five
+**leverage** metrics — did the plan enter each flow where the book says it starts, move
+between screens by clicking rather than by re-navigating, address the UI by roles and
+selectors the book vouches for, and close the obligations and journeys it owed?
+
+```
+caught 9/11  missed 2  false 0 | plan-qa 2.4 laps ~$1.31
+  leverage: entry 2/3  deep-links 4  roles 11/14  obligations 12/15  journeys 1/3
+```
+
+A plan can catch every seeded defect while doing none of that, and the difference is QA
+versus a regression suite of URL fetches. The two halves are reported side by side and never
+merged: the rounds worth reading are the ones where they disagree.
+
 How detection is scored off machine-readable state rather than off reading the QA report,
-the four verdict distinctions that keep a harness failure from arriving as a catch or a
-miss, where the money figure comes from, and why the backend is pinned, are in
+the verdict distinctions that keep a harness failure from arriving as a catch or a miss,
+what each leverage metric counts and why a missing input prints `–` instead of `0`, where
+the money figure comes from, and why the backend is pinned, are in
 [docs/REPLAY.md](docs/REPLAY.md).
 
 ## Adding a benchmark app

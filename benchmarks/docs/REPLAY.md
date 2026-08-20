@@ -50,6 +50,42 @@ distinctions the verdicts keep:
   defect. A miss needs all three: a published pass, the obligation covered, *and* the
   defect still in place.
 
+## Detection is still only half of what a QA plan can get wrong
+
+A plan can catch every seeded defect and still not have used the book it was handed: open
+each screen by typing its address, address the controls by their rendered text, prove the
+endpoints one at a time and never walk a journey end to end. That plan is a regression suite
+of URL fetches wearing QA's name, and detection alone reports it as a perfect round. So a
+scored line carries five leverage metrics beside the verdicts:
+
+```
+caught 9/11  missed 2  false 0 | plan-qa 2.4 laps ~$1.31
+  leverage: entry 2/3  deep-links 4  roles 11/14  obligations 12/15  journeys 1/3
+```
+
+| Metric | What it counts |
+| --- | --- |
+| `entry` | flows whose scenario *starts* where the book says the flow starts — its `start:` screen's route |
+| `deep-links` | mid-scenario navigations straight to a documented route that is **not** an entry point; a count of clicks that were skipped, so lower is better and `0` is the goal |
+| `roles` | locators addressing a `role:` or a `selector:` the book vouches for, out of every locator the plan uses — `text`, `label` and `test_id` address something the next copy edit changes |
+| `obligations` | obligations the trial owed that ended `covered`, out of those it owed |
+| `journeys` | required flows whose `end-state` obligation ended `covered`, out of the flows the story owes |
+
+Three properties keep these honest. Only scenarios the run actually **started** are scored,
+because a scenario the plan declared and the driver never reached entered nothing and
+clicked nothing. Required flows come off the obligation packet rather than the book's
+journey list, since a story touching one endpoint pulls in every journey that endpoint
+appears in and scoring a plan for not walking all of them reports a correct plan as a third
+of one. And every metric prints `–` rather than `0` when its input is missing — each is a
+fraction whose denominator is a property of the book, so an absent artifact makes the
+question unaskable rather than the answer bad. `roles 0/0` on a trial that blocked before
+writing a plan would be a claim about QA that nobody made.
+
+The metrics are reported, never merged into detection. They are two different questions, and
+the interesting rounds are the ones where they disagree — which is what the `policy-desk`
+fixture is built to produce: a defect that only a plan navigating the way the book documents
+can reach, printed on the same line as the count of navigations that skipped it.
+
 The money is the harness's own where it reports any, and `groom.prices`' rate card —
 printed `~$2.37` — where it does not. The default backend is `opencode`, which reports a
 literal `$0` over millions of tokens; a headline printing `$0.00` there would say the round

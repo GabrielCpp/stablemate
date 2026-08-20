@@ -48,6 +48,29 @@ be scored on obligations nobody claimed to have implemented. A story with nothin
 The trial directory must be named after the app (`seat-booking`, not `trial-1`): farrier derives every
 generated skill name from the repository directory's basename, and the spec dirs name those skills.
 
+## The answer key's one non-obvious rule: an obligation is only scorable if the story owes it
+
+Every row of `defects.yml` names the obligation the seeded file makes false. That id has to be
+one the story's trial is **required** to evidence, not merely one the book mints: the evidence
+map is built over `[o for o in scope if o.get("required", True)]` and nothing else, so a row
+pointed at a context-only obligation returns `inconclusive` — *"obligation not owed by this
+trial"* — forever. It can never be a catch and never a miss.
+
+Owedness is not a property of the book alone. Grounding for a file with no symbol behind the
+citation is by file, and ostler demotes a `file-owner` citation the moment a second OKF node
+cites the same file — a bare-file citation shared by several nodes localizes nothing. The
+practical consequence for a fixture author is a layout rule stronger than "one file per
+concern":
+
+> **One OKF node per source file.** A component extracted into its own file is scorable; two
+> components sharing a file are context, and every defect seeded in either is unscorable.
+
+`policy-desk` is laid out to that rule — its two HTTP handlers live in `update.go` and
+`cancel.go` rather than one `amend.go`, and `FieldError.tsx` and `RegisterError.tsx` are their
+own files — and `tests/test_policy_desk_app.py` pins it by minting each story's packet the way
+QA mints it and asserting every row's obligation comes back owed. It is pinned by a test
+because the way it breaks is an ordinary refactor that touches neither the book nor the key.
+
 ## Ports
 
 An app claims a port in the benchmark's `18080-18099` range, registered in
@@ -66,3 +89,13 @@ collide on a machine running both.
   Chosen for the interest cases one Python module cannot pose — a deep link that has to survive a
   page load, a route change the client owns rather than the server, a conditional field rule that
   only exists for one coverage type, and an optimistic-concurrency token carried through a form.
+
+  Its eleven-row key is built around those cases rather than around detection alone. **P1 is
+  expected to be missed by today's QA**: the register's "New policy" link renders with the right
+  role and the right name and does not navigate, while the form stays reachable by its address,
+  so a plan that opens screens by URL proves the whole form and never touches the broken thing.
+  Nothing gates that — the `entry` bullet is consumed by no check — and a missed P1 printed
+  beside a non-zero `deep-links` count is the fixture working. **P9–P11** are catchable only
+  through the auditor's reading of the evidence: a refusal in the wrong shape carrying the right
+  sentence, a route change that throws into the console while the screen recovers, and a failed
+  re-read swallowed behind rows that still look current. No declared check fails in any of them.
