@@ -863,6 +863,7 @@ def check_promises(
     changed: list[str] | None = None,
     already_run: list[str] | None = None,
     service: str = "",
+    repo_dir: str = "",
 ) -> GateOutcome:
     """Hold the implement turn to the exit conditions it stated before it began.
 
@@ -878,6 +879,14 @@ def check_promises(
 
     A turn that promised nothing is `skipped`, not failed. The check is a way of believing a
     turn less, not a second place to demand ceremony from it.
+
+    A promise is also run from the repo root before it is called broken, because the turn and
+    this node do not share a working directory. Asked what will be green, a turn writes the
+    command the way a person would type it — `cd api && make generate` — and this node runs it
+    inside `api` already, where `cd api` exits 2 forever. No repair lap can fix that: the
+    command is correct, the code is correct, and the loop spends its whole budget proving it
+    before handing a human a story with nothing wrong with it. Trying the other directory is
+    one extra process on the failure path only.
     """
     commands = [c.strip() for c in (commands or []) if c and c.strip()]
     files = [f for f in (files or []) if f and f.strip()]
@@ -890,33 +899,41 @@ def check_promises(
     where = service_dir(cwd, service)
 
     proven = {c.strip() for c in (already_run or []) if c and c.strip()}
+    wheres = [where] + [d for d in (repo_dir,) if d and Path(d).expanduser().is_dir() and d != where]
     for command in commands:
         if command in proven:
             logger.info("promised `%s` was already run clean by a declared gate", command)
             continue
-        try:
-            result = subprocess.run(
-                command,
-                cwd=where,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=GATE_TIMEOUT,
-            )
-        except subprocess.TimeoutExpired:
-            return GateOutcome(
-                gate="goal",
-                status="dirty",
-                command=command,
-                output=f"promised command timed out after {GATE_TIMEOUT}s",
-                reason="timeout",
-            )
-        except (OSError, ValueError) as exc:
-            # A command that will not launch is the turn's own claim about its stack, and
-            # this node is not the place to adjudicate it — the declared gates are.
-            # `ValueError` is the same class of thing one layer earlier: a string the shell
-            # was never going to be handed, from a model that free-typed it.
-            logger.info("promised command '%s' could not be launched: %s", command, exc)
+        result = None
+        for candidate in wheres:
+            try:
+                result = subprocess.run(
+                    command,
+                    cwd=candidate,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=GATE_TIMEOUT,
+                )
+            except subprocess.TimeoutExpired:
+                return GateOutcome(
+                    gate="goal",
+                    status="dirty",
+                    command=command,
+                    output=f"promised command timed out after {GATE_TIMEOUT}s",
+                    reason="timeout",
+                )
+            except (OSError, ValueError) as exc:
+                # A command that will not launch is the turn's own claim about its stack, and
+                # this node is not the place to adjudicate it — the declared gates are.
+                # `ValueError` is the same class of thing one layer earlier: a string the shell
+                # was never going to be handed, from a model that free-typed it.
+                logger.info("promised command '%s' could not be launched: %s", command, exc)
+                result = None
+                break
+            if result.returncode == 0:
+                break
+        if result is None:
             continue
         if result.returncode != 0:
             output = (result.stdout + result.stderr).strip()

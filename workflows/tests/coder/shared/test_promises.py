@@ -355,3 +355,33 @@ def test_a_test_named_with_its_file_in_parentheses_still_matches_the_diff(
     )
 
     assert outcome.status == "clean", outcome.output
+
+
+def test_a_promise_written_from_the_repo_root_is_run_from_there(service: Path) -> None:
+    """The turn and the gate do not share a working directory.
+
+    Asked what will be green, a turn writes the command the way a person types it at the repo
+    root. Run inside the service directory, `cd api-service && …` exits 2 every time, and no
+    repair lap can fix a command that is already correct — the loop spends its whole budget
+    and hands a human a story with nothing wrong with it.
+    """
+    outcome = _call(
+        check_promises,
+        cwd=str(service / "api-service"),
+        commands=["cd api-service && true"],
+        repo_dir=str(service),
+    )
+
+    assert outcome.status == "clean", outcome.output
+
+
+def test_a_promise_green_in_neither_directory_is_still_dirty(service: Path) -> None:
+    outcome = _call(
+        check_promises,
+        cwd=str(service / "api-service"),
+        commands=["exit 3"],
+        repo_dir=str(service),
+    )
+
+    assert outcome.status == "dirty"
+    assert outcome.command == "exit 3"
