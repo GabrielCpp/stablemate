@@ -46,6 +46,13 @@ first**; if an item is already fully done, tick it with the existing commit hash
   report) deliberately warn and carry on rather than escalating, since a binding check runs
   after them. `test_an_implementation_turn_that_says_it_cannot_reaches_the_operator` drives
   the dropped-verdict case end to end. 776 coder tests pass; `make lint` clean.
+- [ ] B3b — REWORK (supervisor, 2026-08-20): B3's sweep covered dev/review/docs/qa, but the
+  FIFTH lane escaped: `coder/fix/flow.py` `implement` (~line 188) discards its `ImplResult`
+  and unconditionally `return Continue(None, self.check)` — the exact dropped-verdict shape.
+  Assign it, branch on the derived blocked signal like the other lanes (evidence test,
+  escalate via `shared/escalation.py`). Also note `qa/flow.py::report_dev_pass` discards a
+  `QaReport` on a green story — decide deliberately and leave a comment saying why it is
+  fine (or branch it); do not leave it undocumented.
 - [ ] B4 — session memory: surface the backend-minted session id to the workflow;
   `engine.agent`'s `session:` accepts a literal id; `enter` event records the threaded id;
   chains added to `apply-qa-fixes`, `rework_plan`, and the `fix-*` laps (and nothing else).
