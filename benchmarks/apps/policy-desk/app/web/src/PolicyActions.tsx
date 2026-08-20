@@ -40,7 +40,7 @@ export function PolicyActions({
   return (
     <>
       <p>
-        <Link to={`/policies/${policy.id}/edit`}>Edit policy</Link>
+        <Link id="edit-policy" to={`/policies/${policy.id}/edit`}>Edit policy</Link>
       </p>
       {policy.status === "Cancelled" ? null : (
         <form onSubmit={cancel} aria-label="Cancel policy" noValidate>

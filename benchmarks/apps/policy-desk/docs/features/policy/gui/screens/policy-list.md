@@ -28,7 +28,7 @@ that looks current is the one failure mode a register must not have.
 - selector: `table`
 - role: table
 - name: Policies on file
-- placement: width 60-100%, x 0-20%, y 20-100%
+- placement: width 60-100%, x 0-20%, y 10-100%
 - keyboard: reachable by `Tab` from the document start, with no shortcut of its own.
 - parent: [Policy register](#policy-register)
 - code: app/web/src/PolicyList.tsx
@@ -41,7 +41,7 @@ that looks current is the one failure mode a register must not have.
 
 ### empty-register-notice
 
-- selector: `main > p`
+- selector: `p.empty-notice`
 - role: paragraph
 - name: none
 - placement: width 40-100%, x 0-20%, y 10-60%
@@ -60,6 +60,7 @@ that looks current is the one failure mode a register must not have.
 - placement: width 40-100%, x 0-20%, y 10-60%
 - keyboard: none, because it is announced rather than operated.
 - parent: [Policy register](#policy-register)
+- states: present only after a register read fails.
 - code: app/web/src/RegisterError.tsx
 - does: says so when the register cannot be re-read, rather than leaving the previous table on
   screen looking current.
@@ -67,7 +68,7 @@ that looks current is the one failure mode a register must not have.
 
 ### new-policy-link
 
-- selector: `nav a[href="/policies/new"]`
+- selector: `#new-policy`
 - role: link
 - name: New policy
 - placement: width 0-40%, x 0-30%, y 0-20%

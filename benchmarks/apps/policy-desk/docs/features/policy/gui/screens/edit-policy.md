@@ -26,7 +26,7 @@ walkthrough can produce.
 
 ### edit-form
 
-- selector: `form[aria-label="Edit policy"]`
+- selector: `form`
 - role: form
 - name: Edit policy
 - placement: width 40-100%, x 0-30%, y 10-100%
@@ -45,6 +45,7 @@ walkthrough can produce.
 - placement: width 40-100%, x 0-30%, y 5-60%
 - keyboard: none, because it is announced rather than operated.
 - parent: [Edit policy form](#edit-policy-form)
+- states: present only after a stale save is refused.
 - code: app/web/src/EditPolicy.tsx
 - does: reports that the policy moved under the form, and says to reload — rather than letting the
   save look as though it landed.
@@ -52,7 +53,7 @@ walkthrough can produce.
 
 ### save-policy-button
 
-- selector: `form[aria-label="Edit policy"] button[type="submit"]`
+- selector: `#save-policy`
 - role: button
 - name: Save policy
 - placement: width 0-40%, x 0-30%, y 10-100%

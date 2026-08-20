@@ -6,7 +6,7 @@ export function Nav() {
   return (
     <nav aria-label="Main">
       <Link to="/policies">Policies</Link>
-      <Link to="/policies/new">New policy</Link>
+      <Link id="new-policy" to="/policies/new">New policy</Link>
     </nav>
   );
 }

@@ -55,11 +55,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const errors = (body as { errors?: FieldErrors }).errors ?? {};
-    const error = (body as { error?: { title?: string; message?: string } }).error ?? {};
+    const refusal = body as { title?: string; message?: string };
     throw new ApiError(
       response.status,
-      error.title ?? "Request Refused",
-      error.message ?? "The service refused the request.",
+      refusal.title ?? "Request Refused",
+      refusal.message ?? "The service refused the request.",
       errors,
     );
   }

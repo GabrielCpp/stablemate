@@ -133,7 +133,7 @@ export function EditPolicy() {
           />
           {errors.premium ? <span className="field-error">{errors.premium}</span> : null}
         </p>
-        <button type="submit" disabled={saving}>
+        <button id="save-policy" type="submit" disabled={saving}>
           Save policy
         </button>
       </form>

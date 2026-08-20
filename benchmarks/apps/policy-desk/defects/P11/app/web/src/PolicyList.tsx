@@ -50,7 +50,7 @@ export function PolicyList() {
       <RegisterError message={error} />
       {policies === null && error === null ? <p>Loading policies…</p> : null}
       {policies !== null && policies.length === 0 ? (
-        <p>No policies are on file yet. Start with New policy.</p>
+        <p className="empty-notice">No policies are on file yet. Start with New policy.</p>
       ) : null}
       {policies !== null && policies.length > 0 ? (
         <table>

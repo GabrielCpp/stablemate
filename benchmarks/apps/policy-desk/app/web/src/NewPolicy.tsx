@@ -22,14 +22,7 @@ export function NewPolicy() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAlert(null);
-    const local: FieldErrors = {};
-    if (startDate !== "" && endDate !== "" && endDate <= startDate) {
-      local.end_date = "The end date has to be after the start date.";
-    }
-    setErrors(local);
-    if (Object.keys(local).length > 0) {
-      return;
-    }
+    setErrors({});
     setSaving(true);
     try {
       const body = await createPolicy({
@@ -151,7 +144,7 @@ export function NewPolicy() {
           />
           <FieldError message={errors.premium} />
         </p>
-        <button type="submit" disabled={saving}>
+        <button id="create-policy" type="submit" disabled={saving}>
           Create policy
         </button>
       </form>

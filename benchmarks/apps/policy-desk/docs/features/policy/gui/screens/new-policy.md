@@ -26,7 +26,7 @@ one rule (the umbrella prerequisite) depends on a record that is not on this scr
 
 ### policy-form
 
-- selector: `form[aria-label="New policy"]`
+- selector: `form`
 - role: form
 - name: New policy
 - placement: width 40-100%, x 0-30%, y 10-100%
@@ -90,6 +90,7 @@ one rule (the umbrella prerequisite) depends on a record that is not on this scr
 - placement: width 20-80%, x 0-30%, y 10-100%
 - keyboard: none, because it is read beside the field it belongs to.
 - parent: [New policy form](#new-policy-form)
+- states: present only beside a field the service refused.
 - code: app/web/src/FieldError.tsx
 - does: shows the refusal for one field, next to that field, in the words the service used.
 - verify: visible(locator="text=End date must be after the start date.")
@@ -102,6 +103,7 @@ one rule (the umbrella prerequisite) depends on a record that is not on this scr
 - placement: width 40-100%, x 0-30%, y 5-60%
 - keyboard: none, because it is announced rather than operated.
 - parent: [New policy form](#new-policy-form)
+- states: present only after a refusal that belongs to no single field.
 - code: app/web/src/NewPolicy.tsx
 - does: reports a refusal that belongs to no single field — a duplicate policy number above all —
   at the top of the form.
@@ -109,7 +111,7 @@ one rule (the umbrella prerequisite) depends on a record that is not on this scr
 
 ### create-policy-button
 
-- selector: `form[aria-label="New policy"] button[type="submit"]`
+- selector: `#create-policy`
 - role: button
 - name: Create policy
 - placement: width 0-40%, x 0-30%, y 10-100%

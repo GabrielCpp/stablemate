@@ -6,7 +6,7 @@ export function Nav() {
   return (
     <nav aria-label="Main">
       <Link to="/policies">Policies</Link>
-      <a href="/policies/new" onClick={(event) => event.preventDefault()}>
+      <a id="new-policy" href="/policies/new" onClick={(event) => event.preventDefault()}>
         New policy
       </a>
     </nav>

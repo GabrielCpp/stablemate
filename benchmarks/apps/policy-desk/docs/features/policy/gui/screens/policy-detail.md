@@ -40,7 +40,7 @@ the second policy is shown under the first one's record.
 
 ### edit-policy-link
 
-- selector: `a[href$="/edit"]`
+- selector: `#edit-policy`
 - role: link
 - name: Edit policy
 - placement: width 0-40%, x 0-30%, y 10-100%
@@ -52,7 +52,7 @@ the second policy is shown under the first one's record.
 
 ### cancel-policy-form
 
-- selector: `form[aria-label="Cancel policy"]`
+- selector: `form`
 - role: form
 - name: Cancel policy
 - placement: width 40-100%, x 0-30%, y 20-100%
