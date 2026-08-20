@@ -20,6 +20,7 @@ money to check.
 from __future__ import annotations
 
 import contextlib
+import difflib
 import importlib.util
 import shutil
 import subprocess
@@ -70,6 +71,11 @@ frozen = _load("_frozenapp", BENCHMARKS / "tasks" / "_frozenapp.py")
 TASK = _load("_task_under_test", BENCHMARKS / "tasks" / "seat_booking_qa.py")
 
 STORIES = ("seat-map", "seat-hold", "confirm-booking")
+
+# The widest defect in the key removes a nine-line docstring paragraph along with the two
+# lines of code it described — a variant that leaves the prose in place documents the bug it
+# plants. Well clear of that, and an order of magnitude under a whole-file copy.
+MAX_DEFECT_DIFF_LINES = 24
 
 
 def manifest(story: str) -> dict[str, list[str]]:
@@ -347,6 +353,37 @@ def test_every_defect_actually_changes_the_story_image(row: dict[str, str]) -> N
     """The variant must differ from what the story would otherwise ship — and only there."""
     correct = frozen.story_image(APP, row["story"], row["path"], phase="post").read_bytes()
     assert (APP / "defects" / row["id"] / row["path"]).read_bytes() != correct
+
+
+@pytest.mark.parametrize("row", defects(), ids=defect_ids())
+def test_every_defect_variant_is_the_story_image_plus_one_localized_edit(
+    row: dict[str, str],
+) -> None:
+    """A variant is the story's own file with a small mutation in it — nothing else.
+
+    The failure this catches is drift, not authorship: a payload is a whole copy of a file
+    the app still edits afterwards, so a later refactor of that file leaves the copy behind.
+    Seeding it then reverts the refactor *and* plants the defect, and the trial carries a
+    mutation far larger than the answer key describes — which destroys the localization the
+    key depends on and makes the resulting catch or miss say nothing about QA. It is
+    invisible to every other test here: the payload still differs from the image, still
+    compiles, still lands inside the story's diff.
+    """
+    correct = frozen.story_image(APP, row["story"], row["path"], phase="post").read_text(
+        encoding="utf-8"
+    )
+    variant = (APP / "defects" / row["id"] / row["path"]).read_text(encoding="utf-8")
+    changed = [
+        line
+        for line in difflib.unified_diff(
+            correct.splitlines(), variant.splitlines(), n=0, lineterm=""
+        )
+        if line[:1] in {"+", "-"} and not line.startswith(("+++", "---"))
+    ]
+    assert len(changed) <= MAX_DEFECT_DIFF_LINES, (
+        f"{row['id']}: {len(changed)} changed lines in {row['path']} — a payload this large "
+        "is a stale copy of the file, not a seeded defect"
+    )
 
 
 @pytest.mark.parametrize("row", defects(), ids=defect_ids())
