@@ -15,6 +15,25 @@ web = target(
 )
 
 
+def fixture_policy() -> dict:
+    """The amendable Draft policy every scenario below works on.
+
+    The desk opens empty — nothing seeds the ledger — so the plan creates its own
+    fixture through the public API rather than presuming a record a fresh stack
+    never held.
+    """
+    return {
+        "policy_number": "PN-1001",
+        "holder_email": "alex@example.com",
+        "coverage_type": "auto",
+        "vehicle_vin": "1HGCM82633A004352",
+        "property_address": "",
+        "start_date": "2099-01-01",
+        "end_date": "2099-12-31",
+        "premium": 1000,
+    }
+
+
 def amendment_body(policy, premium):
     return {
         "holder_email": policy["holder_email"],
@@ -41,7 +60,7 @@ def amendment_body(policy, premium):
         "okf:docs/features/policy/http/policy-desk-api.md#put-policy:errors:2",
     ],
     preconditions=[
-        "GET /api/policies/pn-1001 returns a Draft policy with a numeric version",
+        "PN-1001 is created through POST /api/policies on the empty desk",
         "the policy's current record and the complete ledger are captured before writing",
     ],
     checkpoints=[
@@ -55,6 +74,7 @@ def amendment_body(policy, premium):
 )
 def amend_policy_and_preserve_the_ledger(qa: Qa) -> None:
     """A valid amendment is conditional, durable, and does not rewrite neighbours."""
+    qa.http.post("/api/policies", json_body=fixture_policy(), expect_status=201)
     before_ledger = qa.http.get("/api/policies").json()
     before = qa.http.get("/api/policies/pn-1001").json()["policy"]
     qa.check("fixture is the expected amendable policy", before["policy_number"] == "PN-1001", covers=["ac:1", "ac:3"])
