@@ -371,6 +371,15 @@ An obligation marked `"required": false` — the ones `--context-only` selects, 
 names something this story neither built nor touched — an endpoint with no implementation
 behind it, a screen no change reached. Read it for context; do not write a scenario against
 it, and do not invent a route to reach it.
+The obligation packet is also the **upper** bound, not only the lower one. Your scenario
+budget is one scenario per coverable id — every obligation plus every acceptance criterion
+the packet lists — with room for half as many again, at least one, for a requirement whose
+conflict branch genuinely needs its own run. Validation refuses a plan past that, and
+refuses any scenario whose `covers=` names none of them: every scenario is re-validated,
+dry-run, run, fixed and audited on *every* lap of this loop, so one that proves nothing this
+story owes is paid for on all of them. Two scenarios asserting the same requirement from
+slightly different angles are one scenario with two `qa.check` calls.
+
 Stateful behavior must exercise action, persistence, reload/re-query, and isolation.
 Contract consumers must use a real producer when the repository declares one.
 

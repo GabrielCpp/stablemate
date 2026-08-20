@@ -221,6 +221,7 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
         criterion_id = criterion.get("id") if isinstance(criterion, dict) else criterion
         if criterion_id and criterion_id not in asserted_coverage:
             problems.append(f"required acceptance criterion '{criterion_id}' is not covered by an asserted scenario")
+    problems.extend(_overplanning_problems(document))
     return problems
 
 
@@ -710,6 +711,68 @@ def _known_coverage(context: dict[str, Any]) -> set[str]:
         if value:
             known.add(str(value))
     return known
+
+
+def _scenario_allowance(budget: int) -> int:
+    """How many scenarios a plan may declare for *budget* coverable ids.
+
+    Not the budget itself, because a single obligation is legitimately discharged by two
+    scenarios — the success path in one, the conflict branch in another, which
+    `_invoked_checks` already aggregates across. Not unbounded, because every downstream cost
+    of this lane — schema validation, the dry run, the suite run, each fix item, the audit —
+    is linear in scenario count, so a plan with four scenarios per obligation buys four times
+    the lane for the same verdict. Half the budget, and at least one, is the room for the
+    branch split and nothing like the room for a second plan.
+    """
+    return budget + max(1, budget // 2)
+
+
+def _overplanning_problems(document: PlanDocument) -> list[str]:
+    """Reject a plan that verifies more than this change owes.
+
+    The mirror of the under-coverage rule above, and derived from the same packet: an
+    obligation or an acceptance criterion this diff created is what a scenario may be spent
+    on, so the count of them is the budget and a scenario claiming none of them is spending
+    off the packet entirely. Both halves need the packet to say something — a surface the
+    book does not model yet carries no obligations and no criteria, and there the evidence
+    gate already falls back to run-log proof, so there is no budget to derive and this
+    returns nothing rather than refusing every plan that could be written.
+
+    The failure this bounds is not a hypothetical: the coverable set is fenced (`_uncoverable`)
+    but its *multiplicity* was not, so a planner that could not tell which scenario discharged
+    an obligation wrote all of them, and every later lap paid for the whole set.
+    """
+    coverable = _known_coverage(document.context)
+    if not coverable:
+        return []
+    scenarios = document.data.get("scenarios")
+    if not isinstance(scenarios, list):
+        return []
+    problems = []
+    for index, scenario in enumerate(scenarios):
+        if not is_mapping(scenario):
+            continue
+        covers = scenario.get("covers")
+        claimed = [item for item in covers if isinstance(item, str)] if isinstance(covers, list) else []
+        if any(item in coverable for item in claimed):
+            continue
+        scenario_id = str(scenario.get("id") or f"scenarios[{index}]")
+        problems.append(
+            f"scenario '{scenario_id}' covers no obligation and no acceptance criterion of "
+            "this change — delete it, or point its `covers=` at what the change owes. Every "
+            "scenario is re-validated, dry-run, run, fixed and audited on every lap, so one "
+            "that proves nothing this story is responsible for is paid for on all of them"
+        )
+    budget = len(coverable)
+    allowance = _scenario_allowance(budget)
+    if len(scenarios) > allowance:
+        problems.append(
+            f"the plan declares {len(scenarios)} scenarios for {budget} coverable "
+            f"obligation(s) and acceptance criterion(s) — at most {allowance} may be planned. "
+            "Merge the scenarios that prove the same requirement into one, and keep a second "
+            "only where a distinct branch of that requirement needs its own run"
+        )
+    return problems
 
 
 def _uncoverable(cover: str, context: dict[str, Any], known: set[str]) -> str:

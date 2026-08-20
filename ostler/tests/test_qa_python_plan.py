@@ -242,6 +242,84 @@ def test_coverage_without_an_assertion_is_rejected(tmp_path: Path) -> None:
     assert any("is not covered by an asserted scenario" in item for item in reported)
 
 
+def _extra_scenario(name: str, covers: str = "") -> str:
+    """One more scenario on the same target, claiming *covers* (nothing when blank)."""
+    binding = f", covers=[{covers!r}]" if covers else ""
+    return f'''
+
+@scenario(target=api, mechanism="live"{binding})
+def {name}(qa: Qa) -> None:
+    """Another look at the same behaviour."""
+    qa.check("it held", True{binding})
+'''
+
+
+def test_a_scenario_covering_nothing_the_change_owes_is_rejected(tmp_path: Path) -> None:
+    """The half of over-planning the coverable fence never saw.
+
+    `_uncoverable` polices which ids a scenario may claim; it says nothing about a scenario
+    that claims none. That one costs a validate, a dry run, a suite run, a fix item and an
+    audit on every lap of the loop, and discharges no obligation when it passes.
+    """
+    spec = _spec(tmp_path)
+    source = PLAN + _extra_scenario("free_floating")
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+
+    reported = validate_v2(document)
+
+    assert any(
+        "scenario 'free-floating' covers no obligation and no acceptance criterion" in item
+        for item in reported
+    )
+
+
+def test_a_second_scenario_on_one_obligation_is_within_the_budget(tmp_path: Path) -> None:
+    """The branch split the allowance exists for: success in one function, conflict in another."""
+    spec = _spec(tmp_path)
+    source = PLAN + _extra_scenario("conflict_branch", OBLIGATION)
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+
+    assert validate_v2(document) == []
+
+
+def test_more_scenarios_than_the_packet_can_justify_are_rejected(tmp_path: Path) -> None:
+    """One obligation, three scenarios — every downstream cost is linear in that count."""
+    spec = _spec(tmp_path)
+    source = PLAN + "".join(
+        _extra_scenario(f"again_{index}", OBLIGATION) for index in range(1, 3)
+    )
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+
+    reported = validate_v2(document)
+
+    assert any(
+        "declares 3 scenarios for 1 coverable" in item and "at most 2 may be planned" in item
+        for item in reported
+    )
+
+
+def test_an_unmodelled_surface_has_no_budget_to_exceed(tmp_path: Path) -> None:
+    """A packet with neither obligations nor criteria bounds nothing.
+
+    The evidence gate already accepts such a surface on run-log proof alone, so a budget
+    derived from an empty packet would be a refusal of every plan that could be written for
+    it — the fail-closed direction inverted into a fail-shut one.
+    """
+    spec = _spec(tmp_path)
+    context_path = spec / "qa-okf-context.json"
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    context["obligations"] = []
+    context_path.write_text(json.dumps(context), encoding="utf-8")
+    source = PLAN.replace('covers=["{obligation}"]', "") + _extra_scenario("second")
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+
+    assert validate_v2(document) == []
+
+
 def test_the_finding_says_which_helpers_checks_do_not_count(tmp_path: Path) -> None:
     """A helper this module does not define is where the static read genuinely stops.
 

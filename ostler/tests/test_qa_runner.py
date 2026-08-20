@@ -286,10 +286,11 @@ def test_a_dry_run_executes_one_scenario_and_leaves_no_evidence(tmp_path: Path) 
         PLAN
         + '''
 
-@scenario(target=api, mechanism="live")
+@scenario(target=api, mechanism="live", covers=["{obligation}"])
 def second(qa: Qa) -> None:
-    """A scenario that fails."""
-    qa.check("the value is absent", False, actual="ok", expected="absent")
+    """A scenario that fails — the conflict branch of the same obligation."""
+    qa.check("the value is absent", False, actual="ok", expected="absent",
+             covers=["{obligation}"])
 ''',
     )
     scored = spec / "qa"
