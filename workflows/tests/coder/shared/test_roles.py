@@ -79,7 +79,7 @@ def test_the_overlay_layer_wins_over_the_base(tmp_path):
 
     turn = roles.turn("dev-fix", tmp_path, (str(overlay), str(base)))
 
-    assert turn.args["body_template"] == "dev-fix.md"
+    assert turn.args["body_template"] == "body/dev-fix.md"
     assert (Path(turn.args["_body_dir"]) / "dev-fix.md").read_text() == "overlay"
 
 
@@ -103,7 +103,7 @@ def test_the_repo_outranks_every_library_layer(tmp_path):
 
     turn = roles.turn("dev-fix", repo, (str(base),))
 
-    assert (Path(turn.args["_body_dir"]) / turn.args["body_template"]).read_text() == (
+    assert (Path(turn.args["_body_dir"]) / Path(turn.args["body_template"]).name).read_text() == (
         "the repo's own"
     )
 
@@ -154,4 +154,6 @@ def test_a_moved_body_no_layer_supplies_stops_the_turn(tmp_path, monkeypatch):
         roles.turn("dev-fix", tmp_path)
 
     base = _library(tmp_path / "base", "dev-fix", "base")
-    assert roles.turn("dev-fix", tmp_path, (str(base),)).args["body_template"] == "dev-fix.md"
+    assert roles.turn("dev-fix", tmp_path, (str(base),)).args["body_template"] == (
+        "body/dev-fix.md"
+    )

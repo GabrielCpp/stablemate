@@ -18,8 +18,10 @@ the *contract* — the inputs provided, the exit condition, the result schema th
 machine parses back — and a repo does not get to edit it, because the state machine
 would then be parsing a document it did not write. The body it wraps is the *procedure*,
 which is exactly the part that knows this repo's stack, and so is exactly the part a repo
-must be able to replace. `render` puts the resolved body's directory last on the Jinja
-loader path and the envelope pulls it in with `{% include body_template %}`.
+must be able to replace. `render` mounts the resolved body's directory under its own
+`body/` namespace and the envelope pulls it in with `{% include body_template %}` — a
+namespace rather than a search path because the body is named for the role, which is what
+the envelope is named, and a bare filename would resolve back to the envelope.
 
 **A role is named for the envelope's own stem**, not renamed to something tidier. Node
 ids in a run directory, in the resume path and in telemetry derive from that stem, so a
@@ -40,6 +42,7 @@ from typing import Any
 
 import yaml
 from workhorse.pyflow import WorkflowFailed
+from workhorse.templates import BODY_PREFIX
 from workhorse_workflows.kit import find_repo_root
 
 #: Where a library layer keeps the coder bodies, relative to the layer root. Beside
@@ -131,7 +134,10 @@ def turn(role: str, repo_dir: str | Path = "", library_dirs: tuple[str, ...] = (
     prompt = f"prompts/{role}.md"
     if body is None:
         return Turn(prompt, {})
-    return Turn(prompt, {"_body_dir": str(body.parent), "body_template": body.name})
+    return Turn(
+        prompt,
+        {"_body_dir": str(body.parent), "body_template": f"{BODY_PREFIX}/{body.name}"},
+    )
 
 
 def _body(role: str, repo_dir: str | Path, library_dirs: tuple[str, ...]) -> Path | None:

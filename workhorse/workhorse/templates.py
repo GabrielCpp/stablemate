@@ -9,8 +9,10 @@ from typing import Any
 
 from jinja2 import (
     ChainableUndefined,
+    ChoiceLoader,
     Environment,
     FileSystemLoader,
+    PrefixLoader,
     make_logging_undefined,
 )
 
@@ -286,6 +288,11 @@ def _flavor_override(
     return None
 
 
+#: The namespace a resolved prompt body is mounted under, so `body/<name>` is the only
+#: way to address it and a body named for its role cannot resolve to the envelope.
+BODY_PREFIX = "body"
+
+
 def render(template_path: str | Path, context: dict[str, Any], workflow_dir: str | Path) -> str:
     """Render a Jinja2 template file relative to workflow_dir with the given context.
 
@@ -293,13 +300,14 @@ def render(template_path: str | Path, context: dict[str, Any], workflow_dir: str
     when present it is rendered instead, with the base prompt on the loader path so its
     ``{% extends %}`` resolves. Otherwise the base prompt renders exactly as authored.
 
-    ``_body_dir`` in the context puts one further directory on the loader path, *after*
-    everything above. That is how a workflow-owned **envelope** — provided inputs, the
+    ``_body_dir`` in the context mounts one further directory under the ``body/``
+    namespace. That is how a workflow-owned **envelope** — provided inputs, the
     exit-condition stage, the result schema — pulls in a **body** the workflow does not
     own and did not ship: the state resolves which body applies (the repo's override,
-    the library layer it came from), passes the directory here and the name as an
-    ordinary variable, and the envelope says ``{% include body_template %}``. Last on
-    the path, so a body can never shadow a template the workflow ships.
+    the library layer it came from), passes the directory here and ``body/<name>`` as an
+    ordinary variable, and the envelope says ``{% include body_template %}``. A body can
+    never shadow a template the workflow ships, because no shipped template is addressed
+    through that prefix.
     """
     workflow_dir = Path(workflow_dir)
     template_path = Path(template_path)
@@ -320,11 +328,21 @@ def render(template_path: str | Path, context: dict[str, Any], workflow_dir: str
             search_paths = [flavor_dir, str(workflow_dir)]
             template_name = node_name
 
-    if body_dir and body_dir not in search_paths:
-        search_paths.append(body_dir)
+    # The body is reachable only as `body/<name>`, never as a bare filename. A body is
+    # normally named for the role, which is what the envelope is named — so a plain
+    # `{% include "dev-fix.md" %}` resolves back to the envelope that asked for it and
+    # Jinja recurses until the interpreter stops it. Its own namespace also keeps the
+    # guarantee the ordering was there for: nothing a repo supplies can shadow a template
+    # the workflow ships, because the two are not addressed the same way.
+    loader = FileSystemLoader(search_paths)
+    body_loader = (
+        ChoiceLoader([PrefixLoader({BODY_PREFIX: FileSystemLoader(body_dir)}), loader])
+        if body_dir
+        else loader
+    )
 
     env = Environment(
-        loader=FileSystemLoader(search_paths),
+        loader=body_loader,
         undefined=ResilientUndefined,
         keep_trailing_newline=True,
     )
