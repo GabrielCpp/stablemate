@@ -25,6 +25,7 @@ from workhorse_workflows.coder.shared.dev import (
     tdd_gate,
     tdd_mode,
 )
+from workhorse_workflows.coder.shared.schemas import ImplResult
 
 LOG = logging.getLogger("test")
 
@@ -293,3 +294,64 @@ def test_a_new_file_is_in_the_diff_the_gates_read(tmp_path: Path) -> None:
     assert "handler_test.go" in paths, "a new test file is invisible to the tdd gate"
     assert "handler.go" in paths
     assert not any(p.startswith("build/") for p in paths), "ignored output is not a change"
+
+
+# ------------------------------------------------- the shapes a real turn actually returns
+
+
+def test_exit_conditions_grouped_per_criterion_are_merged_not_rejected() -> None:
+    """A turn satisfying four acceptance criteria groups its promise by criterion.
+
+    That is the better-organised answer and it is exactly as checkable, since the gate runs
+    every command and looks for every file whichever criterion claimed it. A benchmark run
+    lost a completed implement turn — all gates already green — to this shape being a list
+    where the schema said object.
+    """
+    result = ImplResult.model_validate(
+        {
+            "status": "done",
+            "exit_conditions": [
+                {
+                    "criteria": "Service.List returns expenses newest-first",
+                    "commands": ["go test ./internal/core/..."],
+                    "files": ["api/internal/core/services/expense/service.go"],
+                },
+                {
+                    "criteria": "the route is generated and wired",
+                    "commands": ["make generate", "go build ./..."],
+                    "files": ["api/pkg/api/openapi.yaml"],
+                },
+            ],
+        }
+    )
+
+    assert result.exit_conditions.commands == [
+        "go test ./internal/core/...",
+        "make generate",
+        "go build ./...",
+    ]
+    assert len(result.exit_conditions.files) == 2
+    assert result.exit_conditions.criteria[0].startswith("Service.List")
+
+
+def test_a_test_named_with_its_file_in_parentheses_still_matches_the_diff(
+    service: Path,
+) -> None:
+    """`tests_added` naming the test and parenthesising its file is more informative.
+
+    It is also what a real turn returned, and the gate read it as three files that do not
+    exist — a repair lap billed against three tests that had been written.
+    """
+    _agents(service, "services:\n  go: {tdd: required}\n")
+
+    outcome = _call(
+        tdd_gate,
+        cwd=str(service / "api-service"),
+        service="api",
+        service_type="go",
+        tests_added=["Test_Service_List_ShouldHandleScenarios (internal/expense/service_test.go)"],
+        changed=["api-service/internal/expense/service_test.go"],
+        repo_dir=str(service),
+    )
+
+    assert outcome.status == "clean", outcome.output
