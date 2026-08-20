@@ -15,8 +15,8 @@ You are **not** re-checking this story's ACs.
 
 - Story path: `{{ workhorse_var('story_path') }}`
 - Spec artifact directory: `{{ workhorse_var('spec_dir') }}`
-- Platform(s) touched: `{{ workhorse_var('platform') }}`  (`web`, `mobile`, or `both`)
-- UI service(s) touched: `{{ workhorse_var('service_paths') }}`  (`repo::path` per touched UI service)
+- Suites that ran: `{{ workhorse_var('regression_suites') }}`  (one `repo::path` and the command
+  that service declares, which is the command the workflow will re-run to judge this fix)
 - Regression run status: `{{ workhorse_var('regression_run_status') }}`
 - Failing tests: `{{ workhorse_var('regression_run_failing_tests') }}`
 - Runner notes: `{{ workhorse_var('regression_run_notes') }}`
@@ -25,16 +25,15 @@ You are **not** re-checking this story's ACs.
 
 ## Required Context
 
-- The platform QA skill(s) for how to bring up the **real** stack and which tool runs the suite —
+- The QA skill(s) for how to bring up the **real** stack and how a journey is written here —
   whichever of these this repository installs: {{ find_by_tags("qa") | default("(none installed — follow the repo's own QA documentation)", true) }}
-- The documented journeys under `docs/features/journeys/<platform>/` and their convention
-  (`docs/features/journeys/README.md`). Each journey is one flow.
+- The documented journeys and their convention, wherever this repo keeps them (its journeys
+  README is the entry point). Each journey is one flow.
 - the surfaces this story actually changed, and the stack/fixtures they need:
 {% if plan_services %}
 {{ plan_services }}
 {% endif %}
-- The committed regression suite for the platform (web: `web/e2e/journeys/*.journey.spec.ts`,
-  `make e2e-journeys`; mobile: the Maestro journey flows).
+- The committed suite each declared command above runs, in that service's own directory.
 - The raw run log at the path above, and the story diff (`git diff` against the epic base).
 
 ## Goal

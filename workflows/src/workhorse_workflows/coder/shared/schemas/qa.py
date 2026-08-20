@@ -161,18 +161,32 @@ class ScreenshotFlush(CoderResult):
     notes: str = ""
 
 
-class RegressionPlatform(CoderResult):
-    """`detect-regression-platform.py` — which committed suites, if any, this plan touched.
+class RegressionSuite(CoderResult):
+    """One service's declared regression command, resolved to where it runs."""
 
-    `platform` defaults to `none` because the script fails **open**: an unreadable
-    plan-context skips the regression step rather than blocking a story that may not have a
-    UI at all. That is the opposite default from every gate in this module, and deliberate —
-    this is a router, not a verdict.
+    #: `<repo>::<path>`, the same identity the dev lane dispatches on.
+    label: str = ""
+    #: Absolute path to the service directory the command runs in.
+    cwd: str = ""
+    #: What `agents.yml` declares under this service's `regression:` key. Never guessed.
+    command: str = ""
+
+
+class RegressionSuites(CoderResult):
+    """`detect_regression_suites` — which committed suites, if any, this plan put at risk.
+
+    Empty means "no service this plan touched declares a regression command", which skips
+    the whole regression step. That is the opposite default from every gate in this module,
+    and deliberate — this is a router, not a verdict, and it fails **open**: an unreadable
+    plan context reports nothing to run rather than blocking a story.
+
+    It replaced a `platform` field of `web`/`mobile`/`both`/`none`, which was the workflow
+    holding an opinion about which stacks have journey suites. A repo that runs its journeys
+    some third way could not say so, and one whose service type was not on the list was
+    silently exempt from a suite it really had.
     """
 
-    platform: str = "none"
-    layers: list[str] = []
-    paths: list[str] = []
+    suites: list[RegressionSuite] = []
 
 
 class FailureAttribution(CoderResult):
@@ -806,7 +820,8 @@ __all__ = [
     "QaToolCatalog",
     "QaTriage",
     "RegressionFix",
-    "RegressionPlatform",
+    "RegressionSuite",
+    "RegressionSuites",
     "RegressionRun",
     "ScreenshotFlush",
     "SetupResult",

@@ -26,14 +26,14 @@ from workhorse_workflows.coder.qa.nodes.qa import (
     validate_qa_plan,
 )
 from workhorse_workflows.coder.qa.nodes.regression import (
-    detect_regression_platform,
+    detect_regression_suites,
     run_regression_suite,
 )
 
 __all__ = [
     "check_sentinel_ids",
     "clear_qa_evidence",
-    "detect_regression_platform",
+    "detect_regression_suites",
     "ensure_stack",
     "flush_root_screenshots",
     "run_qa_plan",

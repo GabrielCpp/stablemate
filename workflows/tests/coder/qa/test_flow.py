@@ -110,8 +110,8 @@ Users need a thing.
 """
 
 #: The dev phase's plan, decoded by `resolve_impl_context` for the repo grant and the QA
-#: source roots. A `go` service has no UI layer, so `detect_regression_platform` says `none`
-#: and the regression loop is out of the way of every test that is not about it.
+#: source roots. This service declares no `regression:` command, so `detect_regression_suites`
+#: resolves nothing and the regression loop is out of the way of every test not about it.
 API_SERVICE: dict[str, Any] = {
     "repo": "api",
     "path": ".",
@@ -120,11 +120,13 @@ API_SERVICE: dict[str, Any] = {
     "skills": [],
 }
 
-#: The same plan with a UI layer, which is what puts the committed journey suites at risk.
+#: The same plan with a second service, one that *does* declare a `regression:` command —
+#: which is the only thing that puts a committed journey suite at risk. The type is a
+#: placeholder on purpose: what selects the suite is the declaration, never the stack.
 WEB_SERVICE: dict[str, Any] = {
     "repo": "web",
     "path": ".",
-    "type": "react-router",
+    "type": "web-app",
     "plan_file": "plan-web.md",
     "skills": [],
 }
@@ -169,10 +171,11 @@ def web(
     write_json: Callable[[Path, Any], Path],
     ambient: dict[str, str],
 ) -> Path:
-    """A real `web` repo carrying a `Makefile`, and a plan that names it.
+    """A real `web` repo that declares a journey suite, and a plan that names it.
 
-    `_run_web_one` skips a service with no `Makefile` outright, so the regression tests need
-    a repo that has one — the suite command itself is the seam, not its absence.
+    `detect_regression_suites` resolves nothing for a service that declares no `regression:`
+    command, so the regression tests need a repo whose `agents.yml` names one — the command
+    itself is the seam, and `_run` is what the fake replaces.
     """
     write_json(
         docs / SPEC_REL / "plan-context.json", {"story": STORY, "services": [WEB_SERVICE]}
@@ -181,7 +184,7 @@ def web(
     path = root / "web"
     path.mkdir(parents=True)
     git(path, "init", "-q", "-b", "main")
-    write(path / "Makefile", "e2e-journeys:\n\t@true\n")
+    write(path / "agents.yml", "services:\n  web-app: {regression: 'run-journeys'}\n")
     git(path, "add", "-A")
     git(path, "commit", "-qm", "Initial commit")
     write(root / "acme.code-workspace", json.dumps({"folders": [{"name": "web", "path": "web"}]}))
@@ -442,14 +445,14 @@ def ostler(monkeypatch: pytest.MonkeyPatch) -> Callable[..., _Ostler]:
 
 
 class _Suite:
-    """`make e2e-journeys`, scripted. `fail_runs` leading invocations exit non-zero."""
+    """The declared journey command, scripted. `fail_runs` leading invocations exit non-zero."""
 
     def __init__(self, *, fail_runs: int = 0) -> None:
         self.fail_runs = fail_runs
-        self.calls: list[list[str]] = []
+        self.calls: list[str] = []
 
-    def __call__(self, cmd: list[str], cwd: Path, timeout: int) -> tuple[int | None, str]:
-        self.calls.append(cmd)
+    def __call__(self, command: str, cwd: Path, timeout: int) -> tuple[int | None, str]:
+        self.calls.append(command)
         if len(self.calls) <= self.fail_runs:
             return 1, "FAIL journeys/login.spec.ts › logs a user in\n"
         return 0, "12 passed\n"
@@ -2520,7 +2523,7 @@ def test_a_failing_journey_suite_is_fixed_and_the_story_is_re_qad(
     assert agent.counts()["fix-regression"] == 1, agent.counts()
     # Three suite runs: the failure, the green re-run after the fix, and the re-QA's.
     assert len(suite.calls) == 3, suite.calls
-    assert suite.calls[0] == ["make", "e2e-journeys"]
+    assert suite.calls[0] == "run-journeys", suite.calls
     # Primary QA really was re-run, which is the point of the round trip.
     assert okf.runs == 2, okf.runs
     assert _output(run_env, resolve_impl_context)["affected_repo_paths"] == [str(docs), str(web)]

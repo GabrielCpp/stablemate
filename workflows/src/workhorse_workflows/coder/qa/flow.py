@@ -103,7 +103,7 @@ from workhorse_workflows.coder.qa.nodes.qa import (
     verify_qa_dry_run,
 )
 from workhorse_workflows.coder.qa.nodes.regression import (
-    detect_regression_platform,
+    detect_regression_suites,
     run_regression_suite,
 )
 from workhorse_workflows.coder.shared.review import check_feedback
@@ -1335,13 +1335,13 @@ class Qa(Workflow):
         """Which committed journey suites, if any, this plan put at risk.
 
         `detect_regression` + `gate_regression`. The detector fails **open** — an unreadable
-        plan context reports `none` — because most stories have no UI layer to regress, and
-        blocking them on a detector would be the wrong default.
+        plan context resolves no suites — because most stories touch no service that declares
+        one, and blocking them on a detector would be the wrong default.
         """
-        platform = self.call(detect_regression_platform, self.ctx.spec_dir)
-        if platform.platform in {"web", "mobile", "both"}:
-            return Continue(platform, self.run_regression, loop=loop)
-        return Continue(platform, self.finalize, loop=loop)
+        suites = self.call(detect_regression_suites, self.ctx.spec_dir)
+        if suites.suites:
+            return Continue(suites, self.run_regression, loop=loop)
+        return Continue(suites, self.finalize, loop=loop)
 
     def run_regression(self, loop: QaLoop) -> Continue | Await | Done:
         """Run the committed suites, and decide what a green run means given what preceded it.
@@ -1354,9 +1354,12 @@ class Qa(Workflow):
         regression run *after* a fix sends the story back through primary QA, once, and the
         `reqa_pending` flag is what stops that from repeating forever.
         """
-        platform = self.output(detect_regression_platform)
+        suites = self.output(detect_regression_suites)
         run = self.call(
-            run_regression_suite, self.ctx.spec_dir, self.ctx.qa_dir, platform.platform
+            run_regression_suite,
+            self.ctx.spec_dir,
+            self.ctx.qa_dir,
+            [suite.model_dump() for suite in suites.suites],
         )
         loop = loop.with_qa(run.as_qa_result())
         if run.status == "passed":
@@ -1409,7 +1412,7 @@ class Qa(Workflow):
         the same whether the last turn ran out of ideas or never had any, so the loop grants
         another lap and spends a 90-minute turn on the question it just answered.
         """
-        platform = self.output(detect_regression_platform)
+        suites = self.output(detect_regression_suites)
         run = self.output(run_regression_suite)
         self.logger.info("fixing the regression suite", extra={"activity": True})
         started = time.monotonic()
@@ -1426,8 +1429,9 @@ class Qa(Workflow):
             args={
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
-                "platform": platform.platform,
-                "service_paths": platform.paths,
+                "regression_suites": [
+                    f"{suite.label}: {suite.command}" for suite in suites.suites
+                ],
                 "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
                 "regression_run_status": run.status,
                 "regression_run_failing_tests": run.failing_tests,
