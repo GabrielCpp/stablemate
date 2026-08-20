@@ -231,6 +231,7 @@ class _Agent:
         resolver_answers: bool = False,
         bad_paths: int = 0,
         fix_gate: Path | None = None,
+        fix_tests: list[str] | None = None,
         explode: set[str] | None = None,
         impl_blocked: int = 0,
         promise: dict[str, Any] | None = None,
@@ -243,6 +244,9 @@ class _Agent:
         self.resolver_answers = resolver_answers
         self.bad_paths = bad_paths
         self.fix_gate = fix_gate
+        #: Test files the repair turn really writes, and reports back as `tests_added` —
+        #: the `tdd` gate's repair, which is a *new file* and so is untracked.
+        self.fix_tests = fix_tests
         self.explode = explode or set()
         self.impl_blocked = impl_blocked
         #: What the implement turn states its exit conditions are — the promise the `goal`
@@ -333,6 +337,16 @@ class _Agent:
         }
 
     def _dev_fix(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        if self.fix_tests is not None:
+            cwd = Path(data["report"]["cwd"])
+            for rel in self.fix_tests:
+                (cwd / rel).parent.mkdir(parents=True, exist_ok=True)
+                (cwd / rel).write_text("package api\n", encoding="utf-8")
+            return {
+                "status": "fixed",
+                "notes": "wrote the test the gate asked for",
+                "tests_added": list(self.fix_tests),
+            }
         if self.fix_gate is None:
             return {"status": "failed", "notes": "the finding is in vendored code"}
         self.fix_gate.write_text("", encoding="utf-8")
@@ -937,6 +951,45 @@ def test_a_turn_is_held_to_the_exit_conditions_it_stated(
     assert report["source"] == "goal", report
     assert report["command"] == command, report
     assert "would be green" in report["output"]
+
+
+def test_a_test_less_story_is_caught_by_the_tdd_gate_and_repaired_in_the_same_loop(
+    docs: Path,
+    workspace: dict[str, Path],
+    write: Callable[[Path, str], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The whole of the TDD mechanism, end to end, on a story that arrives without a test.
+
+    `api` is a `go` service and the repo declares `tdd: required` for that type, so the
+    implement turn reporting no `tests_added` is `dirty` — not because this package knows
+    what a Go test looks like (it does not, invariant 1) but because the turn's own report
+    is empty. `web` declares nothing and is `skipped`, which is the opt-in half.
+
+    The repair is the ordinary `dev-fix` lap, and what it writes is a *new file*. That is
+    the case worth an end-to-end test rather than another unit one: nothing in this lane
+    commits before the gates run, so an untracked test is in no `git diff`, and until
+    `changed_files` learned to list them a correct repair looked exactly like a lie and
+    lapped until the budget escalated a story nobody needed to look at.
+    """
+    write(docs / "agents.yml", "services:\n  go:\n    tdd: required\n")
+    test_file = "internal/handler_test.go"
+    agent = _Agent(docs, fix_tests=[test_file])
+
+    result = drive_flow(Dev(story=STORY), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["dev-fix"] == 1, agent.counts()
+    report = agent.args_for("dev-fix")[0]["report"]
+    assert report["source"] == "tdd", report
+    assert "No test covers this change" in report["output"]
+    # The lap really wrote it, and the re-gate really saw it — an assertion about the file
+    # rather than about the status, because the status is what the fixer *claimed*.
+    assert (workspace["api"] / test_file).is_file()
+    # The turn was told the mode before it began, which is what makes the gate a contract
+    # rather than an ambush.
+    assert agent.args_for("implement-plan")[0]["tdd"] == "required"
 
 
 def test_a_turn_that_promised_nothing_is_not_held_to_anything(
