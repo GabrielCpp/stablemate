@@ -25,6 +25,7 @@ import os
 import shutil
 import subprocess
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -83,7 +84,9 @@ def story_image(app: Path, story: str, rel: str, *, phase: str) -> Path:
     return app / rel
 
 
-def materialize(app: Path, story: str, dest: Path) -> Path:
+def materialize(
+    app: Path, story: str, dest: Path, install: Callable[[Path], None] | None = None
+) -> Path:
     """Build, at `dest`, the git state a QA run for `story` is supposed to face.
 
     The coder's QA lane mints its obligations from *uncommitted* changes
@@ -98,6 +101,14 @@ def materialize(app: Path, story: str, dest: Path) -> Path:
 
     `HEAD..WORKTREE` is then exactly this story's implementation diff, while the book, the
     specs and every other story's code sit at their authored state.
+
+    *install* — `farrier install`, when the caller has one — runs between the git init and
+    the before-commit, and that ordering is load-bearing rather than tidy. Run afterwards,
+    the layer farrier generates (skill scripts, the hooks) sits untracked in the worktree,
+    lands in `HEAD..WORKTREE` alongside the story's diff, and the QA lane mints obligations
+    for half a dozen files nobody wrote — which every trial then spends a `repair-qa-context`
+    lap discovering it cannot own. Committed with the before tree, the generated layer is
+    part of the state the story is implemented *against*, which is what it actually is.
     """
     diff = story_diff(app, story)
     if dest.exists():
@@ -126,6 +137,8 @@ def materialize(app: Path, story: str, dest: Path) -> Path:
     # host has a global git config, and must not write to it either.
     git("config", "user.email", "benchmark@example.com", cwd=dest)
     git("config", "user.name", "stablemate benchmark", cwd=dest)
+    if install is not None:
+        install(dest)
     git("add", "--all", cwd=dest)
     git("commit", "--quiet", "-m", f"before {story}", cwd=dest)
 
@@ -847,19 +860,21 @@ def run_round(run: Run, fixture: Fixture) -> None:
     for index, (story, row) in enumerate(plan_round(run, app), start=1):
         variant = str(row["id"]) if row else CLEAN
         run_id = f"{fixture.repo_dir}-{run.label}-qa-{story}-{variant}-{index}"
-        repo = materialize(run.repo, story, run.workdir(run_id) / fixture.repo_dir)
-        if row:
-            seed_defect(app, row, repo)
-        reset_stack_state(repo)
-
         # farrier regenerates `.agents/agents-context.json`, which is gitignored and so is
         # absent from a materialized tree; every prompt path in the run would fail to
         # resolve without it. It is also where the unpacked seed's machine-local paths get
-        # re-pointed at this machine.
-        run.cli(
-            "uv", "run", "--project", str(checkout), "farrier", "install", "--repo", str(repo),
-            cwd=checkout, log_name=f"{run_id}-farrier", check=True,
-        )
+        # re-pointed at this machine. It runs *inside* materialize, before the before-commit,
+        # so the layer it generates is part of the baseline rather than of the story's diff.
+        def install(repo: Path, run_id: str = run_id) -> None:
+            run.cli(
+                "uv", "run", "--project", str(checkout), "farrier", "install", "--repo", str(repo),
+                cwd=checkout, log_name=f"{run_id}-farrier", check=True,
+            )
+
+        repo = materialize(run.repo, story, run.workdir(run_id) / fixture.repo_dir, install)
+        if row:
+            seed_defect(app, row, repo)
+        reset_stack_state(repo)
 
         started = time.monotonic()
         result = run.cli(
