@@ -1,8 +1,6 @@
 ---
 name: stablemate-repo
-description: "The stablemate monorepo's own always-loaded rules: what the workspace contains, that the repo ships publicly and no private overlay name may appear in it, that a workflow reads no environment, that ruff and ty must both be clean, and which Conventional Commit scopes the hook accepts. Aggregated into the repo root AGENTS.md; load it directly only when working on stablemate from outside that root."
-applyTo: ""
-tags: [standards, stablemate]
+description: "The stablemate monorepo's own standing rules, resident in every turn at the repo root: what the workspace contains, that the repo ships publicly and no private overlay name may appear in it, that a workflow reads no environment, that ruff and ty must both be clean, and which Conventional Commit scopes the hook accepts. Every one of them constrains a change an agent would otherwise make before it had any reason to go looking."
 ---
 
 # stablemate

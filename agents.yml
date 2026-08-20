@@ -19,8 +19,8 @@ packs:
   - architecture
   - ui
 
-# groom's web UI owes the accessibility contract, so select the universal skill
-# directly (only this repo needs it; packs are for bundles reused by ≥2 repos).
+# groom's web UI owes the accessibility contract; `ui/ui-accessibility` arrives
+# with the `ui` pack above.
 #
 # `stacks/python/python-htmx-accessibility` is deliberately no longer selected
 # here: groom's dashboard does not use HTMX any more. The server sends JSON and
@@ -35,17 +35,10 @@ packs:
 # for real means changing that router line in the shared agent library, which is
 # not this repo's call to make unilaterally -- so `stablemate-groom` says
 # out loud that the stack skill does not apply here.
-# `stablemate/repo-docs` governs this repo's prose entry surface --
-# CLAUDE.md, README.md, and the per-package docs/ folders. Selected directly
-# rather than through the `stablemate` pack because it is generic to any repo,
-# not part of the stablemate toolchain bundle; promote it to a pack once a
-# second repo wants it.
 #
-# `stablemate/stablemate-repo` is this repo's own root rules. It is selected here
-# rather than in the `stablemate` pack because no other repo wants it — the pack
-# ships the toolchain skills, not stablemate's house rules.
-skills:
-  - stablemate/stablemate-repo
+# This repo names no skills directly: `stablemate/repo-docs`, which governs its
+# prose entry surface, ships in the `stablemate` pack above, and its own root
+# rules are a *policy* now rather than a skill — see localInstructions below.
 
 # Direct single-item selection (no pack — see agents/packs/CLAUDE.md): the
 # /update-skill-from-conversation command that folds a session's learnings back
@@ -54,9 +47,15 @@ prompts:
   - agent-library/update-skill-from-conversation
 
 # The root AGENTS.md is generated, not hand-written: house rules first, then the
-# one procedure every change lands under. It is a library prompt, so the text is
-# written once and every repo that wants it always-loaded aggregates the same file
-# instead of maintaining its own copy of the cadence.
+# one procedure every change lands under. The procedure is a library prompt, so the
+# text is written once and every repo that wants it always-loaded aggregates the
+# same file instead of maintaining its own copy of the cadence.
+#
+# `stablemate-repo` is a policy, not a skill: its whole body is already resident
+# here, so installing it under .claude/skills/ as well would only add its name and
+# description to the skill index the agent carries every turn — advertising a skill
+# whose text is already above it in the window. A policy exists only through this
+# mapping, which is why no `policies:` key appears at the top of this file.
 #
 # Only `commit` is aggregated. `reload-runs` is a branch the commit procedure names
 # — a live run holding the code you just fixed — and inlining a branch most turns
@@ -68,7 +67,7 @@ prompts:
 # false` keeps the root README (an outward-facing overview) out of every
 # session's context.
 localInstructions:
-  - skills:
+  - policies:
       - stablemate-repo
     prompts:
       - stablemate-commit
