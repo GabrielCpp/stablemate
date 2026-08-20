@@ -1,0 +1,8 @@
+name = "seat-booking"
+repo_dir = "seat-booking"
+sha256 = "c8594c5b1250a52992b85e11d0a6b87fb7c323f12e11ee7b01f42fbc653a9ea6"
+bytes = 65432
+head = "9f9676c7931b089c43d0cf5ed3f17dcf74949ea1"
+dirty = false
+url = ""
+note = ""
