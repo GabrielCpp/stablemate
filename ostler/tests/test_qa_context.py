@@ -519,18 +519,27 @@ def test_the_toolchains_own_footprint_is_not_a_production_unit(tmp_path: Path):
     greenfield run did that — a `#tooling` node in `docs/features/api/http/api.md` owning
     `qa-stack.yml`, `agents.yml` and `.agents/agents.mk` — which cleared the error and left a
     permanent `missing-verification` warning behind, since a stack manifest has no test to
-    ground a verify reference on. The gate has to exclude them so it never asks."""
+    ground a verify reference on. The gate has to exclude them so it never asks.
+
+    `.claude/` and `.githooks/` are the same category found later and the sharpest case,
+    because what they hold is executable Python rather than a manifest: farrier installs skill
+    bundles whose `scripts/check_*.py` are real linters, and `make hooks` points
+    `core.hooksPath` at `.githooks/`. A greenfield story whose base commit predated the install
+    drew six `unmapped-change` errors naming our own check scripts, and nothing the agent could
+    write in the client's book would have been true."""
     from ostler.qa.context import _is_non_production_path as np
 
     for path in (
         "agents.yml", "qa-stack.yml", ".agents/agents.mk", ".agents/local.compose.yaml",
         ".opencode/opencode-loop/ses_123.json", "firebase-debug.log", "firestore-debug.log",
         "api/.mockery.yaml", "docs/doctor-waivers.json",
+        ".claude/skills/demo-portability/scripts/check_portability.py",
+        ".claude/settings.json", ".githooks/pre-commit", ".githooks/commit-msg",
     ):
         assert np(path), f"{path} is toolchain scaffolding and must not be a production unit"
 
     # Root-scoped on purpose: a nested file by the same name belongs to the product, not to us.
-    for path in ("api/internal/agents.yml", "web/app/qa-stack.yml"):
+    for path in ("api/internal/agents.yml", "web/app/qa-stack.yml", "web/app/.claude/x.py"):
         assert not np(path), f"{path} is the product's own file and must stay production"
 
 

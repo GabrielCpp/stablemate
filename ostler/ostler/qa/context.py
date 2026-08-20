@@ -1094,7 +1094,18 @@ def _is_non_production_path(path: str) -> bool:
     # CI and agent-tooling dotfile trees. `.opencode/opencode-loop/` records the operator
     # loop's own sessions inside the target repo; grounding those as product contracts is
     # the same unwinnable category as `.agents/` run artifacts.
-    return bool(parts and parts[0] in {".github", ".gitlab", ".agents", ".opencode"})
+    #
+    # `.claude/` and `.githooks/` join them for the same reason and were found the same way.
+    # farrier installs the skill bundles under `.claude/skills/`, and several of them carry
+    # executable `scripts/check_*.py`; `make hooks` points `core.hooksPath` at `.githooks/`.
+    # Both are real code by every syntactic test, which is why they reach this function at
+    # all — and neither is the product. A greenfield story that merely had the toolchain
+    # installed after its base commit drew six `unmapped-change` errors naming a skill's
+    # own linter, and the only move left to an agent that must clear the gate is to write a
+    # feature contract for our check scripts in the client's book.
+    return bool(
+        parts and parts[0] in {".github", ".gitlab", ".agents", ".opencode", ".claude", ".githooks"}
+    )
 
 
 #: How a code generator announces itself. Go standardized the wording and everything that
