@@ -1,0 +1,8 @@
+name = "policy-desk"
+repo_dir = "policy-desk"
+sha256 = "f123a0eccd4ec3099462dd77a7aaed24da8ce7dc921c9f62762c892d01baa0df"
+bytes = 105730
+head = "ba5f0c8a6d93671fd7707f69d986929cb90b1f65"
+dirty = false
+url = ""
+note = ""
