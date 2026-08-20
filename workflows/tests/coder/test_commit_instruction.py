@@ -42,6 +42,7 @@ PRODUCERS = {
     "plan-qa.md",
     "plan-story.md",
     "qa-fix-item.md",
+    "fix-qa-scenario.md",
     "qa-story.md",
     "refine-plan.md",
     "repair-documentation.md",

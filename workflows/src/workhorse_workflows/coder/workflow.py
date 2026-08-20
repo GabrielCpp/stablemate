@@ -557,6 +557,19 @@ class Coder(Workflow):
                 result, self.dev, epic=epic, triage=result.triage_scope,
                 session_id=result.session_id,
             )
+        if result.status == "refix":
+            # Triage found the *product* wrong. The QA lane's fixer is briefed on a QA report
+            # and told not to broaden behaviour, so it patches the surface the scenario
+            # touched; the dev lane owns product code and re-enters review and QA behind
+            # itself. The findings are on disk in the story's `qa.md`, which is what `dev`
+            # reads — there is no brief to thread through this call.
+            self.logger.info(
+                "QA found a product defect in %s — back to dev", self._story.story_slug
+            )
+            return Continue(
+                result, self.dev, epic=epic, triage=result.triage_scope,
+                session_id=result.session_id,
+            )
         if result.status == "inconclusive":
             # The only mode that still lands here is `target_env="dev"`: every other
             # exhaustion now escalates to the operator gate inside the QA sub-flow itself

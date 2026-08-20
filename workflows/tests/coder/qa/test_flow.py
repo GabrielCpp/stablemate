@@ -490,6 +490,7 @@ class _Agent:
         explode: set[str] | None = None,
         cut: set[str] | None = None,
         dry_run: str = "passed",
+        item_dry_run: str | tuple[str, ...] = "passed",
         refuses: set[str] | None = None,
     ) -> None:
         self.docs = docs
@@ -498,6 +499,15 @@ class _Agent:
         #: assertion in it, and `missing` writes nothing at all. Only `passed` gets past
         #: `verify_qa_dry_run`; the other three are the refusals it exists to make.
         self.dry_run = dry_run
+        #: The same four shapes, for the *per-scenario* fixer. A separate knob because the
+        #: two turns prove different things — a plan repair proves the scenarios it rewrote,
+        #: a scenario fix proves the one item it was handed — and a test that wants one
+        #: refused nearly always wants the other left green. A tuple scripts one shape per
+        #: attempt at the *same* item, which is the only way to ask for two refusals that
+        #: differ: two identical ones are a stall and never reach the second budget arm.
+        self.item_dry_run = (
+            (item_dry_run,) if isinstance(item_dry_run, str) else item_dry_run
+        )
         self.repair = repair
         self.disposition = disposition
         # A count of *leading* assessments that send the failure to the plan author, after
@@ -578,6 +588,24 @@ class _Agent:
         """Every plan turn's brief in order, whichever of its two prompts served it."""
         return [a for s, a in zip(self.calls, self.args, strict=True) if s in self.PLAN_STEMS]
 
+    def fix_args(self) -> list[dict[str, Any]]:
+        """Every unaided lap of the code-fix loop, whichever fixer prompt served it.
+
+        The loop spends its lap one scenario at a time when the run reported which scenarios
+        failed, and on the whole report when it did not — an evidence-class finding, a
+        routed finding, an operator's note. Both are laps of the same budget.
+
+        The operator gate runs `apply-qa-fixes` too, with `operator_feedback` in its args.
+        Those are not the loop's own laps and are excluded here, which is the distinction
+        every caller of this wanted.
+        """
+        return [
+            a
+            for s, a in zip(self.calls, self.args, strict=True)
+            if s == "fix-qa-scenario"
+            or (s == "apply-qa-fixes" and "operator_feedback" not in a)
+        ]
+
     # -- one handler per prompt -------------------------------------------
 
     def _repair_qa_context(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -650,6 +678,27 @@ class _Agent:
 
     def _apply_qa_fixes(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"status": self.qa_fix, "notes": f"fix pass {nth}"}
+
+    def _fix_qa_scenario(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """One scenario's fixer, which proves its own item exactly as its prompt demands.
+
+        Same scratch layout as `_repair_qa_plan`, one out-dir instead of several: the brief
+        names a single scenario, and `verify_qa_dry_run` is called for that one id.
+        """
+        scenario = str(data["scenario"])
+        shape = self.item_dry_run[min(nth, len(self.item_dry_run)) - 1]
+        if shape != "missing":
+            out = Path(data["spec_dir"]) / QA_SCRATCH_DIRNAME / scenario
+            out.mkdir(parents=True, exist_ok=True)
+            records = [] if shape == "empty" else [
+                {"kind": "assert", "id": f"{scenario}-1", "result": (
+                    "FAIL" if shape == "failed" else "PASS"
+                )}
+            ]
+            (out / qa_support.QA_RUN_LOG).write_text(
+                "".join(json.dumps(r) + "\n" for r in records), encoding="utf-8"
+            )
+        return {"status": self.qa_fix, "notes": f"scenario {scenario} pass {nth}"}
 
     def _fix_regression(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"notes": f"regression fix pass {nth}"}
@@ -1807,8 +1856,8 @@ def test_a_fix_that_leaves_the_run_failing_identically_is_not_repeated(
 
     # The operator gate runs the same fixer prompt, so count the laps of the *fix loop* —
     # the ones carrying no operator answer — rather than every invocation of it.
-    unaided = [a for a in agent.args_for("apply-qa-fixes") if "operator_feedback" not in a]
-    assert len(unaided) < Qa.MAX_QA_REWORKS, agent.args_for("apply-qa-fixes")
+    unaided = agent.fix_args()
+    assert len(unaided) < Qa.MAX_QA_REWORKS, agent.counts()
     # The stall bought exactly one plan repair — the untried class — and that lap is the
     # whole difference between this ending and the one the docstring above describes.
     assert agent.counts()["repair-qa-plan"] == 1, agent.counts()
@@ -1838,7 +1887,7 @@ def test_a_stalled_plan_repair_tries_the_other_hypothesis_before_the_operator(
     with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
         drive_flow(Qa(story=STORY), env(), agent)
 
-    unaided = [a for a in agent.args_for("apply-qa-fixes") if "operator_feedback" not in a]
+    unaided = agent.fix_args()
     assert len(unaided) >= 1, agent.counts()
     # The fixer is told which hypothesis was spent, so it does not re-derive it.
     assert "the other side" in unaided[0]["qa_notes"], unaided[0]["qa_notes"]
@@ -1921,7 +1970,165 @@ def test_a_fix_that_gets_the_run_further_still_earns_its_next_lap(
     with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
         drive_flow(Qa(story=STORY), env(), agent)
 
-    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
+    assert len(agent.fix_args()) == Qa.MAX_QA_REWORKS, agent.counts()
+    assert len(seen) == 1, seen
+
+
+#: Two failing scenarios in one run. The split is only observable with more than one — a
+#: single-item worklist looks exactly like the whole-report turn it replaced.
+_TWO_FAILED = {
+    "copy-link": {"status": "failed", "assertions": 9, "failures": 1},
+    "share-note": {"status": "failed", "assertions": 4, "failures": 2},
+}
+
+
+def test_a_failing_run_is_fixed_one_scenario_at_a_time(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The lever this split exists for: one brief per failing scenario, not one per report.
+
+    The whole-report fixer was handed every failure at once and answered with one turn that
+    had to hold all of them in its head — the single most expensive turn in the lane, and
+    the one most likely to come back having half-fixed two things. Each item now gets its
+    own brief, its own dry run and its own verdict, and the brief names the others only to
+    say they are not this turn's job.
+    """
+    ostler(fail_runs=1, scenarios=(_TWO_FAILED, {}))
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"))
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    briefs = agent.args_for("fix-qa-scenario")
+    assert [b["scenario"] for b in briefs] == ["copy-link", "share-note"], agent.counts()
+    # The whole-report turn is what runs when the run named no scenarios; it did not here.
+    assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
+    # Each brief carries its own item's assertions and disclaims what is still queued.
+    assert briefs[0]["remaining_scenarios"] == ["share-note"], briefs[0]
+    assert briefs[1]["remaining_scenarios"] == [], briefs[1]
+
+
+def test_each_scenario_fix_is_proved_by_its_own_dry_run_before_the_next(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A per-item gate, so a fix that did not take is caught by the item that made it.
+
+    The scored re-run is what the whole loop is paying for, and it costs the same whether
+    one scenario or all of them come back red. Proving each item where it was written
+    spends a re-lap of one brief instead.
+    """
+    ostler(fail_runs=1, scenarios=(_TWO_FAILED, {}))
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"),
+                   item_dry_run=("missing", "failed", "passed", "passed"))
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    briefs = agent.args_for("fix-qa-scenario")
+    # `copy-link` refused twice — once for no log, once for a red one — and only then was
+    # carried on as written; `share-note` was proved on its first attempt.
+    assert [b["scenario"] for b in briefs] == [
+        "copy-link", "copy-link", "share-note"
+    ], agent.counts()
+
+
+def test_a_scenario_that_spends_its_budget_is_carried_into_the_scored_run(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The per-item budget is not a give-up: an unproved item goes to the run, not the wall.
+
+    Two differing refusals mean the turn is moving and out of item budget, and the honest
+    next step is the scored run judging the item rather than a third brief guessing. The
+    story's own budget, one loop out, is what still bounds the whole thing.
+    """
+    ostler(fail_runs=1, scenarios=(_STUCK, {}))
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"),
+                   item_dry_run=("missing", "failed"))
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["fix-qa-scenario"] == Qa.MAX_FIX_ITEM_REWORKS, agent.counts()
+    assert "resolve-operator" not in agent.counts(), agent.counts()
+
+
+def test_a_scenario_refused_twice_for_the_identical_reason_reaches_the_operator(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Sameness at item granularity, and the same conclusion `_repeating` draws at run level.
+
+    A dry run refusing an item twice in the identical words is evidence about the fixer, not
+    about the item: nothing the second turn wrote moved the gate. That goes to a person —
+    as an `Await`, which is resumable — rather than into the rest of the budget.
+    """
+    ostler(fail_runs=99, scenarios=(_STUCK,))
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"),
+                   item_dry_run="failed", escalate=True)
+    seen: list[str] = []
+
+    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+        drive_flow(Qa(story=STORY), env(), agent)
+
+    assert agent.counts()["fix-qa-scenario"] == 2, agent.counts()
+    assert len(seen) == 1, seen
+
+
+def test_a_product_class_triage_returns_the_story_to_the_dev_lane(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A defect in the product is the dev lane's work, and the QA lane stops owning it.
+
+    Fixing product code from inside QA is how a run ends up with the lane that judges the
+    story also being the lane that wrote it. `refix` hands the story back with the findings
+    already on disk in `qa.md`, and the triage budget is what stops it bouncing forever.
+    """
+    ostler(fail_runs=99, scenarios=(_STUCK,))
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "product"))
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "refix", result
+    assert result.triage_scope == 1, result
+    # Nothing in the QA lane touched the product on the way out.
+    assert "fix-qa-scenario" not in agent.counts(), agent.counts()
+    assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
+
+
+def test_a_product_class_triage_past_its_budget_stops_bouncing_to_dev(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The termination argument: `triage_scope` is spent, and past it the lane escalates.
+
+    Without the ceiling a story whose triage keeps saying "product" would ride between the
+    two lanes as long as the run lasted, each round paying a full dev pass and a full scored
+    run to reach the identical verdict.
+    """
+    ostler(fail_runs=99, scenarios=(_STUCK,))
+    agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "product"),
+                   escalate=True)
+    seen: list[str] = []
+
+    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+        drive_flow(Qa(story=STORY, triage_scope_count=Qa.MAX_TRIAGE_SCOPES), env(), agent)
+
     assert len(seen) == 1, seen
 
 

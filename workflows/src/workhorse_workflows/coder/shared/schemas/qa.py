@@ -551,6 +551,25 @@ class QaLoop(CoderResult):
     #: without the counts glued to them. `_plan_args` hands them to `repair-qa-plan.md` as the
     #: dry-run contract, and `verify_qa_dry_run` reads the scratch evidence back.
     failed_scenarios: tuple[str, ...] = ()
+    #: The per-scenario fix worklist, and where in it the flow is. `apply_fixes` seeds this
+    #: from `failed_scenarios` and `fix_item` pops the head as each one is proved green, so a
+    #: checkpoint taken mid-worklist resumes at the item that was in flight rather than at the
+    #: whole batch again. Empty means there is no per-scenario pass running.
+    #:
+    #: The split is the point: a whole-report fix turn re-reads every finding on every lap and
+    #: proves nothing until a full scored suite run at the end, so one wrong guess costs a
+    #: rerun of everything. One scenario, dry-run green before the next one starts, costs one
+    #: scenario.
+    fix_worklist: tuple[str, ...] = ()
+    #: How many turns the *head* of `fix_worklist` has already had. Reset to zero on each pop,
+    #: because the budget is per item — a worklist of six scenarios is not six times harder
+    #: than one, and a shared counter would starve whatever came last.
+    fix_item_rework: int = 0
+    #: The dry-run refusals the head of the worklist has already produced, in order. A second
+    #: *identical* refusal is the same signal `repaired_failures` carries one loop out: the
+    #: fixer ran, and the gate refused it for exactly the same reason, so the next lap has no
+    #: new information to work from and the item escalates instead.
+    fix_item_problems: tuple[str, ...] = ()
     #: The same fingerprint as the last repair lap — a code fix or a plan repair — was
     #: dispatched against.
     #:
@@ -778,7 +797,11 @@ class QaFlowResult(CoderResult):
     """What the QA flow hands back — the YAML's five `qa_phase` output keys, as one value.
 
     `status` is the `qa_status` the four `emit-kv.py` terminals wrote (`passed`,
-    `inconclusive`, `replan`, `rescope`). `inconclusive` is the default for the same reason
+    `inconclusive`, `replan`, `rescope`), plus `refix` — a product-class failure handed back
+    to the dev lane, which owns product code, rather than patched by a QA fixer briefed on a
+    QA report. It differs from `rescope` in what moved: a `rescope` means triage amended the
+    story's acceptance criteria, a `refix` means they stand and the product does not meet
+    them. `inconclusive` is the default for the same reason
     the YAML's `qa_phase` output declared it: a flow that produced nothing has not passed.
     Every budget the flow can exhaust now routes to the operator gate instead — `Qa` never
     returns `inconclusive` on its own; only `target_env="dev"`'s `report_dev` does, because

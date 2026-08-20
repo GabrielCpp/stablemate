@@ -443,6 +443,18 @@ class Qa(Workflow):
     #: — those route to loops with ceilings of their own.
     MAX_BLOCKING_AUDITS: ClassVar[int] = 2
     MAX_SETUP_REWORKS: ClassVar[int] = 2
+    #: How many turns one scenario in the per-scenario fix worklist may have before the flow
+    #: stops paying for it and lets the scored suite judge it as written.
+    #:
+    #: Deliberately small. The dry run this budget is spent on is one scenario against a stack
+    #: that is already up, so two attempts that both come back refused are two attempts that
+    #: had the runner's own output in front of them and still did not land — and the remaining
+    #: scenarios in the worklist have not been looked at once. Exhausting it is not a give-up
+    #: and never ends the run: the item is carried into the scored re-run unproved, where it
+    #: either passes or comes back as a failure the code-fix budget above answers for. What
+    #: does escalate is a *repeated identical* refusal, which is the same signal
+    #: `repaired_failures` carries one loop out.
+    MAX_FIX_ITEM_REWORKS: ClassVar[int] = 2
     MAX_REGRESSION_FIXES: ClassVar[int] = 3
     MAX_TRIAGE_SCOPES: ClassVar[int] = 2
     #: How many consecutive laps `repair_plan` may spend on one session chain before it
@@ -1561,7 +1573,36 @@ class Qa(Workflow):
         supply what the fixer said was missing, so every remaining rework re-asks a question
         already answered, at high power, until the budget runs out and the story is filed as
         exhausted rather than as blocked on the one thing it is actually blocked on.
+
+        When the run reported *which* scenarios failed, this node does not run the fixer at
+        all: it seeds `fix_worklist` and hands the lap to `fix_item`, which takes them one at
+        a time and proves each one green before the next starts. The rework is charged here,
+        once, because the whole worklist is one rework — the split is about how the lap is
+        spent, not about buying more of them.
+
+        The whole-report turn below is what runs when there is no per-scenario worklist to
+        split: an evidence-class failure, a finding routed out of `triage`, an operator's
+        mid-flight note. Those briefs are not a list of red scenarios and cannot be walked
+        as one.
         """
+        if loop.failed_scenarios:
+            self.logger.info(
+                "splitting the fix pass into %d per-scenario item(s): %s",
+                len(loop.failed_scenarios),
+                ", ".join(loop.failed_scenarios),
+                extra={"activity": True},
+            )
+            return Continue(
+                loop.qa,
+                self.fix_item,
+                loop=loop.update(
+                    qa_rework=loop.qa_rework + 1,
+                    docs_recheck_required=True,
+                    fix_worklist=loop.failed_scenarios,
+                    fix_item_rework=0,
+                    fix_item_problems=(),
+                ),
+            )
         self.logger.info("applying QA fixes", extra={"activity": True})
         started = time.monotonic()
         result = self._apply_fixes(
@@ -1580,6 +1621,119 @@ class Qa(Workflow):
             self.logger.info("QA fixer reported blocked; escalating: %s", result.notes)
             return self._gate(result, loop)
         return Continue(result, self.build_context, loop=loop)
+
+    def fix_item(self, loop: QaLoop) -> Continue | Await | Done:
+        """Fix the scenario at the head of the worklist, and prove it before taking the next.
+
+        One agent turn, one scenario, one dry run — the same contract `repair_plan` already
+        holds the plan lane to, moved onto the code lane. The turn is handed the scenario's
+        own failed assertions and told the other red scenarios are not its work, and
+        `verify_qa_dry_run` reads the scratch evidence back before the item is allowed off
+        the worklist.
+
+        What this replaces is a whole-report fix turn followed by a full scored suite run:
+        every lap re-read every finding, re-derived the repairs it had already made, and
+        learned whether any of it worked only from a rerun of everything. The proof is now
+        per item and costs one scenario, and the scored run happens once the worklist is
+        empty rather than once per hypothesis.
+
+        Three ways an item leaves the worklist, and none of them is a give-up. It dry-runs
+        green; or its budget runs out, in which case it is carried into the scored run
+        *unproved* and that run judges it — the code-fix budget one loop out is what answers
+        for it if it fails again; or the gate refuses it twice for the identical reason, which
+        is a fixer working with no new information, and that goes to the operator gate with
+        the worklist still on the loop so a resume continues it.
+        """
+        if not loop.fix_worklist:
+            return Continue(loop.qa, self.build_context, loop=loop)
+        item = loop.fix_worklist[0]
+        self.logger.info(
+            "fixing QA scenario %s (%d left, attempt %d)",
+            item,
+            len(loop.fix_worklist),
+            loop.fix_item_rework + 1,
+            extra={"activity": True},
+        )
+        started = time.monotonic()
+        result = self._fix_scenario(item, loop)
+        loop = loop.charged(time.monotonic() - started)
+        if result.blocked:
+            self.logger.info("scenario fixer reported blocked; escalating: %s", result.notes)
+            return self._gate(result, loop.update(qa=result))
+        gate = self.call(verify_qa_dry_run, self.ctx.spec_dir, (item,))
+        if gate.status == "passed":
+            self.logger.info("scenario %s is green in its dry run", item)
+            return self._next_item(result, loop)
+        problem = f"{item}: {gate.notes}"
+        loop = loop.update(fix_item_problems=(*loop.fix_item_problems, problem))
+        if problem in loop.fix_item_problems[:-1]:
+            self.logger.info(
+                "scenario %s was refused for the identical reason twice; escalating: %s",
+                item,
+                gate.notes,
+            )
+            return self._gate(gate, loop.update(qa=result))
+        loop = loop.update(fix_item_rework=loop.fix_item_rework + 1)
+        if loop.fix_item_rework >= self.MAX_FIX_ITEM_REWORKS:
+            self.logger.info(
+                "scenario %s has had its %d attempts; carrying it into the scored run as "
+                "written and letting that run judge it",
+                item,
+                loop.fix_item_rework,
+            )
+            return self._next_item(result, loop)
+        return Continue(result, self.fix_item, loop=loop)
+
+    def _next_item(self, result: QaResult, loop: QaLoop) -> Continue | Await | Done:
+        """Pop the head of the worklist: the next scenario, or the scored re-run.
+
+        The per-item counters reset with the pop, because the budget is per item — a worklist
+        of six scenarios is not six times harder than one, and a shared counter would starve
+        whatever came last.
+
+        `loop.qa` is left alone while items remain, so item two is still briefed with the
+        report the run produced rather than with item one's summary of what it did. It is
+        replaced only on the way out, where the fixer's own status is what `build_context`
+        and the loop behind it react to.
+        """
+        rest = loop.fix_worklist[1:]
+        loop = loop.update(fix_worklist=rest, fix_item_rework=0, fix_item_problems=())
+        if rest:
+            return Continue(result, self.fix_item, loop=loop)
+        return Continue(result, self.build_context, loop=loop.update(qa=result))
+
+    def _fix_scenario(self, item: str, loop: QaLoop) -> QaResult:
+        """`fix-qa-scenario.md`: one scenario's brief, its assertions and its dry-run contract.
+
+        On the story's own backbone chain, like the whole-report fixer it splits — the items
+        share a surface and a stack, and the second one is worth far more knowing what the
+        first already touched than re-deriving it.
+        """
+        spec_abs = Path(self.ctx.spec_dir) if self.ctx.spec_dir else None
+        failed_assertions = (
+            qa_support.failed_assertions(qa_support.scored_run_log(spec_abs)) if spec_abs else {}
+        )
+        turn = roles.turn("fix-qa-scenario", self.repo_dir, self.library_dirs)
+        return self.agent(
+            turn.prompt,
+            returns=QaResult,
+            power="high",
+            add_dirs=self._dirs(),
+            args=turn.args
+            | {
+                "story_path": self.ctx.story_path,
+                "spec_dir": self.ctx.spec_dir,
+                "story_slug": self.ctx.story_slug,
+                "epic": self.epic,
+                "qa_dir": self.ctx.qa_dir,
+                "qa_scratch_dir": QA_SCRATCH_DIRNAME,
+                "scenario": item,
+                "failed_assertions": failed_assertions.get(item, []),
+                "remaining_scenarios": list(loop.fix_worklist[1:]),
+                "qa_notes": loop.qa.notes,
+            },
+            session=self._story_chain(),
+        )
 
     # ── the setup-repair loop ─────────────────────────────────────────────────────────
 
@@ -2013,9 +2167,40 @@ class Qa(Workflow):
         return Continue(result, self.apply_fixes, loop=loop.update(bonus_used=True))
 
     def _fixable(self, result: object, loop: QaLoop) -> Continue | Await | Done:
-        """`decide_qa_fixable`: in a `dev` run the findings are reported, not fixed."""
+        """`decide_qa_fixable`: in a `dev` run the findings are reported, not fixed.
+
+        A `product` failure class does not come back here at all. Triage has said the product
+        is wrong — not the plan, not the evidence, not the stack — and the QA lane's fixer is
+        the wrong instrument for that: it is briefed on a QA report, budgeted for a repair
+        lap, and told not to broaden behaviour, so it patches the surface the scenario
+        touched and hands the same defect back one lap later wearing a different assertion.
+        The dev lane owns product code, has the plan, and re-enters review and QA behind
+        itself. So the story goes back to it, and the findings it needs are already on disk
+        in `qa.md` and `qa_dir` — which is why `dev()` needs no brief threaded through it.
+
+        The return is budgeted on `triage_scope`, the same counter a `rescope` spends, and
+        for the same reason: it is the count of times this story has been handed back to the
+        lane upstream, and the two returns are indistinguishable to everything downstream of
+        them. Past the cap the finding is fixed in place rather than bounced again — which is
+        a narrower fix, not a give-up, and the code-fix budget still ends at the operator
+        gate.
+        """
         if self.target_env == "dev":
             return Continue(result, self.report_dev, loop=loop)
+        if loop.failure_class == "product" and loop.triage_scope < self.MAX_TRIAGE_SCOPES:
+            self.logger.info(
+                "triage called this a product failure — returning the story to the dev lane",
+                extra={"activity": True},
+            )
+            return self._ends(
+                QaFlowResult(
+                    status="refix",
+                    qa=loop.qa,
+                    qa_rework=loop.qa_rework,
+                    triage_scope=loop.triage_scope + 1,
+                    docs_recheck_required=True,
+                )
+            )
         return self._guard_qa(result, loop)
 
     def _refused(self, result: CoderResult, loop: QaLoop, what: str) -> Continue | Await:
