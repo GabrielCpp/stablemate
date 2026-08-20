@@ -141,7 +141,7 @@ web = target("web", driver="playwright", base_url="http://localhost:3000", brows
 mobile = target("mobile", driver="maestro", app_id="com.example.app",
                 recording={"required": True, "mode": "device"})
 
-background("api-server", cmd="cd api && go run ./cmd/server", timeout=60,
+background("api-server", cmd="<this repo's own command to start the service>", timeout=60,
            ready_cmd="curl -sf http://localhost:8090/healthz", ready_contains="ok")
 ADMIN = secret("ADMIN_TOKEN", from_env="QA_ADMIN_TOKEN")
 
@@ -281,13 +281,13 @@ a static count of the `qa.check`/`qa.require` calls in its body, and again at ru
 - **Do not invent CLI flags, REST routes, or output shapes.** Check the tool's `--help`, its
   source, or the layer's `qa_skill` — do not guess by analogy with a similar-looking tool.
 - **Defeat the test runner's result cache.** A build-cached runner replays a previous PASS
-  without executing anything, and prints it in the same words a real run does — `go test`'s
-  `ok ... (cached)`, gradle's `UP-TO-DATE`, a `--only-changed` watcher's skip. Asserting on
+  without executing anything, and prints it in the same words a real run does — an `(cached)`
+  or `UP-TO-DATE` marker beside a PASS, a `--only-changed` watcher's skip. Asserting on
   `"--- PASS" in output` cannot tell the replay from the run, so the scenario goes green while
   the code under test is never touched; worse, the cache key does not track environment
   variables, so a step that reads one (an emulator host, a base URL) replays a result recorded
-  against a *different* service. Pass the flag that forces execution — `go test -count=1`,
-  `gradle --rerun-tasks` — on every test invocation a scenario's evidence depends on.
+  against a *different* service. Find this runner's flag that forces execution — its `--help`
+  names it — and pass it on every test invocation a scenario's evidence depends on.
 - When a scenario shells out, assert on **what the command printed about the behaviour** —
   the value, the count, the status — not on `returncode == 0`. A process exiting zero is the
   same evidence a suite that skipped every case produces.
@@ -313,7 +313,7 @@ a static count of the `qa.check`/`qa.require` calls in its body, and again at ru
   credential header values are already redacted, with the header name kept.
 - Background daemons are declared with `background(...)` — the runner starts and stops them,
   and the scenario must not. It is for **foreground in-QA services** scoped to the run (a dev
-  server pinned to branch source, an event tail). The **heavyweight stack** (docker compose,
+  server pinned to branch source, an event tail). The **heavyweight stack** (containers,
   emulators, the DB + baseline seed) is NOT declared here — it is owned by the workflow's
   `ensure_stack` step via the repo's `qa-stack.yml` manifest, brought up before the plan runs
   and left up for reuse. Assume it is already serving.

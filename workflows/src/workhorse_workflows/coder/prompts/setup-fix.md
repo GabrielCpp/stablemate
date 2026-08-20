@@ -50,7 +50,7 @@ Read, then act:
   seed/fixture commands, tool installs). These are what the manifest's steps should call. **Prefer
   these documented commands over improvising.**
 - the touched layers' QA skills (resolved for this story) — each says how to bring its layer up and
-  which tool drives it (curl / Playwright / Maestro / `pulumi preview`):
+  which tool drives it:
 {% if qa_run_plan %}
 {%- for r in qa_run_plan %}
   - **{{ r.label }}**: {% for s in (r.qa_skills if r.qa_skills else [r.qa_skill]) %}`{{ s }}`{% if not loop.last %}, {% endif %}{% endfor %}
@@ -69,20 +69,21 @@ Make the manifest correct and give it everything its steps need, e.g.:
 
 - **Author or repair `{{ workhorse_var('stack_manifest') }}`** so the workflow can stand the stack up
   from cold: point `launch`
-  at an **idempotent, self-freshening** bring-up command (`docker compose up -d --build`, a
-  `make dev-stack-*` target that rebuilds), set a real `entry_url`/`health_path` readiness probe, and
+  at an **idempotent, self-freshening** bring-up command — whichever one this repo documents, and
+  the variant of it that *rebuilds* — set a real `entry_url`/`health_path` readiness probe, and
   list the `prepare` (deps/build/migrations) and `seed` (baseline fixtures, the Auth-emulator test
   user) steps as ordered commands. Add a `stop` recipe only if the stack should be torn down; omitting
   it leaves an expensive stack up for reuse.
-- **Do not let QA run against a stale build.** A container built from the code under test goes out of
-  date the moment a story changes that code. So the manifest's `launch` must *rebuild* (a bare
-  `docker compose up -d` that reuses an old image is the bug), and adoption is governed by `reuse`:
+- **Do not let QA run against a stale build.** An image or bundle built from the code under test goes
+  out of date the moment a story changes that code. So the manifest's `launch` must *rebuild* — a
+  bring-up that reuses a previously built artifact is the bug — and adoption is governed by `reuse`:
   the default `if-fresh` with no `fresh` probe never adopts a serving stack — it re-runs `launch`.
   Only mark a stack `reuse: always` when it is **code-independent** (a stock DB/emulator with
   fixtures). A service that must reflect the working tree belongs in the QA plan's `background:` block
   (run live from source), not adopted here.
-- **Install missing tooling**: project dependencies (`npm ci` / `pub get` / `go mod download`),
-  **Playwright browsers** (`npx playwright install`), Maestro, or other QA tools the runbook names.
+- **Install missing tooling**: this repo's own dependency-install command, the browser/device
+  runtimes a QA driver needs, or any other QA tool the runbook names — with the command the runbook
+  or the tool's own documentation gives.
   Installing an absent QA tool is setup, never a "blocked" condition. (These belong as `prepare` steps
   when the stack needs them every run; run one-off host installs directly.)
 
@@ -135,8 +136,8 @@ your shell and not as a `launch` you leave running.
   is **not** a setup problem — say so in your notes and return `ready` (so QA re-runs and routes it to
   the code-fix loop). Touch only the stack manifest, dev-environment config, tooling, and stack fixtures.
 - **Do NOT disrupt unrelated services or destroy data.** Other projects' containers/emulators may be
-  running on this machine. Bring up only this repo's stack; never `docker system prune`, wipe volumes,
-  kill unrelated processes, or delete data to "clean up". Resolve a port collision by configuring this
+  running on this machine. Bring up only this repo's stack; never run a machine-wide prune, wipe
+  volumes, kill unrelated processes, or delete data to "clean up". Resolve a port collision by configuring this
   repo's port, not by killing whatever else holds it.
 - Stay within MVP scope; do not provision cloud/paid infrastructure.
 
