@@ -245,10 +245,18 @@ first**; if an item is already fully done, tick it with the existing commit hash
   - A packet with no obligations and no criteria bounds nothing — the evidence gate already
     accepts that surface on run-log proof, so a budget derived from it would refuse every
     plan that could be written.
-- [ ] Q9 — re-measure: `replay.py run --flow qa --story expense-list -n 3 --label after`,
+- [x] Q9 — re-measure: `replay.py run --flow qa --story expense-list -n 3 --label after`,
   `replay.py report` both labels, fill the 30-minute table in optimize-qa.md `## Progress`
   with before/after, commit `docs:`. If ≤30 min is not met, write the diagnosis there —
-  do not massage the claim (memory: measure before claiming optimization).
+  do not massage the claim (memory: measure before claiming optimization). (0fde6d7)
+    - Notes: after = 10.9 min/trial mean vs before's 11.0, every node still 100% first-lap,
+      0 excess turns, cost $0.64 → $0.74. The honest reading is written into the plan: this
+      instrument replays a story whose QA *passes*, so it never spends the ~15 min the
+      30-minute budget reserves for fix items and a repair lap. It shows a floor and the
+      absence of a regression — not the envelope met. Confirming that needs a seeded-defect
+      `app:` fixture and `score`, which is nobody's ledger item yet.
+    - `replay.py report` prints convergence and cost but no duration, so wall clock came
+      from the span of each trial's artifact directory.
 - [ ] Q9b — REWORK (supervisor, 2026-08-20 05:2x EDT): the stray replay-agent commit leak
   recurred — `ed36cff` ("docs(benchmarks): append independent expense-list QA audit") is
   trial 1 of `after` committing its qa.md through the *outer* repo, same shape as the two
@@ -260,6 +268,11 @@ first**; if an item is already fully done, tick it with the existing commit hash
   fail the trial loudly, and/or ensure the sandbox repo exists before the lane starts).
   Done when: a fresh replay trial on the fixed harness leaves outer `git log` untouched,
   covered by a test or an assertion inside `replay.py` itself; `make lint` green.
+    - (a), partly, at the Q9 tick: the `after` arm leaked two strays — `ed36cff` (trial 1)
+      and `5409f95` (trial 2), both appending a replay sandbox's `qa.md`. `5409f95` was
+      unpushed and was dropped. `ed36cff` had already been pushed by the supervisor's own
+      push, and AGENTS.md forbids force-pushing a shared branch, so it stays in history and
+      a plain `revert` is what removes its content. (b), the harness guard, is what remains.
 
 ## Phase D — dev-lane plan (optimize.md), remaining steps only
 
