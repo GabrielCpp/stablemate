@@ -32,7 +32,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from pydantic import model_validator
+from pydantic import AliasChoices, Field, model_validator
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 
@@ -87,7 +87,13 @@ class PlanResult(CoderResult):
     shared_packages: list[PlanService] = []
     #: The story's `## Verification setup`, machine-readable: `profile`, `fixtures`,
     #: `capable_of_rendering`. Free-form by design — QA renders it, nothing branches on it.
-    qa_stack: dict[str, Any] = {}
+    #: It was `qa_stack` until that name's near-homograph with `qa-stack.yml` — a different
+    #: document with a different schema — was read as the same thing once too often. The old
+    #: spelling stays *readable* because a checkpoint written before the rename is what a
+    #: resume validates against, and `extra="ignore"` would drop it in silence.
+    verification_setup: dict[str, Any] = Field(
+        default={}, validation_alias=AliasChoices("verification_setup", "qa_stack")
+    )
 
 
 class ExitConditions(CoderResult):
@@ -390,7 +396,7 @@ class ImplContext(CoderResult):
 
     Deterministic and side-effect-free, and deliberately degrading: a missing or garbled
     plan-context yields empty lists rather than a failure, so the implementer falls back to
-    reading the plan text. `qa_stack` is copied verbatim from the plan and stays untyped —
+    reading the plan text. `verification_setup` is copied verbatim from the plan and stays untyped —
     it is the fixture/data description a QA turn is handed as prose. `shared_packages` is
     the same: the plan's list of files more than one service reads, which the QA planner
     needs because a fixture the dev lane already resolved is exactly what it should assert
@@ -399,7 +405,7 @@ class ImplContext(CoderResult):
 
     impl_instruction_paths: list[str] = []
     qa_run_plan: list[QaRunEntry] = []
-    qa_stack: dict[str, Any] = {}
+    verification_setup: dict[str, Any] = {}
     shared_packages: list[str] = []
     dispatch_list: list[DispatchEntry] = []
     affected_repos: list[str] = []

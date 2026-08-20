@@ -282,7 +282,7 @@ template:
 #     # legacy/dead config from the older containerized story-coder harness. QA stack
 #     # capability is now decided PER STORY: the author writes a `## Verification setup`
 #     # section (the stack/profile/seed + fixtures that render the surface with realistic
-#     # data), the planner copies it into plan-context.json `qa_stack`, and the coder QA
+#     # data), the planner copies it into plan-context.json `verification_setup`, and the coder QA
 #     # runs against that capable stack instead of a thin default. Keep this block only if
 #     # you still run the old harness; otherwise it has no effect.
 #     qaPreflight:

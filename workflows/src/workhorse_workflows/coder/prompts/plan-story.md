@@ -123,7 +123,7 @@ shape is under "Machine-Readable Result" at the end of this prompt, and it is:
   - `new_service`: `true` only when the directory does not exist yet and this story scaffolds it
 - `implementation_order`: ordered list of `repo::path` keys specifying build order. Dependencies first: whatever defines a shared contract before whatever implements it, and whatever implements it before whatever consumes it. Every entry must name a service you declared.
 - `shared_packages`: non-service directories that need changes (libs, shared code). These are implemented as part of their dependent service's pass.
-- `qa_stack`: the story's **`## Verification setup`** in machine-readable form.
+- `verification_setup`: the story's **`## Verification setup`** in machine-readable form.
 
 **How to identify services**: A service is a directory with a marker file. The repo's own
 `agents.yml` (`workspace.service_roots`/`service_markers` and the `template.*_path` hints)
@@ -419,7 +419,7 @@ After writing the plan artifacts, return this exact JSON object as the LAST thin
   ],
   "implementation_order": ["api-service::cmd/alert", "web-app::packages/discover"],
   "shared_packages": [{"repo": "api-service", "path": "pkg/db/alert", "type": "go-lib"}],
-  "qa_stack": {
+  "verification_setup": {
     "profile": "the stack/compose-profile/seed that renders this surface with realistic data",
     "fixtures": ["the specific records/rows the surface needs to display, and how to create them"],
     "capable_of_rendering": "the surface this stack can actually show (not a thin/empty default)"

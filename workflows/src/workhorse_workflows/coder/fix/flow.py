@@ -37,7 +37,7 @@ Divergences from the YAML, all deliberate:
   passing `self.docs_path` here would change which repos get branched on a run whose docs
   root is not the working directory.
 * `implement-plan.md`'s last three args (`impl_instruction_paths`, `qa_run_plan`,
-  `qa_stack`) are passed although the YAML node does not list them, for the reason
+  `verification_setup`) are passed although the YAML node does not list them, for the reason
   `flows.dev` records: the prompt reads them, and under the YAML engine they were in scope
   because `resolve_fix_impl_context` declared them as outputs. Same values, same source
   node, different route.
@@ -201,7 +201,7 @@ class Fix(Workflow):
                 "verification": layer.verification,
                 "impl_instruction_paths": impl.impl_instruction_paths,
                 "qa_run_plan": impl.qa_run_plan,
-                "qa_stack": impl.qa_stack,
+                "verification_setup": impl.verification_setup,
             },
         )
         return Continue(None, self.check)

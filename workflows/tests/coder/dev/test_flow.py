@@ -38,8 +38,9 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder.dev.flow import Dev
-from workhorse_workflows.coder.shared.schemas.dev import FixResult
+from workhorse_workflows.coder.shared.schemas.dev import FixResult, PlanResult
 from workhorse_workflows.coder.shared.dev import (
+    plan_document,
     read_operator_context,
     record_plan,
     resolve_impl_context,
@@ -460,7 +461,45 @@ def test_the_implement_turn_is_handed_the_three_values_its_prompt_reads(
     impl = _output(run_env, resolve_impl_context)
     assert first["qa_run_plan"] == impl["qa_run_plan"]
     assert first["impl_instruction_paths"] == impl["impl_instruction_paths"]
-    assert first["qa_stack"] == impl["qa_stack"]
+    assert first["verification_setup"] == impl["verification_setup"]
+
+
+def test_a_plan_written_before_the_rename_still_carries_its_verification_setup() -> None:
+    """`verification_setup` was `qa_stack`, and old documents are still on disk.
+
+    The rename took the field off its near-homograph with `qa-stack.yml`, which is a
+    different document with a different schema. What it must not take with it is the
+    fixture list out of a `plan-context.json` a resume reads back: `extra="ignore"` would
+    drop the old key without a word, and QA would be handed a story it cannot stand up.
+    """
+    legacy = {"services": [], "qa_stack": {"profile": "seeded", "fixtures": ["acme.json"]}}
+
+    assert plan_document(legacy, {})["verification_setup"] == {
+        "profile": "seeded",
+        "fixtures": ["acme.json"],
+    }
+
+
+def test_the_new_spelling_wins_when_a_document_somehow_has_both() -> None:
+    """Nothing writes both, and the reader still has to pick one deterministically."""
+    both = {"verification_setup": {"profile": "new"}, "qa_stack": {"profile": "old"}}
+
+    assert plan_document(both, {})["verification_setup"] == {"profile": "new"}
+
+
+def test_a_checkpointed_plan_result_reads_back_under_the_old_field_name() -> None:
+    """The other half of the rename: a resume validates a `PlanResult` written before it.
+
+    A checkpoint is not a document the reader can hand-tolerate — pydantic validates it,
+    and `extra="ignore"` is what makes the resilience ladder soft. The alias is what stops
+    that same setting from eating a real answer on the one turn that produced it.
+    """
+    legacy = PlanResult.model_validate({"qa_stack": {"profile": "seeded"}})
+
+    assert legacy.verification_setup == {"profile": "seeded"}
+    assert PlanResult(verification_setup={"profile": "new"}).verification_setup == {
+        "profile": "new"
+    }
 
 
 def test_an_unauthored_story_is_refused_before_anything_is_planned(

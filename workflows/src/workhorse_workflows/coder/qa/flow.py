@@ -859,7 +859,7 @@ class Qa(Workflow):
             "qa_scratch_dir": QA_SCRATCH_DIRNAME,
             "docs_path": self.docs_path,
             "target_env": self.target_env,
-            "qa_stack": impl.qa_stack,
+            "verification_setup": impl.verification_setup,
             "shared_packages": impl.shared_packages,
             "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
             "qa_only_scenarios": [
@@ -1566,7 +1566,7 @@ class Qa(Workflow):
         and a fixer that authors `qa-stack.yml` at the root while the run reads
         `<service>/qa-stack.yml` loops forever on `skip`.
 
-        `qa_run_plan`/`qa_stack` come from the same `resolve_impl_context` the flow already
+        `qa_run_plan`/`verification_setup` come from the same `resolve_impl_context` the flow already
         read: the prompt lists the touched layers' QA skills from them, and each says how to
         bring its layer up — which is exactly this node's job. Omitting them left the prompt
         on its `_(none resolved)_` fallback, telling the fixer to guess from the plan's smoke
@@ -1592,7 +1592,7 @@ class Qa(Workflow):
                 "qa_notes": loop.block_notes,
                 "stack_manifest": self.qa_stack_manifest,
                 "qa_run_plan": impl.qa_run_plan,
-                "qa_stack": impl.qa_stack,
+                "verification_setup": impl.verification_setup,
                 # The interpreter the QA runner's pre-flight actually checks: the QA nodes
                 # import the runner as a library, so a requirement like "requires the Playwright
                 # Python package" is a statement about *this* process. A fixer told only to

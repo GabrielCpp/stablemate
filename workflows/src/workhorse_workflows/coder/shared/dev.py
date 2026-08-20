@@ -135,8 +135,21 @@ def plan_document(plan: dict[str, Any], repos: dict[str, dict]) -> dict[str, Any
         # Derived, never asked for: it was always the union of the services' skills, and a
         # hand-written union is a hand-written way to disagree with itself.
         "required_instructions": instructions,
-        "qa_stack": plan.get("qa_stack") or {},
+        "verification_setup": _verification_setup(plan),
     }
+
+
+def _verification_setup(doc: dict[str, Any]) -> dict[str, Any]:
+    """The story's `## Verification setup`, under either spelling.
+
+    The field was `qa_stack` until it was renamed off its near-homograph with the
+    `qa-stack.yml` file, which names something else entirely. The old key is still read
+    because `plan-context.json` documents written before the rename are on disk in every
+    run directory a resume might land in, and a resume that silently lost the fixture list
+    would hand QA a story it could not stand up — the one failure this projection exists
+    to prevent. Nothing writes the old key; this only reads it.
+    """
+    return doc.get("verification_setup") or doc.get("qa_stack") or {}
 
 
 def _plan_context(
@@ -366,7 +379,7 @@ def resolve_impl_context(
     return ImplContext(
         impl_instruction_paths=impl_instruction_paths,
         qa_run_plan=qa_run_plan,
-        qa_stack=plan_ctx.get("qa_stack") or {},
+        verification_setup=_verification_setup(plan_ctx),
         shared_packages=[_package_label(item) for item in plan_ctx.get("shared_packages") or []],
         dispatch_list=dispatch,
         affected_repos=affected_repos,
@@ -414,9 +427,9 @@ def plan_summary(
     shared = [_package_label(item) for item in plan_ctx.get("shared_packages") or []]
     if shared:
         lines.append("Shared packages: " + ", ".join(shared))
-    qa_stack = plan_ctx.get("qa_stack") or {}
-    if qa_stack:
-        lines.append("Verification setup: " + json.dumps(qa_stack))
+    verification_setup = _verification_setup(plan_ctx)
+    if verification_setup:
+        lines.append("Verification setup: " + json.dumps(verification_setup))
     return PlanSummary(text="\n".join(lines))
 
 

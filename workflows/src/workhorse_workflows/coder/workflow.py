@@ -740,7 +740,7 @@ class Coder(Workflow):
         services gets one implemented and the other QA'd as if it had been. That is the
         YAML's behavior, preserved, and it is on loop 2's list.
 
-        The three `impl_instruction_paths` / `qa_run_plan` / `qa_stack` arguments the `dev`
+        The three `impl_instruction_paths` / `qa_run_plan` / `verification_setup` arguments the `dev`
         flow passes are absent here for the same reason: the nested copy did not pass them.
         """
         layer = self._fix_layer

@@ -58,8 +58,8 @@ Read, then act:
 {%- else %}
   - _(none resolved — fall back to the plan's Verification Commands / Local run (smoke))_
 {%- endif %}
-{% if qa_stack and (qa_stack.profile or qa_stack.fixtures) %}
-- The **capable stack** the surface needs: {% if qa_stack.profile %}profile `{{ qa_stack.profile }}`{% endif %}
+{% if verification_setup and (verification_setup.profile or verification_setup.fixtures) %}
+- The **capable stack** the surface needs: {% if verification_setup.profile %}profile `{{ verification_setup.profile }}`{% endif %}
   with its fixtures present. Bring **that** stack up — not a thin/empty default.
 {% endif %}
 

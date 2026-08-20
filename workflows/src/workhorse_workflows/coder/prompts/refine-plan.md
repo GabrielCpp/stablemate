@@ -281,7 +281,7 @@ After refining the plan artifacts, return this exact JSON object as the LAST thi
   ],
   "implementation_order": ["acme::api", "acme::web"],
   "shared_packages": [],
-  "qa_stack": {}
+  "verification_setup": {}
 }
 ```
 
@@ -295,7 +295,7 @@ After refining the plan artifacts, return this exact JSON object as the LAST thi
   is pinned to *where* it lives. Set `new_service: true` on a directory this story scaffolds.
 - `implementation_order`: `repo::path` keys in build order; every entry must name a declared service.
 - `shared_packages`: non-service directories (libs, shared code) changed as part of a dependent service's pass.
-- `qa_stack`: the story's verification setup in machine-readable form.
+- `verification_setup`: the story's verification setup in machine-readable form.
 
 **This reply is the whole of the refinement's structure.** The workflow derives the touched
 layers and the per-service run/regression scope from it — a refinement that changed scope and

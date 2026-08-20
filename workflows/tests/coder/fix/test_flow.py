@@ -483,7 +483,7 @@ def test_the_implement_turn_is_handed_the_three_values_its_prompt_reads(
     impl = _output(run_env, resolve_impl_context)
     assert first["qa_run_plan"] == impl["qa_run_plan"]
     assert first["impl_instruction_paths"] == impl["impl_instruction_paths"]
-    assert first["qa_stack"] == impl["qa_stack"]
+    assert first["verification_setup"] == impl["verification_setup"]
 
 
 def test_the_repos_are_branched_onto_the_current_branch_not_a_fix_branch(

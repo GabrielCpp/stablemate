@@ -594,7 +594,7 @@ class Dev(Workflow):
                 "verification": layer.verification,
                 "impl_instruction_paths": impl.impl_instruction_paths,
                 "qa_run_plan": impl.qa_run_plan,
-                "qa_stack": impl.qa_stack,
+                "verification_setup": impl.verification_setup,
                 "gates": gates.text,
                 "tdd": gates.tdd,
                 "operator_context": operator_context,
@@ -991,7 +991,7 @@ class Dev(Workflow):
         transition arguments to the value the next state actually needs.
         """
         return result.model_dump(
-            include={"services", "implementation_order", "shared_packages", "qa_stack"}
+            include={"services", "implementation_order", "shared_packages", "verification_setup"}
         )
 
     @property

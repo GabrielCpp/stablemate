@@ -26,10 +26,10 @@ re-author the plan — that is the single fastest way to lose this turn's work.
 - Spec directory: `{{ workhorse_var('spec_dir') }}`
 - Target environment: `{{ workhorse_var('target_env') }}`
 - Context status: `{{ workhorse_var('context_status') }}`
-{% if qa_stack %}- The stack that is **already up** for you{% if qa_stack.profile %}, profile `{{ qa_stack.profile }}`{% endif %}:
-{% if qa_stack.fixtures %}  - fixtures already loaded — assert against **these**, do not re-derive a path:
-{% for f in qa_stack.fixtures %}    - `{{ f }}`
-{% endfor %}{% endif %}{% if qa_stack.capable_of_rendering %}  - what it can render: {{ qa_stack.capable_of_rendering }}
+{% if verification_setup %}- The stack that is **already up** for you{% if verification_setup.profile %}, profile `{{ verification_setup.profile }}`{% endif %}:
+{% if verification_setup.fixtures %}  - fixtures already loaded — assert against **these**, do not re-derive a path:
+{% for f in verification_setup.fixtures %}    - `{{ f }}`
+{% endfor %}{% endif %}{% if verification_setup.capable_of_rendering %}  - what it can render: {{ verification_setup.capable_of_rendering }}
 {% endif %}{% endif %}{% if shared_packages %}- Shared files this story's services both read, resolved by the implementation plan:
 {% for p in shared_packages %}  - `{{ p }}`
 {% endfor %}{% endif %}

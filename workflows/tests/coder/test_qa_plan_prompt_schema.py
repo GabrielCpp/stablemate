@@ -127,7 +127,7 @@ def test_the_prose_names_only_mechanisms_and_drivers_ostler_accepts():
 PLAN_PROMPTS = (PROMPT, PROMPT.parent / "repair-qa-plan.md")
 
 #: `{{ workhorse_var('x') }}` for the scalars, and the bare `{% if x %}` / `{% for … in x %}`
-#: form the structured arguments use — `qa_stack`, `shared_packages`.
+#: form the structured arguments use — `verification_setup`, `shared_packages`.
 _SCALAR_ARG = re.compile(r"workhorse_var\(\s*'([a-z_]+)'\s*\)")
 _STRUCTURED_ARG = re.compile(r"{%-?\s*(?:if|for\s+\w+\s+in)\s+([a-z_]+)(?![a-z_(])")
 
