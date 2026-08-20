@@ -15,28 +15,43 @@
 config_version = 1
 default_cli = "opencode"
 
+# These are `openai/` ids, not `openrouter/openai/` ones, because opencode reaches them
+# over the ChatGPT-subscription oauth credential rather than a metered API key. Two
+# consequences worth knowing before reading a scorecard produced under this file.
+#
+# The cost column becomes *rate-card*, not billed. groom prices a trial by multiplying
+# reported tokens against models.dev's table, and that table does not know a subscription
+# is paying. The dollar figures stay comparable between two rounds run under this config —
+# which is what the scorecard uses them for — but they are not an invoice.
+#
+# The scarce resource becomes plan quota, not credit, and quota refills on a clock rather
+# than on a top-up. A round that exhausts it fails mid-flight on the provider's side, so
+# `terra` carries the three tiers that run per-node and `sol` only the two that a workflow
+# reaches for deliberately. There is no subscription-side `luna`, which is what these
+# tables held before; `terra` is the nearest step up from it.
+
 [power.high.opencode]
-model = "openrouter/openai/gpt-5.6-luna"
+model = "openai/gpt-5.6-terra"
 effort = "medium"
 
 [power.smart.opencode]
-model = "openrouter/openai/gpt-5.6-luna"
+model = "openai/gpt-5.6-sol"
 effort = "high"
 
 [power.extra-smart.opencode]
-model = "openrouter/openai/gpt-5.6-luna"
+model = "openai/gpt-5.6-sol"
 effort = "high"
 
 [power.medium.opencode]
-model = "openrouter/openai/gpt-5.6-luna"
+model = "openai/gpt-5.6-terra"
 effort = "medium"
 
 [power.low.opencode]
-model = "openrouter/openai/gpt-5.6-luna"
+model = "openai/gpt-5.6-terra"
 effort = "low"
 
 [default.opencode]
-model = "openrouter/openai/gpt-5.6-luna"
+model = "openai/gpt-5.6-terra"
 effort = "medium"
 
 # The QA tools a fixture may opt into, defined here rather than on the machine.
