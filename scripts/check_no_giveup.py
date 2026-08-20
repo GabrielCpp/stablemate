@@ -62,6 +62,15 @@ BANNED = (
     # nothing, and went when the workflow stopped committing on the agent's behalf.
     "docs-not-passed",
     "zero-diff-streak",
+    # The zero-diff streak was more than its `failure_class` string: a `ClassVar` cap, the
+    # gate it jumped to, and a counter threaded through ~25 node signatures as a keyword.
+    # The string alone would not have caught the old code — by the commit that deleted the
+    # mechanism the exit had already stopped spelling it — so the machinery is named too.
+    # `zero_diff=` rather than a bare `zero_diff`, because the docstring explaining why the
+    # counter is gone is allowed to say its name.
+    "MAX_ZERO_DIFF_COMMITS",
+    "_zero_diff_gate",
+    "zero_diff=",
 )
 
 #: The whole package. It started as the list of files the migration had reached, and the
