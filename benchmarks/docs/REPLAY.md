@@ -91,6 +91,13 @@ printed `~$2.37` — where it does not. The default backend is `opencode`, which
 literal `$0` over millions of tokens; a headline printing `$0.00` there would say the round
 was free. `$?` means neither exists, i.e. the model has no line in `prices.toml` yet.
 
+Either way the column is an index, not an invoice. The rate card multiplies reported tokens
+by a public per-token price, and it cannot see what actually paid for them — under a
+subscription oauth credential the marginal dollar spend is zero and the scarce resource is
+plan quota, which refills on a clock and fails a round from the provider side when it runs
+out. Read the figure as comparable between rounds run under the same pinned config, and as
+meaning nothing in absolute terms.
+
 ```bash
 replay.py --fixture seat-booking score                 # the whole key, plus one control per story
 replay.py --fixture seat-booking score --defect D1     # one row
