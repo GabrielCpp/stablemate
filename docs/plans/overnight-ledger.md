@@ -53,11 +53,20 @@ first**; if an item is already fully done, tick it with the existing commit hash
   escalate via `shared/escalation.py`). Also note `qa/flow.py::report_dev_pass` discards a
   `QaReport` on a green story — decide deliberately and leave a comment saying why it is
   fine (or branch it); do not leave it undocumented.
-- [ ] B4 — session memory: surface the backend-minted session id to the workflow;
+- [x] B4 — session memory: surface the backend-minted session id to the workflow;
   `engine.agent`'s `session:` accepts a literal id; `enter` event records the threaded id;
   chains added to `apply-qa-fixes`, `rework_plan`, and the `fix-*` laps (and nothing else).
   Done when: a repair lap's second turn resumes the first turn's session across a run
-  resume (the case `.sessions` cannot serve), covered by an engine test.
+  resume (the case `.sessions` cannot serve), covered by an engine test. (1be4eaa)
+  The engine half was pre-existing (`sessions.is_session_id`, `Engine.session_id`,
+  `chain`/`resumed_session` on `enter`, `_story_chain()` on the QA fix laps and
+  `ci-fix:`/`qa-feedback:`/`qa-regression-fix:` chains); the `coder/fix` lane deliberately
+  has none, since it runs exactly one lap. Missing was the composite the done-criterion
+  names, now `test_a_repair_lap_resumes_its_own_session_after_the_run_dies_and_restarts`:
+  it kills a run between laps and resumes into a fresh run dir, asserting the chain file is
+  absent first. Note the loop's premise — an ordinary `--resume-run` reuses the run dir, so
+  the chain file *does* survive that; what it cannot survive is artifacts moving or a lane
+  resumed into a scope of its own, which is what the test models.
 - [ ] B5 — split the commit node (`coder/workflow.py:726` + `queue.py:919`): agent commits
   per-repo with Conventional subject + `Epic:`/`Story:` trailers (prompt-side); story-passed
   stamp becomes a stamp-only node at the same graph position; cleanliness check subtracts
