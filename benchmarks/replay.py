@@ -37,6 +37,14 @@ the OKF obligation each seeded defect makes false. A scored round runs a clean c
 one trial per defect and prints detection beside the laps:
 
     caught 6/8  missed 2  false 1 | plan-qa 2.1 laps ~$0.94
+    leverage: entry 3/3  deep-links 1  roles 14/15  obligations 22/24  journeys 2/3
+
+The second line is the leverage scorecard, and it is there because detection is gameable
+in a direction nobody notices: a plan that opens every screen by its URL and asserts on
+rendered strings catches a seeded defect exactly as well as one that enters each flow
+where the book says it starts, clicks its way between screens, and addresses the UI by the
+roles the book documents. The scorecard reads the artifacts the trial already produced and
+says which of the two it was. A metric whose input is missing prints `–`, never `0`.
 
 The money is `$0.94` when the harness billed it, `~$0.94` when nothing billed and the
 figure comes from `groom.prices`' rate card applied to the recorded tokens, and `$?` when
@@ -51,6 +59,7 @@ change that halves the laps and guts the plan has not improved anything.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import shutil
@@ -60,6 +69,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -755,6 +765,387 @@ def classify(
     return "inconclusive", status
 
 
+# ── leverage ──────────────────────────────────────────────────────────────────────────
+
+
+#: Printed in place of a metric whose inputs are not there, and never `0`. A trial that
+#: blocked before writing a plan navigated through no links and addressed no roles; a
+#: `roles 0/0` there is a claim about the QA it produced rather than a report that there
+#: was none — the same lie `classify` refuses when it scores a missing evidence map
+#: `inconclusive` instead of a miss.
+BLANK = "–"
+
+#: The scorecard, in print order. Detection says whether the QA flow noticed a defect;
+#: these say whether the plan it wrote used the book it was handed — entered each flow
+#: where the book says the flow starts, moved between screens by clicking rather than by
+#: re-navigating, addressed the UI by the roles the book documents, and closed the
+#: obligations and the journeys it owed. A plan can catch a seeded defect while doing none
+#: of that, and it is the difference between QA and a regression suite of URL fetches.
+LEVERAGE_KEYS = ("entry", "deep_links", "roles", "obligations", "journeys")
+
+LEVERAGE_LABELS = {
+    "entry": "entry",
+    "deep_links": "deep-links",
+    "roles": "roles",
+    "obligations": "obligations",
+    "journeys": "journeys",
+}
+
+#: The one evidence-map status that is a discharged obligation. The other three
+#: (`uncovered`, `claimed-but-unasserted`, `contradicted`) are each a different way of not
+#: having proved it, and none of them counts here.
+PASSING_STATUS = "covered"
+
+
+def route_matches(route: str, url: str) -> bool:
+    """Whether a planned `goto` lands on a route the book documents.
+
+    Ostler's own `_route_matches` when it imports: it is the rule `qa validate` already
+    applied to this plan, and a second implementation here would score plans against a
+    gate that never ran. The fallback below is a transcription of that function, for a
+    benchmarks environment without ostler on the path.
+    """
+    try:
+        from ostler.qa.plan import _route_matches  # noqa: PLC0415 - the authority when present
+    except ImportError:
+        planned = [part for part in urlsplit(url).path.strip("/").split("/") if part]
+        documented = [part for part in urlsplit(route).path.strip("/").split("/") if part]
+        if len(planned) != len(documented):
+            return False
+        return all(
+            part.startswith((":", "{")) or other.startswith((":", "{")) or part == other
+            for part, other in zip(planned, documented, strict=True)
+        )
+    return _route_matches(route, url)
+
+
+def _values(value: Any) -> list[str]:
+    if value is None:
+        return []
+    return [str(item) for item in (value if isinstance(value, list) else [value])]
+
+
+def _route_of(node: dict[str, Any]) -> str:
+    """The route a screen node documents, or `""`.
+
+    First whitespace token of the `route:` bullet with its backticks stripped, because the
+    bullet is prose-shaped — ``- route: `/policies/:id` (the detail screen)`` — and only the
+    path is a route.
+    """
+    for value in _values(node.get("bullets", {}).get("route")):
+        token = value.strip().split()[0].strip("`") if value.strip() else ""
+        if token.startswith("/"):
+            return token
+    return ""
+
+
+def _literal(node: ast.expr | None) -> Any:
+    if node is None:
+        return None
+    try:
+        return ast.literal_eval(node)
+    except (ValueError, SyntaxError):
+        return None
+
+
+def plan_scenarios(source: str) -> dict[str, dict[str, Any]]:
+    """`{scenario id: {"covers": [...], "actions": [...]}}`, read statically from a `qa_plan.py`.
+
+    From the plan rather than the run log because a `goto` URL never reaches
+    `qa-run.ndjson`: the ledger records steps and assertions, not the browser calls inside
+    them. The plan is also the artifact `ostler qa validate` judges, so scoring it scores
+    the thing the flow was gated on.
+
+    The action list comes from ostler's own `extract_locators` — the parser
+    `_validate_book_locators` reads — so a locator counted here is the locator that gate
+    saw, computed roles (`"*"`) and all. Only the `@scenario(...)` header is parsed
+    locally, and only for the two fields the harness's static half does not return: the
+    id, which is what the run log calls a scenario, and `covers`, which is what ties a
+    scenario to the book.
+    """
+    from ostler.qa.harness_host import load_harness_module  # noqa: PLC0415 - only scoring needs it
+
+    actions = load_harness_module("ostler_qa").extract_locators(source)
+    found: dict[str, dict[str, Any]] = {}
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for decorator in node.decorator_list:
+            if not isinstance(decorator, ast.Call) or _called(decorator) != "scenario":
+                continue
+            keywords = {kw.arg: kw.value for kw in decorator.keywords if kw.arg}
+            given = _literal(keywords.get("id"))
+            covers = _literal(keywords.get("covers"))
+            found[given if isinstance(given, str) else node.name.replace("_", "-")] = {
+                "covers": [str(item) for item in covers] if isinstance(covers, list) else [],
+                "actions": actions.get(node.name, []),
+            }
+    return found
+
+
+def _called(call: ast.Call) -> str:
+    func = call.func
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return func.id if isinstance(func, ast.Name) else ""
+
+
+def _gotos(scenario: dict[str, Any]) -> list[str]:
+    return [
+        str(action["url"])
+        for action in scenario["actions"]
+        if isinstance(action, dict) and action.get("do") == "goto" and action.get("url")
+    ]
+
+
+def _locators(scenario: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        action["locator"]
+        for action in scenario["actions"]
+        if isinstance(action, dict) and isinstance(action.get("locator"), dict)
+    ]
+
+
+def required_flows(packet: dict[str, Any]) -> list[str]:
+    """The flow nodes this story owes live evidence for.
+
+    Off the obligations rather than the packet's `journeys:` list, because that list is
+    every flow the graph closure reached and most of them are context: a story touching one
+    endpoint pulls in every journey that endpoint appears in, and scoring a plan for not
+    walking all of them would report a correct plan as a third of one.
+    """
+    return sorted({
+        str(obligation["node"])
+        for obligation in packet.get("obligations", []) or []
+        if isinstance(obligation, dict)
+        and obligation.get("kind") == "journey"
+        and obligation.get("required", True)
+        and obligation.get("node")
+    })
+
+
+def flow_starts(book: dict[str, Any]) -> dict[str, str]:
+    """`{flow node id: the route its `start:` screen documents}`.
+
+    Two hops, because neither end carries both halves: the flow names its start screen as a
+    link, and the route lives on the screen. `via` is the bullet key the link was written
+    under, which is what keeps a `start:` edge apart from a `steps:` one pointing at the
+    same screen.
+    """
+    routes = {str(node["id"]): _route_of(node) for node in book.get("nodes", []) or []}
+    starts: dict[str, str] = {}
+    for edge in book.get("edges", []) or []:
+        if edge.get("via") == "start" and routes.get(str(edge.get("to"))):
+            starts.setdefault(str(edge["from"]), routes[str(edge["to"])])
+    return starts
+
+
+def entry_routes(book: dict[str, Any]) -> set[str]:
+    """Every route a user may legitimately arrive at from outside in-app navigation.
+
+    A flow's start plus any screen carrying an `entry:` bullet — the book's own word for
+    "reached by an app root, an emailed link or an OAuth callback". Navigating straight to
+    one of these mid-scenario is arriving, not deep-linking.
+    """
+    routes = {
+        _route_of(node)
+        for node in book.get("nodes", []) or []
+        if node.get("bullets", {}).get("entry") and _route_of(node)
+    }
+    return routes | set(flow_starts(book).values())
+
+
+def documented_routes(book: dict[str, Any]) -> set[str]:
+    return {route for node in book.get("nodes", []) or [] if (route := _route_of(node))}
+
+
+def leverage_from(
+    book: dict[str, Any] | None,
+    packet: dict[str, Any] | None,
+    plan_source: str | None,
+    run_log: list[dict[str, Any]] | None,
+    statuses: dict[str, str] | None,
+) -> dict[str, Any]:
+    """The five leverage metrics, each a `[n, of]` pair, an int, or None when incomputable.
+
+    None rather than a zero everywhere an input is missing. Every one of these is a
+    fraction whose denominator is a property of the *book* — flows documented, obligations
+    owed, locators written — so an absent artifact makes the question unaskable rather than
+    the answer bad, and `leverage_line` prints `–` for it.
+    """
+    scenarios = plan_scenarios(plan_source) if plan_source else {}
+    if run_log is not None:
+        # Only what the run actually started. A scenario the plan declares and the driver
+        # never reached entered nothing and clicked nothing, and crediting it for the entry
+        # its source says it would have made scores an intention.
+        started = {
+            str(record.get("scenario", ""))
+            for record in run_log
+            if record.get("kind") == "scenario_start"
+        }
+        scenarios = {name: data for name, data in scenarios.items() if name in started}
+
+    flows = required_flows(packet) if packet else []
+    starts = flow_starts(book) if book else {}
+    covering: dict[str, list[dict[str, Any]]] = {flow: [] for flow in flows}
+    for data in scenarios.values():
+        for flow in flows:
+            if any(cover.startswith(f"okf:{flow}:") for cover in data["covers"]):
+                covering[flow].append(data)
+
+    entry: list[int] | None = None
+    if flows and any(starts.get(flow) for flow in flows):
+        entry = [
+            sum(
+                1
+                for flow in flows
+                if (route := starts.get(flow))
+                and any(
+                    (gotos := _gotos(data)) and route_matches(route, gotos[0])
+                    for data in covering[flow]
+                )
+            ),
+            len(flows),
+        ]
+
+    deep_links: int | None = None
+    if book and scenarios:
+        elsewhere = documented_routes(book)
+        arrivals = entry_routes(book)
+        deep_links = sum(
+            1
+            for data in scenarios.values()
+            for url in _gotos(data)[1:]
+            if any(route_matches(route, url) for route in elsewhere)
+            and not any(route_matches(route, url) for route in arrivals)
+        )
+
+    roles: list[int] | None = None
+    uses = [locator for data in scenarios.values() for locator in _locators(data)]
+    if uses:
+        # `role` and `css` are the two strategies the book can vouch for — a `role:` bullet
+        # and a `selector:` one. `text` and `label` address a rendered string, which is what
+        # the next copy edit changes; `test_id` addresses a hook the book never mentions.
+        roles = [sum(1 for locator in uses if "role" in locator or "css" in locator), len(uses)]
+
+    obligations = (
+        [sum(1 for status in statuses.values() if status == PASSING_STATUS), len(statuses)]
+        if statuses
+        else None
+    )
+
+    journeys = (
+        [
+            sum(1 for flow in flows if statuses.get(f"okf:{flow}:end-state") == PASSING_STATUS),
+            len(flows),
+        ]
+        if statuses and flows
+        else None
+    )
+
+    return {
+        "entry": entry,
+        "deep_links": deep_links,
+        "roles": roles,
+        "obligations": obligations,
+        "journeys": journeys,
+    }
+
+
+def read_ndjson(path: Path) -> list[dict[str, Any]] | None:
+    if not path.is_file():
+        return None
+    records: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(record, dict):
+            records.append(record)
+    return records
+
+
+def read_json(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    return loaded if isinstance(loaded, dict) else None
+
+
+def load_book(repo: Path) -> dict[str, Any] | None:
+    """The feature graph as `{"nodes": [...], "edges": [...]}`, or None if it will not load.
+
+    The same `graph.build` behind `ostler graph`, in this process. A trial's book is the
+    frozen app's book plus whatever the flow wrote, and it is the only artifact carrying a
+    flow's start screen — the packet lifts `route:` onto an obligation but never `start:`.
+    """
+    try:
+        from ostler import graph as graph_mod  # noqa: PLC0415 - a heavy import only scoring needs
+        from ostler import model
+    except ImportError:
+        return None
+    try:
+        return graph_mod.build(model.load(repo))
+    except Exception:  # noqa: BLE001 - a book that will not load scores `–`, not a crash
+        return None
+
+
+def leverage(repo: Path, story: str, statuses: dict[str, str] | None) -> dict[str, Any]:
+    """Score one trial's artifacts. Every input is optional; a missing one prints `–`."""
+    spec = repo / "docs" / "specs" / story
+    plan_file = spec / "qa_plan.py"
+    return leverage_from(
+        load_book(repo),
+        read_json(spec / "qa-okf-context.json"),
+        plan_file.read_text(encoding="utf-8") if plan_file.is_file() else None,
+        read_ndjson(spec / "qa" / "qa-run.ndjson"),
+        statuses,
+    )
+
+
+def pool_leverage(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Sum the metrics across trials, keeping a metric None when no trial could compute it.
+
+    Summed rather than averaged, for the reason `report` pools laps: these are counts over
+    a denominator that varies per story, and averaging per-trial fractions would weight a
+    one-flow story the same as a five-flow one.
+    """
+    pooled: dict[str, Any] = dict.fromkeys(LEVERAGE_KEYS)
+    for row in rows:
+        metrics = row.get("leverage") or {}
+        for key in LEVERAGE_KEYS:
+            value = metrics.get(key)
+            if value is None:
+                continue
+            current = pooled[key]
+            if isinstance(value, list):
+                pair = [int(value[0]), int(value[1])]
+                pooled[key] = pair if current is None else [current[0] + pair[0], current[1] + pair[1]]
+            else:
+                pooled[key] = int(value) + (current or 0)
+    return pooled
+
+
+def leverage_line(metrics: dict[str, Any]) -> str:
+    parts = []
+    for key in LEVERAGE_KEYS:
+        value = metrics.get(key)
+        if value is None:
+            shown = BLANK
+        elif isinstance(value, list):
+            shown = f"{value[0]}/{value[1]}"
+        else:
+            shown = str(value)
+        parts.append(f"{LEVERAGE_LABELS[key]} {shown}")
+    return "  leverage: " + "  ".join(parts)
+
+
 def cmd_score(fixture: Fixture, args: argparse.Namespace) -> int:
     """Run a clean control plus one trial per defect, then print detection beside cost.
 
@@ -786,9 +1177,10 @@ def cmd_score(fixture: Fixture, args: argparse.Namespace) -> int:
         )
         work = WORK_DIR / args.label / run_id
         repo = work / fixture.repo_dirname
+        statuses = evidence_statuses(repo, story)
         verdict, because = classify(
             row,
-            evidence_statuses(repo, story),
+            statuses,
             audit_result(work, run_id),
             survived=defect_survived(fixture.app, row, repo) if row else True,
         )
@@ -796,6 +1188,10 @@ def cmd_score(fixture: Fixture, args: argparse.Namespace) -> int:
             "run_id": run_id, "flow": "qa", "story": story, "rc": rc, "cli": args.cli,
             "defect": variant, "obligation": str(row["obligation"]) if row else "",
             "verdict": verdict, "because": because,
+            # In the same row the verdict lands in, because the two are read together: a
+            # round that caught everything by fetching URLs and one that caught everything
+            # by walking the product are the same headline and different products.
+            "leverage": leverage(repo, story, statuses),
         })
         worst = max(worst, abs(rc))
 
@@ -870,6 +1266,7 @@ def score(label: str, trials: list[dict[str, Any]]) -> None:
         # failing, and averaging it into the detection rate hides the outage as a result.
         line += f"  {RED}inconclusive {unknown}{RESET}"
     print(f"\n{BOLD}{line}{RESET}")
+    print(f"{DIM}{leverage_line(pool_leverage(trials))}{RESET}")
 
 
 # ── report ────────────────────────────────────────────────────────────────────────────
@@ -925,6 +1322,7 @@ def report(label: str) -> None:
     print(f"  {DIM}{'—' * 68}{RESET}")
     print(f"  {'TOTAL':<30} {'':>5} {'':>5} {'':>6} {'':>5} {'':>4} {money(every):>8}"
           f"   ({total} excess turns)")
+    print(leverage_line(pool_leverage(trials)))
 
 
 def cmd_report(args: argparse.Namespace) -> int:
