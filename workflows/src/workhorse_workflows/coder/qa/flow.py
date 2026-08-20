@@ -635,6 +635,9 @@ class Qa(Workflow):
             # Zeroed with the chain itself, so the next chain gets a whole budget rather than
             # inheriting a count of laps that belonged to a conversation that no longer exists.
             chain_laps=0,
+            # And for the same reason: a refusal of the plan that answered the old diff says
+            # nothing about the plan that answers this one. See `QaLoop.plan_rejections`.
+            plan_rejections=(),
         )
         if result.status == "passed":
             # To the stack, not to the plan: the planner authors against a surface it can
@@ -1733,7 +1736,14 @@ class Qa(Workflow):
         return self.agent(
             turn.prompt,
             returns=QaResult,
-            power="high",
+            # low, for the reason `repair_plan` is: this turn is handed one scenario, that
+            # scenario's own failed assertions, and a stack that is already up, and it must
+            # prove the fix with a dry run before the item leaves the worklist. The whole-
+            # report fixer it splits paid the authoring tier to re-derive the worklist on
+            # every lap; there is no worklist left to derive. Provisional in exactly the way
+            # `repair-qa-plan`'s tier was: the plan's §1 harness measures whether the cheaper
+            # tier raises the exit rate, and the number decides whether it stays.
+            power="low",
             add_dirs=self._dirs(),
             args=turn.args
             | {
@@ -2018,9 +2028,16 @@ class Qa(Workflow):
         `_guard_plan`. That detector asks whether the last repair left *the suite* failing
         identically, and its inputs are a run fingerprint; no run happened between this
         repair and this refusal, so the fingerprint is the one the previous guard already
-        stamped and the test would report a stall on every first dry-run failure. The
-        sameness signal still fires where it means something — after the next scored run.
+        stamped and the test would report a stall on every first dry-run failure.
+
+        `_rejected` is the sameness signal that *does* belong here: it compares this refusal
+        against the refusals this plan lane has already been sent back on, which needs no run
+        between them. See `QaLoop.plan_rejections`.
         """
+        stalled = self._rejected(gate, loop, "dry-run refusal")
+        if stalled is not None:
+            return stalled
+        loop = self._recorded(loop, "dry-run refusal")
         if loop.plan_judgement_rework >= self.MAX_PLAN_REWORKS:
             return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
         return self._plan_lap(
@@ -2031,6 +2048,48 @@ class Qa(Workflow):
                 repaired_failures=loop.run_failures,
             ),
         )
+
+    def _rejection(self, loop: QaLoop, kind: str) -> str:
+        """This refusal as one comparable line: which gate raised it, and what it said.
+
+        The notes are whitespace-normalised because they are a validator's or a dry-run
+        gate's rendered output, and a re-wrapped identical complaint is an identical
+        complaint. `kind` is in the key for the reason `_repeating` takes a `lap`: two gates
+        share this field, and a schema refusal that reads like a dry-run refusal is not one.
+        """
+        return f"{kind}: {' '.join(loop.plan_validation_notes.split())}"
+
+    def _recorded(self, loop: QaLoop, kind: str) -> QaLoop:
+        """The same loop, remembering that the plan lane was sent back on this."""
+        return loop.update(plan_rejections=(*loop.plan_rejections, self._rejection(loop, kind)))
+
+    def _rejected(self, gate: object, loop: QaLoop, kind: str) -> Continue | Await | None:
+        """Escalate a pre-run rejection the plan lane has already answered once.
+
+        The plan lane's two pre-run gates each bounded a *count* of laps and nothing else.
+        That is the budget-only shape the post-run half stopped having when `_repeating`
+        landed, and it is the shape that lets a repair turn spend every lap it is allowed
+        re-earning one refusal: the turn is handed the gate's reason, edits the file, and the
+        gate says the same sentence back. `repair-qa-plan`'s observed 33 laps are mostly
+        that argument with itself.
+
+        `None` when this refusal is new — the caller then does what it would have done
+        anyway. The operator gate and not `_exhausted`, for the same reason `_stalled` picks
+        it: "another lap of this buys nothing" is a decision someone can act on, and reaching
+        it by burning three more agent turns says it later and less clearly. It is an `Await`
+        and never an ending — the gate can send the story straight back around.
+        """
+        problem = self._rejection(loop, kind)
+        if problem not in loop.plan_rejections:
+            return None
+        self.logger.info(
+            "the QA plan was refused for the identical reason twice (%s) — escalating "
+            "instead of spending another lap",
+            kind,
+            extra={"activity": True},
+        )
+        self.logger.info("stall reason: a QA-plan repair that answered nothing the gate reads")
+        return self._gate(gate, loop)
 
     def _stalled(self, result: object, loop: QaLoop, lap: str) -> Continue | Await | Done:
         """A repair loop that has stopped moving — escalate rather than spend the budget.
@@ -2111,7 +2170,15 @@ class Qa(Workflow):
         A parse error is also the most local repair there is, which is why this goes to
         `repair_plan` — regenerating a whole plan to fix an indentation slip threw away a
         correct draft and bought a different one.
+
+        The budget is not the only thing that ends this loop: a repair turn handed the exact
+        validator output it was handed last time, answering with a file the validator refuses
+        for the identical reason, has no new information to work from. See `_rejected`.
         """
+        stalled = self._rejected(result, loop, "QA-plan schema refusal")
+        if stalled is not None:
+            return stalled
+        loop = self._recorded(loop, "QA-plan schema refusal")
         if loop.plan_validation_rework >= self.MAX_PLAN_VALIDATION_REWORKS:
             return self._exhausted(
                 loop, f"{loop.plan_validation_rework} QA-plan schema repair"

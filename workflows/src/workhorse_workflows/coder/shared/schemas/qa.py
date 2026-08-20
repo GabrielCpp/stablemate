@@ -581,6 +581,26 @@ class QaLoop(CoderResult):
     #: fixer ran, and the gate refused it for exactly the same reason, so the next lap has no
     #: new information to work from and the item escalates instead.
     fix_item_problems: tuple[str, ...] = ()
+    #: The rejections the *plan lane* has already been sent back on, in order — one entry
+    #: per pre-run refusal, carrying which gate raised it and what it said.
+    #:
+    #: `repaired_failures` is the same signal for the post-run half, and it cannot serve this
+    #: one: it fingerprints a *suite run*, and no run happens between a repair and the schema
+    #: or dry-run refusal that sends it round again. So those laps had a count bounding them
+    #: and nothing else, and a plan repair that answered a refusal with the identical file
+    #: could spend the whole budget re-earning the identical refusal — the observed 33-lap
+    #: `repair-qa-plan` story is mostly that.
+    #:
+    #: A second *identical* entry is a repair turn that ran with the gate's reason in hand and
+    #: produced nothing the gate reads differently, which is no new information to work from.
+    #: It goes to the operator gate rather than round again — an `Await`, never an end: the
+    #: operator can always send it back, and the worklist is on the loop so a resume continues.
+    #:
+    #: Not blanked by `cleared()` — every plan lap clears the gate notes on its way in, so a
+    #: field that cleared with them could never hold two laps at once. Zeroed at the
+    #: `build_context` rejoin instead, where the diff the plan answers has changed and a
+    #: rejection of the old plan says nothing about the new one.
+    plan_rejections: tuple[str, ...] = ()
     #: The same fingerprint as the last repair lap — a code fix or a plan repair — was
     #: dispatched against.
     #:
