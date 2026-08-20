@@ -103,10 +103,19 @@ first**; if an item is already fully done, tick it with the existing commit hash
   cannot see coder turns — they pass `turn.prompt`, not a literal — so the new
   `tests/coder/test_commit_instruction.py` classifies every prompt as producer or not and
   renders the trailers both ways.
-- [ ] B7 — migrate the three give-up exits and widen `scripts/check_no_giveup.py`:
+- [x] B7 — migrate the three give-up exits and widen `scripts/check_no_giveup.py`:
   zero-diff-streak deleted (counter, `MAX_ZERO_DIFF_COMMITS`, threaded `zero_diff` param,
-  `BUDGET_LABELS` entry); `blocked_docs` and `docs-not-passed` become escalations.
+  `BUDGET_LABELS` entry); `blocked_docs` and `docs-not-passed` become escalations. (`c7b2424`)
   Done when: widened `make check-no-giveup` passes and would fail on the old code.
+  Notes: the three exits were already migrated — the zero-diff mechanism in `87ee1af`, the
+  docs block and `docs-not-passed` in `fa4ccb3`. What was NOT done is the second half: the
+  guard banned only the two `failure_class` strings, and by the commit that deleted the
+  zero-diff mechanism that exit had already become a gate, so the string was gone and the
+  guard would have reported ok on the old code. `MAX_ZERO_DIFF_COMMITS`, `_zero_diff_gate`
+  and `zero_diff=` are now banned too (bare `zero_diff` is not — the docstring saying why
+  the counter is gone may name it); over the pre-migration `workflow.py` the widened list
+  reports 54 offenders where the old one reported none. `workflows/tests/test_giveup_guard.py`
+  pins that a planted line exits non-zero and that the vocabulary list cannot lose an entry.
 - [ ] B8 — phase gate: full `make test` (includes lint, check-no-env, check-public,
   check-no-giveup) green from the repo root. Fix anything this surfaces before moving on.
 
