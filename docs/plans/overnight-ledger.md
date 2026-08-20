@@ -362,11 +362,36 @@ tree/plan for evidence it already landed; tick `(pre-existing)` if so.
   Note: the Done-when's other half — "`ImplResult.exit_conditions` is populated **on the
   bench**" — is a telemetry observation, not a code state, and belongs to D5 with the rest of
   the measurement, same as D1's third clause.
-- [ ] D5 — Plan A step 7: re-measure with `benchmarks/devlane.py` per
+- [x] D5 — Plan A step 7: re-measure with `benchmarks/devlane.py` per
   optimize-baseline.md's reproduce section; fill optimize.md's success table row by row.
+  (5215a08) — the table existed already (written at `e733840` off runs `a12`–`a15`), so this
+  iteration re-ran the measurement on today's HEAD and rewrote the table around the whole
+  set rather than its best member. New run `c1` (`devlane.py run --at 3fa416f --story
+  expense-list --run-id c1`, 23.4 min wall, $8.29) plus the existing `a12`–`a15`/`b1`–`b3`
+  makes n=8 on one story from one commit. Median wall clock **13.9 min, 39 % under the
+  22.7 min baseline** — target met, but on a spread of 11.0–23.2 min that is wider than the
+  effect, which is why the median and not `a14`'s 11.7 min (48 %) is now the claim.
+  Two surprises, both written into the plan rather than smoothed over:
+  * `c1` is the slowest run in the set and it is the newest. It spent three repair turns —
+    one `refine-plan` and two `test` laps — after the same two high-power turns everything
+    else spends. The `refine-plan` lap is a defect, not a bad plan: `plan-story` wrote
+    `plan_file: "docs/specs/expense-list/plan.md"` (repo-relative) and `validate_plan`
+    resolves it under the spec dir, so the same string is right under one reading and
+    unresolvable under the other. 203 s of high-power turn. Filed as D8 below.
+  * The schema row was counting differently on each side — the baseline's "5 agent results"
+    included `OperatorResolution`, the "3" did not. Like for like it is 5 → 4, or 4 → 3
+    without the operator gate; the row now says so.
+  Fix-lap rate is now measured on the A side (`goal` 3/3, `test` 1/2) but still has no
+  baseline to be "not lower" than, exactly as optimize-baseline.md predicted, so it stays
+  ⚠️ and carries to D7. Guard row re-checked live: `make check-prompt-agnostic` is clean over
+  91 files (the plan said 90).
 - [ ] D6 — Plan B steps 9–10: dispatch from markers + `qa_stack` rename (see memory:
   plan-context `qa_stack` field vs `qa-stack.yml` schema collision — this is where it gets
   fixed); review/QA apply steps re-enter the implementer session.
+- [ ] D8 — `plan_file` is ambiguous between repo-relative and spec-relative, and the
+  disagreement costs a high-power `refine-plan` lap (seen in run `c1`, 203 s). Either accept
+  both readings in `coder/shared/dev.py::validate_plan` or say which one the field means
+  where the planner reads it — with a test either way.
 - [ ] D7 — Plan B step 11: final re-measure; B claims only turn-count/schema rows unless
   the table says otherwise. Full `make test` green. Write a closing summary at the top of
   this ledger.
