@@ -385,9 +385,35 @@ tree/plan for evidence it already landed; tick `(pre-existing)` if so.
   baseline to be "not lower" than, exactly as optimize-baseline.md predicted, so it stays
   ⚠️ and carries to D7. Guard row re-checked live: `make check-prompt-agnostic` is clean over
   91 files (the plan said 90).
-- [ ] D6 — Plan B steps 9–10: dispatch from markers + `qa_stack` rename (see memory:
+- [x] D6 — Plan B steps 9–10: dispatch from markers + `qa_stack` rename (see memory:
   plan-context `qa_stack` field vs `qa-stack.yml` schema collision — this is where it gets
   fixed); review/QA apply steps re-enter the implementer session.
+  (pre-existing: 368c58e, b53fba4, cf6b078, ae962af/44169b2/8dcad96) — verified clause by
+  clause rather than by commit subject, because the item is four separate landings:
+  * **The agent returns the structure** (`368c58e`): `PlanResult` carries `services[]`
+    (`PlanService` with repo/path/type/skills/plan_file/new_service), `implementation_order`
+    and `shared_packages`; `shared/dev.py::record_plan` writes `plan-context.json` as a
+    one-way *projection* and the module header says so. The remaining `load_json` sites are
+    all outside the producing run — `shared/review.py` (standalone PR), `nodes/pr.py`,
+    `shared/queue.py` — which is exactly the projection's stated readership.
+  * **Dispatch from markers** (`b53fba4`): `shared/dev.py::declared_markers` reads
+    `workspace.service_markers` off each repo and renders it into `plan-story.md`, with a
+    written fallback branch for a workspace that declares none, instead of the planner
+    recalling a taxonomy.
+  * **The rename** (`cf6b078`): the field is `verification_setup`; the old spelling survives
+    only as `validation_alias=AliasChoices("verification_setup", "qa_stack")` plus
+    `shared/dev.py:152`'s `doc.get(...) or doc.get(...)`, because a checkpoint or a
+    `plan-context.json` written before the rename is what a resume validates against.
+    `qa_stack_manifest` is untouched on purpose — it is the *file* `qa-stack.yml`, the other
+    half of the homograph, and renaming it would have collided the two again from the
+    opposite side.
+  * **Apply steps re-enter the implementer session** (`ae962af` threaded the backbone,
+    `44169b2` fixed QA's fix laps onto it, `8dcad96` did review): review's three apply turns
+    run on `_impl_chain()` and drop to `"low"` power when a `session_id` was threaded in,
+    while the judging turns stay cold by design; QA's `_apply_fixes` runs the fix and
+    operator-guided laps on `_story_chain()`, and `qa-feedback:`/`qa-regression-fix:` keep
+    private chains deliberately, with the reason written on `_WORKLISTS`.
+  Gate: `make lint` clean, `workflows` 1343 passed.
 - [ ] D8 — `plan_file` is ambiguous between repo-relative and spec-relative, and the
   disagreement costs a high-power `refine-plan` lap (seen in run `c1`, 203 s). Either accept
   both readings in `coder/shared/dev.py::validate_plan` or say which one the field means
