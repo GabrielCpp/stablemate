@@ -131,6 +131,25 @@ def test_nested_skill_dirs_do_not_swallow_each_others_assets(tmp_path):
     ]
 
 
+def test_running_a_bundled_script_does_not_bundle_its_bytecode(tmp_path):
+    """A script asset is meant to be run, and running it writes `__pycache__` beside it.
+
+    Nobody authored those bytes and they are not text, so treating them as an asset takes
+    the whole install pipeline down — or, in `--check`, downgrades the generated-file
+    guard to a skip on exactly the machines where the scripts get used.
+    """
+    root = _library(tmp_path)
+    skill_dir = _skill(root, "go")
+    _write(skill_dir, "scripts/check.py", "print('ok')\n")
+    cache = skill_dir / "scripts" / "__pycache__"
+    cache.mkdir()
+    (cache / "check.cpython-312.pyc").write_bytes(b"\x00\x01binary")
+
+    assert [a.rel for a in skill_assets(next(iter(load_sources(root, "skill"))))] == [
+        "scripts/check.py"
+    ]
+
+
 def test_a_flat_source_bundles_nothing(tmp_path):
     """Bundling is a property of the directory form — a flat `foo.md` has no directory."""
     root = _library(tmp_path)
