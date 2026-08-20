@@ -318,8 +318,28 @@ tree/plan for evidence it already landed; tick `(pre-existing)` if so.
   `coder/prompts/` mentions `plan-context.json`; the remaining mentions are Python readers
   (`shared/queue.py`) and docstrings explaining the projection. `make lint` green;
   1343 workflow tests pass.
-- [ ] D3 — Plan A step 5: `agents.yml` service commands + deterministic test/lint/smoke
+- [x] D3 — Plan A step 5: `agents.yml` service commands + deterministic test/lint/smoke
   nodes; genesis writes the block; farrier doctor warns; delete the "MANDATORY" prose.
+  (pre-existing: 8fbd112 + c98bac0) — `coder/shared/dev.py::_services_config` reads the
+  repo's `services:` block (top-level or under `workflow:`), `service_keys` resolves a layer
+  to its narrowest declaring key, and `dev/flow.py::gates` runs each of `GATE_ORDER` through
+  `run_gate`, an undeclared gate being `skipped` rather than guessed. Genesis writes the
+  block (`genesis/nodes.py:330` seeds `data["services"][service]` from the story's
+  `"<gate>=<command>"` pairs, asserted at `workflows/tests/coder/genesis/test_flow.py:217`).
+  `farrier doctor` warns on a missing block, a non-mapping entry, a missing test/lint
+  command and a service root matching no key (`farrier/tests/test_doctor_command.py`, 305
+  farrier tests pass). No "MANDATORY" prose survives anywhere under `coder/prompts/`; the
+  implement envelope now prints "Gates that run after this turn: … / (nothing declared)".
+  The bench repo `/tmp/bench-expense-split/agents.yml` carries a real `services.api` block
+  (`lint`, `test`, `tdd: required`), which is the plan's own Done-when.
+  Note — one gap against this item's *shorthand*, recorded rather than papered over:
+  `smoke` is declarable in `services:` and documented in `_services_config`, but it is not
+  a deterministic gate. `GATE_ORDER` is `("lint", "test")`. That matches the source plan's
+  prose ("Deterministic nodes run `test` and `lint` after the implement turn and after
+  every fix turn") and its Done-when, and smoke stays an agent-run step driven by
+  `implement-plan.md`'s run plan — booting a service on every repair lap under the 600s
+  gate timeout is a behaviour change the plan does not ask for. If smoke-as-a-gate is
+  wanted, it is a new item, not a silent widening of this one.
 - [ ] D4 — Plan A step 6: goal setting in the envelope + `goal` adapter; TDD gate with the
   `tdd:` key.
 - [ ] D5 — Plan A step 7: re-measure with `benchmarks/devlane.py` per
