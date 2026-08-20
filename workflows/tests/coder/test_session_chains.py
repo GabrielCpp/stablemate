@@ -21,9 +21,14 @@ import pytest
 from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.qa.flow import Qa
+from workhorse_workflows.coder.review.flow import Review
 from workhorse_workflows.coder.shared.schemas.dev import DevResult
 from workhorse_workflows.coder.shared.schemas.docs import DocsProgress, DocsResult
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaLoop
+from workhorse_workflows.coder.shared.schemas.review import (
+    CodeReuseResult,
+    CodeReviewResult,
+)
 
 STORY = "STORY-1"
 
@@ -62,7 +67,7 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
         # tests reaches a real one, so the resolved id is the chain name itself.
         return SimpleNamespace(session_id=lambda key: key)
 
-    for flow in (Docs, Qa, Dev):
+    for flow in (Docs, Qa, Dev, Review):
         monkeypatch.setattr(flow, "agent", fake_agent)
         monkeypatch.setattr(flow, "reset_session", fake_reset)
         monkeypatch.setattr(flow, "logger", property(lambda _: logging.getLogger("test")))
@@ -87,6 +92,12 @@ def _qa() -> Qa:
 
 def _dev() -> Dev:
     flow = Dev(story=STORY)
+    flow._ctx = SimpleNamespace(story_slug=STORY, story_path="", spec_dir="", qa_dir="")
+    return flow
+
+
+def _review(**kwargs: Any) -> Review:
+    flow = Review(story=STORY, **kwargs)
     flow._ctx = SimpleNamespace(story_slug=STORY, story_path="", spec_dir="", qa_dir="")
     return flow
 
@@ -310,3 +321,68 @@ def test_the_dev_backbone_resumes_an_incoming_session_rather_than_naming_a_fresh
     flow.session_id = "story:from-a-resumed-run"
 
     assert flow._story_chain() == "story:from-a-resumed-run"
+
+
+# ── the review lane ──────────────────────────────────────────────────────────────────
+
+
+def _apply_review(flow: Review, **kwargs: Any) -> None:
+    with pytest.raises(_Reached):
+        flow.apply(
+            notes="the handler ignores the timeout",
+            code_review=CodeReviewResult(status="ok"),
+            code_reuse=CodeReuseResult(status="ok"),
+            review_rework=0,
+            **kwargs,
+        )
+
+
+def test_an_apply_turn_rejoins_the_implementer_rather_than_judging_cold(spy: _Spy) -> None:
+    """The half of this lane that changes code is not the half that judges it. A finding is
+    a request to edit a line somebody just wrote, and the turn that wrote it is the cheapest
+    one that can act on it — which is also what makes the low power tier sufficient."""
+    _apply_review(_review(session_id="story:from-dev"))
+
+    assert spy.turns[0]["prompt"] == "prompts/apply-review.md"
+    assert spy.turns[0]["session"] == "story:from-dev"
+    assert spy.turns[0]["power"] == "low"
+
+
+def test_the_judging_turns_stay_cold_even_when_the_implementer_is_threaded_in(
+    spy: _Spy,
+) -> None:
+    """The reason the two halves are named apart: a reviewer that inherited the author's
+    context is reviewing its own reasoning, so no threaded id may reach the feeder chain."""
+    flow = _review(session_id="story:from-dev")
+
+    assert flow._feeder_chain == f"review-feeders:{STORY}"
+    assert flow._feeder_chain != flow._impl_chain()
+
+
+def test_a_standalone_pr_review_has_no_implementer_to_resume_and_pays_for_it(
+    spy: _Spy,
+) -> None:
+    """No dev lane in front of it means no context to inherit, so the apply turn is cold —
+    and a cold turn needs the reasoning the resumed one did not have to repeat."""
+    _apply_review(_review())
+
+    assert spy.turns[0]["session"] == f"story:{STORY}"
+    assert spy.turns[0]["power"] == "high"
+
+
+def test_the_apply_turns_keep_counting_from_what_the_dev_lane_spent(spy: _Spy) -> None:
+    """The cap bounds the *conversation*, not each lane's share of it. A review that
+    restarted the count would hand the recycler a context twice as long as it agreed to."""
+    flow = _review(session_id="story:from-dev", session_turns=7, max_session_turns=8)
+
+    assert flow._spend_turn(0) == 8
+    assert spy.resets == []
+
+
+def test_a_conversation_that_fills_up_inside_the_review_lane_is_recycled(spy: _Spy) -> None:
+    """Where the cap is reached is not where it is owned: the dev lane can hand over a
+    conversation already at the threshold, and the next apply turn opens a fresh one."""
+    flow = _review(session_id="story:from-dev", session_turns=8, max_session_turns=8)
+
+    assert flow._spend_turn(0) == 1
+    assert spy.resets == ["story:from-dev"]

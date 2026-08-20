@@ -76,6 +76,7 @@ from typing import Any, ClassVar, NamedTuple
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths, qa_support
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
+from workhorse_workflows.coder.shared.conversation import story_chain
 from workhorse_workflows.coder.shared.dev import (
     plan_summary,
     read_operator_context,
@@ -477,7 +478,7 @@ class Qa(Workflow):
         the first time it is used. Distinct from `_chain`/`_WORKLISTS`: those name the
         narrower, intentionally-isolated repair loops, and stay untouched by this one.
         """
-        return self.session_id or f"story:{self.ctx.story_slug}"
+        return story_chain(self.session_id, self.ctx.story_slug)
 
     #: The repair loops that run on a chain of their own, as the worklist half of their key.
     #: `fix_regression` builds its this way; the plan-repair chain is `_chain`, which several

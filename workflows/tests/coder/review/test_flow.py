@@ -787,8 +787,14 @@ def test_a_run_killed_mid_review_resumes_on_the_review_state(
     assert resume.flow == "Review", resume
     # Only what the transition actually bound is checkpointed; `review_rework` keeps its
     # default on the way back in, which is the same 0 the killed run was carrying.
-    assert sorted(resume.params) == ["code_reuse", "code_review", "review_blocks"], resume.params
+    assert sorted(resume.params) == [
+        "code_reuse",
+        "code_review",
+        "review_blocks",
+        "session_turns",
+    ], resume.params
     assert resume.params.pop("review_blocks") == 0
+    assert resume.params.pop("session_turns") == 0
     assert resume.params["code_review"]["findings_summary"] == "one minor finding (pass 1)"
 
     agent = _Agent(docs)

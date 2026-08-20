@@ -235,6 +235,7 @@ class _StubFlow(Workflow):
     branch: str = ""
     ci_summary: str = ""
     session_id: str = ""
+    session_turns: int = 0
 
 
 class _Sub:
@@ -479,24 +480,28 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
     assert _output(run_env, select_epic)["reason"], _output(run_env, select_epic)
 
 
-def test_the_backbone_session_threads_past_review_but_not_through_it(
+def test_the_backbone_session_threads_through_every_lane_unread(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`dev`, `document` and `qa` share one conversation; `review` never joins it.
+    """Every lane is handed the story's conversation, and `review` passes it on untouched.
 
-    `Review`'s handoff carries no `session_id` at all — it is the one lane that must judge
-    the diff on its own — and what `document` resumes is exactly what `dev` produced,
-    unread and unchanged by whatever `Review` did with its own turn.
+    `Review` gets the id because its *apply* turns rejoin the implementer — whether its
+    *judging* turns stay cold is `Review`'s own affair, asserted in its own tests. What the
+    graph owes is the thread itself, and that nothing is read back off `Review`'s result:
+    what reaches `document` is exactly what `dev` produced, with the turn count that says
+    how much of the recycle budget the conversation has already spent.
     """
     repo = epic()
 
     class _ChainingSub(_Sub):
         def _dev(self, child: _StubFlow) -> DevResult:
             super()._dev(child)
-            return DevResult(status="ready", session_id="story:from-dev")
+            return DevResult(
+                status="ready", session_id="story:from-dev", session_turns=3
+            )
 
         def _docs(self, child: _StubFlow) -> DocsResult:
             return DocsResult(status="passed", session_id="story:from-docs")
@@ -505,7 +510,8 @@ def test_the_backbone_session_threads_past_review_but_not_through_it(
 
     drive_flow(Coder(), env(), _Agent())
 
-    assert sub.calls_to("Review")[0].session_id == ""
+    assert sub.calls_to("Review")[0].session_id == "story:from-dev"
+    assert sub.calls_to("Review")[0].session_turns == 3
     assert sub.calls_to("Docs")[0].session_id == "story:from-dev"
     assert sub.calls_to("Qa")[0].session_id == "story:from-docs"
 

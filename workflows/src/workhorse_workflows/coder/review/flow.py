@@ -19,6 +19,15 @@ loop, the operator resolution, and the feedback pass. The driver ids an agent tu
 prompt stem, so the three are one node id where the YAML had three; nothing reads that output
 by node name, and what distinguished the sites was their arguments and where they went next.
 
+**The lane is split in two along one line: who judges, and who changes the code.** The judging
+turns — code review, reuse, the implementation verdict — are cold by design; a reviewer that
+inherited the author's context is reviewing its own reasoning. The three apply turns are the
+opposite case: they resume the *implementer's* conversation (`session_id`, threaded in from
+`dev`), because a finding is a request to change code somebody just wrote and the turn that
+wrote it already knows why the line is there. That also makes the cheap power tier sufficient
+for an apply, which is where this lane's cost was. `max_session_turns` bounds the conversation
+across both lanes — the count arrives with `DevResult.session_turns` and keeps going here.
+
 Divergences from the YAML, all deliberate:
 
 * **The operator gate never decides on the operator's behalf**, exactly as `author`,
@@ -54,6 +63,7 @@ from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared.conversation import spend_turn, story_chain
 from workhorse_workflows.coder.shared.dev import plan_summary, read_operator_context
 from workhorse_workflows.coder.shared.escalation import escalation
 from workhorse_workflows.coder.shared.resolution import (
@@ -115,6 +125,18 @@ class Review(Workflow):
     #: The PR to comment on. Empty lets the reviewer derive one from the branch, and no
     #: open PR at all is fine — the review runs against local changes either way.
     pr_number: str = ""
+    #: The story's backbone conversation — the one the implementer worked in — threaded in
+    #: from the dev lane. The *judging* turns never touch it (see the module docstring);
+    #: only the apply turns resume it. Empty is a standalone PR review with no implementer
+    #: to rejoin, and every turn is cold, as it was.
+    session_id: str = ""
+    #: How many turns that conversation had already spent before this flow entered it.
+    #: Carried from `DevResult.session_turns` so the recycle threshold bounds the whole
+    #: conversation rather than each lane's share of it.
+    session_turns: int = 0
+    #: How many turns the story's conversation carries before it is recycled — the same
+    #: default and the same reasoning as `dev`'s. 0 never recycles.
+    max_session_turns: int = 8
 
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
@@ -157,7 +179,7 @@ class Review(Workflow):
 
     # --- the two feeder reviews ---------------------------------------------
 
-    def start(self, review_blocks: int = 0) -> Continue:
+    def start(self, review_blocks: int = 0, session_turns: int = 0) -> Continue:
         """Run the native code-review skill, then the reuse hunt, as one conversation.
 
         A PR is not required: uncommitted working-tree edits and story-branch commits are
@@ -232,6 +254,7 @@ class Review(Workflow):
             code_review=code_review,
             code_reuse=code_reuse,
             review_blocks=review_blocks,
+            session_turns=session_turns,
         )
 
     # --- the review loop ----------------------------------------------------
@@ -242,6 +265,7 @@ class Review(Workflow):
         code_reuse: CodeReuseResult,
         review_rework: int = 0,
         review_blocks: int = 0,
+        session_turns: int = 0,
     ) -> Continue | Await:
         """Review the implementation against the story, and route on the verdict.
 
@@ -278,12 +302,20 @@ class Review(Workflow):
                 code_reuse=code_reuse,
                 review_rework=review_rework,
                 review_blocks=review_blocks,
+                session_turns=session_turns,
             )
         if result.blocked:
             # A reviewer that could not reach a verdict is not a reviewer demanding changes:
             # the apply turn would be handed nothing to act on, and each futile lap ends
             # back here with the same reason. Straight to the gate, rework budget unspent.
-            return self._gate(result, result.notes, code_review, code_reuse, review_blocks)
+            return self._gate(
+                result,
+                result.notes,
+                code_review,
+                code_reuse,
+                review_blocks,
+                session_turns=session_turns,
+            )
         return self._guard(
             result,
             result.notes,
@@ -291,6 +323,7 @@ class Review(Workflow):
             code_reuse,
             review_rework,
             review_blocks,
+            session_turns,
         )
 
     def apply(
@@ -300,6 +333,7 @@ class Review(Workflow):
         code_reuse: CodeReuseResult,
         review_rework: int,
         review_blocks: int = 0,
+        session_turns: int = 0,
     ) -> Continue | Await:
         """Resolve the findings, then let ostler decide whether they are actually resolved.
 
@@ -313,13 +347,13 @@ class Review(Workflow):
         the deterministic settle is the re-verify. `blocked` escalates that one finding to
         the operator. Anything else spends a rework and re-applies only what is still open.
         """
+        turns = self._spend_turn(session_turns)
         claim = self.agent(
             "prompts/apply-review.md",
             returns=ImplResult,
-            # high: writes the production change the reviewer demanded, across whatever the
-            # findings touch.
-            power="high",
+            power=self._apply_power(),
             add_dirs=self._dirs(),
+            session=self._impl_chain(),
             args={
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
@@ -343,6 +377,7 @@ class Review(Workflow):
                 code_reuse=code_reuse,
                 review_rework=review_rework,
                 review_blocks=review_blocks,
+                session_turns=turns,
             )
         if settled.blocked:
             return self._gate(
@@ -352,6 +387,7 @@ class Review(Workflow):
                 code_reuse,
                 review_blocks,
                 where="applying the review findings",
+                session_turns=turns,
             )
         return self._guard(
             settled,
@@ -360,6 +396,7 @@ class Review(Workflow):
             code_reuse,
             review_rework + 1,
             review_blocks,
+            turns,
         )
 
     def _guard(
@@ -370,6 +407,7 @@ class Review(Workflow):
         code_reuse: CodeReuseResult,
         review_rework: int,
         review_blocks: int,
+        session_turns: int = 0,
     ) -> Continue | Await:
         """`guard_review`: another apply pass, or the operator.
 
@@ -377,7 +415,14 @@ class Review(Workflow):
         decide the review stage is stuck. `_`-prefixed so state discovery does not pick it up.
         """
         if review_rework >= self.MAX_REVIEW_REWORKS:
-            return self._gate(result, notes, code_review, code_reuse, review_blocks)
+            return self._gate(
+                result,
+                notes,
+                code_review,
+                code_reuse,
+                review_blocks,
+                session_turns=session_turns,
+            )
         return Continue(
             result,
             self.apply,
@@ -386,6 +431,7 @@ class Review(Workflow):
             code_reuse=code_reuse,
             review_rework=review_rework,
             review_blocks=review_blocks,
+            session_turns=session_turns,
         )
 
     def _gate(
@@ -396,6 +442,7 @@ class Review(Workflow):
         code_reuse: CodeReuseResult,
         review_blocks: int,
         where: str = "the implementation-review stage",
+        session_turns: int = 0,
     ) -> Continue | Await:
         """`gate_review`: hand the block to the resolver, or straight to a human.
 
@@ -415,6 +462,7 @@ class Review(Workflow):
                 code_review=code_review,
                 code_reuse=code_reuse,
                 review_blocks=review_blocks,
+                session_turns=session_turns,
             )
         return Continue(
             result,
@@ -424,6 +472,7 @@ class Review(Workflow):
             code_reuse=code_reuse,
             review_blocks=review_blocks,
             where=where,
+            session_turns=session_turns,
         )
 
     # --- the operator arm ---------------------------------------------------
@@ -435,6 +484,7 @@ class Review(Workflow):
         code_reuse: CodeReuseResult,
         review_blocks: int = 0,
         where: str = "the implementation-review stage",
+        session_turns: int = 0,
     ) -> Continue | Await:
         """Resolve a review block from what is already written down, or park for the operator.
 
@@ -466,6 +516,7 @@ class Review(Workflow):
                 code_review=code_review,
                 code_reuse=code_reuse,
                 review_blocks=review_blocks + 1,
+                session_turns=session_turns,
             )
         # See `dev.flow.resolve_plan`: the escalating resolver's note is already in this
         # file and `Await` writes over it, so the body handed here carries that note
@@ -478,6 +529,7 @@ class Review(Workflow):
             code_review=code_review,
             code_reuse=code_reuse,
             review_blocks=review_blocks + 1,
+            session_turns=session_turns,
         )
 
     def read_operator(
@@ -486,6 +538,7 @@ class Review(Workflow):
         code_review: CodeReviewResult,
         code_reuse: CodeReuseResult,
         review_blocks: int = 0,
+        session_turns: int = 0,
     ) -> Continue:
         """Consume the answer and apply it as the work.
 
@@ -503,6 +556,7 @@ class Review(Workflow):
             code_review=code_review,
             code_reuse=code_reuse,
             review_blocks=review_blocks,
+            session_turns=session_turns,
         )
 
     def apply_resolved(
@@ -512,6 +566,7 @@ class Review(Workflow):
         code_review: CodeReviewResult,
         code_reuse: CodeReuseResult,
         review_blocks: int = 0,
+        session_turns: int = 0,
     ) -> Continue | Await:
         """Apply the operator's resolution, then start the review over with a fresh budget.
 
@@ -524,11 +579,13 @@ class Review(Workflow):
         the same block, one full review round later. The operator is told it was their own
         answer that could not be applied, which is a different question from the original.
         """
+        turns = self._spend_turn(session_turns)
         result = self.agent(
             "prompts/apply-review.md",
             returns=ImplResult,
-            power="high",
+            power=self._apply_power(),
             add_dirs=self._dirs(),
+            session=self._impl_chain(),
             args={
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
@@ -544,8 +601,11 @@ class Review(Workflow):
                 code_reuse,
                 review_blocks,
                 where="applying the operator's own resolution",
+                session_turns=turns,
             )
-        return Continue(result, self.start, review_blocks=review_blocks)
+        return Continue(
+            result, self.start, review_blocks=review_blocks, session_turns=turns
+        )
 
     # --- the non-blocking feedback checkpoint -------------------------------
 
@@ -555,6 +615,7 @@ class Review(Workflow):
         code_reuse: CodeReuseResult,
         review_rework: int,
         review_blocks: int = 0,
+        session_turns: int = 0,
     ) -> Continue | Done:
         """Did a human drop a note into the run's inbox while the run was busy?
 
@@ -575,6 +636,7 @@ class Review(Workflow):
             code_reuse=code_reuse,
             review_rework=review_rework,
             review_blocks=review_blocks,
+            session_turns=session_turns,
         )
 
     def apply_feedback(
@@ -584,6 +646,7 @@ class Review(Workflow):
         code_reuse: CodeReuseResult,
         review_rework: int,
         review_blocks: int = 0,
+        session_turns: int = 0,
     ) -> Continue | Await:
         """Rework against the operator's notes, then re-review.
 
@@ -597,11 +660,13 @@ class Review(Workflow):
         still parks, because the alternative is re-reviewing code the feedback never
         reached and reporting the story approved over it.
         """
+        turns = self._spend_turn(session_turns)
         result = self.agent(
             "prompts/apply-review.md",
             returns=ImplResult,
-            power="high",
+            power=self._apply_power(),
             add_dirs=self._dirs(),
+            session=self._impl_chain(),
             args={
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
@@ -617,6 +682,7 @@ class Review(Workflow):
                 code_reuse,
                 review_blocks,
                 where="applying the operator's feedback note",
+                session_turns=turns,
             )
         return Continue(
             result,
@@ -625,6 +691,7 @@ class Review(Workflow):
             code_reuse=code_reuse,
             review_rework=review_rework,
             review_blocks=review_blocks,
+            session_turns=turns,
         )
 
     # --- shared -------------------------------------------------------------
@@ -675,12 +742,49 @@ class Review(Workflow):
     def _feeder_chain(self) -> str:
         """The code-review/code-reuse pair's own conversation — review-local by design.
 
-        Named for the pair alone, not `self.session_id`: `Review` never receives a
-        backbone `session_id` (see the module docstring) and this key must never collide
-        with one, since the two are reset on entirely different schedules — this one on
-        every entry to `start`, not once per story.
+        Named for the pair alone, never `self.session_id`: a reviewer that inherited the
+        author's context is reviewing its own reasoning, so the judging turns are the half
+        of this lane that must stay cold. The key must also never collide with the
+        implementer chain, since the two are reset on entirely different schedules — this
+        one on every entry to `start`, not once per story.
         """
         return f"review-feeders:{self.ctx.story_slug}"
+
+    def _apply_power(self) -> str:
+        """How much reasoning an apply turn gets, given whose context it runs in.
+
+        Resuming the implementer's conversation is what makes the cheap tier sufficient: the
+        reasoning that needed the expensive one happened on the implement turn and is still
+        in the context, and what is being asked for now is a named change to code the turn
+        already understands. With no session to resume — a standalone PR review — the turn
+        is cold and pays the old price.
+        """
+        return "low" if self.session_id else "high"
+
+    def _impl_chain(self) -> str:
+        """The implementer's conversation, which the *apply* turns rejoin.
+
+        A finding is a request to change code somebody just wrote, and the cheapest turn
+        that can act on it is the one that wrote it: it knows why the line is there, what it
+        already tried, and which files it touched. Empty `session_id` — a standalone PR
+        review with no dev lane in front of it — names a per-story chain the CLI mints on
+        first use, which is a cold turn exactly as before.
+        """
+        return story_chain(self.session_id, self.ctx.story_slug)
+
+    def _spend_turn(self, session_turns: int) -> int:
+        """Count one apply turn onto the implementer conversation, recycling it when full.
+
+        A threaded 0 means no apply turn has run yet in this flow, so the count starts from
+        what the dev lane spent (`session_turns` the field). Every later lap threads the
+        returned value, which is ≥ 1.
+        """
+        return spend_turn(
+            self,
+            self._impl_chain(),
+            session_turns or self.session_turns,
+            self.max_session_turns,
+        )
 
 
 __all__ = ["Review"]

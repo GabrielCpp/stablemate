@@ -368,9 +368,18 @@ class Coder(Workflow):
         if result.status == "replan":
             return Continue(result, self.replan, epic=epic, notes=result.operator_notes)
         # `ready` and the YAML's `default:` arm, which was also `review`.
-        return Continue(result, self.review, epic=epic, triage=triage, session_id=result.session_id)
+        return Continue(
+            result,
+            self.review,
+            epic=epic,
+            triage=triage,
+            session_id=result.session_id,
+            session_turns=result.session_turns,
+        )
 
-    def review(self, epic: str = "", triage: int = 0, session_id: str = "") -> Continue:
+    def review(
+        self, epic: str = "", triage: int = 0, session_id: str = "", session_turns: int = 0
+    ) -> Continue:
         """`review`: code review and reuse, with no branch on the outcome.
 
         The YAML declared `outputs: []` here and went straight to `docs`. That is not an
@@ -378,11 +387,12 @@ class Coder(Workflow):
         there is no verdict left for the caller to read. It also takes no `target_env` —
         review reads code, it does not run it.
 
-        `session_id` passes through untouched — `Review` stays independent of the story's
-        backbone conversation, on purpose: it is the one lane that must judge the diff on
-        its own, not one that already knows what `dev` said about it. So it is neither
-        handed to `Review`'s handoff nor read back from its result; what reaches `document`
-        below is exactly what `dev` produced.
+        `session_id` is handed to `Review` *and* passes through unchanged to `document`.
+        The lane judges the diff cold — the review turns open their own conversation, so no
+        reviewer inherits what `dev` said about its own work — but the turns that then
+        *change* the code rejoin the implementer's conversation, which is the whole of what
+        this thread buys (see `Review`'s docstring). Nothing is read back from its result:
+        what reaches `document` is exactly what `dev` produced.
         """
         slug = self._story.story_slug
         self.logger.info("reviewing %s%s", slug, self._progress(), extra={"activity": True})
@@ -392,6 +402,8 @@ class Coder(Workflow):
             docs_path=self.docs_path,
             epic=self._story_epic(epic),
             operator_mode=self.operator_mode,
+            session_id=session_id,
+            session_turns=session_turns,
         )
         return Continue(result, self.document, epic=epic, triage=triage, session_id=session_id)
 

@@ -466,6 +466,10 @@ class DevResult(CoderResult):
     #: successor stages so `Docs` and `Qa` resume the same conversation instead of
     #: reopening one. See `Dev._story_chain`.
     session_id: str = ""
+    #: How many turns that conversation had already spent when the flow ended. The review
+    #: lane's apply turns join the same conversation and keep counting from here, so the
+    #: recycle threshold bounds the *conversation*, not each lane's share of it.
+    session_turns: int = 0
 
 
 __all__ = [

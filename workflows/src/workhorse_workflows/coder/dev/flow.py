@@ -84,6 +84,7 @@ from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared.conversation import spend_turn, story_chain
 from workhorse_workflows.coder.shared.dev import (
     GATE_ORDER,
     branch_code_repos,
@@ -244,35 +245,28 @@ class Dev(Workflow):
         minutes earlier, and then reports on a diff it has only just met. `max_session_turns`
         is what keeps that from growing without end.
         """
-        return self.session_id or f"story:{self.ctx.story_slug}"
+        return story_chain(self.session_id, self.ctx.story_slug)
 
     def _spend_turn(self, session_turns: int) -> int:
-        """Count one turn onto the story conversation, recycling it when it is full.
+        """Count one turn onto the story conversation, recycling it when it is full."""
+        return spend_turn(
+            self, self._story_chain(), session_turns, self.max_session_turns
+        )
 
-        Called immediately *before* the turn it counts, so the recycling lands on the turn
-        that would otherwise have opened the over-long context. The count restarts at one
-        rather than zero because the turn about to run is the first of the new conversation.
-        """
-        if self.max_session_turns and session_turns >= self.max_session_turns:
-            self.logger.info(
-                "the story conversation reached %d turns — starting a fresh one",
-                self.max_session_turns,
-            )
-            self.reset_session(self._story_chain())
-            return 1
-        return session_turns + 1
-
-    def _ends(self, result: DevResult) -> Done:
+    def _ends(self, result: DevResult, session_turns: int = 0) -> Done:
         """End the flow, and every chain it opened with it.
 
         A chain outliving its flow is what makes a re-run of the same story resume a
         conversation about a plan that has since been rewritten. The backbone chain is the
         exception: `result.session_id` is stamped with whatever id it resolved to, so the
-        parent can thread it into the next stage instead of reopening a conversation.
+        parent can thread it into the next stage instead of reopening a conversation, and
+        `result.session_turns` with how much of the recycle budget that conversation has
+        already spent, so the review lane's apply turns continue the same count.
         """
         for worklist in ("block-repair", "path-repair"):
             self.reset_session(self._chain(worklist))
         result.session_id = self._require_engine().session_id(self._story_chain())
+        result.session_turns = session_turns
         return Done(result)
 
     # --- planning -----------------------------------------------------------
@@ -524,7 +518,7 @@ class Dev(Workflow):
         )
         if not pick.has_layer:
             self.logger.info("every service layer implemented")
-            return self._ends(DevResult())
+            return self._ends(DevResult(), session_turns)
         self.logger.info(
             "implementing %s (%d/%d)", pick.layer.label, pick.index + 1, pick.dispatch_count
         )
