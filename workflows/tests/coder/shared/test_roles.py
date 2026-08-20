@@ -146,14 +146,14 @@ def test_an_unregistered_role_is_caught_on_the_transition(tmp_path):
         roles.turn("dev-fx", tmp_path)
 
 
-def test_a_moved_body_no_layer_supplies_stops_the_turn(tmp_path, monkeypatch):
-    """The envelope alone is a contract with no procedure — it must never be a turn."""
-    monkeypatch.setattr(roles, "LIBRARY_BODIES", frozenset({"dev-fix"}))
+def test_no_library_anywhere_is_not_an_error(tmp_path):
+    """The workflow is installed standalone and must run with nothing else on the machine.
 
-    with pytest.raises(WorkflowFailed, match="no prompt body for role 'dev-fix'"):
-        roles.turn("dev-fix", tmp_path)
+    A run on a box that never met farrier resolves no layer, no override and no body, and
+    that is the *ordinary* path, not a degraded one: the default the workflow ships is the
+    answer. Making an absent library a failure here would have made an optional install
+    load-bearing for every story.
+    """
+    turn = roles.turn("dev-fix", tmp_path, ())
 
-    base = _library(tmp_path / "base", "dev-fix", "base")
-    assert roles.turn("dev-fix", tmp_path, (str(base),)).args["body_template"] == (
-        "body/dev-fix.md"
-    )
+    assert turn == roles.Turn("prompts/dev-fix.md", {})

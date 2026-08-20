@@ -11,17 +11,25 @@ Three answers, highest precedence first:
 2. a **library layer** the machine has installed, at `library/prompts/coder/<role>.md`
    in each entry of `Workflow.library_dirs` (the overlay first, then the base) — the
    layers farrier already renders across, in farrier's order;
-3. nothing, in which case the turn renders the **envelope alone**.
+3. nothing, in which case the turn renders **the workflow's own default**.
 
-The envelope is the file the workflow ships and keeps: `coder/prompts/<role>.md`. It is
-the *contract* — the inputs provided, the exit condition, the result schema the state
-machine parses back — and a repo does not get to edit it, because the state machine
-would then be parsing a document it did not write. The body it wraps is the *procedure*,
-which is exactly the part that knows this repo's stack, and so is exactly the part a repo
-must be able to replace. `render` mounts the resolved body's directory under its own
-`body/` namespace and the envelope pulls it in with `{% include body_template %}` — a
-namespace rather than a search path because the body is named for the role, which is what
-the envelope is named, and a bare filename would resolve back to the envelope.
+That third answer is the normal one, and it is why this resolver is an override mechanism
+rather than a relocation. **The workflow ships standalone**: `workhorse-workflows` is
+installed on its own and every prompt it needs is inside it, at `coder/prompts/<role>.md`.
+A machine that never ran farrier, has no `~/.cache/stablemate` and no overlay still runs
+every story end to end. The base library's `library/prompts/` are the *user's* prompts —
+what farrier installs into a repo for a person to invoke — and a workflow that reached
+into them for its own defaults would have made an optional install load-bearing.
+
+What a layer may do is *replace* a body. The envelope — `coder/prompts/<role>.md` — is the
+*contract*: the inputs provided, the exit condition, the result schema the state machine
+parses back. A repo does not get to edit it, because the state machine would then be
+parsing a document it did not write. The body it wraps is the *procedure*, which is
+exactly the part that knows this repo's stack, and so is exactly the part a repo must be
+able to replace. `render` mounts the resolved body's directory under its own `body/`
+namespace and the envelope pulls it in with `{% include body_template %}` — a namespace
+rather than a search path because the body is named for the role, which is what the
+envelope is named, and a bare filename would resolve back to the envelope.
 
 **A role is named for the envelope's own stem**, not renamed to something tidier. Node
 ids in a run directory, in the resume path and in telemetry derive from that stem, so a
@@ -45,9 +53,9 @@ from workhorse.pyflow import WorkflowFailed
 from workhorse.templates import BODY_PREFIX
 from workhorse_workflows.kit import find_repo_root
 
-#: Where a library layer keeps the coder bodies, relative to the layer root. Beside
-#: `library/prompts/stablemate/` — the bodies of the interactive commands — because they
-#: are the same kind of thing: prose a repo owns, versioned with the skills it ships.
+#: Where a library layer may keep a *replacement* coder body, relative to the layer root.
+#: Nothing is expected to be here — the defaults ship with the workflow — so an empty or
+#: absent directory is the ordinary case and means "this layer overrides nothing".
 LIBRARY_SUBDIR = Path("library") / "prompts" / "coder"
 
 #: Every overridable turn in the coder workflow, by role. The value is prose for a human
@@ -86,23 +94,13 @@ ROLES: dict[str, str] = {
     "dream-reflect": "reflect on the run and propose an improvement",
 }
 
-#: Roles whose default body has **left this package** for the base library. For these an
-#: unresolved body is a hard, named error rather than a silent envelope-only render: the
-#: envelope on its own is a contract with no procedure attached, and a turn that shipped
-#: it would look like a working prompt and behave like an empty one. Roles absent from
-#: this set still carry their body in-tree, so resolving nothing is the normal state and
-#: means "no override" — that is what makes the move a file at a time instead of a flag
-#: day.
-LIBRARY_BODIES: frozenset[str] = frozenset()
-
-
 @dataclass(frozen=True)
 class Turn:
     """What a role resolves to: the envelope to render, and the args that find its body.
 
     `args` is empty when no body was resolved, so a callsite reads the same either way —
-    `args=turn.args | {…}` — and a role whose body has not moved yet renders exactly the
-    document it rendered before this module existed.
+    `args=turn.args | {…}` — and an un-overridden role renders exactly the document it
+    rendered before this module existed.
     """
 
     prompt: str
@@ -113,8 +111,9 @@ def turn(role: str, repo_dir: str | Path = "", library_dirs: tuple[str, ...] = (
     """Resolve `role` to the envelope and the body arguments for one agent turn.
 
     Raises `WorkflowFailed` for an unregistered role — that is a typo in the flow, caught
-    on the transition rather than as a puzzling render — and for a `LIBRARY_BODIES` role
-    whose body no layer supplies.
+    on the transition rather than as a puzzling render. Resolving *no* body is not an
+    error and never can be: it is the ordinary case, and it renders the default the
+    workflow ships.
     """
     if role not in ROLES:
         raise WorkflowFailed(
@@ -122,15 +121,6 @@ def turn(role: str, repo_dir: str | Path = "", library_dirs: tuple[str, ...] = (
             + ", ".join(sorted(ROLES))
         )
     body = _body(role, repo_dir, library_dirs)
-    if body is None and role in LIBRARY_BODIES:
-        looked = [str(Path(d) / LIBRARY_SUBDIR / f"{role}.md") for d in library_dirs]
-        raise WorkflowFailed(
-            f"no prompt body for role {role!r} ({ROLES[role]}). Its text lives in the "
-            "stablemate base library, and this run resolved no library layer that has "
-            "it. Looked in: " + (", ".join(looked) or "nowhere — `library_dirs` is empty")
-            + ". Install the library (`farrier install`) or point the run at a checkout "
-            "with `--param library_dirs=[…]`."
-        )
     prompt = f"prompts/{role}.md"
     if body is None:
         return Turn(prompt, {})
@@ -182,4 +172,4 @@ def _repo_prompts(repo_dir: str | Path) -> dict[str, str]:
     return {str(k): str(v) for k, v in block.items() if isinstance(v, str)}
 
 
-__all__ = ["LIBRARY_BODIES", "LIBRARY_SUBDIR", "ROLES", "Turn", "turn"]
+__all__ = ["LIBRARY_SUBDIR", "ROLES", "Turn", "turn"]

@@ -111,7 +111,7 @@ def test_generated_skill_metadata_follows_description(tmp_path):
     assert lines[3] == "metadata:"
 
 
-def _prompt_source(tmp_path: Path, body: str, rel: str = "coder/plan-story.md") -> Source:
+def _prompt_source(tmp_path: Path, body: str, rel: str = "stablemate/plan-story.md") -> Source:
     prompt_file = tmp_path / "library" / "prompts" / Path(rel)
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text(body, encoding="utf-8")
@@ -140,7 +140,7 @@ def test_generated_command_gets_description_front_matter(tmp_path):
     # Provenance is the same structured metadata block skills get (not a comment).
     assert "\nmetadata:\n" in front_matter
     assert "  generated_by: farrier\n" in front_matter
-    assert "  source: library/prompts/coder/plan-story.md\n" in front_matter
+    assert "  source: library/prompts/stablemate/plan-story.md\n" in front_matter
     assert "  do_not_edit:" in front_matter
     assert "<!--" not in content
     # The body survives below the header.
