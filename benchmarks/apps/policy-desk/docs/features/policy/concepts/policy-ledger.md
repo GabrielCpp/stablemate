@@ -6,6 +6,7 @@ title: Policy ledger
 # Policy ledger
 
 - code: app/api/store.go
+- code: compose.yml
 - extends:
 
 The ledger is the whole of the service's state: one JSON file holding every

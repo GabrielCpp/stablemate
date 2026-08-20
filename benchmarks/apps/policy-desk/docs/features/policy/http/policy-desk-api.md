@@ -6,6 +6,12 @@ title: Policy desk API
 # Policy desk API
 
 - code: app/api/service.go
+- code: app/api/main.go
+- code: app/web/src/routes.tsx
+- code: app/web/src/api.ts
+- code: app/web/src/main.tsx
+- code: app/web/index.html
+- code: app/web/src/styles.css
 - openapi: none; the service is seven hand-routed paths over `net/http` and publishes no schema.
 
 The policy desk API is the whole of the product's machine surface: the register, the four writes a
