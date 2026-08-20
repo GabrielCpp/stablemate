@@ -336,15 +336,17 @@ class Qa(Workflow):
     #: A benchmark trial asks what one plan and one suite run say about the product, and
     #: every repair lap after the first red answers a different question while spending
     #: the trial's clock on it. `report_dev` is the precedent: a mode that does not own
-    #: the code reports what it saw, and reporting *is* the terminal action — so a red or
-    #: unverifiable run ends the flow `inconclusive` (the vocabulary's existing
-    #: no-verdict arm) with the runner's verdict in `qa` and the assessment's
-    #: classification in telemetry, after exactly one classification turn. A green run
-    #: still passes the deterministic gates (`verify_qa_evidence`, the sentinel check)
-    #: and finishes `passed`; only the agent gates that exist to *repair or refute* are
-    #: skipped. Environment failures are the exception and keep the setup loop: a stack
-    #: that never came up says nothing about the product, so ending on it would report a
-    #: verdict about the harness.
+    #: the code reports what it saw, and reporting *is* the terminal action — so a red
+    #: run ends the flow `inconclusive` (the vocabulary's existing no-verdict arm)
+    #: **without an agent turn**: the runner's own verdict travels in `qa`, the evidence
+    #: map it wrote is the report's substance, and the classification turn the repair
+    #: loops need decides nothing this mode is allowed to act on. A green run still
+    #: passes the deterministic gates (`verify_qa_evidence`, the sentinel check) and
+    #: finishes `passed`; only the agent gates that exist to *repair or refute* are
+    #: skipped. Environment failures are the exception and keep the setup loop plus the
+    #: one classification turn a `blocked` run still buys: a stack that never came up
+    #: says nothing about the product, so ending on it would report a verdict about the
+    #: harness.
     first_verdict: bool = False
     #: Repo-relative stack manifest `ensure_stack` reads. Passed rather than assumed: a
     #: fixer that authors it at the root while the run reads `<service>/qa-stack.yml` loops.
@@ -1097,7 +1099,7 @@ class Qa(Workflow):
             return Continue(status, self.plan, loop=loop)
         return Continue(status, self.run, loop=loop)
 
-    def run(self, loop: QaLoop) -> Continue:
+    def run(self, loop: QaLoop) -> Continue | Done:
         """Execute the plan through ostler's runner — the expensive step, and its own state.
 
         `run_qa_plan`. Alone, so a kill during the assessment re-enters at the assessment
@@ -1133,6 +1135,17 @@ class Qa(Workflow):
             # loop fields stay blank, which is the documented "this gate has not run".
             self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
             return Continue(result, self.verify_evidence, loop=loop)
+        if self.first_verdict and result.status == "failed":
+            # The first red *is* the report in this mode, and the classification turn
+            # the assessment sieve would spend on it decides nothing the report reads:
+            # every disposition it could return either enters a repair this mode
+            # forbids or lands on `_first_verdict_ends` anyway, and the evidence map —
+            # the artifact the verdict is scored from — was written by the runner
+            # before this branch. `blocked` still falls through to the sieve: a stack
+            # that died says nothing about the product, and telling that apart from a
+            # red that does is the one classification the mode still budgets for.
+            self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
+            return self._first_verdict_ends(loop)
         return Continue(result, self.assess, loop=loop)
 
     def assess(self, loop: QaLoop) -> Continue | Await | Done:
@@ -1183,9 +1196,12 @@ class Qa(Workflow):
         )
 
         if self.first_verdict:
-            # This turn was the one classification the mode budgets for. Environment
-            # failures keep the setup loop — the harness is not the product — and
-            # everything else is reported as it stands; see the `first_verdict` field.
+            # Only a run the mode could not end on its own reaches this sieve — `run`
+            # ends a plain `failed` before it, so this is a `blocked` or otherwise
+            # unreadable run, and this turn is the one classification the mode still
+            # budgets for it. Environment failures keep the setup loop — the harness is
+            # not the product — and everything else is reported as it stands; see the
+            # `first_verdict` field.
             if (
                 assessment.disposition == "repair_setup"
                 or loop.qa.status == "blocked"

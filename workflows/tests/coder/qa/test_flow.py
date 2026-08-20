@@ -3113,11 +3113,14 @@ def test_first_verdict_reports_the_first_red_without_entering_repair(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`first_verdict`: one classification turn, then the red verdict is the report.
+    """`first_verdict`: the first red is the report, and no agent reads it first.
 
     `report_dev` is the precedent — a mode that does not own the outcome reports what it
     saw, and reporting is the terminal action. The flow ends `inconclusive` (nothing was
-    repaired, refuted or triaged) with the runner's own verdict in `qa`.
+    repaired, refuted or triaged) with the runner's own verdict in `qa` and the evidence
+    map the runner wrote as the report's substance. The classification turn stays out:
+    every disposition it could return either enters a repair this mode forbids or ends
+    the flow exactly as this branch already does.
     """
     okf = ostler(fail_runs=99)
     agent = _Agent(docs)
@@ -3126,8 +3129,8 @@ def test_first_verdict_reports_the_first_red_without_entering_repair(
 
     assert result.status == "inconclusive", result
     assert result.qa.status == "failed", result
-    # One plan, one run, one classification — and not a single repair or triage turn.
-    assert agent.counts() == {"plan-qa": 1, "qa-story": 1}, agent.counts()
+    # One plan, one run — and not a single classification, repair or triage turn.
+    assert agent.counts() == {"plan-qa": 1}, agent.counts()
     assert okf.runs == 1, "the red run was retried — first_verdict must not repair"
 
 
@@ -3156,4 +3159,7 @@ def test_first_verdict_still_repairs_the_environment(
 
     assert result.status == "passed", result
     assert agent.counts()["setup-fix"] == 1, agent.counts()
+    # A `blocked` run — unlike a plain `failed` one — still buys the classification
+    # turn: telling a dead stack apart from a red about the product is its job here.
+    assert agent.counts()["qa-story"] == 1, agent.counts()
     assert okf.runs == 2, "the repaired run was never retried"
