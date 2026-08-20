@@ -15,6 +15,25 @@ Some items may already be partly landed on `stable-bench`. **Verify against the 
 first**; if an item is already fully done, tick it with the existing commit hash and a
 `(pre-existing)` note instead of redoing it.
 
+## Closing summary (2026-08-20)
+
+Every item in this ledger is ticked and `## Blocked` is empty. Twenty-seven items landed
+across four phases: **B** (blocked handoff and session memory — a consolidated blocked
+marker, a shared escalation helper, session threading through review and QA), **Q1/Q6**
+(the QA baseline and ostler's cold start), **Q2–Q5** (the QA lane itself, in the plans'
+order), and **D** (the dev lane's remaining optimize.md steps). Nine items were ticked
+`(pre-existing: …)` after being verified clause by clause against the tree rather than
+against a commit subject — D6's rename, for instance, has two deliberate non-changes
+recorded in its note so a later reader does not "fix" them. The program's numbers are in
+`docs/plans/optimize.md` under *Filled in after step 7* and *Filled in after step 11*: the
+happy path is two high-power turns, `dev` parses three schemas, `make check-prompt-agnostic`
+holds zero stack-naming lines, no story ended `WorkflowFailed` on a budget, and the median
+story is 14.5 min against a 22.7 min baseline. Two rows are deliberately unmet rather than
+claimed: B makes no wall-clock claim (n=2 cannot separate an effect from an 11–23 min
+spread), and the fix-lap-success row stays owed, because the baseline never ran a lap and
+the A and B sides produced disjoint failure sources. Both are written up where the table is,
+not here, and both name what would settle them.
+
 ## Phase B — blocked handoff & session memory (prerequisite infrastructure)
 
 - [x] B1 — `coder/shared/schemas/_base.py`: consolidated blocked marker on `CoderResult`
@@ -432,9 +451,16 @@ tree/plan for evidence it already landed; tick `(pre-existing)` if so.
   two would otherwise share no prefix. Tests: a flow-level one asserting zero `refine-plan`
   laps (red before the fix, and the flow really does run the lap without it) and a unit one
   pinning the outside-the-spec-dir passthrough. `make lint` clean, `workflows` 1345 passed.
-- [ ] D7 — Plan B step 11: final re-measure; B claims only turn-count/schema rows unless
+- [x] D7 — Plan B step 11: final re-measure; B claims only turn-count/schema rows unless
   the table says otherwise. Full `make test` green. Write a closing summary at the top of
-  this ledger.
+  this ledger. (d58aa2b) — the surprise is what the fix-lap row turned into: A's runs only
+  ever produced `goal` laps and B's only `test` laps, so the two sides share **no** source
+  and the "not lower" comparison has no pair to make, on top of the baseline having no rate
+  at all. The plan's own remedy — a story seeded to fail once per source — was never built,
+  and the section says so instead of averaging across sources, which is exactly what that
+  row was written to prevent. `d1` is also the first run on the tree with `e4e814a` in it:
+  four turns, no `refine-plan` lap, which is one run's evidence that the D8 repair holds in
+  the wild. Full `make test` green (rc=0, `workflows` 1345 passed).
 
 ## Blocked
 
