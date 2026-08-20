@@ -15,6 +15,7 @@ declaration and the two paths that make it seat-booking.
 from __future__ import annotations
 
 import _frozenapp as pd
+import _stablemate as sm
 from paddock import Run, Score, step, task
 
 task(
@@ -28,7 +29,7 @@ FIXTURE = pd.Fixture(app="apps/seat-booking", repo_dir="seat-booking")
 
 @step()
 def pin_config(run: Run) -> None:
-    pd.pin_config(run)
+    sm.pin_config(run)
 
 
 @step()

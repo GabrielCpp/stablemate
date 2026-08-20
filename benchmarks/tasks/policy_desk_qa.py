@@ -19,6 +19,7 @@ app; this module is the declaration and the two paths that make it policy-desk.
 from __future__ import annotations
 
 import _frozenapp as pd
+import _stablemate as sm
 from paddock import Run, Score, step, task
 
 task(
@@ -34,7 +35,7 @@ FIXTURE = pd.Fixture(app="apps/policy-desk", repo_dir="policy-desk")
 
 @step()
 def pin_config(run: Run) -> None:
-    pd.pin_config(run)
+    sm.pin_config(run)
 
 
 @step()
