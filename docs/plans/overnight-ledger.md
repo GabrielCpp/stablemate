@@ -232,8 +232,19 @@ first**; if an item is already fully done, tick it with the existing commit hash
     one, so both directions are tested rather than one of them silently relaxed.
   - The tiering half was one line: `fix-qa-scenario` was still `power="high"`. Left
     provisional in the comment, because the plan makes it conditional on §1's measurement.
-- [ ] Q8 — §4 scenario budget derived from the qa-okf-context.json obligation packet; the
-  plan gate rejects over-planning; the `covers:` fail-closed direction untouched.
+- [x] Q8 — §4 scenario budget derived from the qa-okf-context.json obligation packet; the
+  plan gate rejects over-planning; the `covers:` fail-closed direction untouched. (70c6e05)
+  - The bound landed in `ostler qa validate` (`validate_v2`), not in `evidence.py` as the
+    plan listed: evidence.py is the *post*-run gate, and rejecting an over-planned plan
+    after the suite has run pays the very cost the section exists to avoid. The pre-run
+    refusal already routes through the existing repair lap.
+  - Two halves, because the coverable fence only ever policed *which* ids a scenario claims:
+    a scenario claiming none of them is refused, and the total is capped at one per coverable
+    id plus half again (minimum one spare) for a requirement whose conflict branch needs its
+    own run.
+  - A packet with no obligations and no criteria bounds nothing — the evidence gate already
+    accepts that surface on run-log proof, so a budget derived from it would refuse every
+    plan that could be written.
 - [ ] Q9 — re-measure: `replay.py run --flow qa --story expense-list -n 3 --label after`,
   `replay.py report` both labels, fill the 30-minute table in optimize-qa.md `## Progress`
   with before/after, commit `docs:`. If ≤30 min is not met, write the diagnosis there —
