@@ -13,19 +13,39 @@ string, a run log. No docker, no agent, no network.
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 BENCHMARKS = Path(__file__).parents[1]
 
-_spec = importlib.util.spec_from_file_location("replay", BENCHMARKS / "replay.py")
+
+@contextlib.contextmanager
+def _tasks_dir_on_path() -> Iterator[None]:
+    """Stand in for the interpreter, exactly as `paddock.loader` does.
+
+    Task modules are loose files that import their siblings by bare name, so a loader —
+    here, the test — has to put their directory on the path the way `python tasks/x.py`
+    would, and take it off again.
+    """
+    saved = sys.path[:]
+    sys.path.insert(0, str(BENCHMARKS / "tasks"))
+    try:
+        yield
+    finally:
+        sys.path[:] = saved
+
+
+_spec = importlib.util.spec_from_file_location("_frozenapp", BENCHMARKS / "tasks" / "_frozenapp.py")
 assert _spec is not None and _spec.loader is not None  # noqa: S101 - a real file on disk
-replay = importlib.util.module_from_spec(_spec)
-sys.modules["replay"] = replay
-_spec.loader.exec_module(replay)
+frozen = importlib.util.module_from_spec(_spec)
+with _tasks_dir_on_path():
+    sys.modules["_frozenapp"] = frozen
+    _spec.loader.exec_module(frozen)
 
 
 # ── the fixtures every test bends one way ─────────────────────────────────────────────
@@ -101,7 +121,7 @@ def score(**overrides) -> dict:
         "run_log": RUN_LOG, "statuses": STATUSES,
     }
     inputs.update(overrides)
-    return replay.leverage_from(**inputs)
+    return frozen.leverage_from(**inputs)
 
 
 # ── entry ─────────────────────────────────────────────────────────────────────────────
@@ -216,23 +236,23 @@ def test_a_metric_without_its_input_is_none_rather_than_zero(missing: dict, blan
 
 
 def test_the_line_prints_a_dash_for_every_metric_it_could_not_compute() -> None:
-    line = replay.leverage_line(dict.fromkeys(replay.LEVERAGE_KEYS))
-    assert line.count(replay.BLANK) == len(replay.LEVERAGE_KEYS)
+    line = frozen.leverage_line(dict.fromkeys(frozen.LEVERAGE_KEYS))
+    assert line.count(frozen.BLANK) == len(frozen.LEVERAGE_KEYS)
     assert "0" not in line
 
 
 def test_the_line_reads_the_way_the_headline_promises() -> None:
-    assert replay.leverage_line({
+    assert frozen.leverage_line({
         "entry": [3, 3], "deep_links": 1, "roles": [14, 15],
         "obligations": [22, 24], "journeys": [2, 3],
-    }) == "  leverage: entry 3/3  deep-links 1  roles 14/15  obligations 22/24  journeys 2/3"
+    }) == "leverage: entry 3/3  deep-links 1  roles 14/15  obligations 22/24  journeys 2/3"
 
 
 # ── pooling across a scored round ─────────────────────────────────────────────────────
 
 
 def test_pooling_sums_numerator_and_denominator_across_trials() -> None:
-    pooled = replay.pool_leverage([
+    pooled = frozen.pool_leverage([
         {"leverage": {"entry": [1, 1], "deep_links": 0, "roles": [4, 5],
                       "obligations": None, "journeys": [1, 1]}},
         {"leverage": {"entry": [0, 2], "deep_links": 3, "roles": [1, 1],
@@ -244,8 +264,8 @@ def test_pooling_sums_numerator_and_denominator_across_trials() -> None:
 
 def test_pooling_a_ledger_written_before_the_scorecard_existed_is_all_blank() -> None:
     """Old rows carry no `leverage` key, and must not read as five zeroed metrics."""
-    pooled = replay.pool_leverage([{"run_id": "coder-1", "verdict": "caught"}])
-    assert pooled == dict.fromkeys(replay.LEVERAGE_KEYS)
+    pooled = frozen.pool_leverage([{"run_id": "coder-1", "verdict": "caught"}])
+    assert pooled == dict.fromkeys(frozen.LEVERAGE_KEYS)
 
 
 # ── route matching is ostler's, not a second opinion ──────────────────────────────────
@@ -262,4 +282,4 @@ def test_pooling_a_ledger_written_before_the_scorecard_existed_is_all_blank() ->
     ],
 )
 def test_route_matching_is_segment_wise(route: str, url: str, matches: bool) -> None:
-    assert replay.route_matches(route, url) is matches
+    assert frozen.route_matches(route, url) is matches
