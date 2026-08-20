@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from collections import Counter
@@ -211,6 +212,94 @@ def collect(repo: Path, run_id: str) -> list[Turn]:
     return turns
 
 
+#: How the fix envelope prints the two facts a lap is identified by. Read off the rendered
+#: prompt rather than off a span because the gate's verdict is nowhere in telemetry, and
+#: the prompt is the one artifact that is *by construction* what the turn was told.
+GATE_LINE = re.compile(r"^- \*\*Gate:\*\* `([^`]+)`", re.MULTILINE)
+LAP_LINE = re.compile(r"^- \*\*Repair attempt:\*\* (\d+)", re.MULTILINE)
+
+
+@dataclass(frozen=True)
+class Lap:
+    """One repair turn, and whether the gate it was sent at went green afterwards."""
+
+    seq: int
+    source: str
+    lap: int
+    closed: bool
+
+
+def laps(repo: Path, run_id: str) -> list[Lap]:
+    """Every `dev-fix` turn of the run, by gate, with the verdict the *gate* gave next.
+
+    A lap closed its gate when no later lap was sent at the same source. That is the only
+    honest reading available: `FixResult.status` is the agent's own claim, and the flow
+    deliberately does not branch on it — re-running the gate is what decides. So the
+    measurement asks the same question the flow does, and answers it from the sequence.
+
+    The gate re-runs *in order* after every lap, so a second `lint` lap after a `test` lap
+    means lint came back; sources are therefore counted independently rather than by
+    adjacency.
+    """
+    run_dir = repo / ".agents" / "runs" / f"coder-{run_id}"
+    found: list[Lap] = []
+    for seq, path in enumerate(sorted((run_dir / "turns").glob("*-dev-fix")), start=1):
+        prompt = path / "prompt.md"
+        if not prompt.exists():
+            continue
+        text = prompt.read_text(encoding="utf-8", errors="replace")
+        gate = GATE_LINE.search(text)
+        attempt = LAP_LINE.search(text)
+        found.append(
+            Lap(
+                seq=seq,
+                source=gate.group(1) if gate else "?",
+                lap=int(attempt.group(1)) if attempt else 0,
+                closed=True,
+            )
+        )
+    last = {lap.source: lap.seq for lap in found}
+    return [
+        Lap(lap.seq, lap.source, lap.lap, closed=last[lap.source] == lap.seq)
+        for lap in found
+    ]
+
+
+def render_laps(all_laps: dict[str, list[Lap]]) -> str:
+    """The fix-lap success rate, per `FailureReport.source`, across the runs given.
+
+    Per source and never averaged, because the row this fills exists to catch one source
+    getting worse while the mean stays flat — a cheaper lap that fails more often is a cost
+    moved to the operator gate, not an optimisation.
+    """
+    by_source: dict[str, list[Lap]] = {}
+    for run_laps in all_laps.values():
+        for lap in run_laps:
+            by_source.setdefault(lap.source, []).append(lap)
+    lines = [
+        "| source | laps | closed the gate | rate |",
+        "| ------ | ---: | --------------: | ---: |",
+    ]
+    for source in sorted(by_source):
+        got = by_source[source]
+        closed = sum(1 for lap in got if lap.closed)
+        lines.append(
+            f"| `{source}` | {len(got)} | {closed} | {closed / len(got) * 100:.0f}% |"
+        )
+    if not by_source:
+        lines.append("| *(no repair laps in these runs)* | 0 | 0 | n/a |")
+    detail = [
+        f"- `{run_id}`: "
+        + (
+            ", ".join(f"{lap.source}#{lap.lap} {'closed' if lap.closed else 'came back'}"
+                      for lap in run_laps)
+            or "no repair laps"
+        )
+        for run_id, run_laps in all_laps.items()
+    ]
+    return "\n".join(lines + [""] + detail)
+
+
 def render(turns: list[Turn], run_id: str, story: str, head: str) -> str:
     """The measurement as markdown: one table of turns, then the per-story summary."""
     lines = [
@@ -264,7 +353,16 @@ def main(argv: list[str] | None = None) -> int:
     reader.add_argument("--run-id", required=True)
     reader.add_argument("--story", default="")
 
+    lapper = sub.add_parser("laps", help="Fix-lap success rate, per failure source")
+    lapper.add_argument("--repo", type=Path, required=True)
+    lapper.add_argument("--run-id", required=True, action="append", dest="run_ids")
+
     args = parser.parse_args(argv)
+    if args.command == "laps":
+        repo = args.repo.resolve()
+        print(render_laps({run_id: laps(repo, run_id) for run_id in args.run_ids}))
+        return 0
+
     repo = args.repo.resolve()
     run_dir = repo / ".agents" / "runs" / f"coder-{args.run_id}"
 
