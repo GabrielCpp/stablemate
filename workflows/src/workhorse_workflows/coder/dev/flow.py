@@ -798,8 +798,12 @@ class Dev(Workflow):
           "or say why it turned out to be unnecessary" the `goal` gate offers in writing.
           A retraction is not free: it is recorded in the lap's `notes` and in the run log,
           where an operator reading afterwards sees which promise was dropped and why.
+        * `retracted_commands` is the same for a command, and covers the one way a promise
+          can be unrepairable rather than merely unmet: a command that never terminates.
+          The gate waits out its timeout and calls it dirty, every lap, on code that is
+          already finished.
         """
-        if not result.tests_added and not result.retracted_files:
+        if not (result.tests_added or result.retracted_files or result.retracted_commands):
             return promise
         merged = dict(promise or {})
         if result.tests_added:
@@ -814,6 +818,13 @@ class Dev(Workflow):
                 f
                 for f in (conditions.get("files") or [])
                 if f.strip().lstrip("./") not in dropped
+            ]
+            merged["exit_conditions"] = conditions
+        if result.retracted_commands:
+            dropped = {c.strip() for c in result.retracted_commands if c.strip()}
+            conditions = dict(merged.get("exit_conditions") or {})
+            conditions["commands"] = [
+                c for c in (conditions.get("commands") or []) if c.strip() not in dropped
             ]
             merged["exit_conditions"] = conditions
         return merged

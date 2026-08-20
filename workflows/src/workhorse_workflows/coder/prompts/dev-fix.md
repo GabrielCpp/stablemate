@@ -105,6 +105,12 @@ no-op, a path the plan renamed, a branch that already did what the story wanted 
 checked to be sure. Editing a file to satisfy this gate when the code was already right is the
 one outcome worse than the failure, and a retraction is a claim you are on record for.
 
+A promised **command** is withdrawn the same way, in `retracted_commands`, and there is one
+case where that is the only honest answer: a command that never returns. A long-running
+process named as an exit condition — a server, a watcher, anything that runs until it is
+stopped — cannot be green, because the gate waits for it to exit and it never does. Retract it
+and name, in `notes`, the terminating command that proves the same thing.
+
 Retract only what you have verified. A promise you simply did not get to is unfinished work,
 and the repair for that is to finish it.
 {% endif %}
@@ -115,7 +121,7 @@ and the repair for that is to finish it.
 Respond with JSON only, after you have re-run the gate locally:
 
 ```json
-{"status": "fixed|failed|blocked", "notes": "<what you changed, or why a finding remains>", "tests_added": ["<test file you wrote or extended>"], "retracted_files": ["<promised file that needed no change>"]}
+{"status": "fixed|failed|blocked", "notes": "<what you changed, or why a finding remains>", "tests_added": ["<test file you wrote or extended>"], "retracted_files": ["<promised file that needed no change>"], "retracted_commands": ["<promised command that could never be green>"]}
 ```
 
 - `fixed` — the gate passes now in this directory.
@@ -130,3 +136,6 @@ Respond with JSON only, after you have re-run the gate locally:
 - `retracted_files` — promised files this lap verified needed no change, on the `goal` gate
   only. Omit it everywhere else. It withdraws the promise for the next lap; `notes` is where
   the evidence goes, and both are kept in the run log.
+- `retracted_commands` — the same, for a promised command that could never be green here: one
+  that does not terminate, or that this environment cannot run at all. Same rule: verified,
+  explained in `notes`, on the record.

@@ -107,8 +107,12 @@ checks it against what actually happened:
 - `criteria` — the story's acceptance criteria this turn intends to satisfy, in the story's
   own words. Carried forward to review and QA as the thing to check first.
 - `commands` — the commands you expect to be green when you finish, beyond the gates in
-  **Provided Inputs** (those are run for you either way). The workflow runs each one in the
-  service directory; a red one comes back as a repair turn quoting your own promise.
+  **Provided Inputs** (those are run for you either way). The workflow runs each one and waits
+  for it to exit; a red one comes back as a repair turn quoting your own promise. **Every
+  command here must terminate on its own.** A process that runs until it is stopped — a
+  server, a watcher, a tail — can never be green: the gate waits out its timeout, calls the
+  promise broken, and bills a repair lap against finished work. Promise the terminating
+  command that proves the same thing instead.
 - `files` — the files you expect to have touched. One missing from the diff comes back the
   same way.
 
@@ -276,6 +280,6 @@ After implementing the story and running verification, return this exact JSON ob
 
 - `status`: `"done"` only when the implementation is complete, verification passed, **and the code was run in a local environment with the touched story path exercised (Step 5)**. Use `"blocked"` if you could not complete it or could not run it locally.
 - `notes`: a brief summary of what was implemented and verified, **including how you ran it locally and what you observed** (or the blocker).
-- `exit_conditions`: the promise from Step 2, revised to what you actually mean by the end. Each `commands` entry is run in the service directory and each `files` entry is looked for in the diff — so state what is true, not what sounds thorough. Omit the whole object, or any list in it, when you have nothing to promise.
+- `exit_conditions`: the promise from Step 2, revised to what you actually mean by the end. Each `commands` entry is run to completion and each `files` entry is looked for in the diff — so state what is true, not what sounds thorough. Omit the whole object, or any list in it, when you have nothing to promise.
 - `tests_added`: the test files this turn wrote or extended, service-relative. Only paths really in the diff count; naming a file you did not write comes back as a repair turn.
 - `no_test_reason`: why there is none, when there is none. An exemption is weighed against what the service declares — it does not switch the check off.

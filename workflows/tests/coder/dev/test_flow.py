@@ -1045,6 +1045,31 @@ def test_a_repair_lap_may_retract_a_promised_file_it_verified_needed_no_change()
     assert conditions["commands"] == ["go build ./..."]
 
 
+def test_a_repair_lap_may_retract_a_promised_command_that_could_never_be_green() -> None:
+    """A command can be wrong in a way a file cannot: it can fail to return.
+
+    A turn that promises `go run ./cmd/server` as an exit condition has promised a process
+    that runs until something stops it. The gate waits out its whole timeout, calls the
+    promise broken, and hands the lap a failure with no repair in it — the code was finished
+    before the first lap started. A benchmark run spent ten minutes per lap on exactly this.
+    """
+    promise = {
+        "exit_conditions": {
+            "files": ["pkg/store/expense.go"],
+            "commands": ["go build ./...", "cd api && go run ./cmd/server"],
+        }
+    }
+
+    merged = Dev._amended(
+        promise,
+        FixResult(status="fixed", retracted_commands=["cd api && go run ./cmd/server"]),
+    )
+
+    conditions = (merged or {})["exit_conditions"]
+    assert conditions["commands"] == ["go build ./..."]
+    assert conditions["files"] == ["pkg/store/expense.go"]
+
+
 def test_a_gate_no_repair_lap_can_satisfy_never_gives_up_either(
     docs: Path,
     workspace: dict[str, Path],

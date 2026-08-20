@@ -245,6 +245,14 @@ class FixResult(CoderResult):
     #: The reason belongs in `notes`, which is what the run log keeps.
     retracted_files: list[str] = []
 
+    #: The same withdrawal for a promised *command*, and the half that is not symmetry for
+    #: its own sake: a command can be wrong in a way a file cannot. `go run ./cmd/server`
+    #: as an exit condition is a server that starts and then never exits — the gate waits
+    #: out its whole timeout, calls it dirty, and hands the lap a failure whose only honest
+    #: repair is "that command was never going to terminate". A real run spent ten minutes
+    #: per lap discovering that about code that was already finished.
+    retracted_commands: list[str] = []
+
 
 class OperatorResolution(CoderResult):
     """`prompts/resolve-operator.md` — the resolver's report on a block.
