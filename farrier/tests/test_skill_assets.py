@@ -81,6 +81,20 @@ def test_reference_markdown_does_not_register_as_its_own_skill(tmp_path):
     assert ids == {"stack/go-service"}
 
 
+def test_readme_does_not_register_as_a_source(tmp_path):
+    """A tree's README is prose for a human, not a skill named `readme`.
+
+    It sits at the root of a kind's directory, so nothing about a skill's own layout
+    excludes it — and once loaded it takes a library-wide-unique name that a pack glob
+    can select and every "unknown name; here is what exists" catalog advertises.
+    """
+    root = _library(tmp_path)
+    _skill(root, "go-service")
+    (root / "README.md").write_text("# Skills\n\nWhat lives here.\n", encoding="utf-8")
+
+    assert {source.id for source in load_sources(root, "skill")} == {"stack/go-service"}
+
+
 def test_scripts_are_not_loaded_as_sources(tmp_path):
     root = _library(tmp_path)
     skill_dir = _skill(root, "qa")

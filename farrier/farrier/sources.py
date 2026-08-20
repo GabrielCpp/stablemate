@@ -127,6 +127,12 @@ def skill_assets(source: Source) -> list[Asset]:
     return sorted(assets, key=lambda asset: asset.rel)
 
 
+#: Filenames that never denote a library source of their own: ``SKILL.md`` is the skill
+#: it names (loaded by the directory form above), and ``README.md`` is prose for a human
+#: reading the tree.
+_NOT_SOURCES = frozenset({"SKILL.md", "README.md"})
+
+
 def load_sources(root: Path, kind: str, layer: Layer | None = None) -> list[Source]:
     sources: list[Source] = []
     # Load SKILL.md files (new open skill format: <name>/SKILL.md).
@@ -136,9 +142,13 @@ def load_sources(root: Path, kind: str, layer: Layer | None = None) -> list[Sour
     # that skill and ships beside it (see skill_assets). Without this, splitting a long
     # SKILL.md into references/ would silently register each fragment as a top-level
     # skill of its own — competing for the library-wide-unique names farrier resolves by.
+    #
+    # A README.md is skipped for the same reason and one more: it is what a human reads
+    # to learn what a tree holds, addressed to nobody's agent, and registering it makes a
+    # source named `readme` that a pack glob can select and an error catalog advertises.
     for path in sorted(
         list(root.rglob("SKILL.md"))
-        + [p for p in root.rglob("*.md") if p.name != "SKILL.md"]
+        + [p for p in root.rglob("*.md") if p.name not in _NOT_SOURCES]
     ):
         if asset_owner(root, path) is not None:
             continue
