@@ -6,6 +6,7 @@ title: Seat ledger
 # Seat ledger
 
 - code: app/store.py::Store
+- code: compose.yml
 - extends:
 
 The ledger is the whole of the service's state: one JSON file holding every
@@ -16,6 +17,10 @@ commit from a cache, and a torn write would surface as a lost booking blamed on 
 
 It is the durable half of [the seat booking API](../http/seat-booking-api.md); the transitions that
 mutate it are [the seat's methods](seat.md#methods), and the page reads it through the same seat map.
+Durability is half this module and half `compose.yml`, which is why the node cites both: the file is
+written atomically to a path that only survives a restart because the service is deployed with that
+path on a volume. A ledger written correctly into a container's own filesystem loses every booking
+at the next restart, and the defect would look like a store bug from every surface that reads it.
 
 ## Methods
 

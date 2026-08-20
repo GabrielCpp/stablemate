@@ -247,6 +247,30 @@ def test_materialized_book_is_unchanged(tmp_path: Path) -> None:
     assert changed_docs == ""
 
 
+@pytest.mark.parametrize("story", STORIES)
+def test_the_obligation_packet_builds_clean_on_a_trial(story: str, tmp_path: Path) -> None:
+    """Every story's QA context builds with no error-severity health finding.
+
+    This is what a trial does first, and an `unmapped-change` there is not a warning the run
+    walks past: the QA lane sends the packet to a repair agent, which edits the frozen book
+    before a scenario runs. The control then measures a fixture nobody authored, and the
+    minutes and tokens the repair spent land in the score as QA's. It only reproduces on a
+    materialized worktree — `doctor` is clean either way, because the finding is about the
+    story's diff and not about the book on its own — which is why it is checked here rather
+    than left to the round to discover.
+    """
+    from ostler.api import Ostler  # noqa: PLC0415 - a heavy import only this test needs
+
+    dest = frozen.materialize(APP, story, tmp_path / "seat-booking")
+    outcome = Ostler(dest).qa_context(base="HEAD", spec=dest / "docs" / "specs" / story)
+    errors = [
+        finding for finding in outcome.data.get("healthFindings", [])
+        if finding.get("severity") == "error"
+    ]
+    assert not errors, errors
+    assert outcome.ok, outcome.data.get("status")
+
+
 # ── the answer key ────────────────────────────────────────────────────────────────────
 
 
