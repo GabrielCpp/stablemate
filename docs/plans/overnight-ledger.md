@@ -33,13 +33,19 @@ first**; if an item is already fully done, tick it with the existing commit hash
   all import it and their surviving `_escalation` methods are thin per-lane defaults for
   `block_kind`/`where`/the counter, not second implementations. The helper also gained a
   `What the node found` findings section. 77 shared-coder tests pass; `make lint` clean.
-- [ ] B3 — the four lane flows route the signal. Root cause first: `_implement_classic`
+- [x] B3 — the four lane flows route the signal. Root cause first: `_implement_classic`
   (`coder/dev/flow.py:636`) assigns its agent result and both callers branch on it.
   Every discarded `self.agent(...)` result in dev/review/docs/qa flows assigned and
   branched; evidence test (findings→fix, else escalate); each escalation site gets a thin
   consume-the-answer state (Await resumes with a cheap prefix).
   Done when: a blocked result from any coder node reaches `context.md` as an `Await` and
   resumes at the raising node; flow tests cover the dropped-verdict case.
+  (pre-existing: 139f963) — `_implement_classic` returns its result and both callers branch;
+  no statement-level `self.agent(...)` remains in the four flows; dev gained `_gate_impl` +
+  the thin `read_operator_impl` consume state. Advisory turns (review feeders, the dev
+  report) deliberately warn and carry on rather than escalating, since a binding check runs
+  after them. `test_an_implementation_turn_that_says_it_cannot_reaches_the_operator` drives
+  the dropped-verdict case end to end. 776 coder tests pass; `make lint` clean.
 - [ ] B4 — session memory: surface the backend-minted session id to the workflow;
   `engine.agent`'s `session:` accepts a literal id; `enter` event records the threaded id;
   chains added to `apply-qa-fixes`, `rework_plan`, and the `fix-*` laps (and nothing else).
