@@ -147,6 +147,30 @@ def test_the_trial_process_stands_in_the_sandbox(
     assert launched["cmd"][:4] == ["uv", "run", "--project", str(checkout)]
 
 
+def test_the_trial_process_carries_the_sandbox_in_its_environment(
+    checkout: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`cwd=` alone leaks: an agent CLI that trusts `$PWD` would still work on the checkout.
+
+    A live trial proved it — `cwd=repo` was in place and the run's own agents still committed
+    into the enclosing worktree, because `Popen` moves the child's directory and leaves the
+    inherited variable naming the launcher's. `OLDPWD` goes with it: a stale one names this
+    checkout just as loudly.
+    """
+    sandbox = tmp_path / "work" / "trial" / "app"
+    monkeypatch.setenv("PWD", str(checkout))
+    monkeypatch.setenv("OLDPWD", str(checkout))
+    monkeypatch.setattr(replay, "WORK_DIR", tmp_path / "work")
+    monkeypatch.setattr(replay, "checkout", lambda fixture, story, flow, dest: sandbox)
+    launched = intercept_the_workflow(monkeypatch)
+    fixture = replay.Fixture(name="f", source=Path("app"), app=None, stories=[])
+
+    replay.run_trial(fixture, flow="qa", story="s", label="l", n=1, budget_s=0, cli="opencode")
+
+    assert launched["env"]["PWD"] == str(sandbox)
+    assert "OLDPWD" not in launched["env"]
+
+
 def test_a_trial_that_committed_here_comes_back_failed(
     checkout: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

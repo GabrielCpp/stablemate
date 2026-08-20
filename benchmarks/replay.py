@@ -509,6 +509,15 @@ def run_trial(
     log = work / "run.log"
 
     env = {**os.environ, "AGENT_REPO_DIR": str(repo)}
+    # `cwd=` below is not enough on its own. A child inherits `$PWD` from whoever launched
+    # it — `Popen(cwd=...)` changes the directory and leaves the variable — and an agent CLI
+    # that resolves its project root from `$PWD` rather than `getcwd()` then works on the
+    # repo the *harness* was started in. That is the mechanism behind the strays this
+    # function checks for below, and it is the same alignment `workhorse.runner.process`
+    # does for a node that declares a `cwd`; the QA nodes declare none, so the harness has
+    # to do it at its own boundary.
+    env["PWD"] = str(repo)
+    env.pop("OLDPWD", "")
     if budget_s > 0:
         # Enforced between states by workhorse itself, so an over-budget trial stops at a
         # node boundary with its telemetry intact and still reports a partial lap count.
