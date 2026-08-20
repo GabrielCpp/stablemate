@@ -147,7 +147,7 @@ def ensure_stack(
             failed_step="manifest",
             notes=(
                 f"{manifest_rel} has a top-level `sandbox:` key, which no longer does "
-                "anything — QA's docker sandbox was removed. Delete the key."
+                "anything — QA's container sandbox was removed. Delete the key."
             ),
         )
 

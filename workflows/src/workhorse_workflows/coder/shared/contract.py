@@ -11,29 +11,23 @@ The sharing is the whole point, so this sits in `shared/` rather than inside eit
 one import away from being copied into the other. Two callers is exactly what `shared/`
 counts.
 
-**Genesis carries zero stack knowledge**, and `DEFAULT_MARKERS` is the edge of that rule: it
-is a fallback list of filenames, not a mapping from a stack to its marker. Which markers a
-repo actually declares arrives as a flow parameter and is written through verbatim, because
-`scripts/check_public.py` asserts no base workflow may depend on the private overlay and the
-stack packs live there.
+**Genesis carries zero stack knowledge**, and this file carries none either. Which markers
+prove a service is real arrives as a flow parameter and is written through verbatim; a
+repo that declares none has the check skipped, not replaced by a guess. The fallback list
+that used to live here — `main.go`, `package.json`, `pubspec.yaml` — was read by nothing
+and could only ever have failed an unconfigured repo on a stack it never claimed to be.
 """
 from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
 
-#: The fallback marker set, used when a repo declares none of its own. Deliberately a flat
-#: list rather than a stack→marker table: this file may not know that `go.mod` means Go.
-DEFAULT_MARKERS: tuple[str, ...] = ("main.go", "go.mod", "package.json", "pubspec.yaml", "main.tf")
-
-
 def service_problems(service_abs: Path, markers: Sequence[str], label: str) -> list[str]:
     """Every reason `service_abs` is not a service the planner can target, or `[]`.
 
     A falsy `markers` means "this repo has not configured any", and the marker check is
-    then skipped rather than failed — deliberately. The alternative, falling back to
-    `DEFAULT_MARKERS` here, would make an unconfigured repo fail on a stack it never
-    claimed to be.
+    then skipped rather than failed — deliberately. Any default this function could reach
+    for would be a stack it picked on the repo's behalf.
     """
     if not service_abs.exists():
         return [f"{label}: path does not exist at {service_abs}"]
@@ -47,4 +41,4 @@ def service_problems(service_abs: Path, markers: Sequence[str], label: str) -> l
     return []
 
 
-__all__ = ["DEFAULT_MARKERS", "service_problems"]
+__all__ = ["service_problems"]

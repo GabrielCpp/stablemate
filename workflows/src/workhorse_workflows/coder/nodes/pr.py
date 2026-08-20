@@ -77,10 +77,6 @@ SCREENSHOT_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif")
 #: which also stopped at a `## ` line inside a fenced code block.
 PLAN_SUMMARY_HEADING = "1. Summary"
 
-#: A repo whose QA runs a browser or a device driver gets screenshots in its PR body.
-UI_QA_MODES = ("playwright", "maestro")
-
-
 # ── The epic's PR ────────────────────────────────────────────────────────────────────
 
 
@@ -575,7 +571,7 @@ def open_story_pr(
             commits.message("feat", commits.scope(name), description, story=story_slug),
         )
 
-        body = _pr_body(summary, screenshots, _is_ui_repo(info))
+        body = _pr_body(summary, screenshots)
         result, pr_url = _push_and_pr(logger, repo_path, branch, repo_base, title, body, token)
         results.append(result)
         if result in ("opened", "exists") and pr_url:
@@ -622,17 +618,17 @@ def _qa_screenshots(root: Path, story_path: str) -> list[str]:
     ]
 
 
-def _is_ui_repo(info: dict) -> bool:
-    """Does this repo's QA drive a browser or a device? Then screenshots belong in its PR."""
-    return info.get("qa_mode", "") in UI_QA_MODES
+def _pr_body(summary: str, screenshots: list[str]) -> str:
+    """The PR description: the plan summary, the QA evidence, and the provenance note.
 
-
-def _pr_body(summary: str, screenshots: list[str], is_ui: bool) -> str:
-    """The PR description: the plan summary, the QA evidence, and the provenance note."""
+    Screenshots are attached because QA produced some, not because this repo's `qa_mode`
+    is on a list of drivers that produce them — a repo whose QA captures evidence any
+    other way had it dropped, and the list was one name behind whatever the repo installed.
+    """
     parts = []
     if summary:
         parts.append(f"## Summary\n\n{summary}")
-    if is_ui and screenshots:
+    if screenshots:
         parts.append("## QA Evidence\n")
         parts.append("Screenshots captured during QA (in the docs repo `qa/` dir):\n")
         for shot in screenshots[:6]:
