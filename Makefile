@@ -77,6 +77,7 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) -C groom test
 	$(MAKE) -C saddlebag test
 	$(MAKE) test-bench
+	$(MAKE) test-scripts
 	$(MAKE) check-public
 	$(MAKE) check-no-env
 	$(MAKE) check-no-giveup
@@ -115,6 +116,13 @@ okf-verify: ## Verify every OKF book's coverage against its source (non-zero = i
 	# are complete") is judged by the self-assessment the coverage instrument exists to
 	# remove; `make okf-verify exits 0` is something a run can be refused by.
 	uv run python scripts/okf_verify.py
+
+.PHONY: test-scripts
+test-scripts: ## Run the repo-level guard scripts' own tests
+	# The guards in `scripts/` are the only code here with no package to be tested by, and
+	# they are exactly the code whose failure mode is silence: a hook check that looks in
+	# the wrong place reports every guard missing on a clone where they all run.
+	uv run pytest scripts/tests -q
 
 .PHONY: check-public
 check-public: ## Guard the public/private split (no private names; the base stands alone)
