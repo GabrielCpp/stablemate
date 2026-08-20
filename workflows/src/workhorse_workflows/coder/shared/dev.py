@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -816,6 +817,13 @@ def run_gate(
     )
 
 
+#: A file-ish token inside a longer string — something with an extension. Used only after an
+#: exact match has already failed, to read the path out of an answer that named the *test*
+#: and put its file in parentheses: `Test_Service_List (internal/expense/service_test.go)`.
+#: That is a more informative answer than the bare path, and it used to cost a repair lap.
+_PATHISH = re.compile(r"[\w./\\-]+\.[A-Za-z0-9]{1,8}")
+
+
 def _touched(promised: str, changed: list[str]) -> bool:
     """Whether one promised path is anywhere in the diff.
 
@@ -823,7 +831,20 @@ def _touched(promised: str, changed: list[str]) -> bool:
     service while the diff is relative to its repo, or the other way round. A promise the
     gate cannot match becomes a repair lap, and a repair lap spent on a path-prefix
     disagreement is the most expensive way to be pedantic about one.
+
+    The same argument extends to a path *embedded* in a longer answer. The lenient reading
+    can only ever accept a promise the strict one rejects, and the cost of the two errors is
+    not symmetric: a wrongly-accepted promise is caught by the declared gates and by review
+    a few minutes later, where a wrongly-rejected one bills a repair turn against work that
+    was already correct and, at the end of the budget, a human's attention.
     """
+    if _matches(promised, changed):
+        return True
+    return any(_matches(token, changed) for token in _PATHISH.findall(promised))
+
+
+def _matches(promised: str, changed: list[str]) -> bool:
+    """One candidate path against the diff, either way round the service prefix."""
     promised = promised.strip().lstrip("./")
     if not promised:
         return False
