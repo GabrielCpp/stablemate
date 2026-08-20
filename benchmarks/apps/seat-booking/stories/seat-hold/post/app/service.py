@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any
 
 from app import booking, page
+from app.hold import hold as hold_seat
+from app.hold import release
 from app.store import Store, empty_ledger
 
 #: The benchmark owns 18080-18099; seat-booking's number is recorded in
@@ -48,7 +50,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"title": "Not Found"})
             return
         try:
-            self._json(201, {"hold": booking.hold(self.store, hold.group(1))})
+            self._json(201, {"hold": hold_seat(self.store, hold.group(1))})
         except booking.Conflict as refused:
             self._json(refused.refusal.status, {"title": refused.refusal.title})
 
@@ -61,7 +63,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"title": "Not Found"})
             return
         try:
-            booking.release(self.store, hold.group(1))
+            release(self.store, hold.group(1))
         except booking.Conflict as refused:
             self._json(refused.refusal.status, {"title": refused.refusal.title})
             return

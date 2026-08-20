@@ -31,7 +31,7 @@
 defects:
   - id: D1
     story: confirm-booking
-    path: app/booking.py
+    path: app/confirm.py
     obligation: okf:docs/features/booking/http/seat-booking-api.md#post-seat-booking:concurrency:1
     expect: contradicted
     caught_by: run
@@ -41,7 +41,7 @@ defects:
 
   - id: D2
     story: confirm-booking
-    path: app/booking.py
+    path: app/confirm.py
     obligation: okf:docs/features/booking/http/seat-booking-api.md#post-seat-booking:persistence:1
     expect: contradicted
     caught_by: run
@@ -61,7 +61,7 @@ defects:
 
   - id: D4
     story: seat-hold
-    path: app/booking.py
+    path: app/hold.py
     obligation: okf:docs/features/booking/http/seat-booking-api.md#delete-seat-hold:does:2
     expect: contradicted
     caught_by: run
@@ -81,7 +81,7 @@ defects:
 
   - id: D6
     story: seat-hold
-    path: app/booking.py
+    path: app/hold.py
     obligation: okf:docs/features/booking/concepts/seat.md#hold:raises:1
     expect: contradicted
     caught_by: run

@@ -3,8 +3,16 @@
 # `added:` paths are absent from the before-commit and present, uncommitted, in the
 # worktree. `changed:` paths are committed from `pre/<path>` and then overwritten in the
 # worktree. In both cases the worktree content comes from `post/<path>` when that file
-# exists, and from the app tree otherwise — this is the first story, so the two modules
-# later stories keep extending are pinned to their story-1 shape by `post/`.
+# exists, and from the app tree otherwise.
+#
+# No file here carries a `post/` image, because no later story rewrites one: the transitions
+# stories 2 and 3 add live in their own modules — `app/hold.py`, `app/confirm.py` — and only
+# `app/service.py` grows in place, which is why that one has an image under each story.
+#
+# That is the point of the split rather than a tidiness argument. The frozen book is not
+# story-scoped: every trial checks out all of it, so every symbol it cites has to exist in
+# every story's worktree. A `post/` image that trimmed a cited symbol out of a file would
+# dangle the citation, and the trial would block on a broken book before reaching a verdict.
 story: seat-map
 added:
   - app/__init__.py

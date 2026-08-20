@@ -2,7 +2,7 @@
 
 The routing is a small hand-written table rather than a framework because the whole app has
 to start from a stock Python image with nothing installed. What the layer *does* is
-deliberately thin — parse, call one transition in `booking.py`, serialise — so a defect
+deliberately thin — parse, call one transition, serialise — so a defect
 seeded in a status code and a defect seeded in a rule stay distinguishable.
 """
 
@@ -15,6 +15,9 @@ from pathlib import Path
 from typing import Any
 
 from app import booking, page
+from app.confirm import confirm
+from app.hold import hold as hold_seat
+from app.hold import release
 from app.store import Store, empty_ledger
 
 #: The benchmark owns 18080-18099; seat-booking's number is recorded in
@@ -48,7 +51,7 @@ class Handler(BaseHTTPRequestHandler):
         book = SEAT_BOOKING.match(self.path)
         try:
             if hold:
-                self._json(201, {"hold": booking.hold(self.store, hold.group(1))})
+                self._json(201, {"hold": hold_seat(self.store, hold.group(1))})
             elif book:
                 body = self._body()
                 version = body.get("version")
@@ -59,7 +62,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not name:
                     self._json(400, {"title": "Name Required"})
                     return
-                created = booking.confirm(
+                created = confirm(
                     self.store, book.group(1), version=version, name=name
                 )
                 self._json(201, {"booking": created})
@@ -77,7 +80,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"title": "Not Found"})
             return
         try:
-            booking.release(self.store, hold.group(1))
+            release(self.store, hold.group(1))
         except booking.Conflict as refused:
             self._json(refused.refusal.status, {"title": refused.refusal.title})
             return

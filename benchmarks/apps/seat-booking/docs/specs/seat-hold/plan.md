@@ -18,7 +18,9 @@ route.
 
 ## 2. Files
 
-- `app/booking.py` — `hold` and `release`, plus the `Refused`/`Conflict` vocabulary the routes translate.
+- `app/hold.py` — `hold` and `release`, each raising the refusals the routes translate. A module
+  of their own, because the book grounds an obligation at the symbol it cites and two transitions
+  sharing a file would share that file's grounding.
 - `app/service.py` — `POST` and `DELETE` on `/api/seats/{seat}/hold`, and the conflict-to-status mapping.
 
 ## 3. Acceptance Checklist

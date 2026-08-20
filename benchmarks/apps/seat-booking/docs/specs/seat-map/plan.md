@@ -19,7 +19,8 @@ route.
 ## 2. Files
 
 - `app/store.py` — the ledger: the seat vocabulary, the empty showing, atomic read/write.
-- `app/booking.py` — `seat_map`, the ordered projection both surfaces read.
+- `app/booking.py` — `seat_map`, the ordered projection both surfaces read, plus the
+  `Refused`/`Conflict` vocabulary the transitions to come share.
 - `app/page.py` — the server-rendered document: banner, seat-map region, seat buttons, summary.
 - `app/service.py` — the request handler and the three read routes.
 - `compose.yml` — one service, published on 18083.

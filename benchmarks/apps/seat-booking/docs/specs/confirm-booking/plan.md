@@ -18,7 +18,8 @@ route.
 
 ## 2. Files
 
-- `app/booking.py` — `confirm`, the version comparison, and the `Stale Hold` refusal.
+- `app/confirm.py` — `confirm`, the version comparison, and the `Stale Hold` refusal.
+- `app/booking.py` — the seat payload gains the `booking` field the durability criterion reads.
 - `app/service.py` — `POST /api/seats/{seat}/booking`, body validation, and the 400/409 mapping.
 
 ## 3. Acceptance Checklist

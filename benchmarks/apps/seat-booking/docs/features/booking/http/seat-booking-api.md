@@ -76,7 +76,7 @@ confirming a hold has to quote the number the caller was given.
 
 - does:
   - moves a free seat to `held`, bumps its version, and returns the hold id together with the version the caller must quote to confirm.
-- code: app/booking.py::hold
+- code: app/hold.py::hold
 - verify: http_status(201, path="/api/seats/A1/hold")
 - verify: json_path("hold.version", equals="1")
 - raises: `409 Seat Unavailable` when the seat is already held or already booked; the ledger is left
@@ -105,7 +105,7 @@ confirming a hold has to quote the number the caller was given.
   - returns a held seat to `free`, bumps its version, and answers `204` with no body.
 - does:
   - touches the released seat and no other — every other seat keeps its state, its version and its booking.
-- code: app/booking.py::release
+- code: app/hold.py::release
 - verify: http_status(204, path="/api/seats/A1/hold")
 - verify: unchanged(subject="seats", except_fields=["A1.state", "A1.version", "A1.hold"])
 - verify: keys_unchanged(subject="seats")
@@ -130,7 +130,7 @@ confirming a hold has to quote the number the caller was given.
 
 - does:
   - turns a held seat into a booking under the given name, bumps its version, and returns the booking id.
-- code: app/booking.py::confirm
+- code: app/confirm.py::confirm
 - verify: http_status(201, path="/api/seats/A1/booking")
 - verify: json_path("booking.name", equals="Dana Okonkwo")
 - concurrency: refuses a request quoting a version other than the seat's current one with

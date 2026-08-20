@@ -1,11 +1,14 @@
 # The implementation diff a trial materializes for the `seat-hold` story.
 #
-# `pre/` is story 1's post-image; `post/` is this story's, which story 3's `pre/` copies.
-# The ledger and the page are untouched here: holding a seat is a transition and a route,
-# and a story that also rewrote the storage layer would make an `unchanged` scenario
-# ambiguous about which change it caught.
+# The transitions arrive as their own module — `app/hold.py`, holding `hold` and `release` —
+# so the book grounds each of them at a symbol in a file nothing else owns, and a defect
+# seeded in one localizes there. Only the routing grows in place.
+#
+# The ledger, the seat projection and the page are untouched here: holding a seat is a
+# transition and a route, and a story that also rewrote the storage layer would make an
+# `unchanged` scenario ambiguous about which change it caught.
 story: seat-hold
-added: []
+added:
+  - app/hold.py
 changed:
-  - app/booking.py
   - app/service.py

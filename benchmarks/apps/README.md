@@ -92,6 +92,15 @@ collide on a machine running both.
   exist from that opt-in onward** — a round predating it scored no `confirm-booking` trial at
   all, so a scorecard from before it is not a baseline for one from after.
 
+  The same round found the other half of that debt: each transition now lives in a module of
+  its own — `app/hold.py`, `app/confirm.py` — rather than sharing `app/booking.py`. The frozen
+  book is not story-scoped, so every trial checks out all of it and every cited symbol has to
+  exist in every story's worktree; while the three transitions shared one file, story 1's and
+  story 2's `post/` images of that file trimmed the symbols the book cites for the others, and
+  `ostler doctor` failed `missing-code-symbol` before a single scenario ran. **No `seat-map` or
+  `seat-hold` trial could reach a verdict either**, for the same reason and over the same span
+  as the restart gap — this app produced no scoreable round before both were fixed.
+
 - **[`policy-desk/`](policy-desk/)** — an insurance policy register: a Go JSON API behind a React
   single-page client, three stories (create, list, amend) over the same ledger. Port **18084**.
   Chosen for the interest cases one Python module cannot pose — a deep link that has to survive a

@@ -16,7 +16,10 @@ requires, and the reason a lost hold cannot be spent twice.
 
 The three transitions below are the whole state machine. They live apart from the HTTP layer so that
 a scenario that fails names the rule rather than the route: `service.py` translates each refusal into
-a status code and decides nothing. The durable side — where the states are written and how — is
+a status code and decides nothing. Each also lives in a module of its own, cited from the method that
+documents it — this node owns the projection and the shared refusal vocabulary in `app/booking.py`,
+and nothing else — so a defect seeded in one transition is grounded at that transition and localizes
+to it. The durable side — where the states are written and how — is
 [the seat ledger](seat-ledger.md); the rendered side is
 [the seat map screen](../gui/screens/seat-map.md).
 
@@ -29,6 +32,7 @@ a status code and decides nothing. The durable side — where the states are wri
   confirm against.
 - raises: `Seat Unavailable` when the seat is held or booked, leaving the ledger untouched.
 - raises: `No Such Seat` for an id that is not in the showing.
+- code: app/hold.py::hold
 - verify: json_path("hold.version", equals="1")
 - verify: unchanged(subject="seat A1", except_fields=[])
 - verify: http_status(404, title="No Such Seat")
@@ -40,6 +44,7 @@ a status code and decides nothing. The durable side — where the states are wri
 - sig: `release(store: Store, seat: str) -> None`
 - abstract: gives a held seat back to the showing.
 - raises: `Seat Not Held` when the seat is free or booked, so releasing cannot undo a booking.
+- code: app/hold.py::release
 - verify: http_status(204)
 - verify: unchanged(subject="seats", except_fields=["A1.state", "A1.version", "A1.hold"])
 - verify: http_status(409, title="Seat Not Held")
@@ -52,6 +57,7 @@ a status code and decides nothing. The durable side — where the states are wri
 - sig: `confirm(store: Store, seat: str, *, version: int, name: str) -> dict`
 - abstract: spends a hold on a booking in somebody's name.
 - raises: `Seat Not Held` when the seat was never held.
+- code: app/confirm.py::confirm
 - verify: json_path("booking.name", equals="Dana Okonkwo")
 - verify: conflict_on_stale(subject="seat A1", token="version")
 - verify: http_status(409, title="Seat Not Held")
