@@ -29,8 +29,8 @@ stories:
     qa: b0464ec
     docs: b8b3ffc
   - story: expense-list
-    qa: 2c2b1b2
-    docs: 2c2b1b2
+    qa: c0478a9
+    docs: c0478a9
   - story: balance-settlement
     qa: 99fff2b
     docs: 321d39a
