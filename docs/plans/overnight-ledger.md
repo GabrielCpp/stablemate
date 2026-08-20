@@ -17,10 +17,15 @@ first**; if an item is already fully done, tick it with the existing commit hash
 
 ## Phase B — blocked handoff & session memory (prerequisite infrastructure)
 
-- [ ] B1 — `coder/shared/schemas/_base.py`: consolidated blocked marker on `CoderResult`
+- [x] B1 — `coder/shared/schemas/_base.py`: consolidated blocked marker on `CoderResult`
   (replacing `unfixable`/`not_passed`/`invalid`/`blocked` spellings) + `findings:
   list[Finding]` with location+demand; default distinguishable from a dead node's nulls.
   Done when: schema tests cover the dead-node case; `make lint` clean.
+  (pre-existing: 71a83d7) — `blocked` is derived from `status` against `BLOCKED_STATUSES`
+  rather than declared as a field, which is what keeps a dead node's nulls off the
+  escalation arm; `findings` is read off the subclass so `QaAssessment`/`DocumentationReview`
+  keep their narrowed element types. `workflows/tests/coder/shared/test_blocked_signal.py`
+  covers the dead-node case (9 passed); `make lint` clean.
 - [ ] B2 — move/generalise `_escalation` (`dev/flow.py:739`) into `coder/shared/escalation.py`
   with `block_kind`/`where` as parameters; all lanes call the shared helper.
 - [ ] B3 — the four lane flows route the signal. Root cause first: `_implement_classic`
