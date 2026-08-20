@@ -215,6 +215,7 @@ class _Ostler:
         context_invalid: int = 0,
         plan_invalid: int = 0,
         plan_invalid_passes: tuple[int, ...] = (),
+        plan_invalid_stuck: bool = False,
         vet_problems: list[str] | None = None,
         blocked_problems: list[str] | None = None,
         block_runs: int = 0,
@@ -237,6 +238,12 @@ class _Ostler:
         #: which validation passes fail, for interleaving schema and judgement laps.
         self.plan_invalid = plan_invalid
         self.plan_invalid_passes = plan_invalid_passes
+        #: Whether every schema refusal says the *identical* thing. A validator re-reading a
+        #: file it already refused really does repeat itself, and the flow now reads that
+        #: repetition as a repair that answered nothing — so the default varies the finding
+        #: per pass, which is what a lane still moving looks like, and the tests about
+        #: *identical* refusals set this.
+        self.plan_invalid_stuck = plan_invalid_stuck
         self.vet_problems = vet_problems or []
         self.runs = 0
         self.contexts = 0
@@ -388,11 +395,12 @@ class _Session(Ostler):
             self.script.plan_validations <= self.script.plan_invalid
             or self.script.plan_validations in self.script.plan_invalid_passes
         ):
+            step = 3 if self.script.plan_invalid_stuck else self.script.plan_validations
             return QaOutcome(
                 ok=False,
                 message="plan is invalid",
                 status="invalid",
-                data={"notes": "step 3 names no assertion"},
+                data={"notes": f"step {step} names no assertion"},
             )
         return QaOutcome(ok=True, message="Plan is valid.", data={})
 
@@ -1076,6 +1084,64 @@ def test_a_plan_that_never_parses_spends_only_the_schema_budget(
     assert okf.runs == 0, "an invalid plan must never be executed"
 
 
+def test_two_identical_schema_refusals_block_instead_of_buying_a_third_lap(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The lap-discipline rule, on the gate that had only a count bounding it.
+
+    `plan_invalid_stuck` is a validator saying the identical sentence back: the repair turn
+    was handed that sentence, edited the file, and earned it again. Every further lap buys
+    the same turn for the same answer, so the second one goes to the operator — which is an
+    `Await` through the resolver path and not an ending, and the test proves that by the run
+    parking rather than by any status.
+
+    The budget is untouched by this: `MAX_PLAN_VALIDATION_REWORKS` is three, and the run
+    stops at one repair.
+    """
+    okf = ostler(plan_invalid=99, plan_invalid_stuck=True)
+    agent = _Agent(docs, escalate=True)
+    seen: list[str] = []
+
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
+
+    assert agent.counts()["repair-qa-plan"] == 1, agent.counts()
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
+    assert okf.runs == 0, "the lane never reached the runner"
+    assert len(seen) == 1, seen
+
+
+def test_distinct_schema_refusals_still_spend_the_whole_schema_budget(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The other half of the rule: a lane that is still moving keeps its laps.
+
+    Without this the repeat detector reads as "two refusals of any kind end the plan lane",
+    which would price the schema budget at one. What ends it is *sameness* — a validator
+    naming a different defect each pass is a repair that fixed the last one.
+    """
+    ostler(plan_invalid=99)
+    agent = _Agent(docs, escalate=True)
+    seen: list[str] = []
+
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
+        drive_flow(Qa(story=STORY), env(), agent)
+
+    assert agent.counts()["repair-qa-plan"] == Qa.MAX_PLAN_VALIDATION_REWORKS, agent.counts()
+
+
 def test_validation_and_judgement_spend_separate_plan_budgets(
     docs: Path,
     ostler: Callable[..., _Ostler],
@@ -1230,8 +1296,11 @@ def test_a_repair_that_never_dry_ran_is_repaired_again_and_costs_no_suite_run(
 
     assert okf.runs == 1, "a refused repair must not buy another suite run"
     assert agent.counts()["repair-qa-plan"] > 1, agent.counts()
-    # The refusal is spent out of the plan-repair budget, not a new one beside it.
-    assert agent.counts()["repair-qa-plan"] == Qa.MAX_PLAN_REWORKS, agent.counts()
+    # And the second refusal says exactly what the first said, so the lane stops there rather
+    # than spending the rest of `MAX_PLAN_REWORKS` re-earning it. The budget is still the one
+    # it is spent from — no new counter beside it — it is just no longer the only thing that
+    # ends this loop.
+    assert agent.counts()["repair-qa-plan"] == 2, agent.counts()
     assert len(seen) == 1 and "plan repair" in seen[0], seen
 
 
