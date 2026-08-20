@@ -15,10 +15,16 @@ exited 0.
 from __future__ import annotations
 
 import logging
+import subprocess
 from pathlib import Path
 
 import pytest
-from workhorse_workflows.coder.shared.dev import check_promises, tdd_gate, tdd_mode
+from workhorse_workflows.coder.shared.dev import (
+    changed_files,
+    check_promises,
+    tdd_gate,
+    tdd_mode,
+)
 
 LOG = logging.getLogger("test")
 
@@ -254,3 +260,36 @@ def test_a_service_name_key_beats_its_type_for_the_tdd_mode(service: Path) -> No
     _agents(service, "services:\n  go: {tdd: off}\n  api: {tdd: required}\n")
 
     assert tdd_mode("api", "go", str(service)) == "required"
+
+
+# --------------------------------------------------------------- what the gates read
+
+
+def test_a_new_file_is_in_the_diff_the_gates_read(tmp_path: Path) -> None:
+    """A test file a TDD lap adds is *new*, and a new file is in no `git diff`.
+
+    Nothing in the dev lane commits before the gates run, so `git diff --name-only HEAD`
+    sees modifications and nothing else. Both gates above check a claim against this list,
+    which made the honest answer "I added `handler_test.go`" indistinguishable from a
+    fabrication: the lap repaired the right thing, the gate stayed red, and the story
+    escalated to a human with nothing for them to decide.
+    """
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
+    (tmp_path / "handler.go").write_text("package api\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("build/\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "i"],
+        cwd=tmp_path,
+        check=True,
+    )
+    (tmp_path / "handler.go").write_text("package api\n\nfunc H() {}\n", encoding="utf-8")
+    (tmp_path / "handler_test.go").write_text("package api\n", encoding="utf-8")
+    (tmp_path / "build").mkdir()
+    (tmp_path / "build" / "out.bin").write_text("junk", encoding="utf-8")
+
+    paths = _call(changed_files, cwd=str(tmp_path)).paths
+
+    assert "handler_test.go" in paths, "a new test file is invisible to the tdd gate"
+    assert "handler.go" in paths
+    assert not any(p.startswith("build/") for p in paths), "ignored output is not a change"

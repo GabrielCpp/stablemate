@@ -1016,12 +1016,20 @@ def tdd_gate(
 def changed_files(logger: logging.Logger, cwd: str = "", story_slug: str = "") -> ChangedFiles:
     """Which files this story has already written in one service checkout.
 
-    The re-seed for a recycled conversation — see `ChangedFiles`. Both halves count, and the
-    two are found differently: what is still in the tree is a plain diff, and what has been
-    committed is found by the `Story:` trailer every prompt in this lane is required to
-    write. The trailer rather than a branch comparison because the base branch is not
-    something this node is given, and a story branch carrying two stories would otherwise
-    report the first one's files as this one's.
+    The re-seed for a recycled conversation — see `ChangedFiles`. Three halves, really, and
+    each is found differently: what is *modified* in the tree is a plain diff, what is
+    *new* in the tree is untracked and so is in no diff at all, and what has been committed
+    is found by the `Story:` trailer every prompt in this lane is required to write. The
+    trailer rather than a branch comparison because the base branch is not something this
+    node is given, and a story branch carrying two stories would otherwise report the first
+    one's files as this one's.
+
+    The untracked half is not a nicety. Nothing in this lane commits before the gates run,
+    and a new file — which is what a new test *is* — appears in `git diff HEAD` never. Both
+    gates that read this list check a claim against it (`goal`'s promised files, `tdd`'s
+    reported tests), so without it the honest answer "I added `handler_test.go`" reads as a
+    fabrication, laps until the budget is spent, and escalates a story that was correct.
+    `--exclude-standard` keeps build output and other ignored noise out.
 
     Degrades to empty on anything unexpected. It is a courtesy to the next turn, which reads
     the code itself when told nothing; a service that is not a git checkout must not fail the
@@ -1029,7 +1037,7 @@ def changed_files(logger: logging.Logger, cwd: str = "", story_slug: str = "") -
     """
     if not cwd or not Path(cwd).expanduser().is_dir():
         return ChangedFiles()
-    commands = [["diff", "--name-only", "HEAD"]]
+    commands = [["diff", "--name-only", "HEAD"], ["ls-files", "--others", "--exclude-standard"]]
     if story_slug:
         commands.append(
             ["log", "--name-only", "--pretty=format:", f"--grep=Story: {story_slug}"]
