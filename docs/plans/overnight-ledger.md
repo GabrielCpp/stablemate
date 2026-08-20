@@ -190,11 +190,17 @@ first**; if an item is already fully done, tick it with the existing commit hash
 
 ## Phase Q2..Q5 — the QA lane itself (order: §2 → §3 → §5 → §4)
 
-- [ ] Q5 — §2 break up `apply-qa-fixes` (the 50% lever): one fix item per failing scenario
+- [x] Q5 — §2 break up `apply-qa-fixes` (the 50% lever): one fix item per failing scenario
   with per-scenario dry-run proof; product-class failures route to the dev flow instead of
   being "fixed" in the QA lane; per-item budget spends toward `Await`, never a give-up.
   Done when: flow tests cover the per-scenario split and the product-class routing;
-  `make check-no-giveup` still green.
+  `make check-no-giveup` still green. (8838bac)
+  Note: the whole-report `apply-qa-fixes` turn had to stay — a run that names no failing
+  scenario (evidence class, routed finding, operator note) still has nothing to split — so
+  the fix loop now has two prompts sharing one budget, and every count assertion in the
+  suite goes through the new `_Agent.fix_args()` rather than one stem. With
+  `MAX_FIX_ITEM_REWORKS = 2` the exhaust arm is only reachable when the two refusals
+  *differ*; two identical ones hit the stall check first, by design.
 - [ ] Q6 — §3 shrink the remaining plan-lane laps, building on `b619a7e` (do-not-reopen
   list in the plan: reviewer deletion, forbidden whole-plan self-validation, power=low
   repairs, stack-first). Two levers: (a) mine the rejection taxonomy from the transcript
