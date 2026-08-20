@@ -177,10 +177,16 @@ first**; if an item is already fully done, tick it with the existing commit hash
   the story paths probed and not found, and a listing digest of the three doc roots `load`
   actually reads. Measured on a generated 550-document book: 0.97s cold, 0.35s from a warm
   parse index, 0.023s from a snapshot — 15x over the leg the ledger's 5x bar is about.
-- [ ] Q4 — profile before anything cleverer: py-spy (or cProfile) one cold `ostler qa
+- [x] Q4 — profile before anything cleverer: py-spy (or cProfile) one cold `ostler qa
   validate` on a real docs root; commit the findings as a short note in optimize-qa.md §6.
   If the cache from Q3 already makes cold-start irrelevant in the replay numbers, record
-  that and stop here.
+  that and stop here. (7dc4133)
+  Notes: it stopped here, per the escape clause — Q3 puts a repeat visit at 0.19 s and the
+  worst case a run can reach at 2.5 s, so what is left is a once-per-clone cost. The
+  profile also refuted §6's premise twice: the time is not the symbol inventory (57.7 s of
+  60.3 s is `_load_features`), and the hot loop is redundant re-parsing — markdown-it runs
+  9,325 times for 844 documents because `refs` re-tokenizes what `sections` already parsed.
+  Recorded, deliberately not scheduled.
 
 ## Phase Q2..Q5 — the QA lane itself (order: §2 → §3 → §5 → §4)
 
