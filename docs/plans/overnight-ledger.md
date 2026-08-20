@@ -92,9 +92,17 @@ first**; if an item is already fully done, tick it with the existing commit hash
   line (telling the producer turns to commit) is deliberately B6's: `87ee1af` wrote
   `settle-worktree.md` and touched no other prompt, and `implement-plan.md` still carries no
   commit instruction.
-- [ ] B6 — the 16 prompts with no blocked outcome each gain it in their own return contract
-  (no shared preamble); producer prompts gain the commit instruction from B5.
+- [x] B6 — the 16 prompts with no blocked outcome each gain it in their own return contract
+  (no shared preamble); producer prompts gain the commit instruction from B5. (`5e9fbe2`)
   Done when: `grep -L blocked workflows/src/workhorse_workflows/coder/prompts/*.md` is empty.
+  Notes: the blocked-outcome half was already satisfied — `grep -L blocked` is empty, and two
+  of the plan's named sixteen (`check-code-reuse.md`, `fix-lint.md`) no longer exist. The real
+  work was the second clause: 19 producer prompts gained the commit instruction, and
+  `story_slug`/`epic` had to be threaded through 23 turn briefs (including `qa/flow.py`'s
+  shared `_plan_args`) for the `Epic:`/`Story:` trailers to render. `test_prompt_variables.py`
+  cannot see coder turns — they pass `turn.prompt`, not a literal — so the new
+  `tests/coder/test_commit_instruction.py` classifies every prompt as producer or not and
+  renders the trailers both ways.
 - [ ] B7 — migrate the three give-up exits and widen `scripts/check_no_giveup.py`:
   zero-diff-streak deleted (counter, `MAX_ZERO_DIFF_COMMITS`, threaded `zero_diff` param,
   `BUDGET_LABELS` entry); `blocked_docs` and `docs-not-passed` become escalations.
