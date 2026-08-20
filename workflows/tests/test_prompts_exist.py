@@ -11,12 +11,15 @@ The walk is over the source rather than over the loaded classes on purpose: a st
 only reachable three sub-flows and an operator gate deep is exactly the one whose prompt
 nobody notices is missing, and a runtime sweep would have to reach it to see it.
 
-Non-literal prompts are a failure here rather than a skip, with one shape excused: a
+Non-literal prompts are a failure here rather than a skip, with two shapes excused. A
 conditional between two literals (`"a.md" if cond else "b.md"`, which is how okf-builder's
-one drain state picks the repair prompt over the discovery one). Both arms are checked, so
-nothing stops being covered. Anything else — a computed name, an f-string — is a failure,
-because silently dropping it would turn this check into one that quietly stops covering
-things.
+one drain state picks the repair prompt over the discovery one) — both arms are checked, so
+nothing stops being covered. And `turn.prompt`, the coder workflow's role indirection: the
+`turn = roles.turn("dev-fix", …)` that produced it is in the same function, so the role
+name is still a literal in the source and the envelope it resolves to is still checkable
+here. That is the whole reason the resolver names the envelope after its own stem. Anything
+else — a computed name, an f-string — is a failure, because silently dropping it would turn
+this check into one that quietly stops covering things.
 """
 from __future__ import annotations
 
@@ -34,9 +37,15 @@ WORKFLOWS = ("author", "coder", "hello_world", "okf_builder", "research")
 
 
 def _agent_prompts(source: Path) -> list[tuple[int, ast.expr]]:
-    """Every `self.agent(...)`'s prompt argument in `source`, with its line number."""
+    """Every `self.agent(...)`'s prompt argument in `source`, with its line number.
+
+    A `turn.prompt` argument is rewritten to the literal envelope path the role it came
+    from resolves to, so the caller sees the same `ast.Constant` a hand-written path
+    gives it and the check below stays one assertion.
+    """
     found: list[tuple[int, ast.expr]] = []
     tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    resolved = _roles_by_line(tree)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -46,12 +55,61 @@ def _agent_prompts(source: Path) -> list[tuple[int, ast.expr]]:
         if not (isinstance(fn.value, ast.Name) and fn.value.id == "self"):
             continue
         if node.args:
-            found.extend((node.lineno, arg) for arg in _branches(node.args[0]))
+            found.extend(
+                (node.lineno, _literalize(arg, resolved)) for arg in _branches(node.args[0])
+            )
             continue
         for kw in node.keywords:
             if kw.arg == "prompt":
-                found.extend((node.lineno, arg) for arg in _branches(kw.value))
+                found.extend(
+                    (node.lineno, _literalize(arg, resolved))
+                    for arg in _branches(kw.value)
+                )
     return found
+
+
+def _roles_by_line(tree: ast.Module) -> dict[int, str]:
+    """Every `<name> = roles.turn("<role>", …)` in the module, by the line it is on."""
+    seen: dict[int, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        fn = node.value.func
+        named_roles_turn = (
+            isinstance(fn, ast.Attribute)
+            and fn.attr == "turn"
+            and isinstance(fn.value, ast.Name)
+            and fn.value.id == "roles"
+        )
+        if not named_roles_turn or not node.value.args:
+            continue
+        role = node.value.args[0]
+        if isinstance(role, ast.Constant) and isinstance(role.value, str):
+            seen[node.lineno] = role.value
+    return seen
+
+
+def _literalize(arg: ast.expr, resolved: dict[int, str]) -> ast.expr:
+    """`turn.prompt` → the envelope path of the nearest preceding `roles.turn(…)`.
+
+    Nearest *preceding* rather than "the one in this function": the walk is over an AST
+    with no scope attached, and every call site in this repo assigns its `turn` on the
+    lines immediately above the `self.agent(` it feeds. An assignment that is not the
+    right one would have to sit between the two, which is the same mistake a reader would
+    make. Nothing preceding it at all is left alone, and fails as non-literal below.
+    """
+    is_turn_prompt = (
+        isinstance(arg, ast.Attribute)
+        and arg.attr == "prompt"
+        and isinstance(arg.value, ast.Name)
+        and arg.value.id == "turn"
+    )
+    if not is_turn_prompt:
+        return arg
+    before = [line for line in resolved if line <= arg.lineno]
+    if not before:
+        return arg
+    return ast.Constant(value=f"prompts/{resolved[max(before)]}.md")
 
 
 def _branches(arg: ast.expr) -> list[ast.expr]:

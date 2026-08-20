@@ -83,7 +83,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow
-from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.conversation import spend_turn, story_chain
 from workhorse_workflows.coder.shared.dev import (
     GATE_ORDER,
@@ -282,15 +282,16 @@ class Dev(Workflow):
         could not resolve — reaches the operator.
         """
         self.logger.info("planning %s", self.ctx.story_slug, extra={"activity": True})
+        turn = roles.turn("plan-story", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/plan-story.md",
+            turn.prompt,
             returns=PlanResult,
             # high: authors the plan, including high-stakes prod operations (deploys,
             # security-group / egress changes) — worth the stronger reasoning.
             power="high",
             session=self._story_chain(),
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 # What this workspace says marks a service directory. The prompt used to
@@ -575,15 +576,16 @@ class Dev(Workflow):
         gates = self.call(
             declared_gates, layer.cwd, layer.service, service_type=layer.type
         )
+        turn = roles.turn("implement-plan", self.repo_dir, self.library_dirs)
         return self.agent(
-            "prompts/implement-plan.md",
+            turn.prompt,
             returns=ImplResult,
             # high: writes the production change, across whatever the plan touches.
             power="high",
             session=self._story_chain(),
             cwd=layer.cwd,
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "plan_file": layer.plan_file,
@@ -736,13 +738,14 @@ class Dev(Workflow):
             else from_gate(self.output(run_gate), self._layer.cwd, fix_lap)
         )
         turns = self._spend_turn(session_turns)
+        turn = roles.turn("dev-fix", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/dev-fix.md",
+            turn.prompt,
             returns=FixResult,
             power="high" if stalled or fix_lap >= 2 else "low",
             cwd=self._layer.cwd,
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 # Dumped rather than passed as a model: everything in `args` is
                 # checkpointed, and a checkpoint holds JSON.
                 "report": failure.model_dump(),
@@ -950,14 +953,15 @@ class Dev(Workflow):
         lap on three unrelated things, so each resumes its own conversation and none of them
         inherits another's.
         """
+        turn = roles.turn("refine-plan", self.repo_dir, self.library_dirs)
         return self.agent(
-            "prompts/refine-plan.md",
+            turn.prompt,
             returns=PlanResult,
             # high: re-plans high-stakes prod work, and must absorb an operator's answer
             # about a dangerous operation without re-raising a block that was resolved.
             power="high",
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "review_notes": review_notes,

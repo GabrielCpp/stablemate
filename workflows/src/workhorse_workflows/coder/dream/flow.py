@@ -46,7 +46,7 @@ from typing import ClassVar
 
 from pydantic import ConfigDict, Field
 from workhorse.pyflow import Continue, Done, Workflow
-from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.dream.nodes import gather_run_evidence, record_improvements
 from workhorse_workflows.coder.shared.schemas.dream import ReflectionResult
 
@@ -93,11 +93,12 @@ class Dream(Workflow):
         measuring, and the turn is reading it rather than re-deriving it.
         """
         evidence = self.output(gather_run_evidence)
+        turn = roles.turn("dream-reflect", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/dream-reflect.md",
+            turn.prompt,
             returns=ReflectionResult,
             power="low",
-            args={
+            args=turn.args | {
                 "run_dir": evidence.run_dir,
                 "epic": self.epic,
                 "run_digest": json.dumps(evidence.digest, indent=2, sort_keys=True),

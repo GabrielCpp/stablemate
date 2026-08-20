@@ -56,7 +56,7 @@ from typing import Any, ClassVar
 
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.kit import find_docs_root
-from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.dev import (
     plan_summary,
     read_operator_context,
@@ -331,15 +331,16 @@ class Docs(Workflow):
         `repair`, which edits the nodes the findings cite instead of re-authoring the book.
         """
         self.logger.info("documenting %s", self.ctx.story_slug, extra={"activity": True})
+        turn = roles.turn("document-story", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/document-story.md",
+            turn.prompt,
             returns=DocumentationResult,
             # medium: folding a known change into an existing graph, against a schema and a
             # gate that will check the result. Not a discovery task.
             power="medium",
             session=self._story_chain(),
             add_dirs=self._dirs(),
-            args=self._author_args(gate_notes, review_notes, obligations),
+            args=turn.args | self._author_args(gate_notes, review_notes, obligations),
         )
         return self._authored(
             result,
@@ -402,8 +403,9 @@ class Docs(Workflow):
         progress = progress.model_copy(update={"chain_laps": laps + 1})
         overran = ""
         try:
+            turn = roles.turn("repair-documentation", self.repo_dir, self.library_dirs)
             result = self.agent(
-                "prompts/repair-documentation.md",
+                turn.prompt,
                 returns=DocumentationResult,
                 # low: applying a named list of edits to nodes that already exist. Paying the
                 # authoring tier for it is part of what tempted the turn to re-author.
@@ -413,7 +415,7 @@ class Docs(Workflow):
                 timeout=2700,
                 retries=0,
                 add_dirs=self._dirs(),
-                args=self._author_args(gate_notes, review_notes, obligations),
+                args=turn.args | self._author_args(gate_notes, review_notes, obligations),
                 session=self._chain,
             )
         except AgentTimeout:
@@ -666,14 +668,15 @@ class Docs(Workflow):
         killed the *run*. Returning `blocked` lets `Coder.blocked_docs` contain the finding
         to this story, including when a post-QA mutation made the final recheck mandatory.
         """
+        turn = roles.turn("review-story-documentation", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/review-story-documentation.md",
+            turn.prompt,
             returns=DocumentationReview,
             # high: judging whether prose describes the system as built is the harder half
             # of documenting it.
             power="high",
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "docs_path": self.docs_path,

@@ -58,7 +58,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from workhorse.pyflow import Continue, Done, Workflow, WorkflowFailed
-from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.shared.backlog import (
     mark_fix_blocked,
@@ -141,14 +141,15 @@ class Fix(Workflow):
         proceeds, exactly as `dev`'s plan gate does.
         """
         self.logger.info("planning %s", self._story.story_slug, extra={"activity": True})
+        turn = roles.turn("plan-story", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/plan-story.md",
+            turn.prompt,
             returns=PlanResult,
             # high: the same planner `dev` runs. A fix story is small, but the plan still
             # decides what production code gets touched.
             power="high",
             add_dirs=self._dirs(),
-            args={"story_path": self._story.story_path, "spec_dir": self._story.spec_dir},
+            args=turn.args | {"story_path": self._story.story_path, "spec_dir": self._story.spec_dir},
         )
         if result.status == "blocked":
             return self._flag(result)
@@ -183,14 +184,15 @@ class Fix(Workflow):
         layer = self._layer
         impl = self.output(resolve_impl_context)
         self.logger.info("implementing %s", layer.service or "the fix", extra={"activity": True})
+        turn = roles.turn("implement-plan", self.repo_dir, self.library_dirs)
         self.agent(
-            "prompts/implement-plan.md",
+            turn.prompt,
             returns=ImplResult,
             # high: writes the production change.
             power="high",
             cwd=layer.cwd,
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
                 "plan_file": layer.plan_file,
@@ -227,13 +229,14 @@ class Fix(Workflow):
         there is no second turn for a chain to hand anything to.
         """
         self.logger.info("applying QA fixes to the drained item", extra={"activity": True})
+        turn = roles.turn("apply-qa-fixes", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/apply-qa-fixes.md",
+            turn.prompt,
             returns=QaResult,
             # high: this retry has to converge, because there is not a second one.
             power="high",
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
                 "qa_dir": self._story.qa_dir,
@@ -326,14 +329,15 @@ class Fix(Workflow):
         status, which the branch below reads as "not passed".
         """
         self.logger.info("checking %s", self._story.story_slug, extra={"activity": True})
+        turn = roles.turn("qa-fix-item", self.repo_dir, self.library_dirs)
         return self.agent(
-            "prompts/qa-fix-item.md",
+            turn.prompt,
             returns=QaResult,
             # high: the drain has no QA plan, no evidence gate and no audit behind it — this
             # turn is the whole verdict on the fix.
             power="high",
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
                 "plan_services": self.call(plan_summary, self._story.spec_dir).text,

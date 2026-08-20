@@ -74,7 +74,7 @@ from pathlib import Path
 from typing import Any, ClassVar, NamedTuple
 
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow
-from workhorse_workflows.coder.shared import paths, qa_support
+from workhorse_workflows.coder.shared import paths, qa_support, roles
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.conversation import story_chain
 from workhorse_workflows.coder.shared.dev import (
@@ -643,14 +643,15 @@ class Qa(Workflow):
         """
         self.logger.info("repairing the QA obligation packet", extra={"activity": True})
         started = time.monotonic()
+        turn = roles.turn("repair-qa-context", self.repo_dir, self.library_dirs)
         reply = self.agent(
-            "prompts/repair-qa-context.md",
+            turn.prompt,
             returns=QaContextRepair,
             # medium: mechanical reconciliation of a diff against a graph, against a
             # validator that will re-check the result.
             power="medium",
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "docs_path": self.docs_path,
@@ -698,8 +699,9 @@ class Qa(Workflow):
         started = time.monotonic()
         drafted: QaPlanResult | None = None
         try:
+            turn = roles.turn("plan-qa", self.repo_dir, self.library_dirs)
             drafted = self.agent(
-                "prompts/plan-qa.md",
+                turn.prompt,
                 returns=QaPlanResult,
                 # medium: writing a runnable plan against a schema, from a story and an
                 # obligation packet that both already exist.
@@ -716,7 +718,7 @@ class Qa(Workflow):
                 # turn is worth more to this flow than any number of fresh ones.
                 retries=0,
                 add_dirs=self._dirs(),
-                args=self._plan_args(loop),
+                args=turn.args | self._plan_args(loop),
             )
         except AgentTimeout:
             self.logger.info(
@@ -766,8 +768,9 @@ class Qa(Workflow):
         result: QaPlanResult | None = None
         started = time.monotonic()
         try:
+            turn = roles.turn("repair-qa-plan", self.repo_dir, self.library_dirs)
             result = self.agent(
-                "prompts/repair-qa-plan.md",
+                turn.prompt,
                 returns=QaPlanResult,
                 # low: applying a named list of edits to a file that already exists is not
                 # the work that authoring the plan was, and paying the authoring tier for it
@@ -785,7 +788,7 @@ class Qa(Workflow):
                 # then `MAX_TOTAL_PLAN_LAPS` are what bound a plan that cannot be finished.
                 retries=0,
                 add_dirs=self._dirs(),
-                args=self._plan_args(loop),
+                args=turn.args | self._plan_args(loop),
                 session=self._chain,
             )
             repaired = tuple(str(scenario) for scenario in result.repaired_scenarios)
@@ -1028,15 +1031,16 @@ class Qa(Workflow):
         lands on the same two loops: the plan rework, or the setup repair.
         """
         started = time.monotonic()
+        turn = roles.turn("qa-story", self.repo_dir, self.library_dirs)
         assessment = self.agent(
-            "prompts/qa-story.md",
+            turn.prompt,
             returns=QaAssessment,
             # medium: judging a runner's output against a plan that already passed two
             # gates. The adversarial read is `audit_qa`'s job, at high.
             power="medium",
             session=self._story_chain(),
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "qa_dir": self.ctx.qa_dir,
@@ -1131,14 +1135,15 @@ class Qa(Workflow):
         takes the prose path to the plan, so this adds no new way to kill a passing run.
         """
         started = time.monotonic()
+        turn = roles.turn("audit-qa", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/audit-qa.md",
+            turn.prompt,
             returns=QaAudit,
             # high: adversarially re-judging captured evidence is only worth running on a
             # model that can actually refute a plausible-but-wrong pass.
             power="high",
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "qa_dir": self.ctx.qa_dir,
@@ -1213,15 +1218,16 @@ class Qa(Workflow):
         than re-running QA against a story that changed underneath it.
         """
         started = time.monotonic()
+        turn = roles.turn("triage-qa", self.repo_dir, self.library_dirs)
         triage = self.agent(
-            "prompts/triage-qa.md",
+            turn.prompt,
             returns=QaTriage,
             # medium: sorting findings into in-AC and adjacent, against a story whose ACs
             # are written down.
             power="medium",
             session=self._story_chain(),
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "qa_dir": self.ctx.qa_dir,
@@ -1262,14 +1268,15 @@ class Qa(Workflow):
         did not pass. This is the one legitimate terminal exit left in this flow: a dev
         target has no code to rework, so there is no operator-answerable question to gate on.
         """
+        turn = roles.turn("report-qa-dev", self.repo_dir, self.library_dirs)
         report = self.agent(
-            "prompts/report-qa-dev.md",
+            turn.prompt,
             returns=QaReport,
             # medium: summarising findings that are already written down, into a tracker.
             power="medium",
             session=self._story_chain(),
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "qa_dir": self.ctx.qa_dir,
@@ -1417,8 +1424,9 @@ class Qa(Workflow):
         run = self.output(run_regression_suite)
         self.logger.info("fixing the regression suite", extra={"activity": True})
         started = time.monotonic()
+        turn = roles.turn("fix-regression", self.repo_dir, self.library_dirs)
         fix = self.agent(
-            "prompts/fix-regression.md",
+            turn.prompt,
             returns=RegressionFix,
             # high: reproducing and fixing real-stack journey failures.
             power="high",
@@ -1427,7 +1435,7 @@ class Qa(Workflow):
             # forty minutes.
             timeout=5400,
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "regression_suites": [
@@ -1486,14 +1494,15 @@ class Qa(Workflow):
 
     def report_dev_pass(self, loop: QaLoop) -> Done:
         """`target_env=dev`: summarise what passed to the tracker, then finish green."""
+        turn = roles.turn("report-qa-dev-pass", self.repo_dir, self.library_dirs)
         self.agent(
-            "prompts/report-qa-dev-pass.md",
+            turn.prompt,
             returns=QaReport,
             # medium: the same summarising job as `report_qa_dev`, on a green story.
             power="medium",
             session=self._story_chain(),
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "qa_dir": self.ctx.qa_dir,
@@ -1566,8 +1575,9 @@ class Qa(Workflow):
         self.logger.info("repairing the QA stack", extra={"activity": True})
         impl = self.output(resolve_impl_context)
         started = time.monotonic()
+        turn = roles.turn("setup-fix", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/setup-fix.md",
+            turn.prompt,
             returns=SetupResult,
             # high: diagnosing and standing up a broken dev stack is non-trivial agentic
             # work; 2400s because compose, emulators, `npm ci` and browser installs are slow
@@ -1575,7 +1585,7 @@ class Qa(Workflow):
             power="high",
             timeout=2400,
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "qa_dir": self.ctx.qa_dir,
@@ -2114,12 +2124,13 @@ class Qa(Workflow):
         }
         if operator_feedback is not None:
             args["operator_feedback"] = operator_feedback
+        turn = roles.turn("apply-qa-fixes", self.repo_dir, self.library_dirs)
         return self.agent(
-            "prompts/apply-qa-fixes.md",
+            turn.prompt,
             returns=QaResult,
             power=power,
             add_dirs=self._dirs(),
-            args=args,
+            args=turn.args | args,
             session=session,
         )
 

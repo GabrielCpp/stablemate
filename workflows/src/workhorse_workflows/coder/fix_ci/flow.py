@@ -51,7 +51,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from workhorse.pyflow import Continue, Done, NodeNotRunError, Workflow
-from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.ci import poll_pr_checks, push_ci_fix, select_ci_repo
 from workhorse_workflows.coder.shared.story import resolve_workspace_dirs
 from workhorse_workflows.coder.shared.schemas.ci import CiChecks, FixCiResult
@@ -170,15 +170,16 @@ class FixCi(Workflow):
         flavor override from `<repo>/.agents/flavors/coder/fix-ci.md`. It does **not**
         push: `push` below does, so credential handling stays in one place.
         """
+        turn = roles.turn("fix-ci", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/fix-ci.md",
+            turn.prompt,
             # medium: reads failing job logs and the diff, and makes a narrow repair —
             # bounded diagnosis rather than design.
             power="medium",
             returns=FixCiResult,
             cwd=repo_dir,
             add_dirs=list(self.ctx.dirs),
-            args={"ci_epic": self.branch, "ci_summary": summary},
+            args=turn.args | {"ci_epic": self.branch, "ci_summary": summary},
             # One chain per repo per branch: attempt two is this repo's CI still red after
             # attempt one's push, and the turn that wrote that push knows which theory it
             # was testing. A different repo's failures are a different worklist.

@@ -67,7 +67,7 @@ from workhorse.pyflow import (
     Workflow,
     WorkflowFailed,
 )
-from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.dev import Dev
 from workhorse_workflows.coder.docs import Docs
 from workhorse_workflows.coder.dream import Dream
@@ -582,14 +582,15 @@ class Coder(Workflow):
         of a sub-flow's return value, and a sub-flow's node records are in its own subscope.
         """
         self.logger.info("replanning epic %s", self._queue_epic(epic), extra={"activity": True})
+        turn = roles.turn("replan-epic", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/replan-epic.md",
+            turn.prompt,
             returns=ReplanResult,
             # high: highest blast radius in the workflow — it rewrites the epic, its
             # stories and the queue from one operator answer.
             power="high",
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "epic": self._queue_epic(epic),
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
@@ -700,14 +701,15 @@ class Coder(Workflow):
         """`plan_fix` + `decide_plan_fix`: plan the one-AC fix story."""
         fix = self._fix_story
         self.logger.info("planning %s", fix.story_slug, extra={"activity": True})
+        turn = roles.turn("plan-story", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/plan-story.md",
+            turn.prompt,
             returns=PlanResult,
             # high: the same planner `dev` runs. A fix story is small, but the plan still
             # decides what production code gets touched.
             power="high",
             add_dirs=self._dirs(),
-            args={"story_path": fix.story_path, "spec_dir": fix.spec_dir},
+            args=turn.args | {"story_path": fix.story_path, "spec_dir": fix.spec_dir},
         )
         if result.status == "blocked":
             return self._fix_flag(result, epic, session_id)
@@ -744,14 +746,15 @@ class Coder(Workflow):
         layer = self._fix_layer
         fix = self._fix_story
         self.logger.info("implementing %s", layer.service or "the fix", extra={"activity": True})
+        turn = roles.turn("implement-plan", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/implement-plan.md",
+            turn.prompt,
             returns=ImplResult,
             # high: writes the production change.
             power="high",
             cwd=layer.cwd,
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": fix.story_path,
                 "spec_dir": fix.spec_dir,
                 "plan_file": layer.plan_file,
@@ -780,13 +783,14 @@ class Coder(Workflow):
         """
         fix = self._fix_story
         self.logger.info("applying QA fixes to the drained item", extra={"activity": True})
+        turn = roles.turn("apply-qa-fixes", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/apply-qa-fixes.md",
+            turn.prompt,
             returns=QaResult,
             # high: this retry has to converge, because there is not a second one.
             power="high",
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": fix.story_path,
                 "spec_dir": fix.spec_dir,
                 "qa_dir": fix.qa_dir,
@@ -1197,14 +1201,15 @@ class Coder(Workflow):
         """
         fix = self._fix_story
         self.logger.info("checking %s", fix.story_slug, extra={"activity": True})
+        turn = roles.turn("qa-fix-item", self.repo_dir, self.library_dirs)
         return self.agent(
-            "prompts/qa-fix-item.md",
+            turn.prompt,
             returns=QaResult,
             # high: the drain has no QA plan, no evidence gate and no audit behind it —
             # this turn is the whole verdict on the fix.
             power="high",
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": fix.story_path,
                 "spec_dir": fix.spec_dir,
                 "plan_services": self.call(plan_summary, fix.spec_dir).text,

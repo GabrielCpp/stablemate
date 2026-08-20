@@ -134,8 +134,9 @@ class Workflow(BaseModel):
     #: had chosen not to pass. A workflow lists what it means to make ambient, and the
     #: base lists the one field it declares itself. A callsite that passes the parameter
     #: always wins, and an input that is empty injects nothing — so a node's own default
-    #: still applies.
-    injects: ClassVar[tuple[str, ...]] = ("repo_dir",)
+    #: still applies. The base lists the two fields it declares itself: which checkout,
+    #: and which library layers content resolves against.
+    injects: ClassVar[tuple[str, ...]] = ("repo_dir", "library_dirs")
 
     #: Node functions of this workflow's that spend wall-clock on *infrastructure*
     #: rather than on the model — bringing a stack up, tearing one down. Their spans

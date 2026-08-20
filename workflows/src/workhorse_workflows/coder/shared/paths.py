@@ -71,11 +71,13 @@ DREAM_INBOX = "docs/.dream-improvements.inbox.json"
 DREAM_LEDGER = "docs/workflow-improvements"
 
 #: The run's ambient path inputs: which checkout, which docs checkout, which workspace
-#: manifest. All three are *where* rather than *what*, they are wanted by roughly every
-#: second node, and no state chooses them — which is exactly the shape that used to be
-#: an environment read. `Workflow.injects` fills them in for any node or sub-flow that
-#: declares a parameter of the same name and was not passed one.
-AMBIENT = ("repo_dir", "docs_path", "workspace_file")
+#: manifest, and which library layers a turn resolves its prompt body against. All four
+#: are *where* rather than *what*, they are wanted by roughly every second node, and no
+#: state chooses them — which is exactly the shape that used to be an environment read.
+#: `Workflow.injects` fills them in for any node or sub-flow that declares a parameter of
+#: the same name and was not passed one. `library_dirs` is on the engine's base class,
+#: and is restated here because naming `injects` at all replaces the base's tuple.
+AMBIENT = ("repo_dir", "docs_path", "workspace_file", "library_dirs")
 
 
 def epics_repo_root(repo_dir: str | Path = "") -> Path:

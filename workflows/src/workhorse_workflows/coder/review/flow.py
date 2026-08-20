@@ -62,7 +62,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow
-from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.conversation import spend_turn, story_chain
 from workhorse_workflows.coder.shared.dev import plan_summary, read_operator_context
 from workhorse_workflows.coder.shared.escalation import escalation
@@ -201,8 +201,9 @@ class Review(Workflow):
         # and that re-entry is a fresh review round like any other.
         self.call(clear_review_resolution, self.docs_path, self.ctx.story_slug)
         self.reset_session(self._feeder_chain)
+        turn = roles.turn("code-review", self.repo_dir, self.library_dirs)
         code_review = self.agent(
-            "prompts/code-review.md",
+            turn.prompt,
             returns=CodeReviewResult,
             # medium: runs a packaged review skill over a diff. The judgement it needs is
             # the skill's, not the caller's.
@@ -210,7 +211,7 @@ class Review(Workflow):
             session=self._feeder_chain,
             cwd=self._docs_repo,
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "affected_repo_paths": self._repos,
                 "branch": self.branch,
@@ -227,8 +228,9 @@ class Review(Workflow):
                 "implementation reviewer is the binding verdict and still runs",
                 code_review.findings_summary or "no reason given",
             )
+        turn = roles.turn("code-reuse", self.repo_dir, self.library_dirs)
         code_reuse = self.agent(
-            "prompts/code-reuse.md",
+            turn.prompt,
             returns=CodeReuseResult,
             # high: semantic "is this already implemented elsewhere?" matching across the
             # codebase — the same discovery task as dev's check_code_reuse.
@@ -236,7 +238,7 @@ class Review(Workflow):
             session=self._feeder_chain,
             cwd=self._docs_repo,
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "affected_repo_paths": self._repos,
@@ -278,14 +280,15 @@ class Review(Workflow):
         makes them OKF Concepts is only as reliable as the model's memory, so it is applied
         mechanically each time rather than trusted once.
         """
+        turn = roles.turn("review-implementation", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/review-implementation.md",
+            turn.prompt,
             returns=ReviewVerdict,
             # high: the binding judgement on whether the story was actually implemented.
             power="high",
             cwd=self._docs_repo,
             add_dirs=self._dirs(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
@@ -348,13 +351,14 @@ class Review(Workflow):
         the operator. Anything else spends a rework and re-applies only what is still open.
         """
         turns = self._spend_turn(session_turns)
+        turn = roles.turn("apply-review", self.repo_dir, self.library_dirs)
         claim = self.agent(
-            "prompts/apply-review.md",
+            turn.prompt,
             returns=ImplResult,
             power=self._apply_power(),
             add_dirs=self._dirs(),
             session=self._impl_chain(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "review_notes": notes,
@@ -580,13 +584,14 @@ class Review(Workflow):
         answer that could not be applied, which is a different question from the original.
         """
         turns = self._spend_turn(session_turns)
+        turn = roles.turn("apply-review", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/apply-review.md",
+            turn.prompt,
             returns=ImplResult,
             power=self._apply_power(),
             add_dirs=self._dirs(),
             session=self._impl_chain(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "review_notes": notes,
@@ -661,13 +666,14 @@ class Review(Workflow):
         reached and reporting the story approved over it.
         """
         turns = self._spend_turn(session_turns)
+        turn = roles.turn("apply-review", self.repo_dir, self.library_dirs)
         result = self.agent(
-            "prompts/apply-review.md",
+            turn.prompt,
             returns=ImplResult,
             power=self._apply_power(),
             add_dirs=self._dirs(),
             session=self._impl_chain(),
-            args={
+            args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "review_notes": "",
