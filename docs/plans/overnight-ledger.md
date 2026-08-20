@@ -155,10 +155,15 @@ first**; if an item is already fully done, tick it with the existing commit hash
 
 ## Phase Q6 — ostler cold-start (the named pain, §6)
 
-- [ ] Q2 — diff-hash memoization of the `build_okf_context` packet in
+- [x] Q2 — diff-hash memoization of the `build_okf_context` packet in
   `coder/shared/okf.py`: same (docs_root state, diff) → reuse the packet instead of a fresh
   `Ostler(docs_root)` build. Done when: a repeat visit in a test hits the memo and the
-  packet is byte-identical; `make lint` + workflows tests green.
+  packet is byte-identical; `make lint` + workflows tests green. (74644a2)
+  - The memo is a stamp file on disk, not an in-process cache: the repeated visits are
+    separate node calls in separate processes, so nothing in memory survives between them.
+  - The trap: the packet and its stamp are written *inside* the docs repo and are untracked,
+    so the first signature counted them and every later visit missed. They are now excluded
+    from the diff pathspec and the untracked scan they feed.
 - [ ] Q3 — on-disk snapshot cache in `ostler/ostler/api.py` keyed by
   (docs_root, HEAD, dirty-digest), so a fresh `Ostler` instance and the CLI stop paying the
   ~28s rebuild when nothing changed. Invalidation on any key component change; corruption →
