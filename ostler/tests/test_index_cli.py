@@ -404,6 +404,11 @@ def test_the_library_face_loads_with_its_own_store_active(repo, tmp_path, index_
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(api, "load", spy)
         okf.graph
+        # A second load has to be a load: `reload()` drops the in-memory graph, but the
+        # on-disk snapshot would serve the next access straight back if the book had not
+        # moved, and this test is about what happens *during* a load.
+        (repo / "docs/features/area/rec3.md").write_text(
+            "---\ntype: feature\nid: t-3\ntitle: Rec 3\n---\n\n# Rec 3\n", encoding="utf-8")
         okf.reload().graph
 
     assert seen == [okf.index, okf.index]

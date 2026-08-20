@@ -54,6 +54,7 @@ from __future__ import annotations
 # as. The method keeps its name: it is the public API spelling of the CLI verb.
 import builtins
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -77,11 +78,120 @@ from ostler.qa import (
     cmd_validate,
     tools as qa_tools_mod,
 )
-from ostler.model import Graph, find_root, load
+from ostler.model import Epic, Graph, Story, find_root, load
 
 if TYPE_CHECKING:
     from ostler.edit import EditPlan
 
+
+
+#: The namespace whole-graph snapshots live under, so a snapshot key can never collide with
+#: a document product's under :meth:`IndexStore.content_key`. Bump the number for any change
+#: to what :class:`Snapshot` records or to how it is validated — an older entry validated by
+#: newer rules is exactly the wrong answer this cache may not give.
+SNAPSHOT_NAMESPACE = "graph-snapshot/1"
+
+#: The doc roots :func:`ostler.model.load` reads. Their recursive `*.md` listing is what tells
+#: a snapshot that a document has been added, removed or renamed since it was taken — the
+#: per-file digests below can only speak for files that already existed.
+LOADED_DOC_ROOTS = ("features", "epics", "milestones")
+
+
+def _file_sha(path: Path) -> str | None:
+    """The content digest of *path*, or ``None`` when it cannot be read (absent included)."""
+    try:
+        return index_mod.content_sha(path.read_bytes())
+    except OSError:
+        return None
+
+
+def _listing(roots: Iterable[Path]) -> str:
+    """A digest of every markdown path under *roots* — the shape of the book, not its content."""
+    names: builtins.list[str] = []
+    for root in roots:
+        if root.is_dir():
+            names.extend(sorted(p.as_posix() for p in root.rglob("*.md")))
+    return index_mod.content_sha("\n".join(names).encode("utf-8"))
+
+
+@dataclass
+class Snapshot:
+    """A loaded :class:`Graph` together with everything it was read from.
+
+    The parse index already saves the *parsing* of each document; what it cannot save is the
+    walk, the frontmatter dispatch and the cross-linking that turn several thousand parsed
+    documents into a graph, and that is what a fresh `Ostler` — or a fresh `ostler` process —
+    pays again on every construction while nothing in the book has moved.
+
+    Validation is by recorded dependency rather than by a key over the whole tree, because the
+    two are not the same cache. A key over the tree would be invalidated by every write into
+    `docs/specs/`, which is precisely what the coder workflow does between two loads that want
+    the same graph. What the graph is actually a function of is: the documents it *read*
+    (:attr:`files`), the candidate paths it probed and did not find (:attr:`absent` — a story
+    file appearing where one was missing changes the graph), and the set of documents there
+    were to read at all (:attr:`listing`). Everything global — ostler's version, the schemas,
+    the kind registry, the config, the waivers, the freeze table — is already in the index
+    epoch that the key is built from.
+    """
+
+    graph: Graph
+    listing: str
+    files: dict[str, str] = field(default_factory=dict)
+    absent: tuple[str, ...] = ()
+
+    def holds(self, roots: Iterable[Path]) -> bool:
+        """Whether every dependency this snapshot recorded still reads exactly as it did."""
+        if self.listing != _listing(roots):
+            return False
+        if any(_file_sha(Path(name)) != sha for name, sha in self.files.items()):
+            return False
+        return not any(Path(name).exists() for name in self.absent)
+
+
+def _story_candidates(graph: Graph, epic: Epic, story: Story) -> builtins.list[Path]:
+    """The paths `model._attach_story_md` tries, in its order.
+
+    Repeated here rather than shared because the loader's copy is a loop over two lines and
+    what this needs is the *list* — including the entries it rejected, which the loader does
+    not keep. A drift between the two costs a stale hit, which is why
+    `test_snapshot_probe_order_matches_the_loader` pins them against each other.
+    """
+    candidates = []
+    if story.path:
+        candidates.append(graph.root / story.path)
+    candidates.append(epic.directory / "stories" / story.slug / "story.md")
+    return candidates
+
+
+def _snapshot_of(graph: Graph, roots: Iterable[Path]) -> Snapshot:
+    """Record what *graph* was read from, so a later load can check the reading still holds."""
+    files: dict[str, str] = {}
+    absent: builtins.list[str] = []
+
+    def record(path: Path) -> None:
+        sha = _file_sha(path)
+        if sha is None:
+            absent.append(str(path))
+        else:
+            files[str(path)] = sha
+
+    record(graph.root / ".agents" / "ids.json")
+    for feature in graph.features:
+        record(feature.path)
+    for node in graph.ui_nodes:
+        record(node.path)
+    for milestone in graph.milestones:
+        record(milestone.path)
+    for epic in graph.epics:
+        if epic.epic_md is not None:
+            record(epic.epic_md)
+        for story in epic.stories:
+            for candidate in _story_candidates(graph, epic, story):
+                record(candidate)
+                if candidate == story.story_md:
+                    break
+    return Snapshot(graph=graph, listing=_listing(roots), files=files,
+                    absent=tuple(sorted(set(absent))))
 
 
 def _unreadable(check: str, exc: Exception) -> QaOutcome:
@@ -122,6 +232,8 @@ class Ostler:
         self._use_index = use_index
         self._index_dir = index_dir
         self._index: index_mod.IndexStore | None = None
+        self.snapshot_hits = 0
+        self.snapshot_misses = 0
 
     # -- the parse index ----------------------------------------------------
     @property
@@ -145,9 +257,72 @@ class Ostler:
         return self.index.stats()
 
     def _load(self) -> Graph:
-        """Read the graph from disk with this instance's store active."""
+        """Read the graph from disk with this instance's store active.
+
+        A whole-graph :class:`Snapshot` short-circuits the read when every document it was
+        built from still reads the same. That is a different saving from the parse index
+        underneath it: the index makes each document cheap to re-parse, this makes the load
+        itself unnecessary. `--no-index` (``use_index=False``) turns both off together — a
+        run told to bisect against the cache must not be served a graph by it either.
+        """
         with index_mod.use(self.index):
-            return load(self._root, root_overrides=self._doc_roots)
+            key = self._snapshot_key()
+            roots = self._loaded_doc_roots()
+            snapshot = self._recall(key, roots)
+            if snapshot is not None:
+                return snapshot.graph
+            graph = load(self._root, root_overrides=self._doc_roots)
+            self.index.put_key(key, _snapshot_of(graph, roots))
+            return graph
+
+    def _loaded_doc_roots(self) -> tuple[Path, ...]:
+        """The doc roots :func:`load` reads, resolved without loading anything."""
+        return tuple(self._doc_root(kind) for kind in LOADED_DOC_ROOTS)
+
+    def _snapshot_key(self) -> str | None:
+        """The index key this book's graph snapshot is stored under, or ``None`` for no cache.
+
+        The absolute graph root is in the key, unlike every other entry in this store: a
+        snapshot holds a `Graph` full of absolute `Path`s, so unlike a document's parse
+        products it is *not* the same answer in a second worktree of the same repo, and the
+        cross-worktree sharing that key deliberately buys would hand it the wrong tree.
+        """
+        if not self.index.enabled:
+            return None
+        try:
+            root = find_root(self._root if self._root is not None else Path.cwd())
+            material = [SNAPSHOT_NAMESPACE, str(root)]
+            material += [f"{kind}={self._doc_root(kind)}" for kind in sorted(LOADED_DOC_ROOTS)]
+        except OSError:
+            return None
+        return self.index.content_key(*material)
+
+    def _recall(self, key: str | None, roots: Iterable[Path]) -> Snapshot | None:
+        """The stored snapshot when it still holds, counted — ``None`` for every other case.
+
+        Every failure mode is a miss, exactly as in the store beneath: no key, no entry, a
+        corrupt payload (the store already reads those as absent), a payload that is not a
+        snapshot this build wrote, or one whose dependencies have moved. The cache is an
+        optimisation and may only ever cost time, never correctness.
+        """
+        if key is None:
+            return None
+        snapshot = self.index.read_key(key)
+        if isinstance(snapshot, Snapshot) and snapshot.holds(roots):
+            self.snapshot_hits += 1
+            return snapshot
+        self.snapshot_misses += 1
+        return None
+
+    def snapshot_stats(self) -> dict:
+        """How often this instance was handed a whole graph rather than loading one.
+
+        Separate from :meth:`index_stats` because they answer different questions and a run
+        can be fast for either reason: a snapshot hit means no document was consulted at all,
+        so it shows up in the index counts as *silence*, which reads identically to a run that
+        never loaded anything.
+        """
+        return {"hits": self.snapshot_hits, "misses": self.snapshot_misses}
 
     # -- graph lifecycle ----------------------------------------------------
     @property
