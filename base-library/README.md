@@ -13,6 +13,8 @@ farrier install                                   # renders it into a repo
 | Path | Contents |
 |---|---|
 | `library/skills/stablemate/` | the skills documenting the toolchain |
+| `library/prompts/stablemate/` | the interactive commands (`commit`, `grill`, `babysit-run`, …) |
+| `library/prompts/coder/` | the **bodies** of the coder workflow's agent turns, by role |
 | `packs/stablemate.yml` | the bundle a repo opts into with `packs: [stablemate]` |
 | `agents.example.yml` | a minimal starting `agents.yml` (farrier ships the annotated one) |
 
@@ -48,8 +50,9 @@ A directory counts as a library if it holds `library/`. That is the whole contra
 ## Layering
 
 The base is the **lowest-precedence** library layer. farrier renders content across a
-search path (workhorse shares the *discovery* order above, but reads no library content
-— its workflows are installed distributions):
+search path, and workhorse reads `library/prompts/coder/` across the same one (see
+[the coder bodies](#the-coder-workflows-prompt-bodies) — everything else in a workflow
+distribution is code, and stays in the wheel):
 
 ```
 1. --library / $FARRIER_LIBRARY_DIR  (explicit override)
@@ -60,6 +63,25 @@ search path (workhorse shares the *discovery* order above, but reads no library 
 An overlay shadows the base name-for-name: define a skill or pack with the
 same id and yours wins. So a private library can extend the base without forking it, and
 the base can be absent entirely (the tools fall back to overlay-only behaviour).
+
+## The coder workflow's prompt bodies
+
+`library/prompts/coder/<role>.md` is the **procedure** half of one agent turn. The coder
+workflow keeps the other half — the *envelope*, `coder/prompts/<role>.md` in its own
+distribution — which renders the inputs on top, the exit condition, and the result schema
+the state machine parses back. The envelope pulls the body in with
+`{% include body_template %}` at render time.
+
+The split follows ownership. The envelope is a contract the state machine reads its own
+replies against, so a repo editing it would be editing the parser; the body is how the job
+is done *here*, which is the part that knows a stack, a test runner and a house style — so
+the body is exactly the part a repo must be able to replace. Resolution order, highest
+first: the repo's `agents.yml` (`prompts: {dev-fix: prompts/fix-go-tests.md}`), then each
+library layer above, then this one.
+
+They are not installable prompts. Nothing selects `coder/*` in a pack, and a repo that
+listed it would get a slash command whose text addresses a workflow turn. Their audience
+is `workhorse_workflows.coder.shared.roles`, and that module is the list of roles.
 
 ## No dependencies, in either direction
 
