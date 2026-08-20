@@ -340,8 +340,28 @@ tree/plan for evidence it already landed; tick `(pre-existing)` if so.
   `implement-plan.md`'s run plan — booting a service on every repair lap under the 600s
   gate timeout is a behaviour change the plan does not ask for. If smoke-as-a-gate is
   wanted, it is a new item, not a silent widening of this one.
-- [ ] D4 — Plan A step 6: goal setting in the envelope + `goal` adapter; TDD gate with the
+- [x] D4 — Plan A step 6: goal setting in the envelope + `goal` adapter; TDD gate with the
   `tdd:` key.
+  (pre-existing: 4c181b9) — both adapters landed in one commit and have been refined since
+  (`a72b117`, `68a3e35`, `d3ed91f`, `de2d043`). The envelope asks for the promise
+  (`implement-plan.md` prints `Gates that run after this turn` and `Tests, as this repo
+  declares them: {{ tdd }}`, and the result schema carries `exit_conditions: ExitConditions`
+  plus `tests_added` / `no_test_reason`); `dev/flow.py::_claims` reads that promise back
+  through `check_promises` and then `tdd_gate`, both `skipped` where there is nothing to
+  check, and a dirty one becomes a `FailureReport{source: "goal"|"tdd"}` into the same fix
+  loop every declared gate feeds (`dev-fix.md` has the branch for each). `tdd_mode` reads
+  `services.<type>.tdd` from the repo's `agents.yml`, `TDD_EXEMPT_TYPES = ("docs", "config")`
+  is the only place `no_test_reason` is accepted, and `_claims` runs only after the declared
+  gates are green.
+  The plan's Done-when is asserted as a test rather than left to the bench:
+  `workflows/tests/coder/dev/test_flow.py:995`,
+  `test_a_test_less_story_is_caught_by_the_tdd_gate_and_repaired_in_the_same_loop`, declares
+  `services.go.tdd: required`, runs a story that writes no test, and asserts
+  `report["source"] == "tdd"` and that the same fix loop repairs it; the sibling at :973 does
+  the same for `goal`. `make lint` green; 1343 workflow tests pass.
+  Note: the Done-when's other half — "`ImplResult.exit_conditions` is populated **on the
+  bench**" — is a telemetry observation, not a code state, and belongs to D5 with the rest of
+  the measurement, same as D1's third clause.
 - [ ] D5 — Plan A step 7: re-measure with `benchmarks/devlane.py` per
   optimize-baseline.md's reproduce section; fill optimize.md's success table row by row.
 - [ ] D6 — Plan B steps 9–10: dispatch from markers + `qa_stack` rename (see memory:
