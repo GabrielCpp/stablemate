@@ -1447,6 +1447,25 @@ def test_a_registry_without_a_name_cannot_be_a_command():
     assert "Registry(" in str(exc), exc
 
 
+def test_declared_outputs_take_required_from_the_result_model():
+    """A field with a default is optional on the model, so it is optional in the ask.
+
+    Deciding it here instead would hold a schema that deliberately defaults everything
+    (so a failed node degrades softly) to a stricter contract than it wrote — and bill a
+    whole extra turn per inapplicable field to find that out.
+    """
+    from workhorse.pyflow.engine import _outputs_for
+
+    class Impl(BaseModel):
+        status: str
+        no_test_reason: str = ""
+
+    assert {o.key: o.required for o in _outputs_for(Impl)} == {
+        "status": True,
+        "no_test_reason": False,
+    }
+
+
 def test_a_name_index_rejects_a_second_claim_on_one_name():
     index: NameIndex[str] = NameIndex("state", owner="Test")
     index.register("qa", "first")

@@ -15,17 +15,24 @@ def extract_outputs(text: str, node: AgentNode) -> dict[str, Any]:
     if not node.outputs:
         return {}
 
-    wanted = [o.key for o in node.outputs]
+    declared = [o.key for o in node.outputs]
+    # The object is identified by the keys the node actually *demands*, so a reply that
+    # omitted an inapplicable one is still recognised as the answer rather than skipped
+    # over. With nothing demanded there is no discriminator, and every declared key is the
+    # best one available.
+    wanted = [o.key for o in node.outputs if o.required] or declared
     parsed = parse_json_from_text(text, wanted)
     if parsed is None:
         raise OutputParseError(
-            f"Node '{node.id}' declared outputs {wanted} "
+            f"Node '{node.id}' declared outputs {declared} "
             f"but agent response contained no parseable JSON"
         )
 
     result: dict[str, Any] = {}
     for spec in node.outputs:
         if spec.key not in parsed:
+            if not spec.required:
+                continue
             raise OutputParseError(
                 f"Node '{node.id}': expected output key '{spec.key}' not found in agent JSON"
             )

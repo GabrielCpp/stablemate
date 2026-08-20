@@ -597,11 +597,21 @@ def _outputs_for(returns: type) -> list[OutputSpec]:
     that missed a key gets asked again for that key by name. There is no fallback below
     the last reframe: a node that never answered has no answer to emit, so the ladder
     stops the run (see `runner/spec.py::OutputSpec`).
+
+    Which of them a reply *must* carry is the model's own statement about itself: a field
+    with a default is optional there and is optional here. Reading it off the model rather
+    than deciding it here is what keeps this workflow-agnostic — and it is what stops a
+    schema that deliberately defaults everything (so a failed node degrades softly) from
+    being held to a stricter contract than it wrote, at the price of a whole extra turn
+    per inapplicable field.
     """
     fields = getattr(returns, "model_fields", None)
     if not fields:
         return [OutputSpec(key=SCALAR_KEY)]
-    return [OutputSpec(key=name) for name in fields]
+    return [
+        OutputSpec(key=name, required=bool(getattr(info, "is_required", lambda: True)()))
+        for name, info in fields.items()
+    ]
 
 
 def _coerce(raw: dict[str, Any], returns: type, node_id: str) -> Any:

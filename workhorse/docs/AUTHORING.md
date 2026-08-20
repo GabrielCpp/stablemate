@@ -122,6 +122,15 @@ Output JSON only:
 ```
 ````
 
+Which of those keys a reply **must** carry is the model's own statement about itself: a
+field with a default is optional there and is optional in the ask, so a turn that leaves
+out a key meaning nothing in its branch of the answer (`no_test_reason` from a turn that
+wrote tests) is taken as given rather than re-asked. Optional keys are still declared —
+the object carrying them is still what gets found, and a reframe can still name them —
+only the presence check is relaxed. Make a field required (no default) when its absence
+really is a failed turn; the extra turn spent being told a field does not apply costs the
+same as any other.
+
 ## Unattended resilience (waiting, then a clean stop)
 
 Runs are meant to survive a week without supervision, so the runner absorbs what it can:

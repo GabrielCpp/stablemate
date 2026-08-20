@@ -207,6 +207,53 @@ def test_a_brace_inside_a_string_does_not_end_the_object():
     }
 
 
+# ── a key can be inapplicable rather than missing ─────────────────────────────
+
+def _mixed(*specs: tuple[str, bool]):
+    return nodes.AgentNode(
+        type="agent",
+        id="n",
+        prompt="p.md",
+        outputs=[nodes.OutputSpec(key=k, required=r) for k, r in specs],
+    )
+
+
+def test_an_omitted_optional_key_is_simply_absent():
+    """A field that means something only in one branch of the answer.
+
+    A turn that wrote tests has no "why there is no test" to give. Demanding it anyway
+    buys a whole extra turn to be told the field does not apply, which a benchmark run
+    paid for on its happy path.
+    """
+    text = '{"status": "done", "wrote_tests": true}'
+    got = m.extract_outputs(text, _mixed(("status", True), ("no_test_reason", False)))
+    assert got == {"status": "done"}
+
+
+def test_an_optional_key_that_is_present_is_still_taken():
+    text = '{"status": "done", "no_test_reason": "generated code"}'
+    got = m.extract_outputs(text, _mixed(("status", True), ("no_test_reason", False)))
+    assert got == {"status": "done", "no_test_reason": "generated code"}
+
+
+def test_a_required_key_is_still_demanded():
+    """Relaxing the optional ones does not relax the rest — an answer that skipped a
+    key the node genuinely needs stays on the retry ladder."""
+    text = '{"no_test_reason": "generated code"}'
+    with pytest.raises(failure.OutputParseError, match="not found"):
+        m.extract_outputs(text, _mixed(("status", True), ("no_test_reason", False)))
+
+
+def test_the_answer_is_found_by_the_required_keys_alone():
+    """The wrapped-answer descent discriminates on what is demanded, so an envelope
+    whose payload omitted an optional key is still recognised as the payload."""
+    text = '{"impl_result": {"status": "done", "files": []}}'
+    got = m.extract_outputs(
+        text, _mixed(("status", True), ("files", True), ("no_test_reason", False))
+    )
+    assert got == {"status": "done", "files": []}
+
+
 # ── selection helper ──────────────────────────────────────────────────────────
 
 def test_select_object_from_list_prefers_wanted():

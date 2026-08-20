@@ -15,10 +15,19 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class OutputSpec(BaseModel):
-    # A key the node must return. There is no companion `default` here on purpose:
+    # A key the node asks for. There is no companion `default` here on purpose:
     # a node that never answered has no answer to fall back to, and the ladder stops
     # the run rather than emitting one (see runner/ladder.py).
     key: str
+    # Whether its absence is a failure. A key can be genuinely inapplicable rather than
+    # missing — a field that means something only in one branch of the answer, like "why
+    # there is no test" from a turn that wrote tests. Demanding it anyway costs a full
+    # extra turn to be told a field does not apply, and a benchmark run paid exactly that
+    # on its happy path. Optional keys are still *declared*, so the object carrying them
+    # is still found and a reframe can still name them; only the presence check is
+    # relaxed. Whether a key is required is the result model's own statement about
+    # itself, never a guess here — see `pyflow/engine.py::_outputs_for`.
+    required: bool = True
 
 
 class AgentNode(BaseModel):
