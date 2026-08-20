@@ -19,11 +19,20 @@ for decomposition and none may be dropped.
 
 ## Operating constraint
 
-The api listens on port **18080**, not the Go default 8080. This is a property of the
+The api listens on port **18081**, not the Go default 8080. This is a property of the
 benchmark rather than of the product: the runner shares a machine with whatever else is
 on it, and 8080 is the first port anything takes. A run whose service cannot bind spends
 its whole budget failing to start, so the port is stated here — where decomposition will
 carry it into the stories — instead of being left to a default that collides.
+
+It is stated twice, above and here, and the two statements must agree. They did not: this
+section read 18080 against the surface block's 18081, which is the whole of the benchmark's
+allocation policy contradicting itself in two paragraphs of the same file. The author lane
+found it on the first grill and parked the run on it as its opening question — correctly,
+since nothing in the document settles which number wins, and a port is exactly the kind of
+environment fact a decomposition carries into every story and every QA plan. 18081 is the
+allocation (seat-booking holds 18083, policy-desk 18084); 18080 was the single-port text
+this file outgrew.
 
 ## Shortening and following links
 
