@@ -1373,6 +1373,38 @@ def test_the_triage_budget_survives_a_rescope_back_to_dev(
     assert _output(run_env, prepare_story)["story_slug"] == "STORY-1"
 
 
+def test_a_product_class_refix_sends_the_story_back_through_dev(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`refix` is a `rescope` in wiring and its opposite in meaning, and both re-enter dev.
+
+    A rescope means triage amended what the story promised; a refix means the promises stand
+    and the product does not meet them. Neither is the QA lane's to fix in place, so the arm
+    that matters here is that the parent re-runs `Dev` and carries the spent triage budget
+    into the QA entry after it — a refix that reset it would let a story bounce forever.
+    """
+    repo = epic()
+
+    class _Refixing(_Sub):
+        def _qa(self, child: _StubFlow) -> QaFlowResult:
+            nth = self.calls.count("Qa")
+            return QaFlowResult(
+                status="refix" if nth == 1 else "passed",
+                qa=QaResult(status="passed"),
+                triage_scope=child.triage_scope_count + 1,
+            )
+
+    sub = _Refixing(repo).install(monkeypatch)
+
+    drive_flow(Coder(), env(), _Agent())
+
+    assert sub.calls.count("Dev") == 2, sub.calls
+    assert [c.triage_scope_count for c in sub.calls_to("Qa")] == [0, 1], sub.calls
+
+
 def test_a_give_up_names_the_rework_count_in_its_failure_message(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],

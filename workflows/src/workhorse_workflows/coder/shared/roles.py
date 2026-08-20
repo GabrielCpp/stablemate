@@ -79,6 +79,7 @@ ROLES: dict[str, str] = {
     "setup-fix": "repair the environment QA could not bring up",
     "fix-regression": "repair a regression QA surfaced outside the story",
     "apply-qa-fixes": "apply a batch of QA findings",
+    "fix-qa-scenario": "fix one failing QA scenario, with its own dry-run proof",
     "qa-fix-item": "apply one QA finding",
     "repair-qa-plan": "repair a QA plan that did not validate",
     "repair-qa-context": "repair the obligation packet QA runs against",
