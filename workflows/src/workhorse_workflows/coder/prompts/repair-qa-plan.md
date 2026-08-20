@@ -275,6 +275,30 @@ whole-plan `ostler qa run`, and not by importing `ostler.qa` from Python. A work
 validates it the moment you return and hands you its diagnostics if it fails, so a self-check
 can only repeat a verdict that is one call away.
 
+## Commit What You Wrote
+
+The workflow does not commit on your behalf. Work still sitting in the working tree when the
+story ends parks it for an operator instead of shipping it, so the last thing you do is record
+what you wrote:
+
+1. **Stage by explicit path** — never `git add -A`, `git add .` or `git commit -a`. Those sweep
+   in whatever else is in the tree, and something else is usually working here. Anything that is
+   not yours stays exactly where it is.
+2. **One commit per repository**, its subject scoped to the package you changed:
+
+   ```
+   <type>(<package>): <lowercase imperative description>
+
+{% if workhorse_var('epic') %}   Epic: {{ workhorse_var('epic') }}
+{% endif %}{% if workhorse_var('story_slug') %}   Story: {{ workhorse_var('story_slug') }}
+{% endif %}   ```
+
+   `<type>` is `docs`: this commit writes specification, not product code, and must not
+   release a version of anything. Subject ≤ 72 characters, no capital first word, no
+   trailing period. Keep the trailers exactly as spelled — they are how the run record ties a
+   commit back to its story.
+3. **Do not push, open a pull request, or switch branches.** The workflow owns those.
+
 ## Output
 
 Return JSON only:

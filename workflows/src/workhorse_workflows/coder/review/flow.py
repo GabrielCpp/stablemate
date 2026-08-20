@@ -289,6 +289,8 @@ class Review(Workflow):
             cwd=self._docs_repo,
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": self.ctx.story_slug,
+                "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
@@ -359,6 +361,8 @@ class Review(Workflow):
             add_dirs=self._dirs(),
             session=self._impl_chain(),
             args=turn.args | {
+                "story_slug": self.ctx.story_slug,
+                "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "review_notes": notes,
@@ -592,6 +596,8 @@ class Review(Workflow):
             add_dirs=self._dirs(),
             session=self._impl_chain(),
             args=turn.args | {
+                "story_slug": self.ctx.story_slug,
+                "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "review_notes": notes,
@@ -674,6 +680,8 @@ class Review(Workflow):
             add_dirs=self._dirs(),
             session=self._impl_chain(),
             args=turn.args | {
+                "story_slug": self.ctx.story_slug,
+                "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "review_notes": "",

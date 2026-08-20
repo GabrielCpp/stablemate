@@ -592,6 +592,7 @@ class Coder(Workflow):
             add_dirs=self._dirs(),
             args=turn.args | {
                 "epic": self._queue_epic(epic),
+                "story_slug": self._story.story_slug,
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
                 "operator_context": notes,
@@ -709,7 +710,13 @@ class Coder(Workflow):
             # decides what production code gets touched.
             power="high",
             add_dirs=self._dirs(),
-            args=turn.args | {"story_path": fix.story_path, "spec_dir": fix.spec_dir},
+            args=turn.args
+            | {
+                "story_path": fix.story_path,
+                "spec_dir": fix.spec_dir,
+                "story_slug": fix.story_slug,
+                "epic": fix.story_epic,
+            },
         )
         if result.status == "blocked":
             return self._fix_flag(result, epic, session_id)
@@ -755,6 +762,8 @@ class Coder(Workflow):
             cwd=layer.cwd,
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": fix.story_slug,
+                "epic": fix.story_epic,
                 "story_path": fix.story_path,
                 "spec_dir": fix.spec_dir,
                 "plan_file": layer.plan_file,
@@ -791,6 +800,8 @@ class Coder(Workflow):
             power="high",
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": fix.story_slug,
+                "epic": fix.story_epic,
                 "story_path": fix.story_path,
                 "spec_dir": fix.spec_dir,
                 "qa_dir": fix.qa_dir,
@@ -1210,6 +1221,8 @@ class Coder(Workflow):
             power="high",
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": fix.story_slug,
+                "epic": fix.story_epic,
                 "story_path": fix.story_path,
                 "spec_dir": fix.spec_dir,
                 "plan_services": self.call(plan_summary, fix.spec_dir).text,
