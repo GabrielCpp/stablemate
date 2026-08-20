@@ -257,7 +257,7 @@ first**; if an item is already fully done, tick it with the existing commit hash
       `app:` fixture and `score`, which is nobody's ledger item yet.
     - `replay.py report` prints convergence and cost but no duration, so wall clock came
       from the span of each trial's artifact directory.
-- [ ] Q9b — REWORK (supervisor, 2026-08-20 05:2x EDT): the stray replay-agent commit leak
+- [x] Q9b — REWORK (supervisor, 2026-08-20 05:2x EDT): the stray replay-agent commit leak
   recurred — `ed36cff` ("docs(benchmarks): append independent expense-list QA audit") is
   trial 1 of `after` committing its qa.md through the *outer* repo, same shape as the two
   Q1 strays you rebased off. (a) Rebase every such stray off `optimize-full` before or
@@ -273,6 +273,16 @@ first**; if an item is already fully done, tick it with the existing commit hash
       unpushed and was dropped. `ed36cff` had already been pushed by the supervisor's own
       push, and AGENTS.md forbids force-pushing a shared branch, so it stays in history and
       a plain `revert` is what removes its content. (b), the harness guard, is what remains.
+    - (b) done in `25aefda` (detection) + `f76c5ba` (prevention), verified by a live
+      `--label guard2` trial: the four agent commits landed in the sandbox's own `.git`,
+      outer HEAD stayed at `f76c5ba` and the tree stayed clean.
+    - The surprise: `Popen(cwd=repo)` alone did **not** stop the leak — a `guard` trial with
+      only that in place still committed three strays here. The child inherits `$PWD` from
+      the launcher, and the agent CLI resolves its project root from `$PWD` rather than
+      `getcwd()`, so the harness must set `PWD` (and drop `OLDPWD`) itself. This is the same
+      alignment `workhorse/runner/process.py::_align_pwd` performs — but only for a node that
+      declares a `cwd`, and the QA nodes declare none. Generalising `_align_pwd` to the
+      `cwd is None` case would fix this workhorse-side for every caller; that is not done.
 
 ## Phase D — dev-lane plan (optimize.md), remaining steps only
 
