@@ -25,8 +25,11 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
+import threading
 import time
 from collections.abc import Mapping, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -66,6 +69,63 @@ class StepOutcome:
     commands: tuple[tuple[str, ...], ...] = ()
 
 
+class _Echo:
+    """Follow a command's log file while it is being written, echoing it to stderr.
+
+    A tail, not a pipe: `subprocess.run` keeps owning the child's stdout, so the timeout,
+    the exit code and the bytes that land in the log are exactly what they were before the
+    echo existed — this thread only ever reads what has already been written.
+
+    Why it exists: a trial that drives an agent CLI for forty minutes writes its only sign
+    of life into a log three directories deep, named after a step that has not finished
+    yet. Teeing makes `paddock run > run.log` the whole story, for the operator and for
+    the agent polling on their behalf.
+    """
+
+    def __init__(self, path: Path, prefix: str, interval: float = 0.25) -> None:
+        self._path = path
+        self._prefix = prefix
+        self._interval = interval
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._follow, daemon=True)
+
+    def __enter__(self) -> _Echo:
+        self._thread.start()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self._stop.set()
+        self._thread.join(timeout=self._interval * 8)
+
+    def _follow(self) -> None:
+        offset = 0
+        while True:
+            done = self._stop.wait(self._interval)
+            offset = self._drain(offset)
+            if done:
+                return
+
+    def _drain(self, offset: int) -> int:
+        """Echo whole lines written since *offset*, and return the new offset.
+
+        Bytes rather than text, and never past the last newline: a partial write is left
+        in place to be re-read whole, so a line never arrives split across two ticks.
+        """
+        try:
+            with self._path.open("rb") as handle:
+                handle.seek(offset)
+                chunk = handle.read()
+        except OSError:
+            return offset
+        end = chunk.rfind(b"\n")
+        if end < 0:
+            return offset
+        block = chunk[: end + 1]
+        for line in block.decode("utf-8", "replace").splitlines():
+            print(f"{self._prefix}| {line}", file=sys.stderr, flush=True)
+        return offset + len(block)
+
+
 @dataclass
 class Run:
     """The handle a step and a score function are given.
@@ -88,6 +148,7 @@ class Run:
     seed: Pointer
     params: Mapping[str, str] = field(default_factory=dict)
     project: Path | None = None
+    echo: bool = True
     step_name: str = ""
     commands: list[tuple[str, ...]] = field(default_factory=list)
     outcomes: list[StepOutcome] = field(default_factory=list)
@@ -150,7 +211,7 @@ class Run:
         log_name: str = "",
         check: bool = False,
     ) -> CommandResult:
-        """Run a command, tee its output to a log under `artifacts/`, and record it.
+        """Run a command, tee its output to a log under `artifacts/` and to stderr.
 
         `PWD` is aligned to *cwd* and `OLDPWD` dropped. An agent CLI that resolves its
         project root from the environment rather than from `getcwd()` will otherwise treat
@@ -165,7 +226,7 @@ class Run:
         log = self.artifacts / f"{name}.log"
         self.commands.append(tuple(argv))
         logger.info("$ %s", " ".join(argv))
-        with log.open("w", encoding="utf-8") as handle:
+        with log.open("w", encoding="utf-8") as handle, self._echo(log, name):
             handle.write(f"$ {' '.join(argv)}\n(cwd {target})\n\n")
             handle.flush()
             try:
@@ -186,6 +247,10 @@ class Run:
                 raise RunError(f"{argv[0]}: not on PATH") from exc
         result = CommandResult(tuple(argv), completed.returncode, log)
         return result.check() if check else result
+
+    def _echo(self, log: Path, name: str) -> AbstractContextManager[object]:
+        """The live tee for one command, or a no-op when the run asked for quiet."""
+        return _Echo(log, name) if self.echo else nullcontext()
 
     def read_json(self, path: Path) -> dict:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -221,6 +286,7 @@ def execute(
     project: Path | None = None,
     seal: bool = True,
     keep: bool = False,
+    echo: bool = True,
 ) -> RunResult:
     work = paths.work_dir(store, task.name, label)
     if work.exists() and not keep:
@@ -250,6 +316,7 @@ def execute(
         seed=pointer,
         params=dict(params or {}),
         project=project,
+        echo=echo,
     )
     outcomes = _run_steps(run)
     _write_ledger(run, outcomes)

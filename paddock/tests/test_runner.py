@@ -200,3 +200,22 @@ def test_a_malformed_param_is_named(
     result = run(repo, data_dir, store, PARAMS_TASK, params={body: "sideways"})
     assert not result.ok
     assert message in (result.outcomes[0].error or "")
+
+
+def test_a_command_is_teed_to_stderr_while_it_runs(
+    repo: Path, data_dir: Path, store: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The log a step writes is three directories deep and named after a step that has not
+    # finished yet, so `paddock run > run.log` is the only progress an operator — or the
+    # agent polling on their behalf — can actually watch.
+    run(repo, data_dir, store)
+    assert "00-sh| hello" in capsys.readouterr().err
+
+
+def test_quiet_suppresses_the_tee_without_touching_the_log(
+    repo: Path, data_dir: Path, store: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    result = run(repo, data_dir, store, echo=False)
+    assert "hello" not in capsys.readouterr().err
+    log = result.stage / "artifacts" / "touch" / "00-sh.log"
+    assert "hello" in log.read_text(encoding="utf-8")

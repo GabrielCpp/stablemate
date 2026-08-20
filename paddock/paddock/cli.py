@@ -82,6 +82,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--no-seal", action="store_true", help="leave the staging area, write no zip")
     run.add_argument("--keep", action="store_true", help="reuse the existing work directory")
     run.add_argument(
+        "--quiet",
+        action="store_true",
+        help="do not tee each command's output to stderr as it is written",
+    )
+    run.add_argument(
         "--param",
         action="append",
         default=[],
@@ -167,6 +172,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         params=_params(args.param),
         project=_project(data_dir),
         seal=not args.no_seal,
+        echo=not args.quiet,
     )
     for outcome in result.outcomes:
         mark = {"ok": "ok  ", "failed": "FAIL", "skipped": "skip"}[outcome.status]
