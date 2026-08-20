@@ -133,6 +133,48 @@ def _matches(selector: str, scanned: str) -> bool:
     return scanned == selector or scanned.startswith(f"{selector}:nth(")
 
 
+#: A documented selector that addresses a component by its ARIA role — `p[role="alert"]`,
+#: `[role="dialog"]` — the way an accessibility-first book prefers to. The scan never mints
+#: this form (it mints `#id` or `tag.class:nth(i)`), so string comparison can never match it;
+#: the role the scan *did* record on the region is what carries the same fact.
+_ROLE_SELECTOR = re.compile(r"""^([a-zA-Z][\w-]*)?\[role=["']([\w-]+)["']\]$""")
+
+
+def _region_tags(region: RegionBox) -> set[str]:
+    """The element tags a region's minted selectors reveal. A `#id` selector reveals none,
+    which reads as "any tag" — the id was the better address, not a hidden disagreement."""
+    tags: set[str] = set()
+    for scanned in region.selectors:
+        if scanned.startswith("#"):
+            return set()
+        tag = re.split(r"[.:#]", scanned, maxsplit=1)[0]
+        if tag:
+            tags.add(tag.lower())
+    return tags
+
+
+def _find_region(selector: str, regions: list[RegionBox]) -> RegionBox | None:
+    """The region a documented selector addresses, or None.
+
+    Two vocabularies meet here: the string forms the scan mints (matched by `_matches`),
+    and the `tag[role=...]` form the scan cannot mint, matched by the role it recorded.
+    """
+    by_role = _ROLE_SELECTOR.match(selector)
+    if by_role:
+        tag, role = (by_role.group(1) or "").lower(), by_role.group(2)
+        for region in regions:
+            if region.role != role:
+                continue
+            tags = _region_tags(region)
+            if not tag or not tags or tag in tags:
+                return region
+        return None
+    return next(
+        (r for r in regions if any(_matches(selector, s) for s in r.selectors)),
+        None,
+    )
+
+
 def check(
     components: list[VettedComponent], regions: list[RegionBox], viewport: Viewport
 ) -> list[ComponentVerdict]:
@@ -150,10 +192,7 @@ def check(
     verdicts: list[ComponentVerdict] = []
     for component in components:
         expected = component.placement.text() if component.placement else "rendered on this screen"
-        region = next(
-            (r for r in regions if any(_matches(component.selector, s) for s in r.selectors)),
-            None,
-        )
+        region = _find_region(component.selector, regions)
         if region is None:
             if component.conditional:
                 # A screen documents its conditional components alongside its steady state —

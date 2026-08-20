@@ -214,3 +214,38 @@ def test_only_a_stated_condition_excuses_a_component_from_being_there(
     graph = _graph_with_component({"selector": "#c", **bullets})
 
     assert screen_components(graph)["s.md"][0].conditional is conditional
+
+
+def test_a_selector_that_addresses_by_role_matches_the_role_the_scan_recorded() -> None:
+    """The scan mints `#id` or `tag.class:nth(i)` — never an attribute selector — so a book
+    that addresses a component the accessibility-first way (`p[role="alert"]`) can never be
+    matched by string comparison. The role the scan recorded on the region carries the same
+    fact, and that is what the documented role must be read against; without this, a perfectly
+    rendered alert is reported as rendered nowhere."""
+    regions = [
+        _region("alert", ["p:nth(14)"], (240, 128.7, 960, 50)),
+        _region("form", ["form:nth(2)"], (240, 194, 960, 600)),
+    ]
+    verdicts = check(
+        [
+            _component("s.md#alert", 'p[role="alert"]', "width 40-100%, x 0-30%, y 5-60%"),
+            _component("s.md#any-alert", '[role="alert"]'),
+            _component("s.md#wrong-tag", 'span[role="alert"]'),
+        ],
+        regions,
+        VIEWPORT,
+    )
+    assert [(v.node_id.split("#")[1], v.status) for v in verdicts] == [
+        ("alert", "matched"), ("any-alert", "matched"), ("wrong-tag", "missing"),
+    ], "role matches the region; a stated tag still has to agree with the minted selector"
+
+
+def test_a_role_selector_over_an_id_minted_region_matches_on_role_alone() -> None:
+    """An element with an id is minted as `#id`, which reveals no tag — the id was the better
+    address, not a hidden disagreement, so the documented tag cannot be held against it."""
+    verdicts = check(
+        [_component("s.md#banner", 'div[role="alert"]')],
+        [_region("alert", ["#flash"], (0, 0, 1440, 40))],
+        VIEWPORT,
+    )
+    assert [v.status for v in verdicts] == ["matched"]
