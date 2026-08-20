@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from typing import Any
 
 from workhorse.pyflow import Workflow
 
@@ -33,6 +34,7 @@ from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.shared.schemas.dev import OperatorGate, OperatorResolution
+from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 
 #: How much of the existing `context.md` is carried into the new body. Each escalation
 #: embeds the last one, so an uncapped copy grows quadratically over a story that blocks
@@ -172,6 +174,7 @@ def escalation(
     number: int = 1,
     result: OperatorResolution | None = None,
     findings: Sequence[Finding] = (),
+    story: StoryPaths | None = None,
 ) -> OperatorGate:
     """The gate body for one block, from any lane.
 
@@ -181,14 +184,20 @@ def escalation(
     "not possible", because a fifth copy is then a copy per node rather than per lane.
 
     So the two strings are parameters and the story identity comes off the flow, which is
-    the part that was never lane-specific: every coder flow carries the same `ctx` and
-    parks on the same `context.md` beside the same story.
+    the part that was never lane-specific: every per-story coder flow resolves a
+    `StoryPaths` in `setup` and parks on the same `context.md` beside the same story.
+
+    `story` is for the one flow whose `ctx` is *not* that: the backlog drain draws a new
+    story per iteration, so its `setup` resolves the workspace instead and the story it is
+    blocked on is a node output rather than the run context. Passing it explicitly is the
+    honest spelling — the alternative is this helper guessing which of the two `ctx` is.
     """
+    ident: StoryPaths | Any = story if story is not None else flow.ctx
     return flow.call(
         compose_escalation,
-        story_path=flow.ctx.story_path,
-        story_slug=flow.ctx.story_slug,
-        spec_dir=flow.ctx.spec_dir,
+        story_path=ident.story_path,
+        story_slug=ident.story_slug,
+        spec_dir=ident.spec_dir,
         run_dir=str(flow.run_dir),
         number=number,
         block_kind=block_kind,

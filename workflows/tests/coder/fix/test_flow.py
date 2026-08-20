@@ -28,10 +28,12 @@ from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import WorkflowFailed
+from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
@@ -135,6 +137,7 @@ class _Agent:
         *,
         services: list[dict[str, Any]] | None = None,
         plan_blocked: int = 0,
+        impl_blocked: int = 0,
         qa_fails: int = 0,
         review_blocks: bool = False,
         explode: set[str] | None = None,
@@ -142,6 +145,7 @@ class _Agent:
         self.workspace = workspace
         self.services = services if services is not None else [API_SERVICE]
         self.plan_blocked = plan_blocked
+        self.impl_blocked = impl_blocked
         self.qa_fails = qa_fails
         self.review_blocks = review_blocks
         self.explode = explode or set()
@@ -196,7 +200,16 @@ class _Agent:
         return {"status": "done", "summary": f"plan {nth}"}
 
     def _implement_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """Write the change, so the commit at the end of the iteration has something to find."""
+        """Write the change, so the commit at the end of the iteration has something to find.
+
+        `impl_blocked` blocks the first N turns and — the part that matters — writes
+        *nothing* while doing so, which is the state the drain used to QA as if it were a fix.
+        """
+        if nth <= self.impl_blocked:
+            return {
+                "status": "blocked",
+                "notes": "the page size is a product decision nobody has made",
+            }
         repo = self.workspace[Path(data["plan_file"]).stem.removeprefix("plan-")]
         (repo / "pagination.go").write_text(f"// pass {nth}\n", encoding="utf-8")
         return {"status": "done", "notes": f"implemented {data['service_path']}"}
@@ -231,6 +244,24 @@ class _Agent:
         if self.review_blocks:
             return {"status": "blocked", "notes": "this change cannot be described as built"}
         return {"status": "approved", "notes": "reads as built"}
+
+
+def _answers(seen: list[str]) -> Callable[..., None]:
+    """A stand-in for the human the `Await` is waiting on.
+
+    Patched over `wait_for_answer`, so it runs where the operator's edit would land: the
+    questions are already in the file by then, which is what `seen` records, and writing the
+    answer over them is what a person answering in place does.
+    """
+
+    def answered(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text(encoding="utf-8"))
+        path.write_text(
+            "STATUS: ANSWERED\n\nTwenty per page, as the widget grid already does.\n",
+            encoding="utf-8",
+        )
+
+    return answered
 
 
 def _backlog(docs: Path) -> str:
@@ -600,3 +631,43 @@ def test_a_run_killed_mid_check_resumes_at_the_check(
     assert "implement-plan" not in agent.counts(), agent.counts()
     assert agent.counts()["qa-fix-item"] == 1, agent.counts()
     assert BULLET not in _backlog(docs), _backlog(docs)
+
+
+def test_an_implementation_turn_that_says_it_cannot_parks_instead_of_qa_ing_nothing(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The fifth lane's copy of the dropped-verdict bug, from the outside.
+
+    `implement` discarded its `ImplResult`, so a turn reporting it could not implement the
+    plan went straight to QA over an unchanged worktree — and the QA verdict that followed
+    flagged the *bullet* as unfixable, which is a false answer to a question nobody asked.
+    The block now parks on the drained story's own `context.md`, and the answer re-enters
+    the same state with the operator's words in the prompt.
+    """
+    agent = _Agent(workspace, impl_blocked=1)
+    seen: list[str] = []
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Fix(), env(), agent)
+
+    assert result.has_fix is False, result
+
+    # The gate is beside the drained item, and it publishes what the turn actually said.
+    (gate,) = seen
+    assert "the page size is a product decision nobody has made" in gate, gate
+    assert "implementation stage, the fix-drain implementation turn" in gate, gate
+    assert SLUG in gate, gate
+
+    # No QA turn was spent on the empty worktree: the second implement turn is what the
+    # first check sees, and it carries the answer.
+    assert agent.counts()["implement-plan"] == 2, agent.counts()
+    assert agent.counts()["qa-fix-item"] == 1, agent.counts()
+    retried = agent.args_for("implement-plan")[1]
+    assert "Twenty per page" in retried["operator_context"], retried
+
+    # And the iteration finishes as any other: the bullet is drained, not flagged.
+    assert BULLET not in _backlog(docs), _backlog(docs)
+    assert _log_of(workspace["api"])[0] == f"fix(api): {SLUG}"
