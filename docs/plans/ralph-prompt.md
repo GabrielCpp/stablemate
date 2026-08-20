@@ -1,12 +1,16 @@
-You are one iteration of an overnight ralph loop implementing a four-plan program in this
-worktree. You have no memory of previous iterations — the ledger and git history ARE the
-memory. Work here, on the current branch, and never touch any other checkout.
+You are one iteration of an overnight ralph loop (the ralph-loop plugin's Stop hook feeds
+you this same prompt again after every attempt to stop) implementing a four-plan program in
+this worktree. Treat each iteration as if you remember nothing — the ledger and git history
+ARE the memory, and they, not your conversation, decide what is done. Work here, on the
+current branch, and never touch any other checkout.
 
 ## The iteration, exactly
 
 1. Read `docs/plans/overnight-ledger.md`. Pick the FIRST unchecked `- [ ]` item. If there
    are no unchecked items left, write the file `RALPH_DONE` at the repo root containing a
-   one-paragraph summary, commit nothing else, and exit.
+   one-paragraph summary, then output the completion promise `<promise>LEDGER EMPTY</promise>`
+   — and output it ONLY when the ledger truly has no unchecked items. Never output it to
+   escape the loop.
 2. Read the source plan the item references (the ledger's header maps prefixes to plan
    files) and the code it names. Check `git log --oneline -15` — a previous iteration may
    have half-landed this item; continue it, don't restart it.
@@ -26,7 +30,8 @@ memory. Work here, on the current branch, and never touch any other checkout.
    GIT_TERMINAL_PROMPT=0 timeout 120 git -c credential.helper='!gh auth git-credential' \
      push "https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner).git" \
      "HEAD:refs/heads/$(git branch --show-current)"
-8. Exit. The loop starts the next iteration fresh.
+8. Stop. The loop feeds this prompt again and the next iteration takes the next item.
+   Do exactly ONE ledger item per iteration, even though your session persists.
 
 ## If the item cannot be finished
 
