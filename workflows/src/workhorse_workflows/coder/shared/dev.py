@@ -823,6 +823,25 @@ def run_gate(
 #: That is a more informative answer than the bare path, and it used to cost a repair lap.
 _PATHISH = re.compile(r"[\w./\\-]+\.[A-Za-z0-9]{1,8}")
 
+#: A dash-and-space that no shell command contains and that a turn writing an account of
+#: its work reaches for constantly: `make generate — pass`. Only the typographic dashes,
+#: never ASCII `--`, which is a flag prefix and an end-of-options marker.
+_ANNOTATED = re.compile(r"\s+[—–]\s+.*$")
+
+
+def _bare(command: str) -> str:
+    """One promised command with the outcome the turn wrote beside it cut off.
+
+    Asked for the commands that will be green, a turn answers in the register it has been
+    answering in all turn — an account of what it did — and writes
+    `cd api && make generate — pass`. The command is correct, the code is correct, and the
+    string is not runnable by anything: the shell reads the dash as an argument and exits
+    non-zero forever. No repair lap can fix it, so the loop spends its whole budget proving
+    a finished story broken. A benchmark run lost a completed implement turn to exactly
+    this, one lap after the same run lost one to the working directory.
+    """
+    return _ANNOTATED.sub("", command).strip()
+
 
 def _touched(promised: str, changed: list[str]) -> bool:
     """Whether one promised path is anywhere in the diff.
@@ -887,8 +906,12 @@ def check_promises(
     command is correct, the code is correct, and the loop spends its whole budget proving it
     before handing a human a story with nothing wrong with it. Trying the other directory is
     one extra process on the failure path only.
+
+    For the same reason the outcome a turn writes beside a command is cut off before it is
+    run — see `_bare`. Both are the same mistake with the same price: a promise that is right
+    about the code and unrunnable as a string.
     """
-    commands = [c.strip() for c in (commands or []) if c and c.strip()]
+    commands = [_bare(c) for c in (commands or []) if c and _bare(c)]
     files = [f for f in (files or []) if f and f.strip()]
     if not commands and not files:
         logger.info("the turn stated no exit conditions — nothing to hold it to")

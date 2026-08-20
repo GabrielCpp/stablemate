@@ -112,7 +112,10 @@ checks it against what actually happened:
   command here must terminate on its own.** A process that runs until it is stopped — a
   server, a watcher, a tail — can never be green: the gate waits out its timeout, calls the
   promise broken, and bills a repair lap against finished work. Promise the terminating
-  command that proves the same thing instead.
+  command that proves the same thing instead. **Each entry is the command and nothing
+  else** — the exact string a shell is handed. Not the command with its outcome written
+  beside it, not a note about which environment it needs: that belongs in `notes`, and a
+  shell handed it exits non-zero no matter how finished the work is.
 - `files` — the files you expect to have touched. One missing from the diff comes back the
   same way.
 

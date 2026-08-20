@@ -375,6 +375,37 @@ def test_a_promise_written_from_the_repo_root_is_run_from_there(service: Path) -
     assert outcome.status == "clean", outcome.output
 
 
+def test_a_command_with_its_outcome_written_beside_it_is_still_run(service: Path) -> None:
+    """A turn asked what will be green answers in the register it has used all turn.
+
+    `cd api && make generate — pass` is an account, not a string a shell can run: the dash
+    is an argument and the command exits non-zero forever. The code is finished, the
+    command is right, and no repair lap can reach the defect — one benchmark run spent a
+    lap per annotated command before its budget ran out.
+    """
+    outcome = _call(
+        check_promises,
+        cwd=str(service / "api-service"),
+        commands=["true — pass, no output"],
+        repo_dir=str(service),
+    )
+
+    assert outcome.status == "clean", outcome.output
+
+
+def test_an_ascii_double_dash_is_left_alone(service: Path) -> None:
+    """`--` is a flag prefix and an end-of-options marker; only the typographic dash is prose."""
+    outcome = _call(
+        check_promises,
+        cwd=str(service / "api-service"),
+        commands=["exit 3 -- pass"],
+        repo_dir=str(service),
+    )
+
+    assert outcome.status == "dirty"
+    assert outcome.command == "exit 3 -- pass"
+
+
 def test_a_promise_green_in_neither_directory_is_still_dirty(service: Path) -> None:
     outcome = _call(
         check_promises,
