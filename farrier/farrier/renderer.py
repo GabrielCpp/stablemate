@@ -31,8 +31,10 @@ from farrier.sources import (
     Asset,
     Source,
     build_lookup,
+    build_policy_lookup,
     library_path,
     library_source_path,
+    public_id,
     public_name,
     skill_assets,
 )
@@ -216,6 +218,7 @@ class Renderer:
         template_values: dict[str, Any],
         skills: list[Source],
         prompts: list[Source],
+        policies: list[Source] | None = None,
     ):
         self.repo = repo
         self.prefix = prefix
@@ -232,6 +235,12 @@ class Renderer:
         self.prompts = prompts
         self.skill_lookup = build_lookup(skills, prefix)
         self.prompt_lookup = build_lookup(prompts, prefix)
+        # Every policy in the library, not a selected subset: a policy has no top-level
+        # selection key, because binding one into a localInstructions mapping is the only
+        # thing that brings it into a repo at all. `policy_lookup` is read by
+        # `instruction_sources` and by nothing else — see `policy_source`.
+        self.policies = list(policies or [])
+        self.policy_lookup = build_policy_lookup(self.policies)
         self._tags: dict[Path, list[str]] = {}
 
     def skill_tags(self, source: Source) -> list[str]:
@@ -276,6 +285,27 @@ class Renderer:
             # addressable by its generic name ("developer") so shared workflow
             # prompts can reference the repo's overlay without knowing the repo.
             source = self.skill_lookup.get(f"{self.prefix}-{key}")
+        return source
+
+    def policy_source(self, name: str) -> Source:
+        """The library file a ``policies:`` entry names, or exit.
+
+        No prefix fallback and no optional variant, unlike skills and prompts: a policy
+        is reachable only from a localInstructions mapping, so there is no template
+        helper that has to degrade gracefully when one is absent. A name that resolves
+        to nothing is a config typo, and the file it was meant to put in every turn's
+        context would otherwise just be missing from it.
+        """
+        key = name.replace(".", "-")
+        source = self.policy_lookup.get(key)
+        if source is None:
+            available = sorted({public_id(s) for s in self.policies})
+            catalog = (
+                "Available policies: " + ", ".join(available)
+                if available
+                else "The library layers hold no policies at all."
+            )
+            raise SystemExit(f"Unknown policy reference: {name}. {catalog}")
         return source
 
     def prompt_source(self, name: str) -> Source:
@@ -723,12 +753,24 @@ class Renderer:
         return outputs
 
     def instruction_sources(
-        self, skill_names: list[str], prompt_names: list[str] | None = None
+        self,
+        skill_names: list[str],
+        prompt_names: list[str] | None = None,
+        policy_names: list[str] | None = None,
     ) -> list[Source]:
-        """The library files one localInstructions mapping aggregates, in order."""
-        return [self.skill_source(name) for name in skill_names] + [
-            self.prompt_source(name) for name in prompt_names or []
-        ]
+        """The library files one localInstructions mapping aggregates, in order.
+
+        Policies, then skills, then prompts — standing rules before the procedures that
+        run under them. The argument order is the historical one (skills first) so the
+        callers that predate policies keep working; the *return* order is the aggregation
+        order, and it is defined here alone so the rendered file and the provenance the
+        pointer carries cannot disagree about it.
+        """
+        return (
+            [self.policy_source(name) for name in policy_names or []]
+            + [self.skill_source(name) for name in skill_names]
+            + [self.prompt_source(name) for name in prompt_names or []]
+        )
 
     def render_local_instruction(
         self,
@@ -737,10 +779,11 @@ class Renderer:
         output_path: Path,
         include_readme: bool = True,
         prompt_names: list[str] | None = None,
+        policy_names: list[str] | None = None,
     ) -> str:
         """The aggregated AGENTS.md for one localInstructions mapping.
 
-        Skills first, in listed order, then prompts — each body stripped of its
+        Policies first, then skills, then prompts — each body stripped of its
         front matter and joined by a `---` rule. A prompt is included for the
         repos that want a procedure always in context rather than invoked as a
         slash command; it is the same library file the command renders from, so
@@ -758,13 +801,9 @@ class Renderer:
         AGENTS.md` answers the same question from either file.
         """
         parts: list[tuple[str, str]] = []
-        selected = [(source, False) for source in self.instruction_sources(skill_names)]
-        selected += [
-            (self.prompt_source(name), True) for name in prompt_names or []
-        ]
-        for source, is_prompt in selected:
+        for source in self.instruction_sources(skill_names, prompt_names, policy_names):
             _, body = split_front_matter(source.path.read_text(encoding="utf-8"))
-            if is_prompt:
+            if source.kind == "prompt":
                 body = strip_arguments_placeholder(body)
             part = self.render_templates(body, target, output_path).strip()
             if part:
@@ -791,6 +830,7 @@ class Renderer:
         output_path: Path,
         prompt_names: list[str] | None = None,
         readme_import: bool = False,
+        policy_names: list[str] | None = None,
     ) -> str:
         """The CLAUDE.md that points Claude at the AGENTS.md beside it.
 
@@ -805,7 +845,7 @@ class Renderer:
         copy; the caller passes it only when Claude is the sole adapter, since
         otherwise the README body is already inside the AGENTS.md this imports.
         """
-        sources = self.instruction_sources(skill_names, prompt_names)
+        sources = self.instruction_sources(skill_names, prompt_names, policy_names)
         dest_rel = output_path.relative_to(self.repo).as_posix()
         banner = local_instruction_banner(sources, dest_rel)
         readme = "\n@README.md\n" if readme_import else ""

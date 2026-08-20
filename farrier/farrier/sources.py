@@ -333,3 +333,37 @@ def build_lookup(sources: list[Source], prefix: str) -> dict[str, Source]:
                 )
             lookup[normalized] = source
     return lookup
+
+
+def build_policy_lookup(sources: list[Source]) -> dict[str, Source]:
+    """Name → policy source, addressed by **bare basename** with no prefix.
+
+    Not ``build_lookup``: that one mixes ``public_name(prefix, source)`` into its keys,
+    and a policy has no prefix to compose with — ``compose_name("", "stablemate-repo")``
+    returns ``"-stablemate-repo"``, so every policy would gain a leading-dash alias and
+    the name an author actually writes would be the only one that is not canonical.
+
+    A policy is named the way it is written in ``localInstructions`` — ``stablemate-repo``,
+    never ``<repo>-stablemate-repo``. The namespace directory organizes the tree and is
+    addressable too (``stablemate/stablemate-repo``), but it is not part of the name; two
+    namespaces claiming one basename is an error naming both files, because the reference
+    in a repo's config could not say which it meant.
+    """
+    lookup: dict[str, Source] = {}
+    for source in sources:
+        keys = {
+            source.id,
+            public_id(source),
+            source.rel,
+            source.rel.removesuffix(".md"),
+        }
+        for key in keys:
+            normalized = key.replace(".", "-")
+            existing = lookup.get(normalized)
+            if existing and existing != source:
+                raise SystemExit(
+                    f"Ambiguous policy name {normalized!r}: "
+                    f"{existing.rel} and {source.rel}"
+                )
+            lookup[normalized] = source
+    return lookup

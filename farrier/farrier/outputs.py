@@ -14,6 +14,7 @@ from farrier.drift import Drifted, report
 from farrier.frontmatter import (
     frontmatter_mapping,
     mapping_include_readme,
+    mapping_policy_names,
     mapping_prompt_names,
     mapping_skill_names,
 )
@@ -184,6 +185,13 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
 
     all_skills = load_layered_sources("skill", "library", "skills")
     all_prompts = load_layered_sources("prompt", "library", "prompts")
+    # Every policy in every layer, unfiltered. Policies have no `packs:`/`skills:`-style
+    # selection because they are not installed anywhere: one exists in a repo exactly
+    # when a localInstructions mapping names it, so "available but unselected" is not a
+    # state a policy can be in, and an `exclude.policies` would have nothing to subtract
+    # from. Overlay shadowing still applies — load_layered_sources gives the higher
+    # layer's file for a shared id.
+    all_policies = load_layered_sources("policy", "library", "policies")
     skills = selected_sources(
         all_skills, include_skills, set(exclude.get("skills", []) or [])
     )
@@ -212,17 +220,24 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
         raise SystemExit(f"Selected packs did not match any skills or prompts. {catalog}")
 
     renderer = Renderer(
-        repo, prefix, repo_config, collect_template_values(config), skills, prompts
+        repo,
+        prefix,
+        repo_config,
+        collect_template_values(config),
+        skills,
+        prompts,
+        all_policies,
     )
     outputs = renderer.render(agents, roots)
 
     for mapping in config.get("localInstructions", []) or []:
         skill_names = mapping_skill_names(mapping)
         prompt_names = mapping_prompt_names(mapping)
-        if not skill_names and not prompt_names:
+        policy_names = mapping_policy_names(mapping)
+        if not skill_names and not prompt_names and not policy_names:
             raise SystemExit(
                 "A localInstructions entry must select at least one source "
-                "(`skill`/`skills` and/or `prompt`/`prompts`)"
+                "(`policy`/`policies`, `skill`/`skills` and/or `prompt`/`prompts`)"
             )
         include_readme = mapping_include_readme(mapping)
         claude_only = bool(agents.get("claude")) and not (
@@ -252,6 +267,7 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
                 agents_path,
                 include_readme and not claude_only,
                 prompt_names,
+                policy_names,
             )
             if agents.get("claude"):
                 claude_path = directory / "CLAUDE.md"
@@ -260,6 +276,7 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
                     claude_path,
                     prompt_names,
                     include_readme and claude_only,
+                    policy_names,
                 )
 
     # The hook side of the install. Both files are farrier's whole, which is what lets

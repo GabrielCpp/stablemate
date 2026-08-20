@@ -31,6 +31,7 @@ from farrier.frontmatter import (
     LOCAL_INSTRUCTION_FILES,
     banner_sources,
     frontmatter_metadata,
+    mapping_policy_names,
     mapping_prompt_names,
     mapping_skill_names,
     read_yaml,
@@ -300,12 +301,14 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
     directory = generated.parent
     skill_names: list[str] = []
     prompt_names: list[str] = []
+    policy_names: list[str] = []
     for mapping in config.get("localInstructions", []) or []:
         for rel in mapping.get("paths", []) or []:
             if (repo / rel).resolve() == directory:
                 skill_names = mapping_skill_names(mapping)
                 prompt_names = mapping_prompt_names(mapping)
-    if not skill_names and not prompt_names:
+                policy_names = mapping_policy_names(mapping)
+    if not skill_names and not prompt_names and not policy_names:
         raise SystemExit(
             f"error: {generated} is not mapped by {config_path} → "
             "localInstructions — the mapping was removed or moved, so this file "
@@ -326,11 +329,15 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
         include_prompts,
         set(exclude.get("prompts", []) or []),
     )
-    renderer = Renderer(repo, prefix, repo_config, {}, skills, prompts)
+    policies = load_layered_sources("policy", "library", "policies")
+    renderer = Renderer(repo, prefix, repo_config, {}, skills, prompts, policies)
+    # Same order the aggregation uses, so `farrier source AGENTS.md` lists the sources in
+    # the order their text appears in the file it was asked about.
     return [
-        library_source_path(renderer.skill_source(name)) for name in skill_names
-    ] + [
-        library_source_path(renderer.prompt_source(name)) for name in prompt_names
+        library_source_path(source)
+        for source in renderer.instruction_sources(
+            skill_names, prompt_names, policy_names
+        )
     ]
 
 

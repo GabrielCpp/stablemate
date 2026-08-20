@@ -115,6 +115,24 @@ def mapping_skill_names(mapping: dict[str, Any]) -> list[str]:
     return []
 
 
+def mapping_policy_names(mapping: dict[str, Any]) -> list[str]:
+    """The policy names a localInstructions mapping selects.
+
+    A policy is library text that exists *only* here. It is never installed as a skill,
+    so it costs nothing in the skill index the agent carries every turn — which is the
+    whole point: a standing rule aggregated into AGENTS.md is already resident, and an
+    index entry advertising it is a second charge for text nobody can usefully invoke.
+
+    Policies are aggregated first, ahead of the mapping's skills and prompts: standing
+    rules above procedures. Empty when the mapping selects no policies.
+    """
+    if mapping.get("policies"):
+        return [str(name) for name in mapping["policies"]]
+    if mapping.get("policy"):
+        return [str(mapping["policy"])]
+    return []
+
+
 def mapping_prompt_names(mapping: dict[str, Any]) -> list[str]:
     """The installed prompt names a localInstructions mapping selects.
 
