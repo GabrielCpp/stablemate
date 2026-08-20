@@ -73,6 +73,29 @@ and add the missing `tests:` citation rather than bypassing it.
    you changed and why, per failure. Append below the existing content and leave the `---`
    frontmatter block intact — it carries the `type:` that makes the doc an OKF Concept.
 
+## Commit What You Wrote
+
+The workflow does not commit on your behalf. Work still sitting in the working tree when the
+story ends parks it for an operator instead of shipping it, so the last thing you do is record
+what you wrote:
+
+1. **Stage by explicit path** — never `git add -A`, `git add .` or `git commit -a`. Those sweep
+   in whatever else is in the tree, and something else is usually working here. Anything that is
+   not yours stays exactly where it is.
+2. **One commit per repository**, its subject scoped to the package you changed:
+
+   ```
+   <type>(<package>): <lowercase imperative description>
+
+{% if workhorse_var('epic') %}   Epic: {{ workhorse_var('epic') }}
+{% endif %}{% if workhorse_var('story_slug') %}   Story: {{ workhorse_var('story_slug') }}
+{% endif %}   ```
+
+   `<type>` is `fix`: this commit repairs behaviour that was already there. Subject ≤ 72 characters, no capital first word, no
+   trailing period. Keep the trailers exactly as spelled — they are how the run record ties a
+   commit back to its story.
+3. **Do not push, open a pull request, or switch branches.** The workflow owns those.
+
 ## Structured Output Requirement
 
 Return this exact JSON object in your **final response** (after a short markdown summary). This

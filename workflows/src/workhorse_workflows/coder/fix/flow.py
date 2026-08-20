@@ -152,7 +152,13 @@ class Fix(Workflow):
             # decides what production code gets touched.
             power="high",
             add_dirs=self._dirs(),
-            args=turn.args | {"story_path": self._story.story_path, "spec_dir": self._story.spec_dir},
+            args=turn.args
+            | {
+                "story_path": self._story.story_path,
+                "spec_dir": self._story.spec_dir,
+                "story_slug": self._story.story_slug,
+                "epic": self._story.story_epic,
+            },
         )
         if result.status == "blocked":
             return self._flag(result)
@@ -206,6 +212,8 @@ class Fix(Workflow):
             cwd=layer.cwd,
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": self._story.story_slug,
+                "epic": self._story.story_epic,
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
                 "plan_file": layer.plan_file,
@@ -266,6 +274,8 @@ class Fix(Workflow):
             power="high",
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": self._story.story_slug,
+                "epic": self._story.story_epic,
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
                 "qa_dir": self._story.qa_dir,
@@ -404,6 +414,8 @@ class Fix(Workflow):
             power="high",
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": self._story.story_slug,
+                "epic": self._story.story_epic,
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
                 "plan_services": self.call(plan_summary, self._story.spec_dir).text,

@@ -292,6 +292,8 @@ class Dev(Workflow):
             session=self._story_chain(),
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": self.ctx.story_slug,
+                "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 # What this workspace says marks a service directory. The prompt used to
@@ -586,6 +588,8 @@ class Dev(Workflow):
             cwd=layer.cwd,
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": self.ctx.story_slug,
+                "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "plan_file": layer.plan_file,
@@ -974,6 +978,8 @@ class Dev(Workflow):
             power="high",
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": self.ctx.story_slug,
+                "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "review_notes": review_notes,

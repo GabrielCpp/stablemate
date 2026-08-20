@@ -652,6 +652,8 @@ class Qa(Workflow):
             power="medium",
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": self.ctx.story_slug,
+                "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "docs_path": self.docs_path,
@@ -855,6 +857,8 @@ class Qa(Workflow):
         return {
             "story_path": self.ctx.story_path,
             "spec_dir": self.ctx.spec_dir,
+            "story_slug": self.ctx.story_slug,
+            "epic": self.epic,
             "qa_dir": self.ctx.qa_dir,
             "qa_scratch_dir": QA_SCRATCH_DIRNAME,
             "docs_path": self.docs_path,
@@ -1041,6 +1045,8 @@ class Qa(Workflow):
             session=self._story_chain(),
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": self.ctx.story_slug,
+                "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "qa_dir": self.ctx.qa_dir,
@@ -1144,6 +1150,8 @@ class Qa(Workflow):
             power="high",
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": self.ctx.story_slug,
+                "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "qa_dir": self.ctx.qa_dir,
@@ -1228,6 +1236,8 @@ class Qa(Workflow):
             session=self._story_chain(),
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": self.ctx.story_slug,
+                "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "qa_dir": self.ctx.qa_dir,
@@ -1436,6 +1446,8 @@ class Qa(Workflow):
             timeout=5400,
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": self.ctx.story_slug,
+                "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "regression_suites": [
@@ -1601,6 +1613,8 @@ class Qa(Workflow):
             timeout=2400,
             add_dirs=self._dirs(),
             args=turn.args | {
+                "story_slug": self.ctx.story_slug,
+                "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "qa_dir": self.ctx.qa_dir,
@@ -2134,6 +2148,8 @@ class Qa(Workflow):
         args: dict[str, object] = {
             "story_path": self.ctx.story_path,
             "spec_dir": self.ctx.spec_dir,
+            "story_slug": self.ctx.story_slug,
+            "epic": self.epic,
             "qa_dir": self.ctx.qa_dir,
             "qa_notes": qa_notes,
         }
