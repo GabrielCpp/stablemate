@@ -889,7 +889,13 @@ def run_round(run: Run, fixture: Fixture) -> None:
                 # machine happens to have set. A label whose trials inherited the shell is not
                 # a configuration anyone can compare against.
                 "--config", str(config),
-                "--params", json.dumps({"story": story, "docs_path": str(repo)}),
+                # `first_verdict`: a trial asks what one plan and one suite run say about
+                # the product — the lane ends at the first verdict instead of repairing
+                # toward green, so a seeded defect reports its first red without entering
+                # the fix loop and a clean control's pass costs no repair/refute turns.
+                "--params", json.dumps(
+                    {"story": story, "docs_path": str(repo), "first_verdict": True}
+                ),
                 cwd=repo,
                 # Enforced by workhorse between states rather than by killing the process, so an
                 # over-budget trial stops at a node boundary with its spans intact.
