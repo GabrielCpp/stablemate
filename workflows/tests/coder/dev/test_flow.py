@@ -962,11 +962,34 @@ def test_a_repair_lap_that_writes_the_missing_test_is_credited_with_it() -> None
     """
     promise = {"tests_added": ["handler_test.go"]}
 
-    merged = Dev._with_repair_tests(promise, FixResult(status="fixed", tests_added=["store_test.go"]))
-    unchanged = Dev._with_repair_tests(promise, FixResult(status="fixed"))
+    merged = Dev._amended(promise, FixResult(status="fixed", tests_added=["store_test.go"]))
+    unchanged = Dev._amended(promise, FixResult(status="fixed"))
 
     assert merged == {"tests_added": ["handler_test.go", "store_test.go"]}
     assert unchanged is promise
+
+
+def test_a_repair_lap_may_retract_a_promised_file_it_verified_needed_no_change() -> None:
+    """The `goal` gate says "make the change, or say why it turned out to be unnecessary".
+
+    Only the first half was ever implemented, so the second half was a lie: a promise about
+    a generated file whose regeneration is a no-op could be satisfied only by hand-editing
+    generated output. A correct turn instead reported `blocked` and the story escalated to a
+    human whose only available answer was to agree with it — four turns spent on a promise
+    the lap had already verified. Retraction is that answer, recorded rather than argued.
+    """
+    promise = {"exit_conditions": {"files": ["pkg/api/types.gen.go", "pkg/store/expense.go"],
+                                   "commands": ["go build ./..."]}}
+
+    merged = Dev._amended(
+        promise, FixResult(status="fixed", retracted_files=["./pkg/api/types.gen.go"])
+    )
+
+    conditions = (merged or {})["exit_conditions"]
+    assert conditions["files"] == ["pkg/store/expense.go"]
+    # The commands half of the promise is untouched — a retraction withdraws one path, and
+    # a command the turn agreed was disqualifying stays disqualifying.
+    assert conditions["commands"] == ["go build ./..."]
 
 
 def test_a_gate_no_repair_lap_can_satisfy_never_gives_up_either(

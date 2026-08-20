@@ -98,9 +98,15 @@ The repair is to **meet the promise**, not to withdraw it. A command that fails 
 whose failure the turn already agreed was disqualifying; a file that was promised and never
 written is usually work that was planned and then dropped. Finish it.
 
-The one case where the promise itself was wrong — a command that does not exist in this repo,
-a path renamed since — is worth saying plainly in `notes` rather than quietly satisfying: the
-gate compares words to facts, and a wrong word is a finding about the plan, not about the code.
+The one case where the promise itself was wrong is real, and it has its own field. A file that
+was promised and then turned out to need no change — a generated file whose regeneration is a
+no-op, a path the plan renamed, a branch that already did what the story wanted — is
+**retracted**, not manufactured: list it in `retracted_files` and say in `notes` what you
+checked to be sure. Editing a file to satisfy this gate when the code was already right is the
+one outcome worse than the failure, and a retraction is a claim you are on record for.
+
+Retract only what you have verified. A promise you simply did not get to is unfinished work,
+and the repair for that is to finish it.
 {% endif %}
 {% block repo_fix_rules %}{% endblock %}
 
@@ -109,7 +115,7 @@ gate compares words to facts, and a wrong word is a finding about the plan, not 
 Respond with JSON only, after you have re-run the gate locally:
 
 ```json
-{"status": "fixed|failed|blocked", "notes": "<what you changed, or why a finding remains>", "tests_added": ["<test file you wrote or extended>"]}
+{"status": "fixed|failed|blocked", "notes": "<what you changed, or why a finding remains>", "tests_added": ["<test file you wrote or extended>"], "retracted_files": ["<promised file that needed no change>"]}
 ```
 
 - `fixed` — the gate passes now in this directory.
@@ -121,3 +127,6 @@ Respond with JSON only, after you have re-run the gate locally:
   block to whoever can decide it — it is not a way to stop trying.
 - `tests_added` — test files this lap wrote or extended, service-relative. Omit it when this
   repair added none; it is what the tests gate re-reads, not a summary of the change.
+- `retracted_files` — promised files this lap verified needed no change, on the `goal` gate
+  only. Omit it everywhere else. It withdraws the promise for the next lap; `notes` is where
+  the evidence goes, and both are kept in the run log.

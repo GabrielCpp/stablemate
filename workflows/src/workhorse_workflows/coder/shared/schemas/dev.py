@@ -205,6 +205,15 @@ class FixResult(CoderResult):
     #: just satisfied. The flow merges these into the promise it re-checks.
     tests_added: list[str] = []
 
+    #: Promised files this lap withdraws, having found the change genuinely unnecessary —
+    #: a generated file whose regeneration is a no-op, a path the plan turned out not to
+    #: need. The `goal` gate offers exactly two ways out ("make the change, or say why it
+    #: turned out to be unnecessary") and this is the second one: without it the second
+    #: half of that sentence is a lie, the gate is satisfiable only by an edit nobody
+    #: wants, and a correct turn laps until it escalates to a human who can only agree.
+    #: The reason belongs in `notes`, which is what the run log keeps.
+    retracted_files: list[str] = []
+
 
 class OperatorResolution(CoderResult):
     """`prompts/resolve-operator.md` — the resolver's report on a block.

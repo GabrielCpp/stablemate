@@ -775,24 +775,42 @@ class Dev(Workflow):
             session_turns=turns,
             digest=failure.digest,
             impl_blocks=impl_blocks,
-            promise=self._with_repair_tests(promise, result),
+            promise=self._amended(promise, result),
         )
 
     @staticmethod
-    def _with_repair_tests(
-        promise: dict[str, Any] | None, result: FixResult
-    ) -> dict[str, Any] | None:
-        """The promise the next `gates` pass re-checks, crediting tests this lap added.
+    def _amended(promise: dict[str, Any] | None, result: FixResult) -> dict[str, Any] | None:
+        """The promise the next `gates` pass re-checks, after this lap's amendments.
 
-        The `tdd` gate reads the implement turn's own report, and a repair turn cannot amend
-        it — so a lap that writes exactly the missing test would otherwise arrive back at the
-        gate it just satisfied, unchanged, and lap again until the budget escalated it.
+        Both halves exist for the same reason: the claim gates read the *implement* turn's
+        own report, and a repair lap that has genuinely settled one of them has no other way
+        to say so — so it arrives back at the gate it just satisfied, unchanged, and laps
+        until the budget escalates it to a person who can only agree with it.
+
+        * `tests_added` credits tests this lap wrote, which is what the `tdd` gate is
+          looking for.
+        * `retracted_files` withdraws a promised path the lap found it did not need — the
+          "or say why it turned out to be unnecessary" the `goal` gate offers in writing.
+          A retraction is not free: it is recorded in the lap's `notes` and in the run log,
+          where an operator reading afterwards sees which promise was dropped and why.
         """
-        if not result.tests_added:
+        if not result.tests_added and not result.retracted_files:
             return promise
         merged = dict(promise or {})
-        already = list(merged.get("tests_added") or [])
-        merged["tests_added"] = already + [t for t in result.tests_added if t not in already]
+        if result.tests_added:
+            already = list(merged.get("tests_added") or [])
+            merged["tests_added"] = already + [
+                t for t in result.tests_added if t not in already
+            ]
+        if result.retracted_files:
+            dropped = {f.strip().lstrip("./") for f in result.retracted_files if f.strip()}
+            conditions = dict(merged.get("exit_conditions") or {})
+            conditions["files"] = [
+                f
+                for f in (conditions.get("files") or [])
+                if f.strip().lstrip("./") not in dropped
+            ]
+            merged["exit_conditions"] = conditions
         return merged
 
     # --- the implementation gate --------------------------------------------
