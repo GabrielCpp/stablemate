@@ -1493,9 +1493,18 @@ class Qa(Workflow):
         )
 
     def report_dev_pass(self, loop: QaLoop) -> Done:
-        """`target_env=dev`: summarise what passed to the tracker, then finish green."""
+        """`target_env=dev`: summarise what passed to the tracker, then finish green.
+
+        The one turn in this lane whose verdict is deliberately not routed. It is reached
+        only after the story has already passed every binding gate, and all it does is write
+        that outcome up for the tracker — so a turn that cannot write the summary has not
+        found anything wrong with the story, and parking a *passed* story on an operator to
+        ask about a report would hold the whole single-threaded queue behind a note. It is
+        logged instead, at warning, so the missing report is visible to whoever goes looking
+        for it rather than silently absent.
+        """
         turn = roles.turn("report-qa-dev-pass", self.repo_dir, self.library_dirs)
-        self.agent(
+        report = self.agent(
             turn.prompt,
             returns=QaReport,
             # medium: the same summarising job as `report_qa_dev`, on a green story.
@@ -1509,6 +1518,12 @@ class Qa(Workflow):
                 "qa_notes": loop.block_notes,
             },
         )
+        if report.blocked:
+            self.logger.warning(
+                "the dev-pass report could not be written (%s) — the story passed its gates "
+                "and finishes green regardless",
+                report.notes or "no reason given",
+            )
         return self._ends(
             QaFlowResult(
                 status="passed",
