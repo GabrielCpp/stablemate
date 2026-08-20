@@ -1,8 +1,8 @@
 name = "policy-desk"
 repo_dir = "policy-desk"
-sha256 = "f123a0eccd4ec3099462dd77a7aaed24da8ce7dc921c9f62762c892d01baa0df"
-bytes = 105730
-head = "ba5f0c8a6d93671fd7707f69d986929cb90b1f65"
-dirty = false
+sha256 = "b151bedefcd1461d92b52ccbc1e303164d861581cd1f64b49327bb7be69c2484"
+bytes = 116756
+head = "20f93a1ed5fee8956a424066e306ffd86518e35d"
+dirty = true
 url = ""
 note = ""
