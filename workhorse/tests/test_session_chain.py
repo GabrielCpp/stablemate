@@ -30,8 +30,9 @@ from workhorse.artifacts import ArtifactWriter  # noqa: E402
 from workhorse.config_run import AgentResilience, RunConfig  # noqa: E402
 from workhorse.context import WorkflowContext  # noqa: E402
 from workhorse.pyflow import Continue, Done, Workflow  # noqa: E402
-from workhorse.pyflow.driver import drive  # noqa: E402
+from workhorse.pyflow.driver import drive, read_resume  # noqa: E402
 from workhorse.pyflow.engine import RunEnv  # noqa: E402
+from workhorse.records import parse_checkpoint  # noqa: E402
 from workhorse.runner import ladder  # noqa: E402
 from workhorse.runner.failure import (  # noqa: E402
     BackendInvocationError,
@@ -53,8 +54,8 @@ class ScriptedRunner:
         self.run = run
 
 
-def _env(tmp: str, **kwargs: Any) -> RunEnv:
-    writer = ArtifactWriter("acme", Path(tmp) / "runs", run_id="t")
+def _env(tmp: str, run_id: str = "t", **kwargs: Any) -> RunEnv:
+    writer = ArtifactWriter("acme", Path(tmp) / "runs", run_id=run_id)
     return RunEnv(
         writer=writer,
         workflow_dir=Path(tmp),
@@ -238,6 +239,77 @@ def test_the_id_a_chain_is_on_is_readable_so_a_state_can_checkpoint_it():
         drive(Asks(), env)
 
         assert held == ["", "11111111-2222-4333-8444-555555555555", ""], held
+
+
+def test_a_repair_lap_resumes_its_own_session_after_the_run_dies_and_restarts():
+    """The case the chain file cannot serve, end to end.
+
+    A chain lives in the run directory, so it survives a resume that lands back in the
+    same one — and nothing else. A run whose artifacts moved, or a lane resumed into a
+    scope of its own, finds no `.sessions/<key>` and opens a cold conversation while the
+    flow believes it is on lap two of one it started.
+
+    What survives unconditionally is a state's parameters, because they *are* the
+    checkpoint. So lap one reads back the id the CLI minted (`self.session_id`) and hands
+    it to lap two as a parameter; lap two passes it where a key would go. Here the run is
+    killed between the laps and resumed into a fresh run directory — the chain file is
+    provably absent — and lap two still resumes lap one's conversation.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        minted = "7a6b5c4d-3e2f-4a1b-8c7d-6e5f4a3b2c1d"
+        handed: list[str] = []
+
+        def fake_run(node: Any, ctx: Any, wdir: Any, sid: Any, **kwargs: Any) -> Any:
+            # The backend mints the id and writes it back, which is the only way a
+            # workflow ever learns one — no caller chooses it.
+            sid.parent.mkdir(parents=True, exist_ok=True)
+            if not sid.exists():
+                sid.write_text(minted, encoding="utf-8")
+            handed.append(sid.read_text(encoding="utf-8").strip())
+            return "rendered", {"kind": "ok"}
+
+        key = "qa-fix:STORY-1"
+
+        class Repairs(Workflow):
+            def start(self) -> Transition:
+                self.agent("prompts/apply-qa-fixes.md", returns=Payload, session=key)
+                # Read out of the chain file while it is still reachable, and carry it in
+                # the transition — the one place a resume is guaranteed to find it.
+                return Continue(None, self.lap_two, held=self.session_id(key))
+
+            def lap_two(self, held: str = "") -> Transition:
+                self.agent("prompts/apply-qa-fixes.md", returns=Payload, session=held)
+                return Done(held)
+
+        first = _env(tmp, agent_runner=ScriptedRunner(fake_run))
+        killed: list[str] = []
+
+        class Dies(Repairs):
+            def lap_two(self, held: str = "") -> Transition:
+                killed.append(held)
+                raise RuntimeError("the machine went away between the laps")
+
+        try:
+            drive(Dies(), first)
+        except RuntimeError:
+            pass
+        assert killed == [minted], killed
+        assert handed == [minted], handed
+
+        resume = read_resume(
+            parse_checkpoint((first.run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+        )
+        assert resume.state == "lap_two" and resume.params == {"held": minted}, resume
+
+        second = _env(tmp, run_id="t2", agent_runner=ScriptedRunner(fake_run))
+        # The counterfactual, asserted rather than asserted-about: had lap two kept
+        # naming the chain, this is what it would have found.
+        assert sessions.read_chain(second.run_dir, key) == ""
+
+        assert drive(Repairs(), second, resume) == minted
+        assert handed == [minted, minted], handed
+        (enter,) = _enters(second, "apply-qa-fixes")
+        assert enter["resumed_session"] == minted, enter
 
 
 def test_a_chain_key_is_never_mistaken_for_an_id():
