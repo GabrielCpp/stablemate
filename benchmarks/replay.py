@@ -440,6 +440,44 @@ def checkout(fixture: Fixture, story: str, flow: str, dest: Path) -> Path:
     return dest
 
 
+#: `rc` for a trial whose agents committed into this checkout instead of their sandbox.
+#: Distinct from any exit code workhorse produces, so the ledger says which failure it was.
+LEAK_RC = 90
+
+
+def head_of(repo: Path) -> str:
+    """`repo`'s HEAD, or `""` when git cannot answer.
+
+    Tolerant where `git()` is fatal: this is only ever compared against itself, and a
+    reading that failed must not take a measurement run down with it.
+    """
+    proc = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=False
+    )
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def leaked_commits(before: str) -> list[str]:
+    """Commits this checkout gained while a trial ran — always a bug, never a result.
+
+    A trial agent is given a sandbox clone and every path it is asked to touch is inside
+    it. It has nonetheless twice reached for the *enclosing* stablemate worktree instead —
+    absolute paths in its prompt point here, `benchmarks/.replay/` is ignored here, and the
+    agent read that ignore as an obstacle to force past rather than as the sign it was in
+    the wrong repository. The result is a commit on the branch the harness is being
+    developed on, which is invisible until someone reads `git log`, and public as soon as
+    anyone pushes.
+
+    So it is checked rather than hoped for: HEAD is read either side of every trial and a
+    difference fails that trial loudly. Prevention is `cwd=repo` on the trial process
+    (below); this is what says the prevention still holds.
+    """
+    after = head_of(STABLEMATE)
+    if not before or not after or before == after:
+        return []
+    return git("log", "--oneline", f"{before}..{after}", cwd=STABLEMATE).splitlines()
+
+
 def trial_id(label: str, flow: str, story: str, n: int, variant: str = "") -> str:
     return f"replay-{label}-{flow}-{story}{f'-{variant}' if variant else ''}-{n}"
 
@@ -476,7 +514,10 @@ def run_trial(
         # node boundary with its telemetry intact and still reports a partial lap count.
         env["WORKHORSE_MAX_RUNTIME_S"] = str(budget_s)
     cmd = [
-        "uv", "run", "workhorse-coder", "run", flow,
+        # `--project` rather than an inherited cwd: the trial process runs *in the sandbox*
+        # (see `cwd=repo` below), so uv is told where the workspace is instead of finding it
+        # underfoot.
+        "uv", "run", "--project", str(STABLEMATE), "workhorse-coder", "run", flow,
         "--runs-dir", str(artifacts), "--run-id", run_id,
         # Passed explicitly rather than left to $AGENT_CLI, and for the same reason
         # `bench.py` pins its judge: the backend is the largest single term in both the
@@ -487,9 +528,15 @@ def run_trial(
     ]
     say(f"{run_id}")
     log.parent.mkdir(parents=True, exist_ok=True)
+    outer_head = head_of(STABLEMATE)
     with log.open("w", encoding="utf-8") as fh:
         proc = subprocess.Popen(
-            cmd, cwd=STABLEMATE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            # The sandbox, not this checkout. A node that names no `cwd` gets the runner
+            # process's, and every agent turn under it then holds a git context pointing at
+            # the repo the harness itself lives in — which is how two trials came to commit
+            # their QA audit onto the development branch. The tree the trial is about is the
+            # only one it should be standing in.
+            cmd, cwd=repo, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, bufsize=1, env=env,
         )
         assert proc.stdout is not None  # noqa: S101 - stdout=PIPE guarantees it
@@ -498,6 +545,18 @@ def run_trial(
             sys.stdout.flush()
             fh.write(line)
         rc = proc.wait()
+    leaked = leaked_commits(outer_head)
+    if leaked:
+        print(
+            f"{RED}  {run_id} committed into {STABLEMATE} instead of its sandbox:{RESET}\n"
+            + "\n".join(f"    {line}" for line in leaked)
+            + f"\n{RED}  the trial is void — drop those commits "
+              f"(`git reset --hard {outer_head}` if nothing else has landed since, a "
+              f"`git revert` once they are pushed) before believing any label they are "
+              f"part of.{RESET}",
+            file=sys.stderr,
+        )
+        rc = rc or LEAK_RC
     if rc != 0:
         # Not fatal. A flow that exhausted its budgets and blocked is a *result* — it is
         # the loop failing to converge, which is the thing being measured — and its spans
