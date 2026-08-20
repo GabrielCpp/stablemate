@@ -77,10 +77,21 @@ first**; if an item is already fully done, tick it with the existing commit hash
   absent first. Note the loop's premise — an ordinary `--resume-run` reuses the run dir, so
   the chain file *does* survive that; what it cannot survive is artifacts moving or a lane
   resumed into a scope of its own, which is what the test models.
-- [ ] B5 — split the commit node (`coder/workflow.py:726` + `queue.py:919`): agent commits
+- [x] B5 — split the commit node (`coder/workflow.py:726` + `queue.py:919`): agent commits
   per-repo with Conventional subject + `Epic:`/`Story:` trailers (prompt-side); story-passed
   stamp becomes a stamp-only node at the same graph position; cleanliness check subtracts
   `snapshot_worktree_state` pre-existing dirt; first dirty→re-enter chained, second→escalate.
+  (pre-existing: 87ee1af, plus c5a54f2) — the split landed whole in `87ee1af`:
+  `commit_story` is off the epic success path (only story-mode's PR and the fix drain still
+  call it), `check_repos_clean` + `stamp_story_passed` sit at that graph position,
+  `preexisting` is subtracted, and `settle` is the chained first-dirty lap with `_dirty_gate`
+  behind it. What was missing was a test for the *second* reading arriving by the other
+  route: the blocked-settle test drives the gate from a lap that announces its own failure,
+  and nothing drove a lap that reports `settled` while changing nothing — the optimistic
+  self-report the design says not to believe. `c5a54f2` adds it. The prompt-side half of this
+  line (telling the producer turns to commit) is deliberately B6's: `87ee1af` wrote
+  `settle-worktree.md` and touched no other prompt, and `implement-plan.md` still carries no
+  commit instruction.
 - [ ] B6 — the 16 prompts with no blocked outcome each gain it in their own return contract
   (no shared preamble); producer prompts gain the commit instruction from B5.
   Done when: `grep -L blocked workflows/src/workhorse_workflows/coder/prompts/*.md` is empty.
