@@ -271,11 +271,22 @@ class QaPlanResult(CoderResult):
     run passed is exactly as capable of breaking it, and the failing set the flow already has
     cannot name it. It is a claim, not evidence: the gate still reads the scratch run log for
     each id, so naming a scenario it did not dry-run fails the gate rather than passing it.
+
+    `proved_scenarios` is the same mechanism pointed at the *first draft*. The draft has no
+    failing set to be dispatched against, so until now it was the one plan turn that reached
+    the runner on nobody's word but its own — and the cheapest defects in this lane are the
+    ones a first draft makes: a locator that resolves to nothing, a fixture that is not
+    seeded, a straight apostrophe where the surface renders U+2019. Each of those cost a full
+    suite run and a repair lap to discover. The author now names the one or two scenarios it
+    judged riskiest and dry-runs them before it answers, and the same gate reads the same
+    scratch evidence for the ids it named. Empty is not an error — a plan of one trivial
+    unit scenario has nothing worth proving — but a named id with no green log behind it is.
     """
 
     status: str = ""
     notes: str = ""
     repaired_scenarios: list[str] = []
+    proved_scenarios: list[str] = []
 
 
 class QaFinding(Finding):
