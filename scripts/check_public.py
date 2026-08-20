@@ -64,10 +64,10 @@ BASE = REPO / "base-library"
 # Per-stack mechanics (`stacks/`) and house rules remain overlay content.
 BASE_SKILL_FAMILIES = {"stablemate", "testing", "architecture", "ui"}
 RESOLVER = REPO / "scripts" / "private_names.py"
-#: Where `pre-commit install` writes, and the marker it leaves in what it writes. The
+#: What `pre-commit install` writes, and the marker it leaves in what it writes. The
 #: scripts themselves still live in `.githooks/` and are still runnable by hand; what
 #: moved is only which of them git runs, and on whose say-so.
-INSTALLED_HOOK = ".git/hooks/pre-commit"
+HOOK_NAME = "hooks/pre-commit"
 PRE_COMMIT_MARKER = "pre-commit"
 
 # Git's own heuristic: a NUL byte in the first 8 kB means binary. This replaced a
@@ -262,6 +262,29 @@ def check_no_private_names_in_history() -> list[str]:
     return offenders
 
 
+def _installed_hook() -> Path:
+    """The pre-commit hook git would run here, asked of git rather than assembled.
+
+    ``git rev-parse --git-path`` answers for the repository it is standing in, which is
+    the only way to get this right in the two layouts that are not a plain clone: a
+    linked worktree (``.git`` is a file, and hooks live in the common directory it points
+    at) and a ``core.hooksPath`` that redirects them somewhere else entirely. The literal
+    fallback is for a tree git will not answer for at all, where "absent" is the honest
+    reading anyway.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "rev-parse", "--git-path", HOOK_NAME],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return REPO / ".git" / HOOK_NAME
+    path = Path(out)
+    return path if path.is_absolute() else REPO / path
+
+
 def check_hooks_installed() -> list[str]:
     """The guard has to be plugged in, and git does not plug it in for you.
 
@@ -276,21 +299,27 @@ def check_hooks_installed() -> list[str]:
     The probe is the installed file rather than ``core.hooksPath``, because that config
     is now the state that means hooks are *broken*: ``pre-commit install`` refuses while
     it is set, so a clone carrying it has the old wiring and none of the new one.
+
+    *Which* file that is, git decides — see :func:`_installed_hook`. Reading it off
+    ``<repo>/.git/hooks/`` fails a linked worktree, where ``.git`` is a file and the hook
+    git actually runs lives in the common directory. That is not a hypothetical: this
+    check reported every guard missing from a worktree whose commits it had just been
+    seen blocking.
     """
     private_names = _private_names_module()
     if not private_names.load():
         # A public contributor has no list to enforce, so a hook that would be a no-op
         # anyway is nothing to fail over.
         return []
-    installed = REPO / INSTALLED_HOOK
+    installed = _installed_hook()
     text = installed.read_text(encoding="utf-8", errors="replace") if installed.is_file() else ""
     if PRE_COMMIT_MARKER not in text:
         return [
-            f"{INSTALLED_HOOK} is {'not pre-commit\'s' if text else 'absent'} — the "
+            f"{installed} is {'not pre-commit\'s' if text else 'absent'} — the "
             "private-name, commit-message and generated-file guards are not running on "
             "this clone. Fix: make hooks"
         ]
-    print(f"ok: git hooks resolve through {INSTALLED_HOOK}")
+    print(f"ok: git hooks resolve through {installed}")
     return []
 
 
