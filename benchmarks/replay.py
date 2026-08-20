@@ -207,9 +207,60 @@ def cmd_capture(fixture: Fixture) -> None:
         print(f"{DIM}  note: {fixture.source} has uncommitted changes; "
               f"they are NOT in the bundle{RESET}")
     fixture.bundle.parent.mkdir(parents=True, exist_ok=True)
-    git("bundle", "create", str(fixture.bundle), "--all", cwd=fixture.source)
+    draft = fixture.bundle.with_suffix(".bundle.new")
+    git("bundle", "create", str(draft), "--all", cwd=fixture.source)
+    missing = unbundled_commits(fixture, draft)
+    if missing:
+        draft.unlink(missing_ok=True)
+        die(f"{fixture.source} no longer reaches "
+            f"{', '.join(f'{commit} ({story}.{flow})' for story, flow, commit in missing)}"
+            f" from any ref — `git bundle --all` packs refs, so the capture would ship a "
+            f"bundle those stories cannot be replayed from. The existing bundle at "
+            f"{fixture.bundle} is untouched. Restore the commit to a ref in the source "
+            f"(`git update-ref refs/heads/fixture/<story> <sha>`) or re-pin the fixture.")
+    draft.replace(fixture.bundle)
     size = fixture.bundle.stat().st_size / 1024
     say(f"captured {fixture.name} → {fixture.bundle} ({size:.0f} KiB)")
+
+
+def unbundled_commits(fixture: Fixture, bundle: Path) -> list[tuple[str, str, str]]:
+    """Every `(story, flow, commit)` the fixture pins that *bundle* cannot check out.
+
+    A story's commit stops being reachable the moment the source repo's branches move off
+    it — an abandoned lane, a reset, a rebase — and it then survives only in the reflog,
+    where `--all` cannot see it. Nothing about the capture fails: it writes a smaller
+    bundle over the working one, and the loss surfaces later as a replay dying on
+    `pathspec ... did not match`, with the artifact that had the commit already gone.
+    """
+    listed = {
+        line.split()[0]
+        for line in git("bundle", "list-heads", str(bundle), cwd=fixture.source).splitlines()
+        if line.strip()
+    }
+    missing: list[tuple[str, str, str]] = []
+    for entry in fixture.stories:
+        for flow in ("qa", "docs"):
+            commit = str(entry.get(flow) or "")
+            if not commit:
+                continue
+            reachable = any(_is_ancestor(fixture.source, commit, head) for head in listed)
+            if not reachable:
+                missing.append((str(entry["story"]), flow, commit))
+    return missing
+
+
+def _is_ancestor(source: Path, commit: str, head: str) -> bool:
+    """Whether *commit* is *head* or one of its ancestors.
+
+    Not `git()`, because a pin that has been garbage-collected outright is exactly the
+    case this is asking about, and `merge-base` exits non-zero rather than answering —
+    which is the answer.
+    """
+    proc = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", commit, head],
+        cwd=source, capture_output=True, text=True, check=False,
+    )
+    return proc.returncode == 0
 
 
 # ── run ───────────────────────────────────────────────────────────────────────────────
