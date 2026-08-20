@@ -26,24 +26,51 @@ the authority.
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
+from types import ModuleType
 
 import pytest
+from paddock.registry import REGISTRY
 import yaml
 
 BENCHMARKS = Path(__file__).parents[1]
 APP = BENCHMARKS / "apps" / "policy-desk"
 
-_spec = importlib.util.spec_from_file_location("replay", BENCHMARKS / "replay.py")
-assert _spec is not None and _spec.loader is not None  # noqa: S101 - a real file on disk
-replay = importlib.util.module_from_spec(_spec)
-sys.modules["replay"] = replay
-_spec.loader.exec_module(replay)
+@contextlib.contextmanager
+def _tasks_dir_on_path() -> Iterator[None]:
+    """Stand in for the interpreter, exactly as `paddock.loader` does when it loads a task."""
+    saved = sys.path[:]
+    sys.path.insert(0, str(BENCHMARKS / "tasks"))
+    try:
+        yield
+    finally:
+        sys.path[:] = saved
+
+
+def _load(name: str, path: Path) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None  # noqa: S101 - a real file on disk
+    module = importlib.util.module_from_spec(spec)
+    # The registry is module-global and a task module declares into it at import: reset it
+    # around the load, exactly as `paddock.loader` does, or the second task loaded in this
+    # process refuses on a name the first one claimed.
+    REGISTRY.reset()
+    with _tasks_dir_on_path():
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    REGISTRY.reset()
+    return module
+
+
+frozen = _load("_frozenapp", BENCHMARKS / "tasks" / "_frozenapp.py")
+TASK = _load("_task_under_test", BENCHMARKS / "tasks" / "policy_desk_qa.py")
 
 #: Replay order, which is also dependency order: nothing can be listed or amended until a
 #: policy can be put on file. The pre/post chain below is asserted in this order.
@@ -95,12 +122,17 @@ def test_the_fixture_ships_the_stories_it_claims() -> None:
     assert set(STORIES) <= slugs
 
 
-def test_the_fixture_file_points_at_this_app_in_this_order() -> None:
-    fixture = replay.load_fixture("policy-desk")
-    assert fixture.app == APP
+def test_the_task_points_at_the_app_and_names_the_trial_dir() -> None:
+    """The declaration is now the task module's `FIXTURE`, not a `fixtures/*.yml` entry.
+
+    Story order is no longer part of it: a round enumerates its stories from the answer key
+    rather than from a hand-written list, so the fixture has no order to get wrong. What it
+    still has to get right is the two paths.
+    """
+    assert BENCHMARKS / TASK.FIXTURE.app == APP
     # farrier derives generated skill names from the basename; anything else dangles.
-    assert fixture.repo_dirname == "policy-desk"
-    assert fixture.slugs("qa") == list(STORIES)
+    assert TASK.FIXTURE.repo_dir == "policy-desk"
+    assert {row["story"] for row in defects()} <= set(STORIES)
 
 
 # ── the manifests ─────────────────────────────────────────────────────────────────────
@@ -177,7 +209,7 @@ def test_each_story_starts_where_the_previous_one_ended() -> None:
 
 @pytest.mark.parametrize("story", STORIES)
 def test_materialize_leaves_exactly_this_story_uncommitted(story: str, tmp_path: Path) -> None:
-    dest = replay.materialize(APP, story, tmp_path / "policy-desk")
+    dest = frozen.materialize(APP, story, tmp_path / "policy-desk")
     diff = manifest(story)
 
     porcelain = subprocess.run(
@@ -196,17 +228,17 @@ def test_materialize_leaves_exactly_this_story_uncommitted(story: str, tmp_path:
 @pytest.mark.parametrize("story", STORIES)
 def test_materialize_puts_this_story_content_in_the_worktree(story: str, tmp_path: Path) -> None:
     """The worktree holds the story's *post* image — the app tree only for the last story."""
-    dest = replay.materialize(APP, story, tmp_path / "policy-desk")
+    dest = frozen.materialize(APP, story, tmp_path / "policy-desk")
     for rel in [*manifest(story)["changed"], *manifest(story)["added"]]:
-        expected = replay.story_image(APP, story, rel, phase="post").read_bytes()
+        expected = frozen.story_image(APP, story, rel, phase="post").read_bytes()
         assert (dest / rel).read_bytes() == expected
 
 
 def test_materialize_does_not_ship_the_answer_key(tmp_path: Path) -> None:
     """An agent that can read `defects.yml` is not being measured on detection, and nothing
     in its output would say so."""
-    dest = replay.materialize(APP, "policy-list", tmp_path / "policy-desk")
-    for name in replay.NOT_THE_APP:
+    dest = frozen.materialize(APP, "policy-list", tmp_path / "policy-desk")
+    for name in frozen.NOT_THE_APP:
         assert not (dest / name).exists(), f"{name} was copied into the trial tree"
 
 
@@ -214,7 +246,7 @@ def test_materialize_does_not_ship_the_answer_key(tmp_path: Path) -> None:
 def test_materialize_keeps_every_authored_story(story: str, tmp_path: Path) -> None:
     """`stories` is excluded at the app root only — it is also what an epic calls its story
     folders, and excluding it at any depth deletes every `story.md`."""
-    dest = replay.materialize(APP, "policy-list", tmp_path / "policy-desk")
+    dest = frozen.materialize(APP, "policy-list", tmp_path / "policy-desk")
     epic = dest / "docs" / "epics" / "0001-policy-management"
     assert (epic / "epic.md").is_file()
     assert (epic / "stories" / story / "story.md").is_file()
@@ -223,7 +255,7 @@ def test_materialize_keeps_every_authored_story(story: str, tmp_path: Path) -> N
 def test_materialized_book_is_unchanged(tmp_path: Path) -> None:
     """The book sits at its authored state on both sides of HEAD, so QA cannot read the
     obligations as part of the work under review."""
-    dest = replay.materialize(APP, "edit-policy", tmp_path / "policy-desk")
+    dest = frozen.materialize(APP, "edit-policy", tmp_path / "policy-desk")
     changed_docs = subprocess.run(
         ["git", "status", "--porcelain", "--untracked-files=all", "--", "docs"],
         cwd=dest, capture_output=True, text=True, check=True,
@@ -266,7 +298,7 @@ def test_every_defect_actually_changes_the_story_image(row: dict[str, str]) -> N
     useless: nothing errors, the trial runs, the defect is simply not there, and the row
     scores as a catch QA never earned.
     """
-    correct = replay.story_image(APP, row["story"], row["path"], phase="post").read_bytes()
+    correct = frozen.story_image(APP, row["story"], row["path"], phase="post").read_bytes()
     assert (APP / "defects" / row["id"] / row["path"]).read_bytes() != correct
 
 
@@ -288,9 +320,9 @@ def test_seeding_a_defect_stays_inside_the_story_diff(row: dict[str, str], tmp_p
             if path.is_file() and ".git" not in path.relative_to(root).parts
         }
 
-    dest = replay.materialize(APP, row["story"], tmp_path / "policy-desk")
+    dest = frozen.materialize(APP, row["story"], tmp_path / "policy-desk")
     before = tree(dest)
-    replay.seed_defect(APP, row)(dest)
+    frozen.seed_defect(APP, row, dest)
     after = tree(dest)
 
     assert set(after) == set(before)
@@ -313,7 +345,7 @@ def owed_obligations(tmp_path_factory: pytest.TempPathFactory) -> dict[str, set[
     root = tmp_path_factory.mktemp("owed")
     packets: dict[str, set[str]] = {}
     for story in STORIES:
-        dest = replay.materialize(APP, story, root / story / "policy-desk")
+        dest = frozen.materialize(APP, story, root / story / "policy-desk")
         context = build_context(dest, base="HEAD", head="WORKTREE")
         packets[story] = {
             obligation["id"]

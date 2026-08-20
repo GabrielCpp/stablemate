@@ -19,23 +19,55 @@ money to check.
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
+from types import ModuleType
 
 import pytest
+from paddock.registry import REGISTRY
 import yaml
 
 BENCHMARKS = Path(__file__).parents[1]
 APP = BENCHMARKS / "apps" / "seat-booking"
 
-_spec = importlib.util.spec_from_file_location("replay", BENCHMARKS / "replay.py")
-assert _spec is not None and _spec.loader is not None  # noqa: S101 - a real file on disk
-replay = importlib.util.module_from_spec(_spec)
-sys.modules["replay"] = replay
-_spec.loader.exec_module(replay)
+@contextlib.contextmanager
+def _tasks_dir_on_path() -> Iterator[None]:
+    """Stand in for the interpreter, exactly as `paddock.loader` does when it loads a task."""
+    saved = sys.path[:]
+    sys.path.insert(0, str(BENCHMARKS / "tasks"))
+    try:
+        yield
+    finally:
+        sys.path[:] = saved
+
+
+def _load(name: str, path: Path) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None  # noqa: S101 - a real file on disk
+    module = importlib.util.module_from_spec(spec)
+    # The registry is module-global and a task module declares into it at import: reset it
+    # around the load, exactly as `paddock.loader` does, or the second task loaded in this
+    # process refuses on a name the first one claimed.
+    REGISTRY.reset()
+    with _tasks_dir_on_path():
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    REGISTRY.reset()
+    return module
+
+
+# `_stablemate` first: the modules below import it by name, and a second instance loaded
+# afterwards would shadow it — leaving this file's `sm.TrialError` a different class from
+# the one the code under test raises, and every `pytest.raises` on it a false negative.
+sm = _load("_stablemate", BENCHMARKS / "tasks" / "_stablemate.py")
+fx = _load("_forensics", BENCHMARKS / "tasks" / "_forensics.py")
+frozen = _load("_frozenapp", BENCHMARKS / "tasks" / "_frozenapp.py")
+TASK = _load("_task_under_test", BENCHMARKS / "tasks" / "seat_booking_qa.py")
 
 STORIES = ("seat-map", "seat-hold", "confirm-booking")
 
@@ -137,7 +169,7 @@ def test_each_story_starts_where_the_previous_one_ended() -> None:
     """
     for earlier, later in zip(STORIES, STORIES[1:], strict=False):
         for rel in manifest(later)["changed"]:
-            after = replay.story_image(APP, earlier, rel, phase="post")
+            after = frozen.story_image(APP, earlier, rel, phase="post")
             before = APP / "stories" / later / "pre" / rel
             assert before.read_bytes() == after.read_bytes(), (
                 f"{later}/pre/{rel} is not {earlier}'s post-image"
@@ -149,7 +181,7 @@ def test_each_story_starts_where_the_previous_one_ended() -> None:
 
 @pytest.mark.parametrize("story", STORIES)
 def test_materialize_leaves_exactly_this_story_uncommitted(story: str, tmp_path: Path) -> None:
-    dest = replay.materialize(APP, story, tmp_path / "seat-booking")
+    dest = frozen.materialize(APP, story, tmp_path / "seat-booking")
     diff = manifest(story)
 
     porcelain = subprocess.run(
@@ -168,10 +200,10 @@ def test_materialize_leaves_exactly_this_story_uncommitted(story: str, tmp_path:
 @pytest.mark.parametrize("story", STORIES)
 def test_materialize_puts_this_story_content_in_the_worktree(story: str, tmp_path: Path) -> None:
     """The worktree holds the story's *post* image — the app tree only for the last story."""
-    dest = replay.materialize(APP, story, tmp_path / "seat-booking")
+    dest = frozen.materialize(APP, story, tmp_path / "seat-booking")
     diff = manifest(story)
     for rel in [*diff["changed"], *diff["added"]]:
-        expected = replay.story_image(APP, story, rel, phase="post").read_bytes()
+        expected = frozen.story_image(APP, story, rel, phase="post").read_bytes()
         assert (dest / rel).read_bytes() == expected
 
 
@@ -181,8 +213,8 @@ def test_materialize_does_not_ship_the_answer_key(tmp_path: Path) -> None:
     An agent that can read `defects.yml` is not being measured on detection, and nothing in
     its output would say so.
     """
-    dest = replay.materialize(APP, "seat-hold", tmp_path / "seat-booking")
-    for name in replay.NOT_THE_APP:
+    dest = frozen.materialize(APP, "seat-hold", tmp_path / "seat-booking")
+    for name in frozen.NOT_THE_APP:
         assert not (dest / name).exists(), f"{name} was copied into the trial tree"
 
 
@@ -195,7 +227,7 @@ def test_materialize_keeps_every_authored_story(story: str, tmp_path: Path) -> N
     `story.md`, and the run refuses to plan against an unauthored story — a failure that
     looks like a workflow bug and is a fixture bug.
     """
-    dest = replay.materialize(APP, "seat-hold", tmp_path / "seat-booking")
+    dest = frozen.materialize(APP, "seat-hold", tmp_path / "seat-booking")
     epic = dest / "docs" / "epics" / "0001-seat-booking"
     assert (epic / "epic.md").is_file()
     assert (epic / "stories" / story / "story.md").is_file()
@@ -207,7 +239,7 @@ def test_materialized_book_is_unchanged(tmp_path: Path) -> None:
     A trial whose book is also uncommitted would let QA read the obligations as part of the
     work under review, which is the situation the OKF context is built to avoid.
     """
-    dest = replay.materialize(APP, "confirm-booking", tmp_path / "seat-booking")
+    dest = frozen.materialize(APP, "confirm-booking", tmp_path / "seat-booking")
     changed_docs = subprocess.run(
         ["git", "status", "--porcelain", "--untracked-files=all", "--", "docs"],
         cwd=dest, capture_output=True, text=True, check=True,
@@ -289,7 +321,7 @@ def test_every_defect_lands_in_its_story(row: dict[str, str]) -> None:
 @pytest.mark.parametrize("row", defects(), ids=defect_ids())
 def test_every_defect_actually_changes_the_story_image(row: dict[str, str]) -> None:
     """The variant must differ from what the story would otherwise ship — and only there."""
-    correct = replay.story_image(APP, row["story"], row["path"], phase="post").read_bytes()
+    correct = frozen.story_image(APP, row["story"], row["path"], phase="post").read_bytes()
     assert (APP / "defects" / row["id"] / row["path"]).read_bytes() != correct
 
 
@@ -325,9 +357,9 @@ def test_seeding_a_defect_stays_inside_the_story_diff(row: dict[str, str], tmp_p
             if path.is_file() and ".git" not in path.relative_to(root).parts
         }
 
-    dest = replay.materialize(APP, row["story"], tmp_path / "seat-booking")
+    dest = frozen.materialize(APP, row["story"], tmp_path / "seat-booking")
     before = tree(dest)
-    replay.seed_defect(APP, row)(dest)
+    frozen.seed_defect(APP, row, dest)
     after = tree(dest)
 
     assert set(after) == set(before)
@@ -338,15 +370,17 @@ def test_seeding_a_defect_stays_inside_the_story_diff(row: dict[str, str], tmp_p
 
 
 def test_selecting_defects_defaults_to_the_whole_key() -> None:
-    assert [row["id"] for row in replay.select_defects(APP, [])] == defect_ids()
-    assert [row["id"] for row in replay.select_defects(APP, ["D3", "D1"])] == ["D3", "D1"]
-    with pytest.raises(SystemExit):
-        replay.select_defects(APP, ["D99"])
+    assert [row["id"] for row in frozen.select_defects(APP, [])] == defect_ids()
+    assert [row["id"] for row in frozen.select_defects(APP, ["D3", "D1"])] == ["D3", "D1"]
+    # A bad `--param defects=` is a task error naming the key, not a bare process exit:
+    # the round is driven by paddock now, and an exit code says nothing to the score.
+    with pytest.raises(sm.TrialError, match="no such defect"):
+        frozen.select_defects(APP, ["D99"])
 
 
 def test_a_contradicted_obligation_is_a_catch() -> None:
     row = {"id": "D1", "obligation": "okf:a#b:contract", "expect": "contradicted"}
-    verdict, _ = replay.classify(row, {"okf:a#b:contract": "contradicted"}, {"verdict": "stands"})
+    verdict, _ = frozen.classify(row, {"okf:a#b:contract": "contradicted"}, {"verdict": "stands"})
     assert verdict == "caught"
 
 
@@ -354,13 +388,13 @@ def test_an_audit_refutation_naming_the_obligation_is_a_catch() -> None:
     """The second route exists because which one fires is the plan's choice, not QA's bar."""
     row = {"id": "D9", "obligation": "okf:a#b:contract", "expect": "contradicted"}
     audit = {"verdict": "refuted", "findings": [{"target": "okf:a#b:contract", "issue": "…"}]}
-    verdict, because = replay.classify(row, {"okf:a#b:contract": "covered"}, audit)
+    verdict, because = frozen.classify(row, {"okf:a#b:contract": "covered"}, audit)
     assert (verdict, because) == ("caught", "audit refutation")
 
 
 def test_a_covered_obligation_over_a_seeded_defect_is_a_miss() -> None:
     row = {"id": "D1", "obligation": "okf:a#b:contract", "expect": "contradicted"}
-    verdict, _ = replay.classify(row, {"okf:a#b:contract": "covered"}, {"verdict": "stands"})
+    verdict, _ = frozen.classify(row, {"okf:a#b:contract": "covered"}, {"verdict": "stands"})
     assert verdict == "missed"
 
 
@@ -371,21 +405,21 @@ def test_a_repaired_defect_is_a_catch_even_though_the_map_reads_covered() -> Non
     `covered`, so end-state-only scoring calls the best outcome a miss.
     """
     row = {"id": "D1", "obligation": "okf:a#b:contract", "expect": "contradicted"}
-    verdict, because = replay.classify(
+    verdict, because = frozen.classify(
         row, {"okf:a#b:contract": "covered"}, {"verdict": "stands"}, survived=False
     )
     assert (verdict, because) == ("caught", "defect repaired")
 
 
 def test_the_seeded_file_is_the_witness_that_the_defect_survived(tmp_path: Path) -> None:
-    row = replay.select_defects(APP, ["D1"])[0]
+    row = frozen.select_defects(APP, ["D1"])[0]
     target = tmp_path / row["path"]
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(APP / "defects" / row["id"] / row["path"], target)
-    assert replay.defect_survived(APP, row, tmp_path) is True
+    assert frozen.defect_survived(APP, row, tmp_path) is True
 
     target.write_text(target.read_text(encoding="utf-8") + "\n# repaired\n", encoding="utf-8")
-    assert replay.defect_survived(APP, row, tmp_path) is False
+    assert frozen.defect_survived(APP, row, tmp_path) is False
 
 
 @pytest.mark.parametrize(
@@ -401,27 +435,32 @@ def test_a_harness_failure_is_never_scored_as_detection(
 ) -> None:
     """`uncovered` is not a catch: nothing was asserted, so nothing was detected."""
     row = {"id": "D1", "obligation": "okf:a#b:contract", "expect": "contradicted"}
-    assert replay.classify(row, statuses, {}) == ("inconclusive", because)
+    assert frozen.classify(row, statuses, {}) == ("inconclusive", because)
 
 
 def test_an_unbilled_round_is_priced_from_tokens_and_marked_as_an_estimate() -> None:
     """opencode reports a literal `$0` over millions of tokens. Printing `$0.00` there
     says the round was free and kills the whole column on the mandated backend."""
-    assert replay.money([{"cost_usd": 0.94, "est_cost_usd": 0.71}]) == "$0.94"
-    assert replay.money([{"cost_usd": 0.0, "est_cost_usd": 0.71}]) == "~$0.71"
+    assert fx.money([{"cost_usd": 0.94, "est_cost_usd": 0.71}]) == "$0.94"
+    assert fx.money([{"cost_usd": 0.0, "est_cost_usd": 0.71}]) == "~$0.71"
     # Neither a bill nor a rate for the model: unpriced, and a zero would be a claim.
-    assert replay.money([{"cost_usd": 0.0, "est_cost_usd": None}]) == "$?"
+    assert fx.money([{"cost_usd": 0.0, "est_cost_usd": None}]) == "$?"
 
 
 def test_the_clean_control_scores_false_on_any_contradiction() -> None:
-    assert replay.classify(None, {"okf:a#b:contract": "covered"}, {"verdict": "stands"})[0] == "clean"
-    assert replay.classify(None, {"okf:a#b:contract": "contradicted"}, {})[0] == "false"
-    assert replay.classify(None, {"okf:a#b:contract": "covered"}, {"verdict": "refuted"})[0] == "false"
+    assert frozen.classify(None, {"okf:a#b:contract": "covered"}, {"verdict": "stands"})[0] == "clean"
+    assert frozen.classify(None, {"okf:a#b:contract": "contradicted"}, {})[0] == "false"
+    assert frozen.classify(None, {"okf:a#b:contract": "covered"}, {"verdict": "refuted"})[0] == "false"
 
 
-def test_fixture_points_at_the_app_and_names_the_trial_dir() -> None:
-    fixture = replay.load_fixture("seat-booking")
-    assert fixture.app == APP
+def test_the_task_points_at_the_app_and_names_the_trial_dir() -> None:
+    """The declaration is now the task module's `FIXTURE`, not a `fixtures/*.yml` entry.
+
+    Story order is no longer part of it: a round enumerates its stories from the answer key
+    rather than from a hand-written list, so the fixture has no order to get wrong. What it
+    still has to get right is the two paths.
+    """
+    assert BENCHMARKS / TASK.FIXTURE.app == APP
     # farrier derives generated skill names from the basename; anything else dangles.
-    assert fixture.repo_dirname == "seat-booking"
-    assert fixture.slugs("qa") == list(STORIES)
+    assert TASK.FIXTURE.repo_dir == "seat-booking"
+    assert {row["story"] for row in defects()} <= set(STORIES)
