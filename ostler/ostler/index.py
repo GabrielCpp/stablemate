@@ -422,6 +422,15 @@ class IndexStore:
             self.hits += 1
         return value
 
+    def read_key(self, key: str | None) -> Any | None:
+        """The stored value under *key* without counting it — for a caller that counts itself.
+
+        The whole-graph snapshot in :mod:`ostler.api` keeps its own hit/miss pair, because a
+        snapshot lookup is not a document lookup: one of them standing in for four thousand of
+        the other would make the ``index`` line in ``doctor --json`` unreadable.
+        """
+        return self._read(key)
+
     def _read(self, key: str | None) -> Any | None:
         if key is None:
             return None
