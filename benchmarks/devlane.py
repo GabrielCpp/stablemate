@@ -28,12 +28,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import subprocess
 import sys
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+
+from ostler import markdown
 
 #: Rough characters-per-token for English prose and markdown. Only ever used for the
 #: briefing column, where the question is "single-digit percent or not" and a tokenizer
@@ -212,11 +213,36 @@ def collect(repo: Path, run_id: str) -> list[Turn]:
     return turns
 
 
-#: How the fix envelope prints the two facts a lap is identified by. Read off the rendered
+#: How the fix envelope labels the two facts a lap is identified by. Read off the rendered
 #: prompt rather than off a span because the gate's verdict is nowhere in telemetry, and
 #: the prompt is the one artifact that is *by construction* what the turn was told.
-GATE_LINE = re.compile(r"^- \*\*Gate:\*\* `([^`]+)`", re.MULTILINE)
-LAP_LINE = re.compile(r"^- \*\*Repair attempt:\*\* (\d+)", re.MULTILINE)
+GATE_LABEL = "gate"
+LAP_LABEL = "repair attempt"
+
+#: Inline formatting around a bullet's value — `**Gate:** \`lint\`` leaves the closing
+#: emphasis on the value side of the colon, and it is decoration, not part of the answer.
+DECORATION = "*_` "
+
+
+def envelope(text: str) -> tuple[str, int]:
+    """The gate and the lap a rendered `dev-fix` prompt was written for.
+
+    Parsed rather than matched, because the envelope is followed by the gate's own output
+    inside a fence — and a lint failure quoting a line of markdown is not this prompt's
+    header, however much it looks like one on a line-oriented read.
+    """
+    gate, lap = "?", 0
+    seen_gate = seen_lap = False
+    for bullet in markdown.split(text).walk_bullets():
+        if bullet.label == GATE_LABEL and not seen_gate:
+            spans = markdown.all_code_spans(bullet.text)
+            gate = spans[0] if spans else bullet.value.strip(DECORATION)
+            seen_gate = True
+        elif bullet.label == LAP_LABEL and not seen_lap:
+            value = bullet.value.strip(DECORATION)
+            lap = int(value) if value.isdigit() else 0
+            seen_lap = True
+    return gate, lap
 
 
 @dataclass(frozen=True)
@@ -247,17 +273,8 @@ def laps(repo: Path, run_id: str) -> list[Lap]:
         prompt = path / "prompt.md"
         if not prompt.exists():
             continue
-        text = prompt.read_text(encoding="utf-8", errors="replace")
-        gate = GATE_LINE.search(text)
-        attempt = LAP_LINE.search(text)
-        found.append(
-            Lap(
-                seq=seq,
-                source=gate.group(1) if gate else "?",
-                lap=int(attempt.group(1)) if attempt else 0,
-                closed=True,
-            )
-        )
+        gate, lap = envelope(prompt.read_text(encoding="utf-8", errors="replace"))
+        found.append(Lap(seq=seq, source=gate, lap=lap, closed=True))
     last = {lap.source: lap.seq for lap in found}
     return [
         Lap(lap.seq, lap.source, lap.lap, closed=last[lap.source] == lap.seq)

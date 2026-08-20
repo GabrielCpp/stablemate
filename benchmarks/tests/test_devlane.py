@@ -84,3 +84,35 @@ def test_the_rate_is_reported_per_source_and_never_averaged(tmp_path: Path) -> N
 
     assert "| `lint` | 1 | 1 | 100% |" in table
     assert "| `test` | 2 | 1 | 50% |" in table
+
+
+def test_the_gates_own_output_cannot_impersonate_the_envelope(tmp_path: Path) -> None:
+    """A gate that quotes a markdown line is reporting a failure, not re-heading the prompt.
+
+    The envelope is parsed, so the lookalike inside the fenced output is what it is on the
+    page — text in a code block — and the header above it is still the answer.
+    """
+    turn = tmp_path / ".agents" / "runs" / "coder-r" / "turns" / "001-00001-dev-fix"
+    turn.mkdir(parents=True)
+    (turn / "prompt.md").write_text(
+        "# Coder Workflow — Fix Stage\n\n"
+        "- **Gate:** `lint`\n"
+        "- **Repair attempt:** 1\n\n"
+        "## What the gate reported\n\n"
+        "```\n"
+        "- **Gate:** `typecheck`\n"
+        "- **Repair attempt:** 9\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+    assert [(lap.source, lap.lap) for lap in devlane.laps(tmp_path, "r")] == [("lint", 1)]
+
+
+def test_an_envelope_without_its_facts_reads_as_unknown(tmp_path: Path) -> None:
+    """An older run's prompt is missing the bullets, and a missing fact is not a zero gate."""
+    turn = tmp_path / ".agents" / "runs" / "coder-r" / "turns" / "001-00001-dev-fix"
+    turn.mkdir(parents=True)
+    (turn / "prompt.md").write_text("# Coder Workflow — Fix Stage\n", encoding="utf-8")
+
+    assert [(lap.source, lap.lap) for lap in devlane.laps(tmp_path, "r")] == [("?", 0)]
