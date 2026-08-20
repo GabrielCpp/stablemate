@@ -414,10 +414,24 @@ tree/plan for evidence it already landed; tick `(pre-existing)` if so.
     operator-guided laps on `_story_chain()`, and `qa-feedback:`/`qa-regression-fix:` keep
     private chains deliberately, with the reason written on `_WORKLISTS`.
   Gate: `make lint` clean, `workflows` 1343 passed.
-- [ ] D8 — `plan_file` is ambiguous between repo-relative and spec-relative, and the
+- [x] D8 — `plan_file` is ambiguous between repo-relative and spec-relative, and the
   disagreement costs a high-power `refine-plan` lap (seen in run `c1`, 203 s). Either accept
   both readings in `coder/shared/dev.py::validate_plan` or say which one the field means
   where the planner reads it — with a test either way.
+  (e4e814a) — took the accept-both arm, and the surprise was that it could not be taken at
+  `validate_plan` as the item proposed: the errors run `c1` got came from *two* checkers,
+  this module's `(spec_abs / plan_file).exists()` and `ostler artifact vet`'s
+  `artifact/kinds.py:95`, which resolves the field identically. Repairing the value in
+  `plan_document` — where the projection is built, before it is written and before ostler
+  vets it — is the one place that clears both, and it also means every later reader (QA on a
+  later run, a human in the spec dir) sees a single spelling instead of whichever one the
+  planner happened to hold. The repair is narrow: only a path resolving to a file *inside*
+  the spec dir; anything else passes through verbatim so the error still quotes what was
+  written. Both sides are `.resolve()`d before comparison because `story.py` hands the spec
+  dir over already resolved while the repo root arrives as given — on a `/tmp` checkout the
+  two would otherwise share no prefix. Tests: a flow-level one asserting zero `refine-plan`
+  laps (red before the fix, and the flow really does run the lap without it) and a unit one
+  pinning the outside-the-spec-dir passthrough. `make lint` clean, `workflows` 1345 passed.
 - [ ] D7 — Plan B step 11: final re-measure; B claims only turn-count/schema rows unless
   the table says otherwise. Full `make test` green. Write a closing summary at the top of
   this ledger.
