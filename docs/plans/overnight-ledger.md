@@ -289,9 +289,21 @@ first**; if an item is already fully done, tick it with the existing commit hash
 Steps 1, 2 and 8 are recorded done in the plan itself. For each item below FIRST check the
 tree/plan for evidence it already landed; tick `(pre-existing)` if so.
 
-- [ ] D1 — Plan A step 3: `FailureReport` + `fix` role + one session per lane in `dev`;
+- [x] D1 — Plan A step 3: `FailureReport` + `fix` role + one session per lane in `dev`;
   power ladder + `max_session_turns`. Done when: dev happy path is plan → implement →
   gates; `BUDGET_LABELS` is the three-tuple.
+  (pre-existing: a38380e, with `5e37578`, `1aec51a` and `4c181b9` around it) — the whole of
+  step 3 is already on the branch. `coder/shared/failure.py` is the one seam
+  (`from_gate`/`from_command`/`from_findings` → `FailureReport`), `dev/flow.py::fix` is the
+  single repair role for every gate, it runs on `self._story_chain()` — the implementer's own
+  conversation — bounded by `max_session_turns = 8`, and its power ladder is
+  `"high" if stalled or fix_lap >= 2 else "low"`, i.e. low → low → high with the
+  same-digest-twice escalation brought forward. The happy path is
+  `dispatch → layer → implement → gates`, and `BUDGET_LABELS` is
+  `("plan_rework", "fix_lap", "plan_blocks")`. `make lint` green; 1343 workflow tests pass.
+  Note: the plan's own third clause for step 3 — "one-lint-failure path is three turns in the
+  bench telemetry" — is a measurement, not a code state, and the ledger item deliberately
+  omits it; D5 is where it gets measured.
 - [ ] D2 — Plan A step 4: `PlanResult` carries the structure; `plan-context.json` becomes a
   Python-written projection; `validate_plan_context` shape checks and `rework_paths` go;
   no prompt under `coder/` names `plan-context.json`.
