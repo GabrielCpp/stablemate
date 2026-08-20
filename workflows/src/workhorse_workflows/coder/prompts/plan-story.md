@@ -127,20 +127,18 @@ shape is under "Machine-Readable Result" at the end of this prompt, and it is:
 
 **How to identify services**: A service is a directory with a marker file. The repo's own
 `agents.yml` (`workspace.service_roots`/`service_markers` and the `template.*_path` hints)
-is authoritative for both the `path` and the `type` — read it first. The markers below are
-listed only for the layers this repo installs skills for; a layer that is absent from this
-list is absent from this repo, so do not go looking for one.
-{%- if backend_refs %}
-- {{ template.backend_layer_name | default("Go service") }}: `main.go` or `go.mod` at its root (`cmd/<name>/`, or a module root)
-{%- endif %}
-{%- if web_refs %}
-- {{ template.web_layer_name | default("Web app") }}: `package.json`
-{%- endif %}
-{%- if mobile_refs %}
-- {{ template.mobile_layer_name | default("Mobile app") }}: `pubspec.yaml`
-{%- endif %}
-{%- if infra_refs %}
-- {{ template.infra_layer_name | default("Infrastructure") }}: `Pulumi.yaml`/`index.ts`, or `main.tf`
+is authoritative for both the `path` and the `type` — read it first.
+{% if markers %}
+Each repo in this workspace declares what marks one of its service directories:
+
+{{ markers }}
+
+A directory holding one of its repo's markers is a service; a marker that is not on its
+repo's list is not one, however familiar it looks.
+{%- else %}
+No repo in this workspace declares `workspace.service_markers`, so there is no list to hand
+you: derive the services from `agents.yml`'s `service_roots` and `template.*_path` hints and
+from the layout you can see, and name in your summary what you used.
 {%- endif %}
 - Docs-only service: the documentation root the repo's book is written under
 
@@ -344,8 +342,8 @@ For each layer involved, list:
 # Local run (smoke) — how to bring this layer up locally and exercise the touched path
 [The exact commands to start this layer's local runtime and reach the story's path, copied from
  the layer instruction files and the project's local-stack / "operate the local stack" runbook
- (e.g. start the API server, start the web dev server, run the app on the emulator, or
- `pulumi preview`). State the observable success signal — endpoint returns a real status, the
+ (whatever bringing this layer up locally takes here — a server, a dev server, an emulator,
+ a plan-preview). State the observable success signal — endpoint returns a real status, the
  route renders the feature, the screen loads — so the implementer can confirm it actually runs,
  not just that unit tests pass. If this layer has no runnable surface (docs-only), write "None".]
 ```
@@ -414,7 +412,7 @@ After writing the plan artifacts, return this exact JSON object as the LAST thin
     {
       "repo": "web-app",
       "path": "packages/discover",
-      "type": "svelte",
+      "type": "web-app",
       "skills": ["web-app", "web-app-component"],
       "plan_file": "plan-web-app-discover.md"
     }
