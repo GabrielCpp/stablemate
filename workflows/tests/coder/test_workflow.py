@@ -418,6 +418,10 @@ class _Agent:
             slug = data["story_slug"]
             commit_all(root, _story_message(root.name, slug))
             return {"status": "settled", "notes": f"committed {slug}"}
+        if self.settle == "claimed":
+            # The optimistic self-report the workflow is written not to believe: the turn
+            # says it recorded the work and the tree still holds it.
+            return {"status": "settled", "notes": "recorded everything the story wrote"}
         return {"status": self.settle, "notes": "the tree holds an edit I did not write"}
 
 
@@ -1262,6 +1266,51 @@ def test_a_settle_lap_that_blocks_parks_the_story_for_an_operator(
     # it — which is exactly the path `is_gate_context` excuses, and why the re-read is
     # clean rather than parking the story a second time on the note it just wrote.
     assert _dirty(repo) == "M dirty-tree-operator-context.STORY-1.md", _dirty(repo)
+
+
+def test_a_settle_lap_that_claims_success_it_did_not_achieve_buys_a_reading_not_a_pass(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    git: Callable[..., subprocess.CompletedProcess],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The other way a second dirty reading happens — and the one a status field can hide.
+
+    A settle lap that *blocks* announces its own failure, and the run parks on the
+    announcement. This lap announces success instead, and the tree is unchanged. Nothing
+    downstream re-derives whether it worked, so if the workflow believed the field the
+    story would be stamped `QA passed` over work still sitting on disk — and story
+    selection reads that line, not the git log. What makes it safe is that `commit`
+    re-reads the tree either way: the claim buys the second reading, and the second
+    reading is the one that parks.
+    """
+    repo = epic()
+    _Sub(repo, leave_dirty=True).install(monkeypatch)
+    run_env = env()
+    agent = _Agent(settle="claimed")
+    seen: list[str] = []
+
+    def answered(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text(encoding="utf-8"))
+        git(repo, "add", "-A")
+        git(repo, "commit", "-qm", "feat(acme): story STORY-1")
+        path.write_text("STATUS: ANSWERED\n\nCommitted it myself.\n", encoding="utf-8")
+
+    with patch.object(pyflow_driver, "wait_for_answer", answered):
+        result = drive_flow(Coder(), run_env, agent)
+
+    assert result.has_epic is False, result
+    # One lap, then the gate: a claim does not buy a second turn any more than a block does.
+    assert agent.calls == ["settle-worktree"], agent.calls
+    assert len(seen) == 1, seen
+    assert "src/STORY-1.py" in seen[0], seen[0]
+    # The gate carries the tree's reading, not the lap's account of it — this arm is
+    # reached because the claim was checked, so there is no agent note to quote.
+    assert "recorded everything" not in seen[0], seen[0]
+    # The operator settled it, the run re-read the tree, and only then was the story stamped.
+    assert _output(run_env, check_repos_clean)["clean"] is True
+    assert _output(run_env, stamp_story_passed)["stamped"] is True
 
 
 def test_the_operators_own_uncommitted_files_are_not_the_storys_to_answer_for(
