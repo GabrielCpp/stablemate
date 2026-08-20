@@ -1,0 +1,8 @@
+name = "expense-split"
+repo_dir = "expense-split"
+sha256 = "4074e1d69ae9594b06f8c6f01372f013106adf32fb94bc7007911c8af421df24"
+bytes = 1843973
+head = "04290217079addeddd0b12ff03604c086f58deac"
+dirty = true
+url = ""
+note = "the finished five-story app at bench-baseline; every per-story pin reachable in .git"
