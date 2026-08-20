@@ -60,3 +60,9 @@ collide on a machine running both.
   (hold / release / confirm) over a JSON ledger, plus a server-rendered seat map. Port **18083**.
   Chosen because its natural failure modes are the check vocabulary itself: a compare-and-swap
   refusal, a count over a map, a neighbour left unperturbed, a booking that survives a restart.
+
+- **[`policy-desk/`](policy-desk/)** — an insurance policy register: a Go JSON API behind a React
+  single-page client, three stories (create, list, amend) over the same ledger. Port **18084**.
+  Chosen for the interest cases one Python module cannot pose — a deep link that has to survive a
+  page load, a route change the client owns rather than the server, a conditional field rule that
+  only exists for one coverage type, and an optimistic-concurrency token carried through a form.

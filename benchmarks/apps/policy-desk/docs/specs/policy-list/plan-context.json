@@ -1,0 +1,40 @@
+{
+  "story": "policy-list",
+  "services": [
+    {
+      "repo": "policy-desk",
+      "path": "app/api",
+      "type": "go",
+      "skills": [
+        "policy-desk-ostler"
+      ],
+      "plan_file": "plan.md"
+    },
+    {
+      "repo": "policy-desk",
+      "path": "app/web",
+      "type": "typescript",
+      "skills": [
+        "policy-desk-ostler"
+      ],
+      "plan_file": "plan.md"
+    }
+  ],
+  "implementation_order": [
+    "policy-desk::app/api",
+    "policy-desk::app/web"
+  ],
+  "shared_packages": [],
+  "required_instructions": [
+    "policy-desk-ostler"
+  ],
+  "qa_stack": {
+    "profile": "bring the stack up with `docker compose -f compose.yml up -d --build --wait` and drive it over http://localhost:18084; sandboxed runs reach the same URL through the forwarded port declared in qa-stack.yml",
+    "fixtures": [
+      "an empty register (DELETE /api/policies) for the empty-state criterion",
+      "two policies whose numbers sort in a known order, to read the register order off the page"
+    ],
+    "capable_of_rendering": "the register endpoint against the live ledger, and the register screen with its rows and its empty state",
+    "notes": "the navigation criterion is about the document not reloading, which a scenario that only asserts the arrived-at screen cannot see"
+  }
+}

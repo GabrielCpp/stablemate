@@ -1,0 +1,52 @@
+# policy-desk — the fictive enterprise app the standalone-QA benchmark measures against.
+#
+# Written by `workhorse-coder run genesis` (twice: once per service) and then trimmed by
+# hand to what a fixture needs. The `workspace:` block, the scaffold list and the pack list
+# are genesis' own output; `services:` carries the two deterministic gates a dev lane runs
+# after an implement turn, keyed on each service's directory name.
+#
+# The pack list is short because this repo is a *fixture*, not a product: `stablemate` is
+# the only pack that ships in `base-library/`, the benchmark has to resolve from a public
+# clone, and `scripts/check_public.py` asserts the base library stands alone — so naming
+# any other pack here would make the fixture unbuildable outside a private overlay.
+#
+# `repo.name` is derived from the directory name, which is why a trial must materialize
+# this tree into a directory called exactly `policy-desk`: every generated skill is
+# prefixed with it, and the book's own references resolve through that prefix.
+
+repo:
+  name: policy-desk
+
+agents:
+  claude: true
+  codex: false
+  copilot: false
+
+packs:
+  - stablemate
+
+workflows:
+  - coder
+
+scaffolds:
+  - shared-docs
+  - go-service
+  - react-router-web
+
+workspace:
+  type: mono
+  service_roots:
+    - app/api
+    - app/web
+  service_markers:
+    - go.mod
+    - package.json
+
+services:
+  # Both are seconds, not minutes: the Go module has no dependency to download at gate time
+  # and the web build is a cold Vite build of eight files. A gate that outruns the node's
+  # SUITE_TIMEOUT reports as a regression the story did not cause.
+  api:
+    regression: go vet ./... && go test ./...
+  web:
+    regression: npm run build

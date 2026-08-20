@@ -1,0 +1,40 @@
+{
+  "story": "create-policy",
+  "services": [
+    {
+      "repo": "policy-desk",
+      "path": "app/api",
+      "type": "go",
+      "skills": [
+        "policy-desk-ostler"
+      ],
+      "plan_file": "plan.md"
+    },
+    {
+      "repo": "policy-desk",
+      "path": "app/web",
+      "type": "typescript",
+      "skills": [
+        "policy-desk-ostler"
+      ],
+      "plan_file": "plan.md"
+    }
+  ],
+  "implementation_order": [
+    "policy-desk::app/api",
+    "policy-desk::app/web"
+  ],
+  "shared_packages": [],
+  "required_instructions": [
+    "policy-desk-ostler"
+  ],
+  "qa_stack": {
+    "profile": "bring the stack up with `docker compose -f compose.yml up -d --build --wait` and drive it over http://localhost:18084; sandboxed runs reach the same URL through the forwarded port declared in qa-stack.yml",
+    "fixtures": [
+      "an empty register (DELETE /api/policies) so a duplicate-policy-number scenario decides what is already on file",
+      "an auto policy for one holder (POST /api/policies) to exercise the umbrella prerequisite"
+    ],
+    "capable_of_rendering": "the create endpoint against the live ledger, and the new-policy form rendering per-field refusals",
+    "notes": "the client is a built bundle served by the Go binary, so a change to either service only reaches the running app through `--build`"
+  }
+}

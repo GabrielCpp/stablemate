@@ -1,0 +1,39 @@
+{
+  "story": "edit-policy",
+  "services": [
+    {
+      "repo": "policy-desk",
+      "path": "app/api",
+      "type": "go",
+      "skills": [
+        "policy-desk-ostler"
+      ],
+      "plan_file": "plan.md"
+    },
+    {
+      "repo": "policy-desk",
+      "path": "app/web",
+      "type": "typescript",
+      "skills": [
+        "policy-desk-ostler"
+      ],
+      "plan_file": "plan.md"
+    }
+  ],
+  "implementation_order": [
+    "policy-desk::app/api",
+    "policy-desk::app/web"
+  ],
+  "shared_packages": [],
+  "required_instructions": [
+    "policy-desk-ostler"
+  ],
+  "qa_stack": {
+    "profile": "bring the stack up with `docker compose -f compose.yml up -d --build --wait` and drive it over http://localhost:18084; sandboxed runs reach the same URL through the forwarded port declared in qa-stack.yml",
+    "fixtures": [
+      "a policy on file at a known version (POST /api/policies) to amend, to cancel, and to replay a stale write against"
+    ],
+    "capable_of_rendering": "the amendment and cancellation endpoints against the live ledger, and the edit and detail screens carrying the version through a form",
+    "notes": "the stale-write criterion needs two writes from one reading, not a single amendment that happens to succeed"
+  }
+}

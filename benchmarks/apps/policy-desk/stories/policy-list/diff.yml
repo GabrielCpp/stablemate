@@ -1,0 +1,14 @@
+# The implementation diff a trial materializes for the `policy-list` story.
+#
+# `pre/` is story 1's post-image; `post/` is this story's, which story 3's `pre/` copies.
+# The domain is untouched here: the register is a read over a ledger that already exists,
+# and a story that also moved a validation rule would make a failing scenario ambiguous
+# about which change it caught.
+story: policy-list
+added:
+  - app/api/list.go
+  - app/web/src/Nav.tsx
+  - app/web/src/PolicyList.tsx
+changed:
+  - app/api/service.go
+  - app/web/src/routes.tsx

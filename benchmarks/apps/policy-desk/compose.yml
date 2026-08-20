@@ -1,0 +1,20 @@
+# The project name is explicit so a run started from a materialized copy of this tree
+# talks to the same stack a run started from the fixture does — the directory name a
+# trial happens to have does not fork the container namespace.
+name: policy-desk-bench
+
+services:
+  app:
+    build: .
+    ports:
+      - "18084:18084"
+    volumes:
+      - policy-desk-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:18084/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+volumes:
+  policy-desk-data:

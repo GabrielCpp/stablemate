@@ -1,0 +1,14 @@
+# The implementation diff a trial materializes for the `edit-policy` story.
+#
+# The last story carries no `post/`: its post-image *is* the app tree, which is what makes
+# the app tree the thing a reader checks the book against rather than a fourth variant of
+# it.
+story: edit-policy
+added:
+  - app/api/amend.go
+  - app/web/src/EditPolicy.tsx
+  - app/web/src/PolicyActions.tsx
+changed:
+  - app/api/service.go
+  - app/web/src/routes.tsx
+  - app/web/src/PolicyDetail.tsx

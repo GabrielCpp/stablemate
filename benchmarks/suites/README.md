@@ -139,9 +139,9 @@ port in its backlog's surface list, and no two specs share one — `expense-spli
 free number in the range and writes it down the same way.
 
 The frozen apps under [`benchmarks/apps/`](../apps/README.md) draw from the same range and are
-registered here for the same reason, even though they are not specs: `seat-booking` 18083. A
-fixture that measures QA and a suite that builds an app can easily be running at the same
-moment on one machine.
+registered here for the same reason, even though they are not specs: `seat-booking` 18083 and
+`policy-desk` 18084. A fixture that measures QA and a suite that builds an app can easily be
+running at the same moment on one machine.
 
 This is not tidiness. A spec that starts a server without naming a port gets the language's
 idiomatic default — `8080` for Go, `3000` for React Router — and those are the two most
