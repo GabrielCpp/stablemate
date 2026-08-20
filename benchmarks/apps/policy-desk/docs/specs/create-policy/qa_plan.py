@@ -1,6 +1,6 @@
 import json
 
-from ostler_qa import Qa, plan, scenario, target
+from ostler_qa import HttpError, Qa, plan, scenario, target
 
 
 plan(run_id="qa-create-policy", story="create-policy")
@@ -44,7 +44,7 @@ def valid_policy(number: str, email: str = "alex@example.com", coverage: str = "
         "okf:docs/features/policy/concepts/policy.md:contract",
     ],
     preconditions=["GET /healthz returns status ok", "the register can be reset through its documented route"],
-    checkpoints=["accepted record is returned with Draft/version 1", "duplicate and validation refusals leave the ledger correct", "the created record is readable by its slug"],
+    checkpoints=["accepted record is returned with Draft/version 1", "the service is restarted between the accepted write and the persistence re-read", "duplicate and validation refusals leave the ledger correct", "the created record is readable by its slug"],
     forbid=["in-memory state as persistence evidence", "a test double or direct ledger file access", "asserting only HTTP success codes"],
 )
 def create_policy_api(qa: Qa) -> None:
@@ -66,6 +66,30 @@ def create_policy_api(qa: Qa) -> None:
     qa.verify("json_path", created_body, path="$.policy.status", equals="Draft", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:does:1"])
     qa.verify("json_path", created_body, path="$.policy.version", equals="1", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:does:1"])
     qa.verify("json_path", created_body, path="$.policy.id", equals="pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:does:1"])
+    # The book's persistence bullet promises the record is still on the books after the
+    # service restarts — a same-process re-read is exactly what an in-memory ledger would
+    # also pass, so the process that accepted the write must die before the re-read.
+    restart = qa.tool("docker").run("compose", "-f", "compose.yml", "restart", timeout=120.0)
+    qa.check(
+        "the service restarts cleanly between the write and the re-read",
+        restart.ok,
+        covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:persistence:1"],
+    )
+    def restarted_service_answers() -> bool:
+        # A connection refused during the restart window is "not yet", not a verdict —
+        # the harness's `eventually` retries only timeouts, so the swallow lives here.
+        try:
+            return qa.http.get("/healthz").json()["status"] == "ok"
+        except HttpError:
+            return False
+
+    qa.eventually(
+        "the restarted service answers /healthz again",
+        restarted_service_answers,
+        timeout=60.0,
+        interval=0.5,
+        covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:persistence:1"],
+    )
     reread = qa.http.get("/api/policies/pn-1001", expect_status=200)
     reread_body = reread.json()
     qa.verify("persists", (policy, reread_body["policy"]), subject="policy pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:persistence:1", "okf:docs/features/policy/concepts/policy-ledger.md:contract"])
