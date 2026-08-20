@@ -18,6 +18,7 @@ import pytest
 from workhorse_workflows.coder.shared.dev import (
     GATE_ORDER,
     declared_gates,
+    declared_markers,
     gate_command,
     run_gate,
     service_declaration,
@@ -183,6 +184,27 @@ def test_declared_gates_renders_the_commands_that_will_run(repo: Path) -> None:
     assert gates.gates == list(GATE_ORDER)
     assert "lint: `golangci-lint run`" in gates.text
     assert "test: `go test ./...`" in gates.text
+
+
+def test_the_planner_is_told_the_markers_this_workspace_declares(repo: Path) -> None:
+    """Which files mark a service is the repo's answer too, not a list of four this
+    package remembers — a repo whose services are marked some other way had to argue with
+    that list, and one with a single layer was told about three it does not have."""
+    _agents(repo, "workspace:\n  service_markers: [manifest.toml, service.json]\n")
+
+    markers = _call(declared_markers, repo_dir=str(repo))
+
+    assert "`manifest.toml`, `service.json`" in markers.text
+    assert repo.name in markers.text
+
+
+def test_a_workspace_that_declares_no_markers_says_nothing_rather_than_guessing(
+    repo: Path,
+) -> None:
+    """The prompt reads an empty `text` as "go and look", which beats a confident list."""
+    _agents(repo, "services:\n  api: {lint: 'true'}\n")
+
+    assert _call(declared_markers, repo_dir=str(repo)).text == ""
 
 
 def test_declared_gates_says_so_when_the_service_declares_none(repo: Path) -> None:

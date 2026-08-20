@@ -90,6 +90,7 @@ from workhorse_workflows.coder.shared.dev import (
     changed_files,
     check_promises,
     declared_gates,
+    declared_markers,
     read_operator_context,
     record_plan,
     resolve_impl_context,
@@ -295,7 +296,13 @@ class Dev(Workflow):
             power="high",
             session=self._story_chain(),
             add_dirs=self._dirs(),
-            args={"story_path": self.ctx.story_path, "spec_dir": self.ctx.spec_dir},
+            args={
+                "story_path": self.ctx.story_path,
+                "spec_dir": self.ctx.spec_dir,
+                # What this workspace says marks a service directory. The prompt used to
+                # carry a list of four instead, which is a guess about the deployment.
+                "markers": self.call(declared_markers).text,
+            },
         )
         # The plan agent writes plan.md / plan-<svc>.md / executive.md as free-form
         # markdown, so the frontmatter that makes them OKF Concepts is only as reliable as

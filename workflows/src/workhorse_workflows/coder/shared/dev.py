@@ -225,7 +225,6 @@ def record_plan(
     for svc in services:
         repo_name = svc.get("repo", "")
         svc_path = svc.get("path", "")
-        svc_type = svc.get("type", "")
         plan_file = svc.get("plan_file", "")
         label = f"{repo_name}::{svc_path}"
 
@@ -240,7 +239,7 @@ def record_plan(
             logger.info("%s: new_service=true — skipping path existence check", label)
             continue
 
-        markers = ["main.tf"] if svc_type == "terraform" else repo_info.get("service_markers", [])
+        markers = repo_info.get("service_markers", [])
         # Shared with `validate_genesis` — the same assertion genesis must satisfy as a
         # postcondition is the one the planner must satisfy as a precondition.
         problems = service_problems(Path(repo_info["path"]) / svc_path, markers, label)
@@ -679,6 +678,35 @@ def declared_gates(
 
 
 @blueprint.node
+def declared_markers(
+    logger: logging.Logger, repo_dir: str = "", workspace_file: str = ""
+) -> GateList:
+    """The marker files each repo says identify a service directory — for the planner.
+
+    The planner has to answer "which directories are services here", and what it used to be
+    handed was a list of four: a Go module file, a `package.json`, a `pubspec.yaml`, a
+    Pulumi or Terraform entry point. A repo whose services are marked any other way had to
+    argue with that list, and a repo with only one of those layers was told about three that
+    do not exist — both of which the repo can simply say (invariant 1), and one of which it
+    already does, in `workspace.service_markers`.
+
+    Rendered as one line per repo, or an empty `text` when nothing is declared, which the
+    prompt reads as "go and look at `agents.yml` yourself" rather than as a list of nothing.
+    """
+    repos = resolve_workspace(workspace_file, repo_dir)
+    lines = [
+        f"- **{name}** (`{info.get('path', '')}`): "
+        + ", ".join(f"`{marker}`" for marker in markers)
+        for name, info in sorted(repos.items())
+        if (markers := info.get("service_markers") or [])
+    ]
+    if not lines:
+        logger.info("no repo in this workspace declares service_markers")
+        return GateList()
+    return GateList(text="\n".join(lines))
+
+
+@blueprint.node
 def run_gate(
     logger: logging.Logger,
     cwd: str = "",
@@ -1028,6 +1056,7 @@ __all__ = [
     "changed_files",
     "check_promises",
     "declared_gates",
+    "declared_markers",
     "gate_command",
     "plan_document",
     "plan_summary",
