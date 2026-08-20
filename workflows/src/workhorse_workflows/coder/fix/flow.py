@@ -55,9 +55,10 @@ Divergences from the YAML, all deliberate:
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import ClassVar
 
-from workhorse.pyflow import Continue, Done, Workflow, WorkflowFailed
+from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.shared.backlog import (
@@ -69,9 +70,11 @@ from workhorse_workflows.coder.shared.backlog import (
 from workhorse_workflows.coder.shared.dev import (
     branch_code_repos,
     plan_summary,
+    read_operator_context,
     resolve_impl_context,
     select_next_layer,
 )
+from workhorse_workflows.coder.shared.escalation import escalation
 from workhorse_workflows.coder.shared.queue import commit_story
 from workhorse_workflows.coder.shared.story import prepare_fix_story, resolve_workspace_dirs
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
@@ -174,18 +177,28 @@ class Fix(Workflow):
             return Continue(pick, self.check)
         return Continue(pick, self.implement)
 
-    def implement(self) -> Continue:
+    def implement(self, operator_context: str = "", impl_blocks: int = 0) -> Continue | Await:
         """Implement the first service layer, and only it — see the module docstring.
 
         A state of its own for the reason `dev`'s is: it is the expensive turn, and a
         checkpoint is written before a state runs, so a kill during QA re-enters at QA rather
         than implementing a second time.
+
+        The verdict is branched on, which is the same root cause `dev` was repaired for and
+        the reason this state was rewritten: a turn reporting it could not implement the plan
+        used to be discarded here, so the drain went on to QA a change nobody had written and
+        then flagged the bullet as if the *fix* were the thing that had failed. It is a block
+        like any other now — it parks on the story's `context.md` and re-enters this state
+        with the answer in hand.
+
+        `operator_context` is what the answer said; the prompt reads it, and a blank one is
+        the ordinary first pass.
         """
         layer = self._layer
         impl = self.output(resolve_impl_context)
         self.logger.info("implementing %s", layer.service or "the fix", extra={"activity": True})
         turn = roles.turn("implement-plan", self.repo_dir, self.library_dirs)
-        self.agent(
+        result = self.agent(
             turn.prompt,
             returns=ImplResult,
             # high: writes the production change.
@@ -202,9 +215,25 @@ class Fix(Workflow):
                 "impl_instruction_paths": impl.impl_instruction_paths,
                 "qa_run_plan": impl.qa_run_plan,
                 "verification_setup": impl.verification_setup,
+                "operator_context": operator_context,
             },
         )
-        return Continue(None, self.check)
+        if result.blocked:
+            return self._gate_impl(result, impl_blocks)
+        return Continue(result, self.check)
+
+    def read_operator_impl(self, impl_blocks: int = 0) -> Continue:
+        """Consume the operator's answer and implement again with it in hand.
+
+        The thin consume state an `Await` asks for — resume replays its target from the top,
+        so everything but the answer is read by reference. `SCOPE: epic` has no meaning here
+        and is deliberately not honoured: the drain has no epic queue to hand a story back
+        to, and every item it draws is its own one-AC story.
+        """
+        answer = self.call(read_operator_context, self._story.story_path)
+        return Continue(
+            answer, self.implement, operator_context=answer.content, impl_blocks=impl_blocks
+        )
 
     def check(self) -> Continue:
         """QA the fix. `check_fix` + `decide_fix_check`.
@@ -249,9 +278,12 @@ class Fix(Workflow):
         """QA it again, and settle the item either way. `recheck_fix` + `decide_recheck`.
 
         The only arm that prunes is `passed`; everything else — including the blank the
-        YAML's `default:` caught — flags the bullet and moves on. The drain never escalates
-        to an operator, which is the design: a stuck fix stays visible in the backlog and
-        stops costing the loop anything.
+        YAML's `default:` caught — flags the bullet and moves on. *This* arm never escalates
+        to an operator, which is the design: a fix that will not converge stays visible in
+        the backlog, annotated, and stops costing the loop anything. That is a statement
+        about a QA verdict the drain believes, not about the drain's tolerance for blocks —
+        an implementation turn that says it cannot proceed has produced no verdict to
+        believe, and `implement` parks on it.
         """
         result = self._qa()
         if result.status == "passed":
@@ -318,6 +350,40 @@ class Fix(Workflow):
         self.logger.info("flagging %s as blocked", bullet)
         self.call(mark_fix_blocked, bullet, BLOCKED_NOTE, self.docs_path)
         return Continue(result, self.document)
+
+    def _gate_impl(self, result: ImplResult, impl_blocks: int) -> Await:
+        """`implement` said it could not — park on the story and ask.
+
+        Straight to the file, with no resolver arm: the drain has no `operator_mode` and no
+        resolver turn of its own, because unlike `dev` it is not running inside a story
+        queue whose other stories are waiting on this one. Nothing is lost by asking, and
+        `escalation` publishes the turn's own findings so whoever answers is not re-deriving
+        them.
+
+        Uncapped, per AGENTS.md: `impl_blocks` numbers the escalations for a reader and
+        bounds nothing. A block that recurs asks again.
+        """
+        gate = escalation(
+            self,
+            block_kind="implementation",
+            where="the fix-drain implementation turn",
+            notes=result.notes,
+            number=impl_blocks + 1,
+            findings=result.actionable,
+            story=self._story,
+        )
+        return Await(
+            self._context, gate.body, self.read_operator_impl, impl_blocks=impl_blocks + 1
+        )
+
+    @property
+    def _context(self) -> Path:
+        """The file an `Await` writes its questions into: `<story-folder>/context.md`.
+
+        The drained item's own story folder, not the run's — this flow has a new story per
+        iteration, so the question lands beside the item it is about.
+        """
+        return paths.story_context_path(self._story.story_path)
 
     def _qa(self) -> QaResult:
         """`qa-fix-item.md`, which `check_fix` and `recheck_fix` ran with identical arguments.
