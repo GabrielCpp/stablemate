@@ -313,3 +313,51 @@ recorded in the commits alongside this note: the `expense-list` pin (`2c2b1b2`) 
 reachable from no ref in the source repo, so `git bundle --all` had been silently dropping
 it, and the story it pins predates the `## Dependencies` section `prepare_story` now
 requires — `expense-list` is re-pinned at `c0478a9`, that commit plus the missing section.
+
+### 2026-08-20 — after the QA-lane work, label `after`
+
+`replay.py run --flow qa --story expense-list -n 3 --label after`, same backend, same model,
+same fixture pin, run against the tree at `66224fe` — i.e. with §6.1/§6.2, §2, §3, §5 and §4
+landed. All three trials exited 0.
+
+```
+node                           items turns   exit  mean  max    cost$
+plan-qa                             3     3  100%  1.00    1    $0.30
+audit-qa                            3     3  100%  1.00    1    $0.16
+repair-qa-context                   3     3  100%  1.00    1    $0.15
+qa-story                            3     3  100%  1.00    1    $0.12
+———————————————————————————————————————————————————————————————————
+TOTAL                                                           $0.74   (0 excess turns)
+```
+
+| | `before` (baseline) | `after` | target |
+| --- | --- | --- | --- |
+| wall clock per trial | 14.1 / 7.6 / 11.2 min — mean **11.0** | 10.2 / 11.0 / 11.4 min — mean **10.9** | ≤ 30 min |
+| excess turns | 0 | 0 | 0 |
+| exit rate, every node | 100% | 100% | 100% |
+| cost per trial | $0.21 | $0.25 | — |
+
+(Per-trial wall clock is the span of a trial's own artifact directory — first write to last —
+since `replay.py report` reports convergence and cost, not duration.)
+
+**What this does and does not show.** The QA lane on a converging story finishes in ~11
+minutes, a third of the envelope, and nothing in §2–§6 made it slower or turned any node
+into a loop: the after arm is the before arm within trial-to-trial noise (the baseline's own
+spread, 7.6–14.1 min, is wider than the difference between the two means). That is the whole
+claim this instrument supports, and it is the claim the plan asked for it to support — the
+baseline note above already said so: `apply-qa-fixes` never runs here, because the frozen
+tree's QA passes.
+
+**So the ≤30-minute figure for the *common* case is still unmeasured, and this table must
+not be read as meeting it.** The assembled budget above spends ~12 of its 30 minutes on
+2–3 bounded fix items and ~3 on a repair lap; a story that passes first lap pays none of
+them. What these six trials establish is the floor — context build, plan turn, suite run and
+audit together cost ~11 min, leaving ~19 min of headroom for the fix items — plus the
+absence of a regression. Confirming the envelope needs a story whose QA actually fails,
+which is `score` against a seeded-defect `app:` fixture (`benchmarks/apps/*/defects.yml`),
+not a replay of a green story. That measurement is not in this program's ledger and should
+be its successor's first item.
+
+The $0.10 cost increase is real but small and lands mostly in `audit-qa` (+$0.04) and
+`repair-qa-context` (+$0.03) — more packet for the agents to read, which is what §4 and §6
+deliberately traded for. Three trials cannot separate that from run-to-run token variance.
