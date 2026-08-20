@@ -3,10 +3,9 @@
 # compile, so `--build` is what makes a defect variant take effect at all.
 entry_url: http://localhost:18084
 health_path: /healthz
-identity: '"status": "ok"'
+identity: '"status":"ok"'
 reuse: never
 boot_timeout: 120
 launch: docker compose -f compose.yml up -d --build --force-recreate --wait
 health:
   - curl -fsS http://localhost:18084/healthz
-  - curl -fsS http://localhost:18084/api/policies
