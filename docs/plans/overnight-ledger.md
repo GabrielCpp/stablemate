@@ -249,6 +249,17 @@ first**; if an item is already fully done, tick it with the existing commit hash
   `replay.py report` both labels, fill the 30-minute table in optimize-qa.md `## Progress`
   with before/after, commit `docs:`. If ≤30 min is not met, write the diagnosis there —
   do not massage the claim (memory: measure before claiming optimization).
+- [ ] Q9b — REWORK (supervisor, 2026-08-20 05:2x EDT): the stray replay-agent commit leak
+  recurred — `ed36cff` ("docs(benchmarks): append independent expense-list QA audit") is
+  trial 1 of `after` committing its qa.md through the *outer* repo, same shape as the two
+  Q1 strays you rebased off. (a) Rebase every such stray off `optimize-full` before or
+  with the Q9 tick, as before. (b) Build the guard you noted in Q1: a replay trial's
+  agent must be unable to commit through the enclosing stablemate worktree — diagnose why
+  the sandbox's own `.git` does not contain the commit (timing of the clone? agent cwd?)
+  and make `replay.py` enforce it (e.g. verify outer HEAD unchanged after each trial and
+  fail the trial loudly, and/or ensure the sandbox repo exists before the lane starts).
+  Done when: a fresh replay trial on the fixed harness leaves outer `git log` untouched,
+  covered by a test or an assertion inside `replay.py` itself; `make lint` green.
 
 ## Phase D — dev-lane plan (optimize.md), remaining steps only
 
