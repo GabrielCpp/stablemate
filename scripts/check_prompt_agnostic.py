@@ -41,6 +41,8 @@ import sys
 import tokenize
 from pathlib import Path
 
+import jinja2
+
 REPO = Path(__file__).resolve().parents[1]
 TOKENS_FILE = REPO / "scripts" / "prompt_agnostic_tokens.txt"
 
@@ -93,8 +95,14 @@ FILE_TOKEN_ALLOW: dict[str, tuple[tuple[str, ...], str]] = {
 #: A Jinja condition that dispatches on a service's type. Text inside such a block is the
 #: repo's own branch rendering, which is exactly how a stack name is supposed to arrive.
 TYPE_CONDITION = re.compile(r"(\btype\b|service_type)")
-JINJA_IF = re.compile(r"\{%-?\s*(?P<kind>if|elif)\s+(?P<cond>.*?)-?%\}")
-JINJA_ENDIF = re.compile(r"\{%-?\s*endif\s*-?%\}")
+
+#: Lexing the prompt is Jinja's job, not a regex's. The template is rendered by this very
+#: library at runtime, so its own tokenizer is the only reading of `{% if %}` that is
+#: guaranteed to agree with what actually renders — a `%}` inside a quoted string, a
+#: `{#- comment -#}` holding a tag, or whitespace control in a shape the pattern did not
+#: anticipate all part the regex from the renderer, and the exemption is decided by whoever
+#: is right about where the block ends.
+_JINJA = jinja2.Environment(autoescape=False)  # noqa: S701 - lexing only, nothing is rendered
 
 
 def load_patterns() -> list[re.Pattern[str]]:
@@ -120,28 +128,60 @@ def _tracked_files() -> list[Path]:
     return [REPO / p for p in out.split("\0") if p]
 
 
+def _block_tags(text: str) -> list[tuple[str, str, int, int]]:
+    """Every `{% ... %}` tag as (keyword, rest-of-condition, first line, last line).
+
+    A tag may span lines, so both ends are recorded: the exempt span runs from the line the
+    opening tag starts on through the line its `{% endif %}` finishes on, which is what the
+    line-numbered scan downstream needs.
+    """
+    tags: list[tuple[str, str, int, int]] = []
+    tokens = [tok for tok in _JINJA.lex(text) if tok[1] != "whitespace"]
+    index = 0
+    while index < len(tokens):
+        lineno, kind, _ = tokens[index]
+        if kind != "block_begin":
+            index += 1
+            continue
+        parts: list[str] = []
+        cursor = index + 1
+        while cursor < len(tokens) and tokens[cursor][1] != "block_end":
+            parts.append(str(tokens[cursor][2]))
+            cursor += 1
+        end = tokens[cursor][0] if cursor < len(tokens) else lineno
+        tags.append((parts[0] if parts else "", " ".join(parts[1:]), lineno, end))
+        index = cursor + 1
+    return tags
+
+
 def _typed_block_lines(text: str) -> set[int]:
-    """Lines inside a Jinja block conditioned on a service type — allowed to be specific."""
-    inside = False
-    depth = 0
+    """Lines inside a Jinja block conditioned on a service type — allowed to be specific.
+
+    A template that will not lex earns no exemptions: it cannot render either, so the
+    findings it collects are the smaller of its two problems.
+    """
+    try:
+        tags = _block_tags(text)
+    except jinja2.TemplateSyntaxError:
+        return set()
     allowed: set[int] = set()
-    for lineno, line in enumerate(text.splitlines(), start=1):
-        if inside:
-            allowed.add(lineno)
-        for match in JINJA_IF.finditer(line):
-            if inside:
-                if match.group("kind") == "if":
-                    depth += 1
-            elif TYPE_CONDITION.search(match.group("cond")):
-                inside, depth = True, 0
-                allowed.add(lineno)
-        for _ in JINJA_ENDIF.findall(line):
-            if not inside:
-                continue
+    start: int | None = None
+    depth = 0
+    for kind, cond, begin, end in tags:
+        if start is None:
+            if kind in ("if", "elif") and TYPE_CONDITION.search(cond):
+                start, depth = begin, 0
+            continue
+        if kind == "if":
+            depth += 1
+        elif kind == "endif":
             if depth:
                 depth -= 1
             else:
-                inside = False
+                allowed.update(range(start, end + 1))
+                start = None
+    if start is not None:
+        allowed.update(range(start, len(text.splitlines()) + 1))
     return allowed
 
 
