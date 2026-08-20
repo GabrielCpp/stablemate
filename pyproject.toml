@@ -134,4 +134,11 @@ exclude = [
     # would report 28 findings whose only available fix is to edit the historical
     # record. Nothing imports it; it is prose that happens to be syntactically Python.
     "docs/plans/author-workflow-python/workflow.py",
+    # Frozen QA-plan fixtures inside the benchmark apps. A plan imports `ostler_qa`,
+    # which is not an installed module: the qa runner injects it into the materialized
+    # trial tree at run time (see ostler/ostler/qa/harness/). ty can never resolve that
+    # import from the repo venv, and "fixing" it would mean changing how every user
+    # repo's plans import the harness. The plans are still linted by ruff and executed
+    # live by the benchmark itself, which is the check that actually binds.
+    "benchmarks/apps/*/docs/specs/*/qa_plan.py",
 ]
