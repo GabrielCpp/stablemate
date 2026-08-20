@@ -69,6 +69,14 @@ def public_name(prefix: str, source: Source) -> str:
 #: otherwise ask the agent to retype.
 ASSET_DIRS = ("references", "scripts")
 
+#: Byproducts the interpreter leaves in ``scripts/`` and nobody authored. A bundled
+#: script is meant to be run, and running one in the library tree writes
+#: ``__pycache__/*.pyc`` beside it — binary, so the install pipeline (a ``path -> text``
+#: map end to end) refuses it and the generated-file check downgrades itself to a skip
+#: on the machine of whoever ran the script. Filtering them out is not leniency about
+#: binaries: nothing declared them assets.
+_BYPRODUCT_DIRS = frozenset({"__pycache__"})
+
 
 @dataclass(frozen=True)
 class Asset:
@@ -120,10 +128,11 @@ def skill_assets(source: Source) -> list[Asset]:
         if not directory.is_dir():
             continue
         for path in sorted(directory.rglob("*")):
-            if path.is_file():
-                assets.append(
-                    Asset(path=path, rel=path.relative_to(skill_dir).as_posix())
-                )
+            if not path.is_file():
+                continue
+            if _BYPRODUCT_DIRS.intersection(path.relative_to(skill_dir).parts):
+                continue
+            assets.append(Asset(path=path, rel=path.relative_to(skill_dir).as_posix()))
     return sorted(assets, key=lambda asset: asset.rel)
 
 
