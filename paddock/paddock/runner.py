@@ -33,7 +33,7 @@ from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from paddock import archive, paths, seeds
+from paddock import archive, paths, project as project_mod, seeds
 from paddock.pointer import Pointer, ResultPointer
 from paddock.registry import Score, Step, Task
 
@@ -148,6 +148,7 @@ class Run:
     seed: Pointer
     params: Mapping[str, str] = field(default_factory=dict)
     project: Path | None = None
+    pinned: project_mod.Project | None = None
     echo: bool = True
     step_name: str = ""
     commands: list[tuple[str, ...]] = field(default_factory=list)
@@ -284,6 +285,7 @@ def execute(
     store: Path,
     params: Mapping[str, str] | None = None,
     project: Path | None = None,
+    pin_project: bool = True,
     seal: bool = True,
     keep: bool = False,
     echo: bool = True,
@@ -296,8 +298,13 @@ def execute(
     stage.mkdir(parents=True, exist_ok=True)
     scratch.mkdir(parents=True, exist_ok=True)
 
+    # Before anything is unpacked or run: the steps drive a tree of paddock's own, so the
+    # round measures one commit of the code and any commit *in* that tree is a leak.
+    pinned = project_mod.pin(project, work=work, enabled=pin_project)
+    driven = pinned.path if pinned else project
+
     pointer = Pointer.load(paths.seed_pointer(data_dir, task.seed))
-    repo = seeds.unpack(pointer, store=store, dest=stage, project=project)
+    repo = seeds.unpack(pointer, store=store, dest=stage, project=driven)
 
     config = (data_dir.parent / task.config) if not Path(task.config).is_absolute() else Path(task.config)
     config = config.resolve()
@@ -315,22 +322,26 @@ def execute(
         store=store,
         seed=pointer,
         params=dict(params or {}),
-        project=project,
+        project=driven,
+        pinned=pinned,
         echo=echo,
     )
-    outcomes = _run_steps(run)
-    _write_ledger(run, outcomes)
+    try:
+        outcomes = _run_steps(run)
+        _write_ledger(run, outcomes)
 
-    score = _score(run, task) if task.score else None
-    if score is not None:
-        run.write_json(stage / "score.json", score.as_json())
+        score = _score(run, task) if task.score else None
+        if score is not None:
+            run.write_json(stage / "score.json", score.as_json())
 
-    zip_path: Path | None = None
-    pointer_path: Path | None = None
-    if seal:
-        zip_path, pointer_path = _seal(
-            task, label, stage, data_dir, store, pointer, outcomes, score, run.params
-        )
+        zip_path: Path | None = None
+        pointer_path: Path | None = None
+        if seal:
+            zip_path, pointer_path = _seal(
+                task, label, stage, data_dir, store, pointer, outcomes, score, run.params
+            )
+    finally:
+        project_mod.release(pinned)
 
     return RunResult(
         task=task.name,
@@ -395,6 +406,7 @@ def _write_ledger(run: Run, outcomes: Sequence[StepOutcome]) -> None:
             "label": run.label,
             "seed": {"name": run.seed.name, "sha256": run.seed.sha256, "head": run.seed.head},
             "config": str(run.config),
+            "project": run.pinned.as_json() if run.pinned else None,
             "params": dict(run.params),
             "steps": [
                 {

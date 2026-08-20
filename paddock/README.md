@@ -97,6 +97,7 @@ def score(run) -> Score:            # optional
 | `run.workdir(name)` | a fresh directory under `scratch/`, **not** sealed into the result |
 | `run.config` | the absolute path to the task's stablemate config |
 | `run.cli(*argv, check=False, timeout=None)` | a subprocess, logged into `run.artifacts` |
+| `run.project` | the tree the steps drive stablemate out of — pinned, see below |
 | `run.seed`, `run.data_dir`, `run.store`, `run.label` | where everything came from |
 
 Steps invoke workflows by **subprocess of the real CLI**, never by importing workhorse
@@ -105,6 +106,24 @@ an in-process call would measure a different one. `run.cli` also aligns `PWD` to
 working directory and drops `OLDPWD`, because an agent CLI that resolves its project root
 from the environment will otherwise treat the harness's own repo as the project and commit
 its work there.
+
+### The project a round drives is pinned
+
+A step runs stablemate's own CLIs out of a checkout (`uv run --project <checkout>
+workhorse-coder …`). paddock does not hand it the operator's working tree: before the
+first step it creates a detached `git worktree` at that checkout's HEAD, gives the steps
+*that* as `run.project`, and removes it after sealing. Three things fall out, and they are
+the whole reason:
+
+- the round measures one commit of the code, even if the operator keeps editing theirs
+  during a forty-minute trial;
+- `steps.json` records the pinned sha, so the ledger says which code produced its numbers,
+  and whether the source was dirty (uncommitted edits are **excluded** by construction);
+- a task's leak check — "did an agent commit into the harness instead of its sandbox" —
+  becomes exact, because nobody but the round has a reason to commit in that tree.
+
+`--no-pin-project` drives the checkout in place. A source git cannot make a worktree of
+degrades to the same thing, with `pinned: false` in the ledger rather than a failed round.
 
 `workdir()` exists for tasks that fan out — one fresh tree per trial. A result zip
 carrying nine copies of a repo is a result nobody keeps, so what a step wants preserved it
