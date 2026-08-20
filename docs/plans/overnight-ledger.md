@@ -116,8 +116,22 @@ first**; if an item is already fully done, tick it with the existing commit hash
   the counter is gone may name it); over the pre-migration `workflow.py` the widened list
   reports 54 offenders where the old one reported none. `workflows/tests/test_giveup_guard.py`
   pins that a planted line exits non-zero and that the vocabulary list cannot lose an entry.
-- [ ] B8 — phase gate: full `make test` (includes lint, check-no-env, check-public,
+- [x] B8 — phase gate: full `make test` (includes lint, check-no-env, check-public,
   check-no-giveup) green from the repo root. Fix anything this surfaces before moving on.
+  (b25805b, e6a57dd, d4aa4ac, 629a1a3)
+  Green from the repo root, rc=0. It surfaced four real defects, none of them in the work
+  the earlier B items landed. `check_public.py` assembled `.git/hooks/pre-commit` by hand
+  and so reported every guard missing in a worktree whose commits those guards had just
+  been seen blocking; it now asks `git rev-parse --git-path`, and `scripts/` finally has a
+  test package (`make test-scripts`). `check_parsers` caught three format-shaped regexes:
+  the prompt-agnostic guard's `{% if %}`/`{% endif %}` pair, now jinja2's own lexer with
+  identical exempt spans over all 90 prompts, and the dev-lane fix-envelope reader, now
+  `ostler.markdown` — which also closes a live false positive, since the gate output fenced
+  directly beneath those two bullets can quote a markdown line. The fourth was the gate
+  lying quietly: `farrier install --check` treats a bundled script's own `__pycache__` as
+  an asset, hits a non-UTF-8 file and *skips* the generated-file check, so running a skill
+  script once disables that guard on your machine. The remaining skip on this tree
+  ("Unknown selected prompt reference") is the documented public-clone path.
 
 ## Phase Q1 — QA baseline (measure before touching the QA lane)
 
