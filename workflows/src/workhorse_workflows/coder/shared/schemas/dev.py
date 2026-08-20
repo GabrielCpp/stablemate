@@ -32,6 +32,8 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+from pydantic import model_validator
+
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 
 
@@ -112,6 +114,35 @@ class ExitConditions(CoderResult):
     #: The files the turn expects to have touched, service-relative or repo-relative. Both
     #: are matched leniently against the diff: a false accusation costs a whole repair lap.
     files: list[str] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def _flatten(cls, data: Any) -> Any:
+        """Accept the per-criterion *list* a turn naturally writes, and merge it into one.
+
+        Asked for criteria, commands and files, a turn that satisfies four acceptance
+        criteria groups them — one object per criterion, each with the commands and files
+        that prove it. That is a better-organised answer than the flat one, and it is
+        exactly as checkable, because the gate runs every command and looks for every file
+        regardless of which criterion claimed it. Rejecting it cost a real run its whole
+        implement turn: six minutes of work, all gates already green, discarded on the
+        shape of the envelope rather than the content of the answer.
+
+        The grouping is what is dropped, not the promise. Nothing downstream reads which
+        command belonged to which criterion, so there is nothing here to preserve.
+        """
+        if not isinstance(data, list):
+            return data
+        merged: dict[str, list[str]] = {"criteria": [], "commands": [], "files": []}
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            for key, target in merged.items():
+                value = item.get(key)
+                for entry in [value] if isinstance(value, str) else value or []:
+                    if isinstance(entry, str) and entry.strip() and entry not in target:
+                        target.append(entry)
+        return merged
 
 
 class ImplResult(CoderResult):
