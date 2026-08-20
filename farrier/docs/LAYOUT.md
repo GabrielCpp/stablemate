@@ -17,6 +17,7 @@ farrier never bundles content — it only renders whatever library it is aimed a
   library/
     skills/<group>/<name>/SKILL.md   # skills — frontmatter + markdown
     prompts/<group>/<name>.md        # prompts — optional frontmatter + markdown
+    policies/<group>/<name>.md       # policies — aggregated text, never installed
   packs/<pack>.yml             # named bundles a repo opts into via `agents.yml`
   scaffolds/*.yml              # scaffold definitions applied via `farrier scaffold <id>`
 ```
@@ -125,13 +126,69 @@ get (`generated_by` / `source` / `do_not_edit`), and drops farrier-internal keys
 source sets none. The **codex** and **copilot** prompt files are copied through
 verbatim (their own frontmatter intact).
 
+## `library/policies/` — policies
+
+A **policy** is standing repo text that is only ever *aggregated* — into a generated
+`AGENTS.md`, through a `localInstructions` mapping. It is never installed as a skill or
+a command, never appears under `.claude/skills/`, is never an `instruction_file()`
+target, and is never returned by a tag query. Policies are flat files under a group,
+like prompts:
+
+```
+library/policies/stablemate/stablemate-repo.md   → policy name `stablemate-repo`
+```
+
+The reason the kind exists is the double charge. A skill folded into an always-loaded
+`AGENTS.md` pays twice: its whole body is resident every turn *and* its `name` plus
+`description` sit in the skill index the agent carries every turn — advertising, as
+something to load on demand, text that is already above it in the window. For thirty
+skills that index is roughly 15 KB. A policy pays the first charge only.
+
+### Policy file format
+
+```markdown
+---
+name: stablemate-repo
+description: House rules for this repository.
+---
+
+# stablemate
+
+Body markdown — the actual rules…
+```
+
+- `name` and `description` are for humans and for farrier's error messages; neither is
+  emitted anywhere, because the front matter is stripped before aggregation.
+- No `applyTo` and no `tags`: a policy is not auto-loaded by file glob and is not
+  discoverable by query. It applies wherever the `AGENTS.md` that carries it applies.
+- The body is rendered through Jinja2, exactly like a skill body (see *Templating*).
+- A policy bundles no sibling assets. Text is the whole of it.
+
+### Addressing
+
+A policy is referenced by its **bare basename**, with no repo prefix ever added —
+`stablemate-repo`, not `<prefix>-stablemate-repo`. There is nothing installed for a
+prefix to disambiguate against. The namespaced form (`stablemate/stablemate-repo`) and
+the relative path both resolve too; a name that is ambiguous across two groups is an
+error rather than a silent pick.
+
+### Generated outputs
+
+None. That is the invariant: a policy reaches a repository through a `localInstructions`
+mapping or not at all, and there is no `policies:` key at the top of `agents.yml` and
+none in a pack, because there is no selection state for one to carry.
+
 ## Repo-root instructions (`localInstructions`)
 
 There is **no `library/roots/` skills tree** in the reference library. The normal
 way to produce an always-loaded repo-root `CLAUDE.md` / `AGENTS.md` is the
-`localInstructions` block in the consumer's `agents.yml`, which promotes an
-ordinary installed skill into a directory-local instruction file — use
-`paths: ["."]` for the repo root. That is a selection-side feature, documented in
+`localInstructions` block in the consumer's `agents.yml`, which aggregates library
+text into a directory-local instruction file — use `paths: ["."]` for the repo root.
+A mapping may name `policies:` (library text that exists only here), `skills:`
+(installed skills, promoted), and `prompts:` (installed commands, always loaded); they
+are joined in that order, standing rules ahead of procedures, separated by a `---`
+rule. Text that only ever belongs to one repo's root file wants to be a **policy** —
+see above for why a skill in that position is charged twice. That is a selection-side feature, documented in
 [`agents.example.yml`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/agents.example.yml).
 
 A separate, legacy `roots:` pack key also exists: it reads **flat** files at
@@ -237,7 +294,8 @@ Skill and prompt bodies are rendered through **Jinja2** before output:
    segments are namespaces used only for pack globbing.
 2. **public id** — the last path segment, kebab-cased (`Go Testing` → `go-testing`).
 3. **public name** — `<prefix>-<public-id>`, unless the id already equals or
-   starts with the prefix (avoids `myrepo-myrepo-db`).
+   starts with the prefix (avoids `myrepo-myrepo-db`). Policies stop at step 2: they
+   generate no artifact, so there is nothing for a prefix to name.
 
 This is why a pack can select with a coarse glob (`go/*`) while the generated
 artifacts land under the consuming repo's own prefix.

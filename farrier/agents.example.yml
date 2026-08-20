@@ -109,7 +109,11 @@ exclude:
 # CLAUDE.md / AGENTS.md / CODEX.md files in chosen directories, so the assistant
 # auto-loads those rules contextually from any ancestor dir.
 #
-# Provide EITHER `skill` (one) or `skills` (many, concatenated in order).
+# Provide EITHER `skill` (one) or `skills` (many, concatenated in order); add
+# `prompt`/`prompts` for installed prompts, and `policy`/`policies` for library
+# text that exists only here (never installed as a skill, so it costs nothing in
+# the every-turn skill index). The three are aggregated policies → skills →
+# prompts. Policies are named by bare basename, with no repo prefix.
 # The names must match INSTALLED skill names (i.e. include the prefix), or the
 # render fails when it can't find the source.
 # ---------------------------------------------------------------------------

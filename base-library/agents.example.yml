@@ -111,6 +111,12 @@ exclude:
 # holding the provenance banner and `@AGENTS.md` — Claude reads its own name, and
 # the body is never maintained (or loaded) twice.
 #
+# - policy / policies: library text that exists ONLY here — a policy is never
+#           installed as a skill, never gets a command, and never appears in the
+#           skill index the agent carries every turn. Aggregated FIRST, ahead of
+#           the skills and prompts below: standing rules, then procedures. Named
+#           by bare basename, with no repo prefix (`stablemate-repo`), because
+#           nothing is installed for a prefix to disambiguate.
 # - skill:  the installed skill name (with prefix, as it appears in .claude/skills/)
 # - skills: a list of installed skill names — aggregated into one file in order,
 #           separated by a `---` markdown rule. Use for a directory governed by
@@ -121,7 +127,7 @@ exclude:
 #           invoked as a slash command: it stays one library file, rendered both
 #           as `.claude/commands/<name>.md` and into this file, so the text is
 #           not maintained once per consuming repo. An entry needs at least one
-#           skill or prompt; it may carry both.
+#           policy, skill or prompt; it may carry any mix.
 # - paths:  list of repo-relative directories to write the local instruction into
 #           ("." is the repo root → an always-loaded root AGENTS.md)
 # - includeReadme: fold in the sibling README.md (default: true). *How* is not
@@ -135,8 +141,23 @@ exclude:
 # when its full body must always be in context. For a large, situational skill,
 # *link* to it from the root skill body (`instruction_file("...")`) so the agent
 # loads it on demand instead of paying its token cost every session.
+#
+# And when text belongs in an always-loaded file and nowhere else, write it as a
+# POLICY rather than a skill. A skill in that position is charged twice — the body
+# resident every turn, plus its name and description in the every-turn skill index,
+# advertising as loadable something already above it in the window.
 # ─────────────────────────────────────────────────────────────────────────────
 localInstructions:
+  # A repo-root file whose house rules are a policy (no index cost) and whose
+  # commit procedure is a library prompt, so the cadence is written once.
+  - policies:
+      - house-rules
+    prompts:
+      - myrepo-commit
+    paths:
+      - "."
+    includeReadme: false
+
   # Always-loaded repo-root AGENTS.md generated from the root skill (plus the
   # CLAUDE.md pointer, when the claude adapter is on). The root skill should
   # *link* to repo-global skills (e.g. CLI command-timeout rules) rather than
