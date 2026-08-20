@@ -135,11 +135,23 @@ first**; if an item is already fully done, tick it with the existing commit hash
 
 ## Phase Q1 — QA baseline (measure before touching the QA lane)
 
-- [ ] Q1 — run the existing harness: `benchmarks/replay.py capture` then
+- [x] Q1 — run the existing harness: `benchmarks/replay.py capture` then
   `replay.py run --flow qa --story expense-list -n 3 --label before` (see the script's own
   docstring for exact `uv run` invocation). Record the resulting table in
   `docs/plans/optimize-qa.md` under `## Progress`, `git add -f` it, commit `docs:`.
   This can run in the background of later Q-items but MUST complete before Q7.
+  (bcbafae, 12cab91, 520593c)
+  Notes: the harness could not run at all until two fixture defects were fixed. The
+  `expense-list` pin was reachable from no ref in the source repo, so `git bundle --all`
+  had been silently dropping it and a capture overwrote a working bundle with one the
+  story could not be checked out of — `capture` now verifies every pin before replacing
+  the bundle. The pinned story also predates the `## Dependencies` section
+  `prepare_story` requires, so it is re-pinned at `c0478a9`. The baseline itself is a
+  floor, not evidence for §2/§3: all four nodes exit first lap in 3/3 trials, $0.64,
+  ~11–12 min per trial, and `apply-qa-fixes` never runs because this story's QA passes.
+  Also: the trial agents committed their QA artifacts through the *outer* repo despite
+  `benchmarks/.replay/` being gitignored; two stray commits were rebased off the branch.
+  Worth a guard of its own if it recurs.
 
 ## Phase Q6 — ostler cold-start (the named pain, §6)
 
