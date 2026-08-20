@@ -202,6 +202,48 @@ Three fixes, smallest first, all in ostler rather than the workflow:
    anything cleverer than caching — an incremental inventory is a bigger project and may
    be unnecessary once (2) lands.
 
+### The profile, 2026-08-20 — where the cold load actually goes
+
+`cProfile` over one `ostler qa validate` on a real product book (1,421 markdown
+documents, 844 of them feature/UI documents), each leg a fresh process:
+
+| leg | wall |
+| --- | --- |
+| cold: `--no-index`, cold page cache | **60.3 s** |
+| cold: empty parse index, warm page cache | **23.7 s** |
+| warm parse index, no graph snapshot | **2.5 s** |
+| warm snapshot (the repeat visit) | **2.4 s** process, **0.19 s** of it the load |
+
+The bare interpreter-plus-imports floor is 0.40 s, so the warm repeat visit is very
+nearly all startup.
+
+**Item (2) has already answered the question this section was written about.** The
+"~28 s rebuild on every fresh instance" is gone: with the snapshot in place a repeat
+visit pays 0.19 s, and the worst case a *run* can actually reach — the book was edited,
+so the snapshot misses but the other 1,420 documents are still indexed — is 2.5 s. The
+60 s number is now reachable only from a genuinely empty cache, i.e. the first ostler
+call after a clone, once.
+
+So item (3)'s premise was wrong in two ways worth writing down:
+
+- **It is not the symbol inventory.** 57.7 s of the 60.3 s is `model._load_features`.
+  `qa context`'s inventory does not appear in the profile at all.
+- **The hot loop is redundant re-parsing, not the walk.** markdown-it `parse` runs
+  **9,325 times for 844 documents** — about eleven parses per document — and each
+  document is read off disk twice (`_feature_doc` is entered 1,688 times). The cause is
+  that `refs` is a re-parsing property: `MarkdownDoc.refs` and every `Section.refs` call
+  `extract_refs`, which tokenizes that text again from scratch rather than reading the
+  token stream `sections` has already built. `extract_refs` accounts for 7,492 of the
+  9,325 parses.
+
+An incremental inventory is therefore not the project to start. Deriving `refs` from the
+existing token stream is a contained change in `ostler/ostler/markdown.py` that would cut
+the empty-cache load by most of its 24 s — worth doing on its own merits, but it now buys
+a once-per-clone cost, not a per-visit one, which is why it is **not** being scheduled
+here. (Two smaller curiosities from the same profile, recorded so nobody re-derives them:
+9.2 s of the cold 60 s is raw `read()` against a cold page cache, and markdown-it's own
+`LOGGER.debug` is called 5.0 million times for ~2 s.)
+
 Expected: ~60+ min of visible deterministic time across the corpus, plus the invisible in-turn CLI
 cold-starts, drop to noise. This never gets a story from 97 to 30 alone — which is why
 it is §6 and not §2 — but it is the only section that makes *agents'* ostler calls
