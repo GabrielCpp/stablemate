@@ -26,8 +26,13 @@ first**; if an item is already fully done, tick it with the existing commit hash
   escalation arm; `findings` is read off the subclass so `QaAssessment`/`DocumentationReview`
   keep their narrowed element types. `workflows/tests/coder/shared/test_blocked_signal.py`
   covers the dead-node case (9 passed); `make lint` clean.
-- [ ] B2 — move/generalise `_escalation` (`dev/flow.py:739`) into `coder/shared/escalation.py`
+- [x] B2 — move/generalise `_escalation` (`dev/flow.py:739`) into `coder/shared/escalation.py`
   with `block_kind`/`where` as parameters; all lanes call the shared helper.
+  (pre-existing: 0c0a547) — `shared/escalation.py::escalation(flow, *, block_kind, where,
+  notes, number, result, findings)` takes the story identity off the flow; dev/docs/qa/review
+  all import it and their surviving `_escalation` methods are thin per-lane defaults for
+  `block_kind`/`where`/the counter, not second implementations. The helper also gained a
+  `What the node found` findings section. 77 shared-coder tests pass; `make lint` clean.
 - [ ] B3 — the four lane flows route the signal. Root cause first: `_implement_classic`
   (`coder/dev/flow.py:636`) assigns its agent result and both callers branch on it.
   Every discarded `self.agent(...)` result in dev/review/docs/qa flows assigned and
