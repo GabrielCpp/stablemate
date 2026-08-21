@@ -163,6 +163,17 @@ judged by a pinned model is still a way to be scored, it just lives in the task.
 The store defaults to `~/.local/share/stablemate/paddock` — off `/tmp`, which does not
 survive a reboot. A fixture that evaporates is not a fixture.
 
+`stage/` is also the reaper's warrant. When the steps end — finished, failed, or raised —
+every process whose working directory is inside `stage/` is terminated, because the stage
+is a directory only this round has and anything standing in it was put there by this
+round. Agents leave servers running; a leftover one holds its port, and the *next* round on
+the same task then finds its port answering with a valid `201` from a sibling — the one
+intruder that looks exactly like success. Each survivor is logged at WARNING with its
+command line rather than tidied away silently, because the leak is the agent's bug and the
+reaper is only the net. A container is out of its reach: its working directory is inside
+its own namespace, not the stage, so whatever brought the stack up still has to take it
+down.
+
 ## Commands
 
 ```bash

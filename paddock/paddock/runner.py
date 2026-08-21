@@ -33,7 +33,7 @@ from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from paddock import archive, paths, project as project_mod, seeds
+from paddock import archive, paths, project as project_mod, reap, seeds
 from paddock.pointer import Pointer, ResultPointer
 from paddock.registry import Score, Step, Task
 
@@ -331,7 +331,14 @@ def execute(
         echo=echo,
     )
     try:
-        outcomes = _run_steps(run)
+        try:
+            outcomes = _run_steps(run)
+        finally:
+            # Before the ledger, the score and the zip — not in the outer `finally`. A
+            # server still writing into the stage while `archive.create` walks it is a
+            # result nobody can re-derive, and a step that raised is exactly the case
+            # most likely to have left one running.
+            reap.reap(stage)
         _write_ledger(run, outcomes)
 
         score = _score(run, task) if task.score else None
