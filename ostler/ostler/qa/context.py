@@ -645,21 +645,39 @@ def _graph_at_revision(root: Path, revision: str, features_root: str) -> Graph:
 def _serialized_graph(
     graph: Graph,
 ) -> tuple[dict[str, dict[str, Any]], set[tuple[str, str]], set[tuple[str, str]]]:
-    """The nodes, every resolved edge, and the subset of them a flow's `end:` bullet carried.
+    """The nodes, every resolved edge, and the subset of them that is a flow's destination.
 
-    The third member is what tells a journey's destination apart from a step along the way.
-    `graph.build` already attributes each edge to the bullet key that carried it (`via`), and
-    `_journey_is_required` is the only reader that needs the distinction, so it is filtered
-    here rather than widening the edge set every other caller walks.
+    The third member is what tells a journey's destination apart from a step along the way,
+    and it is read off the `end:` bullet rather than off each edge's `via`. `via` keeps the
+    *first* bullet an href appeared under, so a walk that passes through its own destination
+    — `steps:` naming `tally export` before `end:` names it again — attributes that edge to
+    `steps` and leaves the flow with no end at all. The bullet's own links have no such
+    ambiguity, and `_journey_is_required` is the only reader that needs the distinction, so
+    it is derived here rather than changing what `via` means for every other caller.
+
+    Where the `end:` is prose — "the holder's list holds exactly the one claim they filed" —
+    the destination is the walk's last link. A flow's edges come out in document order, so
+    that is the last thing the journey touches before it is over, and it is the node a story
+    has to own to be the one that delivered the journey rather than one step of it.
     """
     data = graph_mod.build(graph)
     nodes = {item["id"]: item for item in data["nodes"]}
     edges = {(item["from"], item["to"]) for item in data["edges"] if item.get("to")}
-    ends = {
-        (item["from"], item["to"])
-        for item in data["edges"]
-        if item.get("to") and item.get("via") == "end"
-    }
+    ends: set[tuple[str, str]] = set()
+    for item in data["nodes"]:
+        if item.get("type") != "flow":
+            continue
+        walked = [edge for edge in item.get("edges", []) if edge.get("to")]
+        end = item.get("bullets", {}).get("end")
+        values = end if isinstance(end, list) else [end]
+        hrefs = {
+            href
+            for value in values
+            if value
+            for _text, href in markdown.extract_refs(str(value)).links
+        }
+        named = [edge for edge in walked if edge.get("href") in hrefs]
+        ends.update((item["id"], edge["to"]) for edge in named or walked[-1:])
     return nodes, edges, ends
 
 
@@ -1266,13 +1284,46 @@ def _journey_is_required(
     cannot reach it: a CLI story that ships `init` and `add` would owe an end state only
     `export` produces, in a story where `export` does not exist yet. The story that delivers
     the destination is the one that can walk the whole thing, and it is the one asked to.
+
+    An `end:` that names a whole document is satisfied by a required section *inside* it,
+    because that is where a screen's requiredness actually lands: a flow ends at
+    `screens/policy-detail.md` while the story's diff is grounded in
+    `policy-detail.md#policy-summary`, and reading those as different destinations left
+    every journey in the corpus context-only. Containment is one level and one direction —
+    a document takes its anchors, an anchor takes nothing — so an `end:` naming a section
+    still means that section, and a story ending elsewhere in the same file is not
+    conscripted into walking it.
+
+    Reaching the destination is necessary and not sufficient, because two journeys routinely
+    end on the same screen: `create-policy` and `edit-policy` both finish at the policy
+    detail, so the story that builds that screen reaches the end of both while implementing
+    one. So the story must also ground a required contract the flow reaches *somewhere other
+    than its end* — the field it fills, the button it presses, the screen it passes through.
+    That is the part of a walk a story either built or did not, and it is what tells the
+    journey this story delivered apart from the one that merely shares its last screen.
+
+    Where the `end:` is prose rather than a link, the walk's last link stands in for it (see
+    `_serialized_graph`), so both readings apply to every flow and neither has an exemption to
+    be reasoned about separately.
     """
-    return any(
-        reason.get("kind") == "flow-links-contract"
-        and reason.get("ref") in required_contracts
-        and (node_id, reason.get("ref")) in end_edges
+    reasons = [
+        reason
         for reason in direct_reasons.get(node_id, [])
-    )
+        if reason.get("kind") == "flow-links-contract"
+        and _reaches_a_required_contract(str(reason.get("ref") or ""), required_contracts)
+    ]
+    reaches_the_end = any((node_id, reason.get("ref")) in end_edges for reason in reasons)
+    walks_the_route = any((node_id, reason.get("ref")) not in end_edges for reason in reasons)
+    return reaches_the_end and walks_the_route
+
+
+def _reaches_a_required_contract(ref: str, required_contracts: set[str]) -> bool:
+    """The linked node is required, or — for a whole document — some section of it is."""
+    if ref in required_contracts:
+        return True
+    if "#" in ref:
+        return False
+    return any(contract.startswith(f"{ref}#") for contract in required_contracts)
 
 
 def _declared_checks(node: dict[str, Any]) -> list[dict[str, Any]]:

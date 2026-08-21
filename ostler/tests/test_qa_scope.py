@@ -768,6 +768,53 @@ def test_a_journey_over_a_required_contract_is_itself_required(tmp_path: Path):
     }
 
 
+def test_a_journey_is_required_of_the_story_that_walked_it_not_of_its_neighbour(tmp_path: Path):
+    """Two journeys end on the same screen, and only one of them is this story's.
+
+    Ending somewhere is the cheapest thing a story can do to a journey: every flow that
+    finishes on the policy detail is finished by whoever builds the policy detail, and the
+    story that built it did not thereby walk `edit-policy`. So the destination is necessary
+    and the route is what distinguishes — a required contract the flow reaches on the way,
+    which is the field filled or the button pressed that a story either shipped or did not.
+
+    The destination is also read generously in one direction only: an `end:` naming the whole
+    screen is reached by a story grounded in a section of it, because a section is where a
+    screen's requiredness actually lands. Without that, an `end:` on the document and a diff
+    on its anchor are different nodes and no journey in any book is ever required.
+    """
+    _book(tmp_path)
+    (tmp_path / "docs/features/demo/flows").mkdir()
+    (tmp_path / "docs/features/demo/flows/fills-widget.md").write_text(
+        "---\ntype: flow\nslug: fills-widget\ntitle: Fills widget\n---\n# Fills widget\n\n"
+        "- start: the operator is on the home page\n"
+        "- steps:\n"
+        "  1. [the widget](../screen.md#widget) reports the failure\n"
+        "- end: [Demo Screen](../screen.md)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo/flows/passes-through.md").write_text(
+        "---\ntype: flow\nslug: passes-through\ntitle: Passes through\n---\n# Passes through\n\n"
+        "- start: the operator is elsewhere\n"
+        "- steps:\n"
+        "  1. they finish whatever they were doing\n"
+        "- end: [Demo Screen](../screen.md)\n",
+        encoding="utf-8",
+    )
+
+    packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
+
+    assert validate_context(packet) == []
+    journeys = {
+        item["node"]: item["required"]
+        for item in packet["obligations"]
+        if item.get("kind") == "journey"
+    }
+    assert journeys == {
+        "docs/features/demo/flows/fills-widget.md": True,
+        "docs/features/demo/flows/passes-through.md": False,
+    }
+
+
 def test_a_ui_scenario_that_vets_no_screen_is_rejected(tmp_path: Path):
     """The gate the whole change exists for: every assertion in the run that shipped the
     defect was true, and the page was a 117px column against the right margin. A UI scenario
