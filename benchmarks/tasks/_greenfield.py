@@ -241,6 +241,7 @@ def run_genesis(run: Run, fixture: Fixture) -> None:
                 f"— see {result.log}"
             )
     seed_backlog(run, fixture)
+    ignore_agent_runtime(run)
 
 
 def seed_backlog(run: Run, fixture: Fixture) -> None:
@@ -306,15 +307,25 @@ def decision_sheet(run: Run, fixture: Fixture) -> tuple[str, str] | None:
     return text, hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+#: Where a gate file can appear. The author lane's grill gate lands under `docs/`; the
+#: coder lane's dirty-tree, CI and merge gates land at the **repo root**, named for the
+#: story rather than the docs tree. A glob that only knew about the first was blind to the
+#: second, and a gate the watcher cannot see does not park with a ledger entry — it just
+#: stalls the round in silence until the phase budget kills it.
+GATE_GLOBS = ("*context*.md", "docs/**/*context*.md")
+
+
 def parked_gates(repo: Path) -> list[Path]:
     """Every context file currently sitting on `STATUS: AWAITING_OPERATOR`.
 
     `gate_answered` is workhorse's own reader, imported rather than re-implemented: the
     driver polls that exact predicate to decide whether the await is over, so a second
-    definition here would be a second opinion about the same edge.
+    definition here would be a second opinion about the same edge. It is also what keeps
+    the globs above from having to be precise: a `*context*.md` that is not a gate carries
+    no `AWAITING_OPERATOR` header, so it reads as answered and is passed over.
     """
-    return sorted(p for p in repo.glob("docs/**/*context.md")
-                  if p.is_file() and not gate_answered(p))
+    found = {path for glob in GATE_GLOBS for path in repo.glob(glob)}
+    return sorted(p for p in found if p.is_file() and not gate_answered(p))
 
 
 def apply_sheet(path: Path, sheet: str) -> None:
@@ -332,12 +343,21 @@ def apply_sheet(path: Path, sheet: str) -> None:
     )
 
 
-def answer_operator_gates(run: Run, fixture: Fixture, stop: threading.Event) -> None:
+def answer_operator_gates(
+    run: Run, fixture: Fixture, stop: threading.Event, *, sheet_applies: bool
+) -> None:
     """Watch the produced repo for a parked gate and answer it from the tracked sheet.
 
     A thread because the phase blocks: `run_phase` calls the CLI synchronously and
     workhorse's driver polls the gate file in-process, so nothing on this side of the
     subprocess gets a turn unless it has its own.
+
+    `sheet_applies` is the caller's, not this function's: the sheet is a **product**
+    contract, and the only gate asking for one is the author lane's grill. A coder-lane
+    gate — a dirty tree, a red CI, a merge that will not go — asks about the state of a
+    repo, which no sheet written beside a backlog can answer. Those are watched anyway,
+    because a gate that parks with a ledger entry is a reported stall and a gate nobody
+    watches is a silent one.
 
     **One injection per gate path, ever.** If the flow parks again at the same file, it
     re-asked — which means the sheet did not settle it — and the round stays parked and is
@@ -345,7 +365,9 @@ def answer_operator_gates(run: Run, fixture: Fixture, stop: threading.Event) -> 
     covers it; that judgement is the thing a benchmark must not be making at gate time,
     and a second park is the flow saying so itself.
     """
-    sheet = decision_sheet(run, fixture)
+    sheet = decision_sheet(run, fixture) if sheet_applies else None
+    no_sheet = ("the task declares no decision sheet" if sheet_applies else
+                "no decision sheet answers this gate — it asks about the repo, not the product")
     # Seeded from the ledger, not from empty sets: "this gate has already had its one
     # injection" is a fact about the round, not about this thread, and a phase that is
     # retried or a watcher that is restarted must not spend the injection twice.
@@ -368,7 +390,7 @@ def answer_operator_gates(run: Run, fixture: Fixture, stop: threading.Event) -> 
                            "does not settle it")
                 continue
             if sheet is None:
-                park(gate, "the task declares no decision sheet")
+                park(gate, no_sheet)
                 continue
             text, digest = sheet
             apply_sheet(path, text)
@@ -379,15 +401,47 @@ def answer_operator_gates(run: Run, fixture: Fixture, stop: threading.Event) -> 
 
 
 def gates_watched(
-    run: Run, fixture: Fixture, phase: str
+    run: Run, fixture: Fixture, phase: str, *, sheet_applies: bool = False
 ) -> tuple[threading.Event, threading.Thread]:
     """Run `phase` with the gate watcher alive, and make sure it dies with the phase."""
     stop = threading.Event()
     thread = threading.Thread(
         target=answer_operator_gates, args=(run, fixture, stop),
+        kwargs={"sheet_applies": sheet_applies},
         name=f"gate-watcher-{phase}", daemon=True,
     )
     return stop, thread
+
+
+#: What the agent runtime leaves inside the repo it is working on. The CLI keeps a session
+#: store, and the QA daemon writes a server log beside its evidence; neither is an artifact
+#: of the story that happened to be running when it was written.
+RUNTIME_IGNORES = (".opencode/", "**/qa/**/*.log")
+
+IGNORE_HEADER = "# benchmark harness: agent runtime state, not deliverables"
+
+
+def ignore_agent_runtime(run: Run) -> None:
+    """Teach the produced repo to ignore the runtime of the agent building it.
+
+    A capture-time gap in the same family as the docs-pack one, and it costs a whole round
+    rather than skewing it: the coder lane refuses to sweep unrecorded files into a
+    story's commit — correctly — so it parks on a human dirty-tree gate instead. The files
+    it parks on are the agent CLI's own session JSON and the QA daemon's log, which no
+    operator will ever want committed and which reappear on every story. A round that
+    blocks forever on the machinery's own exhaust is measuring the fixture, not the flow.
+
+    Written after genesis, because genesis is what creates the file being appended to.
+    """
+    path = run.repo / ".gitignore"
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    if IGNORE_HEADER in text:
+        return
+    prefix = text if text.endswith("\n") or not text else text + "\n"
+    path.write_text(
+        prefix + f"\n{IGNORE_HEADER}\n" + "".join(f"{line}\n" for line in RUNTIME_IGNORES),
+        encoding="utf-8",
+    )
 
 
 def run_phase(run: Run, fixture: Fixture, phase: str, *argv: str) -> None:
@@ -423,7 +477,7 @@ def run_author(run: Run, fixture: Fixture) -> None:
     """
     if not (run.repo / fixture.backlog_path).is_file():
         raise TrialError(f"no backlog at {run.repo / fixture.backlog_path} — genesis first")
-    stop, thread = gates_watched(run, fixture, "author")
+    stop, thread = gates_watched(run, fixture, "author", sheet_applies=True)
     thread.start()
     try:
         run_phase(
@@ -437,13 +491,26 @@ def run_author(run: Run, fixture: Fixture) -> None:
 
 
 def run_coder(run: Run, fixture: Fixture) -> None:
+    """Implement the epic queue, watching for gates without answering them.
+
+    No sheet applies here — the coder lane's gates are about the repo's state, not the
+    product — so every one of them parks. Watched all the same: a parked gate that reaches
+    the ledger is a stall the score reports, and an unwatched one is a round that simply
+    stops until its phase budget kills it, with nothing in the sealed result saying why.
+    """
     if not find_epics(run.repo):
         raise TrialError("no epic queue — author produced no epics to implement")
-    run_phase(
-        run, fixture, "coder",
-        "workhorse-coder", "run",
-        "--params", json.dumps({"docs_path": str(run.repo)}),
-    )
+    stop, thread = gates_watched(run, fixture, "coder")
+    thread.start()
+    try:
+        run_phase(
+            run, fixture, "coder",
+            "workhorse-coder", "run",
+            "--params", json.dumps({"docs_path": str(run.repo)}),
+        )
+    finally:
+        stop.set()
+        thread.join(timeout=GATE_POLL_S * 2)
 
 
 def run_gates(run: Run, fixture: Fixture) -> None:

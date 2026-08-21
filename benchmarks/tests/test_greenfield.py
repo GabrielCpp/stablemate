@@ -317,7 +317,7 @@ def watch_once(run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch, *, expec
     race.
     """
     monkeypatch.setattr(gf, "GATE_POLL_S", 0.01)
-    stop, thread = gf.gates_watched(run, fixture, "author")
+    stop, thread = gf.gates_watched(run, fixture, "author", sheet_applies=True)
     thread.start()
     try:
         deadline = time.monotonic() + 10.0
@@ -412,3 +412,92 @@ def test_a_parked_gate_is_a_warning_on_the_score() -> None:
     assert any("stayed parked" in line for line in lines)
     assert not gf.warnings([], [], [{"gate": "g", "action": "answered",
                                      "sheet": "s", "sha256": "0" * 64}])
+
+
+# ── the agent's own exhaust ───────────────────────────────────────────────────────────
+
+
+def test_the_produced_repo_ignores_the_agent_runtime(run: Run) -> None:
+    """The coder lane refuses to sweep unrecorded files into a story's commit and parks on
+    a human gate instead — so the CLI's session store and the QA daemon's log, which
+    reappear on every story, cost a whole round rather than skewing one."""
+    (run.repo / ".gitignore").write_text(".agents/runs/\n", encoding="utf-8")
+    gf.ignore_agent_runtime(run)
+
+    written = (run.repo / ".gitignore").read_text(encoding="utf-8")
+    assert written.startswith(".agents/runs/\n")  # what genesis wrote is left alone
+    assert ".opencode/\n" in written
+    assert "**/qa/**/*.log\n" in written
+
+
+def test_the_runtime_ignore_is_written_once(run: Run) -> None:
+    gf.ignore_agent_runtime(run)
+    once = (run.repo / ".gitignore").read_text(encoding="utf-8")
+    gf.ignore_agent_runtime(run)
+    assert (run.repo / ".gitignore").read_text(encoding="utf-8") == once
+    # A genesis that wrote no `.gitignore` at all still gets one, rather than a crash.
+    assert once.startswith("\n" + gf.IGNORE_HEADER)
+
+
+def test_a_repo_root_gate_is_seen_too(run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The coder lane's dirty-tree, CI and merge gates land at the repo root, not under
+    `docs/`. A glob that only knew about the author lane's was blind to them — and a gate
+    nobody watches does not park with a ledger entry, it stalls the round in silence."""
+    gate = run.repo / "dirty-tree-operator-context.create-short-links.md"
+    gate.write_text(GATE, encoding="utf-8")
+    monkeypatch.setattr(gf, "GATE_POLL_S", 0.01)
+    stop, thread = gf.gates_watched(run, fixture, "coder")
+    thread.start()
+    try:
+        deadline = time.monotonic() + 10.0
+        while not gf.operator_gates_of(run) and time.monotonic() < deadline:
+            time.sleep(0.01)
+    finally:
+        stop.set()
+        thread.join(timeout=5.0)
+
+    entry, = gf.operator_gates_of(run)
+    assert entry["gate"] == "dirty-tree-operator-context.create-short-links.md"
+    assert entry["action"] == "parked"
+    # Parked, not answered, even though the task has a sheet: this gate asks about the
+    # state of a repo, and a contract written beside a backlog cannot rule on that.
+    assert gate.read_text(encoding="utf-8") == GATE
+
+
+def test_the_sheet_never_answers_a_coder_gate(
+    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gate = run.repo / "ci-operator-context.0001-api.md"
+    gate.write_text(GATE, encoding="utf-8")
+    fixture = sheeted(run, fixture)
+    monkeypatch.setattr(gf, "GATE_POLL_S", 0.01)
+    stop, thread = gf.gates_watched(run, fixture, "coder")
+    thread.start()
+    try:
+        deadline = time.monotonic() + 10.0
+        while not gf.operator_gates_of(run) and time.monotonic() < deadline:
+            time.sleep(0.01)
+    finally:
+        stop.set()
+        thread.join(timeout=5.0)
+
+    entry, = gf.operator_gates_of(run)
+    assert entry["action"] == "parked"
+    assert "not the product" in entry["reason"]
+
+
+def test_a_context_file_that_is_not_a_gate_is_passed_over(
+    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The globs are deliberately loose, and `gate_answered` is what makes that safe: a
+    regenerated `qa-okf-context.md` carries no `AWAITING_OPERATOR` header, so it reads as
+    answered rather than as a gate the harness should be touching."""
+    noise = run.repo / "docs" / "specs" / "s" / "qa-okf-context.md"
+    noise.parent.mkdir(parents=True)
+    noise.write_text("# obligations\n\n- a thing\n", encoding="utf-8")
+    # `expect=0`: the point is that nothing is ever recorded, so the watcher is given a
+    # handful of polls and then stopped rather than waited on.
+    watch_once(run, sheeted(run, fixture), monkeypatch, expect=0)
+
+    assert gf.operator_gates_of(run) == []
+    assert noise.read_text(encoding="utf-8") == "# obligations\n\n- a thing\n"
