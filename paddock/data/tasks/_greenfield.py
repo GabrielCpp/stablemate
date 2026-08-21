@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Any
 
 import _forensics as fx
-from _stablemate import TrialError, effective, no_leaks, stablemate_checkout, uv_run
+from _stablemate import TrialError, effective, no_leaks, pin_held, stablemate_checkout, uv_run
 from ostler import markdown
 from paddock import Run, Score
 from workhorse.cli.run import library_dirs as wh_library_dirs
@@ -702,7 +702,7 @@ def run_round(run: Run, fixture: Fixture) -> None:
     One step rather than five, so a round is one entry in the ledger and one thing to
     resume thinking about. The phases are still separately recorded — see `build.json`.
     """
-    with no_leaks(stablemate_checkout(run)):
+    with no_leaks(stablemate_checkout(run), pinned=pin_held(run.pinned)):
         run_genesis(run, fixture)
         run_author(run, fixture)
         run_coder(run, fixture)

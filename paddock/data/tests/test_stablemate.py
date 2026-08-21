@@ -121,13 +121,13 @@ def toolchain(tmp_path: Path) -> Path:
 
 
 def test_a_quiet_round_leaks_nothing(toolchain: Path) -> None:
-    with sm.no_leaks(toolchain):
+    with sm.no_leaks(toolchain, pinned=True):
         pass
 
 
 def test_a_round_that_patched_the_toolchain_voids_its_own_numbers(toolchain: Path) -> None:
     with pytest.raises(sm.TrialError, match="instead of its sandboxes"):  # noqa: PT012 - the cm is the subject
-        with sm.no_leaks(toolchain):
+        with sm.no_leaks(toolchain, pinned=True):
             (toolchain / "README.md").write_text("patched mid-round\n", encoding="utf-8")
 
 
@@ -135,7 +135,7 @@ def test_a_new_file_in_the_toolchain_is_a_leak_too(toolchain: Path) -> None:
     """Untracked, because that is how a leaked *addition* shows up and a check watching only
     modifications would miss a whole new module dropped into the tree."""
     with pytest.raises(sm.TrialError, match="instead of its sandboxes"):  # noqa: PT012 - the cm is the subject
-        with sm.no_leaks(toolchain):
+        with sm.no_leaks(toolchain, pinned=True):
             (toolchain / "sneaked.py").write_text("x = 1\n", encoding="utf-8")
 
 
@@ -144,7 +144,7 @@ def test_what_was_already_dirty_is_not_this_rounds_doing(toolchain: Path) -> Non
     "is it clean", so a pin taken from a dirty source does not accuse the round of an edit
     that was there before it started."""
     (toolchain / "README.md").write_text("already edited\n", encoding="utf-8")
-    with sm.no_leaks(toolchain):
+    with sm.no_leaks(toolchain, pinned=True):
         pass
 
 
@@ -161,8 +161,42 @@ def test_a_round_that_committed_its_patch_cannot_hide_behind_a_clean_tree(
     stash = project_mod.stashed_git_dir(toolchain)
     where = ["--git-dir", str(stash), "--work-tree", str(toolchain)]
     with pytest.raises(sm.TrialError, match="instead of its sandboxes"):  # noqa: PT012 - the cm is the subject
-        with sm.no_leaks(toolchain):
+        with sm.no_leaks(toolchain, pinned=True):
             (toolchain / "patched.py").write_text("x = 1\n", encoding="utf-8")
             for args in (["add", "-A"], ["commit", "-q", "-m", "patched"]):
                 subprocess.run(["git", *where, *args], cwd=str(toolchain), check=True)  # noqa: S603, S607 - git, fixed args
             assert not sm.git(*where, "status", "--porcelain", cwd=toolchain).strip()  # noqa: S101 - the premise
+
+
+def test_an_unpinned_round_reports_the_change_without_naming_a_culprit(toolchain: Path) -> None:
+    """The same evidence, the weaker claim — because `--no-pin-project` and a pin that could
+    not be made both leave the round driving a checkout other people commit to.
+
+    A teammate landing a commit mid-round produced exactly this once, and the report accused
+    the round of it; somebody then spent their afternoon disproving a finding the check never
+    had the standing to make. The round still stops — unpinned is the one case where this is
+    the only tripwire there is — but what it stops on is "the tree moved", not "you moved it".
+    """
+    with pytest.raises(sm.TrialError, match="not knowable from here") as raised:  # noqa: PT012 - the cm is the subject
+        with sm.no_leaks(toolchain, pinned=False):
+            (toolchain / "README.md").write_text("somebody else's commit\n", encoding="utf-8")
+
+    assert "instead of its sandboxes" not in str(raised.value)  # noqa: S101 - the accusation is the defect
+
+
+def test_only_a_pin_that_was_actually_made_counts_as_held(tmp_path: Path) -> None:
+    """`pin_held` is what the callers pass, so its three cases are the check's three cases.
+
+    A degraded pin reports `Project(pinned=False)` rather than `None`, which is the case that
+    made this necessary: the run was configured for a pin, the ledger records the attempt, and
+    the tree under it is still shared.
+    """
+
+    def pin(*, pinned: bool) -> project_mod.Project:
+        return project_mod.Project(
+            path=tmp_path, source=tmp_path, head="a" * 40, pinned=pinned, dirty=False
+        )
+
+    assert sm.pin_held(pin(pinned=True))  # noqa: S101 - the point of the test
+    assert not sm.pin_held(pin(pinned=False))  # noqa: S101 - the degraded pin this exists for
+    assert not sm.pin_held(None)  # noqa: S101 - a task driving no project at all

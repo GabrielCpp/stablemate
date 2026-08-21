@@ -54,9 +54,22 @@ def _describe(checkout: Path) -> list[str]:
     return [*lines, f"committed — HEAD is now {head}"]
 
 
+def pin_held(pin: project.Project | None) -> bool:
+    """Whether a round got the pin it was configured for — not merely asked for one.
+
+    `run.pinned` is `None` for a task driving no project at all, and a `Project` with
+    `pinned=False` both for a deliberate `--no-pin-project` and for a pin that was asked
+    for and could not be made. All three share the one property the leak check turns on:
+    the tree it reads is somebody else's working checkout, not a clone nobody else can
+    reach. Taking the pin rather than the `Run` is so the three cases can be stated in a
+    test without standing up a round to say them.
+    """
+    return pin is not None and pin.pinned
+
+
 @contextmanager
-def no_leaks(checkout: Path) -> Iterator[None]:
-    """Fail the round if anything it ran wrote into *checkout* instead of its sandbox.
+def no_leaks(checkout: Path, *, pinned: bool) -> Iterator[None]:
+    """Fail the round if the toolchain checkout changed while it ran.
 
     Not a warning. An agent that resolved its project root to the harness's own checkout
     wrote the work there, which means the tree the round was measured on is not the tree
@@ -70,20 +83,39 @@ def no_leaks(checkout: Path) -> Iterator[None]:
     but the git directory paddock stashed beside it is one `ls ..` from the sandbox, so
     that commit is available to a round that goes looking.
 
-    Read against the tree paddock pinned for this round, which nobody else writes to, so a
-    change here is a leak by construction rather than by heuristic and an operator editing
-    their own checkout is invisible. Raising rather than returning a flag is deliberate:
-    the caller that forgot to look is exactly the caller this exists for.
+    *pinned* is what buys the accusation. Read against the tree paddock pinned for this
+    round, nobody else writes there, so a change is a leak by construction rather than by
+    heuristic and an operator editing their own checkout is invisible. Read against a
+    shared checkout — `--no-pin-project`, or a pin that was asked for and could not be
+    made — that premise is simply false, and the identical evidence supports only the
+    weaker claim: the tree moved under the round. A teammate landing a commit mid-round
+    produces it, and a report that says "the round wrote into X" there is an accusation
+    the check cannot back, which somebody then has to disprove by hand.
+
+    So the evidence is reported either way and the round still stops either way — an
+    unpinned round is the only one where this is the sole tripwire, and a tripwire that
+    only logs is not one. What changes is the finding. Attribution is earned by the pin.
+
+    Raising rather than returning a flag is deliberate: the caller that forgot to look is
+    exactly the caller this exists for.
     """
     before = set(_describe(checkout))
     yield
     leaked = sorted(set(_describe(checkout)) - before)
-    if leaked:
+    if not leaked:
+        return
+    if pinned:
         raise TrialError(
             f"the round wrote into {checkout} instead of its sandboxes:\n"
             + "\n".join(leaked)
             + "\nrevert that before believing any number here"
         )
+    raise TrialError(
+        f"{checkout} changed while the round ran, and this round was not pinned — so "
+        f"whether the round wrote this or somebody else did is not knowable from here:\n"
+        + "\n".join(leaked)
+        + "\nre-run pinned before believing any number here"
+    )
 
 
 def stablemate_dir() -> Path:

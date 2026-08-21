@@ -249,7 +249,7 @@ def run_round(run: Run) -> None:
     config = sm.effective(run)
     runs_dir = trials_dir(run) / "runs"
 
-    with sm.no_leaks(checkout_dir):
+    with sm.no_leaks(checkout_dir, pinned=sm.pin_held(run.pinned)):
         ledger: list[dict[str, Any]] = []
         for index, (pin, flow) in enumerate(plan_round(run), start=1):
             run_id = f"expense-split-{run.label}-{flow}-{pin.story}-{index}"

@@ -33,7 +33,7 @@ from urllib.parse import urlsplit
 
 import yaml
 import _forensics as fx
-from _stablemate import TrialError, effective, git, no_leaks, stablemate_checkout, uv_run
+from _stablemate import TrialError, effective, git, no_leaks, pin_held, stablemate_checkout, uv_run
 from paddock import Run, Score
 
 # ── the app tree ──────────────────────────────────────────────────────────────────────
@@ -868,7 +868,7 @@ def run_round(run: Run, fixture: Fixture) -> None:
     config = effective(run)
     runs_dir = trials_dir(run) / "runs"
 
-    with no_leaks(checkout):
+    with no_leaks(checkout, pinned=pin_held(run.pinned)):
         ledger: list[dict[str, Any]] = []
         for index, (story, row) in enumerate(plan_round(run, app), start=1):
             variant = str(row["id"]) if row else CLEAN
