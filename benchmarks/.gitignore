@@ -17,3 +17,10 @@
 # telemetry, which is what `replay.py report` reads. Note this is the *working area*;
 # `fixtures/*.yml` (no leading dot) is the tracked manifest and stays tracked.
 .replay/
+
+# Round output: the zip is written to the paddock work dir, and the pointer beside it is a
+# record of a run, not of a baseline. Tracking one is a deliberate promotion —
+# `git add -f benchmarks/results/<task>/<label>.toml`, with `url` filled or a note saying
+# the zip is capture-machine-local, because a dangling sha256 in a public repo is only
+# acceptable when it says so. A smoke or dev label stays untracked and dies with the machine.
+results/
