@@ -27,6 +27,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import time
 from collections import defaultdict
@@ -553,9 +554,19 @@ def judge_backlog(run: Run, fixture: Fixture, bullets: list[dict[str, Any]],
         model=fixture.judge_model, effort=fixture.judge_effort,
     )
     rubric = rubric_path.read_text(encoding="utf-8")
+    # Judge a copy under `scratch/`, never `run.repo` itself. The judge only reads, but the
+    # agent CLI it reads *through* does not: opencode writes its session transcripts into
+    # `.opencode/opencode-loop/` in whatever it is pointed at, so judging in place dirtied
+    # the staged tree and `_score`'s read-only guard failed the round after every expensive
+    # step had already succeeded. The guard was right — a scored and an unscored run must
+    # produce byte-identical results — so the copy is the fix, and `scratch/` is where it
+    # goes because that is the one working space outside the manifest.
+    arena = run.workdir("judge")
+    repo = arena / run.repo.name
+    shutil.copytree(run.repo, repo, symlinks=True)
     logger.info("judging %d bullet(s) with %s, %d at a time", len(bullets), judge.backend.name, jobs)
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
-        return list(pool.map(lambda b: judge_one(judge, b, rubric, run.repo), bullets))
+        return list(pool.map(lambda b: judge_one(judge, b, rubric, repo), bullets))
 
 
 def structural_only(bullets: list[dict[str, Any]]) -> list[dict[str, Any]]:
