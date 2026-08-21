@@ -89,8 +89,14 @@ If nothing does, that is an escalation.
 
 ## Writing the outcome
 
-Either way, write into `context.md`. If the file already has content, **add to it rather
-than overwriting** — the history is how a human sees whether this block is recurring.
+Either way, write into `context.md`, and **never delete or rewrite what is already in
+it.** Edit the **first** `STATUS:` line in place; everything else you write is an
+**append** to the end. That includes content you did not put there and did not expect —
+the file can be written while you are investigating (a frozen decision sheet, a human
+reaching in), and that history is how a human sees whether this block is recurring.
+Appending costs nothing: only the first `STATUS:` line is read, so nothing below it can
+conflict with your outcome. Saying you will preserve the history is not preserving it —
+a resolver has said exactly that and then written the file out at five lines.
 
 ### If you are answering
 

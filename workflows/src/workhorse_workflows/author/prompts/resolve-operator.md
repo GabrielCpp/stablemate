@@ -55,8 +55,14 @@ notes:
 - A whole-line `STATUS: AWAITING_OPERATOR`.
 - Your investigation under a `## Findings` heading: what you checked, what you ruled
   out, and what you believe the human's actual decision points are.
-- If the file already exists with prior content, add to it rather than overwriting the
-  history — the human should be able to see this is (or isn't) the same block recurring.
+- **Never delete or rewrite what is already in the file.** Edit the **first** `STATUS:`
+  line in place; everything else you write is an **append** to the end. That includes
+  content you did not put there and did not expect — the file can be written while you are
+  investigating (a frozen decision sheet, a human reaching in), and that history is
+  evidence about whether this block is recurring. Appending costs nothing: only the first
+  `STATUS:` line is read, so nothing below it can conflict with your outcome. Saying you
+  will preserve the history is not preserving it — a resolver has said exactly that and
+  then written the file out at five lines.
 
 ## Output
 
