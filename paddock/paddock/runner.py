@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from paddock import archive, paths, project as project_mod, reap, seeds
-from paddock.pointer import Pointer, ResultPointer
+from paddock.pointer import DIAGNOSTIC_MARKER, Pointer, ResultPointer
 from paddock.registry import Score, Step, Task
 
 logger = logging.getLogger(__name__)
@@ -486,7 +486,19 @@ def _seal(
     # is a different measurement, and one that does not announce it invites a comparison
     # against a full run that nobody would have made on purpose.
     given = ", ".join(f"{key}={value}" for key, value in sorted(params.items()))
-    note = " ".join(part for part in (score.headline if score else "", f"[{given}]" if given else "") if part)
+    # A step that did not succeed is a caveat the runner can see without asking the task,
+    # and it is the one that catches what a ruler cannot: a pin that drifted, or a build
+    # that aborted, both of which fail a step *before* score() gets a turn. The task's own
+    # caveats come from the other side — a parked gate is a fine round mechanically.
+    # Named by their real status rather than all called "failed": the step that raised
+    # and the ones skipped behind it are different facts, and a caveat that blurs them
+    # sends the next reader looking for three defects where there was one.
+    failed = [f"step {o.name!r} {o.status}" for o in outcomes if o.status != "ok"]
+    caveats = [*failed, *(score.caveats if score else ())]
+    headline = score.headline if score else ""
+    if caveats:
+        headline = DIAGNOSTIC_MARKER + (headline or "unscored round")
+    note = " ".join(part for part in (headline, f"[{given}]" if given else "") if part)
     pointer = ResultPointer(
         name=f"{task.name}/{label}",
         # A result zip roots at the label, not at the repo: the tree inside it is one
@@ -496,6 +508,7 @@ def _seal(
         bytes=zip_path.stat().st_size,
         head=seed.head,
         note=note,
+        caveats=caveats,
         task=task.name,
         label=label,
         steps=sum(1 for outcome in outcomes if outcome.status == "ok"),

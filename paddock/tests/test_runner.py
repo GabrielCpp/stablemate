@@ -6,9 +6,10 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from paddock import loader, seeds
-from paddock.pointer import ResultPointer
+from paddock.pointer import DIAGNOSTIC_MARKER, ResultPointer
 from paddock.runner import RunError, execute
 
 TASK = '''
@@ -219,3 +220,54 @@ def test_quiet_suppresses_the_tee_without_touching_the_log(
     assert "hello" not in capsys.readouterr().err
     log = result.stage / "artifacts" / "touch" / "00-sh.log"
     assert "hello" in log.read_text(encoding="utf-8")
+
+
+def test_a_scores_caveats_mark_the_pointer_note(
+    repo: Path, data_dir: Path, store: Path
+) -> None:
+    # The scorecard already warns at length, but the scorecard is printed once to a
+    # terminal and the pointer is what a later comparison actually reads. An honest
+    # number and a compromised one look identical there once the warning is gone.
+    body = TASK.replace(
+        'data={"caught": 2})',
+        'data={"caught": 2}, caveats=("operator gate parked: context.md",))',
+    )
+    result = run(repo, data_dir, store, body)
+    pointer = ResultPointer.load(result.pointer_path)
+    assert pointer.caveats == ["operator gate parked: context.md"]
+    assert pointer.note.startswith(DIAGNOSTIC_MARKER)
+
+
+def test_a_failed_step_is_a_caveat_the_runner_derives_itself(
+    repo: Path, data_dir: Path, store: Path
+) -> None:
+    # This is the half a ruler cannot see: a pin that drifted or a build that aborted
+    # fails a step *before* score() gets a turn, so nobody is left to declare it.
+    body = TASK.replace(
+        '    (run.repo / "made-by-the-step.txt").write_text("yes", encoding="utf-8")',
+        '    raise RuntimeError("boom")',
+    )
+    result = run(repo, data_dir, store, body)
+    pointer = ResultPointer.load(result.pointer_path)
+    # The step that raised and the one skipped behind it are different facts.
+    assert pointer.caveats == ["step 'touch' failed", "step 'fan_out' skipped"]
+    assert pointer.note.startswith(DIAGNOSTIC_MARKER)
+
+
+def stub(note: str, caveats: list[str]) -> ResultPointer:
+    """A pointer with the archive fields filled in, so a test can vary only the note."""
+    return ResultPointer(
+        name="demo/x", repo_dir="x", sha256="0" * 64, bytes=1, note=note, caveats=caveats
+    )
+
+
+def test_a_caveated_result_cannot_be_written_with_a_clean_note() -> None:
+    with pytest.raises(ValidationError, match="does not say so"):
+        stub(note="87% clean", caveats=["operator gate parked"])
+
+
+def test_the_marker_cannot_be_left_behind_on_a_clean_note() -> None:
+    # Enforced in the other direction too: a marker that could arrive by accident —
+    # a copied note, a caveat later removed — is a marker nobody would trust.
+    with pytest.raises(ValidationError, match="records no"):
+        stub(note=f"{DIAGNOSTIC_MARKER}87%", caveats=[])

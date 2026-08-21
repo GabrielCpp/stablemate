@@ -1129,6 +1129,13 @@ def score_round(run: Run, fixture: Fixture) -> Score:
     return Score(
         headline=headline(bullets, checks),
         detail=tuple(detail),
+        # The scorecard says all of this at length, a few lines further down. This says it
+        # again in four words, because this is the copy that survives into the tracked
+        # pointer — and a round with an operator gate in its ledger is a partial round
+        # whatever its percentage says.
+        caveats=tuple(
+            f"operator gate {g['action']}: {g['gate']}" for g in operator_gates
+        ),
         data={
             "satisfaction_pct": round(satisfaction(bullets), 1),
             "max_level": MAX_LEVEL,

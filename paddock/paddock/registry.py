@@ -43,8 +43,17 @@ class Score:
     detail: tuple[str, ...] = ()
     data: Mapping[str, Any] = field(default_factory=dict)
 
+    #: Why this round is a diagnostic rather than a baseline — one short phrase per
+    #: reason, empty when the number stands on its own. A ruler that knows its round was
+    #: compromised says so *here* rather than only in `detail`, because `detail` is a
+    #: rendering a human reads and this is what travels into the tracked pointer. The
+    #: pointer refuses to record an uncaveated note while this is non-empty, so a
+    #: compromised round cannot leave behind a line a later comparison would trust.
+    caveats: tuple[str, ...] = ()
+
     def as_json(self) -> dict[str, Any]:
-        return {"headline": self.headline, "detail": list(self.detail), "data": dict(self.data)}
+        return {"headline": self.headline, "detail": list(self.detail),
+                "caveats": list(self.caveats), "data": dict(self.data)}
 
     def render(self) -> str:
         return "\n".join((self.headline, *self.detail))

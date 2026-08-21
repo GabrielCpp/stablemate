@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Self
 
 import tomli_w
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from paddock.archive import digest
 from paddock.archive import tree_digest as digest_tree
@@ -110,6 +110,11 @@ class Pointer(BaseModel):
             )
 
 
+#: What a compromised round's note has to start with. Prose, because the note is read by
+#: humans, and a fixed prefix, because it is also the thing a script greps for.
+DIAGNOSTIC_MARKER = "DIAGNOSTIC — "
+
+
 class ResultPointer(Pointer):
     """A result is a seed pointed the other way; it just knows which run made it."""
 
@@ -117,6 +122,39 @@ class ResultPointer(Pointer):
     label: str = ""
     steps: int = 0
     scored: bool = False
+
+    #: Why this result is a diagnostic and not a baseline: a parked or hand-answered
+    #: operator gate, a step that failed, a pin that drifted. Machine-readable on purpose.
+    #: The scorecard already warns about all of this, at length — but the scorecard is
+    #: printed once, to a terminal, and *this file* is what a later comparison actually
+    #: reads. A caveat that lives only where a human was looking is the same defect as a
+    #: decision sheet stamped without checking what was asked.
+    caveats: list[str] = []
+
+    @model_validator(mode="after")
+    def _caveats_reach_the_note(self) -> Self:
+        """Make an uncaveated note impossible to write for a compromised round.
+
+        Fail-closed at the writer rather than checked at the reader, because the reader
+        is a future comparison that has no way to know what it is missing: an honest
+        number and a compromised one look identical once the warning is gone. Enforced in
+        both directions — an unmarked note on a caveated round is the failure this exists
+        to stop, and a marked note on a clean round is a marker that would stop meaning
+        anything if it could be left behind by accident.
+        """
+        marked = self.note.startswith(DIAGNOSTIC_MARKER)
+        if self.caveats and not marked:
+            raise ValueError(
+                f"result '{self.name}' records {len(self.caveats)} caveat(s) "
+                f"({'; '.join(self.caveats)}) but its note does not say so. A caveated "
+                f"round is a diagnostic: its note must begin {DIAGNOSTIC_MARKER!r}."
+            )
+        if marked and not self.caveats:
+            raise ValueError(
+                f"result '{self.name}' is marked {DIAGNOSTIC_MARKER!r} but records no "
+                f"caveats. Say what compromised it, or drop the marker."
+            )
+        return self
 
 
 def describe(pointer: Pointer) -> str:
