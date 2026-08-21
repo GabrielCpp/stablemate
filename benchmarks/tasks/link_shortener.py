@@ -28,6 +28,10 @@ task(
 
 FIXTURE = gf.Fixture(
     backlog="suites/link-shortener/docs/backlog.md",
+    # The author lane parks on product decisions the backlog leaves open, by design.
+    # Answering them by hand made the first round unrepeatable; this is that operator,
+    # tracked beside the backlog and recorded in the round's ledger when it is applied.
+    decisions="suites/link-shortener/docs/decisions.md",
     packs="product-planning,stablemate,infra",
     docs_scaffold="shared-docs:docs",
     surfaces=(

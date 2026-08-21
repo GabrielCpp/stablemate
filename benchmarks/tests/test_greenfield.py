@@ -19,9 +19,11 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import hashlib
 import importlib.util
 import json
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -273,4 +275,140 @@ def test_every_greenfield_task_carries_a_backlog_with_bullets() -> None:
         backlog = BENCHMARKS / declared.backlog
         assert backlog.is_file(), f"{path.name}: no backlog at {backlog}"
         assert gf.parse_backlog(backlog), f"{path.name}: backlog has no `- [id] …` bullets"
+        if declared.decisions:
+            # The sheet versions with the seed and `check_public.py` scans it, both of which
+            # need it to be a real tracked file under `benchmarks/` — and a task that names
+            # one it does not have parks every round on a gate it thinks it has answered.
+            sheet = BENCHMARKS / declared.decisions
+            assert sheet.is_file(), f"{path.name}: no decision sheet at {sheet}"
     assert found, "no greenfield task declares a Fixture — the backlog-driven half is gone"
+
+
+# ── the operator gate ─────────────────────────────────────────────────────────────────
+
+SHEET = "# decisions\n\n## Creation contract\n\n`POST /links` answers `201 Created`.\n"
+
+GATE = (
+    "STATUS: AWAITING_OPERATOR\n"
+    "\n"
+    "## Questions from the agent\n"
+    "\n"
+    "❓ **Q1** — what is the creation contract?\n"
+)
+
+
+def park(run: Run, name: str = "_author-context.md") -> Path:
+    path = run.repo / "docs" / "epics" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(GATE, encoding="utf-8")
+    return path
+
+
+def sheeted(run: Run, fixture: Any, text: str = SHEET) -> Any:
+    (run.data_dir / "docs" / "decisions.md").write_text(text, encoding="utf-8")
+    return dataclasses.replace(fixture, decisions="docs/decisions.md")
+
+
+def watch_once(run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch, *, expect: int) -> None:
+    """Run the watcher until the ledger has `expect` entries, then stop it.
+
+    The real watcher lives beside a phase that blocks for minutes; here it is driven to a
+    quiescent point and joined, so the test asserts on a finished thread rather than on a
+    race.
+    """
+    monkeypatch.setattr(gf, "GATE_POLL_S", 0.01)
+    stop, thread = gf.gates_watched(run, fixture, "author")
+    thread.start()
+    try:
+        deadline = time.monotonic() + 10.0
+        while len(gf.operator_gates_of(run)) < expect and time.monotonic() < deadline:
+            time.sleep(0.01)
+        # A further poll's worth of grace, so a wrongly-repeated injection has time to show
+        # up rather than being outrun by the stop.
+        time.sleep(0.1)
+    finally:
+        stop.set()
+        thread.join(timeout=5.0)
+    assert not thread.is_alive(), "the watcher outlived the phase it was watching"
+
+
+def test_the_watcher_answers_a_parked_gate_from_the_tracked_sheet(
+    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The grill gate is human by construction, so an unattended round dies on it. The
+    sheet is the operator, frozen — and the questions stay in the file beneath it, because
+    what was answered is only readable beside what was asked."""
+    gate = park(run)
+    watch_once(run, sheeted(run, fixture), monkeypatch, expect=1)
+
+    written = gate.read_text(encoding="utf-8")
+    # The header, not an appended block: only the first `STATUS:` line is ever read.
+    assert written.startswith("STATUS: ANSWERED\n")
+    assert "AWAITING_OPERATOR" not in written
+    assert "`POST /links` answers `201 Created`." in written
+    assert "❓ **Q1** — what is the creation contract?" in written
+    # workhorse's own reader is what the driver polls; it has to agree the gate is done.
+    assert gf.gate_answered(gate)
+
+
+def test_the_injection_is_recorded_with_the_sheet_it_applied(
+    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An injected answer is an input to the round. An input nobody can see is the defect
+    this whole seam exists to fix, so the path and the sha go in the ledger."""
+    park(run)
+    watch_once(run, sheeted(run, fixture), monkeypatch, expect=1)
+
+    entry, = gf.operator_gates_of(run)
+    assert entry["action"] == "answered"
+    assert entry["gate"] == "docs/epics/_author-context.md"
+    assert entry["sheet"] == "docs/decisions.md"
+    assert entry["sha256"] == hashlib.sha256(SHEET.encode("utf-8")).hexdigest()
+
+
+def test_a_gate_that_asks_again_stays_parked(
+    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One injection per gate path, ever. A second park at the same file is the flow
+    saying the sheet did not settle it — and the harness must not read the new question and
+    decide for itself whether the sheet covers it. That judgement is the thing a benchmark
+    cannot be making at gate time."""
+    gate = park(run)
+    fixture = sheeted(run, fixture)
+    watch_once(run, fixture, monkeypatch, expect=1)
+    gate.write_text(GATE.replace("Q1", "Q2"), encoding="utf-8")
+    watch_once(run, fixture, monkeypatch, expect=2)
+
+    # Left exactly as the flow re-asked it: parked, and the round waits.
+    assert gate.read_text(encoding="utf-8").startswith("STATUS: AWAITING_OPERATOR")
+    assert [e["action"] for e in gf.operator_gates_of(run)] == ["answered", "parked"]
+
+
+def test_a_task_with_no_sheet_parks_and_says_so(
+    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gate = park(run)
+    watch_once(run, fixture, monkeypatch, expect=1)
+
+    assert gate.read_text(encoding="utf-8") == GATE
+    entry, = gf.operator_gates_of(run)
+    assert entry["action"] == "parked"
+    assert "no decision sheet" in entry["reason"]
+
+
+def test_a_declared_sheet_that_is_missing_is_an_error_not_a_shrug(
+    run: Run, fixture: Any
+) -> None:
+    """Read from the tracked data dir, never from the tree the round mutates — so a sheet
+    that is not there is a broken `--data-dir`, and a round that silently ran without it
+    would be the unrepeatable one all over again."""
+    with pytest.raises(gf.TrialError, match="no decision sheet"):
+        gf.decision_sheet(run, dataclasses.replace(fixture, decisions="docs/nope.md"))
+
+
+def test_a_parked_gate_is_a_warning_on_the_score() -> None:
+    lines = gf.warnings([], [], [{"gate": "docs/epics/_author-context.md",
+                                 "action": "parked", "reason": "no decision sheet"}])
+    assert any("stayed parked" in line for line in lines)
+    assert not gf.warnings([], [], [{"gate": "g", "action": "answered",
+                                     "sheet": "s", "sha256": "0" * 64}])

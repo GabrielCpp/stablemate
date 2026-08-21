@@ -4,7 +4,7 @@ One round, three workflow phases and a ruler:
 
     genesis → the skeleton, one invocation per surface
     backlog → the benchmark's input, copied in so every run starts from the same bullets
-    author  → epics and stories
+    author  → epics and stories, its human grill gate answered from a tracked sheet
     coder   → the implementation
     gates   → the produced repo's own `build` / `test`, run once and recorded
 
@@ -23,12 +23,14 @@ The leading underscore keeps `paddock.loader` from treating this as a task modul
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -41,6 +43,7 @@ from _stablemate import TrialError, effective, no_leaks, stablemate_checkout, uv
 from ostler import markdown
 from paddock import Run, Score
 from workhorse.config_run import AgentResilience
+from workhorse.pyflow.driver import answered as gate_answered
 from workhorse.runner import caps as wh_caps
 from workhorse.runner import extract as wh_extract
 from workhorse.runner import failure as wh_failure
@@ -110,6 +113,10 @@ class Fixture:
     backlog: str
     #: Where that backlog lands inside the repo, and the `backlog` param author is given.
     backlog_path: str = "docs/backlog.md"
+    #: The tracked decision sheet answering the author lane's grill gate, relative to the
+    #: data directory — same rule as `backlog`, and for the same reason. Empty means the
+    #: task has none, and a round that parks stays parked. See `answer_operator_gates`.
+    decisions: str = ""
     #: The surfaces genesis scaffolds, in order. The first one carries the docs scaffold.
     surfaces: tuple[Surface, ...] = ()
     #: Repo-level (process) packs, unioned into every surface's `agents.yml`.
@@ -252,6 +259,137 @@ def seed_backlog(run: Run, fixture: Fixture) -> None:
     destination.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
 
 
+#: How often the watcher looks for a parked gate. The gate is minutes of agent work away
+#: from the last one, so a slow poll costs nothing and a fast one just burns a core.
+GATE_POLL_S = 5.0
+
+#: The heading the sheet is written under, above the questions the gate asked. The
+#: questions are kept: what the sheet answered is only readable beside them.
+ANSWER_HEADING = "## Operator answers (injected by the benchmark harness)"
+
+
+def operator_gates_path(run: Run) -> Path:
+    return build_dir(run) / "operator-gates.json"
+
+
+def operator_gates_of(run: Run) -> list[dict[str, Any]]:
+    path = operator_gates_path(run)
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
+
+
+def record_gate(run: Run, entry: dict[str, Any]) -> None:
+    """Append one operator-gate outcome to its own ledger.
+
+    Separate from `build.json` because it answers a different question: `build.json` is
+    what each phase cost, this is *what the harness put in* that a human would otherwise
+    have. An injected answer is an input to the round, and an input nobody can see is the
+    exact defect this file exists to fix — the first round's answers were mine, typed at
+    the gate, and nothing in the sealed result said so.
+    """
+    entries = operator_gates_of(run)
+    entries.append(entry)
+    run.write_json(operator_gates_path(run), entries)
+
+
+def decision_sheet(run: Run, fixture: Fixture) -> tuple[str, str] | None:
+    """The tracked sheet's text and sha256, or `None` when the task declares none.
+
+    Read from `run.data_dir` — git tracks it, `check_public.py` scans it, and it versions
+    with the backlog beside it. Never from the repo under test, which the round mutates.
+    """
+    if not fixture.decisions:
+        return None
+    source = run.data_dir / fixture.decisions
+    if not source.is_file():
+        raise TrialError(f"no decision sheet at {source} — is --data-dir the repo's benchmarks/?")
+    text = source.read_text(encoding="utf-8")
+    return text, hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def parked_gates(repo: Path) -> list[Path]:
+    """Every context file currently sitting on `STATUS: AWAITING_OPERATOR`.
+
+    `gate_answered` is workhorse's own reader, imported rather than re-implemented: the
+    driver polls that exact predicate to decide whether the await is over, so a second
+    definition here would be a second opinion about the same edge.
+    """
+    return sorted(p for p in repo.glob("docs/**/*context.md")
+                  if p.is_file() and not gate_answered(p))
+
+
+def apply_sheet(path: Path, sheet: str) -> None:
+    """Answer one parked gate with the sheet, in the one place the flow reads.
+
+    Only the *first* `STATUS:` line is read, and it is rewritten rather than appended to —
+    an answer block added anywhere else in the file is silently inert.
+    """
+    kept = [line for line in path.read_text(encoding="utf-8").splitlines()
+            if not line.startswith("STATUS:")]
+    path.write_text(
+        f"STATUS: ANSWERED\n\n{ANSWER_HEADING}\n\n{sheet.strip()}\n\n"
+        + "\n".join(kept).lstrip("\n") + "\n",
+        encoding="utf-8",
+    )
+
+
+def answer_operator_gates(run: Run, fixture: Fixture, stop: threading.Event) -> None:
+    """Watch the produced repo for a parked gate and answer it from the tracked sheet.
+
+    A thread because the phase blocks: `run_phase` calls the CLI synchronously and
+    workhorse's driver polls the gate file in-process, so nothing on this side of the
+    subprocess gets a turn unless it has its own.
+
+    **One injection per gate path, ever.** If the flow parks again at the same file, it
+    re-asked — which means the sheet did not settle it — and the round stays parked and is
+    reported parked. The harness does not read a question and judge whether the sheet
+    covers it; that judgement is the thing a benchmark must not be making at gate time,
+    and a second park is the flow saying so itself.
+    """
+    sheet = decision_sheet(run, fixture)
+    # Seeded from the ledger, not from empty sets: "this gate has already had its one
+    # injection" is a fact about the round, not about this thread, and a phase that is
+    # retried or a watcher that is restarted must not spend the injection twice.
+    ledger = operator_gates_of(run)
+    answered = {str(e["gate"]) for e in ledger if e["action"] == "answered"}
+    parked = {str(e["gate"]) for e in ledger if e["action"] != "answered"}
+
+    def park(gate: str, reason: str) -> None:
+        parked.add(gate)
+        record_gate(run, {"gate": gate, "action": "parked", "reason": reason})
+        logger.warning("operator gate parked: %s — %s", gate, reason)
+
+    while not stop.wait(GATE_POLL_S):
+        for path in parked_gates(run.repo):
+            gate = str(path.relative_to(run.repo))
+            if gate in parked:
+                continue
+            if gate in answered:
+                park(gate, "the flow asked again after the sheet was applied, so the sheet "
+                           "does not settle it")
+                continue
+            if sheet is None:
+                park(gate, "the task declares no decision sheet")
+                continue
+            text, digest = sheet
+            apply_sheet(path, text)
+            answered.add(gate)
+            record_gate(run, {"gate": gate, "action": "answered",
+                              "sheet": fixture.decisions, "sha256": digest})
+            logger.info("answered operator gate %s from %s", gate, fixture.decisions)
+
+
+def gates_watched(
+    run: Run, fixture: Fixture, phase: str
+) -> tuple[threading.Event, threading.Thread]:
+    """Run `phase` with the gate watcher alive, and make sure it dies with the phase."""
+    stop = threading.Event()
+    thread = threading.Thread(
+        target=answer_operator_gates, args=(run, fixture, stop),
+        name=f"gate-watcher-{phase}", daemon=True,
+    )
+    return stop, thread
+
+
 def run_phase(run: Run, fixture: Fixture, phase: str, *argv: str) -> None:
     """Drive one workflow phase and record what it cost.
 
@@ -275,13 +413,27 @@ def run_phase(run: Run, fixture: Fixture, phase: str, *argv: str) -> None:
 
 
 def run_author(run: Run, fixture: Fixture) -> None:
+    """Split the backlog into epics and stories, answering the grill gate from the sheet.
+
+    The gate is the author lane's `grill_backlog`, and it is human by construction —
+    `operator_mode` does not gate it, because the premise is that these are decisions
+    nobody has written down yet. That makes an unattended round impossible and an attended
+    one unrepeatable, so the harness stands in for the operator with a tracked sheet and
+    says in the ledger that it did.
+    """
     if not (run.repo / fixture.backlog_path).is_file():
         raise TrialError(f"no backlog at {run.repo / fixture.backlog_path} — genesis first")
-    run_phase(
-        run, fixture, "author",
-        "workhorse-author", "run",
-        "--params", json.dumps({"backlog": fixture.backlog_path}),
-    )
+    stop, thread = gates_watched(run, fixture, "author")
+    thread.start()
+    try:
+        run_phase(
+            run, fixture, "author",
+            "workhorse-author", "run",
+            "--params", json.dumps({"backlog": fixture.backlog_path}),
+        )
+    finally:
+        stop.set()
+        thread.join(timeout=GATE_POLL_S * 2)
 
 
 def run_coder(run: Run, fixture: Fixture) -> None:
@@ -608,7 +760,8 @@ def satisfaction(bullets: list[dict[str, Any]]) -> float:
     return 100.0 * sum(int(b["level"]) for b in bullets) / (MAX_LEVEL * len(bullets))
 
 
-def warnings(bullets: list[dict[str, Any]], checks: list[dict[str, Any]]) -> list[str]:
+def warnings(bullets: list[dict[str, Any]], checks: list[dict[str, Any]],
+             gates: list[dict[str, Any]]) -> list[str]:
     lines: list[str] = []
     capped = [b for b in bullets if b.get("capped")]
     if capped:
@@ -619,12 +772,40 @@ def warnings(bullets: list[dict[str, Any]], checks: list[dict[str, Any]]) -> lis
             missing = ", ".join(b["unverified_citations"]) or "(no citation at all)"
             lines.append(f"      - {b['id']}: {missing}")
 
+    parked = [g for g in gates if g["action"] != "answered"]
+    if parked:
+        lines.append(f"  ⚠ {len(parked)} operator gate(s) stayed parked — the round waited on a "
+                     "decision the sheet does not settle,")
+        lines.append("    and whatever the phase produced after that was produced without it. "
+                     "Extend the decision sheet;")
+        lines.append("    do not answer it by hand, or the next round is unrepeatable again.")
+
     red = [c for c in checks if c["exit"] != 0]
     verified = [b for b in bullets if int(b["level"]) == MAX_LEVEL]
     if red and verified:
         lines.append(f"  ⚠ {len(verified)} bullet(s) scored `verified` while {len(red)} repo "
                      f"gate(s) are red ({', '.join(str(c['name']) for c in red)}).")
         lines.append("    Executable evidence that does not execute is not evidence.")
+    return lines
+
+
+def operator_gate_lines(gates: list[dict[str, Any]]) -> list[str]:
+    """What the harness answered, and what it left parked, on this round.
+
+    Printed even when nothing parked: "the sheet was applied, here is its sha" is the
+    round saying which product it was asked to build, and that belongs beside the score
+    rather than in the zip only.
+    """
+    if not gates:
+        return []
+    lines = ["", "  operator gates"]
+    for g in gates:
+        if g["action"] == "answered":
+            lines.append(f"  ✓ {g['gate']}")
+            lines.append(f"      answered from {g['sheet']} (sha256 {g['sha256'][:12]})")
+        else:
+            lines.append(f"  ⚠ {g['gate']}")
+            lines.append(f"      PARKED — {g['reason']}")
     return lines
 
 
@@ -690,12 +871,15 @@ def score_round(run: Run, fixture: Fixture) -> Score:
     tally: dict[int, int] = defaultdict(int)
     for b in bullets:
         tally[int(b["level"])] += 1
+    operator_gates = operator_gates_of(run)
+    flags = warnings(bullets, checks, operator_gates)
     runs = fx.read_runs(runs_dir(run), stablemate_checkout(run))
     nodes = fx.hang_candidates(runs_dir(run), run.stage / "artifacts")
     detail = [
         *bullet_table(bullets),
         "  " + "   ".join(f"{LEVELS[n][0]}: {tally[n]}" for n in sorted(LEVELS, reverse=True)),
-        *(["", *warnings(bullets, checks)] if warnings(bullets, checks) else []),
+        *(["", *flags] if flags else []),
+        *operator_gate_lines(operator_gates),
         *gate_lines(checks),
         *phase_lines(phases_of(run)),
         *fx.reliability_lines(runs),
@@ -715,6 +899,7 @@ def score_round(run: Run, fixture: Fixture) -> Score:
                          ("id", "text", "level", "reason", "evidence", "epics",
                           "capped", "unverified_citations")} for b in bullets],
             "checks": checks,
+            "operator_gates": operator_gates,
             "phases": phases_of(run),
             "runs": runs,
             "churn": fx.churn_candidates(runs_dir(run)),
