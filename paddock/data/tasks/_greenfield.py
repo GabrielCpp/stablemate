@@ -501,6 +501,12 @@ def watch_operator_gates(run: Run, fixture: Fixture, stop: threading.Event) -> N
     the ledger says so within a couple of minutes instead of the phase budget saying it in
     an hour. The grace is what keeps `parked` honest — most gates route through a resolver
     that answers in seconds, and a verb that fired on sight would mark those stalls too.
+
+    How much of the grace such a gate spent is logged, not recorded, and the line between
+    the two is worth stating before the next person is tempted across it: **the ledger
+    records what the harness put in, and a gate the round's own resolver answered is the
+    round working, not an input to it.** Enriching the ledger with the latter would make
+    the same file mean two things and cost it the one question it can answer.
     """
     del fixture  # kept in the signature: `gates_watched` binds one call for every lane.
     # Seeded from the ledger, not from empty sets: "this gate has already been reported"
@@ -528,9 +534,7 @@ def watch_operator_gates(run: Run, fixture: Fixture, stop: threading.Event) -> N
         # A gate answered inside the grace is not a stall, but it is not nothing either:
         # how much of the grace a resolver actually spends is the only place the number
         # can be calibrated from. One that clears at 115s says the next fixture needs a
-        # longer grace, and says it in a log line rather than in a burned round. It stays
-        # out of the ledger — the ledger records what the *harness* put in, and a gate the
-        # round's own resolver answered is the round working, not an input to it.
+        # longer grace, and says it in a log line rather than in a burned round.
         for gate in set(first_seen) - awaiting:
             logger.info(
                 "operator gate cleared after %.0fs of the %.0fs grace: %s",
