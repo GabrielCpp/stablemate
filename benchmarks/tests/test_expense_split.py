@@ -111,12 +111,22 @@ def test_the_qa_rewind_removes_the_flows_outputs_and_nothing_else(tmp_path: Path
     (spec / "qa-evidence.json").write_text("{}", encoding="utf-8")
     (spec / "qa").mkdir()
     (spec / "qa" / "shot.png").write_bytes(b"")
+    # An agent-invented name, not a contract one: this is what the QA agent actually left in
+    # balance-settlement's spec dir, and it survived the rewind until a pin sweep found it.
+    (spec / "qa-smoke-proof.txt").write_text("smoke ok", encoding="utf-8")
+    # A frozen app keeps its harness beside the spec, which is why the strip is an explicit
+    # list and not a `qa*` sweep — a sweep would take this with it.
+    (spec / "qa_plan.py").write_text("SCENARIOS = []", encoding="utf-8")
 
     task_module.rewind(repo, task_module.PINS[3], "qa")
 
     # The story and the plan are what the flow is *entered* with; everything the flow
     # writes has to be gone, or the trial measures a repair of its own last answer.
-    assert sorted(p.name for p in spec.iterdir()) == ["implementation-plan.md", "story.md"]
+    assert sorted(p.name for p in spec.iterdir()) == [
+        "implementation-plan.md",
+        "qa_plan.py",
+        "story.md",
+    ]
 
 
 def test_the_qa_rewind_refuses_a_pin_whose_spec_dir_is_absent(tmp_path: Path) -> None:

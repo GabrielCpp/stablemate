@@ -49,9 +49,22 @@ NOT_THE_APP = ("stories", "defects", "defects.yml")
 #: are belt-and-braces; the plan files are the load-bearing ones, because a plan left on
 #: disk is a plan the flow would repair instead of author — a different loop from the one
 #: being measured.
+#:
+#: The list is explicit rather than a `qa*` prefix sweep, and has to stay that way: a
+#: frozen app keeps its own harness beside the spec — policy-desk's `qa_plan.py` — and a
+#: prefix rule would delete the fixture along with the evidence.
+#:
+#: `qa-okf-context.{json,md}` are deliberately absent: the qa flow's own
+#: `build_qa_okf_context` node rebuilds them at entry, so a stale copy is overwritten
+#: rather than believed.
 QA_OUTPUTS = (
     "qa-plan.yml", "qa-plan.md", "qa.md", "qa-evidence.json",
     "qa-okf-verification-index.json", "qa",
+    # Not a contract name — a file the QA agent invented for itself on expense-split's
+    # balance-settlement story, and therefore one a fixed list only learns about by
+    # finding it still sitting in the spec dir after a rewind. It is a smoke run's proof,
+    # which is exactly the thing the trial is measuring the flow on producing.
+    "qa-smoke-proof.txt",
 )
 
 #: The label a trial with nothing seeded in it carries.
