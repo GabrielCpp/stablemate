@@ -342,20 +342,20 @@ def test_the_overlay_precedes_the_base_and_absent_layers_are_dropped(tmp_path: P
 
     with patch.dict(os.environ, {"FARRIER_LIBRARY_DIR": str(overlay)}, clear=False):
         with patch.object(run_cmd, "base_library_dir", lambda: base):
-            assert run_cmd._library_dirs({}) == [str(overlay), str(base)]
+            assert run_cmd.library_dirs({}) == [str(overlay), str(base)]
         with patch.object(run_cmd, "base_library_dir", lambda: tmp_path / "gone"):
-            assert run_cmd._library_dirs({}) == [str(overlay)]
+            assert run_cmd.library_dirs({}) == [str(overlay)]
 
     environ = {k: v for k, v in os.environ.items() if k != "FARRIER_LIBRARY_DIR"}
     with patch.dict(os.environ, environ, clear=True):
         with patch.object(run_cmd, "base_library_dir", lambda: base):
             # The config's `library_dir` is the persisted spelling of the same overlay.
-            assert run_cmd._library_dirs({"library_dir": str(overlay)}) == [
+            assert run_cmd.library_dirs({"library_dir": str(overlay)}) == [
                 str(overlay), str(base)
             ]
-            assert run_cmd._library_dirs({}) == [str(base)]
+            assert run_cmd.library_dirs({}) == [str(base)]
         with patch.object(run_cmd, "base_library_dir", lambda: None):
-            assert run_cmd._library_dirs({}) == []
+            assert run_cmd.library_dirs({}) == []
 
 
 # --------------------------------------------------------------------------------

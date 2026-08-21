@@ -250,7 +250,7 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     # Same boundary, same reason: the library ladder is three environment variables and a
     # config file deep, and a workflow may read none of them. It is walked here and handed
     # down as a parameter, so `--param library_dirs=[…]` can point a run at a checkout.
-    params.setdefault("library_dirs", _library_dirs(cfg))
+    params.setdefault("library_dirs", library_dirs(cfg))
 
     return RunInvocation(
         registry=registry,
@@ -271,8 +271,14 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     )
 
 
-def _library_dirs(cfg: dict[str, Any]) -> list[str]:
+def library_dirs(cfg: dict[str, Any]) -> list[str]:
     """The library roots this run resolves content against, highest precedence first.
+
+    Public because the ladder is not only the CLI's. A checkpoint carries this list, so
+    anything that writes or repairs one off-process — a benchmark harness transplanting a
+    frozen checkpoint into a fresh round, an operator fixing a run dir moved between
+    machines — has to compute the same value this does, and a second implementation of a
+    four-rung ladder is a second answer to "which library did that run read?".
 
     The same two layers farrier renders across, in the same order: the *overlay*
     (`$FARRIER_LIBRARY_DIR`, else the shared config's `library_dir`), then the *base*
