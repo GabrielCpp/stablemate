@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Any
 
 import _forensics as fx
-from _stablemate import TrialError, effective, no_leaks, stablemate_checkout
+from _stablemate import TrialError, effective, no_leaks, stablemate_checkout, uv_run
 from ostler import markdown
 from paddock import Run, Score
 from workhorse.config_run import AgentResilience
@@ -217,7 +217,7 @@ def run_genesis(run: Run, fixture: Fixture) -> None:
     for surface in fixture.surfaces:
         started = time.monotonic()
         result = run.cli(
-            "uv", "run", "--project", str(checkout),
+            *uv_run(checkout, "workhorse-workflows"),
             "workhorse-coder", "run", "genesis",
             "--runs-dir", str(runs_dir(run)),
             "--config", str(effective(run)),
@@ -263,7 +263,7 @@ def run_phase(run: Run, fixture: Fixture, phase: str, *argv: str) -> None:
     checkout = stablemate_checkout(run)
     started = time.monotonic()
     result = run.cli(
-        "uv", "run", "--project", str(checkout),
+        *uv_run(checkout, "workhorse-workflows"),
         *argv,
         "--runs-dir", str(runs_dir(run)),
         "--config", str(effective(run)),

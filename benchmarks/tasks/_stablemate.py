@@ -91,6 +91,20 @@ def stablemate_checkout(run: Run) -> Path:
     return stablemate_dir()
 
 
+def uv_run(checkout: Path, package: str) -> list[str]:
+    """The `uv run` prefix that runs *checkout*'s own code, not this machine's.
+
+    `--project` alone does not do that: the workspace root is an anchor with no
+    dependencies, so the checkout's environment contains none of the tools, and a
+    command uv cannot find in the project environment silently falls back to `$PATH` —
+    where an editable install resolves every workflow module to the operator's live
+    tree, straight through paddock's pin. `--package` names the workspace member whose
+    environment the command runs in, which installs that member and its workspace
+    dependencies editable *from the checkout* into the checkout's own `.venv`.
+    """
+    return ["uv", "run", "--project", str(checkout), "--package", package]
+
+
 def effective(run: Run) -> Path:
     return run.scratch / "stablemate-config.toml"
 
@@ -114,6 +128,12 @@ def pin_config(run: Run) -> None:
         for name in ("library_dir", "base_dir", "stablemate_dir", "worktree_dir")
         if isinstance(value := core_config.get_config_value(name, machine), str) and value
     }
+    # The pin has to reach the config too: `stablemate_dir` names "the checkout", and
+    # for a pinned run that is the round's worktree, not the operator's live tree —
+    # anything a trial derives from the checkout (base-library discovery, farrier's
+    # launcher) must read the tree the round is measured on, or an edit the operator
+    # makes mid-round leaks into the trials through the config.
+    local["stablemate_dir"] = str(stablemate_checkout(run))
     if "library_dir" not in local:
         raise TrialError(
             "no `library_dir` in the machine's stablemate config — a run given --config "

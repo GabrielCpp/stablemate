@@ -218,7 +218,7 @@ def run_round(run: Run) -> None:
 
             def install(repo: Path, run_id: str = run_id) -> None:
                 run.cli(
-                    "uv", "run", "--project", str(checkout_dir),
+                    *sm.uv_run(checkout_dir, "farrier"),
                     "farrier", "install", "--repo", str(repo),
                     cwd=checkout_dir, log_name=f"{run_id}-farrier", check=True,
                 )
@@ -227,10 +227,11 @@ def run_round(run: Run) -> None:
 
             started = time.monotonic()
             result = run.cli(
-                # `--project` rather than an inherited cwd: the trial process stands *in
+                # `uv_run` rather than an inherited cwd: the trial process stands *in
                 # the tree under test* (see `cwd=repo`), so uv is told where its workspace
-                # is instead of finding it underfoot.
-                "uv", "run", "--project", str(checkout_dir),
+                # is instead of finding it underfoot — and which member's environment to
+                # run in, so the pinned checkout's code is what actually runs.
+                *sm.uv_run(checkout_dir, "workhorse-workflows"),
                 "workhorse-coder", "run", flow,
                 "--runs-dir", str(runs_dir), "--run-id", run_id,
                 # Whole-file: the round's models are the tracked config's, not whatever
