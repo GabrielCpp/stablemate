@@ -76,6 +76,20 @@ def farrier_installed(repo: Path) -> bool:
     return (repo / "agents.yml").exists() or (repo / ".claude").is_dir()
 
 
+def in_tree_source(repo: Path, data_dir: Path) -> str:
+    """*repo* relative to the data directory, or `""` when it is somewhere else on disk.
+
+    What separates a fixture the repo tracks — where an edit to the tree and a stale zip
+    are the same event, and the freshness guard has something to recompute — from a seed
+    captured out of a live session's workdir, which has no in-tree source and so cannot
+    drift from one.
+    """
+    try:
+        return repo.resolve().relative_to(data_dir.resolve()).as_posix()
+    except ValueError:
+        return ""
+
+
 def capture(
     repo: Path,
     *,
@@ -119,6 +133,8 @@ def capture(
         dirty=dirty,
         url=url,
         note=note,
+        source=in_tree_source(repo, data_dir),
+        tree_sha256=archive.tree_digest(repo, excludes),
     )
     pointer.write(pointer_path)
     return Captured(pointer=pointer, zip_path=zip_path, pointer_path=pointer_path)

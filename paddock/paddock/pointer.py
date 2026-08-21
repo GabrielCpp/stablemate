@@ -22,6 +22,7 @@ import tomli_w
 from pydantic import BaseModel, ConfigDict
 
 from paddock.archive import digest
+from paddock.archive import tree_digest as digest_tree
 
 
 class PointerError(RuntimeError):
@@ -42,6 +43,19 @@ class Pointer(BaseModel):
     url: str = ""
     note: str = ""
 
+    #: The captured tree's own path, relative to the data directory, when the tree lives
+    #: in this repo — `apps/claims-api` for a frozen fixture. Empty for a seed captured
+    #: from somewhere else on disk (a greenfield capture out of a live session), which has
+    #: no in-tree source to compare against and is exempt from the freshness guard by
+    #: construction rather than by exception.
+    source: str = ""
+
+    #: `archive.tree_digest` of that source directory at capture time. The pair
+    #: (`source`, `tree_sha256`) is what makes an edit to a tracked fixture that never
+    #: reached a re-capture a test failure instead of a round scored against the previous
+    #: book — see `sha256` for the question it does *not* answer.
+    tree_sha256: str = ""
+
     @classmethod
     def load(cls, path: Path) -> Self:
         try:
@@ -57,6 +71,27 @@ class Pointer(BaseModel):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(tomli_w.dumps(self.model_dump()), encoding="utf-8")
         return path
+
+    def verify_tree(self, source: Path) -> None:
+        """Raise unless *source* still hashes to what this pointer recorded at capture.
+
+        Separate from `verify` because they catch opposite failures. `verify` asks whether
+        the zip in the store is the archive this pointer names; this asks whether that
+        archive is still the tree the repo tracks. The second is the one a fixture author
+        trips: the trials materialize from the unpacked zip, so an edit that lands in git
+        and never reaches a re-capture leaves every round scoring the previous content,
+        against an answer key read from the new one.
+        """
+        if not self.tree_sha256:
+            raise PointerError(f"pointer '{self.name}' records no tree_sha256; re-capture it")
+        actual = digest_tree(source)
+        if actual != self.tree_sha256:
+            raise PointerError(
+                f"{source}: tree has changed since seed '{self.name}' was captured "
+                f"({actual[:12]} != {self.tree_sha256[:12]}). The trials materialize from the "
+                f"zip, not from this tree, so the change is invisible to a round until you "
+                f"re-capture:\n  uv run paddock seed capture {source} --name {self.name} --force"
+            )
 
     def verify(self, zip_path: Path) -> None:
         """Raise unless *zip_path* is byte-for-byte the archive this pointer describes.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -92,3 +93,49 @@ def test_non_https_urls_are_refused(repo: Path, data_dir: Path, store: Path) -> 
     captured.zip_path.unlink()
     with pytest.raises(seeds.SeedError, match="only https"):
         seeds.fetch(captured.pointer, store=store)
+
+
+def test_capture_records_nothing_to_compare_for_an_out_of_tree_repo(
+    repo: Path, data_dir: Path, store: Path
+) -> None:
+    """A capture from elsewhere on disk has no in-tree source, and says so by leaving it empty.
+
+    That is the exemption the freshness guard reads: a greenfield seed taken from a live
+    session's workdir cannot drift from a tracked tree it never had.
+    """
+    pointer = capture(repo, data_dir, store).pointer
+    assert pointer.source == ""
+    assert pointer.tree_sha256
+
+
+def test_capture_pins_a_repo_that_lives_under_the_data_directory(
+    repo: Path, data_dir: Path, store: Path
+) -> None:
+    inside = data_dir / "apps" / "acme-api"
+    shutil.copytree(repo, inside, symlinks=True)
+    pointer = seeds.capture(inside, name="acme", data_dir=data_dir, store=store).pointer
+    assert pointer.source == "apps/acme-api"
+    pointer.verify_tree(inside)
+
+
+def test_verify_tree_rejects_a_source_that_moved_after_capture(
+    repo: Path, data_dir: Path, store: Path
+) -> None:
+    """The whole point: the trials run the zip, so an unre-captured edit is invisible to them."""
+    inside = data_dir / "apps" / "acme-api"
+    shutil.copytree(repo, inside, symlinks=True)
+    pointer = seeds.capture(inside, name="acme", data_dir=data_dir, store=store).pointer
+    (inside / "README.md").write_text("acme, repaired\n", encoding="utf-8")
+    with pytest.raises(PointerError, match="paddock seed capture"):
+        pointer.verify_tree(inside)
+
+
+def test_verify_tree_ignores_the_source_directorys_own_git(
+    repo: Path, data_dir: Path, store: Path
+) -> None:
+    """A digest that moved on `git gc` would report skew nobody introduced."""
+    inside = data_dir / "apps" / "acme-api"
+    shutil.copytree(repo, inside, symlinks=True)
+    pointer = seeds.capture(inside, name="acme", data_dir=data_dir, store=store).pointer
+    (inside / ".git" / "a-new-object").write_text("whatever\n", encoding="utf-8")
+    pointer.verify_tree(inside)

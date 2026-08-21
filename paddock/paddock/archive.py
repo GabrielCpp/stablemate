@@ -210,6 +210,43 @@ def digest(path: Path) -> str:
     return hasher.hexdigest()
 
 
+#: Left out of a tree digest. A seed zip carries `.git`, but the digest exists to be
+#: recomputed from a *tracked* source directory — where `.git` is the outer repo's and
+#: belongs to no fixture — so hashing it would make the number differ between the
+#: capture and every later check for reasons that are never the fixture's content.
+TREE_DIGEST_EXCLUDES = (".git",)
+
+
+def tree_digest(root: Path, excludes: Sequence[str] = ()) -> str:
+    """A content hash of *root*, reproducible from the tree rather than from a zip.
+
+    The zip's own sha256 answers "is this archive the one the pointer names". It cannot
+    answer the question a fixture actually raises — "has the source tree moved since the
+    archive was cut" — because a capture of identical content is a byte-identical zip only
+    as long as nothing about the archiving changes, and because the tree is what an author
+    edits. So: sorted relative paths, each with its content and its symlink-ness, hashed in
+    one pass. Directories contribute their name alone, so an emptied directory still shows.
+
+    Mode is deliberately not hashed. The executable bit matters to an unpacked seed and
+    `create` preserves it, but a tracked tree's modes vary with the checkout's umask and
+    filesystem, and a digest that drifted on `git clone` would report skew that is not
+    there — which is how a guard gets disabled.
+    """
+    hasher = hashlib.sha256()
+    for entry in sorted(walk(root, (*excludes, *TREE_DIGEST_EXCLUDES)), key=lambda e: e.arcname):
+        hasher.update(entry.arcname.encode("utf-8"))
+        if entry.is_dir:
+            hasher.update(b"\0dir")
+        elif entry.is_symlink:
+            hasher.update(b"\0link")
+            hasher.update(os.readlink(entry.path).encode("utf-8"))
+        else:
+            hasher.update(b"\0file")
+            hasher.update(entry.path.read_bytes())
+        hasher.update(b"\0")
+    return hasher.hexdigest()
+
+
 def manifest(root: Path) -> dict[str, tuple[int, int, bool]]:
     """`{relative path: (size, mtime_ns, is_symlink)}` for every entry under *root*.
 

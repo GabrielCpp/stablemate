@@ -1,8 +1,10 @@
 name = "seat-booking"
 repo_dir = "seat-booking"
-sha256 = "6a37f91adae3094bf899ddd270b073c6b51f5c162952cc4aad155aca7075fd2b"
-bytes = 54105
-head = "94bd74f5e74c4f23681311a885213c17de445e27"
+sha256 = "a9e62e7aabc699e9587393dd7040fa06358c55207bb76a8900afb5d148179d84"
+bytes = 54103
+head = "68dd26960dc6bf5c04929be5a1cf7cd43ba0f042"
 dirty = true
 url = ""
 note = ""
+source = "apps/seat-booking"
+tree_sha256 = "82eaf0a73991e8668993b5a07a828bfa7eb9245c06df31812f2ee2d148c2492b"

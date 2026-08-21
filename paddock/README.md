@@ -50,12 +50,23 @@ bytes = 214_000_000
 head = "9e3536d…"
 dirty = false
 url = "https://…"            # optional; the first fetch backend is a plain HTTPS GET
+source = "apps/policy-desk"  # where the captured tree lives, when it lives in this repo
+tree_sha256 = "…"            # that directory's content hash at capture time
 ```
 
 The sha256 makes the fixture reproducible and its integrity independent of transport, and
 it is verified on every unpack — not only after a download. A seed in the local store was
 put there by some earlier command, and a fixture that has quietly drifted is a benchmark
 number nobody can attribute.
+
+`source` and `tree_sha256` answer the other question, and it is the one a fixture author
+trips over. A round materializes from the unpacked zip, while the answer key is read from
+the tracked tree — so an edit to `data/apps/<app>/` that never reached a re-capture leaves
+every trial facing the previous content with the new key held against it, and nothing about
+the run looks wrong. `data/tests/test_seed_freshness.py` recomputes the hash and fails with
+the re-capture command in the message. A seed captured from outside the data directory
+records no `source` and is exempt by construction: there is no in-tree tree it could have
+drifted from.
 
 `repo_dir` looks cosmetic and is not: farrier derives the names of the files it generates
 from the repo directory's basename, so a tree unpacked under a different name gets a fresh
