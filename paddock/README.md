@@ -174,6 +174,21 @@ reaper is only the net. A container is out of its reach: its working directory i
 its own namespace, not the stage, so whatever brought the stack up still has to take it
 down.
 
+It fires from inside the round, which means a round **killed from outside** never fires it:
+a `SIGTERM` to `paddock run` takes the runner down and leaves whatever it started standing
+in the stage. Until there is a second invocation path, that case is manual — after killing
+a round, list the survivors and finish the job:
+
+```bash
+for d in /proc/[0-9]*; do
+  cwd=$(readlink "$d/cwd" 2>/dev/null) || continue
+  case "$cwd" in */paddock/work/<task>/<label>/*) echo "${d#/proc/} $cwd";; esac
+done
+```
+
+Skipping it costs the *next* round on that task, not this one, which is why it is easy to
+forget and expensive to have forgotten.
+
 ## Commands
 
 ```bash
