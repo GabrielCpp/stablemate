@@ -22,7 +22,8 @@ def test_a_pin_is_a_detached_checkout_at_the_sources_head(repo: Path, tmp_path: 
     assert pinned is not None
     assert pinned.pinned and pinned.path != repo
     assert pinned.head == head_of(repo)
-    assert head_of(pinned.path) == pinned.head
+    # Through the stashed git dir: the pin itself is fenced off from git on purpose.
+    assert project_mod.read(pinned, "rev-parse", "HEAD").stdout.strip() == pinned.head
     project_mod.release(pinned)
     assert not pinned.path.exists()
 
@@ -58,19 +59,15 @@ def test_a_pin_has_no_remote_to_push_to(repo: Path, tmp_path: Path) -> None:
     and it has to be zero rather than "origin renamed": the gh credential helper is
     machine-wide, so any remote at all is a live route to the network.
     """
-    repo_git = subprocess.run(
+    subprocess.run(
         ["git", "remote", "add", "origin", "https://example.com/acme.git"],
-        cwd=str(repo), capture_output=True, text=True, check=False,
+        cwd=str(repo), check=True,
     )
-    assert repo_git.returncode == 0, repo_git.stderr
 
     pinned = project_mod.pin(repo, work=tmp_path / "work")
 
     assert pinned is not None and pinned.pinned
-    remotes = subprocess.run(
-        ["git", "remote"], cwd=str(pinned.path), capture_output=True, text=True, check=True
-    ).stdout.split()
-    assert remotes == []
+    assert project_mod.read(pinned, "remote").stdout.split() == []
     # And the source keeps the remote it had: the pin is not allowed to edit the operator's
     # checkout on its way to protecting it.
     assert subprocess.run(
@@ -89,11 +86,9 @@ def test_a_pin_carries_the_sources_history_not_just_its_tip(
     """
     pinned = project_mod.pin(repo, work=tmp_path / "work")
     assert pinned is not None
-    shallow = subprocess.run(
-        ["git", "rev-parse", "--is-shallow-repository"],
-        cwd=str(pinned.path), capture_output=True, text=True, check=True,
-    ).stdout.strip()
-    assert shallow == "false"
+    assert project_mod.read(pinned, "rev-parse", "--is-shallow-repository").stdout.strip() == (
+        "false"
+    )
     project_mod.release(pinned)
 
 
@@ -153,11 +148,49 @@ def test_a_quiet_round_escapes_nothing(repo: Path, tmp_path: Path) -> None:
     project_mod.release(pinned)
 
 
-def test_a_remote_put_back_on_the_pin_is_a_self_touch(repo: Path, tmp_path: Path) -> None:
-    # The pin is handed over with none. Adding one is not something a subject does by
-    # accident, and it is the one half of this that is evidence on its own.
+def test_the_toolchain_is_not_a_repository_the_round_can_commit_into(
+    repo: Path, tmp_path: Path
+) -> None:
+    """The fence, from the round's side: git in the pin fails, and says why.
+
+    A gitfile pointing nowhere rather than a deleted `.git`, because the deleted version
+    lets git walk *up* — and a `git commit` in a work directory that happens to sit under
+    some other repository would quietly land there instead.
+    """
     pinned = project_mod.pin(repo, work=tmp_path / "work")
     assert pinned is not None
+    outer = subprocess.run(
+        ["git", "commit", "--allow-empty", "-m", "leak"],
+        cwd=str(pinned.path), capture_output=True, text=True, check=False,
+    )
+    assert outer.returncode != 0
+    assert project_mod.FENCE in outer.stderr
+    project_mod.release(pinned)
+
+
+def test_editing_the_toolchain_mid_round_is_a_self_touch(repo: Path, tmp_path: Path) -> None:
+    # The one people underrate, because the tree gets deleted and looks harmless: the
+    # round spent the rest of its hours running the edited code, so whatever the scorecard
+    # says, it is not a measurement of the sha in the ledger.
+    pinned = project_mod.pin(repo, work=tmp_path / "work")
+    assert pinned is not None
+    (pinned.path / "README.md").write_text("patched mid-round\n", encoding="utf-8")
+
+    caveats = project_mod.escaped(pinned)
+
+    assert len(caveats) == 1
+    assert caveats[0].startswith(project_mod.SELF_TOUCHED)
+    assert "1 file(s)" in caveats[0] and "not the sha in this ledger" in caveats[0]
+    project_mod.release(pinned)
+
+
+def test_a_round_that_rebuilds_the_repository_says_so(repo: Path, tmp_path: Path) -> None:
+    # The fence is a barrier, not a proof. `git init` gets past it — and is exactly the
+    # thing nobody does by accident, so getting past it is itself the finding.
+    pinned = project_mod.pin(repo, work=tmp_path / "work")
+    assert pinned is not None
+    (pinned.path / ".git").unlink()
+    subprocess.run(["git", "init", "-q"], cwd=str(pinned.path), check=True)
     subprocess.run(
         ["git", "remote", "add", "origin", "https://example.com/acme.git"],
         cwd=str(pinned.path), check=True,
@@ -165,9 +198,9 @@ def test_a_remote_put_back_on_the_pin_is_a_self_touch(repo: Path, tmp_path: Path
 
     caveats = project_mod.escaped(pinned)
 
-    assert len(caveats) == 1
-    assert caveats[0].startswith(project_mod.SELF_TOUCHED)
-    assert "origin" in caveats[0]
+    assert all(c.startswith(project_mod.SELF_TOUCHED) for c in caveats)
+    assert any("fence it was pinned behind is gone" in c for c in caveats)
+    assert any("origin" in c for c in caveats)
     project_mod.release(pinned)
 
 
@@ -185,15 +218,16 @@ def test_a_remote_that_moved_under_a_committing_round_cannot_be_ruled_out(
 
     pinned = project_mod.pin(repo, work=tmp_path / "work")
     assert pinned is not None
+    (pinned.path / ".git").unlink()
+    subprocess.run(["git", "init", "-q"], cwd=str(pinned.path), check=True)
     commit(pinned.path, "leaked")
     commit(upstream, "somebody-else")
     subprocess.run(["git", "fetch", "-q", "origin"], cwd=str(repo), check=True)
 
     caveats = project_mod.escaped(pinned)
 
-    assert len(caveats) == 1
-    assert caveats[0].startswith(project_mod.SELF_TOUCHED)
-    assert "1 commit(s)" in caveats[0] and "cannot be ruled out" in caveats[0]
+    assert all(c.startswith(project_mod.SELF_TOUCHED) for c in caveats)
+    assert any("cannot be ruled out from here" in c for c in caveats)
     project_mod.release(pinned)
 
 

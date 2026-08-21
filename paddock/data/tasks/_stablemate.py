@@ -16,7 +16,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from paddock import Run
+from paddock import Run, project
 from stablemate_core import config as core_config
 
 
@@ -33,26 +33,45 @@ def git(*args: str, cwd: Path) -> str:
     return proc.stdout
 
 
+def _describe(checkout: Path) -> list[str]:
+    """What the toolchain tree looks like right now, as `git status --porcelain` lines.
+
+    Read through the git directory paddock stashed beside the pin, because the pin itself
+    is fenced off from git: a bare `git -C` there fails with the fence's error, which is
+    the right answer to a write and the wrong one to a question. Falls back to reading the
+    tree directly for an unpinned run, where the fence does not exist.
+    """
+    stashed = project.stashed_git_dir(checkout)
+    where = ["--git-dir", str(stashed), "--work-tree", str(checkout)] if stashed.is_dir() else []
+    return [line for line in git(*where, "status", "--porcelain", cwd=checkout).splitlines() if line]
+
+
 @contextmanager
 def no_leaks(checkout: Path) -> Iterator[None]:
-    """Fail the round if anything it ran committed into *checkout* instead of its sandbox.
+    """Fail the round if anything it ran wrote into *checkout* instead of its sandbox.
 
     Not a warning. An agent that resolved its project root to the harness's own checkout
-    committed the work there, which means the tree the round was measured on is not the
-    tree it wrote to — every number it produced is void.
+    wrote the work there, which means the tree the round was measured on is not the tree
+    it ran — every number it produced is void.
+
+    Written state rather than commits, now that the pin is fenced and a commit needs a
+    repository the round would have to build first. That is the stricter question anyway:
+    the round that patched the toolchain and never committed spent its remaining hours
+    running the patch, and a leak check keyed on `git log` called that clean.
 
     Read against the tree paddock pinned for this round, which nobody else writes to, so a
-    commit here is a leak by construction rather than by heuristic and an operator
-    committing in their own checkout is invisible. Raising rather than returning a flag is
-    deliberate: the caller that forgot to look is exactly the caller this exists for.
+    change here is a leak by construction rather than by heuristic and an operator editing
+    their own checkout is invisible. Raising rather than returning a flag is deliberate:
+    the caller that forgot to look is exactly the caller this exists for.
     """
-    before = git("rev-parse", "HEAD", cwd=checkout).strip()
+    before = set(_describe(checkout))
     yield
-    leaked = git("log", "--oneline", f"{before}..HEAD", cwd=checkout).strip()
+    leaked = sorted(set(_describe(checkout)) - before)
     if leaked:
         raise TrialError(
-            f"the round committed into {checkout} instead of its sandboxes:\n{leaked}\n"
-            f"drop those commits before believing any number here"
+            f"the round wrote into {checkout} instead of its sandboxes:\n"
+            + "\n".join(leaked)
+            + "\nrevert that before believing any number here"
         )
 
 

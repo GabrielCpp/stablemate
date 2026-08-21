@@ -16,9 +16,9 @@ first step and deleted after sealing. Three things follow, and they are the whol
   numbers;
 * uncommitted edits are **excluded** — a round measures committed state, and a dirty
   checkout is warned about rather than silently included;
-* any commit in the trial tree is a leak by construction, since nobody else has a reason
-  to write there — and `escaped` says at seal whether one of those leaks looks like it
-  got out.
+* the trial tree is not a git repository while the round runs — its git directory is
+  stashed beside it — so a round cannot commit into the toolchain at all, and `escaped`
+  says at seal whether it edited one anyway or built itself a repository to commit into.
 
 A clone rather than a `git worktree`, and remoteless rather than merely detached, because
 a worktree of the live checkout shares its object store *and* its `origin`. One round
@@ -29,6 +29,20 @@ reached the public repo. The agent was not rogue; it was obedient in the wrong c
 and no instruction file can be trusted to say "unless you are a benchmark subject". Zero
 remotes is what makes a push fail loudly instead of succeeding, and the failure lands in
 the run record where a reader will find it.
+
+The git directory is stashed rather than deleted because the round still has to be
+*asked* about afterwards. What the pin gets in its place is a gitfile naming a path that
+does not exist, which does two things a plain deletion would not: every git command inside
+the pin fails with the reason printed in the error, and — the part that matters — git stops
+walking up. Without it, `git commit` in a work directory that happens to sit under some
+other repository would quietly land there instead, which is the same defect one directory
+further out.
+
+None of this is a proof. An agent determined to `git init` can, and `escaped` reports that
+it did rather than preventing it; the barrier is aimed at the shape the incident actually
+had, which was an obedient agent following an instruction file written for a different
+context. Nothing at this layer stops a round from walking to the operator's checkout by
+absolute path either — that is a sandbox's job, not a benchmark harness's.
 
 The cost is one `uv sync` per run into the clone's own `.venv` (wheels come from uv's
 cache, so it is seconds, not a build) and the disk that venv takes until release. The
@@ -66,6 +80,10 @@ class Project:
     #: Whether the source had uncommitted changes at pin time. Recorded because those
     #: changes are exactly what a pinned run did *not* see.
     dirty: bool
+    #: Where the pin's own git directory was stashed while the round ran, or None when
+    #: nothing was pinned. Reads about the pinned tree — is it dirty, what is it at — go
+    #: through this, because the tree itself is deliberately not a repository.
+    git_dir: Path | None = None
     #: Every `refs/remotes/…` ref in the source and where it pointed at pin time, as
     #: `(ref, sha)` pairs. Kept so `escaped` can ask the only question worth asking at
     #: seal — not "did the remote move", which it does all day because other people are
@@ -87,11 +105,43 @@ class Project:
 #: script; the sentence after it is for the human.
 SELF_TOUCHED = "self-touched: "
 
+#: The nonexistent gitdir the pin's `.git` points at while the round runs. A sentence
+#: rather than a name, because git prints it verbatim in the error an agent will read.
+FENCE = "the-toolchain-is-off-limits-to-this-round"
 
-def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+#: What the pin's `.git` contains once fenced. Compared byte for byte at seal: a round
+#: that wanted a repository badly enough to make one leaves this file changed or gone.
+FENCE_GITFILE = f"gitdir: ./{FENCE}\n"
+
+
+def stashed_git_dir(pinned_path: Path) -> Path:
+    """Where `fence` put the pin's git directory — the convention, in one place.
+
+    Beside the pin rather than inside it, so that deleting the pin does not take the only
+    record of what it was with it, and so that a round working inside the pin does not
+    find it by looking down.
+    """
+    return pinned_path.parent / "project.git"
+
+
+def _git(
+    *args: str, cwd: Path, git_dir: Path | None = None
+) -> subprocess.CompletedProcess[str]:
+    where = ["--git-dir", str(git_dir), "--work-tree", str(cwd)] if git_dir else []
     return subprocess.run(
-        ["git", *args], cwd=str(cwd), capture_output=True, text=True, check=False
+        ["git", *where, *args], cwd=str(cwd), capture_output=True, text=True, check=False
     )
+
+
+def read(project: Project, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run a read-only git command against the pinned tree, fenced or not.
+
+    Callers outside this module — the task-level leak check, mainly — need this rather
+    than a bare `git -C <pin>`: once fenced, the pin is not a repository and a bare call
+    fails with the fence's own error message, which is the correct answer to a *write*
+    and the wrong one to a question.
+    """
+    return _git(*args, cwd=project.path, git_dir=project.git_dir)
 
 
 def pin(source: Path | None, *, work: Path, enabled: bool = True) -> Project | None:
@@ -156,6 +206,10 @@ def pin(source: Path | None, *, work: Path, enabled: bool = True) -> Project | N
         )
         shutil.rmtree(dest, ignore_errors=True)
         return unpinned
+    stash = stashed_git_dir(dest)
+    shutil.rmtree(stash, ignore_errors=True)
+    (dest / ".git").rename(stash)
+    (dest / ".git").write_text(FENCE_GITFILE, encoding="utf-8")
     if dirty:
         logger.warning(
             "%s has uncommitted changes; this run is pinned to %s and will not see them",
@@ -163,7 +217,8 @@ def pin(source: Path | None, *, work: Path, enabled: bool = True) -> Project | N
         )
     logger.info("project pinned to %s at %s", dest, sha[:12])
     return Project(
-        path=dest, source=source, head=sha, pinned=True, dirty=dirty, remote_refs=refs
+        path=dest, source=source, head=sha, pinned=True, dirty=dirty,
+        git_dir=stash, remote_refs=refs,
     )
 
 
@@ -176,10 +231,11 @@ def _remote_refs(repo: Path) -> tuple[tuple[str, str], ...]:
 def escaped(project: Project | None) -> tuple[str, ...]:
     """Whether the round reached past its pin — asked while the pin still exists.
 
-    The pin has no remotes, so in the ordinary case this is silent and costs two `git`
-    calls. It exists because "the pin has no remotes" is a barrier, not a proof: an agent
-    that adds one back is doing something a benchmark subject has no reason to do, and
-    saying so in one line beats reconstructing it later from four sessions' reflogs.
+    The pin is fenced and has no remotes, so in the ordinary case this is silent and costs
+    two `git` calls. It exists because the fence is a barrier, not a proof: a round that
+    edited the toolchain, or built itself a repository to commit into, did something a
+    benchmark subject has no reason to do, and saying so in one line beats reconstructing
+    it later from four sessions' reflogs.
 
     The second half is deliberately narrow. A moved `origin/main` is not evidence of
     anything — other people push to it while a round runs, which is the normal state of a
@@ -189,16 +245,41 @@ def escaped(project: Project | None) -> tuple[str, ...]:
     created lives on the server, and nothing local can settle it without a fetch this is
     not going to perform mid-seal.
     """
-    if project is None or not project.pinned:
+    if project is None or not project.pinned or project.git_dir is None:
         return ()
     caveats = []
+
+    fence = project.path / ".git"
+    standing = fence.is_file() and fence.read_text(encoding="utf-8") == FENCE_GITFILE
+    if not standing:
+        # Only reachable deliberately: the fence is a file the round has no reason to
+        # open, and replacing it is how a `git init` announces itself.
+        caveats.append(
+            f"{SELF_TOUCHED}the round made the toolchain a git repository again — the "
+            f"fence it was pinned behind is gone"
+        )
+
+    edited = [
+        line for line in read(project, "status", "--porcelain").stdout.splitlines() if line
+    ]
+    if edited:
+        # The one people underrate: an edit inside a tree that gets deleted looks harmless,
+        # but the round spent the rest of its hours running the edited code. Whatever the
+        # scorecard says, it is not a measurement of the sha in the ledger.
+        caveats.append(
+            f"{SELF_TOUCHED}the round edited {len(edited)} file(s) of the toolchain it was "
+            f"being measured on, so the code it ran is not the sha in this ledger"
+        )
+
+    if standing:
+        return tuple(caveats)
     added = _git("remote", cwd=project.path).stdout.split()
     if added:
         caveats.append(
-            f"{SELF_TOUCHED}the round put remote(s) {', '.join(added)} back on its pin, "
-            f"which it was given without any"
+            f"{SELF_TOUCHED}the round put remote(s) {', '.join(added)} on the repository "
+            f"it made, having been pinned to one with none"
         )
-    made = _git("rev-list", "--all", f"^{project.head}", cwd=project.path).stdout.split()
+    made = _git("rev-list", "--all", cwd=project.path).stdout.split()
     if not made:
         return tuple(caveats)
     was = dict(project.remote_refs)
@@ -227,5 +308,7 @@ def release(project: Project | None) -> None:
     if project is None or not project.pinned:
         return
     shutil.rmtree(project.path, ignore_errors=True)
+    if project.git_dir is not None:
+        shutil.rmtree(project.git_dir, ignore_errors=True)
     if project.path.exists():
         logger.warning("could not delete the pinned clone at %s", project.path)

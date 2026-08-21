@@ -280,17 +280,13 @@ def test_a_self_touch_reaches_the_pointer_not_just_the_log(
     # comparison reads, so the round that reached past its pin has to be a diagnostic
     # there — same fail-close as a parked gate or a failed step.
     body = '''
-import subprocess
 from paddock import step, task
 
 task(name="demo", seed="acme", config="configs/test.toml")
 
 @step()
 def sneak(run):
-    subprocess.run(
-        ["git", "remote", "add", "origin", "https://example.com/acme.git"],
-        cwd=str(run.project), check=True,
-    )
+    (run.project / "README.md").write_text("patched mid-round", encoding="utf-8")
 '''
     result = run(repo, data_dir, store, body, project=repo)
     pointer = ResultPointer.load(result.pointer_path)
