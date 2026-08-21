@@ -48,6 +48,12 @@ be scored on obligations nobody claimed to have implemented. A story with nothin
 The trial directory must be named after the app (`seat-booking`, not `trial-1`): farrier derives every
 generated skill name from the repository directory's basename, and the spec dirs name those skills.
 
+Only `stories/`, `defects/` and `defects.yml` are held back from that copy. **Everything else at an
+app's root is handed to the agent under measurement**, which is why no app carries a `README.md` of
+its own: a fixture's own notes are about its answer key, and a file explaining which lines were
+sabotaged would be sitting in the worktree QA is being scored on. Each app's notes live in
+[The apps](#the-apps) below instead — outside every tree a trial materializes.
+
 ## The answer key's one non-obvious rule: an obligation is only scorable if the story owes it
 
 Every row of `defects.yml` names the obligation the seeded file makes false. That id has to be
@@ -116,3 +122,35 @@ collide on a machine running both.
   through the auditor's reading of the evidence: a refusal in the wrong shape carrying the right
   sentence, a route change that throws into the console while the screen recovers, and a failed
   re-read swallowed behind rows that still look current. No declared check fails in any of them.
+
+- **[`claims-api/`](claims-api/)** — an insurance claims desk: a Go JSON API generated from an
+  OpenAPI contract, with bearer identity minted by a Firebase Auth emulator running beside it.
+  Three stories (submit/list, tenancy, adjudication) over one JSON ledger. Port **18085**, and
+  **18086** for the emulator. It mirrors a production OpenAPI→Go (oapi-codegen v2 + chi) service,
+  and it is the first fixture with **no GUI at all** — its book is `http/` and nothing else, which
+  is the shape the trio exists to measure: what the leverage keys read when there is no screen to
+  deep-link into.
+
+  Its nine-row key sits on the two things a contract-first service can get wrong that a hand-rolled
+  one cannot pose. Authorization is **not** hand-wired per route: `oapi-codegen`'s chi wrapper
+  stamps `BearerAuthScopes` into the request context for exactly the operations `openapi.yml`
+  secures, and the middleware skips anything it does not find there — so the contract document is
+  load-bearing for protection, and C1/C2 make it false in ways that leave every happy path green.
+  C9 is the only row catchable by the auditor alone: a refusal whose `detail` quotes the token it
+  rejected, which no declared check can see because the status code is right.
+
+  **Toolchain.** The module floor is `go 1.25.0`, which is not a taste — `firebase.google.com/go/v4`
+  pulls `cloud.google.com/go/firestore` and `golang.org/x/oauth2`, and both require it. A host on
+  an older Go builds it anyway through `GOTOOLCHAIN=auto`; the Docker build pins `golang:1.25-alpine`
+  so it does not depend on that. The generator is pinned at its call site — `go run
+  github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1` in `app/api/Makefile`, no
+  `tools.go` — and `gen/` is committed, because a fixture that regenerates its own code at trial
+  time is measuring the generator's availability rather than QA.
+
+  **Provenance (deviation, recorded deliberately).** This fixture and its two siblings were
+  hand-authored end to end — book included — rather than run through genesis → author →
+  okf-builder → hardening. That was a design ruling on 2026-08-21: these fixtures measure the QA
+  lane over a *frozen* book, okf-builder has never produced an http-only book, and Part II's
+  spec-mined pre-pass is what changes that. The consequence to hold on to: **nothing about these
+  three fixtures is evidence about the authoring lane.** A claim that okf-builder produces books
+  of this shape has to come from running it, not from reading these.

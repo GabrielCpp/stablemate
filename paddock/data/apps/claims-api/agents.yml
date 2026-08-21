@@ -1,0 +1,56 @@
+# claims-api — the backend-only fixture the standalone-QA benchmark measures against.
+#
+# The pack list is short because this repo is a *fixture*, not a product: `stablemate` is
+# the only pack that ships in `base-library/`, the benchmark has to resolve from a public
+# clone, and `scripts/check_public.py` asserts the base library stands alone — so naming
+# any other pack here would make the fixture unbuildable outside a private overlay.
+#
+# `repo.name` is derived from the directory name, which is why a trial must materialize this
+# tree into a directory called exactly `claims-api`: every generated skill is prefixed with
+# it, and the book's own references resolve through that prefix.
+#
+# There is one service root and no `react-router-web` scaffold. That absence is under
+# measurement: a QA lane that only knows how to prove things by opening screens has nothing
+# to open here.
+
+repo:
+  name: claims-api
+
+agents:
+  claude: true
+  codex: false
+  copilot: false
+
+packs:
+  - stablemate
+
+workflows:
+  - coder
+
+scaffolds:
+  - shared-docs
+  - go-service
+
+workspace:
+  type: mono
+  service_roots:
+    - app/api
+  service_markers:
+    - go.mod
+
+services:
+  # Seconds, not minutes — but only on a warm module cache. The Firebase Admin SDK is the
+  # one real dependency tree in these fixtures, and the first `go vet` on a cold machine
+  # pays for it once.
+  api:
+    regression: go vet ./... && go test ./...
+
+# The one external command the frozen QA plans may reach for. `docker` exists so the
+# adjudication plan can restart the service between an applied decision and its re-read —
+# the book's persistence bullet promises restart survival, and a same-process re-read is
+# exactly what an in-memory decision table would also pass (C8's seam). The opt-in/definition
+# split is ostler's tool registry: this file says the fixture may use it; the round's
+# stablemate config's `[qa_tools.docker]` says what it is.
+qa:
+  tools:
+    - docker

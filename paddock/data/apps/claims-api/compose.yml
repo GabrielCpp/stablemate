@@ -1,0 +1,57 @@
+# The project name is explicit so a run started from a materialized copy of this tree talks
+# to the same stack a run started from the fixture does — the directory name a trial happens
+# to have does not fork the container namespace.
+#
+# Three services, and the order between them is the contract: the emulator has to be
+# answering before the identities can be created, and the identities have to exist before a
+# QA scenario can sign in as any of them. `service_completed_successfully` is what makes
+# that an actual dependency rather than a race the fast machine always wins.
+name: claims-api-bench
+
+services:
+  auth:
+    build:
+      context: .
+      dockerfile: auth/Dockerfile
+    ports:
+      - "18086:9099"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:9099/"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+
+  seed:
+    build:
+      context: .
+      dockerfile: auth/Dockerfile
+    entrypoint: ["node", "/srv/seed.mjs"]
+    environment:
+      AUTH_HOST: auth:9099
+      AUTH_PROJECT: claims-api-example
+    restart: "no"
+    depends_on:
+      auth:
+        condition: service_healthy
+
+  app:
+    build: .
+    ports:
+      - "18085:18085"
+    environment:
+      # The Admin SDK reads this itself. Its presence is the whole difference between a
+      # service that needs a service-account key and one that does not.
+      FIREBASE_AUTH_EMULATOR_HOST: auth:9099
+    volumes:
+      - claims-api-data:/data
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:18085/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+volumes:
+  claims-api-data:

@@ -1,0 +1,254 @@
+openapi: 3.0.3
+info:
+  title: Claims API
+  version: 1.0.0
+  description: >-
+    The claims desk's machine surface. A holder submits a claim against a policy number and
+    reads back the claims they filed; an adjuster reads every claim and decides them. There
+    is no client bundle and no browser surface — this document is the whole contract.
+servers:
+  - url: http://localhost:18085
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Liveness, readable without a token.
+      security: []
+      responses:
+        '200':
+          description: The process is serving.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /api/claims:
+    get:
+      operationId: listClaims
+      summary: The claims the caller is entitled to read.
+      responses:
+        '200':
+          description: The caller's claims, newest policy number first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: submitClaim
+      summary: File a claim against a policy number.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimSubmission'
+      responses:
+        '201':
+          description: The stored claim.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+    delete:
+      operationId: resetClaims
+      summary: Empty the ledger. Adjusters only.
+      responses:
+        '204':
+          description: The ledger is empty.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/claims/{id}:
+    get:
+      operationId: getClaim
+      summary: One claim, if the caller is entitled to it.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The claim.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/claims/{id}/decision:
+    post:
+      operationId: decideClaim
+      summary: Approve or deny a submitted claim. Adjusters only.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Decision'
+      responses:
+        '200':
+          description: The decided claim.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    BadRequest:
+      description: The request omitted something structural.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: No usable bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: The token is good and does not entitle the caller to this.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: No such claim.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: The ledger refused the write.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unprocessable:
+      description: Field-level refusals.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FieldErrors'
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+    Problem:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        detail:
+          type: string
+    FieldErrors:
+      type: object
+      required: [errors]
+      properties:
+        errors:
+          type: object
+          additionalProperties:
+            type: string
+    ClaimSubmission:
+      type: object
+      required: [policy_number, incident_date, amount_cents, description]
+      properties:
+        policy_number:
+          type: string
+        incident_date:
+          type: string
+        amount_cents:
+          type: integer
+        description:
+          type: string
+    Decision:
+      type: object
+      required: [decision, version]
+      properties:
+        decision:
+          type: string
+          enum: [approve, deny]
+        version:
+          type: integer
+        note:
+          type: string
+    Claim:
+      type: object
+      required:
+        [id, policy_number, holder_uid, incident_date, amount_cents, description, status, version]
+      properties:
+        id:
+          type: string
+        policy_number:
+          type: string
+        holder_uid:
+          type: string
+        incident_date:
+          type: string
+        amount_cents:
+          type: integer
+        description:
+          type: string
+        status:
+          type: string
+        version:
+          type: integer
+        decision_note:
+          type: string
+    ClaimEnvelope:
+      type: object
+      required: [claim]
+      properties:
+        claim:
+          $ref: '#/components/schemas/Claim'
+    ClaimList:
+      type: object
+      required: [claims]
+      properties:
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/Claim'
+security:
+  - bearerAuth: []

@@ -106,9 +106,15 @@ port in its backlog's surface list, and no two suites share one — `expense-spl
 free number in the range and writes it down the same way.
 
 The frozen apps under [`data/apps/`](../apps/README.md) draw from the same range and are
-registered here for the same reason, even though they are not suites: `seat-booking` 18083 and
-`policy-desk` 18084. A fixture that measures QA and a suite that builds an app can easily be
-running at the same moment on one machine.
+registered here for the same reason, even though they are not suites: `seat-booking` 18083,
+`policy-desk` 18084, and `claims-api` 18085 with its auth emulator on 18086. A fixture that
+measures QA and a suite that builds an app can easily be running at the same moment on one
+machine.
+
+A fixture that stands up a *dependency* registers that port too. `claims-api` runs a Firebase
+Auth emulator beside the service so identity is minted without a credential, and the emulator
+listens on a port of its own — unregistered, it would take the tool's default `9099` and
+collide with any other project's emulator on the same machine.
 
 This is not tidiness. A backlog that starts a server without naming a port gets the language's
 idiomatic default — `8080` for Go, `3000` for React Router — and those are the two most

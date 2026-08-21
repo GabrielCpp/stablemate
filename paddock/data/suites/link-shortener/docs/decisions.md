@@ -21,6 +21,15 @@ guess made at gate time.
 These decisions were first given by hand, at the gate, on the `conda` round. They are
 reproduced here verbatim so that round and every later one describe the same product.
 
+**Link lifetime** and **Repeated destinations** were added later, and the capture that
+demanded them is worth recording. Two rounds of this task ran against the sheet without
+them and behaved *differently* at the same gate: one parked and waited, the other noted
+"identifier lifecycle unspecified" and carried on. The park was the system working; the
+carrying-on was a give-up in politer clothes. A gap in this file does not merely cost a
+round, it makes two rounds incomparable — which is the one thing a benchmark input may not
+do. The sha of this file is the fixture's identity: two rounds are comparable only at equal
+sha, and any number quoted against a different one must say so.
+
 ## Surface scope
 
 The api is the only surface. A round that implements the three bullets on the api has
@@ -56,6 +65,30 @@ Everything else — a relative path, a missing or empty `url` field, a `javascri
 The scheme restriction is part of the decision rather than an implementation detail: a
 public redirector that will emit any scheme is a redirect gadget, and [link-create] says
 the short link is meant to be shared.
+
+## Link lifetime
+
+A created short link works indefinitely and survives a restart of the service. There is no
+expiry, so there is no expired-key response to define: a key either was created and
+redirects, or was never created and is the [link-missing] 404.
+
+*Why:* [link-follow] promises a person *arrives at* the destination, and a promise that
+lapses when a process restarts is a smaller promise than the bullet makes. Durability also
+gives the lane a `persists`-style obligation to check, which is vocabulary worth
+exercising. It costs little on this stack — a JSON-file ledger, the shape the other frozen
+fixtures already use — so the cheaper in-memory reading buys nothing but a weaker measurement.
+
+## Repeated destinations
+
+Every successful `POST /links` allocates a **distinct new key**, including for a
+destination that was submitted before. Both keys redirect to that destination. The status
+is always `201 Created`.
+
+*Why:* `201 Created` asserts a resource was created, and returning a pre-existing key
+would make that assertion false or force a second success status. Reuse would also drag in
+a canonicalisation rule (are `http://x.com/a` and `http://x.com/a/` the same destination?)
+and a concurrency rule, neither of which a three-bullet fixture should carry — and the
+epic's Non-Goals already exclude a duplicate-submission policy.
 
 ## Missing link
 
