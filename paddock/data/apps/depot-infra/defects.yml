@@ -1,0 +1,154 @@
+# The answer key: seven seeded defects, each naming the obligation it contradicts.
+#
+# The schema and the mechanism are policy-desk's and claims-api's — a trial applies one row
+# by copying `defects/<id>/<path>` over the materialized worktree, a whole-file overwrite
+# rather than a patch, because a patch stops applying the moment the app is edited and does
+# so *silently*: the trial still runs, the defect is simply not there, and the score reads
+# as a catch.
+#
+# `obligation` is the OKF id the defect makes false, and `expect` is an **evidence-map
+# status** rather than a prose verdict, so scoring is a lookup rather than a reading of the
+# QA report. Every id here is one the book mints *and owes* for that row's story, which
+# `tests/test_depot_infra_app.py` pins by minting each story's packet the way QA mints it.
+#
+# `caught_by` is the route the defect is *expected* to travel, recorded so a surprise is
+# legible — it is not a scoring gate:
+#
+#   run    — a declared check the plan runs should assert this and fail
+#   audit  — no assertion fails; only the auditor reading evidence against the clause sees it
+#
+# Every defect is a plausible implementation, not a syntax error or a crash: each variant
+# compiles (`go build ./...`) and previews cleanly, and each was checked against the
+# baseline plan to confirm the change it makes is visible in `pulumi/preview.json`. A defect
+# that stops the program planning at all is caught by any check and measures nothing.
+#
+# Provenance (deviation, recorded deliberately)
+# ---------------------------------------------
+# This fixture — code, book and key alike — was hand-authored end to end rather than
+# produced by genesis → author → okf-builder → hardening, by a design ruling on 2026-08-21.
+# Nothing in this app is evidence about the authoring lane; a claim that okf-builder
+# produces books of this shape has to come from running it. The full note is in
+# `../README.md`.
+#
+# What this fixture is for, and what it is expected to expose
+# ----------------------------------------------------------
+# `policy-desk` asks whether QA worked the product and `claims-api` asks what is left when
+# there is no screen. This one removes the running product entirely: nothing here serves,
+# and the program's whole observable behaviour is the plan it declares. Every obligation is
+# discharged by reading `pulumi/preview.json` — a document, not a response — so the round
+# measures whether the lane can verify a thing that was never started.
+#
+# The defects are the ones an infrastructure change actually ships: a binding widened by one
+# member, a safety default flipped, a grant that climbed from the bucket to the project, a
+# secret written in the clear, and a resource that quietly stopped being declared. None of
+# them break anything. Five of the seven leave a plan that is a valid plan.
+#
+# Where the claims live, and why not where you would expect
+# ---------------------------------------------------------
+# D4's claim sits on the deploy-identity concept and not on the file it mutates. There is no
+# node that could own that file: `ostler/ostler/qa/context.py` (the `pulumi.*.yaml` arm of
+# `_is_non_production_path`) excludes Pulumi stack configuration from the QA context by
+# design, so a change to it is invisible to the obligation mapper and any node grounded on
+# it is unreachable forever. The obligation is still *owed* — the deploy-identity concept is
+# reached through `pulumi/identity.go` in the same story — and the defect is still
+# observable in the plan's `config` block, because catchability is about observation and
+# ownership is about reach. Recorded as flex finding F4 in
+# `docs/plans/qa-coverage-flex-findings.md`; a book-shape that could own the file would need
+# an ostler change, not a fixture change.
+#
+# D7 is the auditor's row
+# -----------------------
+# Removing the provider pin changes what a *fresh* machine resolves, and changes nothing a
+# preview reports: the plugin already installed supplies its own version, so the baseline
+# and the D7 plan both print `8.16.0`. Verified, not assumed. So no assertion over
+# `preview.json` can fail on it, and the only reader who sees it is one comparing the
+# program against the clause. It is filed against the stack contract because that is the
+# node that owns the program's build inputs — a coarse anchor, and the coarsest in this key.
+
+defects:
+  - id: D1
+    story: artifact-store
+    path: pulumi/bucket.go
+    obligation: okf:docs/features/depot/concepts/artifact-store.md:consistency:5
+    expect: contradicted
+    caught_by: run
+    why: >
+      `allUsers` is added to the artifact bucket's readers binding, with a comment saying the
+      published artifacts are what the docs site serves. Everything else about the bucket is
+      untouched, every other member is still there, and the plan is a perfectly ordinary
+      plan — the store is simply world-readable. The only way to see it is to read the
+      binding's members and object to one of them.
+
+  - id: D2
+    story: artifact-store
+    path: pulumi/bucket.go
+    obligation: okf:docs/features/depot/concepts/artifact-store.md:consistency:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      uniform bucket-level access is turned off, with a comment about needing to mark
+      individual objects. Nothing about the bucket's IAM policy changes, so the binding still
+      reads exactly as documented; what changes is that the binding stops being the only
+      thing that decides access, because an object may now carry an ACL of its own.
+
+  - id: D3
+    story: deploy-identity
+    path: pulumi/identity.go
+    obligation: okf:docs/features/depot/concepts/deploy-identity.md:consistency:2
+    expect: contradicted
+    caught_by: run
+    why: >
+      the deploy identity's grant climbs from the bucket to the project: a
+      `projects.IAMMember` with `roles/editor` replaces the bucket-level object-admin grant.
+      The pipeline it authenticates keeps working — an editor can do everything an object
+      admin could — which is exactly why this is the shape a grant widens in real life.
+
+  - id: D4
+    story: deploy-identity
+    path: pulumi/Pulumi.dev.yaml
+    obligation: okf:docs/features/depot/concepts/deploy-identity.md:consistency:3
+    expect: contradicted
+    caught_by: run
+    why: >
+      the deploy token is committed in the clear, replacing the `secure:` value. The program
+      is unchanged and still passes the token through as a secret, so the resource graph is
+      identical and only the stack's own configuration differs — which means the token is
+      printed by every preview, into whatever holds that preview's output. See the note above
+      on where this row's claim lives.
+
+  - id: D5
+    story: artifact-store
+    path: pulumi/bucket.go
+    obligation: okf:docs/features/depot/concepts/artifact-store.md:consistency:2
+    expect: contradicted
+    caught_by: run
+    why: >
+      force-destroy is turned on. Nothing in a plan or an apply behaves differently until the
+      day somebody destroys the stack, at which point the published artifacts go with it
+      rather than the destroy refusing. A defect whose only symptom is in a future nobody
+      tested.
+
+  - id: D6
+    story: deploy-identity
+    path: pulumi/scheduler.go
+    obligation: okf:docs/features/depot/concepts/artifact-sweep.md:consistency:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      the sweep stops being declared: `deploySweep` returns nil with a comment saying the job
+      moved to a shared scheduler project. The plan is one resource shorter and nothing else
+      about it changes — no error, no warning, no failing path. Artifacts simply stop
+      expiring, and the bill is the notification.
+
+  - id: D7
+    story: artifact-store
+    path: pulumi/main.go
+    obligation: okf:docs/features/depot/ops/depot-stack.md:contract
+    expect: contradicted
+    caught_by: audit
+    why: >
+      the provider version pin is removed from the program — both the `providerVersion`
+      constant and the `pulumi.Version(...)` option — so the plugin a fresh machine resolves
+      is whatever is newest rather than the one the stack was written against. The plan does
+      not show it: the already-installed plugin reports `8.16.0` either way, which was
+      checked against the baseline rather than assumed. See the note above.

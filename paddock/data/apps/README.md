@@ -171,3 +171,56 @@ collide on a machine running both.
   spec-mined pre-pass is what changes that. The consequence to hold on to: **nothing about these
   three fixtures is evidence about the authoring lane.** A claim that okf-builder produces books
   of this shape has to come from running it, not from reading these.
+
+- **[`depot-infra/`](depot-infra/)** — an artifact depot declared as infrastructure: a Pulumi
+  program in Go that creates a versioned GCS bucket, a readers binding, a deploy service account
+  with one bucket-level grant, a Secret Manager secret and a nightly Cloud Scheduler sweep. Two
+  stories (`artifact-store`, `deploy-identity`). **No port, and no stack**: nothing in this app
+  serves, nothing is deployed, and there is no `compose.yml` to bring up.
+
+  That absence is the measurement. `claims-api` removed the screen; this one removes the process.
+  The app's entire observable behaviour is the plan `pulumi preview` writes, so the QA lane's only
+  evidence is a JSON document — read with `jq`, taken by the `make -C pulumi plan` target the app's
+  own ops page publishes (`agents.yml` opts QA into `make` and `jq`, and nothing else).
+
+  Its seven-row key is built around the way a *declaration* goes wrong. A widened IAM binding, a
+  project-level grant beside the narrow one, a second scheduler job and a token in the clear all
+  produce a plan that previews cleanly and reports no error at all — the resource the story is
+  proud of is still there, still correct, and every assertion that reads it by name still passes.
+  Only an assertion written over the whole plan separates them: the member list compared *as a
+  list*, every IAM step enumerated, the jobs counted. Whether the lane writes that kind of
+  assertion is the whole question D1–D6 ask.
+
+  **D7 is the row this evidence surface cannot see.** Deleting the program's `pulumi.Version` pin
+  changes no step in the plan on any machine that already holds a plugin — the preview reports the
+  version it resolved, not the version the program asked for — so it is filed `caught_by: audit`
+  and its trial's obligation comes back `covered`. It is in the key because the miss is the point.
+
+  **Where the claims live.** Every normative claim here is a `consistency:` bullet on a concept
+  node, not a `### field` section: `consistency` is normative on every node type, and the field
+  sections that were written first parsed clean and minted **zero** obligations. See
+  `defects.yml`'s header for the full note and the flex finding it cites.
+
+  **Toolchain.** `pulumi v3.191.0` with the `gcp` provider plugin at **8.16.0**, which the program
+  pins at the provider (`pulumi.Version(providerVersion)` in `pulumi/main.go`) rather than taking
+  whatever the host has installed. `go.mod` declares `go 1.25.11`; a host on an older Go builds it
+  through `GOTOOLCHAIN=auto`. `vendor/` is **never** committed — `go.sum` is the integrity story.
+  Two warmup commands prime a cold machine, and neither is part of a trial:
+
+  ```bash
+  (cd pulumi && go mod download)              # module cache + the go1.25 toolchain
+  pulumi plugin install resource gcp 8.16.0   # the provider the program pins
+  ```
+
+  **Offline.** No credential is needed and no Google API is reached: a preview resolves against the
+  plugin, not the cloud. Verified rather than assumed — with the module proxy off (`GOPROXY=off`)
+  and every `*_proxy` variable pointed at a closed port, `make -C pulumi build` and `make -C pulumi
+  plan` both exit `0` and produce the **identical 9-step plan** (`changeSummary {"create": 9}`) as a
+  run with the network up. The provider's `failed to get regions list` warning is present in both
+  runs and is not an error in either. The stack's local backend is a directory beside the program
+  and its passphrase is a fixed string, both stated in `pulumi/Makefile`: there is no `pulumi
+  login` anywhere in this fixture, in a step or in a test.
+
+  **Provenance (deviation, recorded deliberately).** Hand-authored end to end, on the same 2026-08-21
+  ruling as `claims-api` above — see that entry for what it means. Nothing about this fixture is
+  evidence about the authoring lane.

@@ -1,0 +1,30 @@
+{
+  "story": "artifact-store",
+  "services": [
+    {
+      "repo": "depot-infra",
+      "path": "pulumi",
+      "type": "go",
+      "skills": [
+        "depot-infra-ostler"
+      ],
+      "plan_file": "plan.md"
+    }
+  ],
+  "implementation_order": [
+    "depot-infra::pulumi"
+  ],
+  "shared_packages": [],
+  "required_instructions": [
+    "depot-infra-ostler"
+  ],
+  "qa_stack": {
+    "profile": "there is no stack to bring up and no port to reach: run `make -C pulumi plan` from the repo root and read the plan it writes to `pulumi/preview.json`. The Makefile states the backend (a local file backend under `pulumi/.pulumi-state`) and the passphrase, so a plan taken by a check and a plan taken by a person are the same plan",
+    "fixtures": [
+      "an empty local backend, which is what makes every resource in the plan a `create` rather than a diff against remembered state",
+      "a warm Go module cache and a resolvable `gcp` resource plugin — the two things a preview needs that a credential is not"
+    ],
+    "capable_of_rendering": "nothing. The program declares resources and exposes no surface; the plan JSON is the only observable this repo produces",
+    "notes": "no credential is needed and no Google API is reached. `pulumi preview` emits one diagnostic warning about listing regions, in an online run and an offline one alike, and it is not a failure"
+  }
+}

@@ -1,0 +1,21 @@
+# The implementation diff a trial materializes for the `artifact-store` story.
+#
+# `added:` paths are absent from the before-commit and present, uncommitted, in the
+# worktree. There is no `changed:` here and no `pre/` directory: this is the first story.
+#
+# There IS a `post/`, unlike claims-api's first story, and only for two files. `main.go` and
+# `Pulumi.dev.yaml` are the two the second story extends rather than leaves alone — the entry
+# point gains two calls, the config gains the deploy token — so this story's image of them is
+# the bucket-only one, and the same pair is the second story's `pre/`. Every other file
+# belongs to exactly one story, which is why the app tree is still the post-image for them.
+story: artifact-store
+added:
+  - pulumi/go.mod
+  - pulumi/go.sum
+  - pulumi/Makefile
+  - pulumi/.gitignore
+  - pulumi/Pulumi.yaml
+  - pulumi/Pulumi.dev.yaml
+  - pulumi/main.go
+  - pulumi/bucket.go
+changed: []

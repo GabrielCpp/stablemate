@@ -1,0 +1,17 @@
+# The implementation diff a trial materializes for the `deploy-identity` story.
+#
+# The identity and the sweep are added; the entry point and the stack's configuration are
+# changed, because both are shared with the first story and neither can be split further —
+# a program has one `main`, and a stack has one config file.
+#
+# The `pre/` images are byte-identical to the first story's `post/` images, and deliberately
+# duplicated rather than referenced: the trial reads each story's own directory, and a story
+# whose before-image lived in a sibling story would break the moment that sibling was edited,
+# silently and in the direction that scores as a catch.
+story: deploy-identity
+added:
+  - pulumi/identity.go
+  - pulumi/scheduler.go
+changed:
+  - pulumi/main.go
+  - pulumi/Pulumi.dev.yaml

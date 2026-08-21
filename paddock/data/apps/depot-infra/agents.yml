@@ -1,0 +1,56 @@
+# depot-infra — the declare-only fixture the standalone-QA benchmark measures against.
+#
+# `stablemate` is the only pack, for the reason claims-api's file states: the benchmark has
+# to resolve from a public clone and `scripts/check_public.py` asserts the base library
+# stands alone.
+#
+# `repo.name` is derived from the directory name, so a trial must materialize this tree into
+# a directory called exactly `depot-infra` — every generated skill is prefixed with it.
+#
+# What is under measurement here is the absence of a running thing. There is no service to
+# start, no port to open and no request to make; the only observable this repo produces is
+# the JSON of a Pulumi preview. A QA lane that proves things by driving a surface has no
+# surface, and has to read a plan instead.
+
+repo:
+  name: depot-infra
+
+agents:
+  claude: true
+  codex: false
+  copilot: false
+
+packs:
+  - stablemate
+
+workflows:
+  - coder
+
+scaffolds:
+  - shared-docs
+  - pulumi-infra
+
+workspace:
+  type: mono
+  service_roots:
+    - pulumi
+  service_markers:
+    - go.mod
+
+services:
+  # No test target: the program declares resources and asserts nothing, so `go test ./...`
+  # would report a pass earned by having no tests. The regression that means something here
+  # is that it still compiles against the pinned provider SDK.
+  pulumi:
+    regression: go build ./... && go vet ./...
+
+# The two external commands the frozen QA plans may reach for, and both are here because a
+# plan cannot set a working directory or an environment variable: `qa.tool()` runs a command
+# at the repo root with the ambient environment. `make` is how a plan reaches pulumi at all —
+# `pulumi/Makefile` states the backend and the passphrase, so the preview a check takes and
+# the preview a person takes are the same preview. `jq` is how it reads the result back,
+# because the plan JSON is a file on disk rather than something a command prints.
+qa:
+  tools:
+    - make
+    - jq

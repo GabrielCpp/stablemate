@@ -1,0 +1,4 @@
+encryptionsalt: v1:qWuhLir8E4I=:v1:LjPQDtv89D/Q7WCX:MuHtLW6LrNcKsHV1C28U1YtBB/iBXQ==
+config:
+  gcp:project: depot-example
+  gcp:region: us-central1

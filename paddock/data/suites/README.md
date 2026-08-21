@@ -117,6 +117,12 @@ Auth emulator beside the service so identity is minted without a credential, and
 listens on a port of its own — unregistered, it would take the tool's default `9099` and
 collide with any other project's emulator on the same machine.
 
+**`depot-infra` claims no port at all, and that is worth writing down.** It is a Pulumi program:
+nothing serves, nothing is deployed, there is no `compose.yml` and no stack to bring up — its
+whole observable behaviour is the plan `pulumi preview` writes to a file. A fixture with no entry
+here is otherwise indistinguishable from one whose author forgot, so the absence is registered
+rather than left blank.
+
 This is not tidiness. A backlog that starts a server without naming a port gets the language's
 idiomatic default — `8080` for Go, `3000` for React Router — and those are the two most
 contended ports on a developer machine. An `expense-split` run bound its QA daemon to `8080`

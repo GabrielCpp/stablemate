@@ -1,0 +1,5 @@
+encryptionsalt: v1:qWuhLir8E4I=:v1:LjPQDtv89D/Q7WCX:MuHtLW6LrNcKsHV1C28U1YtBB/iBXQ==
+config:
+  gcp:project: depot-example
+  gcp:region: us-central1
+  depot:deployToken: dpt_9f4c1ab27e0d4c8fa6b35e17c290d4e1

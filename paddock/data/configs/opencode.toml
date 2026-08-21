@@ -82,3 +82,16 @@ description = "the docker CLI, for restarting the app under test between two obs
 [qa_tools.jq]
 command = "jq"
 description = "the jq CLI, for reading a durable store file as evidence that a write persisted"
+
+# `make` is here for `depot-infra`, whose product never runs. That app's whole observable
+# behaviour is the plan `pulumi preview` writes, and the documented way to get one is the
+# `make -C pulumi plan` target its ops page publishes. Routing QA through the same target a
+# person would type is the point: a plan taken by invoking `pulumi` directly would be
+# evidence about pulumi, and would silently stop being evidence about the depot's route the
+# first time the Makefile changed a flag.
+#
+# It carries no arguments of its own — the target and its directory are the plan's, and the
+# backend and passphrase are stated inside the Makefile — so nothing here is app-specific.
+[qa_tools.make]
+command = "make"
+description = "the make CLI, for driving a repo's own documented build and plan targets"

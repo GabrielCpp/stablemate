@@ -1,0 +1,4 @@
+# The local backend's state, and the plan the `plan` target writes. Both are outputs of
+# running the program; neither describes it.
+.pulumi-state/
+preview.json
