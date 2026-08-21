@@ -65,25 +65,25 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - does:
   - Writes an empty ledger when there is none, and exits `0`.
   - Refuses when there is one already, and leaves that file byte-for-byte unchanged.
-- status: `0` when the ledger was created.
-- status: `1` when a ledger was already there.
 - code: tally/ledger.py::create
 - verify: created(subject="tally.json")
 - verify: unchanged(subject="tally.json")
+- status: `0` when the ledger was created.
+- status: `1` when a ledger was already there.
 
 ### add-an-expense
 - on: [add](#add)
 - trigger: the caller runs `tally add` against an existing ledger.
 - does:
   - Appends the expense and rewrites the ledger.
+- code: tally/ledger.py::add_entry
+- verify: count(subject="entries in the ledger", equals=1)
+- verify: unchanged(subject="tally.json")
 - status: `0` when the expense was recorded.
 - status: `2` when the expense was refused.
 - errors:
   - An amount that is not a positive whole number of cents is refused, and the ledger is left
     unchanged.
-- code: tally/ledger.py::add_entry
-- verify: count(subject="entries in the ledger", equals=1)
-- verify: unchanged(subject="tally.json")
 
 ## Fields
 

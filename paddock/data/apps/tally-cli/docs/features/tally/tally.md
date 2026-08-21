@@ -104,67 +104,67 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - does:
   - Writes an empty ledger when there is none, and exits `0`.
   - Refuses when there is one already, and leaves that file byte-for-byte unchanged.
-- status: `0` when the ledger was created.
-- status: `1` when a ledger was already there.
 - code: tally/ledger.py::create
 - verify: created(subject="tally.json")
 - verify: unchanged(subject="tally.json")
+- status: `0` when the ledger was created.
+- status: `1` when a ledger was already there.
 
 ### add-an-expense
 - on: [add](#add)
 - trigger: the caller runs `tally add` against an existing ledger.
 - does:
   - Appends the expense and rewrites the ledger.
+- code: tally/ledger.py::add_entry
+- verify: count(subject="entries in the ledger", equals=1)
+- verify: unchanged(subject="tally.json")
 - status: `0` when the expense was recorded.
 - status: `2` when the expense was refused.
 - errors:
   - An amount that is not a positive whole number of cents is refused, and the ledger is left
     unchanged.
-- code: tally/ledger.py::add_entry
-- verify: count(subject="entries in the ledger", equals=1)
-- verify: unchanged(subject="tally.json")
 
 ### import-a-csv
 - on: [import](#import)
 - trigger: the caller runs `tally import` on a CSV file whose every row parses.
 - does:
   - Adds the rows the ledger does not already hold, and no others.
-- consistency: importing the same file twice leaves the ledger holding what importing it once
-  left it holding.
 - code: tally/ledger.py::merge
 - verify: created(subject="the rows the ledger did not already hold")
 - verify: count(subject="entries in the ledger", equals=3)
+- consistency: importing the same file twice leaves the ledger holding what importing it once
+  left it holding.
 
 ### import-a-malformed-row
 - on: [import](#import)
 - trigger: the caller runs `tally import` on a file with a row that is not an expense.
 - does:
   - Refuses the whole file, so the ledger ends the invocation exactly as it began it.
+- code: tally/ledger.py::parse_rows
+- verify: unchanged(subject="tally.json")
 - status: `2`.
 - errors:
   - The message names the 1-based line number of the offending row.
-- code: tally/ledger.py::parse_rows
-- verify: unchanged(subject="tally.json")
 
 ### report-as-json
 - on: [report](#report)
 - trigger: the caller runs `tally report --json`, usually into a pipe.
 - does:
   - Writes the totals as one JSON object.
-- consistency: stdout carries exactly that one JSON object and nothing else.
-- consistency: every human-facing line the command writes goes to stderr.
 - code: tally/report.py::summarize
 - verify: json_path(path="$.currency", equals="EUR")
+- consistency: stdout carries exactly that one JSON object and nothing else.
+- consistency: every human-facing line the command writes goes to stderr.
 
 ### export-to-csv
 - on: [export](#export)
 - trigger: the caller runs `tally export` against an existing ledger.
 - does:
   - Writes one CSV file holding every entry.
-- consistency: the file's first line is the header `who,what,amount_cents,spent_on`, whether or
-  not the ledger has entries.
 - code: tally/report.py::export_rows
 - verify: created(subject="the exported CSV file")
+- consistency: the file's first line is the header `who,what,amount_cents,spent_on`, whether or
+  not the ledger has entries.
 
 ## Fields
 

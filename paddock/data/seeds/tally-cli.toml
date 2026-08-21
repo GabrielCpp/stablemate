@@ -1,10 +1,10 @@
 name = "tally-cli"
 repo_dir = "tally-cli"
-sha256 = "99588ee0535051daca1db81a298e422afd8a52c9480e571264d24d444d59809e"
-bytes = 89976
-head = "7164545537dd531eede6355de52d88104c388bf8"
+sha256 = "aad297da11d301d4644071a5ed4753c11e15d040a248c0cd38a0343379345b51"
+bytes = 89977
+head = "326e780c238b19f854d8a1be4b76527660896240"
 dirty = true
 url = ""
 note = "the frozen tally-cli fixture as tracked"
 source = "apps/tally-cli"
-tree_sha256 = "adea9407e52fab5d1581cea6dd624559c633f0c03d2cb04386172f0cfe3c53c5"
+tree_sha256 = "afb3bea612ce213c5c68dab0436a2d4aad9a07ded79f42a0cb55dd6a6d15d97c"
