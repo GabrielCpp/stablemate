@@ -257,8 +257,23 @@ class Run:
         return json.loads(path.read_text(encoding="utf-8"))
 
     def write_json(self, path: Path, data: object) -> Path:
+        """Write *data* to *path* as JSON, atomically.
+
+        Atomic because these files are read while a round is still running, by something
+        other than whoever wrote them: the operator-gate watcher polls its own ledger to
+        decide whether a gate is already parked, and a person tails the same files to see
+        what a round is doing. `write_text` truncates first, so a reader landing in that
+        window gets an empty file and a `JSONDecodeError` — a poll loop that has been
+        working for an hour dying on a file that is *fine* a millisecond later. Rename is
+        the fix rather than a retry loop: readers stay ordinary `json.loads` calls, and a
+        reader sees the old bytes or the new ones and never a half-written file.
+        """
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        # Beside the target, because `os.replace` is only atomic within one filesystem and
+        # a temp directory may be on another.
+        staged = path.with_name(f"{path.name}.{os.getpid()}.writing")
+        staged.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(staged, path)
         return path
 
 

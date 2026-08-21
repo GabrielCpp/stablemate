@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from paddock import loader, seeds
-from paddock.pointer import DIAGNOSTIC_MARKER, ResultPointer
-from paddock.runner import RunError, execute
+from paddock.pointer import DIAGNOSTIC_MARKER, Pointer, ResultPointer
+from paddock.runner import Run, RunError, execute
 
 TASK = '''
 from paddock import Score, step, task
@@ -292,3 +293,52 @@ def sneak(run):
     pointer = ResultPointer.load(result.pointer_path)
     assert [c for c in pointer.caveats if c.startswith("self-touched: ")]
     assert pointer.note.startswith(DIAGNOSTIC_MARKER)
+
+
+def test_a_json_file_is_never_readable_half_written(
+    repo: Path, data_dir: Path, store: Path, tmp_path: Path
+) -> None:
+    """A reader polling one of these files sees the old bytes or the new ones, never none.
+
+    Not a hypothetical: the operator-gate watcher polls its own ledger with a plain
+    `json.loads` while the round that writes it is still going, and a person tails the same
+    files. Truncate-then-write leaves a window where the file exists and is empty, so the
+    poll loop dies on a `JSONDecodeError` against a file that is fine a millisecond later.
+    This test spins that window as fast as both sides will go; it fails on `write_text` and
+    passes on the rename.
+    """
+    handle = Run(
+        task=prepare(repo, data_dir, store),  # ty: ignore[invalid-argument-type]
+        label="t1",
+        stage=tmp_path / "stage",
+        repo=repo,
+        scratch=tmp_path / "scratch",
+        config=data_dir / "configs" / "test.toml",
+        data_dir=data_dir,
+        store=store,
+        seed=Pointer(name="acme", repo_dir="acme-api", sha256="0" * 64, bytes=1),
+    )
+    path = tmp_path / "ledger.json"
+    handle.write_json(path, {"steps": []})
+
+    torn: list[Exception] = []
+    stop = threading.Event()
+
+    def poll() -> None:
+        while not stop.is_set():
+            try:
+                json.loads(path.read_text(encoding="utf-8"))
+            except Exception as err:  # noqa: BLE001 - the failure is the assertion
+                torn.append(err)
+                return
+
+    reader = threading.Thread(target=poll)
+    reader.start()
+    try:
+        for n in range(400):
+            handle.write_json(path, {"steps": [{"name": f"step-{n}"}] * 40})
+    finally:
+        stop.set()
+        reader.join(timeout=10)
+
+    assert not torn, f"a reader saw a half-written file: {torn[0]!r}"
