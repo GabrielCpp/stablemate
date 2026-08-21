@@ -149,3 +149,40 @@ def test_the_docs_rewind_leaves_the_book_one_story_behind(tmp_path: Path) -> Non
     # story behind rather than empty — a book rewound further is missing entries outside
     # this story's obligations, which is a different complaint for a reviewer to make.
     assert sorted(p.name for p in features.iterdir()) == ["group.md"]
+
+
+def test_the_backfill_gives_a_predating_story_the_dependencies_section(tmp_path: Path) -> None:
+    """The bundle was captured before `## Dependencies` was a required story section.
+
+    Without the backfill every pin stops at the first node — "story.md is still a bare
+    scaffold" — on both flows, and the fixture measures nothing.
+    """
+    story_md = tmp_path / "docs" / "epics" / "0001-groups" / "stories" / "create-group" / "story.md"
+    story_md.parent.mkdir(parents=True)
+    story_md.write_text(
+        "---\nslug: create-group\n---\n# Story: Create a Group\n\n## Context\n\nprose.\n",
+        encoding="utf-8",
+    )
+
+    task_module.backfill_story_sections(tmp_path)
+
+    written = story_md.read_text(encoding="utf-8")
+    assert "## Dependencies\n\n(none)\n" in written
+    # Ahead of the prose, and the prose itself untouched — the trial is entered with the
+    # story the original run was entered with, plus a heading that reads as no edge.
+    assert written.index("## Dependencies") < written.index("## Context")
+    assert written.endswith("## Context\n\nprose.\n")
+
+
+def test_the_backfill_leaves_a_story_that_already_declares_dependencies_alone(
+    tmp_path: Path,
+) -> None:
+    story_md = tmp_path / "docs" / "epics" / "0001-groups" / "stories" / "create-group" / "story.md"
+    story_md.parent.mkdir(parents=True)
+    # A real edge, which a second `(none)` section would sit above and contradict.
+    before = "# Story\n\n## Dependencies\n\n- Blocked by: group-membership\n\n## Context\n\nx.\n"
+    story_md.write_text(before, encoding="utf-8")
+
+    task_module.backfill_story_sections(tmp_path)
+
+    assert story_md.read_text(encoding="utf-8") == before

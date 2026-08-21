@@ -150,6 +150,38 @@ def rewind(repo: Path, pin: Pin, flow: str) -> None:
             sm.git("checkout", parent, "--", BOOK, cwd=repo)
 
 
+#: The story section this fixture predates. `registry.STORY_SECTIONS` gained a leading
+#: `## Dependencies` after the bundle was captured, and `coder/shared/story.py` refuses to
+#: plan against a story.md that is missing a required section — so every pin in `PINS`
+#: stops at the first node with "story.md is still a bare scaffold", on both flows, and the
+#: fixture measures nothing at all.
+DEPS_SECTION = "## Dependencies\n\n(none)\n\n"
+
+
+def backfill_story_sections(repo: Path) -> None:
+    """Give every story.md the `## Dependencies` section the schema now requires.
+
+    A migration, not a favor to the flow under test. `(none)` is the stub the current
+    authoring writes and `story_dependencies` reads no edge from it, so the story graph a
+    trial is handed is byte-for-byte the one the original run was handed — the heading only
+    satisfies the gate that did not exist when these commits were made.
+
+    The alternative is recapturing the bundle, which would move all ten pins and throw away
+    the one thing this fixture is: five stories landed by real runs, at the commits that
+    landed them. A schema addition is not a reason to lose that history.
+    """
+    for story_md in sorted(repo.glob("docs/epics/*/stories/*/story.md")):
+        text = story_md.read_text(encoding="utf-8")
+        if "\n## Dependencies" in f"\n{text}":
+            continue
+        # Ahead of the first section, because Dependencies leads in `STORY_SECTIONS` and a
+        # reader looking for what blocks a story should not have to scroll past the prose.
+        head, marker, rest = text.partition("\n## ")
+        if not marker:
+            raise sm.TrialError(f"{story_md} has no `## ` section to insert Dependencies before")
+        story_md.write_text(f"{head}\n{DEPS_SECTION}## {rest}", encoding="utf-8")
+
+
 def checkout(
     run: Run, pin: Pin, flow: str, dest: Path, install: Callable[[Path], None]
 ) -> Path:
@@ -164,6 +196,7 @@ def checkout(
     sm.git("clone", "--quiet", str(run.repo), str(dest), cwd=run.scratch)
     sm.git("checkout", "--quiet", pin.commit(flow), cwd=dest)
     rewind(dest, pin, flow)
+    backfill_story_sections(dest)
     # `.agents/agents-context.json` is generated and gitignored, so a fresh clone has none
     # and every prompt path in the run would fail to resolve. farrier regenerates it from
     # the tracked `agents.yml`, which is what a real checkout of this repo would do too.
