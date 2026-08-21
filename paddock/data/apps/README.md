@@ -255,3 +255,35 @@ collide on a machine running both.
   **Provenance (deviation, recorded deliberately).** Hand-authored end to end, on the same 2026-08-21
   ruling as `claims-api` above — see that entry for what it means. Nothing about this fixture is
   evidence about the authoring lane.
+
+- **[`tally-cli/`](tally-cli/)** — a shared-expense ledger as a stdlib-only Python command:
+  `init`, `add`, `import`, `report` and `export` over one JSON file, plus a global `--file`.
+  Three stories (`ledger-init-add`, `import-csv`, `report-export`). **No port and no stack**, for
+  a different reason than `depot-infra`'s: this one runs, but it does not listen.
+
+  Its subject is **granularity**. All three stories edit `tally/cli.py` and two of them
+  `tally/ledger.py`, so file-level ownership separates nothing at all — every defect is seeded in
+  a module some other story also touched. What decides whether a row is scorable is symbol-level
+  grounding: each `code:` bullet names a function, and a single citation demoted to a bare file
+  takes every obligation behind it out of scoring and returns `inconclusive` forever, which reads
+  exactly like a QA lane that never answered. `test_tally_cli_app.py` mints each story's packet
+  the way QA mints it and asserts every row's obligation comes back owed.
+
+  All seven rows are `caught_by: run`. `claims-api`'s C9 and `depot-infra`'s D7 already cover the
+  audit-only arm of the scorer, and a third would buy nothing over them.
+
+  **The QA lane here has no service in it.** A plan may not import the package — `ostler.qa.lint`
+  is an AST allowlist — so a scenario reaches the product the way it would reach a compiled
+  binary: `python3 -m tally`, through the `python3` tool `agents.yml` opts into and the
+  `[qa_tools.python3]` table in `configs/opencode.toml` resolves. The QA target's `driver` stays
+  `python`: that names the harness a scenario body runs in, not the transport, and there is no
+  driver for "a command".
+
+  **The book is versioned per story**, which is the rule [above](#the-book-is-versioned-per-story-too)
+  and which this fixture is where it was found. Symbol grounding is what exposes it: a bullet
+  naming `tally/report.py::summarize` is a dangling citation in the two images that have no
+  `report.py`, and a plan authored against the finished book calls a subcommand two stories early.
+
+  **Provenance (deviation, recorded deliberately).** Hand-authored end to end, on the same
+  2026-08-21 ruling as its two siblings — see `claims-api`'s entry for what it means. Nothing
+  about this fixture is evidence about the authoring lane.
