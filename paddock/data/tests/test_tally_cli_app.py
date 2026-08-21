@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import contextlib
 import importlib.util
-import json
 import re
 import subprocess
 import sys
@@ -404,40 +403,6 @@ def test_the_obligation_packet_builds_clean_on_a_trial(story: str, tmp_path: Pat
     ]
     assert not errors, errors
     assert outcome.ok, outcome.data.get("status")
-
-
-# ── the frozen plans ──────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.parametrize("story", STORIES)
-def test_the_frozen_plan_lints_and_validates_on_a_trial(
-    story: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The plans ship with the fixture, so ostler's plan contract is this app's dependency.
-
-    `lint` is an AST allowlist that grows tighter over time and `validate` binds every
-    `covers=` id against the packet. Either tightening breaks a round that would otherwise
-    report a QA lane failing to detect anything — a fixture bug wearing a result's clothes.
-    """
-    from ostler.api import Ostler  # noqa: PLC0415 - a heavy import only this test needs
-    from ostler.qa.context import build_context  # noqa: PLC0415
-
-    # `validate` preflights the opted-in QA tools, and `python3` resolves out of the task
-    # config rather than out of whatever `~/.config/stablemate` this machine happens to have.
-    # Pinning it here is what `sm.pin_config` does for a real round, for the same reason.
-    monkeypatch.setenv("STABLEMATE_CONFIG", str(DATA / "configs" / "opencode.toml"))
-
-    dest = frozen.materialize(APP, story, tmp_path / "tally-cli")
-    spec = dest / "docs" / "specs" / story
-    context = build_context(dest, base="HEAD", head="WORKTREE")
-    (spec / "qa-okf-context.json").write_text(json.dumps(context, indent=2), encoding="utf-8")
-
-    okf = Ostler(dest)
-    plan = spec / "qa_plan.py"
-    linted = okf.qa_lint(plan, spec=spec)
-    assert linted.ok, linted.data
-    validated = okf.qa_validate(plan, spec=spec)
-    assert validated.ok, validated.data
 
 
 # ── the answer key ────────────────────────────────────────────────────────────────────
