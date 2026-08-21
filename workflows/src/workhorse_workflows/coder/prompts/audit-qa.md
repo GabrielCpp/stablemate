@@ -68,13 +68,56 @@ declaration and so appear in no set difference. An AC promising three things who
 proves one is a `plan-defect` the map will call `covered`.
 
 For every impacted flow, verify that evidence begins at the documented start instead of
-deep-linking past navigation, reaches the documented end, and contains no hidden 5xx/crash/console
-error.
+deep-linking past navigation and reaches the documented end. A flow whose obligation row is
+`required` is owed that walk; a context-only one is not.
 
 Use machine-readable evidence for geometric/textual claims. Never invent fields or values
 that do not exist in the ledger/artifacts. A runner pass is refuted when evidence shows a
 real contradiction, a partial journey, or an assertion that does not prove its `covers`
 claim.
+
+## Judge what the page asked the network for
+
+Every browser scenario writes `qa/traces/<scenario>-diagnostics.json`
+(`schema: browser-diagnostics/2`) beside its trace: `pageErrors`, `consoleErrors` and the full
+`console` list, and `requests` / `responses` carrying each request's `url`, `method`,
+`resourceType`, `status`, `durationMs` and — within a byte budget — the response body itself.
+**Open it for every browser scenario in the run, not only the ones you already doubt.** It is
+the record of what the product actually did while the assertions were being satisfied, and a
+seeded defect that never breaks an asserted element leaves its whole trace here and nowhere
+else: a list screen that renders correctly while firing one failing request per row asserts
+green all the way down.
+
+Two of these the harness already refuses on its own, so a scenario that published a pass while
+carrying either is a `contradicted` row, not a judgement call — say so and quote it:
+
+- `pageErrors` non-empty — an uncaught exception reached the window.
+- any `responses` entry with `status` at or above 500.
+
+The rest is yours to judge, and the discrimination that matters is **provoked or not**. A
+scenario that submits an invalid form to prove a refusal *should* show a 4xx, and a page that
+finished loading may cancel an in-flight request on the way out. Refute as
+`product-contradiction`, scoped `product-test`, when:
+
+- a `responses` entry in the 400s answers a request the scenario never provoked — no step of
+  it was asserting a refusal, an absence or an unauthorized case — and most sharply when the
+  same failing request repeats per row, per card or per poll tick. Quote the `url`, the
+  `status`, and how many times it appears;
+- a `console` entry names a product failure rather than a resource: an unhandled rejection, a
+  framework error boundary, a hydration mismatch, a failed state update. Quote the message.
+
+And do **not** refute on:
+
+- console output alone. A clean run of the same product carries console noise, and
+  `Failed to load resource: ...` is the browser narrating a response the `responses` list
+  already shows you — judge the response, not its echo;
+- a `failedRequests` entry with no status, which is usually a navigation cancelling its own
+  pending requests;
+- a 4xx the scenario's own steps asked for. Name the step that provoked it and move on.
+
+A documented route answering a documented error is not by itself a defect either: check the
+endpoint's `errors:` bullets before filing one. What makes it a defect is the caller — the
+page had no business asking.
 
 ## Judge the layout, not only the assertions
 
