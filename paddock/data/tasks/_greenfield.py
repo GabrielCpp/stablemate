@@ -525,9 +525,18 @@ def watch_operator_gates(run: Run, fixture: Fixture, stop: threading.Event) -> N
                                         f"{GATE_GRACE_S / 60:.0f} minutes after it opened, "
                                         "and this round has no operator"})
             logger.warning("operator gate parked: %s", gate)
-        # A gate answered inside the grace leaves no trace, and if the same path opens
-        # again later it is a new stall to be timed from scratch.
+        # A gate answered inside the grace is not a stall, but it is not nothing either:
+        # how much of the grace a resolver actually spends is the only place the number
+        # can be calibrated from. One that clears at 115s says the next fixture needs a
+        # longer grace, and says it in a log line rather than in a burned round. It stays
+        # out of the ledger — the ledger records what the *harness* put in, and a gate the
+        # round's own resolver answered is the round working, not an input to it.
         for gate in set(first_seen) - awaiting:
+            logger.info(
+                "operator gate cleared after %.0fs of the %.0fs grace: %s",
+                time.monotonic() - first_seen[gate], GATE_GRACE_S, gate,
+            )
+            # If the same path opens again later it is a new stall, timed from scratch.
             del first_seen[gate]
 
 

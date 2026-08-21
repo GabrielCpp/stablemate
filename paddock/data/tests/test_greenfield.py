@@ -21,6 +21,7 @@ import contextlib
 import dataclasses
 import importlib.util
 import json
+import logging
 import subprocess
 import sys
 import time
@@ -385,6 +386,33 @@ def test_a_gate_answered_inside_the_grace_is_not_a_stall(
 
     gate.write_text(GATE.replace("AWAITING_OPERATOR", "ANSWERED"), encoding="utf-8")
     watch_once(run, fixture, monkeypatch, expect=0)
+    assert gf.operator_gates_of(run) == []
+
+
+def test_how_much_grace_a_cleared_gate_spent_is_logged(
+    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A gate that clears inside the grace stays out of the ledger — but the grace is a
+    number somebody has to calibrate, and the only evidence for it is how long real
+    resolvers actually take. One clearing at 115s of a 120s grace is the warning that the
+    next fixture needs a longer one; unlogged, it arrives instead as a burned round."""
+    monkeypatch.setattr(gf, "GATE_POLL_S", 0.01)
+    gate = park(run)
+    # One watcher across both states, because that is the only way it happens for real:
+    # the elapsed time it reports is measured from when *this* thread first saw the gate.
+    stop, thread = gf.gates_watched(run, fixture, "author")
+    with caplog.at_level(logging.INFO, logger=gf.logger.name):
+        thread.start()
+        try:
+            time.sleep(0.1)
+            gate.write_text(GATE.replace("AWAITING_OPERATOR", "ANSWERED"), encoding="utf-8")
+            time.sleep(0.1)
+        finally:
+            stop.set()
+            thread.join(timeout=5.0)
+
+    cleared = [r.getMessage() for r in caplog.records if "cleared after" in r.getMessage()]
+    assert cleared and str(gate.relative_to(run.repo)) in cleared[-1]
     assert gf.operator_gates_of(run) == []
 
 

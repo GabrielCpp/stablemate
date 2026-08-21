@@ -22,6 +22,12 @@ turn** — it says nothing about the quality or the stability of the questions t
 That instability is excised here rather than solved, which is honest only while it is said
 out loud. Say it anywhere a `grounded` number is quoted.
 
+The instability is measured, not assumed: two grill turns run against this identical backlog
+asked three questions and six. So the frozen conversation is **one draw** from that
+distribution, not the canonical set of questions this backlog raises — which matters most to
+whoever re-captures. A re-capture will not reproduce these six, and its round numbers are
+therefore a new lineage even if every answer below is carried over verbatim.
+
 **The answers are not decided here.** Every answer in `_author-context.md` cites a standing
 record under [`../docs/decisions/`](../docs/decisions/), which is where the decision lives
 and where every lane's auto-resolver reads it. This file is a transcript, not a source.
