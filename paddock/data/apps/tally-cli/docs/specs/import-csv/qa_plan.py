@@ -142,6 +142,9 @@ def entries(qa: Qa, ledger):
     covers=[
         "ac:1",
         "ac:2",
+        "okf:docs/features/tally/flows/track-a-trip.md:end-state",
+        "okf:docs/features/tally/flows/track-a-trip.md:end:1",
+        "okf:docs/features/tally/flows/track-a-trip.md:start:1",
         "okf:docs/features/tally/tally.md#import:contract",
         "okf:docs/features/tally/tally.md#import:does:1",
         "okf:docs/features/tally/tally.md#import-a-csv:consistency:1",
@@ -229,6 +232,9 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         subject="entries in the ledger",
         equals=3,
         covers=[
+            "okf:docs/features/tally/flows/track-a-trip.md:end-state",
+            "okf:docs/features/tally/flows/track-a-trip.md:end:1",
+            "okf:docs/features/tally/flows/track-a-trip.md:start:1",
             "okf:docs/features/tally/tally.md#import-a-csv:consistency:1",
             "okf:docs/features/tally/tally.md#import-a-csv:contract",
             "okf:docs/features/tally/tally.md#import-a-csv:does:1",
