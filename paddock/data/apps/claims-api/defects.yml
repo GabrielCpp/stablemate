@@ -1,0 +1,178 @@
+# The answer key: nine seeded defects, each naming the obligation it contradicts.
+#
+# The schema and the mechanism are seat-booking's and policy-desk's — a trial applies one
+# row by copying `defects/<id>/<path>` over the materialized worktree, a whole-file
+# overwrite rather than a patch, because a patch stops applying the moment the app is
+# edited and does so *silently*: the trial still runs, the defect is simply not there, and
+# the score reads as a catch.
+#
+# `obligation` is the OKF id the defect makes false, and `expect` is an **evidence-map
+# status** rather than a prose verdict, so scoring is a lookup rather than a reading of the
+# QA report. Every id here is one the book mints *and owes* for that row's story, which
+# `tests/test_claims_api_app.py` pins by minting each story's packet the way QA mints it.
+#
+# `caught_by` is the route the defect is *expected* to travel, recorded so a surprise is
+# legible — it is not a scoring gate:
+#
+#   run    — a declared check the plan runs should assert this and fail
+#   audit  — no assertion fails; only the auditor reading evidence against the clause sees it
+#
+# Every defect is a plausible implementation, not a syntax error or a crash: each variant
+# builds (`go build ./...`), serves, and answers. A defect that takes the service down is
+# caught by any check at all and measures nothing.
+#
+# Provenance (deviation, recorded deliberately)
+# ---------------------------------------------
+# This fixture — code, book and key alike — was hand-authored end to end rather than
+# produced by genesis → author → okf-builder → hardening, by a design ruling on 2026-08-21.
+# Nothing in this app is evidence about the authoring lane; a claim that okf-builder
+# produces books of this shape has to come from running it. The full note is in
+# `../README.md`.
+#
+# What this fixture is for, and what it is expected to expose
+# ----------------------------------------------------------
+# `seat-booking` asks whether QA notices a wrong answer and `policy-desk` asks whether QA
+# worked the product. This one asks what QA has left to hold on to when there is **no
+# screen at all**: the book is `http/` and nothing else, so the leverage keys that read
+# entry points and deep links have nothing to read, and every obligation has to be reached
+# through the contract.
+#
+# Two rows carry the thing a contract-first service can get wrong that a hand-rolled one
+# cannot pose. Protection is not hand-wired per route: `oapi-codegen`'s chi wrapper stamps
+# `gen.BearerAuthScopes` into the request context for exactly the operations `openapi.yml`
+# secures, and the middleware serves anything it does not find there. So the *document* is
+# load-bearing for authentication, and C1 and C2 make it false while leaving every happy
+# path green.
+#
+# C9 is the auditor's row, and it is not the row it was speced as
+# ---------------------------------------------------------------
+# C9 was speced as a defect **no obligation names** — true negative space, seeded to ask
+# whether QA can report something the book never asked about. It is written down here as an
+# ordinary audit-only row against `submit-claim:errors:3` instead, and the conversion is
+# deliberate rather than a drift:
+#
+#   `Fixture.classify()` reaches a catch through two routes, and *both* require a citable
+#   obligation id to attribute the catch to. A row with no obligation is therefore not
+#   merely hard to score — it is structurally unscorable, and would return `inconclusive`
+#   on every round forever.
+#
+# So TRUE negative-space scoring is **deferred, not delivered**. It needs a
+# catch-without-obligation route in the scorer, and the two places that will demand one are
+# Part II phase F's probes and the mutation plan's pin-rate gap. Read C9 below as an
+# audit-only row that stands in for a measurement this harness cannot yet take.
+
+defects:
+  - id: C1
+    story: claims-crud
+    path: app/api/authz.go
+    obligation: okf:docs/features/claims/http/claims-api.md#submit-claim:auth:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      the middleware treats a request with no `Authorization` header as an anonymous caller
+      rather than a refusal — `bearerToken` failing falls through to `next` with a holder
+      identity carrying an empty subject. Every authenticated path still works exactly as
+      documented, because a caller who does present a token is verified as before; the only
+      way to see it is to make a request the book says must be refused.
+
+  - id: C2
+    story: claims-crud
+    path: app/api/authz.go
+    obligation: okf:docs/features/claims/http/claims-api.md#submit-claim:auth:2
+    expect: contradicted
+    caught_by: run
+    why: >
+      an expired token is accepted: the verifier's error is inspected, and the one that says
+      the token is past its expiry is treated as a token that merely needs refreshing, so the
+      claims are read out of it and the request is served. A token issued for another project
+      is still refused, which is what makes this a separate row from C1 rather than the same
+      hole twice — the two arms the book states separately fail separately.
+
+  - id: C3
+    story: claims-tenancy
+    path: app/api/scope.go
+    obligation: okf:docs/features/claims/http/claims-api.md#list-claims:authorization:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      `VisibleTo` scopes by policy number rather than by the verified subject: a holder sees
+      every claim filed on any policy they themselves have filed on, which for a single-holder
+      desk is indistinguishable from correct. The adjuster's whole-desk read is untouched, so
+      only a scenario with two holders on one policy observes it.
+
+  - id: C4
+    story: claims-adjudication
+    path: app/api/decide.go
+    obligation: okf:docs/features/claims/http/claims-api.md#decide-claim:authorization:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      the role gate moves to after the lookup, so a holder deciding a claim that is not on the
+      books gets `404 No Such Claim` where the book promises `403 Adjusters Only`. The refusal
+      is still a refusal and nothing is written, which is why a scenario that provokes the 403
+      against a claim that exists passes: the ordering the book states is the whole of what is
+      broken, and it is the ordering that keeps a prober from mapping the desk.
+
+  - id: C5
+    story: claims-crud
+    path: app/api/submit.go
+    obligation: okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      the accepted claim is answered out of a map built by hand beside the generated type
+      instead of converted into it, and the hand-built one spells two fields the way Go does —
+      `amountCents` and `holderUid`. Status, id, version and description are all present and
+      right, so a plan asserting the happy path's shape loosely reports it covered.
+
+  - id: C6
+    story: claims-crud
+    path: app/api/submit.go
+    obligation: okf:docs/features/claims/http/claims-api.md#submit-claim:errors:2
+    expect: contradicted
+    caught_by: run
+    why: >
+      a repeat filing is treated as a re-submission: the duplicate check finds the claim
+      already on file and updates it in place, answering `201` with the same id rather than
+      refusing `409 Duplicate Claim`. The response looks like a success and the register still
+      holds one claim, so only a check that reads the status *and* the count sees it.
+
+  - id: C7
+    story: claims-adjudication
+    path: app/api/decide.go
+    obligation: okf:docs/features/claims/http/claims-api.md#decide-claim:concurrency:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      the decision still demands a positive `version` and no longer compares it to the claim's,
+      so last write wins: an adjuster who read the claim, went away and came back overwrites
+      the decision that landed meanwhile. Every single-writer scenario passes; only two
+      decisions from one reading show it.
+
+  - id: C8
+    story: claims-adjudication
+    path: app/api/decide.go
+    obligation: okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      the applied decision is kept in a process-lifetime table beside the ledger and overlaid
+      on the ledger every decision reads, and the ledger file is never written. The response
+      is right, the version increments, and a second decision on the same claim correctly sees
+      the first — so the concurrency arm still passes and this is not C7 twice. The claim is
+      `Submitted` at version 1 again after a restart, which is the only place it shows:
+      invisible to everything but `persists` across a real restart of the service.
+
+  - id: C9
+    story: claims-crud
+    path: app/api/authz.go
+    obligation: okf:docs/features/claims/http/claims-api.md#submit-claim:errors:3
+    expect: contradicted
+    caught_by: audit
+    why: >
+      the refusal's `detail` quotes the credential it rejected — "The bearer token
+      eyJhbGciOi… was not accepted." — which puts the presented token into every access log,
+      proxy trace and bug report the response passes through. The status is `401`, the title
+      is `Unauthorized`, the body is a well-formed `Problem`, and nothing is written: no
+      declared check can fail, and the clause the book states about what a refusal may
+      contain is a property of prose only a reader of the evidence can hold it to.
