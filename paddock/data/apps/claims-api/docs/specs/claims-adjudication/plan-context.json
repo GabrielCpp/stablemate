@@ -1,0 +1,30 @@
+{
+  "story": "claims-adjudication",
+  "services": [
+    {
+      "repo": "claims-api",
+      "path": "app/api",
+      "type": "go",
+      "skills": [
+        "claims-api-ostler"
+      ],
+      "plan_file": "plan.md"
+    }
+  ],
+  "implementation_order": [
+    "claims-api::app/api"
+  ],
+  "shared_packages": [],
+  "required_instructions": [
+    "claims-api-ostler"
+  ],
+  "qa_stack": {
+    "profile": "bring the stack up with `docker compose -f compose.yml up -d --build --force-recreate --wait` and drive it over http://localhost:18085; the Firebase Auth emulator comes up beside it on http://localhost:18086 and every token a scenario needs is signed in there. Sandboxed runs reach both through the forwarded ports declared in qa-stack.yml",
+    "fixtures": [
+      "an empty desk (DELETE /api/claims, holding the adjuster's token)",
+      "one Submitted claim filed by a holder through POST /api/claims, whose issued version the decision quotes"
+    ],
+    "capable_of_rendering": "the claims API against the live ledger, and the auth emulator against the three identities compose seeds into it",
+    "notes": "two criteria need more than a request each: the compare-and-swap needs two writes off one reading with no re-read between them, and the durability of a decision needs the process replaced — `docker` is opted into in agents.yml for exactly that"
+  }
+}

@@ -1,0 +1,14 @@
+# The implementation diff a trial materializes for the `claims-tenancy` story.
+#
+# Reading is added and nothing else is touched: the submission path, the ledger and the
+# verifying middleware are all story 1's and stay committed. A story that also moved a
+# validation rule would leave a failing scenario ambiguous about which change it caught.
+#
+# `scope.go` is a file of its own rather than a pair of helpers inside `list.go`, because
+# `claim-tenancy.md` cites it and a citation shared by two OKF nodes localizes nothing.
+story: claims-tenancy
+added:
+  - app/api/scope.go
+  - app/api/list.go
+  - app/api/get.go
+changed: []

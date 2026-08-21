@@ -1,0 +1,36 @@
+# The implementation diff a trial materializes for the `claims-crud` story.
+#
+# `added:` paths are absent from the before-commit and present, uncommitted, in the
+# worktree. There is no `changed:` here and no `pre/` directory: this is the first story.
+#
+# There is no `post/` directory either, anywhere in this app, and that is a property of the
+# layout rather than an omission. `post/` exists to keep a later story's code out of an
+# earlier story's diff when both keep extending one module; here every file belongs to
+# exactly one story, so the app tree *is* each story's post-image. That is also why the
+# handlers are one file per endpoint — the same split the book's grounding needs.
+#
+# The write path comes first because everything else in the desk reads what it wrote, and
+# the verification comes with it rather than after it: a story that took claims without a
+# token would have acceptance criteria an unprotected service satisfies.
+story: claims-crud
+added:
+  - app/api/go.mod
+  - app/api/go.sum
+  - app/api/Makefile
+  - app/api/openapi.yml
+  - app/api/gen/types.gen.go
+  - app/api/gen/server.gen.go
+  - app/api/main.go
+  - app/api/store.go
+  - app/api/authz.go
+  - app/api/service.go
+  - app/api/submit.go
+  - app/api/reset.go
+  - Dockerfile
+  - .dockerignore
+  - compose.yml
+  - auth/Dockerfile
+  - auth/firebase.json
+  - auth/.firebaserc
+  - auth/seed.mjs
+changed: []

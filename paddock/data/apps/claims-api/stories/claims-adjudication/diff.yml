@@ -1,0 +1,13 @@
+# The implementation diff a trial materializes for the `claims-adjudication` story.
+#
+# One file, and the largest answer-key surface in the app: the role gate, the
+# compare-and-swap on `version`, and the durability of the decision it applies are all
+# decided in `decide.go`, and each is a defect row.
+#
+# The store is not touched. The decision is a read-modify-write through the ledger story 1
+# already shipped, which is what makes C8 a plausible implementation rather than a crash —
+# a decision table held beside the ledger answers every same-process read correctly.
+story: claims-adjudication
+added:
+  - app/api/decide.go
+changed: []
