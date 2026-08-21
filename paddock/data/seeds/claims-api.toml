@@ -1,0 +1,8 @@
+name = "claims-api"
+repo_dir = "claims-api"
+sha256 = "dc97a9dd70d8bba4816244c596f47a6b4dd514f0ba01a7d6298c375a3dce8faa"
+bytes = 92875
+head = "c23a2bf7de3dd75fba56d960af29edb3263bed9a"
+dirty = true
+url = ""
+note = "the frozen claims-api fixture as tracked"
