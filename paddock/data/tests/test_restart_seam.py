@@ -23,6 +23,7 @@ makes the promise owes neither opt-in and is skipped, not failed.
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -72,3 +73,40 @@ def test_a_frozen_persistence_plan_pulls_the_seam(app: Path) -> None:
             "calling `qa.tool(` — every read is request-scoped, so the restart-survival "
             "promise is asserted against process memory and the P8-class variant passes"
         )
+
+
+SUITES = sorted(p.parent.parent for p in (DATA / "suites").glob("*/docs/decisions.md"))
+PINNED = DATA / "configs" / "opencode.toml"
+#: Reading a durable store file is the `persists` half of the same promise `docker` covers
+#: for restarts, and it needs an approved tool for the same fail-closed reason.
+READERS = ("jq",)
+
+
+def _promises_durability(suite: Path) -> bool:
+    sheet = (suite / "docs" / "decisions.md").read_text(encoding="utf-8")
+    return bool(re.search(r"\bon-disk\b|\bpersist(s|ed)\b|\bdurable\b", sheet))
+
+
+@pytest.mark.parametrize("suite", SUITES, ids=lambda p: p.name)
+def test_a_durability_sheet_has_a_reader_in_the_pinned_config(suite: Path) -> None:
+    """The other side of the restart gate, for the suites that author their own plans.
+
+    A frozen app ships the plan that pulls the seam, so the test above can read it. A
+    greenfield suite ships only the sheet, and the plan is written during the round — so
+    the thing that can rot is the *config*: a sheet whose acceptance criterion is "the
+    record is in the durable store file" is unsatisfiable unless the pinned config names a
+    tool that may read one. `ostler.qa.lint` reserves filesystem access for approved tools,
+    and `ostler.qa.tools` is fail-closed, so the failure arrives at the operator gate
+    rather than here — as a blocked round that measures nothing.
+    """
+    if not _promises_durability(suite):
+        pytest.skip(f"{suite.name}'s sheet promises no on-disk durability")
+    # Parsed, not grepped: this file's own prose names the table it is looking for, and a
+    # substring check duly passed with the table itself commented out.
+    defined = tomllib.loads(PINNED.read_text(encoding="utf-8")).get("qa_tools", {})
+    assert any(tool in defined for tool in READERS), (
+        f"{suite.name}'s sheet makes an on-disk durability promise, but the pinned config "
+        f"{PINNED.relative_to(DATA)} defines none of {READERS} — a QA plan cannot read the "
+        "store file directly, so the round can only block on a criterion the sheet asked "
+        "for and the harness withheld"
+    )

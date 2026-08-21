@@ -67,3 +67,18 @@ effort = "medium"
 [qa_tools.docker]
 command = "docker"
 description = "the docker CLI, for restarting the app under test between two observations"
+
+# `jq` is here for the other half of the durability story: not "does it survive a restart"
+# but "is it on disk at all". The `persists` pattern's evidence is the durable store *file*
+# — after an accepted write, the record is in it — and a QA plan cannot read that file
+# itself. `ostler.qa.lint` reserves filesystem and process access for approved tools, on
+# purpose, so the only lawful reader is one named here.
+#
+# Without this entry the pattern is unreachable rather than merely awkward: the plan's
+# direct `open()` is rejected by lint, `qa.tool("jq")` is fail-closed because no
+# `[qa_tools.jq]` table exists in the pinned config, and the lane is left choosing between
+# substituting a test suite for runtime evidence and blocking. A greenfield round blocked
+# there, correctly, which is how this line came to be written.
+[qa_tools.jq]
+command = "jq"
+description = "the jq CLI, for reading a durable store file as evidence that a write persisted"
