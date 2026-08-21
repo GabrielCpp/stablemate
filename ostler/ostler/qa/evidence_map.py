@@ -143,6 +143,16 @@ def build_evidence_map(spec_dir: Path, *, label: str | None = None) -> dict[str,
     overall = str(evidence.get("overall", "")) if is_mapping(evidence) else ""
 
     asserts = [record for record in log if record.get("kind") == "assert"]
+    # The scenarios that stopped somewhere other than the end of their body. A passing
+    # assertion inside one of those proved a state the steps after it never got to leave, so
+    # it is not evidence that the obligation holds — and reading it as evidence is how a
+    # browser locator timing out on the one assertion that would have exposed a defect went
+    # out as a covered obligation under an `overall: Fail`.
+    aborted_scenarios = {
+        str(record.get("scenario", ""))
+        for record in log
+        if record.get("kind") == "scenario_stop" and record.get("aborted")
+    }
     claims: dict[str, set[str]] = {}
     for record in log:
         if record.get("kind") != "scenario_start":
@@ -166,6 +176,7 @@ def build_evidence_map(spec_dir: Path, *, label: str | None = None) -> dict[str,
             obligation,
             asserts=asserts,
             claims=claims,
+            aborted_scenarios=aborted_scenarios,
             artifacts=artifacts,
             published=published,
         )
@@ -186,13 +197,25 @@ def _row(
     *,
     asserts: list[dict[str, Any]],
     claims: dict[str, set[str]],
+    aborted_scenarios: set[str],
     artifacts: dict[str, list[str]],
     published: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     """One obligation, and everything the run has to say about it."""
     obligation_id = str(obligation["id"])
     bound = [record for record in asserts if obligation_id in (record.get("covers") or [])]
-    passing = [record for record in bound if record.get("result") == "PASS"]
+    passing = [
+        record
+        for record in bound
+        if record.get("result") == "PASS"
+        and str(record.get("scenario", "")) not in aborted_scenarios
+    ]
+    aborted = [
+        record
+        for record in bound
+        if record.get("result") == "PASS"
+        and str(record.get("scenario", "")) in aborted_scenarios
+    ]
     failing = [record for record in bound if record.get("result") != "PASS"]
 
     declared = [
@@ -215,6 +238,7 @@ def _row(
         obligation_id,
         claimed=claims.get(obligation_id, set()),
         passing=passing,
+        aborted=aborted,
         failing=failing,
         declared=declared,
         missing=missing,
@@ -238,6 +262,8 @@ def _row(
     }
     if failing:
         row["failingLogRefs"] = [_ref(record) for record in failing]
+    if aborted:
+        row["abortedLogRefs"] = [_ref(record) for record in aborted]
     if obligation_id in published:
         row["publishedVerdict"] = str(published[obligation_id].get("verdict", ""))
     return row
@@ -252,6 +278,7 @@ def _classify(
     *,
     claimed: set[str],
     passing: list[dict[str, Any]],
+    aborted: list[dict[str, Any]],
     failing: list[dict[str, Any]],
     declared: list[str],
     missing: list[str],
@@ -271,6 +298,14 @@ def _classify(
             "contradicted",
             f"{len(failing)} assertion(s) bound to it failed — the run observed the product "
             "and it did not do this.",
+        )
+    if aborted and not passing:
+        scenarios = sorted({str(record.get("scenario", "")) for record in aborted})
+        return (
+            "contradicted",
+            f"the only assertion(s) bound to it passed inside scenario(s) "
+            f"{', '.join(scenarios)}, which did not run to completion — a scenario that "
+            "stopped early claims nothing about what its remaining steps would have shown.",
         )
     if verdict == "Pass" and not passing:
         return (

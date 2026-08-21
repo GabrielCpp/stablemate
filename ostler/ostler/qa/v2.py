@@ -150,6 +150,10 @@ def run_plan(
                     "status": result.status,
                     "assertions": result.assertions,
                     "failures": result.failures,
+                    # Read back by the evidence map: a scenario that stopped short of the
+                    # end of its body claims nothing, and `status` alone cannot say whether
+                    # it stopped short or reached the end and disagreed.
+                    **({"aborted": True} if result.aborted else {}),
                     # `_grade` composes the only account of *why* a scenario failed, and it
                     # was being computed and dropped: the ledger recorded a failure count and
                     # the reason survived nowhere but a stdout tail in `steps/`. A reader of
@@ -217,6 +221,10 @@ def run_plan(
                     "status": result.status,
                     "assertions": result.assertions,
                     "failures": result.failures,
+                    # `status` alone cannot say whether the scenario stopped short or
+                    # reached the end and disagreed, and only the first invalidates what it
+                    # claimed to cover.
+                    **({"aborted": True} if result.aborted else {}),
                     **({"message": result.message} if result.message else {}),
                 }
                 for name, result in results.items()
@@ -241,6 +249,15 @@ def _write_evidence(
     results: dict[str, ScenarioResult],
     status: str,
 ) -> Path:
+    # The scenarios that did not run to completion. `results` has carried this all along and
+    # this function ignored it: a criterion was published from the passing prefix of a
+    # scenario that then timed out or raised, which reads downstream as evidence the run
+    # never took. A scenario that stopped early proves nothing about the steps after it.
+    aborted = {
+        scenario_id
+        for scenario_id, result in results.items()
+        if result.aborted
+    }
     log_records: list[dict[str, Any]] = []
     log_path = document.spec_dir / "qa" / "qa-run.ndjson"
     for line in log_path.read_text(encoding="utf-8").splitlines():
@@ -270,6 +287,16 @@ def _write_evidence(
         item_id = str(source["id"])
         records = [record for record in log_records if item_id in record.get("covers", [])]
         failing = [record for record in records if record.get("result") != "PASS"]
+        stopped = [
+            record
+            for record in records
+            if record.get("result") == "PASS" and str(record.get("scenario", "")) in aborted
+        ]
+        proving = [
+            record
+            for record in records
+            if record.get("result") == "PASS" and str(record.get("scenario", "")) not in aborted
+        ]
         refs: list[str] = []
         evidence: list[str] = []
         for index, record in enumerate(records, start=1):
@@ -279,11 +306,11 @@ def _write_evidence(
             # Only a passing assertion's artifacts are proof. `artifact vet` requires each
             # Pass row to cite a file from this run's manifest, and a failing scenario's
             # trace would satisfy that check while proving the opposite.
-            if record.get("result") == "PASS":
+            if record.get("result") == "PASS" and scenario not in aborted:
                 evidence.extend(artifacts_by_scenario.get(scenario, []))
         row_data = {
             "id": item_id,
-            "verdict": "Pass" if records and not failing else "Fail",
+            "verdict": "Pass" if proving and not failing else "Fail",
             "log_refs": refs,
             "evidence": sorted(set(evidence)),
         }
@@ -293,6 +320,14 @@ def _write_evidence(
             row_data["failing_log_refs"] = [
                 f"{record.get('scenario', '')}:assert:{record.get('action', '?')}"
                 for record in failing
+            ]
+        if stopped:
+            # A passing assertion inside a scenario that then stopped early. Kept separate
+            # from `log_refs` so the reason a row is Fail with no failing assertion beside it
+            # is on the artifact rather than only in the run log.
+            row_data["aborted_log_refs"] = [
+                f"{record.get('scenario', '')}:assert:{record.get('action', '?')}"
+                for record in stopped
             ]
         return row_data
 

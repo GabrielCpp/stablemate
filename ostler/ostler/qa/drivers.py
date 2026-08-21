@@ -47,6 +47,9 @@ class ScenarioResult:
     status: str
     assertions: int = 0
     failures: int = 0
+    #: The scenario stopped short of the end of its body, rather than reaching it and
+    #: disagreeing. Everything it claimed to cover is unproven, whatever passed before.
+    aborted: bool = False
     artifacts: list[str] = field(default_factory=list)
     message: str = ""
 
@@ -359,18 +362,56 @@ class PythonDriver(QaDriver):
         if problems:
             message = "; ".join([part for part in [message, *problems] if part])
 
-        status = "passed"
-        if (
+        # The scenario stopped for a reason it did not itself record as an assertion: it was
+        # killed, it raised, it never graded itself, the browser was left unclean, or it
+        # reached the end having asserted nothing. That is a different thing from an
+        # assertion that ran and disagreed — a failing check *is* the account, and the
+        # record it wrote already says which obligation it sank. An abort leaves no such
+        # record, and the asserts that ran before it proved a state the steps after them
+        # never got to leave.
+        terminal_status = (terminal or {}).get("status")
+        aborted = bool(
             timed_out
             or terminal is None
-            or failures
             or problems
-            or (terminal or {}).get("status") != "passed"
-        ):
+            or terminal_status == "errored"
+            or (terminal_status != "passed" and not failures)
+        )
+        if aborted and covers:
+            # Fail closed, over the whole `covers`. Publishing a scenario's obligations from
+            # the green prefix it managed before dying is how a QA lane reported eleven
+            # criteria `Pass` under an `overall: Fail` — and how a run whose one browser
+            # locator timed out on the assertion that would have exposed the defect went out
+            # as a covered obligation. A scenario that did not finish claims nothing, and it
+            # says so in the one vocabulary every reader downstream already speaks.
+            action += 1
+            assertions += 1
+            self.session.run_assert(
+                f"{scenario_id}-completed",
+                "the scenario runs to completion, so what it claims is what it observed",
+                "scenario_check",
+                {
+                    "passed": False,
+                    "actual": message or f"scenario '{scenario_id}' did not finish",
+                    "expected": "every step runs and the scenario grades itself as passed",
+                },
+                root=self.root,
+                scenario=scenario_id,
+                driver="python",
+                action=action,
+                covers=covers,
+            )
+            failures += 1
+        status = "passed"
+        if aborted or failures:
             status = "failed"
             failures = max(failures, 1)
         return ScenarioResult(
-            status=status, assertions=assertions, failures=failures, message=message
+            status=status,
+            assertions=assertions,
+            failures=failures,
+            message=message,
+            aborted=aborted,
         )
 
     def _register(self, scenario_id: str, record: dict[str, Any]) -> list[str]:

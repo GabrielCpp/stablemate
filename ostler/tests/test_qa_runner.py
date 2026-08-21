@@ -23,6 +23,7 @@ from pathlib import Path
 
 from ostler.artifact.kinds import _qa_evidence_vet
 from ostler.qa.plan import RETIRED_YAML, _validate_background, load_plan, validate_v2
+from ostler.qa.evidence_map import build_evidence_map
 from ostler.qa.run import cmd_run, cmd_validate
 from ostler.qa.session import _kill_pid
 
@@ -220,6 +221,60 @@ def test_a_run_owns_the_log_the_manifest_and_the_evidence(tmp_path: Path) -> Non
     evidence = json.loads((spec / "qa-evidence.json").read_text(encoding="utf-8"))
     assert evidence["obligations"][0]["verdict"] == "Pass"
     assert _qa_evidence_vet(evidence, spec, tmp_path) == []
+
+
+def test_a_scenario_that_stops_early_claims_nothing_it_covered(tmp_path: Path) -> None:
+    """A scenario that did not reach the end of its body proves none of its `covers`.
+
+    This is the failing-assertion case's blind side, and it cost a whole benchmark round.
+    An assertion that ran and disagreed writes a record naming the obligation it sank; a
+    scenario killed by a browser locator timeout writes no record at all — so the passing
+    prefix it managed first was the only thing bound to the obligation, and it published
+    `Pass` for a screen the run never got to look at. The reader downstream sees a covered
+    obligation with green refs beside it and no way to tell that the steps which would have
+    contradicted it never ran.
+
+    The demotion is deliberately over the *whole* `covers`, not the part left unproven: an
+    assertion that passed before the abort proved a state the steps after it never got to
+    leave, and reading it as standing evidence is the same optimism in a smaller place.
+    """
+    spec = _spec(tmp_path)
+    module = _plan(
+        spec,
+        # The lookup of a capture nothing published stands in for every way a scenario dies
+        # mid-body — a Playwright timeout, a detached node, a fixture that went away. What
+        # matters is the shape, not the exception: a green assertion is already on the
+        # ledger when the body stops. (A bare `raise` would be a plan the linter refuses,
+        # which is a different test.)
+        PLAN + '    qa.check("the page is there", qa.get("nothing-published") == "")\n',
+    )
+
+    outcome = cmd_run(module, root=tmp_path)
+
+    assert outcome.status == "failed"
+    evidence = json.loads((spec / "qa-evidence.json").read_text(encoding="utf-8"))
+    assert evidence["overall"] == "Fail"
+    row = evidence["obligations"][0]
+    assert row["verdict"] == "Fail"
+    # The passing assertion is named as one the abort invalidated rather than dropped, so
+    # the reason a row is Fail with a green ref on it is on the artifact.
+    assert row["aborted_log_refs"] == ["api-contract:assert:1"]
+    assert _qa_evidence_vet(evidence, spec, tmp_path) == []
+
+    stop = next(record for record in _records(spec) if record["kind"] == "scenario_stop")
+    assert stop["aborted"] is True
+
+    # And the synthesized assertion is bound to what the scenario claimed, so the evidence
+    # map reaches the same verdict from the log alone.
+    synthesized = [
+        record
+        for record in _records(spec)
+        if record.get("kind") == "assert" and record.get("result") != "PASS"
+    ]
+    assert [record["covers"] for record in synthesized] == [[OBLIGATION]]
+
+    mapped = build_evidence_map(spec)
+    assert [row["status"] for row in mapped["obligations"]] == ["contradicted"]
 
 
 def test_one_failing_assertion_sinks_the_item_it_covers(tmp_path: Path) -> None:
