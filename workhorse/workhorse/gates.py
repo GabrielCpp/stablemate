@@ -92,3 +92,22 @@ def format_operator_gate(questions: str) -> str:
         "## Questions from the agent\n\n"
         f"{body}\n"
     )
+
+
+def append_operator_gate(existing: str, questions: str) -> str:
+    """An operator gate that already exists, re-armed with `questions` appended.
+
+    The first `STATUS:` line is set in place and **everything already in the file is
+    kept** — content this engine did not write included. The same file is both the
+    question channel and the answer channel, so what is already there is either the
+    operator's answers, which a run resumed from this gate still has to read, or the
+    history of an earlier block, which is the evidence about whether this one is
+    recurring. Replacing the file wholesale lost both: a benchmark round that blocked
+    twice on one gate ended with a five-line file, the answers it had been given at the
+    first block gone.
+
+    Appending costs nothing, because only the first `STATUS:` line is read: nothing
+    written below it can contradict the state this puts the gate in.
+    """
+    block = _STATUS_RE.sub("", format_operator_gate(questions), count=1).strip()
+    return f"{set_status(existing, 'AWAITING_OPERATOR').rstrip()}\n\n{block}\n"

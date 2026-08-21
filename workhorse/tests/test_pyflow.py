@@ -1515,3 +1515,52 @@ if __name__ == "__main__":
             print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(fns) - failed}/{len(fns)} passed")
     raise SystemExit(1 if failed else 0)
+
+
+def test_blocking_twice_on_one_gate_appends_rather_than_replacing_it():
+    """The second `Await` on a path re-arms the file; it does not start it over.
+
+    The engine used to `write_text` the ask unconditionally, so the second block threw
+    away the first block's questions *and* the operator's answers to them. That is not a
+    lost audit trail — the states after this gate read this file for those answers, and a
+    run resumed from the second block would proceed having silently lost them.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        ask = Path(tmp) / "docs" / "questions.md"
+        observed: list[str] = []
+
+        class BlocksTwice(Workflow):
+            def start(self) -> Transition:
+                return Await(ask, "which branch?", self.again, answer="pending")
+
+            def again(self, answer: str) -> Transition:
+                return Await(ask, "which release?", self.finish, answer="pending")
+
+            def finish(self, answer: str) -> Transition:
+                return Done("done")
+
+        class AnsweringClock(FakeClock):
+            """The operator, answering in place — the way a decision record is applied."""
+
+            def sleep(self, seconds: float) -> None:
+                text = ask.read_text()
+                observed.append(text)
+                ask.write_text(
+                    text.replace("STATUS: AWAITING_OPERATOR", "STATUS: ANSWERED", 1)
+                    + "\n## Operator answers\n\nchosen: main\n"
+                )
+                stamp = ask.stat().st_mtime + 3600
+                os.utime(ask, (stamp, stamp))
+                super().sleep(seconds)
+
+        env = _env(tmp, clock=AnsweringClock())
+        assert drive(BlocksTwice(), env) == "done"
+
+        assert len(observed) == 2, observed
+        second_ask = observed[1]
+        assert "which branch?" in second_ask, second_ask
+        assert "chosen: main" in second_ask, second_ask
+        assert "which release?" in second_ask, second_ask
+        # Re-armed, and the first `STATUS:` line is the only one there is to disagree.
+        assert second_ask.count("STATUS:") == 1, second_ask
+        assert second_ask.startswith("STATUS: AWAITING_OPERATOR"), second_ask

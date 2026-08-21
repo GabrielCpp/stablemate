@@ -117,3 +117,34 @@ if __name__ == "__main__":
             print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(fns) - failed}/{len(fns)} passed")
     raise SystemExit(1 if failed else 0)
+
+
+def test_a_second_ask_keeps_the_first_ones_questions_and_its_answers():
+    """The gate file is both channels: the engine asks in it, the operator answers in it.
+
+    So re-arming it must not be a rewrite. A benchmark round that blocked twice on one
+    gate ended with the answers it had been given at the first block gone, which is a
+    lost decision rather than lost history: a run resumed from the second block reads
+    this file for them.
+    """
+    answered = (
+        "STATUS: ANSWERED\n\n"
+        "## Questions from the agent\n\nwhich branch?\n\n"
+        "## Operator answers\n\nmain, and it is not up for revisiting\n"
+    )
+    rearmed = gates.append_operator_gate(answered, "which release?")
+
+    assert "which branch?" in rearmed
+    assert "main, and it is not up for revisiting" in rearmed
+    assert "which release?" in rearmed
+    assert gates.status_of(rearmed) == "AWAITING_OPERATOR"
+    assert rearmed.count("STATUS:") == 1, rearmed
+
+
+def test_re_arming_adds_the_status_line_a_hand_written_gate_never_had():
+    """Absent is not a state, and adding the header is not deleting anything."""
+    rearmed = gates.append_operator_gate("notes a human pasted in\n", "which release?")
+
+    assert rearmed.startswith("STATUS: AWAITING_OPERATOR")
+    assert "notes a human pasted in" in rearmed
+    assert "which release?" in rearmed

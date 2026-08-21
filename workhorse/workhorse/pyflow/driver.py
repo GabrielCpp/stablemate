@@ -239,9 +239,22 @@ def wait_for_answer(
 
 
 def _ask(path: Path, questions: str, log: logging.Logger) -> None:
-    """Write the ask, so the operator has something to answer."""
-    if questions:
-        path.parent.mkdir(parents=True, exist_ok=True)
+    """Write the ask, so the operator has something to answer.
+
+    A gate file that is already there is re-armed and **appended to**, never replaced:
+    a state can block on the same path more than once, and the answers it was given the
+    first time are still the answers — see `gates.append_operator_gate`.
+    """
+    if not questions:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        existing = path.read_text()
+    except OSError:
+        existing = ""
+    if existing.strip():
+        path.write_text(gates.append_operator_gate(existing, questions))
+    else:
         path.write_text(gates.format_operator_gate(questions))
 
 
