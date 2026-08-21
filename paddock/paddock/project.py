@@ -113,6 +113,12 @@ class Project:
 #: script; the sentence after it is for the human.
 SELF_TOUCHED = "self-touched: "
 
+#: What a caveat says when the pin a round was promised was never made. Its own marker
+#: rather than SELF_TOUCHED because the two are different accusations — "the round reached
+#: past its pin" and "there was no pin" — and a reader grepping for one must not get the
+#: other.
+UNPINNED = "unpinned: "
+
 #: The nonexistent gitdir the pin's `.git` points at while the round runs. A sentence
 #: rather than a name, because git prints it verbatim in the error an agent will read.
 FENCE = "the-toolchain-is-off-limits-to-this-round"
@@ -248,6 +254,34 @@ def _pairs(listed: subprocess.CompletedProcess[str]) -> tuple[tuple[str, str], .
 
 def _remote_refs(repo: Path) -> tuple[tuple[str, str], ...]:
     return _pairs(_git(*_REF_FORMAT, "refs/remotes", cwd=repo))
+
+
+def degraded(project: Project | None, *, requested: bool) -> tuple[str, ...]:
+    """Whether a pin that was asked for is missing — the promise, not the escape.
+
+    `pin()` degrades rather than fails, on the argument that a benchmark refusing to start
+    because it could not make a clone helps nobody. That argument holds only while the
+    degradation is *loud*, and for the whole life of this code it was a WARNING: the
+    resolution bug that fed `pin()` a path one level short of the repo root ran every CLI
+    round unpinned, and nothing but a log line said so. A ledger flag is not enough either,
+    since it is read by whoever already suspects something.
+
+    So it comes out here, in the channel that disqualifies: a caveat forces the result
+    pointer's note to open `DIAGNOSTIC — `, which makes an unpinned round impossible to
+    quote as a clean one by accident.
+
+    Silent when `requested` is false. `--no-pin-project` is a decision, not a broken
+    promise, and `pinned: false` in the ledger keeps it answerable; caveating a deliberate
+    opt-out would put the marker on rounds nobody was misled about, which is how a
+    disqualification channel gets read as noise. Silent for `None` for a different reason —
+    that is a task driving no project at all, so there was never a pin to keep.
+    """
+    if project is None or not requested or project.pinned:
+        return ()
+    return (
+        f"{UNPINNED}a pin was asked for and not made, so this round drove {project.path} "
+        f"directly — its result is not attributable to the commit the ledger names",
+    )
 
 
 def escaped(project: Project | None) -> tuple[str, ...]:

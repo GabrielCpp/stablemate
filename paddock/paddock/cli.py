@@ -120,8 +120,15 @@ def _params(given: list[str]) -> dict[str, str]:
 
 
 def _project(data_dir: Path) -> Path:
-    """The uv project farrier is run out of — the repo the data directory belongs to."""
-    return data_dir.parent
+    """The uv project farrier is run out of — the repo the data directory belongs to.
+
+    Resolved by walking up to the `.git`, not by taking a parent: `DATA_DIRNAME` is two
+    segments deep, so a fixed `.parent` landed on `<repo>/paddock`, which is a directory
+    and not a repository. `pin()` degrades rather than fails, so the only symptom was a
+    WARNING and every round quietly running unpinned — the shape of bug that survives
+    precisely because the thing it disables is the thing that would have reported it.
+    """
+    return paths.repo_root(data_dir)
 
 
 def cmd_capture(args: argparse.Namespace) -> int:

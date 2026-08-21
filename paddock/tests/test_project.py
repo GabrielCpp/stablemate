@@ -248,6 +248,42 @@ def test_a_moving_remote_alone_is_somebody_elses_work(repo: Path, tmp_path: Path
     project_mod.release(pinned)
 
 
+def test_a_pin_that_was_asked_for_and_not_made_is_a_caveat(repo: Path, tmp_path: Path) -> None:
+    """The promise, not the escape. A degraded pin has to reach the result, not the log.
+
+    This is the shape that hid a live bug for weeks: `_project` handed `pin()` a path one
+    level short of the repo root, every clone failed, every round ran unpinned, and the
+    only announcement was a WARNING nobody greps for.
+    """
+    # `pin()` degrades on a source that is not a repository, which is the same end state
+    # the resolution bug produced.
+    not_a_repo = tmp_path / "not-a-repo"
+    not_a_repo.mkdir()
+    degraded = project_mod.pin(not_a_repo, work=tmp_path / "work")
+    assert degraded is not None and not degraded.pinned
+
+    caveats = project_mod.degraded(degraded, requested=True)
+    assert len(caveats) == 1
+    assert caveats[0].startswith(project_mod.UNPINNED)
+    assert str(not_a_repo) in caveats[0]
+
+
+def test_a_deliberate_opt_out_is_not_caveated(repo: Path, tmp_path: Path) -> None:
+    """`--no-pin-project` is a decision, and `pinned: false` in the ledger keeps it
+    answerable. Marking it too would put the caveat on rounds nobody was misled about,
+    which is how a disqualification channel gets read as noise."""
+    off = project_mod.pin(repo, work=tmp_path / "work", enabled=False)
+    assert project_mod.degraded(off, requested=False) == ()
+    # And a task that drives no project never had a pin to keep.
+    assert project_mod.degraded(None, requested=True) == ()
+
+
+def test_a_pin_that_was_made_says_nothing(repo: Path, tmp_path: Path) -> None:
+    pinned = project_mod.pin(repo, work=tmp_path / "work")
+    assert pinned is not None and pinned.pinned
+    assert project_mod.degraded(pinned, requested=True) == ()
+
+
 def test_an_unpinned_run_is_not_asked(repo: Path, tmp_path: Path) -> None:
     # Nothing was fenced off, so there is nothing to have escaped from; a caveat here
     # would be describing the operator's own tree back at them.

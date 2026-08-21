@@ -365,7 +365,12 @@ def execute(
         if seal:
             # Asked here rather than after `release`, because the question is about the
             # pinned tree and `release` deletes it.
-            escaped = project_mod.escaped(pinned)
+            # Both halves of the pin's promise: that one was made, and that the round
+            # stayed inside it. They ride one channel because a reader asking "measured
+            # against what?" is asking one question.
+            escaped = project_mod.degraded(
+                pinned, requested=pin_project
+            ) + project_mod.escaped(pinned)
             for caveat in escaped:
                 logger.warning("%s", caveat)
             zip_path, pointer_path = _seal(
