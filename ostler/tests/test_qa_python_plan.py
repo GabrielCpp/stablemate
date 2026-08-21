@@ -22,7 +22,6 @@ OBLIGATION = "okf:docs/features/demo/item.md:contract"
 
 PLAN = '''\
 import json
-from pathlib import Path
 
 from ostler_qa import Qa, plan, scenario, target
 
@@ -34,7 +33,7 @@ api = target("api")
 @scenario(target=api, mechanism="live", covers=["{obligation}"])
 def item_is_emitted(qa: Qa) -> None:
     """The emitted item carries the id it was asked for."""
-    payload = json.loads(Path(qa.root, "out.json").read_text(encoding="utf-8"))
+    payload = json.load((qa.root / "out.json").open(encoding="utf-8"))
     qa.check("the item is the one requested", payload["item"]["id"] == "abc",
              actual=payload["item"]["id"], expected="abc", covers=["{obligation}"])
 '''
@@ -384,7 +383,6 @@ DECLARED = {
 
 VERIFY_PLAN = '''\
 import json
-from pathlib import Path
 
 from ostler_qa import Qa, plan, scenario, target
 
@@ -396,7 +394,7 @@ api = target("api")
 @scenario(target=api, mechanism="live", covers=["{obligation}"])
 def item_is_emitted(qa: Qa) -> None:
     """The emitted item carries the id it was asked for."""
-    payload = json.loads(Path(qa.root, "out.json").read_text(encoding="utf-8"))
+    payload = json.load((qa.root / "out.json").open(encoding="utf-8"))
     qa.verify("json_path", payload, {args}, covers=["{obligation}"])
 '''
 
@@ -809,7 +807,6 @@ SIBLING = "okf:docs/features/demo/item.md:returns:1"
 
 TWO_OBLIGATION_PLAN = '''\
 import json
-from pathlib import Path
 
 from ostler_qa import Qa, plan, scenario, target
 
@@ -822,7 +819,7 @@ api = target("api")
                   "okf:docs/features/demo/item.md:returns:1"])
 def item_is_emitted(qa: Qa) -> None:
     """The emitted item carries the id it was asked for."""
-    payload = json.loads(Path(qa.root, "out.json").read_text(encoding="utf-8"))
+    payload = json.load((qa.root / "out.json").open(encoding="utf-8"))
     {assertion}
 '''
 

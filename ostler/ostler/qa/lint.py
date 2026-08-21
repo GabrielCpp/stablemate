@@ -18,6 +18,12 @@ from ostler.qa.outcome import QaOutcome
 #: shape data — never a module that reaches the process, the filesystem, or the network
 #: directly, because that capability now belongs only to ostler's own built-in tools
 #: (`ostler.qa.tools`), never to plan code.
+#:
+#: `pathlib` is absent for that reason and not by oversight. It was here, and it made the
+#: `open()` ban decorative: `pathlib.Path("/etc/passwd").read_text()` reaches the same file
+#: through a method call the AST pass had no opinion about. Without it a plan cannot
+#: *construct* a path at all — every `Path` it holds was handed to it by `qa`, which is the
+#: property `_FILESYSTEM_METHODS` below is written to preserve.
 ALLOWED_IMPORT_MODULES = frozenset({
     "collections",
     "dataclasses",
@@ -28,7 +34,6 @@ ALLOWED_IMPORT_MODULES = frozenset({
     "datetime",
     "enum",
     "textwrap",
-    "pathlib",
     "hashlib",
     "ostler",
     "ostler.qa",
@@ -126,6 +131,13 @@ class PlanLintVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
+        if isinstance(node.func, ast.Attribute) and node.func.attr in _FILESYSTEM_METHODS:
+            self.problems.append(
+                f"line {node.lineno}: `.{node.func.attr}(...)` touches the filesystem from "
+                f"plan code — read and write through a tool (`qa.tool(...)`), and keep "
+                f"evidence in `qa.artifact(...)`"
+            )
+            return
         if isinstance(node.func, ast.Name) and node.func.id not in ALLOWED_BUILTIN_CALLS:
             # A bare-name call to anything other than a known-safe builtin is only legitimate
             # when the name resolves to something defined in the plan itself (a helper
@@ -140,6 +152,31 @@ class PlanLintVisitor(ast.NodeVisitor):
                 )
                 return
         self.generic_visit(node)
+
+
+#: Filesystem verbs, rejected wherever they appear as a method call. The receiver is not
+#: examined: lint has no symbol table, so it cannot tell a `Path` from a mock, and a check
+#: that only fired on names it recognised would be a blocklist of receivers instead of a set
+#: of verbs. Nothing in the corpus loses anything — a plan that needs to read a file reads it
+#: through an opted-in tool, which is the norm `depot-infra`'s plan states out loud: "reading
+#: it here rather than through a tool would mean the QA harness's own filesystem access is the
+#: thing under test."
+#:
+#: `open` is deliberately *not* here. `json.dump(..., qa.artifact("steps/x.json",
+#: kind="json").open("w"))` is how every plan in the corpus writes its evidence, and the
+#: python-driver plans read the file their target produced the same way. Both start from a
+#: path `qa` handed out, which is what the missing `pathlib` leaves as the only starting point.
+#:
+#: That is a narrowing, not a proof: `qa.root / ".." / ".."` is still path arithmetic, and an
+#: AST pass cannot decide where a joined path lands. Containment of *where* a plan may write
+#: is a runtime question and is not claimed here — what this closes is the gap between banning
+#: `open()` and leaving `Path(...).read_text()` a method call away, which made the ban read as
+#: a rule while enforcing nothing.
+_FILESYSTEM_METHODS = frozenset({
+    "read_text", "read_bytes", "write_text", "write_bytes",
+    "unlink", "rmdir", "mkdir", "touch", "chmod", "lchmod",
+    "symlink_to", "hardlink_to", "iterdir", "glob", "rglob", "walk",
+})
 
 
 #: Named explicitly so a bare call to one of these is rejected even though lint has no symbol
