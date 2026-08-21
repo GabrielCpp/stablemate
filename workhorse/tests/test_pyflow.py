@@ -831,6 +831,37 @@ def test_agent_validates_the_reply_into_the_declared_model():
         assert (env.run_dir / "review" / "prompt.md").read_text() == "rendered prompt"
 
 
+def test_agent_hands_the_result_model_to_the_ladder_as_its_validator():
+    """The shape check must run INSIDE the ladder's corrective-retry loop, not after
+    it: a reply carrying every declared key but a wrong-shaped value used to pass key
+    extraction and end the whole run as `WorkflowFailed` in `_coerce`, with no repair
+    layer ever seeing it. The engine therefore hands `returns.model_validate` down as
+    the runner's `validate` hook — asserting on the seam is what pins that."""
+    with tempfile.TemporaryDirectory() as tmp:
+        seen: list[Any] = []
+
+        def fake_run_agent(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+            seen.append(kwargs.get("validate"))
+            return "rendered", {"kind": "ok", "count": 1}
+
+        env = _env(tmp, agent_runner=ScriptedRunner(fake_run_agent))
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                return Done(self.agent("prompts/review.md", returns=Payload).count)
+
+        assert drive(Asks(), env) == 1
+
+        validate = seen[0]
+        assert validate is not None
+        # It is the model's own validation, verbatim: the good shape passes, the
+        # wrong shape raises with the field named — the text the corrective retry
+        # quotes back to the agent.
+        validate({"kind": "ok", "count": 2})
+        exc = _raises(Exception, lambda: validate({"kind": "ok", "count": "many"}))
+        assert "count" in str(exc)
+
+
 def test_agent_carries_cwd_and_add_dirs_onto_the_node():
     """`cwd` decides whose CLAUDE.md, skills and git context a turn sees, so a
     workflow that runs against a checkout it computed must be able to say where.

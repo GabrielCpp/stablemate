@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -233,6 +234,7 @@ class AgentRunner:
         resume_session: bool = False,
         session_chain: str = "",
         run_dir: Path | None = None,
+        validate: Callable[[dict[str, Any]], object] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Run one node with cumulative recovery waits that nested retries cannot renew."""
         budget = RecoveryWaitBudget.from_resilience(self.resilience)
@@ -245,6 +247,7 @@ class AgentRunner:
                 resume_session=resume_session,
                 session_chain=session_chain,
                 run_dir=run_dir,
+                validate=validate,
             )
 
     def _run(
@@ -257,6 +260,7 @@ class AgentRunner:
         resume_session: bool = False,
         session_chain: str = "",
         run_dir: Path | None = None,
+        validate: Callable[[dict[str, Any]], object] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """
         Render the prompt, invoke the agent, and parse its declared outputs — resiliently.
@@ -417,6 +421,7 @@ class AgentRunner:
                     timeout=effective_timeout,
                     cwd=rendered_cwd, add_dirs=rendered_add_dirs,
                     effort=node_effort,
+                    validate=validate,
                 )
                 return rendered_prompt, outputs
             except (BackendInvocationError, OutputParseError) as exc:
@@ -569,6 +574,7 @@ class AgentRunner:
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
         effort: str | None = None,
+        validate: Callable[[dict[str, Any]], object] | None = None,
     ) -> dict[str, Any]:
         """Invoke the agent and parse the node's declared outputs.
 
@@ -584,7 +590,25 @@ class AgentRunner:
                 cwd=cwd, add_dirs=add_dirs, effort=effort,
             )
             try:
-                return extract_outputs(result_text, node)
+                outputs = extract_outputs(result_text, node)
+                if validate is not None:
+                    # The caller's shape check runs INSIDE the corrective-retry loop, so
+                    # a reply whose keys are all present but whose values are the wrong
+                    # shape — a bare string where a model asked for an object — is a
+                    # parse failure like any other: the agent is re-asked in the same
+                    # session with the exact error quoted, then reframed, and only an
+                    # exhausted ladder stops the run. Before this hook, that reply
+                    # sailed through here and died downstream as a hard failure no
+                    # repair layer ever saw (the 'refine-plan returned something that
+                    # is not a PlanResult' run-killer).
+                    try:
+                        validate(outputs)
+                    except Exception as invalid:
+                        raise OutputParseError(
+                            f"Node '{node.id}': outputs parsed but did not validate "
+                            f"against the node's result model: {invalid}"
+                        ) from invalid
+                return outputs
             except OutputParseError as exc:
                 if attempt >= max_output_retries:
                     raise

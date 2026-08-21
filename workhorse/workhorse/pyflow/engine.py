@@ -443,6 +443,17 @@ class Engine:
                     resume_session=bool(session),
                     session_chain=session or "",
                     run_dir=writer.run_dir,
+                    # The result model rides down into the ladder's corrective-retry
+                    # loop, so a reply that carries every declared key but the wrong
+                    # SHAPE in one of them is repaired the same way a missing key is:
+                    # re-asked with the validation error quoted, then reframed. The
+                    # `_coerce` below is then a formality on the happy path and the
+                    # backstop for the paths the ladder does not run (dry-run stubs).
+                    validate=(
+                        returns.model_validate
+                        if isinstance(returns, type) and issubclass(returns, BaseModel)
+                        else None
+                    ),
                 )
             except BackendInvocationError as exc:
                 # Only the wall-clock overrun gets a pyflow name, and only once the

@@ -19,6 +19,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from _fakes import FakeBackend, FakeClock, RecordingTelemetry
 from workhorse import otel, reload
 from workhorse.config_run import AgentResilience
@@ -62,12 +64,12 @@ def _runner(script, backend=None, clock=None, **kw) -> ladder.AgentRunner:
     )
 
 
-def _run(node, script, backend=None, **kw):
+def _run(node, script, backend=None, validate=None, **kw):
     """Drive one node through a scripted ladder (see :func:`_runner`)."""
     # node.prompt is normally a template FILE path; render it inline for the test.
     with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)):
         return _runner(script, backend=backend, **kw).run(
-            node, WorkflowContext(initial={}), Path("."), None,
+            node, WorkflowContext(initial={}), Path("."), None, validate=validate,
         )
 
 
@@ -102,6 +104,54 @@ def test_rendered_prompt_is_written_and_only_path_is_printed():
     assert str(prompt_path) in stdout.getvalue()
     assert "hunter2" not in stdout.getvalue()
     assert "secret" not in stdout.getvalue()
+
+
+def _demand_review_string(outputs):
+    """The stand-in for `returns.model_validate`: keys present, shapes checked."""
+    if not isinstance(outputs.get("review"), str):
+        raise ValueError("review: Input should be a valid string")
+
+
+def test_a_wrong_shaped_reply_is_corrected_in_session_not_fatal():
+    """Every declared key present, one value the wrong shape — the emission that used
+    to sail through key extraction and kill the run downstream as 'returned something
+    that is not a PlanResult'. With the validator inside the corrective-retry loop the
+    agent is re-asked in the SAME session with the shape error quoted, and the mended
+    reply ends the node normally."""
+    calls = {"n": 0}
+    prompts: list[str] = []
+
+    def script(prompt, node_id, sid, model=None, **kwargs):
+        calls["n"] += 1
+        prompts.append(prompt)
+        if calls["n"] == 1:
+            return json.dumps({"decision": "approve", "review": ["a", "list"]})
+        return json.dumps({"decision": "approve", "review": "mended"})
+
+    _, outputs = _run(_node(), script, validate=_demand_review_string)
+
+    assert outputs == {"decision": "approve", "review": "mended"}
+    assert calls["n"] == 2
+    # The correction happened at the cheap layer: the retry prompt quotes the shape
+    # error rather than reframing the task from scratch.
+    assert "did not validate" in prompts[1]
+    assert "valid string" in prompts[1]
+
+
+def test_a_persistently_wrong_shape_stops_the_run_instead_of_passing_it_on():
+    """When every corrective turn and reframe still returns the wrong shape, the
+    ladder raises — the node's answer is never handed downstream malformed."""
+    def script(prompt, node_id, sid, model=None, **kwargs):
+        return json.dumps({"decision": "approve", "review": ["still", "a", "list"]})
+
+    with pytest.raises(OutputParseError, match="did not validate"):
+        _run(
+            _node(),
+            script,
+            validate=_demand_review_string,
+            max_output_retries=0,
+            max_rephrase_attempts=0,
+        )
 
 
 def test_empty_result_then_reframe_succeeds():
