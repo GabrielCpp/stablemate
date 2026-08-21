@@ -121,8 +121,11 @@ missing rather than re-reading the whole tree.
   (or `environment <name>`) writes it under `docs/features/<svc>/ops/`, then author:
   - **`environment`** — its `selector:` (the env-var/env-file that picks it), one nested
     `services:` child per service with its **env-scoped** URL/host (note any host-rewrite + reason),
-    `backing:` (DBs/buckets/emulators), and `local-only: true` when tooling must refuse it without an
-    override. Derive ports/hosts from the config loader + compose/scripts; never invent them.
+    `backing:` (DBs/buckets/emulators), `local-only: true` when tooling must refuse it without an
+    override, and one `code:` per stack file the environment materializes (compose file, emulator
+    config, seed script) — those files have no other owner in the book, and a change to one is an
+    `unmapped-change` error in the QA packet until this node claims it.
+    Derive ports/hosts from the config loader + compose/scripts; never invent them.
   - **`runbook`** — its `driver:` (web/mobile/http/cli/artifact/iac/none), `environment:` link,
     `cli:`/`surfaces:` links to the nodes it exposes, `code:` launch entry point, and the ordered
     `## Steps`. Each `### <id>` step gets a `kind:` (prepare/service/seed/run/health/verify/drive), a
