@@ -10,7 +10,7 @@
 # QA report. Every id here is one the book mints *and owes* for that row's story —
 # `build_evidence_map` reports only the obligations a change is required to evidence, so a
 # row pointed at a context-only id could never be anything but inconclusive.
-# `benchmarks/tests/` asserts both properties, because an id that stops resolving turns a
+# `paddock/data/tests/` asserts both properties, because an id that stops resolving turns a
 # scored row into a permanent miss.
 #
 # `caught_by` is the route the defect is *expected* to travel, recorded so a surprise is
