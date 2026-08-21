@@ -117,6 +117,15 @@ class Fixture:
     #: data directory — same rule as `backlog`, and for the same reason. Empty means the
     #: task has none, and a round that parks stays parked. See `answer_operator_gates`.
     decisions: str = ""
+    #: The tracked directory of standing decision records, relative to the data directory.
+    #: Copied into the produced repo's `<docs-root>/decisions/`, where the coder lane's
+    #: auto-resolver reads them. Distinct from `decisions` above and not interchangeable:
+    #: the sheet answers the author lane's grill gate about the *product*, once; a record
+    #: here is a standing ruling any lane may cite, and it is how a decision the operator
+    #: already made reaches a gate the sheet is deliberately not allowed to answer.
+    decision_records: str = ""
+    #: Where those records land inside the repo — `decisions_dir` in the coder workflow.
+    decision_records_path: str = "docs/decisions"
     #: The surfaces genesis scaffolds, in order. The first one carries the docs scaffold.
     surfaces: tuple[Surface, ...] = ()
     #: Repo-level (process) packs, unioned into every surface's `agents.yml`.
@@ -241,6 +250,7 @@ def run_genesis(run: Run, fixture: Fixture) -> None:
                 f"— see {result.log}"
             )
     seed_backlog(run, fixture)
+    seed_decision_records(run, fixture)
     ignore_agent_runtime(run)
     commit_baseline(run)
 
@@ -259,6 +269,33 @@ def seed_backlog(run: Run, fixture: Fixture) -> None:
     if not destination.parent.is_dir():
         raise TrialError(f"no {destination.parent} — genesis did not scaffold the docs tree")
     destination.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def seed_decision_records(run: Run, fixture: Fixture) -> None:
+    """Copy the fixture's standing decision records into the produced repo.
+
+    Same provenance rule as `seed_backlog` — read from `run.data_dir`, the tracked copy —
+    and the same reason: a record the round wrote for itself proves nothing.
+
+    This exists because the decision *sheet* is deliberately product-only. It answers the
+    author lane's grill gate and nothing else, because a coder-lane gate asks about the
+    state of a repo, which no sheet written beside a backlog can answer. But some rulings
+    are neither: they are the operator's standing answer to a question that will be asked
+    again — why an acceptance criterion is scoped the way it is, which of two documents
+    wins when they disagree. Those belong where the auto-resolver already looks, in
+    `<docs-root>/decisions/`, and they have to arrive with the fixture rather than be
+    reached in by hand, or the round that used them carries a `hand` verb and measures
+    nothing.
+    """
+    if not fixture.decision_records:
+        return
+    source = run.data_dir / fixture.decision_records
+    if not source.is_dir():
+        raise TrialError(f"no decision records at {source} — is --data-dir the repo's paddock/data/?")
+    destination = run.repo / fixture.decision_records_path
+    destination.mkdir(parents=True, exist_ok=True)
+    for record in sorted(source.glob("*.md")):
+        (destination / record.name).write_text(record.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def commit_baseline(run: Run) -> None:

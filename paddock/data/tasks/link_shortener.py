@@ -32,6 +32,7 @@ FIXTURE = gf.Fixture(
     # Answering them by hand made the first round unrepeatable; this is that operator,
     # tracked beside the backlog and recorded in the round's ledger when it is applied.
     decisions="suites/link-shortener/docs/decisions.md",
+    decision_records="suites/link-shortener/docs/decisions",
     packs="product-planning,stablemate,infra",
     docs_scaffold="shared-docs:docs",
     surfaces=(
