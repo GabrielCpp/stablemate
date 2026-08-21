@@ -70,6 +70,16 @@ THREE_ROWS = (
     "ana,museum,1800,2026-03-02\n"
 )
 
+#: The same three rows under a header that is not the documented one. The rows themselves are
+#: every bit as valid as `THREE_ROWS`, so an import that accepts this file is refusing nothing
+#: — and a check that only ever feeds the product a bad *row* cannot tell the two apart.
+HEADER_IS_NOT_THE_DOCUMENTED_ONE = (
+    "person,item,cents,date\n"
+    "ana,taxi,1250,2026-03-01\n"
+    "bo,dinner,4400,2026-03-01\n"
+    "ana,museum,1800,2026-03-02\n"
+)
+
 #: The same file with a fourth row that is not an expense. Line 4 is the offending one, and
 #: the book promises the refusal names it by its 1-based number.
 ROW_FOUR_IS_NOT_MONEY = (
@@ -130,6 +140,8 @@ def entries(qa: Qa, ledger):
     mechanism="live",
     timeout=600.0,
     covers=[
+        "ac:1",
+        "ac:2",
         "okf:docs/features/tally/tally.md#import:contract",
         "okf:docs/features/tally/tally.md#import:does:1",
         "okf:docs/features/tally/tally.md#import-a-csv:consistency:1",
@@ -180,6 +192,7 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         actual=imported.exit_code,
         expected=0,
         covers=[
+            "ac:1",
             "okf:docs/features/tally/tally.md#import:contract",
             "okf:docs/features/tally/tally.md#import:does:1",
         ],
@@ -206,7 +219,7 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         again.exit_code == 0,
         actual=again.exit_code,
         expected=0,
-        covers=["okf:docs/features/tally/tally.md#import-a-csv:consistency:1"],
+        covers=["ac:2", "okf:docs/features/tally/tally.md#import-a-csv:consistency:1"],
     )
 
     settled = entries(qa, ledger)
@@ -226,7 +239,7 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         sorted(entry["what"] for entry in settled) == ["dinner", "museum", "taxi"],
         actual=sorted(entry["what"] for entry in settled),
         expected=["dinner", "museum", "taxi"],
-        covers=["okf:docs/features/tally/tally.md#import-a-csv:consistency:1"],
+        covers=["ac:2", "okf:docs/features/tally/tally.md#import-a-csv:consistency:1"],
     )
 
 
@@ -235,6 +248,7 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
     mechanism="live",
     timeout=600.0,
     covers=[
+        "ac:3",
         "okf:docs/features/tally/tally.md#import-a-malformed-row:contract",
         "okf:docs/features/tally/tally.md#import-a-malformed-row:does:1",
         "okf:docs/features/tally/tally.md#import-a-malformed-row:errors:1",
@@ -284,20 +298,21 @@ def a_malformed_row_refuses_the_whole_file_and_leaves_the_ledger_alone(qa: Qa) -
         refused.exit_code == 2,
         actual=refused.exit_code,
         expected=2,
-        covers=["okf:docs/features/tally/tally.md#import-a-malformed-row:status:1"],
+        covers=["ac:3", "okf:docs/features/tally/tally.md#import-a-malformed-row:status:1"],
     )
     qa.check(
         "the refusal names the 1-based line number of the offending row",
         "line 4" in refused.stderr,
         actual=refused.stderr[-2000:],
         expected="a message naming line 4",
-        covers=["okf:docs/features/tally/tally.md#import-a-malformed-row:errors:1"],
+        covers=["ac:3", "okf:docs/features/tally/tally.md#import-a-malformed-row:errors:1"],
     )
     qa.verify(
         "unchanged",
         ({"tally.json": before["sha256"]}, {"tally.json": after["sha256"]}),
         subject="tally.json",
         covers=[
+            "ac:3",
             "okf:docs/features/tally/tally.md#import-a-malformed-row:contract",
             "okf:docs/features/tally/tally.md#import-a-malformed-row:does:1",
             "okf:docs/features/tally/tally.md#import-a-malformed-row:errors:1",
@@ -309,7 +324,7 @@ def a_malformed_row_refuses_the_whole_file_and_leaves_the_ledger_alone(qa: Qa) -
         len(json.loads(after["text"])["entries"]) == 1,
         actual=json.loads(after["text"])["entries"],
         expected="the single entry added before the import",
-        covers=["okf:docs/features/tally/tally.md#import-a-malformed-row:does:1"],
+        covers=["ac:3", "okf:docs/features/tally/tally.md#import-a-malformed-row:does:1"],
     )
 
 
@@ -318,6 +333,76 @@ def a_malformed_row_refuses_the_whole_file_and_leaves_the_ledger_alone(qa: Qa) -
     mechanism="live",
     timeout=600.0,
     covers=[
+        "ac:4",
+        "okf:docs/features/tally/tally.md#import:contract",
+        "okf:docs/features/tally/tally.md#import-a-malformed-row:contract",
+        "okf:docs/features/tally/tally.md#import-a-malformed-row:status:1",
+    ],
+    preconditions=[
+        "every row under the wrong header is a perfectly good expense",
+        "the ledger already holds an entry, so an import that went ahead anyway is visible in the count",
+    ],
+    checkpoints=[
+        "a file whose header is not the documented one exits 2",
+        "the refusal names line 1, which is where the header is",
+        "the ledger is byte-for-byte what it was",
+    ],
+    forbid=[
+        "putting a bad row in the file as well — the refusal would then have another explanation",
+        "asserting the exit code alone, which an import that refused after writing also produces",
+    ],
+)
+def a_file_under_the_wrong_header_is_refused_whole(qa: Qa) -> None:
+    """`PATH` is a CSV *whose header is* the documented one, and the rows cannot say so."""
+    ledger = qa.artifact("bad-header/tally.json", kind="json")
+    rows = qa.artifact("bad-header/trip.csv", kind="log")
+    write(qa, rows, HEADER_IS_NOT_THE_DOCUMENTED_ONE)
+
+    started = run(qa, ledger, "init", "--currency", "EUR")
+    seeded = run(qa, ledger, "add", "ana", "taxi", "1250", "2026-03-01")
+    qa.require(
+        "the scenario could build a ledger a wrongly-headed import could damage",
+        started.ok and seeded.ok,
+        actual=started.stderr[-1000:] + seeded.stderr[-1000:],
+        covers=["okf:docs/features/tally/tally.md#import:contract"],
+    )
+
+    before = read(qa, ledger)
+    refused = run(qa, ledger, "import", str(rows))
+    after = read(qa, ledger)
+
+    qa.check(
+        "`tally import` on a file whose header is not the documented one exits 2",
+        refused.exit_code == 2,
+        actual=refused.exit_code,
+        expected=2,
+        covers=["ac:4", "okf:docs/features/tally/tally.md#import-a-malformed-row:status:1"],
+    )
+    qa.check(
+        "the refusal names line 1, where the header is",
+        "line 1" in refused.stderr,
+        actual=refused.stderr[-2000:],
+        expected="a message naming line 1",
+        covers=["ac:4", "okf:docs/features/tally/tally.md#import:contract"],
+    )
+    qa.verify(
+        "unchanged",
+        ({"tally.json": before["sha256"]}, {"tally.json": after["sha256"]}),
+        subject="tally.json",
+        covers=[
+            "ac:4",
+            "okf:docs/features/tally/tally.md#import-a-malformed-row:contract",
+            "okf:docs/features/tally/tally.md#import-a-malformed-row:status:1",
+        ],
+    )
+
+
+@scenario(
+    target=tally,
+    mechanism="live",
+    timeout=600.0,
+    covers=[
+        "ac:5",
         "okf:docs/features/tally/tally.md#dry-run:contract",
         "okf:docs/features/tally/tally.md#dry-run:default:1",
         "okf:docs/features/tally/tally.md#dry-run:required:1",
@@ -364,6 +449,7 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         actual=previewed.exit_code,
         expected=0,
         covers=[
+            "ac:5",
             "okf:docs/features/tally/tally.md#dry-run:contract",
             "okf:docs/features/tally/tally.md#dry-run:semantics:3",
         ],
@@ -373,7 +459,7 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         "dry-run" in previewed.stderr,
         actual=previewed.stderr[-2000:],
         expected="a line on stderr naming the dry run",
-        covers=["okf:docs/features/tally/tally.md#dry-run:semantics:3"],
+        covers=["ac:5", "okf:docs/features/tally/tally.md#dry-run:semantics:3"],
     )
     qa.check(
         "every file in the scenario's directory is byte-for-byte what it was",
@@ -381,6 +467,7 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         actual=after,
         expected=before,
         covers=[
+            "ac:5",
             "okf:docs/features/tally/tally.md#dry-run:semantics:1",
             "okf:docs/features/tally/tally.md#dry-run:semantics:2",
         ],

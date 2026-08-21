@@ -83,6 +83,9 @@ def trip(qa: Qa, ledger):
     mechanism="live",
     timeout=600.0,
     covers=[
+        "ac:1",
+        "ac:2",
+        "ac:3",
         "okf:docs/features/tally/tally.md#report:contract",
         "okf:docs/features/tally/tally.md#report:does:1",
         "okf:docs/features/tally/tally.md#report-as-json:consistency:1",
@@ -117,6 +120,7 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
         actual=plain.stdout[-2000:],
         expected="a report naming 3 entries",
         covers=[
+            "ac:1",
             "okf:docs/features/tally/tally.md#report:contract",
             "okf:docs/features/tally/tally.md#report:does:1",
         ],
@@ -128,7 +132,7 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
         piped.exit_code == 0,
         actual=piped.exit_code,
         expected=0,
-        covers=["okf:docs/features/tally/tally.md#report-as-json:contract"],
+        covers=["ac:2", "okf:docs/features/tally/tally.md#report-as-json:contract"],
     )
 
     # The whole stream, in one call, the way a caller who piped this reads it. A progress
@@ -145,7 +149,7 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
         parsed and isinstance(decoded, dict),
         actual=piped.stdout[-2000:],
         expected="one JSON object and nothing else on stdout",
-        covers=["okf:docs/features/tally/tally.md#report-as-json:consistency:1"],
+        covers=["ac:2", "okf:docs/features/tally/tally.md#report-as-json:consistency:1"],
     )
     qa.require(
         "there is a report to make claims about",
@@ -159,6 +163,7 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
         path="$.currency",
         equals="EUR",
         covers=[
+            "ac:3",
             "okf:docs/features/tally/tally.md#report-as-json:consistency:1",
             "okf:docs/features/tally/tally.md#report-as-json:consistency:2",
             "okf:docs/features/tally/tally.md#report-as-json:contract",
@@ -170,7 +175,7 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
         "totalling" in piped.stderr and "totalling" not in piped.stdout,
         actual={"stdout": piped.stdout[-1000:], "stderr": piped.stderr[-1000:]},
         expected="the progress line on stderr and absent from stdout",
-        covers=["okf:docs/features/tally/tally.md#report-as-json:consistency:2"],
+        covers=["ac:2", "okf:docs/features/tally/tally.md#report-as-json:consistency:2"],
     )
     qa.check(
         "the totals are the ledger's, and the overall is the sum of the per-person ones",
@@ -179,7 +184,7 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
         and sum(decoded["per_person"].values()) == decoded["total_cents"],
         actual=decoded,
         expected={"entries": 3, "total_cents": 7450, "per_person": {"ana": 3050, "bo": 4400}},
-        covers=["okf:docs/features/tally/tally.md#report-as-json:does:1"],
+        covers=["ac:1", "ac:3", "okf:docs/features/tally/tally.md#report-as-json:does:1"],
     )
 
 
@@ -188,17 +193,24 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
     mechanism="live",
     timeout=600.0,
     covers=[
+        "ac:4",
+        "ac:5",
         "okf:docs/features/tally/tally.md#export:contract",
         "okf:docs/features/tally/tally.md#export:does:1",
+        "okf:docs/features/tally/flows/track-a-trip.md:start:1",
+        "okf:docs/features/tally/flows/track-a-trip.md:end:1",
+        "okf:docs/features/tally/flows/track-a-trip.md:end-state",
         "okf:docs/features/tally/tally.md#export-to-csv:consistency:1",
         "okf:docs/features/tally/tally.md#export-to-csv:contract",
         "okf:docs/features/tally/tally.md#export-to-csv:does:1",
     ],
     preconditions=[
+        "the ledger is built the way the journey builds one, with `init` and then `add`",
         "the destination does not exist before the export, so `created` has both halves",
         "a second, empty ledger is exported too — the header claim is 'whether or not the ledger has entries'",
     ],
     checkpoints=[
+        "the report the journey reads before handing the trip on states the currency it was initialised with",
         "the export writes a file that was not there, and exits 0",
         "its first line is the header `who,what,amount_cents,spent_on`",
         "it holds one line per entry under that header",
@@ -230,8 +242,10 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
         actual={"exit": exported.exit_code, "stderr": exported.stderr[-1000:]},
         expected="exit 0 and a stderr line naming 3 rows",
         covers=[
+            "ac:4",
             "okf:docs/features/tally/tally.md#export:contract",
             "okf:docs/features/tally/tally.md#export:does:1",
+            "okf:docs/features/tally/flows/track-a-trip.md:end:1",
         ],
     )
 
@@ -253,14 +267,31 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
         written[:1] == ["who,what,amount_cents,spent_on"],
         actual=written[:1],
         expected=["who,what,amount_cents,spent_on"],
-        covers=["okf:docs/features/tally/tally.md#export-to-csv:consistency:1"],
+        covers=["ac:5", "okf:docs/features/tally/tally.md#export-to-csv:consistency:1"],
     )
     qa.check(
         "under it is one line per entry in the ledger",
         len(written) == 4,
         actual=written,
         expected="a header and three data lines",
-        covers=["okf:docs/features/tally/tally.md#export-to-csv:does:1"],
+        covers=["ac:4", "okf:docs/features/tally/flows/track-a-trip.md:end:1", "okf:docs/features/tally/tally.md#export-to-csv:does:1"],
+    )
+
+    # `init`, `add`, `report`, `export` is the whole journey, and the trip that has just been
+    # handed on is only the trip that was started if the ledger behind the CSV still says so.
+    walked = run(qa, ledger, "report", "--json")
+    qa.require(
+        "the journey's ledger still reports after the trip has been handed on",
+        walked.ok,
+        actual=walked.stderr[-1000:],
+        covers=["okf:docs/features/tally/flows/track-a-trip.md:end-state"],
+    )
+    qa.verify(
+        "json_path",
+        json.loads(walked.stdout),
+        path="$.currency",
+        equals="EUR",
+        covers=["okf:docs/features/tally/flows/track-a-trip.md:start:1", "okf:docs/features/tally/flows/track-a-trip.md:end:1", "okf:docs/features/tally/flows/track-a-trip.md:end-state"],
     )
 
     # The other half of the bullet: an export whose header appears only when there is data
@@ -280,7 +311,7 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
         lines(read(qa, empty_csv)) == ["who,what,amount_cents,spent_on"],
         actual=lines(read(qa, empty_csv)),
         expected=["who,what,amount_cents,spent_on"],
-        covers=["okf:docs/features/tally/tally.md#export-to-csv:consistency:1"],
+        covers=["ac:5", "okf:docs/features/tally/tally.md#export-to-csv:consistency:1"],
     )
 
 

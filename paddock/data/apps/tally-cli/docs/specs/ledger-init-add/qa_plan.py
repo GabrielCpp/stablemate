@@ -95,6 +95,8 @@ def census(qa: Qa, directory):
     mechanism="live",
     timeout=600.0,
     covers=[
+        "ac:1",
+        "ac:2",
         "okf:docs/features/tally/concepts/ledger-file.md:consistency:1",
         "okf:docs/features/tally/concepts/ledger-file.md:contract",
         "okf:docs/features/tally/concepts/ledger-file.md:persistence:1",
@@ -143,6 +145,7 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         actual=created.exit_code,
         expected=0,
         covers=[
+            "ac:1",
             "okf:docs/features/tally/tally.md:contract",
             "okf:docs/features/tally/tally.md#init:contract",
             "okf:docs/features/tally/tally.md#init:does:1",
@@ -156,6 +159,7 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         (before["text"], after["text"]),
         subject="tally.json",
         covers=[
+            "ac:1",
             "okf:docs/features/tally/tally.md#init-a-ledger:contract",
             "okf:docs/features/tally/tally.md#init-a-ledger:does:1",
             "okf:docs/features/tally/tally.md#init-a-ledger:does:2",
@@ -185,7 +189,7 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         len(document["entries"]) == 0,
         actual=document["entries"],
         expected=[],
-        covers=["okf:docs/features/tally/tally.md#init-a-ledger:does:1"],
+        covers=["ac:1", "okf:docs/features/tally/tally.md#init-a-ledger:does:1"],
     )
 
     # A ledger with something in it, so a truncating `init` has something to destroy. An empty
@@ -206,6 +210,7 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         actual=refused.exit_code,
         expected=1,
         covers=[
+            "ac:2",
             "okf:docs/features/tally/tally.md:contract",
             "okf:docs/features/tally/tally.md#init-a-ledger:status:2",
         ],
@@ -220,6 +225,7 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         ({"tally.json": held["sha256"]}, {"tally.json": stood["sha256"]}),
         subject="tally.json",
         covers=[
+            "ac:2",
             "okf:docs/features/tally/tally.md#init-a-ledger:contract",
             "okf:docs/features/tally/tally.md#init-a-ledger:does:1",
             "okf:docs/features/tally/tally.md#init-a-ledger:does:2",
@@ -234,6 +240,7 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         actual=json.loads(stood["text"])["entries"],
         expected=1,
         covers=[
+            "ac:2",
             "okf:docs/features/tally/tally.md#init-a-ledger:does:2",
             "okf:docs/features/tally/concepts/ledger-file.md:persistence:1",
         ],
@@ -245,6 +252,7 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
     mechanism="live",
     timeout=600.0,
     covers=[
+        "ac:1",
         "okf:docs/features/tally/tally.md#currency:contract",
         "okf:docs/features/tally/tally.md#currency:default:1",
         "okf:docs/features/tally/tally.md#currency:required:1",
@@ -285,6 +293,7 @@ def the_currency_is_recorded_once_at_init_and_never_moves(qa: Qa) -> None:
         path="$.currency",
         equals="EUR",
         covers=[
+            "ac:1",
             "okf:docs/features/tally/tally.md#currency:contract",
             "okf:docs/features/tally/tally.md#currency:default:1",
         ],
@@ -311,6 +320,7 @@ def the_currency_is_recorded_once_at_init_and_never_moves(qa: Qa) -> None:
         actual=still["currency"],
         expected="USD",
         covers=[
+            "ac:1",
             "okf:docs/features/tally/tally.md#currency:semantics:1",
             "okf:docs/features/tally/tally.md#currency:contract",
         ],
@@ -329,6 +339,9 @@ def the_currency_is_recorded_once_at_init_and_never_moves(qa: Qa) -> None:
     mechanism="live",
     timeout=600.0,
     covers=[
+        "ac:3",
+        "ac:4",
+        "ac:6",
         "okf:docs/features/tally/concepts/ledger-file.md:consistency:2",
         "okf:docs/features/tally/concepts/ledger-file.md:persistence:1",
         "okf:docs/features/tally/tally.md:contract",
@@ -374,6 +387,7 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         actual=recorded.exit_code,
         expected=0,
         covers=[
+            "ac:3",
             "okf:docs/features/tally/tally.md:contract",
             "okf:docs/features/tally/tally.md#add:does:1",
             "okf:docs/features/tally/tally.md#add-an-expense:status:1",
@@ -387,6 +401,7 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         subject="entries in the ledger",
         equals=1,
         covers=[
+            "ac:3",
             "okf:docs/features/tally/tally.md#add-an-expense:contract",
             "okf:docs/features/tally/tally.md#add-an-expense:does:1",
             "okf:docs/features/tally/tally.md#add-an-expense:errors:1",
@@ -400,6 +415,7 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         actual=json.loads(held["text"])["entries"][0],
         expected="ana",
         covers=[
+            "ac:3",
             "okf:docs/features/tally/concepts/ledger-file.md:persistence:1",
             "okf:docs/features/tally/tally.md#add:does:1",
         ],
@@ -414,6 +430,7 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         actual=refused.exit_code,
         expected=2,
         covers=[
+            "ac:4",
             "okf:docs/features/tally/tally.md:contract",
             "okf:docs/features/tally/tally.md#add-an-expense:status:2",
             "okf:docs/features/tally/tally.md#add-an-expense:errors:1",
@@ -424,7 +441,7 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         len(refused.stderr.strip()) > 0 and refused.stdout == "",
         actual=[refused.stdout, refused.stderr[-500:]],
         expected="a diagnostic on stderr and an empty stdout",
-        covers=["okf:docs/features/tally/tally.md#add-an-expense:errors:1"],
+        covers=["ac:6", "okf:docs/features/tally/tally.md#add-an-expense:errors:1"],
     )
 
     stood = read(qa, ledger)
@@ -433,6 +450,7 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         ({"tally.json": held["sha256"]}, {"tally.json": stood["sha256"]}),
         subject="tally.json",
         covers=[
+            "ac:4",
             "okf:docs/features/tally/tally.md#add-an-expense:contract",
             "okf:docs/features/tally/tally.md#add-an-expense:does:1",
             "okf:docs/features/tally/tally.md#add-an-expense:errors:1",
@@ -458,6 +476,8 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
     mechanism="live",
     timeout=600.0,
     covers=[
+        "ac:5",
+        "ac:6",
         "okf:docs/features/tally/tally.md#dry-run:contract",
         "okf:docs/features/tally/tally.md#dry-run:default:1",
         "okf:docs/features/tally/tally.md#dry-run:required:1",
@@ -509,6 +529,7 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         actual=previewed.exit_code,
         expected=0,
         covers=[
+            "ac:5",
             "okf:docs/features/tally/tally.md#dry-run:contract",
             "okf:docs/features/tally/tally.md#dry-run:semantics:3",
         ],
@@ -518,14 +539,14 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         "dry-run" in previewed.stderr and previewed.stdout == "",
         actual=[previewed.stdout, previewed.stderr[-500:]],
         expected="a preview line on stderr and an empty stdout",
-        covers=["okf:docs/features/tally/tally.md#dry-run:semantics:3"],
+        covers=["ac:5", "ac:6", "okf:docs/features/tally/tally.md#dry-run:semantics:3"],
     )
     qa.check(
         "the ledger's bytes are what they were",
         before.get("tally.json") == after.get("tally.json"),
         actual=[before.get("tally.json"), after.get("tally.json")],
         expected="one digest, twice",
-        covers=["okf:docs/features/tally/tally.md#dry-run:semantics:1"],
+        covers=["ac:5", "okf:docs/features/tally/tally.md#dry-run:semantics:1"],
     )
     qa.check(
         "and nothing else in the directory was written either — no new file, no changed one",
@@ -533,6 +554,7 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         actual=after,
         expected=before,
         covers=[
+            "ac:5",
             "okf:docs/features/tally/tally.md#dry-run:semantics:2",
             "okf:docs/features/tally/tally.md#dry-run:contract",
         ],

@@ -187,3 +187,45 @@ def register_empty_and_unreadable_browser(qa: Qa) -> None:
     qa.verify("visible", alert, locator="alert", covers=["ac:4", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:contract", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:keyboard:1", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:name:1", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:role:1", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:states:1"])
     qa.check("the failed re-read is announced rather than leaving a stale empty table", alert.is_visible(), covers=["ac:4", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:contract", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:states:1"])
     qa.page.unroute("**/api/policies")
+
+
+@scenario(
+    target=web,
+    mechanism="live",
+    covers=[
+        "okf:docs/features/policy/flows/create-policy.md:start:1",
+        "okf:docs/features/policy/flows/create-policy.md:end:1",
+        "okf:docs/features/policy/flows/create-policy.md:end-state",
+    ],
+    preconditions=["the register is reset through its documented route"],
+    checkpoints=["the walk starts on the register rather than on the form", "New policy is followed from the register", "the accepted submit ends on the new policy's detail screen at Draft"],
+    forbid=["deep-linking to the form or the detail screen", "ending the walk on the register instead of the created policy"],
+)
+def underwrite_journey_browser(qa: Qa) -> None:
+    """Walk the underwriting journey end to end, from the register the book starts it at.
+
+    The register is this story's screen, so the journey that begins there is owed live
+    evidence by it — and the step this walk exists to hold is the last one: creating the
+    policy and returning to the list looks like success from the API's side while leaving
+    the operator somewhere the book does not end.
+    """
+    qa.http.delete("/api/policies", expect_status=204)
+    qa.goto("/policies")
+    qa.eventually("the walk starts on the register", qa.by_css("main").is_visible)
+    qa.by_role("link", name="New policy").click()
+    form = qa.by_css('form[aria-label="New policy"]')
+    qa.eventually("New policy reaches the form from the register", form.is_visible)
+    qa.by_css("#policy_number").fill("PN-1001")
+    qa.by_css("#holder_email").fill("alex@example.com")
+    qa.by_css("#vehicle_vin").fill("1HGCM82633A004352")
+    qa.by_css("#start_date").fill("2099-01-01")
+    qa.by_css("#end_date").fill("2099-12-31")
+    qa.by_css("#premium").fill("1000")
+    qa.by_role("button", name="Create policy").click()
+    detail = qa.by_css("dl")
+    qa.eventually("the accepted submit lands on a policy summary", detail.is_visible)
+    qa.vet("docs/features/policy/gui/screens/policy-detail.md", name="journey-end", components=["policy-summary"])
+    qa.screenshot("journey-end")
+    qa.verify("visible", detail, locator="heading:Policy PN-1001", covers=["okf:docs/features/policy/flows/create-policy.md:start:1", "okf:docs/features/policy/flows/create-policy.md:end:1", "okf:docs/features/policy/flows/create-policy.md:end-state"])
+    qa.verify("visible", detail, locator="text=Draft", covers=["okf:docs/features/policy/flows/create-policy.md:start:1", "okf:docs/features/policy/flows/create-policy.md:end:1", "okf:docs/features/policy/flows/create-policy.md:end-state"])
+    qa.check("the journey ends on the new policy's detail route, not back on the register", qa.page.url.endswith("/policies/pn-1001"), actual=qa.page.url, expected="/policies/pn-1001", covers=["okf:docs/features/policy/flows/create-policy.md:end:1", "okf:docs/features/policy/flows/create-policy.md:end-state"])

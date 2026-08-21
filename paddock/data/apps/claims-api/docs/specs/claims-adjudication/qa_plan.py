@@ -67,9 +67,10 @@ def one_claim_awaiting_a_decision(qa: Qa) -> dict:
         "ac:2",
         "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1",
         "okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1",
-        "okf:docs/features/claims/concepts/claim-ledger.md#write:persistence:1",
+        "okf:docs/features/claims/http/claims-api.md#decide-claim:contract",
         "okf:docs/features/claims/flows/decide-a-claim.md:start:1",
         "okf:docs/features/claims/flows/decide-a-claim.md:end:1",
+        "okf:docs/features/claims/flows/decide-a-claim.md:end-state",
     ],
     preconditions=[
         "cl-1001 is on file at version 1, filed by holder A",
@@ -96,9 +97,9 @@ def a_decision_is_recorded_and_outlives_the_process(qa: Qa) -> None:
 
     decided = qa.http.post("/api/claims/cl-1001/decision", json_body={"decision": "approve", "version": 1, "note": "Cover confirmed against the schedule."}, headers=bearer(adjuster), expect_status=200)
     body = decided.json()
-    qa.verify("http_status", decided, code=200, path="/api/claims/cl-1001/decision", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1"])
-    qa.verify("json_path", body, path="$.claim.status", equals="Approved", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1"])
-    qa.verify("json_path", body, path="$.claim.version", equals="2", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1"])
+    qa.verify("http_status", decided, code=200, path="/api/claims/cl-1001/decision", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:contract"])
+    qa.verify("json_path", body, path="claim.status", equals="Approved", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1", "okf:docs/features/claims/flows/decide-a-claim.md:start:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1", "okf:docs/features/claims/flows/decide-a-claim.md:end-state"])
+    qa.verify("json_path", body, path="claim.version", equals="2", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1"])
     qa.check("the adjuster's note is carried onto the decided claim", body["claim"]["note"] == "Cover confirmed against the schedule.", covers=["ac:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1"])
 
     # The claim was Submitted a moment ago in this same process, so a re-read here is answered
@@ -115,7 +116,7 @@ def a_decision_is_recorded_and_outlives_the_process(qa: Qa) -> None:
 
     qa.eventually("the restarted service answers /healthz again", restarted_service_answers, timeout=90.0, interval=0.5, covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1"])
     reread = qa.http.get("/api/claims/cl-1001", headers=bearer(adjuster), expect_status=200).json()["claim"]
-    qa.verify("persists", (body["claim"], reread), subject="claim cl-1001", covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1", "okf:docs/features/claims/concepts/claim-ledger.md#write:persistence:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1"])
+    qa.verify("persists", (body["claim"], reread), subject="claim cl-1001", covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1", "okf:docs/features/claims/flows/decide-a-claim.md:start:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1", "okf:docs/features/claims/flows/decide-a-claim.md:end-state"])
     json.dump({"filed": who["claim"], "decided": body, "after_restart": reread}, qa.artifact("steps/decision.json", kind="json").open("w"))
 
 
