@@ -8,7 +8,7 @@ status: Not started
 
 ## Dependencies
 
-- claims-crud
+- Blocked by: claims-crud
 
 ## Context
 
