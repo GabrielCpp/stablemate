@@ -71,6 +71,9 @@ def run_plan(
         f"input.{name}": str((spec_dir / str(path)).resolve())
         for name, path in plan.get("inputs", {}).items()
     }
+    # Resolved, because a daemon starts with `cwd=root` while the plan is written beside
+    # the spec, so a relative path means two different places to the two of them.
+    variables["qa_dir"] = str(qa_dir.resolve())
     session = QaSession.create(
         spec_dir,
         document.run_id,

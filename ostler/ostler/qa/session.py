@@ -796,6 +796,14 @@ def _expand(
             return env.get(token[4:], "")
         if token.startswith("input."):
             return (variables or {}).get(token, "")
+        if token == "qa_dir":
+            # The run's own output directory, so a daemon can be told to keep its state
+            # there — `--ledger {{qa_dir}}/links.json` — instead of somewhere in the repo
+            # the next run inherits. It needs a branch of its own because the fall-through
+            # below is `captures`, and an unexpanded `{{qa_dir}}` does not fail: it becomes
+            # a literal directory of that name beside the spec, which the run then fills
+            # with the state it was told to isolate.
+            return (variables or {}).get(token, "")
         if token.startswith("secret."):
             return (secrets or {}).get(token[7:], "")
         if token == "run_id":

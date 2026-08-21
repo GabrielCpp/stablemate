@@ -768,3 +768,84 @@ def test_a_live_daemon_is_still_stopped_and_reports_its_signal() -> None:
         assert _kill_pid(proc.pid) in (-signal.SIGINT, -signal.SIGTERM, -signal.SIGKILL)
     finally:
         proc.wait()
+
+
+# ---------------------------------------------------------------------------
+# where a daemon keeps its state
+# ---------------------------------------------------------------------------
+
+#: A server that touches the state file it is given, then answers 200 to a GET.
+#: Braceless on purpose: it travels inside a plan source these tests build by hand.
+_STATEFUL = (
+    "import sys, threading\n"
+    "from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer\n"
+    "state, port = sys.argv[1], int(sys.argv[2])\n"
+    "open(state, 'a').close()\n"
+    "class Handler(BaseHTTPRequestHandler):\n"
+    "    def log_message(self, fmt, *args):\n"
+    "        pass\n"
+    "    def do_GET(self):\n"
+    "        self.send_response(200)\n"
+    "        self.send_header('Content-Length', '0')\n"
+    "        self.end_headers()\n"
+    "server = ThreadingHTTPServer(('127.0.0.1', port), Handler)\n"
+    "threading.Timer(30.0, server.shutdown).start()\n"
+    "server.serve_forever()\n"
+)
+
+
+def _stateful(spec: Path, state: str, port: int, reset: list[str] | None = None) -> Path:
+    """A plan whose one daemon keeps its state at *state*, written without `str.format`.
+
+    `_plan` runs its source through `str.format`, which would eat the `{{…}}` these two
+    cases are about — a doubled-brace token is exactly what the runner is asked to expand.
+    """
+    reset_line = f"           reset_paths={reset!r},\n" if reset else ""
+    source = _with_background(
+        'background("api-server",\n'
+        f"           {_argv(_STATEFUL, state, port)},\n"
+        f"{reset_line}"
+        f'           ready_url="http://127.0.0.1:{port}/health", timeout=10)'
+    ).replace("{obligation}", OBLIGATION)
+    module = spec / "qa_plan.py"
+    module.write_text(source, encoding="utf-8")
+    return module
+
+
+def test_a_daemon_can_be_pointed_at_the_runs_own_qa_directory(tmp_path: Path) -> None:
+    """`{{qa_dir}}` is how a daemon is told to keep its state inside the run.
+
+    Unexpanded it does not fail, which is why this is a test and not a crash: the token
+    falls through to the capture lookup, comes back as itself, and the daemon dutifully
+    creates a literal `{{qa_dir}}` directory beside the spec — a state file the next run
+    inherits, in a run whose entire premise is that it does not.
+    """
+    spec = _spec(tmp_path)
+    port = _free_port()
+    module = _stateful(spec, "{{qa_dir}}/links.json", port)
+
+    outcome = cmd_run(module, root=tmp_path)
+
+    assert outcome.status == "passed", outcome.message
+    assert (spec / "qa/links.json").is_file()
+    assert not list(tmp_path.rglob("*qa_dir*"))
+def test_reset_paths_clear_stale_daemon_state_before_it_starts(tmp_path: Path) -> None:
+    """State the last run left behind is the last run's answer, replayed into this one.
+
+    A daemon that persists is the point of the fixture — but a run that starts on top of
+    the previous run's file is scoring a product it did not build. The paths expand like
+    any other, so the same `{{qa_dir}}` token works when the state lives outside it too.
+    """
+    spec = _spec(tmp_path)
+    stale = spec / "links.json"
+    stale.write_text('["left over from the last run"]', encoding="utf-8")
+    port = _free_port()
+    module = _stateful(
+        spec, "{{qa_dir}}/../links.json", port, reset=["{{qa_dir}}/../links.json"]
+    )
+
+    outcome = cmd_run(module, root=tmp_path)
+
+    assert outcome.status == "passed", outcome.message
+    # Touched fresh by the daemon after the unlink, so "exists" is not the assertion.
+    assert stale.read_text(encoding="utf-8") == ""
