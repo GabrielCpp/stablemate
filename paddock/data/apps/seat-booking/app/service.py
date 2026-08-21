@@ -21,7 +21,7 @@ from app.hold import release
 from app.store import Store, empty_ledger
 
 #: The benchmark owns 18080-18099; seat-booking's number is recorded in
-#: `paddock/data/suites/README.md` alongside every other spec's.
+#: `paddock/data/apps/README.md` alongside every other spec's.
 DEFAULT_PORT = 18083
 DEFAULT_LEDGER = Path("/data/seats.json")
 

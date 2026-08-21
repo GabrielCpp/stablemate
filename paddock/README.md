@@ -80,7 +80,7 @@ from paddock import Score, step, task
 
 task(
     name="policy-desk-qa",
-    seed="policy-desk",                # data/seeds/policy-desk.toml
+    seed="policy-desk",                # data/configs/seeds/policy-desk.toml
     config="configs/opencode.toml",    # a full stablemate config, tracked, under data/
 )
 

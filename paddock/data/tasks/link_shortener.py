@@ -27,12 +27,12 @@ task(
 )
 
 FIXTURE = gf.Fixture(
-    backlog="suites/link-shortener/docs/backlog.md",
+    backlog="apps/link-shortener/docs/backlog.md",
     # The author lane blocks for a human on product decisions the backlog leaves open,
     # by design and with no resolver. That turn was held once, against these bullets, and
     # frozen — so a round resumes from the far side of it rather than needing an operator.
-    decision_records="suites/link-shortener/docs/decisions",
-    grill_capture="suites/link-shortener/grill",
+    decision_records="apps/link-shortener/docs/decisions",
+    grill_capture="apps/link-shortener/grill",
     packs="product-planning,stablemate,infra",
     docs_scaffold="shared-docs:docs",
     surfaces=(

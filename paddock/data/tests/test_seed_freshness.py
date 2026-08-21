@@ -23,7 +23,7 @@ import pytest
 from paddock.pointer import Pointer
 
 DATA = Path(__file__).parents[1]
-SEEDS = DATA / "seeds"
+SEEDS = DATA / "configs" / "seeds"
 
 
 def pointers() -> list[Pointer]:

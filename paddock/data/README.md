@@ -108,7 +108,7 @@ fixture's environment, and every benchmark with a human in the loop must freeze 
 at a constant or it measures the human.
 
 So the grill conversation was held **once**, for real, at fixture-authoring time, and both
-halves of it are frozen under `suites/<name>/grill/`: the answered gate file, and the
+halves of it are frozen under `apps/<name>/grill/`: the answered gate file, and the
 checkpoint of the run that was parked on it. A round seeds them before the author phase and
 resumes from there, which puts `refactor_backlog` — the state after the gate — first, with
 nothing about the loop itself pre-supplied. `seed_grill_capture` in `tasks/_greenfield.py`
@@ -120,7 +120,7 @@ its variance is excised rather than solved — which is honest only if it is sai
 here and anywhere the number is quoted.
 
 The product decisions themselves live separately, as standing records under
-`suites/<name>/docs/decisions/`, copied into the produced repo's `<docs-root>/decisions/`
+`apps/<name>/docs/decisions/`, copied into the produced repo's `<docs-root>/decisions/`
 where every lane's auto-resolver reads them. A record stands on its own — it says what *is*
 decided, not "A2:" — so it answers whatever phrasing a later gate reaches it in. What used
 to sit there instead, a sheet of replies applied positionally to one gate and stamped
@@ -128,14 +128,19 @@ to sit there instead, a sheet of replies applied positionally to one gate and st
 are not stable across rounds, so the sheet was routinely stamped over questions it had
 never been written against.
 
-## The benchmark suites (`suites/`)
+## The benchmark fixtures (`apps/`)
 
-Every benchmark is one suite under `suites/<name>/`, holding the backlog, the decision
-records and the frozen grill capture a task module points at. `suites/todo-app` is the verdict benchmark: four surfaces,
-eighteen bullets, hours per run. That is the right size for *is the workflow good* and the
-wrong size for *why did it break* — a fix-and-rerun cycle measured in hours is a cycle
-nobody runs twice. The others are sized so `author + coder` finishes inside an hour. Each
-isolates a failure class the others cannot reach — see [suites/README.md](suites/README.md).
+Every benchmark names one directory under `apps/<name>/`, and two kinds of fixture live
+there under one namespace: a **backlog** — the bullets, the decision records and the frozen
+grill capture a greenfield task points at — and a **frozen app** with an answer key, input
+to measuring QA. Which kind a fixture is is a property of the task that names it, not of the
+directory it sits in, which is why they are not split into two trees.
+
+`apps/todo-app` is the verdict benchmark: four surfaces, eighteen bullets, hours per run.
+That is the right size for *is the workflow good* and the wrong size for *why did it break*
+— a fix-and-rerun cycle measured in hours is a cycle nobody runs twice. The others are sized
+so `author + coder` finishes inside an hour. Each isolates a failure class the others cannot
+reach — see [apps/README.md](apps/README.md).
 
 The backlog is **copied, never generated**, so every run starts from the same bullets and
 the outcome is attributable to the workflows rather than to input that drifted.
@@ -159,21 +164,21 @@ result, and when a node qualifies — is in [docs/EVALS.md](docs/EVALS.md).
 
 ```
 tasks/                what a round does, one module per benchmark  (paddock loads these)
-  _greenfield.py      the backlog→genesis→author→coder round, shared by every suite
+  _greenfield.py      the backlog→genesis→author→coder round, shared by every backlog
   _frozenapp.py       the frozen-app QA round: seed a defect, run QA, score detection
   _forensics.py       reading run artifacts: repair loops, node timing, cap-wait
   _stablemate.py      driving stablemate itself: config pinning, project worktrees
-seeds/                pointer TOMLs — a zipped repo lives in the store, never in git
 configs/              full stablemate configs a task pins, tracked
-apps/                 finished apps with an answer key — input to *measuring* QA
+  seeds/              pointer TOMLs — a zipped repo lives in the store, never in git
+apps/                 every benchmark fixture, one directory each
+  README.md           which fixture catches what, and the port register
+  <name>/             the directory name IS the name a task points at
+    docs/backlog.md   greenfield: the pristine input, copied in on every run
+    docs/decisions/   greenfield: standing records, copied to <docs-root>/decisions/
+    grill/            greenfield: the frozen operator turn — answered gate + checkpoint
+    defects.yml       frozen app: the answer key, beside the code and the book
 rubric.md             the judge's prompt — the file to tune when scores feel wrong
 docs/EVALS.md         the node-eval design                                    (PLANNED)
 tests/                the properties the score rests on
 results/              pointer TOMLs for sealed rounds                    (gitignored)
-suites/               every benchmark, one directory each
-  README.md           which suite catches what
-  <name>/             the directory name IS the task name
-    docs/backlog.md   the pristine input, copied into the target on every run
-    docs/decisions/   standing decision records, copied to <docs-root>/decisions/
-    grill/            the frozen operator turn: the answered gate + its checkpoint
 ```

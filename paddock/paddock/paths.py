@@ -58,7 +58,19 @@ def work_dir(store: Path, task: str, label: str) -> Path:
 
 
 def seed_pointer(data_dir: Path, name: str) -> Path:
-    return data_dir / "seeds" / f"{name}.toml"
+    """Where a seed's pointer TOML lives — under `configs/`, with the configs it belongs beside.
+
+    Both are the same kind of thing: small tracked TOML a task names by string and the
+    harness resolves for it, so the separate top-level `seeds/` was a taxonomy nothing
+    switched on.
+
+    Its own subdirectory rather than flat among the configs, because pointers are read by
+    *enumeration* as well as by name: the freshness guard globs them, and `Pointer` forbids
+    extra keys, so a flat mix would hand it a stablemate config to parse. Sorting that out
+    would take a "is this file a seed?" test inside the one guard whose whole job is to not
+    be vacuous. A directory answers it for free.
+    """
+    return data_dir / "configs" / "seeds" / f"{name}.toml"
 
 
 def result_pointer(data_dir: Path, task: str, label: str) -> Path:

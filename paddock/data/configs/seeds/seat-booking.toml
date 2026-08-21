@@ -1,0 +1,10 @@
+name = "seat-booking"
+repo_dir = "seat-booking"
+sha256 = "6b87d68876e5158b3462fdf47c49451bb7f494168468937ea3beebc8cd0922da"
+bytes = 54099
+head = "195680dfa11183a7bc12a4f2d2d6a4e4b8e43f9c"
+dirty = true
+url = ""
+note = ""
+source = "apps/seat-booking"
+tree_sha256 = "3b475c465c834199bb1faa299e85708b15e36843afadb6f8d2302edffee07430"
