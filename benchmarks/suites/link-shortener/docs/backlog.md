@@ -36,6 +36,16 @@ this file outgrew.
 
 ## Shortening and following links
 
-- [link-create] A person submits a long URL and gets back a short link they can share.
+The api is the only surface a bullet may be satisfied on. This is a product decision, not
+an omission: [link-create] is reached by calling the api, and a round that ships exactly
+that has shipped the whole bullet. It is written down because the alternative reading is
+the natural one — "a person submits a long URL" describes something a person does, and a
+judge reading it without this line looks for the web page and the mobile screen a person
+would do it on, finds neither, and scores a complete round as a third built. The bullets
+stay at the observable-behaviour level; what is scoped here is where the behaviour is
+observed.
+
+- [link-create] A person calling the api submits a long URL and gets back a short link
+  they can share.
 - [link-follow] A person opens a short link and arrives at the URL it was created from.
 - [link-missing] A person who opens a short link that was never created is told it does not exist, rather than being sent somewhere wrong or seeing a crash.

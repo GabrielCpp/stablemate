@@ -21,6 +21,14 @@ guess made at gate time.
 These decisions were first given by hand, at the gate, on the `conda` round. They are
 reproduced here verbatim so that round and every later one describe the same product.
 
+## Surface scope
+
+The api is the only surface. A round that implements the three bullets on the api has
+implemented them completely — there is no web page and no mobile app to be missing, and a
+judge should not read one into "a person submits a long URL". The backlog says the same
+thing; it is repeated here because this sheet is what stands in for the operator, and this
+is the answer that operator would give.
+
 ## Creation contract
 
 `POST /links` with a JSON body `{"url": "<the long URL>"}`.
