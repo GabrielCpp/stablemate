@@ -82,7 +82,12 @@ Rules:
   and add the screen only for orientation.
 - A citation is a pointer, not a paste. Do not copy the node's contents into the story.
 - If this story's surface genuinely has no node yet (a new screen), there is nothing to cite from the
-  book — link the design mockup instead and say in one clause that the surface is new.
+  book — link the design mockup instead and say in one clause that the surface is new. If no mockup
+  was designed either — a backend-only story, where the mockup gate deliberately produced none —
+  ground in the epic's seeds this story `covers` instead, and say in that same clause that the
+  surface is new and undocumented. Do not block for the want of a node or a mockup: per *Authority
+  for new behavior* above, absence from the book is not a reason to block, and a mockup another gate
+  decided this story does not need is not one either.
 {%- endif %}
 
 {% block repo_authoring_rules %}{% endblock %}
@@ -92,10 +97,15 @@ Rules:
 A few sentences in the user's terms: what surface or behaviour this story is about, where it lives,
 and what "done" means at a high level (e.g. "at parity with the legacy X editor"). Name the surface
 by **linking its OKF node ids** (above) so the scope is grounded rather than asserted. Link the
-**visual reference** the criteria are judged against: a running legacy surface (rewrite projects),
-or — when there is no live reference — the **story-local design mockup** for this surface (the
-`mockup_path` input above, normally `./mockup.html`). A spec, legacy route, or captured evidence all
-qualify. This orients the coder; it is **not** a spec and not a build plan.
+**visual reference** the criteria are judged against, when this story has one: a running legacy
+surface (rewrite projects), or — when there is no live reference — the **story-local design mockup**
+for this surface (the `mockup_path` input above, normally `./mockup.html`). A spec, legacy route, or
+captured evidence all qualify. When the story has **none of those** — no `mockup_path` was supplied
+and the book holds no node for this surface, which is the ordinary case for a backend-only story in
+a repo whose book is not built yet — then there is no visual reference to link and
+its absence is not a block. Ground the Context in the epic's seeds this story `covers`, cite any
+record under the repo's decisions directory that bears on it, and say in one clause that the
+surface is new and undocumented. This orients the coder; it is **not** a spec and not a build plan.
 
 ## Acceptance Criteria (how it's judged — observable, user-facing)
 
