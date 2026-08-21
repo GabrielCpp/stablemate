@@ -30,6 +30,16 @@ round, it makes two rounds incomparable — which is the one thing a benchmark i
 do. The sha of this file is the fixture's identity: two rounds are comparable only at equal
 sha, and any number quoted against a different one must say so.
 
+**Link lifetime** was then rescoped, and that capture belongs here too. Its first version
+demanded that a created link survive a restart of the service. The round that ran against it
+parked in the *coder* lane, not the author lane: the QA runner has no way to cross a process
+boundary inside a scenario, so the lane could neither prove the criterion nor discharge it
+without substituting a passing test suite for runtime evidence — which it correctly refused to
+do. A sheet may only ask for what the harness can observe about the running product. Asking for
+more does not make the fixture stricter; it makes it stall, and a stalled round measures nothing.
+The tooling gap itself is recorded as a flex finding rather than treated as this fixture's problem
+to solve.
+
 ## Surface scope
 
 The api is the only surface. A round that implements the three bullets on the api has
@@ -68,15 +78,36 @@ the short link is meant to be shared.
 
 ## Link lifetime
 
-A created short link works indefinitely and survives a restart of the service. There is no
-expiry, so there is no expired-key response to define: a key either was created and
-redirects, or was never created and is the [link-missing] 404.
+A created short link works indefinitely. There is no expiry, so there is no expired-key
+response to define: a key either was created and redirects, or was never created and is the
+[link-missing] 404.
 
-*Why:* [link-follow] promises a person *arrives at* the destination, and a promise that
-lapses when a process restarts is a smaller promise than the bullet makes. Durability also
-gives the lane a `persists`-style obligation to check, which is vocabulary worth
-exercising. It costs little on this stack — a JSON-file ledger, the shape the other frozen
-fixtures already use — so the cheaper in-memory reading buys nothing but a weaker measurement.
+**The implementation is durable.** The ledger is a JSON file on disk — the shape the other
+frozen fixtures already use — not state held in the memory of the process that wrote it.
+
+**The acceptance criterion is that a created link is persisted to that on-disk ledger**, and
+the evidence is the file: after a successful `POST /links`, the ledger contains the new key
+and its destination. This is the `persists` pattern, and it is provable against the running
+product today.
+
+**Restart survival is a consequence of durability, not an acceptance criterion here.** It is
+not provable under the current QA runner, and that is a property of the tooling rather than a
+softening of the promise: `ostler/ostler/qa/run.py:364` fixes the lifecycle at
+`start → scenarios → stop`, `background(...)` is contractually a daemon started before the
+first scenario and stopped after the last (`qa-plan-authoring.md:71-80`), and the plan-lint
+allowlist bars the process and OS modules that would fake a seam. There is no way for a
+scenario to cross a process boundary, so an acceptance criterion demanding one can only be
+discharged by substituting a test suite or a manual note for runtime evidence — which the QA
+rules correctly forbid. The startup-reload path is therefore **code review's** obligation, not
+QA's: a reviewer reads that the repository loads its ledger from the file at construction.
+
+*Why it is written this way:* [link-follow] promises a person *arrives at* the destination, and
+a promise that lapses when a process ends is a smaller promise than the bullet makes — so
+durability stays. What changed is what QA is asked to prove about it. An acceptance criterion
+the harness cannot express is not a stricter fixture; it is a fixture that stalls, and the
+first version of this section stalled a round exactly that way. Checking the file keeps most of
+the `persists` vocabulary this section was written to exercise, and the gap it exposed is
+recorded as a flex finding rather than papered over.
 
 ## Repeated destinations
 
