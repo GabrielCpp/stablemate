@@ -130,6 +130,21 @@ class PlanLintVisitor(ast.NodeVisitor):
             return
         self.generic_visit(node)
 
+    def visit_Expr(self, node: ast.Expr) -> None:
+        if isinstance(node.value, ast.Call) and (verb := _settle_verb(node.value)) is not None:
+            self.problems.append(
+                f"line {node.lineno}: `{verb}(...)` stands alone as a statement — a settle "
+                f"that times out raises, and a raise is not a verdict: the trial ends in a "
+                f"traceback and the obligation keeps whatever the earlier checks gave it. "
+                f"Settle, read, then return evidence: `qa.eventually(\"...\", "
+                f"locator.is_visible, covers=[...])` polls the same condition and records "
+                f"the same timeout as a failed check. `qa.eventually` needs a callable to "
+                f"re-sample and lambdas are not allowed here, so hand it a bound method or "
+                f"a named nested function"
+            )
+            return
+        self.generic_visit(node)
+
     def visit_Call(self, node: ast.Call) -> None:
         if isinstance(node.func, ast.Attribute) and node.func.attr in _FILESYSTEM_METHODS:
             self.problems.append(
@@ -177,6 +192,58 @@ _FILESYSTEM_METHODS = frozenset({
     "unlink", "rmdir", "mkdir", "touch", "chmod", "lchmod",
     "symlink_to", "hardlink_to", "iterdir", "glob", "rglob", "walk",
 })
+
+
+#: Settle verbs, rejected wherever they stand alone as a **statement**. A `wait_for(...)` that
+#: times out raises, and a raise inside a scenario is not a verdict — the trial ends in a
+#: traceback with `fail_count 0`, so the obligation the wait was standing in front of keeps
+#: whatever verdict the scenario's earlier, greener assertions already gave it. A benchmark
+#: round measured that exact shape: four seeded defects went undetected not because a check
+#: disagreed with the product but because the plan died before reaching the check that would
+#: have. A wait's failure must be a *reading*.
+#:
+#: The harness already ships the settle that reads: `qa.eventually(label, <callable>,
+#: covers=[...])` polls the same condition and records a pass or a fail, so the same timeout
+#: that used to end the trial now names itself in the evidence map. `covers=` is optional, so
+#: even a pure readiness gate is expressible — and strictly more legible than a traceback.
+#: `ast.Lambda` is not in `ALLOWED_NODE_TYPES`, so the callable is a bound method
+#: (`locator.is_visible`) or a named nested function — `eventually`'s own docstring spells the
+#: idiom with a lambda, which this pass rejects.
+#:
+#: Two deliberate widenings, both for the same reason `_FILESYSTEM_METHODS` does not examine
+#: its receiver. **Position**: any settle statement is flagged, not only a terminal one. The
+#: crash that costs a verdict is load-bearing wherever it sits — the round's canonical instance
+#: was the third line of a nine-line block — and "is it followed by evidence?" is an AST
+#: position heuristic, which is the genre of rule that produced this debt rather than caught it.
+#: **Driver**: the verbs are flagged in every plan, not only in one that declares a playwright
+#: target. Lint has no symbol table and cannot resolve a locator back to its target, so a rule
+#: that fired only on receivers it recognised would be a blocklist of receivers instead of a set
+#: of verbs. Plans with no browser contain none of these calls, so the wider rule costs them
+#: nothing.
+#:
+#: A settle used as a *value* is untouched: `with qa.page.expect_response(...)` and any
+#: `x = something.wait_for(...)` are handling the result rather than betting the trial on it.
+_SETTLE_METHODS = frozenset({
+    "wait_for", "wait_for_selector", "wait_for_url", "wait_for_load_state",
+    "wait_for_timeout", "wait_for_event", "wait_for_function",
+})
+
+
+def _settle_verb(call: ast.Call) -> str | None:
+    """Name the settle verb a call statement is built on, or `None` if it is not one."""
+    if isinstance(call.func, ast.Attribute) and call.func.attr in _SETTLE_METHODS:
+        return call.func.attr
+    # `expect(locator).to_be_visible()` — playwright's assertion spelling. The verb is the
+    # root of the attribute chain, not its last link, and the last link is an open vocabulary
+    # (`to_be_visible`, `to_have_text`, …) that a set could only ever half-name.
+    inner: ast.expr = call.func
+    while isinstance(inner, ast.Attribute):
+        inner = inner.value
+    if isinstance(inner, ast.Call):
+        inner = inner.func
+    if isinstance(inner, ast.Name) and inner.id == "expect":
+        return "expect"
+    return None
 
 
 #: Named explicitly so a bare call to one of these is rejected even though lint has no symbol

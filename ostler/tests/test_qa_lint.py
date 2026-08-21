@@ -65,6 +65,9 @@ BANNED_CASES = {
     "write_text_method": 'qa.root.write_text("x")\n',
     "mkdir_method": "qa.root.mkdir()\n",
     "glob_method": 'qa.root.glob("*")\n',
+    "bare_wait_for": 'row.wait_for(state="visible")\n',
+    "bare_wait_for_url": 'qa.page.wait_for_url("**/policies")\n',
+    "playwright_expect": "expect(row).to_be_visible()\n",
 }
 
 
@@ -144,3 +147,47 @@ def test_cmd_lint_collects_every_violation_not_just_the_first() -> None:
     plan = "import subprocess\nimport os\neval('1')\n"
     problems = lint_source(plan)
     assert len(problems) == 3
+
+
+def test_a_settle_statement_names_the_verb_and_the_repair() -> None:
+    """The whole value of the rule is the message: the fix shape has to be in it."""
+    problems = lint_source(BANNED_CASES["bare_wait_for"])
+    assert "`wait_for(...)`" in problems[0]
+    assert "qa.eventually" in problems[0]
+    # `eventually`'s own docstring spells the callable as a lambda, which this pass rejects
+    # by node type — so the message has to point somewhere a plan can actually go.
+    assert "lambda" in problems[0]
+
+
+def test_a_playwright_assertion_is_named_by_its_root_and_not_its_last_link() -> None:
+    """`to_be_visible`/`to_have_text`/… is an open vocabulary; `expect` is the closed one."""
+    problems = lint_source(BANNED_CASES["playwright_expect"])
+    assert "`expect(...)`" in problems[0]
+
+
+def test_a_settle_is_flagged_wherever_it_sits_not_only_at_the_end() -> None:
+    """Position-independence is the correction: the round's canonical crash was mid-body."""
+    source = (
+        'row.wait_for(state="visible")\n'
+        'qa.check("the row is the one that was written", row.count() == 1)\n'
+    )
+    problems = lint_source(source)
+    assert problems and problems[0].startswith("line 1:")
+
+
+def test_a_settle_used_as_a_value_is_left_alone() -> None:
+    """Handling the result is the opposite of betting the trial on it.
+
+    `expect_response` is deliberately not caught by the `expect` root-walk either — it is a
+    context manager that hands back a response, not an assertion that raises.
+    """
+    assert lint_source('handle = row.wait_for(state="visible")\n') == []
+    assert lint_source(
+        'with qa.page.expect_response("**/api/policies") as got:\n'
+        '    qa.by_role("button", name="Save").click()\n'
+    ) == []
+
+
+def test_the_settle_that_reads_is_what_the_rule_leaves_standing() -> None:
+    """A bound method satisfies `eventually`'s callable without a lambda."""
+    assert lint_source('qa.eventually("the row lands", row.is_visible, covers=["ac:1"])\n') == []
