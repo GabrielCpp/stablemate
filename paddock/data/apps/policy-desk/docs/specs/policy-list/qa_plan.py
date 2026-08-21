@@ -102,7 +102,7 @@ def register_browser(qa: Qa) -> None:
     qa.http.post("/api/policies", json_body=valid_policy("PN-1002", email="sam@example.com", coverage="home"), expect_status=201)
     qa.goto("/policies")
     table = qa.by_role("table", name="Policies on file")
-    table.wait_for(state="visible")
+    qa.eventually("the register draws its table of policies", table.is_visible)
     qa.vet("docs/features/policy/gui/screens/policy-list.md", name="register", components=["policy-table", "new-policy-link"])
     qa.screenshot("register")
     qa.verify("visible", table, locator="table:Policies on file", covers=["ac:2", "okf:docs/features/policy/gui/screens/policy-list.md:contract", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:contract", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:name:1", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:role:1"])
@@ -116,15 +116,15 @@ def register_browser(qa: Qa) -> None:
     new_link.focus()
     qa.page.keyboard.press("Enter")
     form = qa.by_css('form[aria-label="New policy"]')
-    form.wait_for(state="visible")
+    qa.eventually("the keyboard-operated entry opens the new-policy form", form.is_visible)
     qa.check("New policy is keyboard-operable and lands on the form as a client route", qa.page.url.endswith("/policies/new"), actual=qa.page.url, expected="/policies/new", covers=["ac:6", "okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:contract", "okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:keyboard:1"])
     qa.by_role("link", name="Policies").click()
-    table.wait_for(state="visible")
+    qa.eventually("navigating back reaches the register again", table.is_visible)
 
     qa.page.evaluate("() => { window.__qa_register_mounted = true; }")
     qa.by_role("link", name="PN-1001").click()
     detail = qa.by_css("dl")
-    detail.wait_for(state="visible")
+    qa.eventually("following a row reaches that policy's summary", detail.is_visible)
     qa.vet("docs/features/policy/gui/screens/policy-detail.md", name="opened-detail", components=["edit-policy-link"])
     qa.screenshot("opened-detail")
     qa.verify("visible", detail, locator="heading:Policy PN-1001", covers=["ac:5", "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:contract", "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:does:1", "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:keyboard:1", "okf:docs/features/policy/gui/screens/policy-detail.md:contract"])
@@ -136,7 +136,7 @@ def register_browser(qa: Qa) -> None:
     qa.check("the navigation region rides along to the detail screen", qa.by_role("link", name="New policy").is_visible() and qa.by_role("link", name="Policies").is_visible(), covers=["ac:6"])
 
     qa.goto("/policies/pn-1002")
-    detail.wait_for(state="visible")
+    qa.eventually("the deep link draws the summary on a fresh load", detail.is_visible)
     qa.check("a policy detail URL is a working deep link", "PN-1002" in qa.by_css("main h1").inner_text(), covers=["okf:docs/features/policy/gui/screens/policy-detail.md:contract"])
 
 
@@ -165,7 +165,7 @@ def register_empty_and_unreadable_browser(qa: Qa) -> None:
     qa.http.delete("/api/policies", expect_status=204)
     qa.goto("/policies")
     notice = qa.by_css("p.empty-notice")
-    notice.wait_for(state="visible")
+    qa.eventually("an empty register says so rather than drawing an empty table", notice.is_visible)
     qa.vet("docs/features/policy/gui/screens/policy-list.md", name="empty-register", components=["empty-register-notice"])
     qa.screenshot("empty-register")
     qa.verify("visible", notice, locator="text=No policies are on file yet", covers=["ac:3", "okf:docs/features/policy/gui/screens/policy-list.md:contract", "okf:docs/features/policy/gui/screens/policy-list.md#empty-register-notice:contract", "okf:docs/features/policy/gui/screens/policy-list.md#empty-register-notice:keyboard:1", "okf:docs/features/policy/gui/screens/policy-list.md#empty-register-notice:name:1", "okf:docs/features/policy/gui/screens/policy-list.md#empty-register-notice:role:1"])
@@ -173,7 +173,7 @@ def register_empty_and_unreadable_browser(qa: Qa) -> None:
 
     qa.http.post("/api/policies", json_body=valid_policy("PN-1001"), expect_status=201)
     table = qa.by_role("table", name="Policies on file")
-    table.wait_for(state="visible", timeout=20000)
+    qa.eventually("the register picks the new policy up", table.is_visible, timeout=20.0)
     qa.check("the timer re-read replaces the notice without a reload", table.is_visible() and notice.count() == 0, covers=["okf:docs/features/policy/gui/screens/policy-list.md#empty-register-notice:contract"])
 
     alert = qa.by_role("alert")
@@ -182,7 +182,7 @@ def register_empty_and_unreadable_browser(qa: Qa) -> None:
         route.abort()
 
     qa.page.route("**/api/policies", _abort_register_read)
-    alert.wait_for(state="visible", timeout=20000)
+    qa.eventually("the unreadable register raises an alert", alert.is_visible, timeout=20.0)
     qa.screenshot("register-unreadable")
     qa.verify("visible", alert, locator="alert", covers=["ac:4", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:contract", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:keyboard:1", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:name:1", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:role:1", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:states:1"])
     qa.check("the failed re-read is announced rather than leaving a stale empty table", alert.is_visible(), covers=["ac:4", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:contract", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:states:1"])
