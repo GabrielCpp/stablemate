@@ -17,8 +17,9 @@ first step and deleted after sealing. Three things follow, and they are the whol
 * uncommitted edits are **excluded** — a round measures committed state, and a dirty
   checkout is warned about rather than silently included;
 * the trial tree is not a git repository while the round runs — its git directory is
-  stashed beside it — so a round cannot commit into the toolchain at all, and `escaped`
-  says at seal whether it edited one anyway or built itself a repository to commit into.
+  stashed beside it — so a round cannot commit into the toolchain the ordinary way, and
+  `escaped` says at seal whether it edited the tree anyway, built itself a repository to
+  commit into, or found the stash and committed through that.
 
 A clone rather than a `git worktree`, and remoteless rather than merely detached, because
 a worktree of the live checkout shares its object store *and* its `origin`. One round
@@ -38,11 +39,14 @@ walking up. Without it, `git commit` in a work directory that happens to sit und
 other repository would quietly land there instead, which is the same defect one directory
 further out.
 
-None of this is a proof. An agent determined to `git init` can, and `escaped` reports that
-it did rather than preventing it; the barrier is aimed at the shape the incident actually
-had, which was an obedient agent following an instruction file written for a different
-context. Nothing at this layer stops a round from walking to the operator's checkout by
-absolute path either — that is a sandbox's job, not a benchmark harness's.
+None of this is a proof, and the stash is the clearest reason why: it sits one directory
+up from the round's own sandbox, so `ls ..` finds a whole repository, and `git init` gets
+past the fence for anyone who does not. Both are reported rather than prevented. The
+barrier is aimed at the shape the incident actually had — an obedient agent following an
+instruction file written for a different context — and the detector is aimed at everything
+past it, on the principle that a round which cannot be caught is worse than one which is
+merely caught late. Nothing at this layer stops a round from walking to the operator's
+checkout by absolute path either — that is a sandbox's job, not a benchmark harness's.
 
 The cost is one `uv sync` per run into the clone's own `.venv` (wheels come from uv's
 cache, so it is seconds, not a build) and the disk that venv takes until release. The
@@ -89,6 +93,10 @@ class Project:
     #: seal — not "did the remote move", which it does all day because other people are
     #: working, but "did it move while this round was making commits of its own".
     remote_refs: tuple[tuple[str, str], ...] = ()
+    #: Every ref in the *pin itself* and where it pointed at pin time. The fence stops a
+    #: round from committing in the pinned tree the obvious way; this is what notices when
+    #: it found the stashed git directory and committed through that instead.
+    pin_refs: tuple[tuple[str, str], ...] = ()
 
     def as_json(self) -> dict[str, object]:
         return {
@@ -119,7 +127,10 @@ def stashed_git_dir(pinned_path: Path) -> Path:
 
     Beside the pin rather than inside it, so that deleting the pin does not take the only
     record of what it was with it, and so that a round working inside the pin does not
-    find it by looking down.
+    find it by looking down. It does find it by looking *up*, and that is not fixable by
+    moving it — `_describe` and `escaped` both have to read through it, so it is
+    discoverable by construction. What answers the route is `escaped`, which asks this
+    directory at seal what the round did to it.
     """
     return pinned_path.parent / "project.git"
 
@@ -206,6 +217,9 @@ def pin(source: Path | None, *, work: Path, enabled: bool = True) -> Project | N
         )
         shutil.rmtree(dest, ignore_errors=True)
         return unpinned
+    # Asked while the clone is still a repository, because after the next three lines it
+    # is not one — and this is the state `escaped` compares against at seal.
+    pin_refs = _pairs(_git(*_REF_FORMAT, cwd=dest))
     stash = stashed_git_dir(dest)
     shutil.rmtree(stash, ignore_errors=True)
     (dest / ".git").rename(stash)
@@ -218,26 +232,52 @@ def pin(source: Path | None, *, work: Path, enabled: bool = True) -> Project | N
     logger.info("project pinned to %s at %s", dest, sha[:12])
     return Project(
         path=dest, source=source, head=sha, pinned=True, dirty=dirty,
-        git_dir=stash, remote_refs=refs,
+        git_dir=stash, remote_refs=refs, pin_refs=pin_refs,
     )
 
 
+#: Every ref, not a prefix: a round that made a branch, a tag or a note in the pin all
+#: answer the same question, and naming prefixes here is how one of them gets forgotten.
+_REF_FORMAT = ("for-each-ref", "--format=%(refname) %(objectname)")
+
+
+def _pairs(listed: subprocess.CompletedProcess[str]) -> tuple[tuple[str, str], ...]:
+    split = (line.split(" ", 1) for line in listed.stdout.splitlines() if " " in line)
+    return tuple(sorted((ref, sha) for ref, sha in split))
+
+
 def _remote_refs(repo: Path) -> tuple[tuple[str, str], ...]:
-    listed = _git("for-each-ref", "--format=%(refname) %(objectname)", "refs/remotes", cwd=repo)
-    pairs = (line.split(" ", 1) for line in listed.stdout.splitlines() if " " in line)
-    return tuple((ref, sha) for ref, sha in pairs)
+    return _pairs(_git(*_REF_FORMAT, "refs/remotes", cwd=repo))
 
 
 def escaped(project: Project | None) -> tuple[str, ...]:
     """Whether the round reached past its pin — asked while the pin still exists.
 
     The pin is fenced and has no remotes, so in the ordinary case this is silent and costs
-    two `git` calls. It exists because the fence is a barrier, not a proof: a round that
-    edited the toolchain, or built itself a repository to commit into, did something a
-    benchmark subject has no reason to do, and saying so in one line beats reconstructing
-    it later from four sessions' reflogs.
+    a handful of `git` calls. It exists because the fence is a barrier, not a proof: a
+    round that edited the toolchain, or built itself a repository to commit into, did
+    something a benchmark subject has no reason to do, and saying so in one line beats
+    reconstructing it later from four sessions' reflogs.
 
-    The second half is deliberately narrow. A moved `origin/main` is not evidence of
+    Three of its arms ask the *stashed* git directory rather than the pinned tree, and
+    they ask unconditionally. The fence takes away the obvious way to commit into the
+    toolchain; it does not take away the stash, which sits one directory up from the
+    round's own sandbox and is a whole repository to anyone who runs `ls ..`. A round that
+    committed through it leaves the fence intact and, if it committed rather than merely
+    edited, leaves the tree clean — so every check keyed on the fence or on `status` reads
+    that round as untouched. What it cannot leave alone is the repository: HEAD moves off
+    the pinned sha, or a ref appears, or — for the round that patched, ran the patch, and
+    reset back to look innocent — an object exists that the pinned sha does not reach.
+
+    The last of those is why the reflog is in the question. `--reflog --not <sha>` is what
+    survives a `reset --hard`, and the restore-to-innocence shape is otherwise the one
+    thing a HEAD comparison alone cannot see. A round that also expired the reflog would
+    get past it, and that is stated rather than fixed: the next rung down is always
+    reachable, and the honest place to stop is where each rung costs the round a more
+    deliberate act than the last. Deleting the stash outright is the far end of that
+    ladder, and it is the one shape here reported as its own caveat.
+
+    The final half is deliberately narrow. A moved `origin/main` is not evidence of
     anything — other people push to it while a round runs, which is the normal state of a
     shared repository. What is evidence is a move *during a round that was making commits
     of its own*, and that pairing is the only thing reported. Even then it is worded as
@@ -248,6 +288,14 @@ def escaped(project: Project | None) -> tuple[str, ...]:
     if project is None or not project.pinned or project.git_dir is None:
         return ()
     caveats = []
+
+    if not project.git_dir.is_dir():
+        # Everything below reads through the stash, so its absence is not a quiet
+        # degradation to "clean" — it is the one move that turns every other arm off.
+        return (
+            f"{SELF_TOUCHED}the git directory paddock stashed beside the pin is gone, so "
+            f"nothing here can say what the round did to the toolchain it was measured on",
+        )
 
     fence = project.path / ".git"
     standing = fence.is_file() and fence.read_text(encoding="utf-8") == FENCE_GITFILE
@@ -269,6 +317,38 @@ def escaped(project: Project | None) -> tuple[str, ...]:
         caveats.append(
             f"{SELF_TOUCHED}the round edited {len(edited)} file(s) of the toolchain it was "
             f"being measured on, so the code it ran is not the sha in this ledger"
+        )
+
+    at = read(project, "rev-parse", "HEAD").stdout.strip()
+    head_moved = bool(at) and at != project.head
+    if head_moved:
+        caveats.append(
+            f"{SELF_TOUCHED}the round moved the pin's HEAD from {project.head[:12]} to "
+            f"{at[:12]} — it committed into the toolchain through the git directory "
+            f"stashed beside it"
+        )
+
+    now = _pairs(read(project, *_REF_FORMAT))
+    appeared = sorted(set(now) - set(project.pin_refs))
+    if appeared:
+        caveats.append(
+            f"{SELF_TOUCHED}the round put {', '.join(ref for ref, _ in appeared)} in the "
+            f"pin, which was cloned with the refs it was pinned at and nothing else"
+        )
+
+    # Survives the `reset --hard` that puts HEAD and every ref back where they were: the
+    # objects the round built stay reachable from the reflog, and nothing else in a pin
+    # nobody fetches into can make a commit the pinned sha does not reach.
+    orphaned = read(
+        project, "rev-list", "--all", "--reflog", "--not", project.head
+    ).stdout.split()
+    # Only when HEAD is back where it started; otherwise the line above already said it,
+    # and two caveats for one act read as two acts.
+    if orphaned and not head_moved:
+        caveats.append(
+            f"{SELF_TOUCHED}the pin holds {len(orphaned)} commit(s) that {project.head[:12]} "
+            f"does not reach, so the round built and then unwound something in the "
+            f"toolchain it was being measured on"
         )
 
     if standing:

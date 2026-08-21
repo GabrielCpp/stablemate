@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -253,3 +254,95 @@ def test_an_unpinned_run_is_not_asked(repo: Path, tmp_path: Path) -> None:
     unpinned = project_mod.pin(repo, work=tmp_path / "work", enabled=False)
     assert project_mod.escaped(unpinned) == ()
     assert project_mod.escaped(None) == ()
+
+
+# The stash the fence creates is itself a route, and these four are what notices it.
+#
+# `.git` is renamed aside rather than deleted so the round can still be *asked* about
+# afterwards, and where it goes is one directory up from the round's own sandbox. That
+# makes it a whole repository to anyone who runs `ls ..` — and a round that commits
+# through it leaves the fence byte-identical and, once committed, leaves the tree clean.
+# Every check keyed on the fence or on `status` reads that round as untouched. So the
+# three arms below ask the stash instead, and the fourth covers the move that would
+# otherwise switch all of them off at once.
+
+
+def stash_git(pinned: project_mod.Project, *args: str) -> None:
+    subprocess.run(
+        ["git", "--git-dir", str(pinned.git_dir), "--work-tree", str(pinned.path), *args],
+        cwd=str(pinned.path), check=True,
+    )
+
+
+def test_a_round_that_commits_through_the_stashed_git_dir_says_so(
+    repo: Path, tmp_path: Path
+) -> None:
+    pinned = project_mod.pin(repo, work=tmp_path / "work")
+    assert pinned is not None
+    (pinned.path / "patched.py").write_text("x = 1\n", encoding="utf-8")
+    stash_git(pinned, "add", "-A")
+    stash_git(pinned, "commit", "-q", "-m", "patched the toolchain mid-round")
+
+    # The point of the test: after the commit the fence stands and the tree is clean, so
+    # the two older arms both say nothing.
+    assert (pinned.path / ".git").read_text(encoding="utf-8") == project_mod.FENCE_GITFILE
+    caveats = project_mod.escaped(pinned)
+
+    assert len(caveats) == 1
+    assert caveats[0].startswith(project_mod.SELF_TOUCHED)
+    assert "moved the pin's HEAD" in caveats[0]
+    project_mod.release(pinned)
+
+
+def test_a_round_that_unwinds_its_own_commit_still_says_so(repo: Path, tmp_path: Path) -> None:
+    """The restore-to-innocence shape: patch, run the patched toolchain for an hour, then
+    `reset --hard` back to the pinned sha so HEAD, the refs and the tree all match again.
+
+    A HEAD comparison alone cannot see it. The objects can — nothing else in a pin nobody
+    fetches into makes a commit the pinned sha does not reach, and `--reflog` is what
+    keeps them reachable across the reset.
+    """
+    pinned = project_mod.pin(repo, work=tmp_path / "work")
+    assert pinned is not None
+    (pinned.path / "patched.py").write_text("x = 1\n", encoding="utf-8")
+    stash_git(pinned, "add", "-A")
+    stash_git(pinned, "commit", "-q", "-m", "patched")
+    stash_git(pinned, "reset", "-q", "--hard", pinned.head)
+
+    caveats = project_mod.escaped(pinned)
+
+    assert len(caveats) == 1
+    assert "does not reach" in caveats[0] and "unwound" in caveats[0]
+    project_mod.release(pinned)
+
+
+def test_a_ref_the_round_made_in_its_pin_says_so(repo: Path, tmp_path: Path) -> None:
+    # Every ref, not a prefix: a branch, a tag and a note all answer the same question,
+    # and naming prefixes is how one of them gets forgotten.
+    pinned = project_mod.pin(repo, work=tmp_path / "work")
+    assert pinned is not None
+    stash_git(pinned, "branch", "mine")
+
+    caveats = project_mod.escaped(pinned)
+
+    assert len(caveats) == 1
+    assert "refs/heads/mine" in caveats[0]
+    project_mod.release(pinned)
+
+
+def test_a_stash_that_is_gone_is_reported_rather_than_read_as_clean(
+    repo: Path, tmp_path: Path
+) -> None:
+    # The move that would otherwise turn every arm above off at once: with nothing to read
+    # through, each git call fails, each answer comes back empty, and a round that deleted
+    # the evidence would seal as the quietest one of the day.
+    pinned = project_mod.pin(repo, work=tmp_path / "work")
+    assert pinned is not None and pinned.git_dir is not None
+    shutil.rmtree(pinned.git_dir)
+
+    caveats = project_mod.escaped(pinned)
+
+    assert len(caveats) == 1
+    assert caveats[0].startswith(project_mod.SELF_TOUCHED)
+    assert "nothing here can say what the round did" in caveats[0]
+    project_mod.release(pinned)

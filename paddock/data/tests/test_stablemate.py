@@ -146,3 +146,23 @@ def test_what_was_already_dirty_is_not_this_rounds_doing(toolchain: Path) -> Non
     (toolchain / "README.md").write_text("already edited\n", encoding="utf-8")
     with sm.no_leaks(toolchain):
         pass
+
+
+def test_a_round_that_committed_its_patch_cannot_hide_behind_a_clean_tree(
+    toolchain: Path,
+) -> None:
+    """The evasion `status`-only leak detection has: patch, commit, and the tree is clean.
+
+    The pin is fenced, but the git directory paddock stashed beside it is one `ls ..` from
+    the sandbox — so the commit is available to a round that goes looking, and this is the
+    trial-level half of noticing it. Round-level `escaped` says the round did it; this
+    says which trial.
+    """
+    stash = project_mod.stashed_git_dir(toolchain)
+    where = ["--git-dir", str(stash), "--work-tree", str(toolchain)]
+    with pytest.raises(sm.TrialError, match="instead of its sandboxes"):  # noqa: PT012 - the cm is the subject
+        with sm.no_leaks(toolchain):
+            (toolchain / "patched.py").write_text("x = 1\n", encoding="utf-8")
+            for args in (["add", "-A"], ["commit", "-q", "-m", "patched"]):
+                subprocess.run(["git", *where, *args], cwd=str(toolchain), check=True)  # noqa: S603, S607 - git, fixed args
+            assert not sm.git(*where, "status", "--porcelain", cwd=toolchain).strip()  # noqa: S101 - the premise

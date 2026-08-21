@@ -34,16 +34,24 @@ def git(*args: str, cwd: Path) -> str:
 
 
 def _describe(checkout: Path) -> list[str]:
-    """What the toolchain tree looks like right now, as `git status --porcelain` lines.
+    """What the toolchain looks like right now: its `git status --porcelain` lines, and
+    the commit it is sitting on.
 
     Read through the git directory paddock stashed beside the pin, because the pin itself
     is fenced off from git: a bare `git -C` there fails with the fence's error, which is
     the right answer to a write and the wrong one to a question. Falls back to reading the
     tree directly for an unpinned run, where the fence does not exist.
+
+    HEAD is in the description rather than only in `escaped`'s round-level check because
+    committing is how an edit stops showing up in `status`: patch, commit, and the tree is
+    clean again. Asking per trial is what names *which* trial did it, which is the whole
+    reason a trial-level check exists next to a round-level one.
     """
     stashed = project.stashed_git_dir(checkout)
     where = ["--git-dir", str(stashed), "--work-tree", str(checkout)] if stashed.is_dir() else []
-    return [line for line in git(*where, "status", "--porcelain", cwd=checkout).splitlines() if line]
+    lines = [line for line in git(*where, "status", "--porcelain", cwd=checkout).splitlines() if line]
+    head = git(*where, "rev-parse", "HEAD", cwd=checkout).strip()
+    return [*lines, f"committed — HEAD is now {head}"]
 
 
 @contextmanager
@@ -54,10 +62,13 @@ def no_leaks(checkout: Path) -> Iterator[None]:
     wrote the work there, which means the tree the round was measured on is not the tree
     it ran — every number it produced is void.
 
-    Written state rather than commits, now that the pin is fenced and a commit needs a
-    repository the round would have to build first. That is the stricter question anyway:
-    the round that patched the toolchain and never committed spent its remaining hours
-    running the patch, and a leak check keyed on `git log` called that clean.
+    Written state *and* the commit the toolchain sits on, because each covers the other's
+    blind spot. A check keyed only on `git log` calls the round that patched the toolchain
+    and never committed clean, and that round spent its remaining hours running the patch.
+    A check keyed only on `status` calls the round that patched and then committed clean,
+    because committing is what makes an edit stop showing up there — and the pin is fenced
+    but the git directory paddock stashed beside it is one `ls ..` from the sandbox, so
+    that commit is available to a round that goes looking.
 
     Read against the tree paddock pinned for this round, which nobody else writes to, so a
     change here is a leak by construction rather than by heuristic and an operator editing
