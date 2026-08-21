@@ -8,6 +8,7 @@ title: Claims API
 - code: app/api/main.go
 - code: app/api/authz.go
 - code: app/api/service.go
+- code: app/api/openapi.yml
 - openapi: app/api/openapi.yml
 
 The claims API is the whole of the product: there is no client. A holder files a

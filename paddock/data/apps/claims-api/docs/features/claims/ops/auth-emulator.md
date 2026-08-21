@@ -6,7 +6,6 @@ title: Local auth emulator
 # Local auth emulator
 
 - selector: the default and only environment; the compose stack is the whole of it.
-- local-only: true
 - services:
   - claims-api: `http://localhost:18085` — the service under test, published from the `app` container.
   - auth: `http://localhost:18086` — the Firebase Auth emulator's REST surface, published from the
@@ -19,6 +18,11 @@ title: Local auth emulator
   - seeded identities: `holder-a@example.com` and `holder-b@example.com` as holders, and
     `adjuster@example.com` carrying the custom claim `role: adjuster`, all created by a one-shot
     `seed` service the API waits on.
+- local-only: true
+- code: compose.yml
+- code: auth/firebase.json
+- code: auth/.firebaserc
+- code: auth/seed.mjs
 
 There is no credential anywhere in this stack, and that is the point rather than a shortcut. The
 emulator mints identities for anyone who asks — `accounts:signUp` accepts any string as its API key
