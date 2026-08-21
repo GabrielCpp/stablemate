@@ -10,7 +10,7 @@
 #   - saddlebag/  -> saddlebag        (runtime credential pool: scan, select,
 #                                       lease and release test identities)
 #   - paddock/    -> paddock          (the benchmark harness: seeds, tasks, results —
-#                                       benchmarks/ is its data)
+#                                       paddock/data/ is its data)
 #   - core/       -> (no distribution)  (shared plumbing: the home config, base-library
 #                                       discovery, the base-library cache. A member so it
 #                                       can be tested and imported in a checkout, but it
@@ -140,5 +140,5 @@ exclude = [
     # import from the repo venv, and "fixing" it would mean changing how every user
     # repo's plans import the harness. The plans are still linted by ruff and executed
     # live by the benchmark itself, which is the check that actually binds.
-    "benchmarks/apps/*/docs/specs/*/qa_plan.py",
+    "paddock/data/apps/*/docs/specs/*/qa_plan.py",
 ]

@@ -105,7 +105,7 @@ port in its backlog's surface list, and no two suites share one — `expense-spl
 `link-shortener` api 18081, `bookmarks` api 18082 and web 18092. A new suite takes the next
 free number in the range and writes it down the same way.
 
-The frozen apps under [`benchmarks/apps/`](../apps/README.md) draw from the same range and are
+The frozen apps under [`data/apps/`](../apps/README.md) draw from the same range and are
 registered here for the same reason, even though they are not suites: `seat-booking` 18083 and
 `policy-desk` 18084. A fixture that measures QA and a suite that builds an app can easily be
 running at the same moment on one machine.

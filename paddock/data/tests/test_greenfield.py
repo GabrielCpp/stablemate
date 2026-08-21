@@ -36,21 +36,21 @@ from paddock.registry import REGISTRY
 from paddock.pointer import Pointer
 from paddock.runner import Run
 
-BENCHMARKS = Path(__file__).parents[1]
+DATA = Path(__file__).parents[1]
 
 
 @contextlib.contextmanager
 def _tasks_dir_on_path() -> Iterator[None]:
     """Stand in for the interpreter, exactly as `paddock.loader` does."""
     saved = sys.path[:]
-    sys.path.insert(0, str(BENCHMARKS / "tasks"))
+    sys.path.insert(0, str(DATA / "tasks"))
     try:
         yield
     finally:
         sys.path[:] = saved
 
 
-_spec = importlib.util.spec_from_file_location("_greenfield", BENCHMARKS / "tasks" / "_greenfield.py")
+_spec = importlib.util.spec_from_file_location("_greenfield", DATA / "tasks" / "_greenfield.py")
 assert _spec is not None and _spec.loader is not None  # noqa: S101 - a real file on disk
 gf = importlib.util.module_from_spec(_spec)
 with _tasks_dir_on_path():
@@ -82,7 +82,7 @@ def run(tmp_path: Path) -> Run:
     (data_dir / "docs" / "backlog.md").write_text(BACKLOG, encoding="utf-8")
     (tmp_path / "repo").mkdir()
     return Run(
-        task=loader.load_path(BENCHMARKS / "tasks" / "link_shortener.py"),
+        task=loader.load_path(DATA / "tasks" / "link_shortener.py"),
         label="t1",
         stage=tmp_path / "stage",
         repo=tmp_path / "repo",
@@ -162,7 +162,7 @@ def fake_judge(response: str) -> Any:
 
 
 def judge(run: Run, bullet: dict[str, Any], response: str) -> dict[str, Any]:
-    rubric = (BENCHMARKS / "rubric.md").read_text(encoding="utf-8")
+    rubric = (DATA / "rubric.md").read_text(encoding="utf-8")
     return gf.judge_one(fake_judge(response), bullet, rubric, run.repo)
 
 
@@ -215,7 +215,7 @@ def test_rubric_placeholders_are_all_filled(run: Run, fixture: Any) -> None:
     add_epic(run.repo, "core", ["todo-create"], {"api-create": "QA passed"})
     bullet = next(b for b in gf.trace_bullets(run, fixture) if b["id"] == "todo-create")
     judging = fake_judge(json.dumps({"level": 0, "evidence": [], "reason": "x"}))
-    rubric = (BENCHMARKS / "rubric.md").read_text(encoding="utf-8")
+    rubric = (DATA / "rubric.md").read_text(encoding="utf-8")
 
     gf.judge_one(judging, bullet, rubric, run.repo)
     prompt = judging.backend.prompts[0]
@@ -255,7 +255,7 @@ def test_every_greenfield_task_carries_a_backlog_with_bullets() -> None:
     """A backlog that moved or lost its `- [id] …` bullets scores every bullet absent, and
     it does so quietly: the round still runs and the report still prints."""
     found = 0
-    for path in loader.task_paths(BENCHMARKS):
+    for path in loader.task_paths(DATA):
         spec = importlib.util.spec_from_file_location(f"_probe_{path.stem}", path)
         assert spec is not None and spec.loader is not None  # noqa: S101 - a real file on disk
         module = importlib.util.module_from_spec(spec)
@@ -273,14 +273,14 @@ def test_every_greenfield_task_carries_a_backlog_with_bullets() -> None:
         if not isinstance(declared, gf.Fixture):
             continue
         found += 1
-        backlog = BENCHMARKS / declared.backlog
+        backlog = DATA / declared.backlog
         assert backlog.is_file(), f"{path.name}: no backlog at {backlog}"
         assert gf.parse_backlog(backlog), f"{path.name}: backlog has no `- [id] …` bullets"
         if declared.decisions:
             # The sheet versions with the seed and `check_public.py` scans it, both of which
-            # need it to be a real tracked file under `benchmarks/` — and a task that names
+            # need it to be a real tracked file under `paddock/data/` — and a task that names
             # one it does not have parks every round on a gate it thinks it has answered.
-            sheet = BENCHMARKS / declared.decisions
+            sheet = DATA / declared.decisions
             assert sheet.is_file(), f"{path.name}: no decision sheet at {sheet}"
     assert found, "no greenfield task declares a Fixture — the backlog-driven half is gone"
 

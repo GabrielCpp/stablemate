@@ -7,7 +7,7 @@
 #
 # `obligation` is the OKF id the defect makes false, and `expect` is an **evidence-map
 # status** rather than a prose verdict, so scoring is a lookup rather than a reading of the
-# QA report. Every id here is minted by the book as it stands — `benchmarks/tests/` asserts
+# QA report. Every id here is minted by the book as it stands — `paddock/data/tests/` asserts
 # that, because an id that stops resolving turns a scored row into a permanent miss.
 #
 # `caught_by` is the route the defect is *expected* to travel, recorded so a surprise is

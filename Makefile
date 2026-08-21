@@ -77,7 +77,6 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) -C groom test
 	$(MAKE) -C saddlebag test
 	$(MAKE) -C paddock test
-	$(MAKE) test-bench
 	$(MAKE) test-scripts
 	$(MAKE) check-public
 	$(MAKE) check-no-env
@@ -89,12 +88,6 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) check-agent-outputs
 	$(MAKE) check-skills
 	$(MAKE) check-vendor
-
-.PHONY: test-bench
-test-bench: ## Run the benchmark harness's own tests (its scoring must be trustworthy)
-	# A benchmark whose scoring is wrong is worse than no benchmark: it reports a number
-	# that nobody re-derives. These cover the properties that number rests on.
-	uv run pytest benchmarks/tests -q
 
 .PHONY: bench-doctor
 bench-doctor: ## Measure `ostler doctor` against a book: make bench-doctor DOCS=<path> [JSON=1]

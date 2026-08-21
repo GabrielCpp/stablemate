@@ -28,9 +28,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-BENCHMARKS = Path(__file__).parents[1]
+DATA = Path(__file__).parents[1]
 APPS = sorted(
-    p.parent for p in (BENCHMARKS / "apps").glob("*/agents.yml") if p.parent.is_dir()
+    p.parent for p in (DATA / "apps").glob("*/agents.yml") if p.parent.is_dir()
 )
 
 
@@ -68,7 +68,7 @@ def test_a_frozen_persistence_plan_pulls_the_seam(app: Path) -> None:
         pytest.skip(f"{app.name}'s frozen plans cover no persistence obligation")
     for plan in owning:
         assert "qa.tool(" in plan.read_text(encoding="utf-8"), (
-            f"{plan.relative_to(BENCHMARKS)} covers a persistence obligation without ever "
+            f"{plan.relative_to(DATA)} covers a persistence obligation without ever "
             "calling `qa.tool(` — every read is request-scoped, so the restart-survival "
             "promise is asserted against process memory and the P8-class variant passes"
         )

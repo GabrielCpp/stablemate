@@ -7,8 +7,17 @@ tasks, results.
 unpack a seed  ->  run the steps  ->  stage the result  ->  (score it)
 ```
 
-`benchmarks/` is this tool's data — task modules, pointer files, config TOMLs and the
-frozen application material tasks reference. `paddock` is the code that runs them.
+[`data/`](data/README.md) is this tool's data — task modules and their tests, pointer
+files, config TOMLs and the frozen application material tasks reference. `paddock/` beside
+it is the code that runs them.
+
+`data/` is not "the part with no code in it": the task modules under `data/tasks/` are
+Python, and so are the tests under `data/tests/` that hold them honest. The split is by
+*subject*, not by language — what a round measures lives in `data/`, and the machinery
+that unpacks, drives, stages and seals a round lives in the package. It is a sibling of
+the package rather than a subdirectory because `[tool.hatch.build]` names the inner
+`paddock` directory: a sibling `data/` ships in no wheel and no sdist, which is what keeps
+a hundred-odd fixture files out of every install of the tool.
 
 ## The four nouns
 
@@ -17,7 +26,7 @@ capture, the working tree exactly as it was (uncommitted edits and all), and the
 farrier-installed layer already in place. "The repo can be in different states" is not a
 schema; it is *when you captured the zip*.
 
-**Task** — a Python module under `benchmarks/tasks/<name>.py` naming a seed, a stablemate
+**Task** — a Python module under `data/tasks/<name>.py` naming a seed, a stablemate
 config, an ordered list of steps and (optionally) a score function.
 
 **Result** — the staged after-state: the mutated repo, each step's artifacts, and a
@@ -60,8 +69,8 @@ from paddock import Score, step, task
 
 task(
     name="policy-desk-qa",
-    seed="policy-desk",                          # benchmarks/seeds/policy-desk.toml
-    config="benchmarks/configs/opencode.toml",   # a full stablemate config, tracked
+    seed="policy-desk",                # data/seeds/policy-desk.toml
+    config="configs/opencode.toml",    # a full stablemate config, tracked, under data/
 )
 
 @step()

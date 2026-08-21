@@ -19,11 +19,17 @@ install: ## Create/sync the workspace venv from the root uv.lock
 	uv sync
 
 .PHONY: test
-test: ## Run the test suite
+test: ## Run the test suite — the harness's tests and the data's, in one pass
 	# pytest, not a `python tests/test_*.py` loop: these tests are pytest-style
 	# (fixtures, tmp_path) with no __main__ runner — see ostler/Makefile for the
 	# incident that comment records.
-	uv run --extra test pytest tests -q
+	#
+	# Two roots, one invocation. `tests/` covers the harness; `data/tests/` covers the
+	# task modules and the fixtures they score against — a benchmark whose scoring is
+	# wrong is worse than no benchmark, because it reports a number nobody re-derives.
+	# They are named together rather than split across two targets so there is no way to
+	# run "paddock's tests" and have skipped half of what a round rests on.
+	uv run --extra test pytest tests data/tests -q
 
 .PHONY: build
 build: clean ## Build sdist + wheel into this package's dist/

@@ -40,14 +40,14 @@ import pytest
 from paddock.registry import REGISTRY
 import yaml
 
-BENCHMARKS = Path(__file__).parents[1]
-APP = BENCHMARKS / "apps" / "policy-desk"
+DATA = Path(__file__).parents[1]
+APP = DATA / "apps" / "policy-desk"
 
 @contextlib.contextmanager
 def _tasks_dir_on_path() -> Iterator[None]:
     """Stand in for the interpreter, exactly as `paddock.loader` does when it loads a task."""
     saved = sys.path[:]
-    sys.path.insert(0, str(BENCHMARKS / "tasks"))
+    sys.path.insert(0, str(DATA / "tasks"))
     try:
         yield
     finally:
@@ -69,8 +69,8 @@ def _load(name: str, path: Path) -> ModuleType:
     return module
 
 
-frozen = _load("_frozenapp", BENCHMARKS / "tasks" / "_frozenapp.py")
-TASK = _load("_task_under_test", BENCHMARKS / "tasks" / "policy_desk_qa.py")
+frozen = _load("_frozenapp", DATA / "tasks" / "_frozenapp.py")
+TASK = _load("_task_under_test", DATA / "tasks" / "policy_desk_qa.py")
 
 #: Replay order, which is also dependency order: nothing can be listed or amended until a
 #: policy can be put on file. The pre/post chain below is asserted in this order.
@@ -129,7 +129,7 @@ def test_the_task_points_at_the_app_and_names_the_trial_dir() -> None:
     rather than from a hand-written list, so the fixture has no order to get wrong. What it
     still has to get right is the two paths.
     """
-    assert BENCHMARKS / TASK.FIXTURE.app == APP
+    assert DATA / TASK.FIXTURE.app == APP
     # farrier derives generated skill names from the basename; anything else dangles.
     assert TASK.FIXTURE.repo_dir == "policy-desk"
     assert {row["story"] for row in defects()} <= set(STORIES)

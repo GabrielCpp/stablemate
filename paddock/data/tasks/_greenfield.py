@@ -254,7 +254,7 @@ def seed_backlog(run: Run, fixture: Fixture) -> None:
     """
     source = run.data_dir / fixture.backlog
     if not source.is_file():
-        raise TrialError(f"no backlog at {source} — is --data-dir the repo's benchmarks/?")
+        raise TrialError(f"no backlog at {source} — is --data-dir the repo's paddock/data/?")
     destination = run.repo / fixture.backlog_path
     if not destination.parent.is_dir():
         raise TrialError(f"no {destination.parent} — genesis did not scaffold the docs tree")
@@ -343,7 +343,7 @@ def decision_sheet(run: Run, fixture: Fixture) -> tuple[str, str] | None:
         return None
     source = run.data_dir / fixture.decisions
     if not source.is_file():
-        raise TrialError(f"no decision sheet at {source} — is --data-dir the repo's benchmarks/?")
+        raise TrialError(f"no decision sheet at {source} — is --data-dir the repo's paddock/data/?")
     text = source.read_text(encoding="utf-8")
     return text, hashlib.sha256(text.encode("utf-8")).hexdigest()
 

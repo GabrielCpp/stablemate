@@ -306,7 +306,11 @@ def execute(
     pointer = Pointer.load(paths.seed_pointer(data_dir, task.seed))
     repo = seeds.unpack(pointer, store=store, dest=stage, project=driven)
 
-    config = (data_dir.parent / task.config) if not Path(task.config).is_absolute() else Path(task.config)
+    # Relative to the *data* dir, not to the repo root: a config is data, it lives
+    # beside the tasks that pin it, and a task that named its own root would break the
+    # moment that root moved — which it has.
+    config = Path(task.config)
+    config = config if config.is_absolute() else data_dir / config
     config = config.resolve()
     if not config.is_file():
         raise RunError(f"task {task.name!r}: config {config} does not exist")

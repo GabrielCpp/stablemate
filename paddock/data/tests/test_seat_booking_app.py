@@ -34,14 +34,14 @@ import pytest
 from paddock.registry import REGISTRY
 import yaml
 
-BENCHMARKS = Path(__file__).parents[1]
-APP = BENCHMARKS / "apps" / "seat-booking"
+DATA = Path(__file__).parents[1]
+APP = DATA / "apps" / "seat-booking"
 
 @contextlib.contextmanager
 def _tasks_dir_on_path() -> Iterator[None]:
     """Stand in for the interpreter, exactly as `paddock.loader` does when it loads a task."""
     saved = sys.path[:]
-    sys.path.insert(0, str(BENCHMARKS / "tasks"))
+    sys.path.insert(0, str(DATA / "tasks"))
     try:
         yield
     finally:
@@ -66,10 +66,10 @@ def _load(name: str, path: Path) -> ModuleType:
 # `_stablemate` first: the modules below import it by name, and a second instance loaded
 # afterwards would shadow it — leaving this file's `sm.TrialError` a different class from
 # the one the code under test raises, and every `pytest.raises` on it a false negative.
-sm = _load("_stablemate", BENCHMARKS / "tasks" / "_stablemate.py")
-fx = _load("_forensics", BENCHMARKS / "tasks" / "_forensics.py")
-frozen = _load("_frozenapp", BENCHMARKS / "tasks" / "_frozenapp.py")
-TASK = _load("_task_under_test", BENCHMARKS / "tasks" / "seat_booking_qa.py")
+sm = _load("_stablemate", DATA / "tasks" / "_stablemate.py")
+fx = _load("_forensics", DATA / "tasks" / "_forensics.py")
+frozen = _load("_frozenapp", DATA / "tasks" / "_frozenapp.py")
+TASK = _load("_task_under_test", DATA / "tasks" / "seat_booking_qa.py")
 
 STORIES = ("seat-map", "seat-hold", "confirm-booking")
 
@@ -549,7 +549,7 @@ def test_the_task_points_at_the_app_and_names_the_trial_dir() -> None:
     rather than from a hand-written list, so the fixture has no order to get wrong. What it
     still has to get right is the two paths.
     """
-    assert BENCHMARKS / TASK.FIXTURE.app == APP
+    assert DATA / TASK.FIXTURE.app == APP
     # farrier derives generated skill names from the basename; anything else dangles.
     assert TASK.FIXTURE.repo_dir == "seat-booking"
     assert {row["story"] for row in defects()} <= set(STORIES)

@@ -833,7 +833,7 @@ def key_dir(run: Run, fixture: Fixture) -> Path:
     """
     directory = run.data_dir / fixture.app
     if not (directory / "defects.yml").is_file():
-        raise TrialError(f"no answer key under {directory} — is --data-dir the repo's benchmarks/?")
+        raise TrialError(f"no answer key under {directory} — is --data-dir the repo's paddock/data/?")
     return directory
 
 

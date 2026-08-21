@@ -11,7 +11,7 @@ A task module imports the two declaration helpers from here:
 ```python
 from paddock import Score, step, task
 
-task(name="policy-desk-qa", seed="policy-desk", config="benchmarks/configs/opencode.toml")
+task(name="policy-desk-qa", seed="policy-desk", config="configs/opencode.toml")
 
 @step()
 def run_qa(run):

@@ -1,4 +1,4 @@
-# benchmarks
+# `paddock/data/` — what the rounds measure
 
 How good is the output of an agent workflow? This directory answers that with one number.
 
@@ -6,10 +6,25 @@ How good is the output of an agent workflow? This directory answers that with on
 uv run paddock run link-shortener --label smoke
 ```
 
-This is **data**, not a harness: task modules, backlogs, frozen apps, config TOMLs and
-pointer files. The code that runs them is [`paddock`](../paddock/README.md) — how a round
-unpacks a seed, drives the steps, stages the result and seals it is that tool's README,
-and is not repeated here. What follows is what the tasks *measure*.
+This is the **tracked, versioned half of the harness** — the half `--data-dir` points at.
+It holds task modules, backlogs, decision sheets, frozen apps, config TOMLs, pointer files
+and the tests that keep all of it honest.
+
+It is deliberately *not* described as "the part with no code in it". The task modules under
+[`tasks/`](tasks/) are Python — they declare surfaces, scaffolds, repo gates and the pinned
+judge — and [`tests/`](tests/) is Python too, asserting the properties every published
+number rests on. `make -C paddock test` runs those tests and the harness's in one
+invocation, because a benchmark whose scoring is wrong is worse than no benchmark: it
+reports a figure nobody re-derives.
+
+The split from [`paddock/`](../README.md) beside it is by *subject*, not by language. What a
+round measures lives here; the machinery that unpacks a seed, drives the steps, stages the
+result and seals it lives in the package, and its README is not repeated here. Living
+beside the package rather than inside it is also what keeps this material out of every
+install: `[tool.hatch.build]` names the inner `paddock` directory, so a sibling `data/`
+ships in no wheel and no sdist.
+
+What follows is what the tasks *measure*.
 
 ## The idea
 

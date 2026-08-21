@@ -21,8 +21,8 @@ from types import ModuleType
 import pytest
 import yaml
 
-BENCHMARKS = Path(__file__).parents[1]
-APP = BENCHMARKS / "apps" / "policy-desk"
+DATA = Path(__file__).parents[1]
+APP = DATA / "apps" / "policy-desk"
 
 
 @contextlib.contextmanager
@@ -34,7 +34,7 @@ def _tasks_dir_on_path() -> Iterator[None]:
     would, and take it off again.
     """
     saved = sys.path[:]
-    sys.path.insert(0, str(BENCHMARKS / "tasks"))
+    sys.path.insert(0, str(DATA / "tasks"))
     try:
         yield
     finally:
@@ -42,7 +42,7 @@ def _tasks_dir_on_path() -> Iterator[None]:
 
 
 def _load_frozenapp() -> ModuleType:
-    path = BENCHMARKS / "tasks" / "_frozenapp.py"
+    path = DATA / "tasks" / "_frozenapp.py"
     spec = importlib.util.spec_from_file_location("_frozenapp", path)
     assert spec is not None and spec.loader is not None  # noqa: S101 - a real file on disk
     module = importlib.util.module_from_spec(spec)

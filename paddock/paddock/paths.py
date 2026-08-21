@@ -2,7 +2,7 @@
 
 Two roots, deliberately apart:
 
-* the **data root** — `benchmarks/` in this repo — is tracked and small: task modules,
+* the **data root** — `paddock/data/` in this repo — is tracked and small: task modules,
   config TOMLs, pointer TOMLs, and the reference material a score function reads.
 * the **store** is untracked and large: the seed and result zips themselves, plus the
   work directory a run stages into.
@@ -18,7 +18,10 @@ from __future__ import annotations
 from pathlib import Path
 
 #: The tracked data directory this repo keeps its tasks in, relative to the repo root.
-DATA_DIRNAME = "benchmarks"
+#: Beside the package rather than inside it: `[tool.hatch.build]` names the inner
+#: `paddock` directory, so a sibling `data/` ships in no wheel and no sdist — which is
+#: what keeps a hundred-odd fixture files out of every install of the tool.
+DATA_DIRNAME = "paddock/data"
 
 #: Off `/tmp`, which does not survive a reboot. A fixture that evaporates is not a
 #: fixture — the same reason the retired replay harness kept its bundles here.

@@ -1,6 +1,6 @@
 """Import a task module and freeze what it declared.
 
-Task modules live under `benchmarks/tasks/` as loose files rather than as a package: they
+Task modules live under `paddock/data/tasks/` as loose files rather than as a package: they
 are data belonging to the repo being benchmarked, not code shipped with paddock, and the
 data directory is selectable with `--data-dir`. So they are loaded by path, each under a
 private module name, with the registry reset around the import.

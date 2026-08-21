@@ -40,7 +40,7 @@ from paddock import Run, Score, step, task
 task(
     name="expense-split",
     seed="expense-split",
-    config="benchmarks/configs/opencode.toml",
+    config="configs/opencode.toml",
 )
 
 

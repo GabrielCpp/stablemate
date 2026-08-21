@@ -23,7 +23,7 @@ from paddock import Run, Score, step, task
 task(
     name="link-shortener",
     seed="link-shortener",
-    config="benchmarks/configs/opencode.toml",
+    config="configs/opencode.toml",
 )
 
 FIXTURE = gf.Fixture(

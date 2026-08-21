@@ -25,7 +25,7 @@ from paddock import Run, Score, step, task
 task(
     name="policy-desk-qa",
     seed="policy-desk",
-    config="benchmarks/configs/opencode.toml",
+    config="configs/opencode.toml",
 )
 
 #: A Go API behind a React SPA — the shape the interesting leverage questions only arise

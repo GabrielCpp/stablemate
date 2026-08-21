@@ -14,7 +14,7 @@ from paddock.runner import RunError, execute
 TASK = '''
 from paddock import Score, step, task
 
-task(name="demo", seed="acme", config="benchmarks/configs/test.toml")
+task(name="demo", seed="acme", config="configs/test.toml")
 
 @step()
 def touch(run):
@@ -141,7 +141,7 @@ def test_no_seal_leaves_the_stage_and_writes_no_pointer(
 def test_a_missing_config_is_named_before_anything_runs(
     repo: Path, data_dir: Path, store: Path
 ) -> None:
-    body = TASK.replace("benchmarks/configs/test.toml", "benchmarks/configs/absent.toml")
+    body = TASK.replace("configs/test.toml", "configs/absent.toml")
     with pytest.raises(RunError, match="does not exist"):
         run(repo, data_dir, store, body)
 
@@ -149,7 +149,7 @@ def test_a_missing_config_is_named_before_anything_runs(
 PARAMS_TASK = '''
 from paddock import Score, step, task
 
-task(name="demo", seed="acme", config="benchmarks/configs/test.toml")
+task(name="demo", seed="acme", config="configs/test.toml")
 
 @step()
 def record(run):

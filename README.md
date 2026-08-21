@@ -53,7 +53,7 @@ And two directories that are **not** packages:
 | Directory | Role |
 | --- | --- |
 | [`base-library/`](base-library/) | The **base library**: the skills farrier renders, and the packs that select them. Plain data — `library/`, `packs/` — markdown and YAML, with nothing to import and no dependencies. Tools find it on disk, by path. |
-| [`benchmarks/`](benchmarks/) | Scores a workflow chain's output against a backlog of user-observable bullets — one number, comparable across runs. Run with `uv run paddock run <task>`. |
+| [`paddock/`](paddock/) | The one benchmark harness, and in [`paddock/data/`](paddock/data/README.md) the tasks it runs: a workflow chain's output scored against a backlog of user-observable bullets — one number, comparable across runs. Run with `uv run paddock run <task>`. |
 
 Library content resolves across two layers: the **base** (`base-library/`, above) and an
 optional private **overlay** that shadows it name-for-name. Point a repo at an overlay

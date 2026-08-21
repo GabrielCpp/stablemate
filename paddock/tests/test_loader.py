@@ -13,7 +13,7 @@ GOOD = '''
 """A task that does nothing, twice."""
 from paddock import Score, step, task
 
-task(name="demo", seed="acme", config="benchmarks/configs/test.toml")
+task(name="demo", seed="acme", config="configs/test.toml")
 
 @step()
 def first(run):

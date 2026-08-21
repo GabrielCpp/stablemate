@@ -28,21 +28,21 @@ from pathlib import Path
 
 import pytest
 
-BENCHMARKS = Path(__file__).parents[1]
+DATA = Path(__file__).parents[1]
 
 
 @contextlib.contextmanager
 def _tasks_dir_on_path() -> Iterator[None]:
     """Stand in for the interpreter, exactly as `paddock.loader` does."""
     saved = sys.path[:]
-    sys.path.insert(0, str(BENCHMARKS / "tasks"))
+    sys.path.insert(0, str(DATA / "tasks"))
     try:
         yield
     finally:
         sys.path[:] = saved
 
 
-_spec = importlib.util.spec_from_file_location("_forensics", BENCHMARKS / "tasks" / "_forensics.py")
+_spec = importlib.util.spec_from_file_location("_forensics", DATA / "tasks" / "_forensics.py")
 assert _spec is not None and _spec.loader is not None  # noqa: S101 - a real file on disk
 fx = importlib.util.module_from_spec(_spec)
 with _tasks_dir_on_path():
@@ -163,7 +163,7 @@ def test_a_checkout_with_no_workflow_source_is_loud(tmp_path: Path) -> None:
 
 def test_the_real_workflow_source_dates_something() -> None:
     """And it is this tree's, so the guard cannot pass by pointing nowhere."""
-    assert fx.newest_source_mtime(BENCHMARKS.parent) > 0
+    assert fx.newest_source_mtime(DATA.parents[1]) > 0
 
 
 # ── churn: a repeating cycle, not a busy node ─────────────────────────────────────────

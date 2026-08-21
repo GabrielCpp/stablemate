@@ -18,14 +18,14 @@ from types import ModuleType, SimpleNamespace
 
 from paddock.registry import REGISTRY
 
-BENCHMARKS = Path(__file__).parents[1]
+DATA = Path(__file__).parents[1]
 
 
 @contextlib.contextmanager
 def _tasks_dir_on_path() -> Iterator[None]:
     """Stand in for the interpreter, exactly as `paddock.loader` does when it loads a task."""
     saved = sys.path[:]
-    sys.path.insert(0, str(BENCHMARKS / "tasks"))
+    sys.path.insert(0, str(DATA / "tasks"))
     try:
         yield
     finally:
@@ -44,7 +44,7 @@ def _load(name: str, path: Path) -> ModuleType:
     return module
 
 
-sm = _load("_stablemate", BENCHMARKS / "tasks" / "_stablemate.py")
+sm = _load("_stablemate", DATA / "tasks" / "_stablemate.py")
 
 
 def test_uv_run_names_the_member_environment() -> None:

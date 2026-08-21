@@ -1,7 +1,7 @@
-# `benchmarks/apps/` — finished applications, frozen
+# `data/apps/` — finished applications, frozen
 
 An app under here is **input to measuring QA**. A suite under
-[`benchmarks/suites/`](../suites/README.md) is the opposite: a backlog, input to *building* an app.
+[`data/suites/`](../suites/README.md) is the opposite: a backlog, input to *building* an app.
 The two directories look similar and are never interchangeable — one is a starting line, the other a
 finished race with an answer key.
 
@@ -74,7 +74,7 @@ because the way it breaks is an ordinary refactor that touches neither the book 
 ## Ports
 
 An app claims a port in the benchmark's `18080-18099` range, registered in
-[`benchmarks/suites/README.md`](../suites/README.md) alongside every suite's, so two fixtures never
+[`data/suites/README.md`](../suites/README.md) alongside every suite's, so two fixtures never
 collide on a machine running both.
 
 ## The apps

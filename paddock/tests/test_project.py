@@ -73,7 +73,7 @@ def test_a_run_drives_the_pinned_tree_and_records_it(
     body = '''
 from paddock import step, task
 
-task(name="demo", seed="acme", config="benchmarks/configs/test.toml")
+task(name="demo", seed="acme", config="configs/test.toml")
 
 @step()
 def where(run):

@@ -21,7 +21,7 @@ from paddock import Run, Score, step, task
 task(
     name="seat-booking-qa",
     seed="seat-booking",
-    config="benchmarks/configs/opencode.toml",
+    config="configs/opencode.toml",
 )
 
 FIXTURE = pd.Fixture(app="apps/seat-booking", repo_dir="seat-booking")

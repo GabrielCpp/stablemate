@@ -23,14 +23,14 @@ from paddock import loader, registry
 from paddock.pointer import Pointer
 from paddock.runner import Run
 
-BENCHMARKS = Path(__file__).parents[1]
+DATA = Path(__file__).parents[1]
 
 
 @contextlib.contextmanager
 def _tasks_dir_on_path() -> Iterator[None]:
     """Stand in for the interpreter, exactly as `paddock.loader` does."""
     saved = sys.path[:]
-    sys.path.insert(0, str(BENCHMARKS / "tasks"))
+    sys.path.insert(0, str(DATA / "tasks"))
     try:
         yield
     finally:
@@ -38,7 +38,7 @@ def _tasks_dir_on_path() -> Iterator[None]:
 
 
 def _load() -> ModuleType:
-    path = BENCHMARKS / "tasks" / "expense_split.py"
+    path = DATA / "tasks" / "expense_split.py"
     spec = importlib.util.spec_from_file_location("expense_split", path)
     assert spec is not None and spec.loader is not None  # noqa: S101 - a real file on disk
     module = importlib.util.module_from_spec(spec)
@@ -61,13 +61,13 @@ def git(*args: str, cwd: Path) -> None:
 def make_run(tmp_path: Path, **params: str) -> Run:
     """A `Run` carrying nothing but params — every function under test reads only those."""
     return Run(
-        task=loader.load_path(BENCHMARKS / "tasks" / "expense_split.py"),
+        task=loader.load_path(DATA / "tasks" / "expense_split.py"),
         label="t1",
         stage=tmp_path / "stage",
         repo=tmp_path / "stage" / "expense-split",
         scratch=tmp_path / "scratch",
         config=tmp_path / "config.toml",
-        data_dir=BENCHMARKS,
+        data_dir=DATA,
         store=tmp_path / "store",
         seed=Pointer(name="expense-split", repo_dir="expense-split", sha256="0" * 64, bytes=1),
         params=params,
