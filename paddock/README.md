@@ -131,19 +131,37 @@ its work there.
 
 A step runs stablemate's own CLIs out of a checkout (`uv run --project <checkout>
 workhorse-coder …`). paddock does not hand it the operator's working tree: before the
-first step it creates a detached `git worktree` at that checkout's HEAD, gives the steps
-*that* as `run.project`, and removes it after sealing. Three things fall out, and they are
-the whole reason:
+first step it makes a **local clone with every remote removed**, checked out detached at
+that checkout's HEAD, gives the steps *that* as `run.project`, and deletes it after
+sealing. Three things fall out, and they are the whole reason:
 
 - the round measures one commit of the code, even if the operator keeps editing theirs
   during a forty-minute trial;
 - `steps.json` records the pinned sha, so the ledger says which code produced its numbers,
   and whether the source was dirty (uncommitted edits are **excluded** by construction);
-- a task's leak check — "did an agent commit into the harness instead of its sandbox" —
-  becomes exact, because nobody but the round has a reason to commit in that tree.
+- a task's leak check — "did an agent write into the harness instead of its sandbox" —
+  becomes exact, because nobody but the round has a reason to write in that tree.
 
-`--no-pin-project` drives the checkout in place. A source git cannot make a worktree of
-degrades to the same thing, with `pinned: false` in the ledger rather than a failed round.
+A clone rather than a `git worktree`, because a worktree shares the live checkout's object
+store *and* its `origin`. One round proved what that costs: an agent inside the pinned tree
+read the toolchain's own AGENTS.md — "push it now, right after the commit" — obeyed it, and
+its commits reached the public repo. Zero remotes is what makes that push fail loudly.
+
+The pin is also **fenced**: its git directory is stashed beside the tree and `.git` becomes
+a gitfile naming a path that does not exist, so the pinned tree is not a repository, git
+stops walking up, and a commit cannot quietly land in a parent repo either.
+
+None of that is a proof — an agent can `git init`, and the stash is one directory up from
+the sandbox — so what the fence is paired with is a detector. At seal, `escaped()` asks the
+stash what the round did to it and seals a `self-touched:` caveat for each answer: the tree
+was edited, the fence is gone, HEAD moved off the pinned sha, a ref appeared, objects exist
+that the pinned sha does not reach (the patch-run-and-`reset --hard` shape), or the stash
+itself is missing. A round whose numbers are not a measurement of the sha in its ledger
+cannot be recorded without saying so.
+
+`--no-pin-project` drives the checkout in place. A source git cannot clone — a directory
+that is not a repository, or one with no commit yet — degrades to the same thing, with
+`pinned: false` in the ledger rather than a failed round.
 
 `workdir()` exists for tasks that fan out — one fresh tree per trial. A result zip
 carrying nine copies of a repo is a result nobody keeps, so what a step wants preserved it
