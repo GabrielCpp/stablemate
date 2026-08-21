@@ -724,6 +724,50 @@ def test_a_flow_linked_from_another_flow_is_not_also_a_contract(tmp_path: Path):
     assert validate_context(packet) == []
 
 
+def test_a_journey_over_a_required_contract_is_itself_required(tmp_path: Path):
+    """A flow carries no `code:` bullet, so the grounding rule made every journey context.
+
+    That was not a policy, it was an accident of applying a code-node test to a document type
+    that has no code: `_is_required` demands grounding, a flow can never be grounded, so the
+    answer was `False` for every journey in every book. Nothing has ever owed a walk of a
+    journey, and the two leverage metrics that measure a plan against its journeys have never
+    had a denominator to divide by. What a flow does have is the link that put it in the
+    packet, and a flow linking the contract the story changed is owed exactly as that contract
+    is — while one linking only the context-only parent stays context itself.
+    """
+    _book(tmp_path)
+    (tmp_path / "docs/features/demo/flows").mkdir()
+    (tmp_path / "docs/features/demo/flows/reads-widget.md").write_text(
+        "---\ntype: flow\nslug: reads-widget\ntitle: Reads widget\n---\n# Reads widget\n\n"
+        "- start: [Demo Screen](../screen.md)\n"
+        "- steps:\n"
+        "  1. [the widget](../screen.md#widget) reports the failure\n"
+        "- end: the operator has read the failure\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo/flows/opens-screen.md").write_text(
+        "---\ntype: flow\nslug: opens-screen\ntitle: Opens screen\n---\n# Opens screen\n\n"
+        "- start: the operator is elsewhere\n"
+        "- steps:\n"
+        "  1. they open [Demo Screen](../screen.md)\n"
+        "- end: the screen has rendered\n",
+        encoding="utf-8",
+    )
+
+    packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
+
+    assert validate_context(packet) == []
+    journeys = {
+        item["node"]: item["required"]
+        for item in packet["obligations"]
+        if item.get("kind") == "journey"
+    }
+    assert journeys == {
+        "docs/features/demo/flows/reads-widget.md": True,
+        "docs/features/demo/flows/opens-screen.md": False,
+    }
+
+
 def test_a_ui_scenario_that_vets_no_screen_is_rejected(tmp_path: Path):
     """The gate the whole change exists for: every assertion in the run that shipped the
     defect was true, and the page was a 117px column against the right margin. A UI scenario

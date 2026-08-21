@@ -375,6 +375,11 @@ def build_context(
                     "message": "impacted contract declares no `verify:` check to fulfil it",
                 }
             )
+    required_contracts = {
+        node_id
+        for node_id in contracts
+        if _is_required(node_id, direct_reasons, grounded, shared_files, shared_symbols)
+    }
     obligations = [
         obligation
         for node_id in sorted(contracts)
@@ -382,9 +387,7 @@ def build_context(
             nodes_by_id[node_id],
             direct_reasons.get(node_id, []),
             journey=False,
-            required=_is_required(
-                node_id, direct_reasons, grounded, shared_files, shared_symbols
-            ),
+            required=node_id in required_contracts,
         )
     ] + [
         obligation
@@ -393,8 +396,8 @@ def build_context(
             nodes_by_id[node_id],
             direct_reasons.get(node_id, []),
             journey=True,
-            required=_is_required(
-                node_id, direct_reasons, grounded, shared_files, shared_symbols
+            required=_journey_is_required(
+                node_id, direct_reasons, required_contracts
             ),
         )
     ]
@@ -1220,6 +1223,33 @@ def _is_required(
         and not (reason.get("kind") == "changed-code" and reason.get("ref") in shared_symbols)
     }
     return node_id in grounded and bool(kinds - _CLOSURE_REASON_KINDS)
+
+
+def _journey_is_required(
+    node_id: str,
+    direct_reasons: dict[str, list[dict[str, str]]],
+    required_contracts: set[str],
+) -> bool:
+    """Whether this flow is owed live evidence, or is only context.
+
+    Not `_is_required`. That rule asks whether the diff reached the node directly and
+    whether the node is *grounded* — and a flow carries no `code:` bullet at all, so it can
+    never be grounded and the answer was structurally `False` for every flow in every repo.
+    The two metrics that measure a plan against its journeys have therefore never had a
+    denominator to divide by.
+
+    What makes a flow owed is one hop away: the story is proven against a contract, and the
+    flow is the document that says where in the product that contract is reached from and
+    what state the operator is left in. So a flow is required exactly when it links a
+    contract that is itself required — the same diff-directness test, read through the link
+    that made the flow part of this packet. A flow reached only via context-only contracts
+    stays context, which is what keeps one edited endpoint from owing a walk of every
+    journey it appears in.
+    """
+    return any(
+        reason.get("kind") == "flow-links-contract" and reason.get("ref") in required_contracts
+        for reason in direct_reasons.get(node_id, [])
+    )
 
 
 def _declared_checks(node: dict[str, Any]) -> list[dict[str, Any]]:
