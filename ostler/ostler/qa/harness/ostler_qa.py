@@ -282,6 +282,7 @@ def background(
     name: str,
     *,
     argv: Sequence[str],
+    reset_paths: Sequence[str] = (),
     ready_url: str | None = None,
     ready_method: str = "GET",
     ready_status: int = 200,
@@ -304,7 +305,12 @@ def background(
     only route is a POST, which is what the retired command form was actually being used
     for — the capability was HTTP the whole time, spelled as a `curl` invocation.
     """
-    entry: dict[str, Any] = {"name": name, "argv": list(argv), "timeout": timeout}
+    entry: dict[str, Any] = {
+        "name": name,
+        "argv": list(argv),
+        "reset_paths": list(reset_paths),
+        "timeout": timeout,
+    }
     if ready_url:
         entry["ready_check"] = (
             ready_url

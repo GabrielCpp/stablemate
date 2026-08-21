@@ -95,6 +95,8 @@ def run_plan(
     evidence: Path | None = None
     try:
         for daemon in plan.get("background", []):
+            for reset_path in daemon.get("reset_paths", []):
+                Path(session.expand(str(reset_path), variables)).unlink(missing_ok=True)
             session.start_daemon(
                 str(daemon["name"]),
                 [session.expand(str(part), variables) for part in daemon["argv"]],

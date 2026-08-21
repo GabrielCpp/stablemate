@@ -583,6 +583,11 @@ def _validate_background(background: Any) -> list[str]:
             seen.add(name)
         label = f"background daemon '{name}'" if isinstance(name, str) and name else label
         problems.extend(_validate_daemon_argv(label, daemon))
+        reset_paths = daemon.get("reset_paths", [])
+        if not isinstance(reset_paths, list) or any(
+            not isinstance(path, str) or not path.strip() for path in reset_paths
+        ):
+            problems.append(f"{label}.reset_paths must be a list of non-empty strings")
         timeout = daemon.get("timeout")
         if timeout is not None and (not isinstance(timeout, (int, float)) or timeout <= 0):
             problems.append(f"{label}.timeout must be positive")
