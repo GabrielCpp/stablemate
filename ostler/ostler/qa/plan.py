@@ -21,10 +21,12 @@ from ostler.untyped import is_mapping
 from ostler.vet import placement
 
 #: Read off the harness rather than restated, because `describe` produces these values and
-#: this module judges them: a second spelling of either one is a gate that quietly stops
-#: firing.
+#: this module judges them: a second spelling of any of them is a gate that quietly stops
+#: firing. `DRIVERS` was restated for a while, and drifted — it admitted a `command` driver
+#: the harness rejects at import, so the check below never once fired on it.
 _plan_harness = load_harness_module("ostler_qa")
 COMPUTED: str = _plan_harness.COMPUTED
+DRIVERS: frozenset[str] = frozenset(_plan_harness.DRIVERS)
 UI_DRIVERS: tuple[str, ...] = tuple(_plan_harness.UI_DRIVERS)
 
 #: What a `qa-plan.yml` gets told now. The YAML plan's content was a shell heredoc, and every
@@ -45,7 +47,6 @@ RETIRED_YAML = (
 #: (`qa/plan.py`, `qa/session.py`, `qa/harness/ostler_qa.py`, `cli.py`); a second spelling here
 #: is a gate that quietly stops firing.
 MECHANISMS = {"live", "fixture"}
-DRIVERS = {"command", "python", "playwright", "maestro"}
 LOCATOR_KEYS = {"role", "name", "label", "test_id", "text", "css", "id"}
 
 
