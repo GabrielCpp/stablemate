@@ -1,0 +1,30 @@
+{
+  "story": "import-csv",
+  "services": [
+    {
+      "repo": "tally-cli",
+      "path": ".",
+      "type": "python",
+      "skills": [
+        "tally-cli-ostler"
+      ],
+      "plan_file": "plan.md"
+    }
+  ],
+  "implementation_order": [
+    "tally-cli::tally"
+  ],
+  "shared_packages": [],
+  "required_instructions": [
+    "tally-cli-ostler"
+  ],
+  "qa_stack": {
+    "profile": "there is no stack to bring up and no port to reach. The product is reached over a process boundary: a check runs `python3 -m tally` through the opted-in `python3` tool and reads the exit code, the two streams, and the files the command left behind. The target's driver is `python`, which names the harness the scenario body runs in rather than the transport to the product \u2014 there is no separate driver for a command. `qa.tool` runs at the repo root and cannot be given a working directory, so a scenario names its own ledger with `--file` under the evidence directory rather than sharing `tally.json` with every other scenario",
+    "fixtures": [
+      "a directory the scenario owns under the evidence dir, named on every invocation with `--file`, so two scenarios never write the same ledger",
+      "nothing installed and nothing resolved: `python3 -m tally` runs the package out of the repo root, which is where `qa.tool` already runs"
+    ],
+    "capable_of_rendering": "nothing. `tally` opens no port and renders nothing; the observables are an exit code, stdout, stderr, and the files left on disk",
+    "notes": "the one tool this lane opts into is `python3`, declared in `agents.yml` under `qa: {tools: [python3]}` and defined in the tracked table at `paddock/data/configs/`. It is the interpreter, not the app: a plan may not import the package it tests, because `ostler.qa.lint` is an AST allowlist, so being written in the harness's own language buys `tally` no shortcut to being reached"
+  }
+}

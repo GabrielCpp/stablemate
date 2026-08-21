@@ -1,0 +1,25 @@
+# The implementation diff a trial materializes for the `ledger-init-add` story.
+#
+# The first story, so nothing production is `changed:`. There IS a `post/` for the two
+# modules later stories extend — `cli.py` gains a subcommand in each of them and `ledger.py`
+# gains the import machinery in the next one — so this story's image of that pair is the
+# init-and-add one. `__init__.py` and `__main__.py` are written once and never touched again,
+# which is why the app tree is still their post-image.
+#
+# The book is versioned here too, and that is not bookkeeping. The app tree holds the book as
+# it stands after the *last* story; grounded at symbol level, that book is anachronistic in
+# every earlier image — it documents `cmd_import`, `merge` and `summarize` against a worktree
+# that has none of them, and the packet mints a blocking `dangling-grounding` for each. So the
+# book is `changed:` with the same trimmed copy in `pre/` and `post/`: pinned identically on
+# both sides, it is byte-identical in base and head and contributes nothing to HEAD..WORKTREE,
+# while the story's obligations are exactly the ones a book written at this point would owe.
+story: ledger-init-add
+added:
+  - pyproject.toml
+  - tally/__init__.py
+  - tally/__main__.py
+  - tally/cli.py
+  - tally/ledger.py
+changed:
+  - docs/features/tally/tally.md
+  - docs/features/tally/flows/track-a-trip.md

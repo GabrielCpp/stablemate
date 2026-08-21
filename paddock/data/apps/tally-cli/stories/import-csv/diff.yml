@@ -1,0 +1,18 @@
+# The implementation diff a trial materializes for the `import-csv` story.
+#
+# Two changed modules and nothing added. `ledger.py` reaches its final shape here — the next
+# story does not touch it — so it needs a `pre/` and no `post/`. `cli.py` needs both: the
+# next story adds two more subcommands to the same parser.
+#
+# The book is versioned with the code, for the reason spelled out in `ledger-init-add`'s
+# manifest: the app tree's book is the one the last story left, and symbol-level grounding
+# makes that anachronism a blocking health finding in every earlier image. This story's copy
+# documents `init`, `add` and `import` and stops there; it is the same bytes in `pre/` and
+# `post/`, so it is pinned on both sides of the diff rather than appearing in it.
+story: import-csv
+added: []
+changed:
+  - tally/cli.py
+  - tally/ledger.py
+  - docs/features/tally/tally.md
+  - docs/features/tally/flows/track-a-trip.md

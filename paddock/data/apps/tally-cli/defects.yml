@@ -1,0 +1,165 @@
+# The answer key: seven seeded defects, each naming the obligation it contradicts.
+#
+# The schema and the mechanism are seat-booking's, policy-desk's and claims-api's — a trial
+# applies one row by copying `defects/<id>/<path>` over the materialized worktree, a
+# whole-file overwrite rather than a patch, because a patch stops applying the moment the
+# app is edited and does so *silently*: the trial still runs, the defect is simply not
+# there, and the score reads as a catch.
+#
+# `obligation` is the OKF id the defect makes false, and `expect` is an **evidence-map
+# status** rather than a prose verdict, so scoring is a lookup rather than a reading of the
+# QA report. Every id here is one the book mints *and owes* for that row's story, which
+# `tests/test_tally_cli_app.py` pins by minting each story's packet the way QA mints it.
+#
+# `caught_by` is the route the defect is *expected* to travel, recorded so a surprise is
+# legible — it is not a scoring gate:
+#
+#   run    — a declared check the plan runs should assert this and fail
+#   audit  — no assertion fails; only the auditor reading evidence against the clause sees it
+#
+# Every defect is a plausible implementation, not a syntax error or a crash: each variant
+# imports, builds its parser, and answers `--help` with exit 0. A defect that takes the
+# command down is caught by any check at all and measures nothing.
+#
+# Provenance (deviation, recorded deliberately)
+# ---------------------------------------------
+# This fixture — code, book and key alike — was hand-authored end to end rather than
+# produced by genesis → author → okf-builder → hardening, by a design ruling on 2026-08-21.
+# Nothing in this app is evidence about the authoring lane; a claim that okf-builder
+# produces books of this shape has to come from running it. The full note is in
+# `../README.md`.
+#
+# What this fixture is for, and what it is expected to expose
+# ----------------------------------------------------------
+# `policy-desk` asks whether QA works a product, and `claims-api` asks what is left to hold
+# on to when there is no screen. This one asks a question about **granularity**: the app is
+# a stdlib-only Python package with no server, no port and no toolchain, and its three
+# stories touch the *same two files* — so file-level ownership says nothing and every
+# obligation has to separate by symbol. `tally/cli.py` is changed by all three stories;
+# what distinguishes them is which functions in it they changed, and the packet minted from
+# each materialized trial shows exactly that separation and no cross-contamination.
+#
+# The second thing it freezes is the shape of a QA lane with no service in it. There is no
+# port to wait on and no server to start, but a plan may not import the package it tests
+# either — `ostler.qa.lint` is an AST allowlist — so the product is reached the way any
+# other product is: over a process boundary, as `python3 -m tally`. `agents.yml` opts into
+# the one tool that takes, `qa: {tools: [python3]}`, and the tool table it resolves against
+# is tracked in `paddock/data/configs/`, so a trial does not depend on the machine's
+# `~/.config`.
+#
+# The third is that the book is versioned per story. The app tree holds the book as the last
+# story left it; grounded at symbol level, that book is anachronistic in every earlier image
+# and mints a blocking `dangling-grounding` for every symbol a later story writes. Each
+# story's `diff.yml` therefore carries its own copy in `pre/` and `post/` alike — see
+# `stories/ledger-init-add/diff.yml`.
+#
+# T7 was speced as the audit-only row, and was promoted instead
+# -------------------------------------------------------------
+# The plan wrote T7 — `init` silently truncating a ledger that was already there — as
+# `caught_by: audit` *if no bullet names it*, and delegated the call to whoever hardened
+# the book. It is promoted: `#init-a-ledger` states the refusal normatively (`status:2`
+# exits `1`, `does:2` leaves the file exactly as it was), so T7 is an ordinary `run` row.
+#
+# The reason is coverage of the *harness*, not of the app. Two audit-only rows already
+# exist across this trio — claims-api's C9 and depot-infra's D7 — and both are there to
+# stand in for a measurement the scorer cannot yet take, so a third buys nothing. What an
+# `unchanged`-verified refusal buys is a check no other row in the trio exercises: a
+# destructive write that produces no error, no diagnostic and no wrong answer, whose only
+# trace is a file that should not have moved.
+#
+# So every row here is `caught_by: run`.
+
+defects:
+  - id: T1
+    story: import-csv
+    path: tally/cli.py
+    obligation: okf:docs/features/tally/tally.md#import-a-malformed-row:status:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      the malformed row is still detected, still refused, and still reported on stderr with
+      its 1-based line number — and the process then exits `0`. Nothing about the ledger is
+      wrong and nothing the human reads is wrong; only the number the shell reads is. A
+      scenario that asserts the diagnostic without asserting the status passes, and so does
+      every check on the file, which is left untouched exactly as the book promises.
+
+  - id: T2
+    story: report-export
+    path: tally/cli.py
+    obligation: okf:docs/features/tally/tally.md#report-as-json:consistency:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      the progress line `tally: totalling N entries` moves from stderr to stdout, so
+      `report --json` emits a line of prose and then its JSON object. Read by a human the
+      output is better than before; read by a pipe it no longer parses. The report itself
+      is correct in every field, so a check that captures stdout and greps for a total
+      passes — only one that parses the whole stream as a single JSON document fails.
+
+  - id: T3
+    story: import-csv
+    path: tally/cli.py
+    obligation: okf:docs/features/tally/tally.md#dry-run:semantics:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      `commit_or_preview` saves before it checks the flag, so `--dry-run` writes the ledger
+      and then prints that it left it unchanged. Both halves of the observable surface
+      still say what the book says — the message is right, the exit code is right, the
+      returned "did we commit" answer is right — and the only witness is the file's own
+      bytes, which is why the obligation has to be proven with `unchanged` on the ledger
+      rather than with anything the command said.
+
+  - id: T4
+    story: import-csv
+    path: tally/ledger.py
+    obligation: okf:docs/features/tally/tally.md#import-a-csv:consistency:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      `merge` appends every parsed row and drops the dedupe by `key`, so importing a file
+      the ledger already holds doubles it. The first import of any file is identical to
+      correct behaviour, which is what makes this the idempotence row: it is invisible to
+      every scenario that imports once, and a scenario that imports twice sees it only if
+      it counts the entries rather than checking that the second run succeeded.
+
+  - id: T5
+    story: ledger-init-add
+    path: tally/ledger.py
+    obligation: okf:docs/features/tally/tally.md#add-an-expense:errors:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      `_cents` no longer refuses a non-positive amount, so `add --amount -12.00` is accepted
+      and lands in the ledger as a negative entry. Every positive amount behaves exactly as
+      documented and the totals still add up — to a smaller number. The report is
+      arithmetically self-consistent, so nothing downstream complains; the refusal the book
+      states is simply gone, and only a scenario that provokes it observes that.
+
+  - id: T6
+    story: report-export
+    path: tally/report.py
+    obligation: okf:docs/features/tally/tally.md#export-to-csv:consistency:1
+    expect: contradicted
+    caught_by: run
+    why: >
+      `export_rows` writes the data rows without the header. The file is valid CSV, the row
+      count it reports is right, and every value in it is right — so a check that counts
+      lines, or that asserts the export was created, or that reads the first field of the
+      first record, all pass. What breaks is the contract with whoever opens it next, whose
+      first act is to skip line one, and that is only visible to a check that reads the
+      header as a header.
+
+  - id: T7
+    story: ledger-init-add
+    path: tally/ledger.py
+    obligation: okf:docs/features/tally/tally.md#init-a-ledger:status:2
+    expect: contradicted
+    caught_by: run
+    why: >
+      `create` drops the existence check, so `tally init` on a ledger that already holds a
+      trip truncates it to an empty one and exits `0`. This is the destructive row: there
+      is no error, no diagnostic, no wrong answer and no crash — the command does exactly
+      what it says on a fresh directory, and the whole of the defect is the state it
+      destroyed on its way there. Nothing observed *after* the call is wrong; only the
+      comparison against what was there before it is.

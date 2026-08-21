@@ -1,0 +1,9 @@
+# The implementation diff a trial materializes for the `report-export` story.
+#
+# The last story, so every file it touches is at its final shape and the app tree is the
+# post-image for all of them. Only `cli.py` needs a `pre/`.
+story: report-export
+added:
+  - tally/report.py
+changed:
+  - tally/cli.py

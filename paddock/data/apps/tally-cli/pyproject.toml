@@ -1,0 +1,9 @@
+# Present so the workspace's service marker resolves and so `python -m tally` has a package
+# to be part of. There are no dependencies and there is nothing to build: `tally` is stdlib
+# only, and every command runs from a checkout without an install step.
+[project]
+name = "tally"
+version = "0.1.0"
+description = "a shared-expense ledger kept in one JSON file"
+requires-python = ">=3.12"
+dependencies = []

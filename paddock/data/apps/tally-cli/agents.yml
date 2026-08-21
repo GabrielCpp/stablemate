@@ -1,0 +1,70 @@
+# tally-cli — the symbol-granularity fixture the standalone-QA benchmark measures against.
+#
+# `stablemate` is the only pack, for the reason claims-api's file states: the benchmark has
+# to resolve from a public clone and `scripts/check_public.py` asserts the base library
+# stands alone.
+#
+# `repo.name` is derived from the directory name, so a trial must materialize this tree into
+# a directory called exactly `tally-cli`.
+#
+# What is under measurement here is granularity. This is the only frozen fixture written in a
+# language ostler maps at the symbol level, so a `code:` bullet here names a function rather
+# than a file, and a story's diff reaches the nodes whose functions it touched instead of
+# every node documented against the same file. policy-desk froze the file-level pole; this
+# freezes the other one, and the pair is what makes a granularity regression visible.
+#
+# The second thing it freezes is a QA surface with no port in it. There is no service to
+# start and no request to make: the observable is an exit code, two streams, and the files a
+# command left behind. Every check a plan here declares has to be expressible in those terms.
+
+repo:
+  name: tally-cli
+
+agents:
+  claude: true
+  codex: false
+  copilot: false
+
+packs:
+  - stablemate
+
+workflows:
+  - coder
+
+scaffolds:
+  - shared-docs
+  - python-cli
+
+workspace:
+  type: mono
+  service_roots:
+    - .
+  service_markers:
+    - pyproject.toml
+
+services:
+  # Stdlib only, so there is nothing to install and the regression is the interpreter's own
+  # answer about whether the package imports and the parser builds.
+  tally:
+    regression: python3 -c "import tally.cli; tally.cli.build_parser()"
+
+# The one external command the frozen QA plans reach for, and the reason it is one rather
+# than none.
+#
+# A plan cannot import the app it is testing. `ostler.qa.lint` is an AST allowlist and the
+# package under test is not on it — reaching the process belongs to ostler's approved tools
+# and never to plan code — so "drive `main` in process" is not a shape the harness offers,
+# whatever the app happens to be written in. The QA target here is therefore the command
+# driver, the same as it would be for a compiled binary: `python3 -m tally`, over a process
+# boundary, reading an exit code and two streams.
+#
+# `qa.tool` runs at the repo root and cannot be given a working directory, which is why the
+# CLI takes `--file`: a scenario names its own ledger under the evidence directory instead of
+# racing every other scenario for `tally.json` in one shared cwd.
+#
+# The definition of `python3` lives in the pinned task config under `paddock/data/configs/`,
+# not on the machine — a frozen fixture that resolved a tool through `~/.config` would
+# measure something different on every host.
+qa:
+  tools:
+    - python3

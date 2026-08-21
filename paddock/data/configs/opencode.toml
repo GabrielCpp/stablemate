@@ -95,3 +95,15 @@ description = "the jq CLI, for reading a durable store file as evidence that a w
 [qa_tools.make]
 command = "make"
 description = "the make CLI, for driving a repo's own documented build and plan targets"
+
+# `python3` is here for `tally-cli`, whose product is a command rather than a service. A QA
+# plan may not import the package it is testing — `ostler.qa.lint`'s allowlist reserves the
+# process for approved tools — so even an app written in the harness's own language is driven
+# over a process boundary, as `python3 -m tally`, and needs a definition here to be reachable
+# at all.
+#
+# The name is the interpreter rather than the app: nothing about this entry is tally's, and
+# the next stdlib-only Python fixture opts into the same one.
+[qa_tools.python3]
+command = "python3"
+description = "the python interpreter, for driving a Python CLI over a process boundary"
