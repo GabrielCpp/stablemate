@@ -414,6 +414,27 @@ def test_a_parked_gate_is_a_warning_on_the_score() -> None:
                                      "sheet": "s", "sha256": "0" * 64}])
 
 
+def test_a_hand_answer_is_recorded_and_says_so_loudly(run: Run) -> None:
+    """A round a person unstuck is not the unattended capture its score would read as."""
+    gf.record_hand_answer(run, "dirty-tree-operator-context.create-short-links.md",
+                          "gitignored the agent runtime", commit="b5f6862")
+
+    ledger = gf.operator_gates_of(run)
+    assert ledger == [{"gate": "dirty-tree-operator-context.create-short-links.md",
+                       "action": "hand", "note": "gitignored the agent runtime",
+                       "commit": "b5f6862"}]
+    assert any("BY HAND" in line for line in gf.warnings([], [], ledger))
+    printed = gf.operator_gate_lines(ledger)
+    assert any("ANSWERED BY HAND" in line and "b5f6862" in line for line in printed)
+
+
+def test_a_hand_answer_is_not_counted_as_parked() -> None:
+    """Two different findings: parked means the round went on without a decision, hand
+    means it went on with one no future round will make for itself."""
+    lines = gf.warnings([], [], [{"gate": "g", "action": "hand", "note": "n"}])
+    assert not any("stayed parked" in line for line in lines)
+
+
 # ── the agent's own exhaust ───────────────────────────────────────────────────────────
 
 

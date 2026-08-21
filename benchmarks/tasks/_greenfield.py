@@ -292,6 +292,21 @@ def record_gate(run: Run, entry: dict[str, Any]) -> None:
     run.write_json(operator_gates_path(run), entries)
 
 
+def record_hand_answer(run: Run, gate: str, note: str, commit: str = "") -> None:
+    """Record that a *person* answered a gate on this round, outside the harness.
+
+    Sometimes one has to: a gate class the watcher could not yet see, a round already in
+    flight when the fix landed. The touch is legitimate; leaving it out of the ledger is
+    not. A hand answer is an input to the round exactly as an injected one is, and a round
+    a human unstuck is not the unattended capture its score would otherwise read as — so
+    it is written down, printed beside the score, and warned about.
+    """
+    entry: dict[str, Any] = {"gate": gate, "action": "hand", "note": note}
+    if commit:
+        entry["commit"] = commit
+    record_gate(run, entry)
+
+
 def decision_sheet(run: Run, fixture: Fixture) -> tuple[str, str] | None:
     """The tracked sheet's text and sha256, or `None` when the task declares none.
 
@@ -839,7 +854,17 @@ def warnings(bullets: list[dict[str, Any]], checks: list[dict[str, Any]],
             missing = ", ".join(b["unverified_citations"]) or "(no citation at all)"
             lines.append(f"      - {b['id']}: {missing}")
 
-    parked = [g for g in gates if g["action"] != "answered"]
+    hand = [g for g in gates if g["action"] == "hand"]
+    if hand:
+        lines.append(f"  ⚠ {len(hand)} operator gate(s) were answered BY HAND. This round is not "
+                     "an unattended capture, and")
+        lines.append("    it is not repeatable as it stands — a person is part of its result. "
+                     "Fix the harness or the")
+        lines.append("    decision sheet so the next round reaches the same place alone:")
+        for g in hand:
+            lines.append(f"      - {g['gate']}: {g['note']}")
+
+    parked = [g for g in gates if g["action"] == "parked"]
     if parked:
         lines.append(f"  ⚠ {len(parked)} operator gate(s) stayed parked — the round waited on a "
                      "decision the sheet does not settle,")
@@ -870,6 +895,10 @@ def operator_gate_lines(gates: list[dict[str, Any]]) -> list[str]:
         if g["action"] == "answered":
             lines.append(f"  ✓ {g['gate']}")
             lines.append(f"      answered from {g['sheet']} (sha256 {g['sha256'][:12]})")
+        elif g["action"] == "hand":
+            lines.append(f"  ✋ {g['gate']}")
+            where = f" (commit {g['commit']})" if g.get("commit") else ""
+            lines.append(f"      ANSWERED BY HAND — {g['note']}{where}")
         else:
             lines.append(f"  ⚠ {g['gate']}")
             lines.append(f"      PARKED — {g['reason']}")
