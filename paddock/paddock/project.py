@@ -17,7 +17,8 @@ first step and deleted after sealing. Three things follow, and they are the whol
 * uncommitted edits are **excluded** — a round measures committed state, and a dirty
   checkout is warned about rather than silently included;
 * any commit in the trial tree is a leak by construction, since nobody else has a reason
-  to write there.
+  to write there — and `escaped` says at seal whether one of those leaks looks like it
+  got out.
 
 A clone rather than a `git worktree`, and remoteless rather than merely detached, because
 a worktree of the live checkout shares its object store *and* its `origin`. One round
@@ -65,6 +66,11 @@ class Project:
     #: Whether the source had uncommitted changes at pin time. Recorded because those
     #: changes are exactly what a pinned run did *not* see.
     dirty: bool
+    #: Every `refs/remotes/…` ref in the source and where it pointed at pin time, as
+    #: `(ref, sha)` pairs. Kept so `escaped` can ask the only question worth asking at
+    #: seal — not "did the remote move", which it does all day because other people are
+    #: working, but "did it move while this round was making commits of its own".
+    remote_refs: tuple[tuple[str, str], ...] = ()
 
     def as_json(self) -> dict[str, object]:
         return {
@@ -74,6 +80,12 @@ class Project:
             "pinned": self.pinned,
             "source_dirty": self.dirty,
         }
+
+
+#: What a caveat says when the round, rather than an operator, is what compromised it.
+#: A fixed prefix because it also travels into the result pointer, where the reader is a
+#: script; the sentence after it is for the human.
+SELF_TOUCHED = "self-touched: "
 
 
 def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -104,15 +116,20 @@ def pin(source: Path | None, *, work: Path, enabled: bool = True) -> Project | N
         return Project(path=source, source=source, head="", pinned=False, dirty=False)
     sha = head.stdout.strip()
     dirty = bool(_git("status", "--porcelain", cwd=source).stdout.strip())
+    refs = _remote_refs(source)
     if not enabled:
-        return Project(path=source, source=source, head=sha, pinned=False, dirty=dirty)
+        return Project(
+            path=source, source=source, head=sha, pinned=False, dirty=dirty, remote_refs=refs
+        )
 
     dest = work / "project"
     # Re-running a label reuses its work directory, and a clone will not write into a
     # path that already exists.
     shutil.rmtree(dest, ignore_errors=True)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    unpinned = Project(path=source, source=source, head=sha, pinned=False, dirty=dirty)
+    unpinned = Project(
+        path=source, source=source, head=sha, pinned=False, dirty=dirty, remote_refs=refs
+    )
     # `--no-checkout`, because the branch a clone would land on is not the state being
     # pinned: the detached checkout below is, and doing it in one step would write the
     # tree twice.
@@ -145,7 +162,58 @@ def pin(source: Path | None, *, work: Path, enabled: bool = True) -> Project | N
             source, sha[:12],
         )
     logger.info("project pinned to %s at %s", dest, sha[:12])
-    return Project(path=dest, source=source, head=sha, pinned=True, dirty=dirty)
+    return Project(
+        path=dest, source=source, head=sha, pinned=True, dirty=dirty, remote_refs=refs
+    )
+
+
+def _remote_refs(repo: Path) -> tuple[tuple[str, str], ...]:
+    listed = _git("for-each-ref", "--format=%(refname) %(objectname)", "refs/remotes", cwd=repo)
+    pairs = (line.split(" ", 1) for line in listed.stdout.splitlines() if " " in line)
+    return tuple((ref, sha) for ref, sha in pairs)
+
+
+def escaped(project: Project | None) -> tuple[str, ...]:
+    """Whether the round reached past its pin — asked while the pin still exists.
+
+    The pin has no remotes, so in the ordinary case this is silent and costs two `git`
+    calls. It exists because "the pin has no remotes" is a barrier, not a proof: an agent
+    that adds one back is doing something a benchmark subject has no reason to do, and
+    saying so in one line beats reconstructing it later from four sessions' reflogs.
+
+    The second half is deliberately narrow. A moved `origin/main` is not evidence of
+    anything — other people push to it while a round runs, which is the normal state of a
+    shared repository. What is evidence is a move *during a round that was making commits
+    of its own*, and that pairing is the only thing reported. Even then it is worded as
+    what it is — a coincidence that cannot be ruled out — because the object a push
+    created lives on the server, and nothing local can settle it without a fetch this is
+    not going to perform mid-seal.
+    """
+    if project is None or not project.pinned:
+        return ()
+    caveats = []
+    added = _git("remote", cwd=project.path).stdout.split()
+    if added:
+        caveats.append(
+            f"{SELF_TOUCHED}the round put remote(s) {', '.join(added)} back on its pin, "
+            f"which it was given without any"
+        )
+    made = _git("rev-list", "--all", f"^{project.head}", cwd=project.path).stdout.split()
+    if not made:
+        return tuple(caveats)
+    was = dict(project.remote_refs)
+    moved = [
+        f"{ref} {was.get(ref, 'absent')[:12]}..{sha[:12]}"
+        for ref, sha in _remote_refs(project.source)
+        if was.get(ref) != sha
+    ]
+    if moved:
+        caveats.append(
+            f"{SELF_TOUCHED}the round made {len(made)} commit(s) in its pin while the "
+            f"source's {', '.join(moved)} moved — a push from the round cannot be ruled "
+            f"out from here"
+        )
+    return tuple(caveats)
 
 
 def release(project: Project | None) -> None:

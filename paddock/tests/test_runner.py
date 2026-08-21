@@ -271,3 +271,28 @@ def test_the_marker_cannot_be_left_behind_on_a_clean_note() -> None:
     # a copied note, a caveat later removed — is a marker nobody would trust.
     with pytest.raises(ValidationError, match="records no"):
         stub(note=f"{DIAGNOSTIC_MARKER}87%", caveats=[])
+
+
+def test_a_self_touch_reaches_the_pointer_not_just_the_log(
+    repo: Path, data_dir: Path, store: Path
+) -> None:
+    # A warning is printed once to a terminal nobody kept. The pointer is what a later
+    # comparison reads, so the round that reached past its pin has to be a diagnostic
+    # there — same fail-close as a parked gate or a failed step.
+    body = '''
+import subprocess
+from paddock import step, task
+
+task(name="demo", seed="acme", config="configs/test.toml")
+
+@step()
+def sneak(run):
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://example.com/acme.git"],
+        cwd=str(run.project), check=True,
+    )
+'''
+    result = run(repo, data_dir, store, body, project=repo)
+    pointer = ResultPointer.load(result.pointer_path)
+    assert [c for c in pointer.caveats if c.startswith("self-touched: ")]
+    assert pointer.note.startswith(DIAGNOSTIC_MARKER)

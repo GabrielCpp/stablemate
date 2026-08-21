@@ -137,3 +137,85 @@ def where(run):
     assert ledger["project"]["source"] == str(repo)
     # Released after sealing: the clone is a per-round cost, not an accumulating one.
     assert not driven.exists()
+
+
+def commit(repo: Path, message: str) -> None:
+    (repo / f"{message}.txt").write_text(message, encoding="utf-8")
+    for args in (["add", "-A"], ["commit", "-q", "-m", message]):
+        subprocess.run(["git", *args], cwd=str(repo), check=True)
+
+
+def test_a_quiet_round_escapes_nothing(repo: Path, tmp_path: Path) -> None:
+    # The ordinary case, and the one that has to stay silent: a detector that cried on
+    # every round would be read as noise by the third one.
+    pinned = project_mod.pin(repo, work=tmp_path / "work")
+    assert project_mod.escaped(pinned) == ()
+    project_mod.release(pinned)
+
+
+def test_a_remote_put_back_on_the_pin_is_a_self_touch(repo: Path, tmp_path: Path) -> None:
+    # The pin is handed over with none. Adding one is not something a subject does by
+    # accident, and it is the one half of this that is evidence on its own.
+    pinned = project_mod.pin(repo, work=tmp_path / "work")
+    assert pinned is not None
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://example.com/acme.git"],
+        cwd=str(pinned.path), check=True,
+    )
+
+    caveats = project_mod.escaped(pinned)
+
+    assert len(caveats) == 1
+    assert caveats[0].startswith(project_mod.SELF_TOUCHED)
+    assert "origin" in caveats[0]
+    project_mod.release(pinned)
+
+
+def test_a_remote_that_moved_under_a_committing_round_cannot_be_ruled_out(
+    repo: Path, tmp_path: Path
+) -> None:
+    # Neither half is evidence alone — a round may commit inside its pin for good
+    # reasons, and origin moves all day because other people are working. The pairing is
+    # what nobody can explain away without going and looking, so the pairing is what gets
+    # reported, worded as the coincidence it is.
+    upstream = tmp_path / "upstream"
+    subprocess.run(["git", "clone", "-q", str(repo), str(upstream)], check=True)
+    subprocess.run(["git", "remote", "add", "origin", str(upstream)], cwd=str(repo), check=True)
+    subprocess.run(["git", "fetch", "-q", "origin"], cwd=str(repo), check=True)
+
+    pinned = project_mod.pin(repo, work=tmp_path / "work")
+    assert pinned is not None
+    commit(pinned.path, "leaked")
+    commit(upstream, "somebody-else")
+    subprocess.run(["git", "fetch", "-q", "origin"], cwd=str(repo), check=True)
+
+    caveats = project_mod.escaped(pinned)
+
+    assert len(caveats) == 1
+    assert caveats[0].startswith(project_mod.SELF_TOUCHED)
+    assert "1 commit(s)" in caveats[0] and "cannot be ruled out" in caveats[0]
+    project_mod.release(pinned)
+
+
+def test_a_moving_remote_alone_is_somebody_elses_work(repo: Path, tmp_path: Path) -> None:
+    # Said out loud because it is the false positive that would have made this useless:
+    # in a checkout several sessions push from, origin/main moves during every round.
+    upstream = tmp_path / "upstream"
+    subprocess.run(["git", "clone", "-q", str(repo), str(upstream)], check=True)
+    subprocess.run(["git", "remote", "add", "origin", str(upstream)], cwd=str(repo), check=True)
+    subprocess.run(["git", "fetch", "-q", "origin"], cwd=str(repo), check=True)
+
+    pinned = project_mod.pin(repo, work=tmp_path / "work")
+    commit(upstream, "somebody-else")
+    subprocess.run(["git", "fetch", "-q", "origin"], cwd=str(repo), check=True)
+
+    assert project_mod.escaped(pinned) == ()
+    project_mod.release(pinned)
+
+
+def test_an_unpinned_run_is_not_asked(repo: Path, tmp_path: Path) -> None:
+    # Nothing was fenced off, so there is nothing to have escaped from; a caveat here
+    # would be describing the operator's own tree back at them.
+    unpinned = project_mod.pin(repo, work=tmp_path / "work", enabled=False)
+    assert project_mod.escaped(unpinned) == ()
+    assert project_mod.escaped(None) == ()

@@ -348,8 +348,14 @@ def execute(
         zip_path: Path | None = None
         pointer_path: Path | None = None
         if seal:
+            # Asked here rather than after `release`, because the question is about the
+            # pinned tree and `release` deletes it.
+            escaped = project_mod.escaped(pinned)
+            for caveat in escaped:
+                logger.warning("%s", caveat)
             zip_path, pointer_path = _seal(
-                task, label, stage, data_dir, store, pointer, outcomes, score, run.params
+                task, label, stage, data_dir, store, pointer, outcomes, score,
+                run.params, escaped,
             )
     finally:
         project_mod.release(pinned)
@@ -478,6 +484,7 @@ def _seal(
     outcomes: Sequence[StepOutcome],
     score: Score | None,
     params: Mapping[str, str],
+    escaped: Sequence[str] = (),
 ) -> tuple[Path, Path]:
     zip_path = paths.result_zip(store, task.name, label)
     archive.create(stage, zip_path, prefix=label)
@@ -494,7 +501,7 @@ def _seal(
     # and the ones skipped behind it are different facts, and a caveat that blurs them
     # sends the next reader looking for three defects where there was one.
     failed = [f"step {o.name!r} {o.status}" for o in outcomes if o.status != "ok"]
-    caveats = [*failed, *(score.caveats if score else ())]
+    caveats = [*failed, *escaped, *(score.caveats if score else ())]
     headline = score.headline if score else ""
     if caveats:
         headline = DIAGNOSTIC_MARKER + (headline or "unscored round")
