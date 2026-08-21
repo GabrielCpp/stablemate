@@ -196,3 +196,42 @@ def test_the_backfill_leaves_a_story_that_already_declares_dependencies_alone(
     task_module.backfill_story_sections(tmp_path)
 
     assert story_md.read_text(encoding="utf-8") == before
+
+
+def test_the_pack_fix_subscribes_the_captured_app_to_the_docs_pack(tmp_path: Path) -> None:
+    """The seed was captured subscribing to `product-planning` and `go` only.
+
+    The docs lane's prompts carry a `skill_load_ref` to `ostler-documentation`, which ships
+    in the `stablemate` pack — so without this every docs trial renders the prompt's
+    placeholder text and measures the agent inventing a documentation doctrine.
+    """
+    agents_yml = tmp_path / "agents.yml"
+    agents_yml.write_text(
+        "repo:\n  name: bench-expense-split\npacks:\n  - product-planning\n  - go\n"
+        "workflows:\n  - coder\n",
+        encoding="utf-8",
+    )
+
+    task_module.subscribe_to_the_docs_pack(tmp_path)
+
+    written = agents_yml.read_text(encoding="utf-8")
+    assert "packs:\n  - product-planning\n  - go\n  - stablemate\n" in written
+    # Appended to the block, not to the file: the keys after it are still keys.
+    assert written.endswith("workflows:\n  - coder\n")
+
+
+def test_the_pack_fix_is_a_no_op_when_the_pack_is_already_declared(tmp_path: Path) -> None:
+    agents_yml = tmp_path / "agents.yml"
+    before = "packs:\n  - stablemate\n  - go\n\n# a comment the seed owns\nworkflows:\n  - coder\n"
+    agents_yml.write_text(before, encoding="utf-8")
+
+    task_module.subscribe_to_the_docs_pack(tmp_path)
+
+    # Byte-for-byte, comment included — a YAML round-trip would have dropped that line.
+    assert agents_yml.read_text(encoding="utf-8") == before
+
+
+def test_the_pack_fix_refuses_an_agents_yml_with_no_packs_block(tmp_path: Path) -> None:
+    (tmp_path / "agents.yml").write_text("repo:\n  name: x\n", encoding="utf-8")
+    with pytest.raises(task_module.sm.TrialError, match="no `packs:` block"):
+        task_module.subscribe_to_the_docs_pack(tmp_path)

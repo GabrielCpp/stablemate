@@ -182,6 +182,43 @@ def backfill_story_sections(repo: Path) -> None:
         story_md.write_text(f"{head}\n{DEPS_SECTION}## {rest}", encoding="utf-8")
 
 
+#: The pack the docs lane's prompts hard-reference. `document-story.md` and
+#: `repair-documentation.md` both carry a `skill_load_ref` to `ostler-documentation`, which
+#: farrier ships in the `stablemate` pack — and the captured app subscribes to
+#: `product-planning` and `go` only. seat-booking and policy-desk both subscribe to it; this
+#: fixture was captured without it.
+DOCS_PACK = "stablemate"
+
+
+def subscribe_to_the_docs_pack(repo: Path) -> None:
+    """Add the `stablemate` pack to `agents.yml` so the docs lane's skills resolve.
+
+    Same shape as `backfill_story_sections`, and for the same reason: a capture-time gap the
+    fixture would otherwise carry into every trial. Without it farrier installs no
+    `ostler-documentation`, the prompt renders its placeholder text instead of a path, and
+    the agent improvises the documentation doctrine it was supposed to be handed — so the
+    docs flow is measured on inventing a standard rather than on applying one.
+
+    A line edit rather than a YAML round-trip, because `agents.yml` carries comments the
+    trial should be handed exactly as the seed has them, and every YAML writer drops them.
+    """
+    agents_yml = repo / "agents.yml"
+    if not agents_yml.is_file():
+        raise sm.TrialError(f"no {agents_yml} — is the seed the app tree it should be?")
+    lines = agents_yml.read_text(encoding="utf-8").splitlines(keepends=True)
+    try:
+        start = next(i for i, line in enumerate(lines) if line.rstrip() == "packs:")
+    except StopIteration:
+        raise sm.TrialError(f"{agents_yml} declares no `packs:` block") from None
+    end = start + 1
+    while end < len(lines) and lines[end].startswith("  - "):
+        end += 1
+    if any(line.strip() == f"- {DOCS_PACK}" for line in lines[start + 1 : end]):
+        return
+    lines.insert(end, f"  - {DOCS_PACK}\n")
+    agents_yml.write_text("".join(lines), encoding="utf-8")
+
+
 def checkout(
     run: Run, pin: Pin, flow: str, dest: Path, install: Callable[[Path], None]
 ) -> Path:
@@ -197,6 +234,7 @@ def checkout(
     sm.git("checkout", "--quiet", pin.commit(flow), cwd=dest)
     rewind(dest, pin, flow)
     backfill_story_sections(dest)
+    subscribe_to_the_docs_pack(dest)
     # `.agents/agents-context.json` is generated and gitignored, so a fresh clone has none
     # and every prompt path in the run would fail to resolve. farrier regenerates it from
     # the tracked `agents.yml`, which is what a real checkout of this repo would do too.
