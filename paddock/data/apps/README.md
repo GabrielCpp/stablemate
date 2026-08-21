@@ -36,8 +36,9 @@ stories/<story>/diff.yml       changed: […]   added: […]
 Materializing story *S* means: copy the app tree, `git init`, commit a *before* tree (each `changed:`
 path replaced by its `pre/` copy, each `added:` path deleted), then restore S's own files into the
 worktree uncommitted — from `post/<path>` where that exists, from the app tree otherwise.
-`HEAD..WORKTREE` is then exactly S's implementation diff while the book stays at its authored
-state — which is the situation a QA run is supposed to face.
+`HEAD..WORKTREE` is then exactly S's implementation diff, which is the situation a QA run is
+supposed to face — provided the book in that image is the book S was written against, which is the
+subject of the next section.
 
 `post/` is what keeps the *first* story's diff from containing the last story's code. The app tree is
 only the post-image of the final story; every earlier one that keeps extending the same module needs
@@ -47,6 +48,36 @@ be scored on obligations nobody claimed to have implemented. A story with nothin
 
 The trial directory must be named after the app (`seat-booking`, not `trial-1`): farrier derives every
 generated skill name from the repository directory's basename, and the spec dirs name those skills.
+
+### The book is versioned per story too
+
+A book authored in one pass against the finished app is **wrong for every image but the last**. It
+documents commands, fields and invocations that story 1 has not written yet, and a plan authored
+against it reaches for them: a QA plan for `tally-cli`'s first story that calls `tally report --json`
+crashes on a trial, because `report` arrives two stories later. The book is not a fixed backdrop the
+stories move against — it is one of the files the stories change, and it materializes like any other.
+
+So a story lists the book pages it is described on in its `diff.yml` `changed:` list, and ships
+**the same trimmed bytes in both `pre/` and `post/`** — the book as of that story, describing what
+exists by the end of it and nothing later. Identical halves are the point, not an oversight: `pre/`
+puts that image in the *before* commit and `post/` puts it in the worktree, so the book is present
+and current in the trial while contributing no line to `HEAD..WORKTREE`. A book that differed
+across the two would be a changed path in the story's own diff, and would then need a `code:` owner
+of its own to avoid an `unmapped-change` error. Omitting `post/` is worse than wrong-looking: the
+materializer falls back to the app tree, which restores the *finished* book and puts the
+anachronism straight back. The last story is the one exception, for the same reason it needs no
+`post/` at all: the app tree already holds its image of the book.
+
+Two corollaries worth having in front of you before you author the next fixture:
+
+- **`depot-infra` and `policy-desk` escape this only because they ground at file level.** A
+  file-level citation is satisfied by the file existing, so an anachronistic bullet above it costs
+  nothing and nothing goes red. That is a latent gap in those fixtures, not a property to imitate —
+  the moment their grounding goes symbol-level, the same crash arrives.
+- **`okf-builder` builds books from finished code**, so any fixture derived through it inherits the
+  anachronism by construction. A generated book is a post-image of the *last* story and has to be
+  trimmed backwards, per story, by hand.
+
 
 Only `stories/`, `defects/` and `defects.yml` are held back from that copy. **Everything else at an
 app's root is handed to the agent under measurement**, which is why no app carries a `README.md` of
