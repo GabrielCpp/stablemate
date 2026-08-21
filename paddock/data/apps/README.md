@@ -77,6 +77,23 @@ own files — and `tests/test_policy_desk_app.py` pins it by minting each story'
 QA mints it and asserting every row's obligation comes back owed. It is pinned by a test
 because the way it breaks is an ordinary refactor that touches neither the book nor the key.
 
+## Every file a story touches needs a `code:` bullet — including one a typed bullet already names
+
+QA's obligation packet maps a changed path to the node that owns it through `code:` bullets and
+nothing else. A path no `code:` bullet claims is an `unmapped-change` **error** in the packet, which
+is a block against the trial rather than a signal about the app — so a fixture's book has to own
+every file its stories add or change, including the ones that are nobody's source code: a compose
+file, an emulator config, a seed script, a stack config. The `environment` node is where those
+belong (`claims-api`'s does), and its `code:` key exists for exactly this.
+
+The case that surprises: a contract file named by a **typed** bullet is still unowned. `- openapi:
+app/api/openapi.yml` says what the document *is*; it does not map the path, because the mapper reads
+`code:` alone. So the convention across all three fixtures is a redundant `code:` bullet beside the
+typed one — the same path listed twice on the same node, once for the reader and once for the mapper.
+It reads like a mistake and is not; teaching the mapper to route through `openapi:` would change what
+`unmapped-change` means, which is a Part II decision rather than something a fixture author gets to
+make.
+
 ## Ports
 
 An app claims a port in the benchmark's `18080-18099` range, registered in
