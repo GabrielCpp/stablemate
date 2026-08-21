@@ -90,6 +90,25 @@ def in_tree_source(repo: Path, data_dir: Path) -> str:
         return ""
 
 
+def _carried_over(pointer_path: Path, *, url: str, note: str) -> tuple[str, str]:
+    """Inherit `url` and `note` from the pointer being replaced, unless this call names them.
+
+    A re-capture re-measures the tree; it does not re-decide where the zip is served from or
+    what the seed is. Those two fields are the only ones a person typed rather than a hash
+    computed, so a `--force` that silently blanks them costs a fixture its fetch story and
+    its one line of prose — and the usual reason to re-capture is that a file in the tree
+    moved, which is exactly when nobody is thinking about the pointer's prose.
+
+    Empty means inherit, so clearing one is an edit to the TOML rather than a flag. That is
+    the right way round: dropping a url by omission is the failure this exists to stop, and
+    a re-capture is not where you would deliberately go to do it.
+    """
+    if not pointer_path.exists() or (url and note):
+        return url, note
+    previous = Pointer.load(pointer_path)
+    return url or previous.url, note or previous.note
+
+
 def capture(
     repo: Path,
     *,
@@ -107,6 +126,7 @@ def capture(
     pointer_path = paths.seed_pointer(data_dir, name)
     if pointer_path.exists() and not force:
         raise SeedError(f"{pointer_path}: seed '{name}' already exists (pass --force to replace)")
+    url, note = _carried_over(pointer_path, url=url, note=note)
 
     junk = archive.junk_in(repo, excludes)
     if junk:

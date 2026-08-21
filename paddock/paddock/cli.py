@@ -56,8 +56,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="GLOB",
         help="path or name to leave out; also permits a directory the junk scan refuses",
     )
-    capture.add_argument("--url", default="", help="https url the zip will be served from")
-    capture.add_argument("--note", default="", help="one line on what state this captures")
+    capture.add_argument("--url", default="", help="https url the zip will be served from (kept on re-capture if omitted)")
+    capture.add_argument("--note", default="", help="one line on what state this captures (kept on re-capture if omitted)")
     capture.add_argument("--force", action="store_true", help="replace an existing seed")
     capture.set_defaults(handler=cmd_capture)
 

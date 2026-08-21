@@ -49,6 +49,27 @@ def test_capture_refuses_to_replace_a_seed_without_force(
     assert capture(repo, data_dir, store, force=True).zip_path.exists()
 
 
+def test_a_re_capture_keeps_the_url_and_note_nobody_retyped(
+    repo: Path, data_dir: Path, store: Path
+) -> None:
+    """The two fields a person typed survive a `--force` that re-measures the tree.
+
+    The usual reason to re-capture is that something in the tracked tree moved, which is
+    exactly when nobody is thinking about the pointer's prose — so a re-capture that took
+    the defaults would drop the fixture's fetch story on the way past.
+    """
+    capture(repo, data_dir, store, url="https://example.com/acme.zip", note="the frozen fixture")
+
+    kept = capture(repo, data_dir, store, force=True).pointer
+    assert kept.url == "https://example.com/acme.zip"
+    assert kept.note == "the frozen fixture"
+
+    # Named explicitly, the new value wins — inheriting is what an *omission* means.
+    said = capture(repo, data_dir, store, force=True, note="now with a defect").pointer
+    assert said.note == "now with a defect"
+    assert said.url == "https://example.com/acme.zip"
+
+
 def test_verify_rejects_a_zip_that_drifted(repo: Path, data_dir: Path, store: Path) -> None:
     # A seed that quietly changed is a benchmark whose numbers cannot be attributed.
     captured = capture(repo, data_dir, store)
