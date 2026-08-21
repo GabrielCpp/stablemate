@@ -353,7 +353,9 @@ def test_eventually_looks_again_where_check_sampled_the_first_paint(tmp_path: Pa
     assert settled["covers"] == ["ac:2"]
 
 
-def test_an_already_evaluated_condition_is_refused_and_names_the_lambda(tmp_path: Path) -> None:
+def test_an_already_evaluated_condition_is_refused_and_names_a_repair_lint_accepts(
+    tmp_path: Path,
+) -> None:
     """Never a silent fallback to `check`. Falling back would make the new API behave
     exactly like the old one at the single moment the author got it wrong — the race ships,
     and the plan reads as though it were already guarded against one."""
@@ -366,14 +368,20 @@ def test_an_already_evaluated_condition_is_refused_and_names_the_lambda(tmp_path
 
     assert code == 1
     assert records[-1]["status"] == "errored"
-    assert "lambda:" in records[-1]["error"]
-    assert "bool" in records[-1]["error"]
+    error = records[-1]["error"]
+    assert "bool" in error
+    # The repair it names has to be one plan lint will accept. `lambda` is the obvious
+    # spelling and the allowlist refuses it, so a message that recommended one would send
+    # the author from a `TypeError` to a lint failure.
+    assert "bound method" in error
+    assert "named nested function" in error
+    assert "Not a lambda" in error
 
 
 def test_a_defect_in_the_condition_surfaces_instead_of_burning_the_deadline(
     tmp_path: Path,
 ) -> None:
-    """A `KeyError` in the lambda is a plan defect, and swallowing it as "not yet" would
+    """A `KeyError` in the condition is a plan defect, and swallowing it as "not yet" would
     spend the whole timeout and then report it as a product failure — the mis-hypothesis
     this work exists to end, recreated inside its own fix."""
     module = _write(

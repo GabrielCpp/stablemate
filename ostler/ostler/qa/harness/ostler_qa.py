@@ -579,7 +579,7 @@ def _not_yet(exc: BaseException) -> bool:
     """Does this exception mean "the page has not got there yet", or "the plan is wrong"?
 
     Only the first is swallowed and retried, and the narrowness is load-bearing. A
-    `KeyError` or a `NameError` inside the lambda is a defect in the *scenario*; swallowing
+    `KeyError` or a `NameError` inside the condition is a defect in the *scenario*; swallowing
     it would burn the whole deadline and then report a plan defect as a product failure —
     which is the exact mis-hypothesis `eventually` exists to end, recreated inside its own
     fix. `CheckFailed` is excluded for the same reason: a `qa.require` that ran inside the
@@ -1006,7 +1006,18 @@ class Qa:
 
         So hand over the sampler, not its result::
 
-            qa.eventually("badge shown", lambda: badge.count() > 0, covers=["ac:2"])
+            qa.eventually("badge shown", badge.is_visible, covers=["ac:2"])
+
+        A bound method, or — when the claim is an expression rather than one read — a named
+        nested function::
+
+            def badge_is_up() -> bool:
+                return badge.count() > 0
+
+            qa.eventually("badge shown", badge_is_up, covers=["ac:2"])
+
+        Not a lambda, even though a lambda is the obvious spelling: plan lint's allowlist
+        does not admit `ast.Lambda`, so a plan written that way is refused before it runs.
 
         The condition is evaluated once before any sleep, so an already-true claim costs
         nothing and records `settled_ms: 0`. `actual` may be a callable too, and is then
@@ -1017,8 +1028,10 @@ class Qa:
             raise TypeError(
                 f"qa.eventually({label!r}, …) needs a callable to re-sample, and was handed "
                 f"an already-evaluated {type(condition).__name__}. Python collapsed the read "
-                "before this harness saw it, so there is nothing left to retry — wrap it: "
-                "lambda: <the expression you just wrote>."
+                "before this harness saw it, so there is nothing left to retry — hand over "
+                "the sampler instead: a bound method (`badge.is_visible`), or a named nested "
+                "function returning the expression you just wrote. Not a lambda — plan lint "
+                "refuses those."
             )
         passed, polls, settled_ms = self._poll(condition, timeout, interval)
         return self._record(
