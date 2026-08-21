@@ -22,6 +22,7 @@ import dataclasses
 import hashlib
 import importlib.util
 import json
+import subprocess
 import sys
 import time
 from collections.abc import Iterator
@@ -412,6 +413,37 @@ def test_a_parked_gate_is_a_warning_on_the_score() -> None:
     assert any("stayed parked" in line for line in lines)
     assert not gf.warnings([], [], [{"gate": "g", "action": "answered",
                                      "sheet": "s", "sha256": "0" * 64}])
+
+
+def test_the_scaffolding_is_committed_before_the_first_story(run: Run) -> None:
+    """Untracked installer output is what a story's settle lap parks on — so it is a
+    baseline commit, dated before story one, rather than an unrecorded file."""
+    subprocess.run(["git", "-C", str(run.repo), "init", "-q"], check=True)
+    subprocess.run(["git", "-C", str(run.repo), "config", "user.email", "t@example.com"],
+                   check=True)
+    subprocess.run(["git", "-C", str(run.repo), "config", "user.name", "t"], check=True)
+    (run.repo / "Makefile").write_text("all:\n", encoding="utf-8")
+
+    gf.commit_baseline(run)
+
+    out = subprocess.run(["git", "-C", str(run.repo), "status", "--porcelain"],
+                         capture_output=True, text=True, check=True)
+    assert out.stdout == ""
+    assert gf.git_commits(run.repo) == 1
+
+
+def test_a_baseline_with_nothing_to_commit_is_not_an_error(run: Run) -> None:
+    """Genesis may have committed as it went; a second baseline is then a no-op."""
+    subprocess.run(["git", "-C", str(run.repo), "init", "-q"], check=True)
+    subprocess.run(["git", "-C", str(run.repo), "config", "user.email", "t@example.com"],
+                   check=True)
+    subprocess.run(["git", "-C", str(run.repo), "config", "user.name", "t"], check=True)
+    (run.repo / "Makefile").write_text("all:\n", encoding="utf-8")
+    gf.commit_baseline(run)
+
+    gf.commit_baseline(run)  # no exception
+
+    assert gf.git_commits(run.repo) == 1
 
 
 def test_a_hand_answer_is_recorded_and_says_so_loudly(run: Run) -> None:

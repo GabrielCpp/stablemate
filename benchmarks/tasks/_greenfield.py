@@ -242,6 +242,7 @@ def run_genesis(run: Run, fixture: Fixture) -> None:
             )
     seed_backlog(run, fixture)
     ignore_agent_runtime(run)
+    commit_baseline(run)
 
 
 def seed_backlog(run: Run, fixture: Fixture) -> None:
@@ -258,6 +259,31 @@ def seed_backlog(run: Run, fixture: Fixture) -> None:
     if not destination.parent.is_dir():
         raise TrialError(f"no {destination.parent} — genesis did not scaffold the docs tree")
     destination.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def commit_baseline(run: Run) -> None:
+    """Commit everything genesis scaffolded, before the first story runs.
+
+    The same class of defect as the runtime ignores, arriving from the other side: the
+    installer's own output — `Makefile`, `agents.yml`, `.claude/`, `.githooks/`, the
+    per-service `.gitignore` — sits untracked in the produced repo, and the moment a
+    story's settle lap lists any of it the coder lane parks on a dirty tree. It is right to
+    park: nobody on that story wrote those files. So they stop being unrecorded here,
+    where they belong — a baseline, dated before story one, that the round's diff is read
+    against.
+
+    `git add -A` is exactly right in *this* repo and nowhere else: it is a throwaway tree
+    the round created moments ago, nothing in it is anyone's half-finished work, and
+    sweeping it wholesale is the point.
+    """
+    for argv in (["add", "-A"],
+                 ["commit", "-m", "chore: scaffold the project", "--no-verify"]):
+        result = subprocess.run(["git", "-C", str(run.repo), *argv],
+                                capture_output=True, text=True, timeout=120, check=False)
+        # An empty commit is not a failure — genesis may have committed as it went.
+        if result.returncode != 0 and "nothing to commit" not in result.stdout:
+            raise TrialError(f"baseline `git {argv[0]}` failed in {run.repo}: "
+                             f"{result.stderr.strip() or result.stdout.strip()}")
 
 
 #: How often the watcher looks for a parked gate. The gate is minutes of agent work away
