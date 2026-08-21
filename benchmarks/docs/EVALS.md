@@ -1,27 +1,27 @@
-# Iterating on a workflow (`evals.py`) — designed, not built
+# Iterating on a workflow (evals) — designed, not built
 
-Where `bench.py` measures the whole chain once, this is the design for measuring **one node,
+Where a greenfield round measures the whole chain once, this is the design for measuring **one node,
 many samples, frozen input** — the instrument a prompt edit actually needs. Nothing here is
 implemented; the constraints are the settled part, which is why they are written down. See
 [README.md](../README.md) for the harness that does exist.
 
-> **Status: not implemented.** `evals.py`, `evals/<workflow>.yml` and the fixture store do
-> not exist in this tree; only `.gitignore` entries for their output do. What follows is the
-> design the harness is meant to satisfy, kept here because the constraints are the hard
+> **Status: not implemented.** No eval harness, no `evals/<workflow>.yml` and no fixture
+> store exist in this tree; only `.gitignore` entries for their output do. What follows is
+> the design the harness is meant to satisfy, kept here because the constraints are the hard
 > part and they are settled.
 
-`bench.py` answers *is the workflow good?* — once, over hours, as a single sample. That
+A greenfield round answers *is the workflow good?* — once, over hours, as a single sample. That
 makes it a regression gate and a poor instrument: a prompt edit worth 15 points of node
 success rate is invisible in one end-to-end run, and one lucky run "proves" a change that
 did nothing.
 
-`evals.py` would measure the other way round: **one node, many samples, frozen input.**
+An eval would measure the other way round: **one node, many samples, frozen input.**
 
 ```bash
-evals.py harvest --run ~/runs/author-default   # freeze real node entries as fixtures
-evals.py list                                  # what's in the store
-evals.py run --node write_story                # baseline pass rate
-evals.py compare --node write_story --b candidate-prompt.md
+evals harvest --run ~/runs/author-default   # freeze real node entries as fixtures
+evals list                                  # what's in the store
+evals run --node write_story                # baseline pass rate
+evals compare --node write_story --b candidate-prompt.md
 ```
 
 Three pieces, all data:
@@ -59,7 +59,7 @@ Three pieces, all data:
 ## Limits worth knowing before you trust a result
 
 - **Graders check well-formedness, not quality.** A prompt can be tuned to satisfy
-  `section_gaps` while writing worse stories. That is what `bench.py score`'s judged
+  `section_gaps` while writing worse stories. That is what the greenfield round's judged
   backlog satisfaction is for — iterate here, gate there.
 - **Only a node's last visit is harvestable.** `context_after.json` is overwritten per
   visit, so a node that looped eleven times yields one fixture. Breadth comes from more

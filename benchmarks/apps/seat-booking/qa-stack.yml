@@ -24,7 +24,7 @@ boot_timeout: 60
 # scores against a defect the trial never seeded.
 #
 # So the ledger is reset at the two layers that own it, neither of which is here: the
-# harness drops the volume once per trial (`replay.py`, before the run starts), and a
+# harness drops the volume once per trial (before the run starts), and a
 # scenario that needs a fresh showing asks for one over the documented route,
 # `DELETE /api/showing`.
 launch: docker compose -f compose.yml up -d --force-recreate --wait

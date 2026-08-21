@@ -1,6 +1,6 @@
 """The frozen-app trial machinery: materialize a story, seed a defect, score the round.
 
-Moved out of `benchmarks/replay.py` rather than rewritten. Everything here was already
+Moved out of the retired replay harness rather than rewritten. Everything here was already
 paid for in blood — the pre-image commit that makes a story's diff uncommitted, the
 `stories`-at-the-root ignore rule, `$PWD` alignment, the three routes that count as a
 catch, the `–` that is not a zero — and a re-implementation would have re-earned each of
@@ -936,7 +936,7 @@ def run_round(run: Run, fixture: Fixture) -> None:
 
 
 def score_round(run: Run, fixture: Fixture) -> Score:
-    """Detection beside cost beside leverage — exactly the round `replay.py` printed.
+    """Detection beside cost beside leverage — exactly the round the replay harness printed.
 
     Read-only over the stage, and read entirely from what the trials left in it: the
     verdicts are recomputed here rather than recorded by the step, so a result zip can be

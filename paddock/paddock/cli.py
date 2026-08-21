@@ -8,7 +8,7 @@ paddock run <task> [--label L] [--param K=V]  # unpack, steps, stage, (score), s
 paddock list                             # tasks and their seeds
 ```
 
-One tool. `bench.py`, `devlane.py`, `matrix.py` and `replay.py` are absorbed into it as
+One tool. The four harnesses it replaced are absorbed into it as
 their fixtures migrate; nothing here grows a fifth sibling.
 """
 

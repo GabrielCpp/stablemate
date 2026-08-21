@@ -222,12 +222,13 @@ __marimo__/
 .agents/*
 
 
-# Benchmark matrix output: one built repo per (model set × task), its git bundle, the
-# run artifacts and the scorecard. Untracked for three separate reasons, any one of
-# which is sufficient — it is large (a full app per set), it is derived (re-runnable
-# from sets.yml), and each `data/<set>/<task>/repo` is its OWN git repo, which is the
-# whole point: nesting one working tree inside another is only safe while the outer one
-# cannot see it. `matrix.py` refuses to write here if this entry ever goes missing.
+# A benchmark round's built repo, its run artifacts and its scorecard. Untracked for
+# three separate reasons, any one of which is sufficient — it is large (a whole app per
+# round), it is derived (re-runnable from the task module), and the built repo is its OWN
+# git repo, which is the whole point: nesting one working tree inside another is only safe
+# while the outer one cannot see it. Paddock's work and result roots live outside the tree
+# entirely (`~/.local/share/stablemate/paddock`) for the same reason; this entry stays as
+# the backstop for a round pointed at the repo by hand.
 /data/
 
 

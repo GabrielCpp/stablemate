@@ -21,7 +21,7 @@ from pathlib import Path
 DATA_DIRNAME = "benchmarks"
 
 #: Off `/tmp`, which does not survive a reboot. A fixture that evaporates is not a
-#: fixture — the same reason `replay.py` kept its bundles here before paddock existed.
+#: fixture — the same reason the retired replay harness kept its bundles here.
 STORE = Path.home() / ".local" / "share" / "stablemate" / "paddock"
 
 
