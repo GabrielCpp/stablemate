@@ -32,7 +32,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 
@@ -94,6 +94,22 @@ class PlanResult(CoderResult):
     verification_setup: dict[str, Any] = Field(
         default={}, validation_alias=AliasChoices("verification_setup", "qa_stack")
     )
+
+    @field_validator("shared_packages", mode="before")
+    @classmethod
+    def _lift_bare_paths(cls, v: Any) -> Any:
+        """A bare string in `shared_packages` is the directory it names.
+
+        The list's whole meaning is "non-service directories the plan changes", so a
+        string is unambiguous — a planner that reasons "`docs` is a shared package, not
+        a service" and emits `"docs"` said exactly what `{"path": "docs"}` says, and
+        one did, killing a four-hour run on the shape alone. `services` gets no such
+        lift: an entry there needs a `repo`/`plan_file`, so a bare string genuinely
+        under-specifies it and the validation error is the right answer.
+        """
+        if isinstance(v, list):
+            return [{"path": item} if isinstance(item, str) else item for item in v]
+        return v
 
 
 class ExitConditions(CoderResult):

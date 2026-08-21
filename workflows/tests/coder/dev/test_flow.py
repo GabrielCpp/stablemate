@@ -31,6 +31,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import read_resume
@@ -510,6 +511,21 @@ def test_a_checkpointed_plan_result_reads_back_under_the_old_field_name() -> Non
     assert PlanResult(verification_setup={"profile": "new"}).verification_setup == {
         "profile": "new"
     }
+
+
+def test_a_bare_string_shared_package_is_the_directory_it_names() -> None:
+    """`shared_packages` means "non-service directories the plan changes", so a planner
+    that emits `"docs"` said exactly what `{"path": "docs"}` says — one did, and the
+    string's shape alone ended a four-hour run. The lift is scoped to that list:
+    a bare string in `services` still under-specifies (repo, plan_file) and stays a
+    validation error the ladder re-asks about.
+    """
+    plan = PlanResult.model_validate({"shared_packages": ["docs", {"path": "libs/core"}]})
+
+    assert [pkg.path for pkg in plan.shared_packages] == ["docs", "libs/core"]
+
+    with pytest.raises(ValidationError):
+        PlanResult.model_validate({"services": ["docs"]})
 
 
 def test_an_unauthored_story_is_refused_before_anything_is_planned(
