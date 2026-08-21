@@ -28,11 +28,11 @@ task(
 
 FIXTURE = gf.Fixture(
     backlog="suites/link-shortener/docs/backlog.md",
-    # The author lane parks on product decisions the backlog leaves open, by design.
-    # Answering them by hand made the first round unrepeatable; this is that operator,
-    # tracked beside the backlog and recorded in the round's ledger when it is applied.
-    decisions="suites/link-shortener/docs/decisions.md",
+    # The author lane blocks for a human on product decisions the backlog leaves open,
+    # by design and with no resolver. That turn was held once, against these bullets, and
+    # frozen — so a round resumes from the far side of it rather than needing an operator.
     decision_records="suites/link-shortener/docs/decisions",
+    grill_capture="suites/link-shortener/grill",
     packs="product-planning,stablemate,infra",
     docs_scaffold="shared-docs:docs",
     surfaces=(

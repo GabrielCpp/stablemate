@@ -86,28 +86,52 @@ Three details worth knowing:
   workhorse waits caps out by design — so cap-wait is subtracted before any node is
   flagged, and shown separately.
 - **A gate a person answered is not an unattended capture.** The operator-gate ledger has
-  three verbs: `answered` (the harness injected the decision sheet), `parked` (the round
-  went on without a decision) and `hand` (a person reached in). A `hand` entry is warned
-  about loudly, because a round a human unstuck is not repeatable as it stands.
+  two verbs: `parked` (the round stopped on a gate nothing answered) and `hand` (a person
+  reached in). Both are warned about loudly — a round a human unstuck is not repeatable as
+  it stands, and a round that parked was measured only up to the gate. There is no third
+  verb for "the harness answered it": the harness never answers a gate, and
+  `watch_operator_gates` in `tasks/_greenfield.py` says why at length.
 
-## The author lane's grill gate, and the decision sheet
+## The author lane's grill gate, and the frozen operator turn
 
 A backlog written at the level of observable behaviour deliberately leaves product
 decisions open, and the author lane's grill gate parks and waits for an operator to settle
-them. That gate is human by construction, so an unattended round can never pass it — and
-an attended one is answered differently each time, which means two rounds of the same task
-are not measuring the same product.
+them. That gate is human by construction — it is the one gate of the author lane's twelve
+with no auto-resolver — so an unattended round can never pass it, and an attended one is
+answered differently each time, which means two rounds of the same task are not measuring
+the same product.
 
-`suites/<name>/docs/decisions.md` is that operator, frozen. The greenfield task injects it
-at the gate, records the injection in the round's ledger, and reports the sha it applied. A
-round whose grill asks something the sheet does not settle stays **parked** and is reported
-parked — that is a finding about the sheet (extend it, and note the capture), never a guess
-made at gate time.
+The rule that settles this, and the one to reuse the next time a gate raises it: **freeze
+what the design assigns to the operator; never freeze what the design assigns to the loop.**
+A human turn the product reserves for humans is not part of the measured loop — it is the
+fixture's environment, and every benchmark with a human in the loop must freeze that human
+at a constant or it measures the human.
+
+So the grill conversation was held **once**, for real, at fixture-authoring time, and both
+halves of it are frozen under `suites/<name>/grill/`: the answered gate file, and the
+checkpoint of the run that was parked on it. A round seeds them before the author phase and
+resumes from there, which puts `refactor_backlog` — the state after the gate — first, with
+nothing about the loop itself pre-supplied. `seed_grill_capture` in `tasks/_greenfield.py`
+is the mechanism.
+
+**A grounded score covers the loop given a completed operator turn; it says nothing about
+the grill's question quality.** The question-generation turn no longer runs per round, so
+its variance is excised rather than solved — which is honest only if it is said out loud,
+here and anywhere the number is quoted.
+
+The product decisions themselves live separately, as standing records under
+`suites/<name>/docs/decisions/`, copied into the produced repo's `<docs-root>/decisions/`
+where every lane's auto-resolver reads them. A record stands on its own — it says what *is*
+decided, not "A2:" — so it answers whatever phrasing a later gate reaches it in. What used
+to sit there instead, a sheet of replies applied positionally to one gate and stamped
+`ANSWERED` unconditionally, is gone: the questions a gate asks are generated per round and
+are not stable across rounds, so the sheet was routinely stamped over questions it had
+never been written against.
 
 ## The benchmark suites (`suites/`)
 
-Every benchmark is one suite under `suites/<name>/`, holding the backlog and the decision
-sheet a task module points at. `suites/todo-app` is the verdict benchmark: four surfaces,
+Every benchmark is one suite under `suites/<name>/`, holding the backlog, the decision
+records and the frozen grill capture a task module points at. `suites/todo-app` is the verdict benchmark: four surfaces,
 eighteen bullets, hours per run. That is the right size for *is the workflow good* and the
 wrong size for *why did it break* — a fix-and-rerun cycle measured in hours is a cycle
 nobody runs twice. The others are sized so `author + coder` finishes inside an hour. Each
@@ -150,5 +174,6 @@ suites/               every benchmark, one directory each
   README.md           which suite catches what
   <name>/             the directory name IS the task name
     docs/backlog.md   the pristine input, copied into the target on every run
-    docs/decisions.md the frozen operator, injected at the author lane's grill gate
+    docs/decisions/   standing decision records, copied to <docs-root>/decisions/
+    grill/            the frozen operator turn: the answered gate + its checkpoint
 ```

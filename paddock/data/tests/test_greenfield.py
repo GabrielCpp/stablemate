@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
-import hashlib
 import importlib.util
 import json
 import subprocess
@@ -276,18 +275,25 @@ def test_every_greenfield_task_carries_a_backlog_with_bullets() -> None:
         backlog = DATA / declared.backlog
         assert backlog.is_file(), f"{path.name}: no backlog at {backlog}"
         assert gf.parse_backlog(backlog), f"{path.name}: backlog has no `- [id] …` bullets"
-        if declared.decisions:
-            # The sheet versions with the seed and `check_public.py` scans it, both of which
-            # need it to be a real tracked file under `paddock/data/` — and a task that names
-            # one it does not have parks every round on a gate it thinks it has answered.
-            sheet = DATA / declared.decisions
-            assert sheet.is_file(), f"{path.name}: no decision sheet at {sheet}"
+        if declared.decision_records:
+            # The records version with the seed and `check_public.py` scans them, both of
+            # which need a real tracked directory under `paddock/data/` — and a task that
+            # names records it does not have sends every round's resolvers to an empty
+            # shelf, where they escalate questions the operator already settled.
+            records = DATA / declared.decision_records
+            assert records.is_dir(), f"{path.name}: no decision records at {records}"
+            assert sorted(records.glob("*.md")), f"{path.name}: {records} holds no records"
+        if declared.grill_capture:
+            # The frozen operator turn. Both halves or neither: the checkpoint without the
+            # gate file resumes into a lane whose answer is missing, and the gate file
+            # without the checkpoint is a round that still parks on the grill.
+            capture = DATA / declared.grill_capture
+            for half in ("checkpoint.json", gf.GRILL_GATE):
+                assert (capture / half).is_file(), f"{path.name}: no {half} in {capture}"
     assert found, "no greenfield task declares a Fixture — the backlog-driven half is gone"
 
 
 # ── the operator gate ─────────────────────────────────────────────────────────────────
-
-SHEET = "# decisions\n\n## Creation contract\n\n`POST /links` answers `201 Created`.\n"
 
 GATE = (
     "STATUS: AWAITING_OPERATOR\n"
@@ -305,27 +311,23 @@ def park(run: Run, name: str = "_author-context.md") -> Path:
     return path
 
 
-def sheeted(run: Run, fixture: Any, text: str = SHEET) -> Any:
-    (run.data_dir / "docs" / "decisions.md").write_text(text, encoding="utf-8")
-    return dataclasses.replace(fixture, decisions="docs/decisions.md")
-
-
 def watch_once(run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch, *, expect: int) -> None:
     """Run the watcher until the ledger has `expect` entries, then stop it.
 
     The real watcher lives beside a phase that blocks for minutes; here it is driven to a
     quiescent point and joined, so the test asserts on a finished thread rather than on a
-    race.
+    race. `expect=0` waits out a fixed slice instead — for the cases whose whole claim is
+    that nothing was written.
     """
     monkeypatch.setattr(gf, "GATE_POLL_S", 0.01)
-    stop, thread = gf.gates_watched(run, fixture, "author", sheet_applies=True)
+    stop, thread = gf.gates_watched(run, fixture, "author")
     thread.start()
     try:
         deadline = time.monotonic() + 10.0
         while len(gf.operator_gates_of(run)) < expect and time.monotonic() < deadline:
             time.sleep(0.01)
-        # A further poll's worth of grace, so a wrongly-repeated injection has time to show
-        # up rather than being outrun by the stop.
+        # A further slice, so a wrongly-repeated entry has time to show up rather than
+        # being outrun by the stop — and so an `expect=0` case is a real wait.
         time.sleep(0.1)
     finally:
         stop.set()
@@ -333,86 +335,172 @@ def watch_once(run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch, *, expec
     assert not thread.is_alive(), "the watcher outlived the phase it was watching"
 
 
-def test_the_watcher_answers_a_parked_gate_from_the_tracked_sheet(
+def test_a_gate_still_awaiting_past_the_grace_is_parked(
     run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The grill gate is human by construction, so an unattended round dies on it. The
-    sheet is the operator, frozen — and the questions stay in the file beneath it, because
-    what was answered is only readable beside what was asked."""
-    gate = park(run)
-    watch_once(run, sheeted(run, fixture), monkeypatch, expect=1)
+    """The one thing the watcher does at a gate: notice, and stop the round on it.
 
-    written = gate.read_text(encoding="utf-8")
-    # The header, not an appended block: only the first `STATUS:` line is ever read.
-    assert written.startswith("STATUS: ANSWERED\n")
-    assert "AWAITING_OPERATOR" not in written
-    assert "`POST /links` answers `201 Created`." in written
-    assert "❓ **Q1** — what is the creation contract?" in written
-    # workhorse's own reader is what the driver polls; it has to agree the gate is done.
-    assert gf.gate_answered(gate)
-
-
-def test_the_injection_is_recorded_with_the_sheet_it_applied(
-    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """An injected answer is an input to the round. An input nobody can see is the defect
-    this whole seam exists to fix, so the path and the sha go in the ledger."""
-    park(run)
-    watch_once(run, sheeted(run, fixture), monkeypatch, expect=1)
-
-    entry, = gf.operator_gates_of(run)
-    assert entry["action"] == "answered"
-    assert entry["gate"] == "docs/epics/_author-context.md"
-    assert entry["sheet"] == "docs/decisions.md"
-    assert entry["sha256"] == hashlib.sha256(SHEET.encode("utf-8")).hexdigest()
-
-
-def test_a_gate_that_asks_again_stays_parked(
-    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """One injection per gate path, ever. A second park at the same file is the flow
-    saying the sheet did not settle it — and the harness must not read the new question and
-    decide for itself whether the sheet covers it. That judgement is the thing a benchmark
-    cannot be making at gate time."""
-    gate = park(run)
-    fixture = sheeted(run, fixture)
-    watch_once(run, fixture, monkeypatch, expect=1)
-    gate.write_text(GATE.replace("Q1", "Q2"), encoding="utf-8")
-    watch_once(run, fixture, monkeypatch, expect=2)
-
-    # Left exactly as the flow re-asked it: parked, and the round waits.
-    assert gate.read_text(encoding="utf-8").startswith("STATUS: AWAITING_OPERATOR")
-    assert [e["action"] for e in gf.operator_gates_of(run)] == ["answered", "parked"]
-
-
-def test_a_task_with_no_sheet_parks_and_says_so(
-    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
+    A round with nobody at the keyboard cannot get past a gate whose lane has no
+    resolver — so the value of noticing is the minute it costs instead of the hour, and
+    the ledger entry that says the score covers a partial round.
+    """
+    monkeypatch.setattr(gf, "GATE_GRACE_S", 0.0)
     gate = park(run)
     watch_once(run, fixture, monkeypatch, expect=1)
 
-    assert gate.read_text(encoding="utf-8") == GATE
     entry, = gf.operator_gates_of(run)
     assert entry["action"] == "parked"
-    assert "no decision sheet" in entry["reason"]
+    assert entry["gate"] == "docs/epics/_author-context.md"
+    assert "no operator" in entry["reason"]
+    # Untouched. The watcher reads gates; it has never been the thing that answers one.
+    assert gate.read_text(encoding="utf-8") == GATE
 
 
-def test_a_declared_sheet_that_is_missing_is_an_error_not_a_shrug(
-    run: Run, fixture: Any
+def test_the_watcher_never_answers_a_gate(
+    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Read from the tracked data dir, never from the tree the round mutates — so a sheet
-    that is not there is a broken `--data-dir`, and a round that silently ran without it
-    would be the unrepeatable one all over again."""
-    with pytest.raises(gf.TrialError, match="no decision sheet"):
-        gf.decision_sheet(run, dataclasses.replace(fixture, decisions="docs/nope.md"))
+    """It used to, for one gate class, from a sheet of replies applied positionally — and
+    positionally is the whole defect: a gate's questions are generated per round, so a
+    sheet written against one round's questions got stamped `ANSWERED` over another's. The
+    repair that looks obvious is forbidden too: checking whether the sheet *covers* what
+    was asked makes the harness judge semantics at gate time."""
+    monkeypatch.setattr(gf, "GATE_GRACE_S", 0.0)
+    gate = park(run)
+    watch_once(run, fixture, monkeypatch, expect=1)
+
+    assert gate.read_text(encoding="utf-8").startswith("STATUS: AWAITING_OPERATOR")
+    assert not gf.gate_answered(gate)
+    assert "answered" not in {e["action"] for e in gf.operator_gates_of(run)}
+
+
+def test_a_gate_answered_inside_the_grace_is_not_a_stall(
+    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Most gates on a round's path have an auto-resolver, and a resolver that grounds its
+    answer writes it in seconds. Parking on first sight would score every one of those as
+    a stall, and `parked` would stop meaning "the round stopped here"."""
+    gate = park(run)
+    watch_once(run, fixture, monkeypatch, expect=0)
+    assert gf.operator_gates_of(run) == []
+
+    gate.write_text(GATE.replace("AWAITING_OPERATOR", "ANSWERED"), encoding="utf-8")
+    watch_once(run, fixture, monkeypatch, expect=0)
+    assert gf.operator_gates_of(run) == []
+
+
+def test_a_gate_is_parked_once(run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The round stops on a gate the first time; a watcher that keeps re-parking the same
+    file turns one stop into a ledger nobody can read a count off."""
+    monkeypatch.setattr(gf, "GATE_GRACE_S", 0.0)
+    park(run)
+    watch_once(run, fixture, monkeypatch, expect=1)
+    watch_once(run, fixture, monkeypatch, expect=1)
+
+    assert [e["action"] for e in gf.operator_gates_of(run)] == ["parked"]
 
 
 def test_a_parked_gate_is_a_warning_on_the_score() -> None:
     lines = gf.warnings([], [], [{"gate": "docs/epics/_author-context.md",
-                                 "action": "parked", "reason": "no decision sheet"}])
+                                 "action": "parked", "reason": "no operator"}])
     assert any("stayed parked" in line for line in lines)
-    assert not gf.warnings([], [], [{"gate": "g", "action": "answered",
-                                     "sheet": "s", "sha256": "0" * 64}])
+    # A round nobody stopped and nobody reached into is the only one that warns about
+    # neither: `hand` has its own warning, for the same reason.
+    assert not gf.warnings([], [], [])
+
+
+# ── the frozen grill capture ──────────────────────────────────────────────────────────
+
+ANSWERED_GATE = GATE.replace("AWAITING_OPERATOR", "ANSWERED") + "\nA1 — `201 Created`.\n"
+
+
+def capture(run: Run, *, waiting_on: str = "docs/epics/_author-context.md") -> Any:
+    """Write a frozen capture into the data dir, as the tracked one is written."""
+    directory = run.data_dir / "grill"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / gf.GRILL_GATE).write_text(ANSWERED_GATE, encoding="utf-8")
+    run.write_json(directory / "checkpoint.json", {
+        "run_id": "pd3eb1e81",
+        "state": "refactor_backlog",
+        "flow": "Author",
+        "waiting_on": waiting_on,
+        # Both of these name the machine the capture was taken on, and one of them names a
+        # library that is not this round's. Rendering them is the point of the seeding.
+        "inputs": {"repo_dir": "/elsewhere/stage/link-shortener", "library_dirs": [],
+                   "backlog": "docs/backlog.md"},
+        "ctx": {"repo_root": "/elsewhere/stage/link-shortener",
+                "author_branch": "author/author-grill", "base_branch": "main"},
+    })
+    (run.repo / "docs" / "epics").mkdir(parents=True, exist_ok=True)
+    run.scratch.mkdir(parents=True, exist_ok=True)
+    gf.effective(run).write_text("", encoding="utf-8")
+    return None
+
+
+def test_the_capture_is_seeded_as_a_checkpoint_the_round_resumes_from(
+    run: Run, fixture: Any
+) -> None:
+    """The mechanism, in one assertion: an `Await` checkpoint names the state it will
+    resume *into*, so a round that starts from this one starts at `refactor_backlog` —
+    past the one gate the product reserves for a human, with nothing about the loop frozen.
+    """
+    capture(run)
+    git_init(run.repo)
+
+    gf.seed_grill_capture(run, dataclasses.replace(fixture, grill_capture="grill"))
+
+    seeded = json.loads(
+        (gf.runs_dir(run) / f"author-{gf.AUTHOR_RUN_ID}" / "checkpoint.json")
+        .read_text(encoding="utf-8"))
+    assert seeded["state"] == "refactor_backlog"
+    assert seeded["run_id"] == gf.AUTHOR_RUN_ID
+    # A resume rebuilds the instance from the checkpoint's own inputs, never from
+    # `--params` — so a path left as the capturing machine's is the path this round reads.
+    assert seeded["inputs"]["repo_dir"] == str(run.repo)
+    assert seeded["ctx"]["repo_root"] == str(run.repo)
+    assert seeded["waiting_on"] == str(run.repo / "docs" / "epics" / gf.GRILL_GATE)
+    # Carried through untouched: the capture is the round's inputs, not a subset of them.
+    assert seeded["inputs"]["backlog"] == "docs/backlog.md"
+
+
+def test_the_answered_gate_lands_where_the_flow_will_read_it(run: Run, fixture: Any) -> None:
+    capture(run)
+    git_init(run.repo)
+
+    gf.seed_grill_capture(run, dataclasses.replace(fixture, grill_capture="grill"))
+
+    gate = run.repo / "docs" / "epics" / gf.GRILL_GATE
+    assert gate.read_text(encoding="utf-8") == ANSWERED_GATE
+    assert gf.gate_answered(gate)
+    # On the branch the parked run was on: `close` reads it off the ctx and fails on a
+    # branch that is not there.
+    head = subprocess.run(["git", "-C", str(run.repo), "branch", "--show-current"],
+                          capture_output=True, text=True, check=True)
+    assert head.stdout.strip() == "author/author-grill"
+
+
+def test_a_declared_capture_that_is_missing_is_an_error_not_a_shrug(
+    run: Run, fixture: Any
+) -> None:
+    """Read from the tracked data dir, never from the tree the round mutates — so a
+    capture that is not there is a broken `--data-dir`, and a round that silently ran
+    without it would park on the grill after paying for a genesis."""
+    with pytest.raises(gf.TrialError, match="no frozen grill capture"):
+        gf.seed_grill_capture(run, dataclasses.replace(fixture, grill_capture="nope"))
+
+
+def test_a_task_with_no_capture_seeds_nothing(run: Run, fixture: Any) -> None:
+    """Not every greenfield task's author lane has a grill gate to have frozen."""
+    gf.seed_grill_capture(run, fixture)
+    assert not (gf.runs_dir(run) / f"author-{gf.AUTHOR_RUN_ID}").exists()
+
+
+def git_init(repo: Path) -> None:
+    for argv in (["init", "-q"], ["config", "user.email", "t@example.com"],
+                 ["config", "user.name", "t"]):
+        subprocess.run(["git", "-C", str(repo), *argv], check=True)
+    (repo / "seed.txt").write_text("x\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "seed.txt"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "baseline"], check=True)
 
 
 def test_the_scaffolding_is_committed_before_the_first_story(run: Run) -> None:
@@ -499,6 +587,7 @@ def test_a_repo_root_gate_is_seen_too(run: Run, fixture: Any, monkeypatch: pytes
     gate = run.repo / "dirty-tree-operator-context.create-short-links.md"
     gate.write_text(GATE, encoding="utf-8")
     monkeypatch.setattr(gf, "GATE_POLL_S", 0.01)
+    monkeypatch.setattr(gf, "GATE_GRACE_S", 0.0)
     stop, thread = gf.gates_watched(run, fixture, "coder")
     thread.start()
     try:
@@ -512,18 +601,18 @@ def test_a_repo_root_gate_is_seen_too(run: Run, fixture: Any, monkeypatch: pytes
     entry, = gf.operator_gates_of(run)
     assert entry["gate"] == "dirty-tree-operator-context.create-short-links.md"
     assert entry["action"] == "parked"
-    # Parked, not answered, even though the task has a sheet: this gate asks about the
-    # state of a repo, and a contract written beside a backlog cannot rule on that.
+    # Seen and parked wherever it is written: this one sits at the repo root rather than
+    # under a docs directory, and a gate the watcher does not see costs the round an hour.
     assert gate.read_text(encoding="utf-8") == GATE
 
 
-def test_the_sheet_never_answers_a_coder_gate(
+def test_a_coder_gate_is_parked_and_left_alone_too(
     run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     gate = run.repo / "ci-operator-context.0001-api.md"
     gate.write_text(GATE, encoding="utf-8")
-    fixture = sheeted(run, fixture)
     monkeypatch.setattr(gf, "GATE_POLL_S", 0.01)
+    monkeypatch.setattr(gf, "GATE_GRACE_S", 0.0)
     stop, thread = gf.gates_watched(run, fixture, "coder")
     thread.start()
     try:
@@ -536,7 +625,10 @@ def test_the_sheet_never_answers_a_coder_gate(
 
     entry, = gf.operator_gates_of(run)
     assert entry["action"] == "parked"
-    assert "not the product" in entry["reason"]
+    # Every lane, one behaviour. A coder gate asks about the state of a repo mid-round —
+    # nothing written down before the round started could answer it, and the watcher was
+    # never the thing that would have tried.
+    assert gate.read_text(encoding="utf-8") == GATE
 
 
 def test_a_context_file_that_is_not_a_gate_is_passed_over(
@@ -550,7 +642,7 @@ def test_a_context_file_that_is_not_a_gate_is_passed_over(
     noise.write_text("# obligations\n\n- a thing\n", encoding="utf-8")
     # `expect=0`: the point is that nothing is ever recorded, so the watcher is given a
     # handful of polls and then stopped rather than waited on.
-    watch_once(run, sheeted(run, fixture), monkeypatch, expect=0)
+    watch_once(run, fixture, monkeypatch, expect=0)
 
     assert gf.operator_gates_of(run) == []
     assert noise.read_text(encoding="utf-8") == "# obligations\n\n- a thing\n"

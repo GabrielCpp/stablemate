@@ -4,7 +4,7 @@ One round, three workflow phases and a ruler:
 
     genesis → the skeleton, one invocation per surface
     backlog → the benchmark's input, copied in so every run starts from the same bullets
-    author  → epics and stories, its human grill gate answered from a tracked sheet
+    author  → epics and stories, resumed past its human grill gate from a frozen capture
     coder   → the implementation
     gates   → the produced repo's own `build` / `test`, run once and recorded
 
@@ -23,7 +23,6 @@ The leading underscore keeps `paddock.loader` from treating this as a task modul
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
@@ -31,6 +30,7 @@ import re
 import shutil
 import subprocess
 import threading
+import tomllib
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -42,6 +42,7 @@ import _forensics as fx
 from _stablemate import TrialError, effective, no_leaks, stablemate_checkout, uv_run
 from ostler import markdown
 from paddock import Run, Score
+from workhorse.cli.run import library_dirs as wh_library_dirs
 from workhorse.config_run import AgentResilience
 from workhorse.pyflow.driver import answered as gate_answered
 from workhorse.runner import caps as wh_caps
@@ -113,17 +114,19 @@ class Fixture:
     backlog: str
     #: Where that backlog lands inside the repo, and the `backlog` param author is given.
     backlog_path: str = "docs/backlog.md"
-    #: The tracked decision sheet answering the author lane's grill gate, relative to the
-    #: data directory — same rule as `backlog`, and for the same reason. Empty means the
-    #: task has none, and a round that parks stays parked. See `answer_operator_gates`.
-    decisions: str = ""
     #: The tracked directory of standing decision records, relative to the data directory.
-    #: Copied into the produced repo's `<docs-root>/decisions/`, where the coder lane's
-    #: auto-resolver reads them. Distinct from `decisions` above and not interchangeable:
-    #: the sheet answers the author lane's grill gate about the *product*, once; a record
-    #: here is a standing ruling any lane may cite, and it is how a decision the operator
-    #: already made reaches a gate the sheet is deliberately not allowed to answer.
+    #: Copied into the produced repo's `<docs-root>/decisions/`, where every lane's
+    #: auto-resolver reads them. This is the *whole* channel by which a decision the
+    #: operator has already made reaches the round: a record stands on its own — it says
+    #: what is decided, not "A2:" — so it answers whatever phrasing a gate reaches it in.
+    #: What used to sit beside it, a sheet of replies applied positionally to one gate,
+    #: is gone; `watch_operator_gates` says why.
     decision_records: str = ""
+    #: The frozen grill capture, relative to the data directory, or empty for a task whose
+    #: author lane has no grill gate. See `seed_grill_capture` — this is the one operator
+    #: turn the product reserves for a human, held once at fixture-authoring time so the
+    #: round starts after it.
+    grill_capture: str = ""
     #: Where those records land inside the repo — `decisions_dir` in the coder workflow.
     decision_records_path: str = "docs/decisions"
     #: The surfaces genesis scaffolds, in order. The first one carries the docs scaffold.
@@ -253,6 +256,7 @@ def run_genesis(run: Run, fixture: Fixture) -> None:
     seed_decision_records(run, fixture)
     ignore_agent_runtime(run)
     commit_baseline(run)
+    seed_grill_capture(run, fixture)
 
 
 def seed_backlog(run: Run, fixture: Fixture) -> None:
@@ -277,15 +281,17 @@ def seed_decision_records(run: Run, fixture: Fixture) -> None:
     Same provenance rule as `seed_backlog` — read from `run.data_dir`, the tracked copy —
     and the same reason: a record the round wrote for itself proves nothing.
 
-    This exists because the decision *sheet* is deliberately product-only. It answers the
-    author lane's grill gate and nothing else, because a coder-lane gate asks about the
-    state of a repo, which no sheet written beside a backlog can answer. But some rulings
-    are neither: they are the operator's standing answer to a question that will be asked
-    again — why an acceptance criterion is scoped the way it is, which of two documents
-    wins when they disagree. Those belong where the auto-resolver already looks, in
-    `<docs-root>/decisions/`, and they have to arrive with the fixture rather than be
-    reached in by hand, or the round that used them carries a `hand` verb and measures
-    nothing.
+    These records are the *whole* channel by which a decision the operator has already made
+    reaches a round. Some are product answers the backlog deliberately left open; others are
+    the operator's standing answer to a question that will be asked again — why an acceptance
+    criterion is scoped the way it is, which of two documents wins when they disagree. Both
+    belong where every lane's auto-resolver already looks, in `<docs-root>/decisions/`, and
+    both have to arrive with the fixture rather than be reached in by hand, or the round that
+    used them carries a `hand` verb and measures nothing.
+
+    A record stands on its own — it says what *is* decided, not "A2:" keyed to one gate's
+    question order — which is what lets it answer whatever phrasing a later gate reaches it
+    in. `watch_operator_gates` says what happened to the thing that did not.
     """
     if not fixture.decision_records:
         return
@@ -296,6 +302,80 @@ def seed_decision_records(run: Run, fixture: Fixture) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     for record in sorted(source.glob("*.md")):
         (destination / record.name).write_text(record.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+#: The run id every round's author phase is pinned to, so the frozen checkpoint has a run
+#: dir to be found in. Ordinarily workhorse derives one from the `--params`, which is
+#: stable across rounds anyway; naming it makes the seeding independent of that derivation
+#: and makes the run dir legible in the staged evidence.
+AUTHOR_RUN_ID = "grill"
+
+#: What the frozen grill capture holds, beside a `checkpoint.json`: the answered gate file,
+#: named for where it lands rather than carrying the path separately — the checkpoint's own
+#: `waiting_on` says where that is.
+GRILL_GATE = "_author-context.md"
+
+
+def seed_grill_capture(run: Run, fixture: Fixture) -> None:
+    """Put the frozen operator turn — the answered grill gate — into the round.
+
+    The author lane's `grill_backlog` blocks for a human unconditionally: it is the one
+    gate of the lane's twelve with no auto-resolver, deliberately, because the decisions it
+    asks for are the operator's and a stand-in agent making them is the failure it exists
+    to prevent. A benchmark cannot route around that and must not bend the product to make
+    it go away. So the turn was held once, for real, at fixture-authoring time, and what is
+    frozen here is its result: the gate file as the operator left it, and the checkpoint
+    workhorse wrote while parked on it.
+
+    That checkpoint's state is already `refactor_backlog` — an `Await` checkpoints the
+    state it will resume *into* — so `run_author` naming this run id makes `refactor_backlog`
+    the first state the round executes. Nothing before it is measured because nothing before
+    it is the loop's: the split, the epics and the stories, which are, all stay live.
+
+    Two of the checkpoint's fields cannot be frozen and are rendered here instead. Both are
+    about this machine rather than about the flow: `repo_dir`/`repo_root` name the round's
+    own stage, and `library_dirs` is the ladder workhorse walks through the round's pinned
+    config — which on a public clone resolves somewhere else entirely, and on this one
+    names a directory a tracked file may not.
+    """
+    if not fixture.grill_capture:
+        return
+    source = run.data_dir / fixture.grill_capture
+    if not (source / "checkpoint.json").is_file():
+        raise TrialError(f"no frozen grill capture at {source} — is --data-dir the repo's paddock/data/?")
+
+    frozen = json.loads((source / "checkpoint.json").read_text(encoding="utf-8"))
+    # The branch the parked run was on has to be there when it resumes: `close` reads it
+    # off the ctx and fails on a branch that does not exist. Cut after the baseline commit
+    # and before the gate file lands, which is the order the live lane produces — the gate
+    # file is written by the engine, on the author branch, and never committed.
+    branch = str(frozen["ctx"].get("author_branch") or "")
+    if branch:
+        git(run.repo, "checkout", "-B", branch)
+
+    gate = run.repo / str(frozen["waiting_on"])
+    if not gate.parent.is_dir():
+        raise TrialError(f"no {gate.parent} — genesis did not scaffold the docs tree")
+    gate.write_text((source / GRILL_GATE).read_text(encoding="utf-8"), encoding="utf-8")
+
+    cfg = tomllib.loads(effective(run).read_text(encoding="utf-8"))
+    frozen["run_id"] = AUTHOR_RUN_ID
+    frozen["waiting_on"] = str(gate)
+    frozen["inputs"] = {**frozen["inputs"], "repo_dir": str(run.repo),
+                        "library_dirs": wh_library_dirs(cfg)}
+    frozen["ctx"] = {**frozen["ctx"], "repo_root": str(run.repo)}
+
+    destination = runs_dir(run) / f"author-{AUTHOR_RUN_ID}"
+    destination.mkdir(parents=True, exist_ok=True)
+    run.write_json(destination / "checkpoint.json", frozen)
+
+
+def git(repo: Path, *argv: str) -> None:
+    result = subprocess.run(["git", "-C", str(repo), *argv],
+                            capture_output=True, text=True, timeout=120, check=False)
+    if result.returncode != 0:
+        raise TrialError(f"`git {argv[0]}` failed in {repo}: "
+                         f"{result.stderr.strip() or result.stdout.strip()}")
 
 
 def commit_baseline(run: Run) -> None:
@@ -327,9 +407,12 @@ def commit_baseline(run: Run) -> None:
 #: from the last one, so a slow poll costs nothing and a fast one just burns a core.
 GATE_POLL_S = 5.0
 
-#: The heading the sheet is written under, above the questions the gate asked. The
-#: questions are kept: what the sheet answered is only readable beside them.
-ANSWER_HEADING = "## Operator answers (injected by the benchmark harness)"
+#: How long a gate may sit on `AWAITING_OPERATOR` before the watcher calls it parked.
+#: Most gates on a round's path have an auto-resolver lane, and a resolver that grounds
+#: its answer writes it within seconds — so a gate seen once is not yet a stall. A gate
+#: still awaiting after this, on a round with no human at the keyboard, is one: nothing
+#: else is coming.
+GATE_GRACE_S = 120.0
 
 
 def operator_gates_path(run: Run) -> Path:
@@ -370,21 +453,6 @@ def record_hand_answer(run: Run, gate: str, note: str, commit: str = "") -> None
     record_gate(run, entry)
 
 
-def decision_sheet(run: Run, fixture: Fixture) -> tuple[str, str] | None:
-    """The tracked sheet's text and sha256, or `None` when the task declares none.
-
-    Read from `run.data_dir` — git tracks it, `check_public.py` scans it, and it versions
-    with the backlog beside it. Never from the repo under test, which the round mutates.
-    """
-    if not fixture.decisions:
-        return None
-    source = run.data_dir / fixture.decisions
-    if not source.is_file():
-        raise TrialError(f"no decision sheet at {source} — is --data-dir the repo's paddock/data/?")
-    text = source.read_text(encoding="utf-8")
-    return text, hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
 #: Where a gate file can appear. The author lane's grill gate lands under `docs/`; the
 #: coder lane's dirty-tree, CI and merge gates land at the **repo root**, named for the
 #: story rather than the docs tree. A glob that only knew about the first was blind to the
@@ -406,86 +474,70 @@ def parked_gates(repo: Path) -> list[Path]:
     return sorted(p for p in found if p.is_file() and not gate_answered(p))
 
 
-def apply_sheet(path: Path, sheet: str) -> None:
-    """Answer one parked gate with the sheet, in the one place the flow reads.
-
-    Only the *first* `STATUS:` line is read, and it is rewritten rather than appended to —
-    an answer block added anywhere else in the file is silently inert.
-    """
-    kept = [line for line in path.read_text(encoding="utf-8").splitlines()
-            if not line.startswith("STATUS:")]
-    path.write_text(
-        f"STATUS: ANSWERED\n\n{ANSWER_HEADING}\n\n{sheet.strip()}\n\n"
-        + "\n".join(kept).lstrip("\n") + "\n",
-        encoding="utf-8",
-    )
-
-
-def answer_operator_gates(
-    run: Run, fixture: Fixture, stop: threading.Event, *, sheet_applies: bool
-) -> None:
-    """Watch the produced repo for a parked gate and answer it from the tracked sheet.
+def watch_operator_gates(run: Run, fixture: Fixture, stop: threading.Event) -> None:
+    """Watch the produced repo for a stalled gate and park the round on it.
 
     A thread because the phase blocks: `run_phase` calls the CLI synchronously and
     workhorse's driver polls the gate file in-process, so nothing on this side of the
     subprocess gets a turn unless it has its own.
 
-    `sheet_applies` is the caller's, not this function's: the sheet is a **product**
-    contract, and the only gate asking for one is the author lane's grill. A coder-lane
-    gate — a dirty tree, a red CI, a merge that will not go — asks about the state of a
-    repo, which no sheet written beside a backlog can answer. Those are watched anyway,
-    because a gate that parks with a ledger entry is a reported stall and a gate nobody
-    watches is a silent one.
+    **The watcher never answers.** It used to, for one gate class, from a decision sheet
+    applied positionally — and positionally is the whole defect: the questions a gate asks
+    are generated per round and are not stable across rounds, so a sheet written against
+    one round's questions was stamped `ANSWERED` over another round's, and the flow read a
+    reply to a question nobody had asked. Checking whether the sheet *covers* what was
+    asked is the repair that looks obvious and is forbidden: it makes the harness judge
+    semantics, which is the one thing a benchmark must not do at gate time.
 
-    **One injection per gate path, ever.** If the flow parks again at the same file, it
-    re-asked — which means the sheet did not settle it — and the round stays parked and is
-    reported parked. The harness does not read a question and judge whether the sheet
-    covers it; that judgement is the thing a benchmark must not be making at gate time,
-    and a second park is the flow saying so itself.
+    What replaces it is upstream. A decision the operator has genuinely made arrives as a
+    standing record under `<docs-root>/decisions/` (`seed_decision_records`), where the
+    lanes' own auto-resolvers read it and where it stands on its own rather than keyed to
+    one round's question order. An operator turn the product reserves for a human — the
+    author lane's grill — is frozen into the fixture at authoring time, so the round
+    starts *after* it. Neither route runs through this thread.
+
+    So its whole job is detection, and its whole vocabulary is `parked`: a gate still
+    awaiting after `GATE_GRACE_S` is a round that has stopped and will not restart, and
+    the ledger says so within a couple of minutes instead of the phase budget saying it in
+    an hour. The grace is what keeps `parked` honest — most gates route through a resolver
+    that answers in seconds, and a verb that fired on sight would mark those stalls too.
     """
-    sheet = decision_sheet(run, fixture) if sheet_applies else None
-    no_sheet = ("the task declares no decision sheet" if sheet_applies else
-                "no decision sheet answers this gate — it asks about the repo, not the product")
-    # Seeded from the ledger, not from empty sets: "this gate has already had its one
-    # injection" is a fact about the round, not about this thread, and a phase that is
-    # retried or a watcher that is restarted must not spend the injection twice.
-    ledger = operator_gates_of(run)
-    answered = {str(e["gate"]) for e in ledger if e["action"] == "answered"}
-    parked = {str(e["gate"]) for e in ledger if e["action"] != "answered"}
-
-    def park(gate: str, reason: str) -> None:
-        parked.add(gate)
-        record_gate(run, {"gate": gate, "action": "parked", "reason": reason})
-        logger.warning("operator gate parked: %s — %s", gate, reason)
+    del fixture  # kept in the signature: `gates_watched` binds one call for every lane.
+    # Seeded from the ledger, not from empty sets: "this gate has already been reported"
+    # is a fact about the round, not about this thread, and a phase that is retried or a
+    # watcher that is restarted must not report the same stall twice.
+    parked = {str(e["gate"]) for e in operator_gates_of(run)}
+    first_seen: dict[str, float] = {}
 
     while not stop.wait(GATE_POLL_S):
+        awaiting = set()
         for path in parked_gates(run.repo):
             gate = str(path.relative_to(run.repo))
+            awaiting.add(gate)
             if gate in parked:
                 continue
-            if gate in answered:
-                park(gate, "the flow asked again after the sheet was applied, so the sheet "
-                           "does not settle it")
+            since = first_seen.setdefault(gate, time.monotonic())
+            if time.monotonic() - since < GATE_GRACE_S:
                 continue
-            if sheet is None:
-                park(gate, no_sheet)
-                continue
-            text, digest = sheet
-            apply_sheet(path, text)
-            answered.add(gate)
-            record_gate(run, {"gate": gate, "action": "answered",
-                              "sheet": fixture.decisions, "sha256": digest})
-            logger.info("answered operator gate %s from %s", gate, fixture.decisions)
+            parked.add(gate)
+            record_gate(run, {"gate": gate, "action": "parked",
+                              "reason": "still awaiting an operator "
+                                        f"{GATE_GRACE_S / 60:.0f} minutes after it opened, "
+                                        "and this round has no operator"})
+            logger.warning("operator gate parked: %s", gate)
+        # A gate answered inside the grace leaves no trace, and if the same path opens
+        # again later it is a new stall to be timed from scratch.
+        for gate in set(first_seen) - awaiting:
+            del first_seen[gate]
 
 
 def gates_watched(
-    run: Run, fixture: Fixture, phase: str, *, sheet_applies: bool = False
+    run: Run, fixture: Fixture, phase: str
 ) -> tuple[threading.Event, threading.Thread]:
     """Run `phase` with the gate watcher alive, and make sure it dies with the phase."""
     stop = threading.Event()
     thread = threading.Thread(
-        target=answer_operator_gates, args=(run, fixture, stop),
-        kwargs={"sheet_applies": sheet_applies},
+        target=watch_operator_gates, args=(run, fixture, stop),
         name=f"gate-watcher-{phase}", daemon=True,
     )
     return stop, thread
@@ -545,22 +597,37 @@ def run_phase(run: Run, fixture: Fixture, phase: str, *argv: str) -> None:
 
 
 def run_author(run: Run, fixture: Fixture) -> None:
-    """Split the backlog into epics and stories, answering the grill gate from the sheet.
+    """Split the backlog into epics and stories, resuming past the grill gate.
 
     The gate is the author lane's `grill_backlog`, and it is human by construction —
-    `operator_mode` does not gate it, because the premise is that these are decisions
-    nobody has written down yet. That makes an unattended round impossible and an attended
-    one unrepeatable, so the harness stands in for the operator with a tracked sheet and
-    says in the ledger that it did.
+    `operator_mode` deliberately does not gate it, because the premise is that these are
+    product decisions nobody has written down yet. It is the only gate on the round's path
+    with no resolver lane, and that is not an oversight to route around.
+
+    So the round does not reach it. `seed_grill_capture` has already put the answered gate
+    file and a checkpoint parked on it into the tree, and `--run-id` names that checkpoint,
+    so workhorse resumes from it: the first state this phase executes is `refactor_backlog`,
+    reading the operator's answers out of the file exactly as it would have on the day they
+    were typed. Everything from there is live and measured.
+
+    The line that decides what a fixture may freeze, stated once because it will be needed
+    again: **freeze what the design assigns to the operator; never freeze what the design
+    assigns to the loop.** The grill conversation is assigned to the operator, by name, in
+    the state's own docstring — a human turn the product reserves for humans is the
+    fixture's environment, not the work under measurement, and a benchmark with a human in
+    the loop that does not freeze the human measures the human. Everything the loop is
+    assigned — genesis, the split, the epics, the stories — stays live. Seeding *those*
+    would be faking the very work the round exists to measure.
     """
     if not (run.repo / fixture.backlog_path).is_file():
         raise TrialError(f"no backlog at {run.repo / fixture.backlog_path} — genesis first")
-    stop, thread = gates_watched(run, fixture, "author", sheet_applies=True)
+    resume = ["--run-id", AUTHOR_RUN_ID] if fixture.grill_capture else []
+    stop, thread = gates_watched(run, fixture, "author")
     thread.start()
     try:
         run_phase(
             run, fixture, "author",
-            "workhorse-author", "run",
+            "workhorse-author", "run", *resume,
             "--params", json.dumps({"backlog": fixture.backlog_path}),
         )
     finally:
@@ -571,10 +638,10 @@ def run_author(run: Run, fixture: Fixture) -> None:
 def run_coder(run: Run, fixture: Fixture) -> None:
     """Implement the epic queue, watching for gates without answering them.
 
-    No sheet applies here — the coder lane's gates are about the repo's state, not the
-    product — so every one of them parks. Watched all the same: a parked gate that reaches
-    the ledger is a stall the score reports, and an unwatched one is a round that simply
-    stops until its phase budget kills it, with nothing in the sealed result saying why.
+    Nothing here answers a gate — the watcher never does. A coder-lane gate that its own
+    auto-resolver cannot ground is a round that has stopped, and the watcher's job is to
+    say so in the ledger within a couple of minutes rather than let the phase budget say it
+    in an hour, with nothing in the sealed result explaining the gap.
     """
     if not find_epics(run.repo):
         raise TrialError("no epic queue — author produced no epics to implement")
@@ -923,17 +990,21 @@ def warnings(bullets: list[dict[str, Any]], checks: list[dict[str, Any]],
                      "an unattended capture, and")
         lines.append("    it is not repeatable as it stands — a person is part of its result. "
                      "Fix the harness or the")
-        lines.append("    decision sheet so the next round reaches the same place alone:")
+        lines.append("    standing decision records so the next round reaches the same "
+                     "place alone:")
         for g in hand:
             lines.append(f"      - {g['gate']}: {g['note']}")
 
     parked = [g for g in gates if g["action"] == "parked"]
     if parked:
-        lines.append(f"  ⚠ {len(parked)} operator gate(s) stayed parked — the round waited on a "
-                     "decision the sheet does not settle,")
-        lines.append("    and whatever the phase produced after that was produced without it. "
-                     "Extend the decision sheet;")
-        lines.append("    do not answer it by hand, or the next round is unrepeatable again.")
+        lines.append(f"  ⚠ {len(parked)} operator gate(s) stayed parked — the round stopped on a "
+                     "question nothing answered,")
+        lines.append("    so this score covers a partial round and is a diagnostic, not a "
+                     "baseline. Read the gate file:")
+        lines.append("    a question a standing decision record should have settled is fixture "
+                     "debt; anything else is a")
+        lines.append("    finding about the loop. Answering it by hand makes the round "
+                     "unrepeatable — record it as `hand` if you do.")
 
     red = [c for c in checks if c["exit"] != 0]
     verified = [b for b in bullets if int(b["level"]) == MAX_LEVEL]
@@ -945,20 +1016,18 @@ def warnings(bullets: list[dict[str, Any]], checks: list[dict[str, Any]],
 
 
 def operator_gate_lines(gates: list[dict[str, Any]]) -> list[str]:
-    """What the harness answered, and what it left parked, on this round.
+    """Every operator gate this round stalled on, and every one a person reached into.
 
-    Printed even when nothing parked: "the sheet was applied, here is its sha" is the
-    round saying which product it was asked to build, and that belongs beside the score
-    rather than in the zip only.
+    There is no third verb any more. The harness does not answer gates — see
+    `watch_operator_gates` — so a line here is always either a round that stopped or a
+    round somebody unstuck, and both are things a reader of the score has to know before
+    quoting the number beside them.
     """
     if not gates:
         return []
     lines = ["", "  operator gates"]
     for g in gates:
-        if g["action"] == "answered":
-            lines.append(f"  ✓ {g['gate']}")
-            lines.append(f"      answered from {g['sheet']} (sha256 {g['sha256'][:12]})")
-        elif g["action"] == "hand":
+        if g["action"] == "hand":
             lines.append(f"  ✋ {g['gate']}")
             where = f" (commit {g['commit']})" if g.get("commit") else ""
             lines.append(f"      ANSWERED BY HAND — {g['note']}{where}")

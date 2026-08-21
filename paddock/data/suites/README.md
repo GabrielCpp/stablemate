@@ -1,7 +1,8 @@
 # The benchmark suites
 
-Every benchmark is one suite: a directory holding the `docs/backlog.md` a round runs on and
-the `docs/decisions.md` that answers the author lane's grill gate. The directory name *is*
+Every benchmark is one suite: a directory holding the `docs/backlog.md` a round runs on, the
+`docs/decisions/` records that stand behind the product decisions it leaves open, and the
+`grill/` capture of the one operator turn the author lane reserves for a human. The directory name *is*
 the name, and a task module under [`../tasks/`](../tasks/) points at it: `suites/bookmarks/`
 is what a task named `bookmarks` would run.
 
