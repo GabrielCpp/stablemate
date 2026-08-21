@@ -328,7 +328,7 @@ def obligation_ids() -> set[str]:
     from ostler.model import load  # noqa: PLC0415 - a heavy import only these tests need
     from ostler.qa.context import _obligations, _serialized_graph  # noqa: PLC0415
 
-    nodes, _edges = _serialized_graph(load(APP))
+    nodes, _edges, _ends = _serialized_graph(load(APP))
     return {
         obligation["id"]
         for node in nodes.values()

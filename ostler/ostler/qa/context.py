@@ -154,8 +154,8 @@ def build_context(
         and not _is_non_production_path(change.path)
         and not _is_generated_unit(root, change)
     ]
-    base_nodes, base_edges = _serialized_graph(base_graph)
-    head_nodes, head_edges = _serialized_graph(head_graph)
+    base_nodes, base_edges, base_ends = _serialized_graph(base_graph)
+    head_nodes, head_edges, head_ends = _serialized_graph(head_graph)
     nodes_by_id = _merge_snapshot_nodes(base_nodes, head_nodes)
 
     direct_reasons: dict[str, list[dict[str, str]]] = {}
@@ -267,6 +267,7 @@ def build_context(
             impacted.add(parent)
             parent = nodes_by_id[parent].get("parent")
     edges = base_edges | head_edges
+    end_edges = base_ends | head_ends
     flows = {node_id for node_id, node in nodes_by_id.items() if node.get("type") == "flow"}
     journeys = set(impacted & flows)
     for source, target in edges:
@@ -397,7 +398,7 @@ def build_context(
             direct_reasons.get(node_id, []),
             journey=True,
             required=_journey_is_required(
-                node_id, direct_reasons, required_contracts
+                node_id, direct_reasons, required_contracts, end_edges
             ),
         )
     ]
@@ -641,11 +642,25 @@ def _graph_at_revision(root: Path, revision: str, features_root: str) -> Graph:
     return graph
 
 
-def _serialized_graph(graph: Graph) -> tuple[dict[str, dict[str, Any]], set[tuple[str, str]]]:
+def _serialized_graph(
+    graph: Graph,
+) -> tuple[dict[str, dict[str, Any]], set[tuple[str, str]], set[tuple[str, str]]]:
+    """The nodes, every resolved edge, and the subset of them a flow's `end:` bullet carried.
+
+    The third member is what tells a journey's destination apart from a step along the way.
+    `graph.build` already attributes each edge to the bullet key that carried it (`via`), and
+    `_journey_is_required` is the only reader that needs the distinction, so it is filtered
+    here rather than widening the edge set every other caller walks.
+    """
     data = graph_mod.build(graph)
     nodes = {item["id"]: item for item in data["nodes"]}
     edges = {(item["from"], item["to"]) for item in data["edges"] if item.get("to")}
-    return nodes, edges
+    ends = {
+        (item["from"], item["to"])
+        for item in data["edges"]
+        if item.get("to") and item.get("via") == "end"
+    }
+    return nodes, edges, ends
 
 
 def _changed_units(
@@ -1229,6 +1244,7 @@ def _journey_is_required(
     node_id: str,
     direct_reasons: dict[str, list[dict[str, str]]],
     required_contracts: set[str],
+    end_edges: set[tuple[str, str]],
 ) -> bool:
     """Whether this flow is owed live evidence, or is only context.
 
@@ -1240,14 +1256,21 @@ def _journey_is_required(
 
     What makes a flow owed is one hop away: the story is proven against a contract, and the
     flow is the document that says where in the product that contract is reached from and
-    what state the operator is left in. So a flow is required exactly when it links a
-    contract that is itself required — the same diff-directness test, read through the link
-    that made the flow part of this packet. A flow reached only via context-only contracts
-    stays context, which is what keeps one edited endpoint from owing a walk of every
-    journey it appears in.
+    what state the operator is left in. So a flow is required when it links a contract that
+    is itself required — the same diff-directness test, read through the link that made the
+    flow part of this packet. A flow reached only via context-only contracts stays context,
+    which is what keeps one edited endpoint from owing a walk of every journey it appears in.
+
+    The link has to be the `end:` one, and that is not a narrowing for tidiness. A journey's
+    obligation is its *end state*, and a story that builds a step in the middle of a walk
+    cannot reach it: a CLI story that ships `init` and `add` would owe an end state only
+    `export` produces, in a story where `export` does not exist yet. The story that delivers
+    the destination is the one that can walk the whole thing, and it is the one asked to.
     """
     return any(
-        reason.get("kind") == "flow-links-contract" and reason.get("ref") in required_contracts
+        reason.get("kind") == "flow-links-contract"
+        and reason.get("ref") in required_contracts
+        and (node_id, reason.get("ref")) in end_edges
         for reason in direct_reasons.get(node_id, [])
     )
 
