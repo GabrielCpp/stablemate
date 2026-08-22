@@ -25,6 +25,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -543,3 +544,251 @@ def test_the_hour_sized_tasks_fit_the_hour():
         assert total <= 3600, \
             f"{path.parent.name}: budgets total {total}s, not an hour — and no `over_hour:` " \
             f"saying why that is deliberate"
+
+
+# ── design completeness: the metric whose whole validity is that it was held out ──────
+
+
+DESIGN_SUITES = [p for p in sorted((Path(__file__).parents[1] / "suites").glob("*/benchmark.yaml"))
+                 if bench.load_spec(p).hidden]
+
+
+@pytest.fixture
+def design_spec(tmp_path: Path) -> "bench.Spec":
+    """A minimal design suite: an underspecified backlog, and a hidden pack beside it."""
+    target = tmp_path / "app"
+    (target / "docs").mkdir(parents=True)
+    # The brief lives beside the SPEC, not in the target: `bench.py backlog` copies it in,
+    # and that copy is the only thing that crosses into the sandbox.
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "backlog.md").write_text(
+        "# Backlog\n\n- [page-create] A person creates a page.\n", encoding="utf-8")
+    hidden = tmp_path / "hidden"
+    hidden.mkdir()
+    (hidden / "expectations.yaml").write_text(
+        "- id: page-delete\n  invariant: every created thing is destroyable\n"
+        "  rendering: a user who can create a page can delete one, with confirmation\n",
+        encoding="utf-8")
+    (hidden / "journeys.yaml").write_text(
+        "- id: tidy-up\n  persona: a documentation lead\n"
+        "  steps:\n    - create a page\n    - delete the stale one\n",
+        encoding="utf-8")
+    spec_path = tmp_path / "benchmark.yaml"
+    spec_path.write_text(
+        f"target: {target}\nbacklog: docs/backlog.md\nhidden: hidden\n"
+        "surfaces:\n  - service: api\n    service_root: api\n    marker: go.mod\n",
+        encoding="utf-8")
+    return bench.load_spec(spec_path)
+
+
+def design_judge(spec: "bench.Spec", response: str, *, live: bool = False) -> dict:
+    rubric = (Path(__file__).parents[1] / "design-rubric.md").read_text(encoding="utf-8")
+    exp = bench.load_expectations(spec)[0]
+    return bench.judge_expectation(spec, exp, rubric, fake_judge(response),
+                                   bench.authored_docs(spec), live=live)
+
+
+def test_nothing_hidden_reaches_the_target(design_spec: "bench.Spec", tmp_path: Path):
+    """The invariant the whole metric rests on: the workflow is never shown the answers.
+
+    `bench.py backlog` is the only thing that writes into the target before author runs,
+    and it copies exactly one file. If a hidden expectation ever appears in the sandbox —
+    or is paraphrased into the brief — the benchmark stops measuring design and starts
+    measuring transcription, and it does so silently: the scores keep printing.
+    """
+    bench.cmd_backlog(design_spec)
+    seeded = [p for p in design_spec.target.rglob("*") if p.is_file()]
+    assert [p.relative_to(design_spec.target).as_posix() for p in seeded] == ["docs/backlog.md"]
+
+    hay = "\n".join(p.read_text(encoding="utf-8") for p in seeded)
+    for exp in bench.load_expectations(design_spec):
+        assert exp["id"] not in hay and exp["invariant"] not in hay
+    for journey in bench.load_journeys(design_spec):
+        assert journey["id"] not in hay
+
+
+@pytest.mark.parametrize("path", DESIGN_SUITES, ids=lambda p: p.parent.name)
+def test_a_shipped_design_suite_keeps_its_answers_out_of_its_brief(path: Path, tmp_path: Path):
+    """The same invariant, on the suites that actually ship — including the words.
+
+    The id check alone would pass a brief that says "and a person can sign out", which is
+    the leak that matters: it is a paraphrase, not a copy, and it hands the workflow the
+    exact thing the expectation exists to see whether it thought of.
+    """
+    spec = bench.load_spec(path)
+    brief = (path.parent / spec.backlog).read_text(encoding="utf-8").lower()
+    for exp in bench.load_expectations(spec):
+        assert exp["id"] not in brief, f"{exp['id']}: its own id is in the brief"
+        # Every content word of the rendering appearing together would be a paraphrase.
+        words = {w for w in re.findall(r"[a-z]{5,}", exp["rendering"].lower())}
+        present = {w for w in words if w in brief}
+        assert len(present) < max(2, len(words) // 2), \
+            f"{exp['id']}: the brief already says most of the rendering ({sorted(present)})"
+    # A journey deliberately mixes steps the brief names (sign in, edit a page) with steps
+    # it does not — the named ones are the control that says the walk is following a real
+    # path. What it may not be is *entirely* named: a journey every step of which the brief
+    # already asks for cannot produce a dead end author was not told about.
+    for journey in bench.load_journeys(spec):
+        unnamed = [s for s in journey["steps"] if s.lower() not in brief]
+        assert unnamed, f"{journey['id']}: every step is already in the brief — it walks nowhere new"
+
+
+@pytest.mark.parametrize("path", DESIGN_SUITES, ids=lambda p: p.parent.name)
+def test_a_shipped_design_pack_is_well_formed(path: Path):
+    spec = bench.load_spec(path)
+    ids = [e["id"] for e in bench.load_expectations(spec)]
+    assert ids and len(ids) == len(set(ids)), "expectation ids must be unique"
+    for journey in bench.load_journeys(spec):
+        assert journey["steps"], f"{journey['id']}: a journey with no steps walks nowhere"
+
+
+def test_a_malformed_pack_is_fatal_not_empty(design_spec: "bench.Spec"):
+    """A typo'd key would otherwise reach the judge as the literal string `None`, and the
+    judge would grade whatever it made of that rather than refusing."""
+    assert design_spec.hidden_dir is not None
+    (design_spec.hidden_dir / "expectations.yaml").write_text(
+        "- id: page-delete\n  invariant: every created thing is destroyable\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        bench.load_expectations(design_spec)
+
+
+def test_a_covered_expectation_needs_a_planning_document(design_spec: "bench.Spec"):
+    add_epic(design_spec, "pages", ["page-create"], {"delete-page": "Not started"})
+    got = design_judge(design_spec, json.dumps({
+        "level": 2,
+        "evidence": ["docs/epics/pages/stories/delete-page/story.md:acceptance criteria"],
+        "reason": "the story requires a confirm step"}))
+    assert got["level"] == 2 and not got["capped"]
+
+
+def test_an_unverifiable_design_claim_scores_absent(design_spec: "bench.Spec"):
+    """Stricter than `score`, and deliberately: there an unproven claim falls back to the
+    structural fact that an epic claims the bullet. Here the citation IS the finding."""
+    add_epic(design_spec, "pages", ["page-create"], {"delete-page": "Not started"})
+    got = design_judge(design_spec, json.dumps({
+        "level": 2, "evidence": ["docs/epics/pages/stories/nope/story.md"], "reason": "trust me"}))
+    assert got["level"] == 0 and got["capped"]
+    assert got["unverified_citations"] == ["docs/epics/pages/stories/nope/story.md"]
+
+    uncited = design_judge(design_spec, json.dumps(
+        {"level": 1, "evidence": [], "reason": "the epic mentions it"}))
+    assert uncited["level"] == 0 and uncited["capped"]
+
+
+def test_the_paper_score_refuses_a_code_citation(design_spec: "bench.Spec"):
+    """A citation of built code proves the coder shipped something and proves nothing
+    about what author wrote — on the author-phase run it is no citation at all."""
+    add_epic(design_spec, "pages", ["page-create"], {"delete-page": "Not started"})
+    (design_spec.target / "web").mkdir()
+    (design_spec.target / "web" / "delete.tsx").write_text("export default null\n", encoding="utf-8")
+    response = json.dumps({"level": 2, "evidence": ["web/delete.tsx"], "reason": "it is built"})
+
+    assert design_judge(design_spec, response)["level"] == 0
+    # The anchor run is the one place the built app is in scope.
+    live = design_judge(design_spec, response, live=True)
+    assert live["level"] == 2 and not live["capped"]
+
+
+def test_only_the_live_run_can_reach_operable(design_spec: "bench.Spec"):
+    add_epic(design_spec, "pages", ["page-create"], {"delete-page": "Not started"})
+    response = json.dumps({
+        "level": 3, "evidence": ["docs/epics/pages/stories/delete-page/story.md"],
+        "reason": "an e2e test deletes a page"})
+    assert design_judge(design_spec, response)["level"] == bench.DESIGN_MAX
+    assert design_judge(design_spec, response, live=True)["level"] == 3
+
+
+def test_design_rubric_placeholders_are_all_filled(design_spec: "bench.Spec"):
+    add_epic(design_spec, "pages", ["page-create"], {"delete-page": "Not started"})
+    grader = fake_judge(json.dumps({"level": 0, "evidence": [], "reason": "x"}))
+    rubric = (Path(__file__).parents[1] / "design-rubric.md").read_text(encoding="utf-8")
+    bench.judge_expectation(design_spec, bench.load_expectations(design_spec)[0], rubric,
+                            grader, bench.authored_docs(design_spec), live=False)
+
+    prompt = grader.backend.prompts[0]
+    assert "{{" not in prompt
+    assert "page-delete" in prompt and "destroyable" in prompt
+    assert "docs/epics/pages/stories/delete-page/story.md" in prompt
+    assert "Level 2 is the ceiling here." in prompt, "the paper run must forbid level 3"
+
+
+def test_journey_rubric_placeholders_are_all_filled(design_spec: "bench.Spec"):
+    add_epic(design_spec, "pages", ["page-create"], {"delete-page": "Not started"})
+    grader = fake_judge(json.dumps({"steps": []}))
+    rubric = (Path(__file__).parents[1] / "journey-rubric.md").read_text(encoding="utf-8")
+    bench.judge_journey(design_spec, bench.load_journeys(design_spec)[0], rubric, grader,
+                        bench.authored_docs(design_spec))
+
+    prompt = grader.backend.prompts[0]
+    assert "{{" not in prompt
+    assert "tidy-up" in prompt and "delete the stale one" in prompt
+
+
+def journey_walk(spec: "bench.Spec", response: str) -> dict:
+    rubric = (Path(__file__).parents[1] / "journey-rubric.md").read_text(encoding="utf-8")
+    return bench.judge_journey(spec, bench.load_journeys(spec)[0], rubric,
+                               fake_judge(response), bench.authored_docs(spec))
+
+
+def test_a_step_the_judge_never_answered_is_a_dead_end(design_spec: "bench.Spec"):
+    """Aligned by position, never by the judge's echo of the step: a judge that returns
+    one answer for two steps must not silently shrink the denominator."""
+    add_epic(design_spec, "pages", ["page-create"], {"create-page": "Not started"})
+    got = journey_walk(design_spec, json.dumps({"steps": [
+        {"step": "create a page", "delivered": True,
+         "evidence": ["docs/epics/pages/stories/create-page/story.md"], "why": "criterion 2"}]}))
+
+    assert [s["delivered"] for s in got["steps"]] == [True, False]
+    assert got["dead_ends"] == ["delete the stale one"]
+
+
+def test_a_delivered_step_citing_nothing_real_is_a_dead_end(design_spec: "bench.Spec"):
+    add_epic(design_spec, "pages", ["page-create"], {"create-page": "Not started"})
+    got = journey_walk(design_spec, json.dumps({"steps": [
+        {"step": "create a page", "delivered": True, "evidence": ["docs/epics/ghost/epic.md"],
+         "why": "it is there somewhere"},
+        {"step": "delete the stale one", "delivered": True, "evidence": [], "why": "obviously"}]}))
+    assert got["dead_ends"] == ["create a page", "delete the stale one"]
+
+
+def test_the_crud_matrix_finds_a_created_thing_nobody_deletes(design_spec: "bench.Spec"):
+    """The `page-delete` miss, found deterministically and for free — no agent turn."""
+    add_epic(design_spec, "pages", ["page-create"], {"create-page": "Not started"})
+    story = design_spec.target / "docs/epics/pages/stories/create-page/story.md"
+    story.write_text(story.read_text(encoding="utf-8")
+                     + "\nA person creates a page and later edits the page.\n", encoding="utf-8")
+
+    rows = {r["entity"]: r for r in bench.crud_matrix(design_spec)}
+    assert "page" in rows, "an entity a story creates must appear in the matrix"
+    assert "create" in rows["page"]["operations"] and "update" in rows["page"]["operations"]
+    assert "delete" in rows["page"]["missing"] and "read" in rows["page"]["missing"]
+
+
+def test_the_matrix_only_crosses_things_that_get_created(design_spec: "bench.Spec"):
+    add_epic(design_spec, "pages", ["page-create"], {"read-only": "Not started"})
+    story = design_spec.target / "docs/epics/pages/stories/read-only/story.md"
+    story.write_text(story.read_text(encoding="utf-8")
+                     + "\nA person sees the audit log.\n", encoding="utf-8")
+    assert [r["entity"] for r in bench.crud_matrix(design_spec)] == []
+
+
+def test_structural_design_scoring_names_no_number(design_spec: "bench.Spec", capsys):
+    """`score --no-judge` can still say `planned` — the epic graph records coverage.
+    Nothing records whether acceptance criteria would deliver an unwritten expectation,
+    so the honest structural answer is to decline to score."""
+    add_epic(design_spec, "pages", ["page-create"], {"create-page": "Not started"})
+    assert bench.cmd_design_score(design_spec, judge=False, jobs=1, only=[],
+                                  live=False, journeys=True) == 0
+
+    card = json.loads((design_spec.logs / "design-scorecard.json").read_text(encoding="utf-8"))
+    assert card["judged"] is False
+    assert card["design_satisfaction_pct"] is None
+    assert card["expectations"] == []
+    assert "design satisfaction:" not in capsys.readouterr().out
+
+
+def test_a_task_without_a_hidden_pack_has_no_design_score(spec: "bench.Spec"):
+    """Every other suite. Refused by name rather than scoring zero against nothing."""
+    assert spec.hidden_dir is None
+    with pytest.raises(SystemExit):
+        bench.load_expectations(spec)
