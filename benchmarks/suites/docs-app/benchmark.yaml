@@ -36,16 +36,20 @@ power:
 #
 # `coder` is here only for the anchor run of §5 — the calibration pass that checks the
 # cheap paper score predicts what a user experiences. The headline metric never spends it.
+# The 1800 author budget this shipped with was an estimate off `bookmarks`, and the first
+# baseline run walked into its ceiling mid-queue with one epic's stories written: three
+# epics, each with a design mockup, is more author work than a four-bullet single-surface
+# task. 3600 is the measured shape, not a round number.
 budget:
   genesis: 1800
-  author: 1800
+  author: 3600
   coder: 5400
 
-# The headline metric — `design-score` — is author-only and lands inside the hour on its
-# own. The coder budget above belongs to the anchor run, which is deliberately rare: once
-# per author redesign, to prove the paper score still predicts the live one.
+# The headline metric — `design-score` — is author-only and spends the hour by itself. The
+# coder budget above belongs to the anchor run, which is deliberately rare: once per author
+# redesign, to prove the paper score still predicts the live one.
 over_hour: >-
-  the design score is author-only and fits the hour; the coder budget is the rare
+  the design score is author-only and spends its hour there; the coder budget is the rare
   paper-vs-live calibration run, not part of the metric.
 
 checks:
