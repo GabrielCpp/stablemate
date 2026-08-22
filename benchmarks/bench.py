@@ -1533,6 +1533,20 @@ award level 3 only when the running app's behavior is exercised by executable ev
 can point at — a test, an end-to-end script, a recorded QA artifact — that would fail if
 the rendering stopped holding. Implementing code that merely looks correct is level 2."""
 
+# The citation rule differs by mode, and it has to: a level-3 finding is *by construction*
+# not a planning document, so the paper rule ("cite an epic.md or a story.md") would make
+# `operable` uncitable and silently unreachable — the anchor run would then agree with the
+# paper run for a reason that has nothing to do with the app.
+PAPER_EVIDENCE = """each entry must be a **real, repo-relative path to a planning document
+you opened** — an `epic.md` or a `story.md` — optionally with a heading or criterion after
+a colon, e.g. `docs/epics/pages/stories/delete-page/story.md:acceptance criteria`."""
+
+LIVE_EVIDENCE = """each entry must be a **real, repo-relative path to a file you opened**,
+optionally with a heading, symbol or criterion after a colon. Levels 1 and 2 are still
+decided by the planning documents, so cite an `epic.md` or a `story.md` for those. Level 3
+is decided by executable evidence, so cite the test or script itself — e.g.
+`web/app/routes/page.spec.ts:deletes a page` — and cite the story beside it."""
+
 
 def design_levels(live: bool) -> dict[int, tuple[str, str]]:
     levels = dict(DESIGN_LEVELS)
@@ -1622,6 +1636,7 @@ def judge_expectation(spec: Spec, exp: dict, rubric: str, judge: Judge, docs: li
         target=str(spec.target),
         documents="\n".join(f"  - {d}" for d in docs) or "  (none — author wrote nothing)",
         mode_note=LIVE_NOTE if live else PAPER_NOTE,
+        evidence_note=LIVE_EVIDENCE if live else PAPER_EVIDENCE,
         levels="\n".join(f"  {n} {name} — {desc}" for n, (name, desc) in sorted(levels.items())),
     )
     text = call_agent(judge, prompt, node_id=f"design_{exp['id']}", spec=spec)

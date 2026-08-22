@@ -784,6 +784,27 @@ def test_design_rubric_placeholders_are_all_filled(design_spec: "bench.Spec"):
     assert "Level 2 is the ceiling here." in prompt, "the paper run must forbid level 3"
 
 
+def test_the_live_rubric_lets_operable_cite_something_that_is_not_a_story(
+        design_spec: "bench.Spec") -> None:
+    """A level-3 finding is by construction not a planning document.
+
+    The paper citation rule says "cite an `epic.md` or a `story.md`". Left in place on the
+    anchor run it makes `operable` uncitable, and an uncitable level is scored 0 by the
+    verification pass — so the anchor would agree with the paper run for a reason that has
+    nothing to do with the app it was built to look at.
+    """
+    add_epic(design_spec, "pages", ["page-create"], {"delete-page": "Not started"})
+    grader = fake_judge(json.dumps({"level": 0, "evidence": [], "reason": "x"}))
+    rubric = (Path(__file__).parents[1] / "design-rubric.md").read_text(encoding="utf-8")
+    bench.judge_expectation(design_spec, bench.load_expectations(design_spec)[0], rubric,
+                            grader, bench.authored_docs(design_spec), live=True)
+
+    prompt = grader.backend.prompts[0]
+    assert "{{" not in prompt
+    assert "Level 2 is the ceiling here." not in prompt
+    assert "cite the test or script itself" in prompt
+
+
 def test_journey_rubric_placeholders_are_all_filled(design_spec: "bench.Spec"):
     add_epic(design_spec, "pages", ["page-create"], {"delete-page": "Not started"})
     grader = fake_judge(json.dumps({"steps": []}))

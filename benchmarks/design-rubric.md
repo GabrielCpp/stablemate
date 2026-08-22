@@ -60,10 +60,7 @@ Rules for choosing:
 
 ## Evidence you must cite
 
-Every level of 1 or more requires at least one `evidence` entry, and each entry must be a
-**real, repo-relative path to a planning document you opened** — an `epic.md` or a
-`story.md` — optionally with a heading or criterion after a colon, e.g.
-`docs/epics/pages/stories/delete-page/story.md:acceptance criteria`.
+Every level of 1 or more requires at least one `evidence` entry, and {{evidence_note}}
 
 Your citations are checked against the filesystem. Any expectation whose cited paths do
 not resolve is automatically scored 0 and reported as unproven, so a guessed path costs
