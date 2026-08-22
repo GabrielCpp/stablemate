@@ -395,7 +395,7 @@ BLANK = "–"
 #: re-navigating, addressed the UI by the roles the book documents, and closed the
 #: obligations and the journeys it owed. A plan can catch a seeded defect while doing none
 #: of that, and it is the difference between QA and a regression suite of URL fetches.
-LEVERAGE_KEYS = ("entry", "deep_links", "roles", "obligations", "journeys")
+LEVERAGE_KEYS = ("entry", "deep_links", "roles", "obligations", "journeys", "sensitivity")
 
 LEVERAGE_LABELS = {
     "entry": "entry",
@@ -403,11 +403,12 @@ LEVERAGE_LABELS = {
     "roles": "roles",
     "obligations": "obligations",
     "journeys": "journeys",
+    "sensitivity": "sensitivity",
 }
 
-#: The one evidence-map status that is a discharged obligation. The other four
-#: (`uncovered`, `claimed-but-unasserted`, `contradicted`, `unproven`) are each a different
-#: way of not having proved it, and none of them counts here.
+#: The one evidence-map status that is a discharged obligation. The other five
+#: (`uncovered`, `claimed-but-unasserted`, `contradicted`, `unproven`, `insensitive`) are
+#: each a different way of not having proved it, and none of them counts here.
 PASSING_STATUS = "covered"
 
 
@@ -573,14 +574,34 @@ def documented_routes(book: dict[str, Any]) -> set[str]:
     return {route for node in book.get("nodes", []) or [] if (route := _route_of(node))}
 
 
+def book_sensitivity(repo: Path) -> list[int] | None:
+    """`[claims observed by a check that could fail, claims that declare one]`, or None.
+
+    A property of the book rather than of the run, which is exactly why it is worth printing
+    beside the run's numbers: `obligations 220/263` counts assertions that passed, and this
+    is the denominator's other half — how many of them could have done anything else.
+    """
+    try:
+        from ostler import model
+        from ostler.qa import sensitivity as sensitivity_mod
+    except ImportError:
+        return None
+    try:
+        rows = sensitivity_mod.report(model.load(repo))
+    except Exception:  # noqa: BLE001 - a book that will not load scores `–`, not a crash
+        return None
+    return [sum(1 for row in rows if row.status == "sensitive"), len(rows)] if rows else None
+
+
 def leverage_from(
     book: dict[str, Any] | None,
     packet: dict[str, Any] | None,
     plan_source: str | None,
     run_log: list[dict[str, Any]] | None,
     statuses: dict[str, str] | None,
+    sensitivity: list[int] | None = None,
 ) -> dict[str, Any]:
-    """The five leverage metrics, each a `[n, of]` pair, an int, or None when incomputable.
+    """The six leverage metrics, each a `[n, of]` pair, an int, or None when incomputable.
 
     None rather than a zero everywhere an input is missing. Every one of these is a
     fraction whose denominator is a property of the *book* — flows documented, obligations
@@ -663,6 +684,7 @@ def leverage_from(
         "roles": roles,
         "obligations": obligations,
         "journeys": journeys,
+        "sensitivity": sensitivity,
     }
 
 
@@ -720,6 +742,7 @@ def leverage(witness: Path, story: str, statuses: dict[str, str] | None) -> dict
         plan_file.read_text(encoding="utf-8") if plan_file.is_file() else None,
         read_ndjson(spec / "qa" / "qa-run.ndjson"),
         statuses,
+        book_sensitivity(witness),
     )
 
 

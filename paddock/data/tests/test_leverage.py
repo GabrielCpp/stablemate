@@ -244,8 +244,9 @@ def test_the_line_prints_a_dash_for_every_metric_it_could_not_compute() -> None:
 def test_the_line_reads_the_way_the_headline_promises() -> None:
     assert frozen.leverage_line({
         "entry": [3, 3], "deep_links": 1, "roles": [14, 15],
-        "obligations": [22, 24], "journeys": [2, 3],
-    }) == "leverage: entry 3/3  deep-links 1  roles 14/15  obligations 22/24  journeys 2/3"
+        "obligations": [22, 24], "journeys": [2, 3], "sensitivity": [20, 22],
+    }) == ("leverage: entry 3/3  deep-links 1  roles 14/15  obligations 22/24  "
+           "journeys 2/3  sensitivity 20/22")
 
 
 # ── pooling across a scored round ─────────────────────────────────────────────────────
@@ -254,12 +255,12 @@ def test_the_line_reads_the_way_the_headline_promises() -> None:
 def test_pooling_sums_numerator_and_denominator_across_trials() -> None:
     pooled = frozen.pool_leverage([
         {"leverage": {"entry": [1, 1], "deep_links": 0, "roles": [4, 5],
-                      "obligations": None, "journeys": [1, 1]}},
+                      "obligations": None, "journeys": [1, 1], "sensitivity": [3, 3]}},
         {"leverage": {"entry": [0, 2], "deep_links": 3, "roles": [1, 1],
-                      "obligations": [2, 2], "journeys": [0, 2]}},
+                      "obligations": [2, 2], "journeys": [0, 2], "sensitivity": None}},
     ])
     assert pooled == {"entry": [1, 3], "deep_links": 3, "roles": [5, 6],
-                      "obligations": [2, 2], "journeys": [1, 3]}
+                      "obligations": [2, 2], "journeys": [1, 3], "sensitivity": [3, 3]}
 
 
 def test_pooling_a_ledger_written_before_the_scorecard_existed_is_all_blank() -> None:
