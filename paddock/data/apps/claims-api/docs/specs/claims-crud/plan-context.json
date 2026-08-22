@@ -21,10 +21,11 @@
   "qa_stack": {
     "profile": "bring the stack up with `docker compose -f compose.yml up -d --build --force-recreate --wait` and drive it over http://localhost:18085; the Firebase Auth emulator comes up beside it on http://localhost:18086 and every token a scenario needs is signed in there. Sandboxed runs reach both through the forwarded ports declared in qa-stack.yml",
     "fixtures": [
+      "seeded_accounts",
       "an empty desk (DELETE /api/claims, holding the adjuster's token) so a duplicate-claim scenario decides what is already on file",
       "a signed-in holder (POST accounts:signInWithPassword on the emulator) whose subject the stored claim is attributed to"
     ],
     "capable_of_rendering": "the claims API against the live ledger, and the auth emulator against the three identities compose seeds into it",
-    "notes": "there is no client bundle and no secret: the service is a single Go binary and every credential a scenario needs is minted by the emulator beside it. The two refusal arms — a token for another project, and an expired one — cannot be signed in for and are constructed as JWTs the scenario presents"
+    "notes": "there is no client bundle and no secret: the service is a single Go binary and every credential a scenario needs is minted by the emulator beside it. The two refusal arms \u2014 a token for another project, and an expired one \u2014 cannot be signed in for and are constructed as JWTs the scenario presents"
   }
 }
