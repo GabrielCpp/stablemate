@@ -55,7 +55,7 @@ _CONTAINER_FANOUT = 3
 
 #: Bullets the relation fixpoint joins nodes on. A node naming the same consistency group,
 #: persistence store, event or idempotency key as an already-selected node is pulled in.
-_RELATION_KEYS = (
+RELATION_KEYS = (
     "consistency",
     "consistency rule",
     "consistency group",
@@ -66,7 +66,27 @@ _RELATION_KEYS = (
 )
 
 #: The reason kind the fixpoint stamps for each of those bullets.
-_RELATION_REASON_KINDS = frozenset(key.replace(" ", "-") for key in _RELATION_KEYS)
+_RELATION_REASON_KINDS = frozenset(key.replace(" ", "-") for key in RELATION_KEYS)
+
+#: Bullets naming an event by name rather than describing an invariant. Their whole value is
+#: already the subject, so they pool with the parsed subjects below and an emitter joins its
+#: consumer without either bullet being rewritten.
+_EVENT_KEYS = ("emits", "consumes")
+
+#: The optional leading identifier on a relation bullet: `booking-record — a confirmed booking
+#: is written through the ledger`. Two nodes are talking about the same record when they name
+#: it, and prose alone never says so — every `persistence:` value in the benchmark corpus is a
+#: unique sentence, so an equality join over the prose matches nothing and the relation rules
+#: are silently inert. The head shape is narrow (lowercase identifier, em dash, space either
+#: side) so an existing sentence cannot claim a subject by accident; a value without one has
+#: none and joins nothing, which is today's behaviour made explicit rather than incidental.
+_RELATION_SUBJECT_RE = re.compile(r"^([a-z0-9][a-z0-9._-]*)\s+—\s+(\S.*)$", re.DOTALL)
+
+#: How many nodes one relation subject may bind before it is worth a look. Warned about, never
+#: capped: a record legitimately shared by five screens is legitimately owed by all five, and a
+#: silent cap would report full coverage of a set it had quietly trimmed. What a large count
+#: usually means is a subject named too broadly — `database` rather than the record.
+_RELATION_FANOUT = 6
 
 #: Reason kinds that reach a node *navigationally* — by containment or by a graph link —
 #: and so say nothing about whether the change can break it. Being the parent of a touched
@@ -317,7 +337,7 @@ def build_context(
                 {"kind": "flow-contract-closure", "ref": source}
             )
 
-    relation_keys = _RELATION_KEYS
+    relation_keys = RELATION_KEYS
     related = True
     while related:
         related = False
@@ -333,7 +353,7 @@ def build_context(
             for value in _values(nodes_by_id[node_id].get("bullets", {}).get("consumes"))
         }
         relation_values = {
-            value
+            _relation_join_key(value)
             for node_id in selected
             for key in relation_keys
             for value in _values(nodes_by_id[node_id].get("bullets", {}).get(key))
@@ -351,8 +371,9 @@ def build_context(
                     reasons.append({"kind": "event-producer", "ref": value})
             for key in relation_keys:
                 for value in _values(bullets.get(key)):
-                    if value in relation_values:
-                        reasons.append({"kind": key.replace(" ", "-"), "ref": value})
+                    join = _relation_join_key(value)
+                    if join in relation_values:
+                        reasons.append({"kind": key.replace(" ", "-"), "ref": join})
             if reasons:
                 (journeys if node.get("type") == "flow" else contracts).add(node_id)
                 direct_reasons.setdefault(node_id, []).extend(reasons)
@@ -401,6 +422,7 @@ def build_context(
                     "message": "impacted contract declares no `verify:` check to fulfil it",
                 }
             )
+    demoted_symbols: frozenset[str] | set[str] = shared_symbols
     required_contracts = {
         node_id
         for node_id in contracts
@@ -422,6 +444,7 @@ def build_context(
         }
         if floored:
             required_contracts = floored
+            demoted_symbols = frozenset()
             health.append(
                 {
                     "kind": "shared-symbol-floor",
@@ -433,6 +456,55 @@ def build_context(
                     ),
                 }
             )
+    # One hop out from what the diff reached, along a named relation subject. This is the
+    # story split the whole packet exists to catch: change the shape of a persisted record
+    # and update the screen that displays it, and the screen that *creates* that record is
+    # bound to the same record, untouched by the diff, and never re-proved — so the app ships
+    # broken across the two stories and nothing in the run says so.
+    #
+    # One hop from `required_contracts`, not from the closure. The fixpoint above recomputes
+    # its selection every lap, so a single shared subject chains across a whole persistence
+    # island; that is what once made a seven-criterion story owe live proof against
+    # sixty-seven documents. Hopping from the required set instead is bounded by
+    # construction: a node pulled in this way is never itself hopped from.
+    #
+    # `relation-of-required` is in neither context-only set, so `_is_required` needs no change
+    # to honour it — and its `grounded` gate still applies, so a node with nothing built
+    # behind it is still not owed live proof.
+    required_subjects = {
+        subject for node_id in required_contracts for subject in _named_subjects(nodes_by_id[node_id])
+    }
+    if required_subjects:
+        hopped = False
+        for node_id in sorted(contracts - required_contracts):
+            for subject in sorted(_named_subjects(nodes_by_id[node_id]) & required_subjects):
+                direct_reasons.setdefault(node_id, []).append(
+                    {"kind": "relation-of-required", "ref": subject}
+                )
+                hopped = True
+        if hopped:
+            required_contracts = {
+                node_id
+                for node_id in contracts
+                if _is_required(node_id, direct_reasons, grounded, shared_files, demoted_symbols)
+            }
+        for subject in sorted(required_subjects):
+            owners = sorted(
+                node_id for node_id, node in nodes_by_id.items() if subject in _named_subjects(node)
+            )
+            if len(owners) > _RELATION_FANOUT:
+                health.append(
+                    {
+                        "kind": "relation-fanout",
+                        "severity": "warning",
+                        "ref": subject,
+                        "message": (
+                            f"relation subject `{subject}` binds {len(owners)} nodes; a change"
+                            " reaching any of them owes live evidence for all of them, which"
+                            " usually means the subject is named more broadly than the record"
+                        ),
+                    }
+                )
     obligations = [
         obligation
         for node_id in sorted(contracts)
@@ -987,6 +1059,48 @@ def _values(value: Any) -> list[str]:
     return [str(value)] if value else []
 
 
+def relation_subject(value: str) -> tuple[str | None, str]:
+    """Split a relation bullet into the subject it names and the claim it makes.
+
+    The subject is what two nodes can be found to share; the prose is what a planner reads
+    and what the obligation keeps as its `requirement`, unchanged from before subjects
+    existed. A bullet with no subject yields `None` and its own text.
+    """
+    match = _RELATION_SUBJECT_RE.match(value.strip())
+    if match is None:
+        return None, value.strip()
+    return match.group(1), match.group(2).strip()
+
+
+def _relation_join_key(value: str) -> str:
+    """What the fixpoint compares two relation bullets on: the subject, or the whole value."""
+    subject, _ = relation_subject(value)
+    return subject if subject is not None else value.strip()
+
+
+def _named_subjects(node: dict[str, Any]) -> set[str]:
+    """Every subject this node names, pooled across the relation and event bullets.
+
+    Pooled deliberately, as the fixpoint already pools its relation values: `persistence:
+    booking-record` on the concept and `consistency: booking-record` on the endpoint are
+    talking about the same record, and an `emits:` is answered by a `consumes:`. Only named
+    subjects — prose that names nothing is not evidence two nodes are related, however
+    similar the two sentences happen to read.
+    """
+    bullets = node.get("bullets", {})
+    subjects = {
+        subject
+        for key in RELATION_KEYS
+        for value in _values(bullets.get(key))
+        if (subject := relation_subject(value)[0]) is not None
+    }
+    for key in _EVENT_KEYS:
+        for value in _values(bullets.get(key)):
+            subject, _ = relation_subject(value)
+            subjects.add(subject if subject is not None else value.strip())
+    return {subject for subject in subjects if subject}
+
+
 def _merge_snapshot_nodes(
     base: dict[str, dict[str, Any]],
     head: dict[str, dict[str, Any]],
@@ -1453,6 +1567,14 @@ def _obligations(
                 "kind": key.replace(" ", "-"),
                 "requirement": requirement,
             }
+            # The claim a planner reads is the prose alone, exactly as it read before subjects
+            # existed. The subject is lifted to its own field so the obligation says what it is
+            # about rather than leaving the reader to parse an em dash out of the sentence.
+            if key in RELATION_KEYS or key in _EVENT_KEYS:
+                subject, prose = relation_subject(requirement)
+                obligation["requirement"] = prose
+                if subject is not None:
+                    obligation["subject"] = subject
             rows = _dedup_checks(_parse_checks(per_bullet.get((key, index), [])))
             if rows:
                 obligation["checksDeclared"] = rows

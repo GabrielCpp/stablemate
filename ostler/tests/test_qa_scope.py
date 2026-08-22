@@ -395,15 +395,20 @@ def _event_book(tmp_path: Path) -> Path:
     return producer
 
 
-def test_a_node_reached_only_by_the_event_fixpoint_is_context_not_live_evidence(tmp_path: Path):
-    """Sharing an event name with the change is closure, not reach.
+def test_the_consumer_of_a_changed_event_is_owed_live_evidence(tmp_path: Path):
+    """The node one hop from the change is the one nobody re-proved.
 
-    The `while related:` fixpoint walks `emits`/`consumes` and the consistency bullets until
-    nothing new is reachable, and never consults the diff while doing it — so every kind it
-    mints is closure by construction. Left owed live evidence, a seven-criterion story came
-    out demanding proof across 67 documents: 194 of its obligations were held by
-    `event-consumer` alone, the planner could not write a plan that covered them, the
-    reviewer was right to keep rejecting it, and the story ended with no verdict at all.
+    Change what a producer emits and the consumer of that event breaks, in a story that never
+    names it. That is the split this packet exists to catch: the record's shape moved, the
+    screen displaying it was updated, and the screen that *creates* it shipped broken because
+    it was out of scope.
+
+    One hop, and no further. The `while related:` fixpoint recomputes its selection every lap,
+    so a single shared subject chains across a whole persistence island — left owed live
+    evidence, a seven-criterion story came out demanding proof across 67 documents, 194 of its
+    obligations held by `event-consumer` alone, and the planner could not write a plan that
+    covered them. Hopping from the *required* set instead is bounded by construction, which
+    `test_the_hop_does_not_chain_past_one_node` holds to.
     """
     _event_book(tmp_path)
 
@@ -416,9 +421,162 @@ def test_a_node_reached_only_by_the_event_fixpoint_is_context_not_live_evidence(
     assert producer["evidenceRequired"] == "live"
 
     consumer = by_id["okf:docs/features/demo/consumer.md#mail:contract"]
-    assert {reason["kind"] for reason in consumer["reasons"]} == {"event-consumer"}
-    assert consumer["required"] is False
-    assert consumer["evidenceRequired"] == "context"
+    kinds = {reason["kind"] for reason in consumer["reasons"]}
+    assert kinds == {"event-consumer", "relation-of-required"}
+    assert consumer["required"] is True
+    assert consumer["evidenceRequired"] == "live"
+
+
+def test_the_hop_does_not_chain_past_one_node(tmp_path: Path):
+    """A hop is one hop. Two is the closure that cost sixty-seven documents.
+
+    The producer emits, the consumer answers it and emits in turn, and a third node answers
+    *that*. Only the producer was changed. The consumer is owed live evidence because a change
+    to what the producer emits can break it; the third node is two removes from the diff and
+    stays context, because the subjects are collected from the required set once and the nodes
+    the hop pulls in are never hopped from.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    for slug, title, bullets, module in (
+        ("producer", "Placer", "- emits: order.placed\n", "place"),
+        ("consumer", "Mailer", "- consumes: order.placed\n- emits: mail.sent\n", "mail"),
+        ("archiver", "Archiver", "- consumes: mail.sent\n", "archive"),
+    ):
+        (tmp_path / f"docs/features/demo/{slug}.md").write_text(
+            f"---\ntype: screen\ntitle: {title}\n---\n# {title}\n\n"
+            "- route: /demo\n"
+            "- code:\n\n"
+            f"## {title}\n\n"
+            "- role: status\n"
+            f"- name: {title}\n"
+            f"{bullets}"
+            f"- code: app/{slug}.py::{module}\n"
+            f"- tests: tests/{slug}_test.py::works\n",
+            encoding="utf-8",
+        )
+        (tmp_path / f"app/{slug}.py").write_text(f"def {module}():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    (tmp_path / "app/producer.py").write_text("def place():\n    return 'new'\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
+    assert validate_context(packet) == []
+    by_id = {item["id"]: item for item in packet["obligations"]}
+
+    assert by_id["okf:docs/features/demo/consumer.md#mailer:contract"]["required"] is True
+    archiver = by_id["okf:docs/features/demo/archiver.md#archiver:contract"]
+    assert archiver["required"] is False
+    assert archiver["evidenceRequired"] == "context"
+
+
+def test_the_screen_that_creates_the_record_is_owed_when_the_record_changes(tmp_path: Path):
+    """The user's case: a story splits, and the half nobody touched ships broken.
+
+    Add a field to a persisted record, update the screen that displays it, and the screen that
+    *creates* that record is bound to the same record, out of scope, and never re-proved. It
+    is named on both nodes — `persistence: booking-record — …` — so the packet can find it.
+    Prose alone could not: every persistence value in a real book is a unique sentence, and an
+    equality join over sentences matches nothing.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/demo/detail.md").write_text(
+        "---\ntype: screen\ntitle: Booking Detail\n---\n# Booking Detail\n\n"
+        "- route: /booking\n"
+        "- code:\n\n"
+        "## Detail\n\n"
+        "- role: region\n"
+        "- name: Booking detail\n"
+        "- persistence: booking-record — the booking read back carries every field it was"
+        " written with.\n"
+        "- code: app/detail.py::detail\n"
+        "- tests: tests/detail_test.py::shows\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo/create.md").write_text(
+        "---\ntype: screen\ntitle: New Booking\n---\n# New Booking\n\n"
+        "- route: /booking/new\n"
+        "- code:\n\n"
+        "## Create\n\n"
+        "- role: form\n"
+        "- name: New booking\n"
+        "- persistence: booking-record — submitting the form writes one booking and no more.\n"
+        "- code: app/create.py::create\n"
+        "- tests: tests/create_test.py::writes\n",
+        encoding="utf-8",
+    )
+    # Named on the same record, but nothing is built behind it yet.
+    (tmp_path / "docs/features/demo/report.md").write_text(
+        "---\ntype: screen\ntitle: Booking Report\n---\n# Booking Report\n\n"
+        "- route: /booking/report\n"
+        "- code:\n\n"
+        "## Report\n\n"
+        "- role: table\n"
+        "- name: Booking report\n"
+        "- persistence: booking-record — every written booking appears in the report.\n"
+        "- code:\n",
+        encoding="utf-8",
+    )
+    detail = tmp_path / "app/detail.py"
+    detail.write_text("def detail():\n    return {'seat': 1}\n", encoding="utf-8")
+    (tmp_path / "app/create.py").write_text("def create():\n    return 'ok'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    detail.write_text("def detail():\n    return {'seat': 1, 'row': 'A'}\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
+    assert validate_context(packet) == []
+    by_id = {item["id"]: item for item in packet["obligations"]}
+
+    create = by_id["okf:docs/features/demo/create.md#create:contract"]
+    assert create["required"] is True, "the screen that writes the record owes nothing"
+    assert {"kind": "relation-of-required", "ref": "booking-record"} in create["reasons"]
+
+    # The claim a planner reads is the prose alone; the subject is its own field.
+    bullet = by_id["okf:docs/features/demo/create.md#create:persistence:1"]
+    assert bullet["subject"] == "booking-record"
+    assert bullet["requirement"] == "submitting the form writes one booking and no more."
+
+    # The hop reaches it and the grounding gate still stops there: a QA plan cannot exercise a
+    # screen nobody has built, however plainly the book says the two are about one record.
+    report = by_id["okf:docs/features/demo/report.md#report:contract"]
+    assert report["required"] is False
+    assert report["evidenceRequired"] == "context"
+
+
+def test_a_relation_bullet_without_a_subject_names_nothing_and_joins_nothing(tmp_path: Path):
+    """Parsing is narrow on purpose: prose cannot claim a subject by accident.
+
+    A book that has never heard of subjects keeps working exactly as it did — its bullets have
+    no subject, they join nothing, and the one-hop rule is inert rather than wrong. Only the
+    declared head shape counts: a lowercase identifier, an em dash, a space either side.
+    """
+    from ostler.qa.context import relation_subject
+
+    assert relation_subject("booking-record — one booking is written.") == (
+        "booking-record",
+        "one booking is written.",
+    )
+    # An em dash mid-sentence is punctuation, not a subject.
+    assert relation_subject("the booking — every field of it — survives a restart.") == (
+        None,
+        "the booking — every field of it — survives a restart.",
+    )
+    # A multi-word head is prose, and a capitalised one is the start of a sentence.
+    assert relation_subject("the record — is written once.")[0] is None
+    assert relation_subject("Booking — is written once.")[0] is None
+    # An en dash and a hyphen are not the separator; only the em dash is.
+    assert relation_subject("booking-record - one booking is written.")[0] is None
+    assert relation_subject("booking-record – one booking is written.")[0] is None
+    # A subject with nothing after it states no claim, so it is not a subject.
+    assert relation_subject("booking-record — ")[0] is None
 
 
 def test_every_relation_fixpoint_kind_is_declared_co_binding(tmp_path: Path):
@@ -439,11 +597,11 @@ def test_every_relation_fixpoint_kind_is_declared_co_binding(tmp_path: Path):
         _CLOSURE_REASON_KINDS,
         _COBINDING_REASON_KINDS,
         _CONTEXT_ONLY_REASON_KINDS,
-        _RELATION_KEYS,
+        RELATION_KEYS,
         _RELATION_REASON_KINDS,
     )
 
-    assert _RELATION_REASON_KINDS == {key.replace(" ", "-") for key in _RELATION_KEYS}
+    assert _RELATION_REASON_KINDS == {key.replace(" ", "-") for key in RELATION_KEYS}
     assert _RELATION_REASON_KINDS <= _COBINDING_REASON_KINDS
     assert {"event-consumer", "event-producer"} <= _COBINDING_REASON_KINDS
     assert _CONTEXT_ONLY_REASON_KINDS == _CLOSURE_REASON_KINDS | _COBINDING_REASON_KINDS
