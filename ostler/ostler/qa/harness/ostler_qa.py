@@ -867,6 +867,7 @@ class Qa:
         recorder: _Recorder,
         offset_base_ms: int = 0,
         tools: Mapping[str, str] | None = None,
+        fixtures: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> None:
         self.scenario_id = scenario_id
         self.target = target
@@ -880,6 +881,11 @@ class Qa:
         #: file cannot read `agents.yml` or the stablemate config; it only ever imports the
         #: standard library.
         self._tool_commands = dict(tools or {})
+        #: The fixtures this repo declared (`agents.yml`'s `qa: {fixtures: {...}}`),
+        #: resolved on ostler's side of the boundary — see `ostler.qa.fixtures`. Each
+        #: entry is one named invocation of a tool already in `_tool_commands`, which is
+        #: why `fixture()` below runs through `tool()` rather than around it.
+        self._fixtures = {name: dict(spec) for name, spec in (fixtures or {}).items()}
         self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
@@ -922,6 +928,52 @@ class Qa:
                 f"define it in ~/.config/stablemate/config.toml's [qa_tools.{name}]"
             )
         return Tool(self, name, command)
+
+    def fixture(self, name: str, *args: str) -> "ToolResult":
+        """Put the product into a state this repo declared, and write down that it happened.
+
+        The state a scenario needs before it can observe anything — identities seeded, a
+        ledger with one claim on file — arranged by a command the *app* ships, so the app's
+        own integration tests and this plan reach that state through the same code. That
+        sharing is the whole point: a field spelled two ways in two arrangements is a defect
+        no reviewer reliably catches and no gate could see while the second arrangement was a
+        block of Python copied into a plan.
+
+        Extra `args` are appended to the declared ones, for the fixture that takes a
+        parameter (*which* showing, *how many* rows) without becoming a second fixture.
+
+        A fixture that fails raises. The scenario's preconditions are false, so nothing it
+        goes on to record would be about the product — and an aborted scenario now says
+        exactly that (`unproven`), rather than accusing the product of the plan's own
+        arrangement failing.
+        """
+        spec = self._fixtures.get(name)
+        if spec is None:
+            declared = ", ".join(sorted(self._fixtures)) or "(none declared)"
+            raise RuntimeError(
+                f"qa fixture {name!r} is not declared — add it to this repo's agents.yml "
+                f"under `qa: {{fixtures: {{{name}: ...}}}}`. Declared here: {declared}"
+            )
+        argv = [*spec.get("args", []), *args]
+        result = self.tool(str(spec["tool"])).run(*argv, timeout=float(spec.get("timeout", 120.0)))
+        self._recorder.emit(
+            {
+                "kind": "fixture",
+                "scenario": self.scenario_id,
+                "name": name,
+                "provides": spec.get("provides", ""),
+                "command": result.command,
+                "exit_code": result.exit_code,
+                "ok": result.ok,
+            }
+        )
+        if not result.ok:
+            raise RuntimeError(
+                f"qa fixture {name!r} failed (exit {result.exit_code}) and the state it "
+                f"promises — {spec.get('provides', '')!r} — is not there: "
+                f"{(result.stderr or result.stdout).strip()[:500]}"
+            )
+        return result
 
     # -- assertions --------------------------------------------------------------------
 
@@ -1883,13 +1935,17 @@ def _describe(module_path: Path) -> dict[str, Any]:
 
 
 def _load(module_path: Path) -> None:
-    """Import the plan module by path, with its own directory importable.
+    """Import the plan module by path, with its own directory and the spec root importable.
 
-    A plan sitting beside helper modules in the same spec directory should be able to
-    import them; nothing else about the project's layout is assumed.
+    Two entries, for two different things. The plan's own directory has always been here.
+    The spec root — the directory holding every story's spec directory — is what makes
+    `import _fixtures.<name>` resolve: fixture modules are shared across stories by
+    definition, so they cannot live beside any one plan. `ostler.qa.lint` decides which of
+    them a plan may name; this only decides where Python looks.
     """
     import importlib.util
 
+    sys.path.insert(0, str(module_path.parent.parent))
     sys.path.insert(0, str(module_path.parent))
     spec = importlib.util.spec_from_file_location("qa_plan", module_path)
     if spec is None or spec.loader is None:
@@ -1990,6 +2046,7 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         recorder=recorder,
         offset_base_ms=int(context.get("offset_ms", 0)),
         tools=context.get("tools", {}),
+        fixtures=context.get("fixtures", {}),
     )
     browser = None
     status, error = "passed", None

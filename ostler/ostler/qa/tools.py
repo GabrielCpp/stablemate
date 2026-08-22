@@ -45,7 +45,7 @@ BUILTIN_TOOLS: dict[str, str] = {
 _QA_CONFIG_FILES = ("ostler.yml", "ostler.yaml", "agents.yml", ".agents.yml")
 
 
-def _qa_block(root: Path) -> dict[str, Any]:
+def qa_block(root: Path) -> dict[str, Any]:
     """The first `qa:` mapping found across the repo's config files, in a fixed order.
 
     Reads the same four files `ostler.model._load_config` does, so a repo that keeps
@@ -67,7 +67,7 @@ def _qa_block(root: Path) -> dict[str, Any]:
 
 def opted_in_tools(root: Path) -> set[str]:
     """The tool names this repo's `qa:` block lists under `tools:`."""
-    values = _qa_block(root).get("tools", [])
+    values = qa_block(root).get("tools", [])
     return {str(value) for value in values} if isinstance(values, list) else set()
 
 

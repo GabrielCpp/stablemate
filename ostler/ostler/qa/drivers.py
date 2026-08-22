@@ -21,6 +21,7 @@ from typing import Any
 
 
 from ostler.model import load as load_graph
+from ostler.qa import fixtures as qa_fixtures
 from ostler.qa import tools as qa_tools
 from ostler.qa.harness_host import (
     DEFAULT_SCENARIO_TIMEOUT,
@@ -114,7 +115,13 @@ class PythonDriver(QaDriver):
 
     def start(self) -> None:
         self.launcher.preflight(self)
-        problems = qa_tools.preflight_errors(self.root)
+        # Fixture problems block the same way tool problems do, and for the same reason:
+        # a fixture naming a tool the repo never opted into is not a fixture that will
+        # fail loudly later, it is a declaration nothing behind it can honour.
+        problems = [
+            *qa_tools.preflight_errors(self.root),
+            *qa_fixtures.preflight_errors(self.root, spec_root=self.session.spec_dir.parent),
+        ]
         if problems:
             raise DriverBlocked("; ".join(problems))
         driver = str(self.target.get("driver", "python"))
@@ -227,6 +234,12 @@ class PythonDriver(QaDriver):
             # any opted-in tool didn't resolve, so this is always complete by the time a
             # scenario reaches for `qa.tool(...)`.
             "tools": qa_tools.resolved_commands(self.root),
+            # `{name: {tool, args, provides, timeout}}` for every fixture this repo
+            # declares — see `ostler.qa.fixtures`. Beside `tools` rather than folded
+            # into it because a fixture is not a capability: it is one named invocation
+            # of a command already on the line above, and `start()` refused the run if
+            # any fixture named a tool this repo never opted into.
+            "fixtures": qa_fixtures.resolved(self.root),
         }
         return self.launcher.execute(self, scenario_id, timeout, context)
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from ostler.qa.fixtures import FIXTURES_DIRNAME, FIXTURES_PACKAGE, declared_modules
 from ostler.qa.outcome import QaOutcome
 
 #: Modules a `qa_plan.py` may import. Everything a real plan needs to describe scenarios and
@@ -86,8 +87,12 @@ class PlanLintVisitor(ast.NodeVisitor):
     blocklist habit this module exists to avoid.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, fixture_modules: frozenset[str] = frozenset()) -> None:
         self.problems: list[str] = []
+        #: The `_fixtures.<name>` modules this repo declared under `qa: {fixture_modules:}`.
+        #: Empty for a repo that declared none, which is the pre-fixture behaviour exactly:
+        #: presence of the file on disk is not permission to import it, the declaration is.
+        self.fixture_modules = fixture_modules
 
     def generic_visit(self, node: ast.AST) -> None:
         if type(node) not in ALLOWED_NODE_TYPES:
@@ -113,7 +118,25 @@ class PlanLintVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def _check_module(self, module: str, lineno: int) -> None:
-        top = module.split(".")[0]
+        parts = module.split(".")
+        top = parts[0]
+        if top == FIXTURES_PACKAGE:
+            # A declared fixture module, and only a declared one. This widening buys nothing
+            # a plan could not already do — the fixture module is linted by this same visitor
+            # with this same allowlist, so it reaches the process exactly as far as the plan
+            # importing it does — and it is what lets `sign_in`/`bearer`/`submission` exist
+            # once instead of once per plan. `_fixtures` itself (no submodule) is not a
+            # module a plan can import: there is nothing in it to import.
+            name = parts[1] if len(parts) > 1 else ""
+            if name and name in self.fixture_modules:
+                return
+            declared = ", ".join(sorted(self.fixture_modules)) or "(none declared)"
+            self.problems.append(
+                f"line {lineno}: `import {module}` names a fixture module this repo has not "
+                f"declared — add `{name or module}` to agents.yml's "
+                f"`qa: {{fixture_modules: [...]}}`. Declared here: {declared}"
+            )
+            return
         if top not in ALLOWED_IMPORT_MODULES and module not in ALLOWED_IMPORT_MODULES:
             allowed = ", ".join(sorted(ALLOWED_IMPORT_MODULES))
             self.problems.append(
@@ -256,24 +279,35 @@ _DANGEROUS_BUILTINS = frozenset({
 })
 
 
-def lint_source(source: str, *, filename: str = "<qa_plan.py>") -> list[str]:
+def lint_source(
+    source: str,
+    *,
+    filename: str = "<qa_plan.py>",
+    fixture_modules: frozenset[str] = frozenset(),
+) -> list[str]:
     """Lint already-read plan source. Returns problems, empty when the plan is clean."""
     try:
         tree = ast.parse(source, filename=filename, mode="exec")
     except SyntaxError as exc:
         return [f"line {exc.lineno or '?'}: {exc.msg}"]
-    visitor = PlanLintVisitor()
+    visitor = PlanLintVisitor(fixture_modules)
     visitor.visit(tree)
     return visitor.problems
 
 
 def cmd_lint(
     plan_file: Path,
-    spec_dir: Path | None = None,  # noqa: ARG001 — kept for parity with cmd_validate's signature
+    spec_dir: Path | None = None,
     *,
     root: Path | None = None,
 ) -> QaOutcome:
-    """Lint a `qa_plan.py` against the AST allowlist without importing or executing it."""
+    """Lint a `qa_plan.py` against the AST allowlist without importing or executing it.
+
+    The plan's declared fixture modules are linted in the same pass, with the same visitor
+    and the same allowlist. That is what makes admitting them safe: a fixture module is
+    plan code that happens to live in another file, so it may not reach anything a plan
+    may not reach, and nothing about it is taken on trust because it was declared.
+    """
     root = (root or Path.cwd()).resolve()
     resolved_plan = plan_file if plan_file.is_absolute() else root / plan_file
     if not resolved_plan.is_file():
@@ -282,8 +316,10 @@ def cmd_lint(
             message=f"plan file not found: {resolved_plan}",
             status="invalid",
         )
+    modules = frozenset(declared_modules(root))
     source = resolved_plan.read_text(encoding="utf-8")
-    problems = lint_source(source, filename=str(resolved_plan))
+    problems = lint_source(source, filename=str(resolved_plan), fixture_modules=modules)
+    problems.extend(_lint_fixture_modules(resolved_plan, spec_dir, root, modules))
     if problems:
         msg = "Plan lint failed:\n" + "\n".join(f"  - {p}" for p in problems)
         return QaOutcome(
@@ -293,3 +329,40 @@ def cmd_lint(
             status="invalid",
         )
     return QaOutcome(ok=True, message="Plan lint passed.", data={})
+
+
+def _lint_fixture_modules(
+    plan_file: Path, spec_dir: Path | None, root: Path, modules: frozenset[str]
+) -> list[str]:
+    """Every problem in this repo's declared fixture modules, prefixed with the file.
+
+    A declared module with no file behind it is a problem here rather than an `ImportError`
+    at run time: lint is the gate that runs before import, and a declaration nothing
+    implements is exactly the class of defect declaring fixtures was meant to surface.
+    """
+    if not modules:
+        return []
+    spec_root = (
+        (spec_dir if spec_dir.is_absolute() else root / spec_dir).parent
+        if spec_dir is not None
+        else plan_file.parent.parent
+    )
+    directory = spec_root / FIXTURES_DIRNAME
+    problems: list[str] = []
+    for name in sorted(modules):
+        path = directory / f"{name}.py"
+        if not path.is_file():
+            problems.append(
+                f"fixture module {name!r} is declared in agents.yml's "
+                f"`qa: {{fixture_modules: [...]}}` but {path} does not exist"
+            )
+            continue
+        problems.extend(
+            f"{FIXTURES_DIRNAME}/{name}.py: {problem}"
+            for problem in lint_source(
+                path.read_text(encoding="utf-8"),
+                filename=str(path),
+                fixture_modules=modules,
+            )
+        )
+    return problems
