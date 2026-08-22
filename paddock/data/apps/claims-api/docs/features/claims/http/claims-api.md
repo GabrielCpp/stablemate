@@ -172,7 +172,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - code: app/api/decide.go
 - authorization: `403 Adjusters Only` unless the token carries the `adjuster` role. The role is
   read before the claim is looked up, so a holder learns nothing about a claim they may not decide.
-- verify: http_status(403, title="Adjusters Only", path="/api/claims/cl-1001/decision")
+- verify: http_status(403, title="Adjusters Only", path="/api/claims/cl-9999/decision")
 - concurrency: refuses a decision quoting a version other than the claim's current one with
   `409 Stale Decision`, so an adjuster who read the claim, went away and came back does not
   overwrite the decision that landed meanwhile.
