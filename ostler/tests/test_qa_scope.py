@@ -306,23 +306,34 @@ def test_a_node_reached_only_by_the_event_fixpoint_is_context_not_live_evidence(
     assert consumer["evidenceRequired"] == "context"
 
 
-def test_every_relation_fixpoint_kind_is_declared_closure(tmp_path: Path):
+def test_every_relation_fixpoint_kind_is_declared_co_binding(tmp_path: Path):
     """The set and the loop that feeds it may not drift apart again.
 
     They already did once: the fixpoint was added with seven relation bullets plus the two
     event kinds, and none of the nine was added to the exemption. Deriving the reason kinds
     from the same tuple the loop iterates is what makes that unrepeatable, and this asserts
     the derivation rather than a re-typed literal.
+
+    The fixpoint feeds `_COBINDING_REASON_KINDS`, not `_CLOSURE_REASON_KINDS`. The two were
+    one set and the docstring argued only the navigational half, which is what let
+    "co-bound to the same persisted record" be filed as "reached by containment". Both are
+    context-only, and `_is_required` subtracts their union — but only one of them is a
+    statement that the change cannot reach the node.
     """
     from ostler.qa.context import (
         _CLOSURE_REASON_KINDS,
+        _COBINDING_REASON_KINDS,
+        _CONTEXT_ONLY_REASON_KINDS,
         _RELATION_KEYS,
         _RELATION_REASON_KINDS,
     )
 
     assert _RELATION_REASON_KINDS == {key.replace(" ", "-") for key in _RELATION_KEYS}
-    assert _RELATION_REASON_KINDS <= _CLOSURE_REASON_KINDS
-    assert {"event-consumer", "event-producer"} <= _CLOSURE_REASON_KINDS
+    assert _RELATION_REASON_KINDS <= _COBINDING_REASON_KINDS
+    assert {"event-consumer", "event-producer"} <= _COBINDING_REASON_KINDS
+    assert _CONTEXT_ONLY_REASON_KINDS == _CLOSURE_REASON_KINDS | _COBINDING_REASON_KINDS
+    assert not (_CLOSURE_REASON_KINDS & _COBINDING_REASON_KINDS)
+    assert "relation-of-required" not in _CONTEXT_ONLY_REASON_KINDS
 
 
 def test_qa_scaffolding_is_not_a_production_unit():

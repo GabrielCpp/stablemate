@@ -59,26 +59,38 @@ _RELATION_KEYS = (
 #: The reason kind the fixpoint stamps for each of those bullets.
 _RELATION_REASON_KINDS = frozenset(key.replace(" ", "-") for key in _RELATION_KEYS)
 
-#: Reason kinds that reach a node only through the graph, never through the diff. A node
-#: held solely by these was not touched by this story — the closure walked to it from
-#: something that was. It stays in the packet as context and is not owed live evidence.
-#:
-#: The second group is the relation fixpoint below (`while related:`), which walks
-#: `emits`/`consumes` and the consistency/persistence/concurrency bullets until nothing new
-#: is reachable. That loop never reads the diff — it is closure by construction, and every
-#: kind it mints belongs here. Leaving them out is what made a seven-criterion story owe
-#: live proof against sixty-seven documents.
+#: Reason kinds that reach a node *navigationally* — by containment or by a graph link —
+#: and so say nothing about whether the change can break it. Being the parent of a touched
+#: node, or a flow that routes through one, is not a way to be broken by it: a single edited
+#: file otherwise drags in every flow that links to every contract it owns. A node held
+#: solely by these stays in the packet as context and is not owed live evidence.
 _CLOSURE_REASON_KINDS = frozenset(
     {
         "contains-impacted-node",
         "flow-links-contract",
         "flow-contract-closure",
         "graph-closure",
-        "event-consumer",
-        "event-producer",
     }
-    | _RELATION_REASON_KINDS
 )
+
+#: Reason kinds that reach a node by *co-binding*: it names the same consistency group,
+#: persistence subject, event or idempotency key as a node already selected. Unlike the
+#: navigational kinds above, this is real relatedness — those bullets are the invariants a
+#: change breaks when a story is split, and the node holding one is exactly the screen
+#: nobody re-proved.
+#:
+#: They are still context-only *here*, and the reason is the fixpoint below (`while
+#: related:`) rather than relatedness as such. That loop recomputes its selection every lap,
+#: so one shared subject chains transitively across a whole persistence island: a
+#: seven-criterion story came out owing live proof across sixty-seven documents, 194 of its
+#: obligations held by `event-consumer` alone. What is owed instead is one hop — see
+#: `_relation_owed`, which joins from the *required* set rather than from the closure and
+#: stamps `relation-of-required`, a kind deliberately in neither of these two sets.
+_COBINDING_REASON_KINDS = frozenset({"event-consumer", "event-producer"}) | _RELATION_REASON_KINDS
+
+#: What `_is_required` subtracts: reach that is not, on its own, evidence the change can
+#: break the node.
+_CONTEXT_ONLY_REASON_KINDS = _CLOSURE_REASON_KINDS | _COBINDING_REASON_KINDS
 
 #: Bullets that name how to address a node in a running UI. Lifted onto the obligation so a
 #: planner writing a browser locator reads them there rather than re-deriving them from the
@@ -1255,7 +1267,7 @@ def _is_required(
         if not (reason.get("kind") == "file-owner" and reason.get("ref") in shared_files)
         and not (reason.get("kind") == "changed-code" and reason.get("ref") in shared_symbols)
     }
-    return node_id in grounded and bool(kinds - _CLOSURE_REASON_KINDS)
+    return node_id in grounded and bool(kinds - _CONTEXT_ONLY_REASON_KINDS)
 
 
 def _journey_is_required(
