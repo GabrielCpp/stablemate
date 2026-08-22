@@ -151,6 +151,7 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         (before, after),
         subject="the rows the ledger did not already hold",
         covers=[
+            "okf:docs/features/tally/tally.md#import:does:1",
             "okf:docs/features/tally/tally.md#import-a-csv:consistency:1",
             "okf:docs/features/tally/tally.md#import-a-csv:contract",
             "okf:docs/features/tally/tally.md#import-a-csv:does:1",
@@ -411,23 +412,25 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         expected="a line on stderr naming the dry run",
         covers=["ac:5", "okf:docs/features/tally/tally.md#dry-run:semantics:3"],
     )
-    qa.check(
-        "every file in the scenario's directory is byte-for-byte what it was",
-        after == before,
-        actual=after,
-        expected=before,
+    qa.verify(
+        "unchanged",
+        ({"tally.json": before.get("tally.json")}, {"tally.json": after.get("tally.json")}),
+        subject="tally.json",
         covers=[
             "ac:5",
             "okf:docs/features/tally/tally.md#dry-run:semantics:1",
-            "okf:docs/features/tally/tally.md#dry-run:semantics:2",
         ],
     )
-    qa.check(
-        "and no file appeared or vanished, which a write-somewhere-else would show as either",
-        sorted(after) == sorted(before),
-        actual=sorted(after),
-        expected=sorted(before),
-        covers=["okf:docs/features/tally/tally.md#dry-run:semantics:2"],
+    # The whole directory, not the ledger: a dry run that wrote somewhere else instead shows
+    # up here as a file that appeared, and nowhere else in the scenario.
+    qa.verify(
+        "unchanged",
+        (before, after),
+        subject="the working directory",
+        covers=[
+            "ac:5",
+            "okf:docs/features/tally/tally.md#dry-run:semantics:2",
+        ],
     )
 
     # The default is only a claim if the flag's absence behaves differently. Same command,
@@ -503,11 +506,17 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
         covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
     )
     stood = read(qa, there)
+    qa.verify(
+        "unchanged",
+        ({"rent.json": qa.field(untouched, "sha256")}, {"rent.json": qa.field(stood, "sha256")}),
+        subject="the ledger --file did not name",
+        covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
+    )
     qa.check(
-        "the other ledger in the same directory is byte-for-byte what it was",
-        qa.field(stood, "sha256") == qa.field(untouched, "sha256"),
-        actual=qa.field(stood, "sha256"),
-        expected=qa.field(untouched, "sha256"),
+        "and it is still the empty ledger it was — the import landed in one file, not both",
+        len(entries(qa, there)) == 0,
+        actual=len(entries(qa, there)),
+        expected=0,
         covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
     )
 

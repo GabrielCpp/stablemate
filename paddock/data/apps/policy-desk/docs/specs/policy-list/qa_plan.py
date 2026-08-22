@@ -36,24 +36,29 @@ web = target(
 def register_api(qa: Qa) -> None:
     """List the register over HTTP: ordering and record shape."""
     health = qa.http.get("/healthz")
-    qa.check("health reports the ready status", qa.field(health.json(), "status") == "ok", covers=["okf:docs/features/policy/http/policy-desk-api.md#get-health:contract", "okf:docs/features/policy/http/policy-desk-api.md#get-health:does:1"])
+    qa.verify("http_status", health, code=200, path="/healthz", covers=["okf:docs/features/policy/http/policy-desk-api.md#get-health:contract", "okf:docs/features/policy/http/policy-desk-api.md#get-health:does:1"])
+    qa.verify("json_path", health.json(), path="status", equals="ok", covers=["okf:docs/features/policy/http/policy-desk-api.md#get-health:does:1"])
     reset = qa.http.delete("/api/policies", expect_status=204)
     qa.verify("http_status", reset, code=204, path="/api/policies", covers=["okf:docs/features/policy/http/policy-desk-api.md#delete-policies:contract", "okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:1"])
     emptied = qa.http.get("/api/policies", expect_status=200).json()["policies"]
     qa.verify("count", emptied, subject="policies", equals=0, covers=["okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:1"])
     reset_again = qa.http.delete("/api/policies", expect_status=204)
-    qa.check("reset is idempotent on empty books", reset_again.status == 204, covers=["okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:2"])
+    qa.verify("http_status", reset_again, code=204, path="/api/policies", covers=["okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:2"])
+    still_empty = qa.http.get("/api/policies", expect_status=200).json()["policies"]
+    qa.verify("count", still_empty, subject="policies", equals=0, covers=["okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:2"])
 
     for number in ("PN-1003", "PN-1001", "PN-1002"):
         qa.http.post("/api/policies", json_body=valid_policy(number), expect_status=201)
     listing = qa.http.get("/api/policies", expect_status=200)
     policies = listing.json()["policies"]
-    qa.verify("http_status", listing, code=200, path="/api/policies", covers=["ac:1", "okf:docs/features/policy/http/policy-desk-api.md:contract", "okf:docs/features/policy/http/policy-desk-api.md#get-policies:contract"])
+    qa.verify("http_status", listing, code=200, path="/api/policies", covers=["ac:1", "okf:docs/features/policy/http/policy-desk-api.md:contract", "okf:docs/features/policy/http/policy-desk-api.md#get-policies:contract", "okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:1"])
     numbers = [policy["policy_number"] for policy in policies]
     qa.check("every policy on file is listed, ordered by policy number", numbers == ["PN-1001", "PN-1002", "PN-1003"], actual=numbers, expected=["PN-1001", "PN-1002", "PN-1003"], covers=["ac:1", "okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:1"])
     fields = ("id", "policy_number", "holder_email", "coverage_type", "start_date", "end_date", "premium", "status", "version")
     qa.check("each record carries the register's fields without a second request", all(field in policy for policy in policies for field in fields), covers=["okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:2"])
-    qa.verify("json_path", listing.json(), path="$.policies[0].id", equals="pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:2"])
+    qa.verify("json_path", listing.json(), path="$.policies[0].id", equals="pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:1"])
+    qa.verify("json_path", listing.json(), path="policies[0].version", absent=False, covers=["okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:2"])
+    qa.verify("json_path", listing.json(), path="policies[0].status", matches="Draft|Cancelled", covers=["okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:2"])
 
 
 
@@ -94,10 +99,11 @@ def register_browser(qa: Qa) -> None:
     qa.vet("docs/features/policy/gui/screens/policy-list.md", name="register", components=["policy-table", "new-policy-link"])
     qa.screenshot("register")
     qa.verify("visible", table, locator="table:Policies on file", covers=["ac:2", "okf:docs/features/policy/gui/screens/policy-list.md:contract", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:contract", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:name:1", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:role:1"])
+    qa.verify("visible", table, locator="table:Policies on file", text="PN-1001", covers=["ac:2", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:name:1"])
     rows = qa.by_css("table tbody tr")
     qa.check("the register renders one row per policy", rows.count() == 2, actual=rows.count(), expected=2, covers=["ac:2", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:contract"])
     first_row_link = qa.by_role("link", name="PN-1001")
-    qa.verify("visible", first_row_link, locator="link:PN-1001", covers=["ac:2", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:contract", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:keyboard:1"])
+    qa.verify("visible", first_row_link, locator="link:PN-1001", covers=["ac:2", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:contract", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:keyboard:1", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:name:1"])
 
     new_link = qa.by_role("link", name="New policy")
     qa.verify("visible", new_link, locator="link:New policy", covers=["okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:contract", "okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:name:1", "okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:role:1"])

@@ -155,9 +155,21 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
         expected="the progress line on stderr and absent from stdout",
         covers=["ac:2", "okf:docs/features/tally/tally.md#report-as-json:consistency:2"],
     )
+    qa.verify(
+        "json_path",
+        decoded,
+        path="$.total_cents",
+        equals="7450",
+        covers=[
+            "ac:1",
+            "ac:3",
+            "okf:docs/features/tally/tally.md#report:does:1",
+            "okf:docs/features/tally/tally.md#report-as-json:does:1",
+        ],
+    )
     qa.check(
         "the totals are the ledger's, and the overall is the sum of the per-person ones",
-        qa.field(decoded, "entries") == 3 and qa.field(decoded, "total_cents") == 7450 and (sum(qa.field(decoded, "per_person").values()) == qa.field(decoded, "total_cents")),
+        qa.field(decoded, "entries") == 3 and (sum(qa.field(decoded, "per_person").values()) == qa.field(decoded, "total_cents")),
         actual=decoded,
         expected={"entries": 3, "total_cents": 7450, "per_person": {"ana": 3050, "bo": 4400}},
         covers=["ac:1", "ac:3", "okf:docs/features/tally/tally.md#report-as-json:does:1"],
@@ -231,6 +243,7 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
         (lines(before), lines(after)),
         subject="the exported CSV file",
         covers=[
+            "okf:docs/features/tally/tally.md#export:does:1",
             "okf:docs/features/tally/tally.md#export-to-csv:consistency:1",
             "okf:docs/features/tally/tally.md#export-to-csv:contract",
             "okf:docs/features/tally/tally.md#export-to-csv:does:1",
@@ -344,6 +357,24 @@ def a_report_totals_the_ledger_it_was_given_and_not_its_neighbour(qa: Qa) -> Non
         qa.field(json.loads(neighbour.stdout), "total_cents") == 300,
         actual=json.loads(neighbour.stdout),
         expected="the 300 the second ledger holds, not the 7450 the first does",
+        covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
+    )
+
+    # A read cannot violate the separation; only a write can. Put one against the named
+    # ledger, with the neighbour's digest either side of it.
+    untouched = read(qa, there)
+    landed = run(qa, here, "add", "dee", "tram", "180", "2026-03-04")
+    qa.require(
+        "the named ledger took an expense",
+        landed.ok,
+        actual=landed.stderr[-2000:],
+        covers=["okf:docs/features/tally/tally.md#file:contract"],
+    )
+    stood = read(qa, there)
+    qa.verify(
+        "unchanged",
+        ({"other.json": qa.field(untouched, "sha256")}, {"other.json": qa.field(stood, "sha256")}),
+        subject="the ledger --file did not name",
         covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
     )
 

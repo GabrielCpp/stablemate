@@ -123,6 +123,7 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
             "okf:docs/features/tally/flows/track-a-trip.md:end-state",
             "okf:docs/features/tally/flows/track-a-trip.md:end:1",
             "okf:docs/features/tally/flows/track-a-trip.md:start:1",
+            "okf:docs/features/tally/tally.md#init:does:1",
             "okf:docs/features/tally/tally.md#init-a-ledger:contract",
             "okf:docs/features/tally/tally.md#init-a-ledger:does:1",
             "okf:docs/features/tally/tally.md#init-a-ledger:does:2",
@@ -365,6 +366,7 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         equals=1,
         covers=[
             "ac:3",
+            "okf:docs/features/tally/tally.md#add:does:1",
             "okf:docs/features/tally/tally.md#add-an-expense:contract",
             "okf:docs/features/tally/tally.md#add-an-expense:does:1",
             "okf:docs/features/tally/tally.md#add-an-expense:errors:1",
@@ -504,18 +506,18 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         expected="a preview line on stderr and an empty stdout",
         covers=["ac:5", "ac:6", "okf:docs/features/tally/tally.md#dry-run:semantics:3"],
     )
-    qa.check(
-        "the ledger's bytes are what they were",
-        before.get("tally.json") == after.get("tally.json"),
-        actual=[before.get("tally.json"), after.get("tally.json")],
-        expected="one digest, twice",
+    qa.verify(
+        "unchanged",
+        ({"tally.json": before.get("tally.json")}, {"tally.json": after.get("tally.json")}),
+        subject="tally.json",
         covers=["ac:5", "okf:docs/features/tally/tally.md#dry-run:semantics:1"],
     )
-    qa.check(
-        "and nothing else in the directory was written either — no new file, no changed one",
-        before == after,
-        actual=after,
-        expected=before,
+    # The directory rather than the ledger: nothing else was written either, which is where a
+    # dry run that wrote somewhere else instead would show up as a file that appeared.
+    qa.verify(
+        "unchanged",
+        (before, after),
+        subject="the working directory",
         covers=[
             "ac:5",
             "okf:docs/features/tally/tally.md#dry-run:semantics:2",
@@ -577,6 +579,7 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
             covers=["okf:docs/features/tally/tally.md#file:contract"],
         )
 
+    untouched = read(qa, there)
     recorded = run(qa, here, "add", "ana", "ferry", "2600", "2026-03-07")
     qa.require(
         "one of the two ledgers took an expense",
@@ -603,6 +606,15 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
             "okf:docs/features/tally/tally.md#file:semantics:1",
             "okf:docs/features/tally/tally.md#file:contract",
         ],
+    )
+    # The bytes as well as the parse: an `add` that rewrote the neighbour with identical
+    # content left it holding nothing either, and only the digest separates the two.
+    stood = read(qa, there)
+    qa.verify(
+        "unchanged",
+        ({"rent.json": qa.field(untouched, "sha256")}, {"rent.json": qa.field(stood, "sha256")}),
+        subject="the ledger --file did not name",
+        covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
     )
 
     # The default and the optionality are read off the product's own usage rather than

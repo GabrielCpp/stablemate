@@ -43,7 +43,9 @@ web = target(
 )
 def amend_policy_and_preserve_the_ledger(qa: Qa) -> None:
     """A valid amendment is conditional, durable, and does not rewrite neighbours."""
+    qa.http.delete("/api/policies", expect_status=204)
     qa.http.post("/api/policies", json_body=valid_policy("PN-1001"), expect_status=201)
+    qa.http.post("/api/policies", json_body=valid_policy("PN-1002", email="sam@example.com"), expect_status=201)
     before_ledger = qa.http.get("/api/policies").json()
     before = qa.http.get("/api/policies/pn-1001").json()["policy"]
     qa.check("fixture is the expected amendable policy", qa.field(before, "policy_number") == "PN-1001", covers=["ac:1", "ac:3"])
@@ -56,6 +58,8 @@ def amend_policy_and_preserve_the_ledger(qa: Qa) -> None:
     )
     stored = response.json()["policy"]
     qa.check("amendment answers 200", qa.field(stored, "policy_number") == qa.field(before, "policy_number"), covers=["ac:1", "okf:docs/features/policy/http/policy-desk-api.md:contract", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:contract"])
+    qa.verify("http_status", response, code=200, path="/api/policies/pn-1001", covers=["ac:1", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:does:1"])
+    qa.verify("json_path", response.json(), path="policy.version", equals="2", covers=["ac:1", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:does:1"])
     qa.check("version bumps exactly once", qa.field(stored, "version") == qa.field(before, "version") + 1, covers=["ac:1", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:does:1"])
     qa.check("status remains unchanged", qa.field(stored, "status") == qa.field(before, "status"), covers=["ac:1"])
     qa.check("policy number remains the id-derived value", qa.field(stored, "policy_number") == qa.field(before, "policy_number"), covers=["ac:3"])
@@ -63,10 +67,16 @@ def amend_policy_and_preserve_the_ledger(qa: Qa) -> None:
     others_before = {item["id"]: item for item in before_ledger["policies"] if item["id"] != "pn-1001"}
     others_after = {item["id"]: item for item in after_ledger["policies"] if item["id"] != "pn-1001"}
     qa.check("every other policy is unchanged", others_after == others_before, covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:does:2"])
+    neighbour_before = next(item for item in before_ledger["policies"] if item["id"] == "pn-1002")
+    neighbour_after = next(item for item in after_ledger["policies"] if item["id"] == "pn-1002")
+    qa.verify("unchanged", (neighbour_before, neighbour_after), subject="policy pn-1002", except_fields=[], covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:does:2"])
+    qa.verify("keys_unchanged", ({item["id"]: item for item in before_ledger["policies"]}, {item["id"]: item for item in after_ledger["policies"]}), subject="policies", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:does:2"])
     invalid = dict(amendment_body(stored, premium), version=stored["version"], premium=0)
     invalid_response = qa.http.put("/api/policies/pn-1001", json_body=invalid, expect_status=422)
     invalid_body = invalid_response.json()
     qa.check("invalid amendment answers 422 with premium error", "premium" in qa.field(invalid_body, "errors"), covers=["ac:3", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:errors:2"])
+    qa.verify("http_status", invalid_response, code=422, path="/api/policies/pn-1001", covers=["ac:3", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:errors:2"])
+    qa.verify("json_path", invalid_body, path="errors.premium", absent=False, covers=["ac:3", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:errors:2"])
     json.dump({"before": before, "amended": stored, "invalid": invalid_body}, qa.artifact("steps/amendment.json", kind="json").open("w"))
 
 
@@ -103,13 +113,17 @@ def reject_missing_and_stale_amendments_without_erasing_the_reading(qa: Qa) -> N
     }
     missing = qa.http.put("/api/policies/pn-1001", json_body=missing_body, expect_status=400)
     qa.check("missing version is refused as Version Required", qa.field(missing.json(), "title") == "Version Required", covers=["ac:2", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:errors:1"])
+    qa.verify("http_status", missing, code=400, title="Version Required", path="/api/policies/pn-1001", covers=["ac:2", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:errors:1"])
     first = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(original, original["premium"] + 2), expect_status=200).json()["policy"]
     stale = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(original, original["premium"] + 3), expect_status=409)
     qa.check("stale version is refused as Stale Policy", qa.field(stale.json(), "title") == "Stale Policy", covers=["ac:2", "ac:6", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1"])
+    qa.verify("conflict_on_stale", stale, subject="policy pn-1001", token="version", covers=["ac:2", "ac:6", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1"])
+    qa.verify("http_status", stale, code=409, title="Stale Policy", path="/api/policies/pn-1001", covers=["ac:2", "ac:6", "okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1"])
     current = qa.http.get("/api/policies/pn-1001").json()["policy"]
     qa.check("stale write changes nothing", current == first, covers=["ac:2", "ac:6"])
     unknown = qa.http.put("/api/policies/missing", json_body=amendment_body(original, original["premium"]), expect_status=404)
     qa.check("unknown amendment is identified", qa.field(unknown.json(), "title") == "Unknown Policy", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:errors:3"])
+    qa.verify("http_status", unknown, code=404, title="Unknown Policy", path="/api/policies/missing", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:errors:3"])
     json.dump({"original": original, "first": first, "stale": stale.json(), "current": current}, qa.artifact("steps/stale-amendment.json", kind="json").open("w"))
 
 
@@ -147,14 +161,19 @@ def cancel_only_after_confirmation_and_version_match(qa: Qa) -> None:
     before = qa.http.get("/api/policies/pn-1001").json()["policy"]
     wrong = qa.http.post("/api/policies/pn-1001/cancel", json_body={"version": before["version"], "confirm": "WRONG"}, expect_status=422)
     qa.check("wrong confirmation is beside confirm", "confirm" in qa.field(wrong.json(), "errors"), covers=["ac:4", "okf:docs/features/policy/http/policy-desk-api.md#post-policy-cancel:errors:1"])
+    qa.verify("http_status", wrong, code=422, path="/api/policies/pn-1001/cancel", covers=["ac:4", "okf:docs/features/policy/http/policy-desk-api.md#post-policy-cancel:errors:1"])
+    qa.verify("json_path", wrong.json(), path="errors.confirm", absent=False, covers=["ac:4", "okf:docs/features/policy/http/policy-desk-api.md#post-policy-cancel:errors:1"])
     missing = qa.http.post("/api/policies/pn-1001/cancel", json_body={"confirm": before["policy_number"]}, expect_status=400)
     qa.check("missing cancellation version is refused", qa.field(missing.json(), "title") == "Version Required", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policy-cancel:errors:2"])
     stale = qa.http.post("/api/policies/pn-1001/cancel", json_body={"version": before["version"] - 1, "confirm": before["policy_number"]}, expect_status=409)
     qa.check("stale cancellation is refused", qa.field(stale.json(), "title") == "Stale Policy", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policy-cancel:errors:3"])
+    qa.verify("http_status", stale, code=409, title="Stale Policy", path="/api/policies/pn-1001/cancel", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policy-cancel:errors:3"])
     response = qa.http.post("/api/policies/pn-1001/cancel", json_body={"version": before["version"], "confirm": before["policy_number"]}, expect_status=200)
     cancelled = response.json()["policy"]
     qa.check("cancellation answers 200 and bumps version", qa.field(cancelled, "version") == qa.field(before, "version") + 1, covers=["ac:5", "okf:docs/features/policy/http/policy-desk-api.md#post-policy-cancel:contract", "okf:docs/features/policy/http/policy-desk-api.md#post-policy-cancel:does:1"])
     qa.check("status is Cancelled", qa.field(cancelled, "status") == "Cancelled", covers=["ac:5", "okf:docs/features/policy/http/policy-desk-api.md#post-policy-cancel:does:1"])
+    qa.verify("http_status", response, code=200, path="/api/policies/pn-1001/cancel", covers=["ac:5", "okf:docs/features/policy/http/policy-desk-api.md#post-policy-cancel:does:1"])
+    qa.verify("json_path", response.json(), path="policy.status", equals="Cancelled", covers=["ac:5", "okf:docs/features/policy/http/policy-desk-api.md#post-policy-cancel:does:1"])
     qa.check("cancelled state persists on re-query", qa.field(qa.http.get("/api/policies/pn-1001").json(), "policy") == cancelled, covers=["ac:5"])
     register = qa.http.get("/api/policies", expect_status=200).json()["policies"]
     qa.check("the cancelled policy stays listed in the register with status Cancelled", any((qa.field(entry, "id") == "pn-1001" and qa.field(entry, "status") == "Cancelled" for entry in register)), covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policy-cancel:does:2"])
@@ -180,6 +199,7 @@ def cancel_only_after_confirmation_and_version_match(qa: Qa) -> None:
         "okf:docs/features/policy/gui/screens/policy-detail.md#policy-summary:keyboard:1",
         "okf:docs/features/policy/gui/screens/policy-detail.md#policy-summary:name:1",
         "okf:docs/features/policy/gui/screens/policy-detail.md#policy-summary:role:1",
+        "okf:docs/features/policy/gui/screens/policy-detail.md#policy-summary:states:1",
     ],
     preconditions=[
         "the register contains PN-1001 and the API is ready",
@@ -228,6 +248,8 @@ def stale_edit_keeps_the_open_form_and_detail_reading(qa: Qa) -> None:
     qa.eventually("the redrawn detail screen still offers its edit entry", edit_link.is_visible)
     qa.vet("docs/features/policy/gui/screens/policy-detail.md", name="detail-after-stale-write", components=["policy-summary"])
     qa.verify("conflict_on_stale", stale_submission.value.status, subject="policy pn-1001", token="version", covers=["okf:docs/features/policy/flows/edit-policy.md:start:1", "okf:docs/features/policy/flows/edit-policy.md:end:1", "okf:docs/features/policy/flows/edit-policy.md:end-state"])
+    qa.verify("visible", summary, locator="text=Draft", covers=["okf:docs/features/policy/gui/screens/policy-detail.md#policy-summary:states:1"])
+    qa.verify("visible", summary, locator="text=1HGCM82633A004352", covers=["okf:docs/features/policy/gui/screens/policy-detail.md#policy-summary:states:1"])
     qa.check("policy summary is rendered after the refused write", summary.count() == 1, covers=["okf:docs/features/policy/gui/screens/policy-detail.md#policy-summary:contract", "okf:docs/features/policy/gui/screens/policy-detail.md#policy-summary:keyboard:1", "okf:docs/features/policy/gui/screens/policy-detail.md#policy-summary:name:1", "okf:docs/features/policy/gui/screens/policy-detail.md#policy-summary:role:1", "okf:docs/features/policy/flows/edit-policy.md:end:1", "okf:docs/features/policy/flows/edit-policy.md:end-state"])
     unexpected = [entry for entry in qa.diagnostics.console_errors() if "409" not in entry.get("text", "")]
     qa.check("no console errors beyond the provoked 409 refusal", unexpected == [] and qa.diagnostics.page_errors() == [], covers=["okf:docs/features/policy/gui/screens/edit-policy.md:contract"])
