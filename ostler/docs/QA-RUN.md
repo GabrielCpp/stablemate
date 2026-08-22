@@ -287,6 +287,17 @@ ostler qa run <plan-file> [--spec <spec-dir>] [--scenario <id>] [--out-dir <labe
     A dry run writes no qa-evidence.json, and a scored run rmtrees qa/ before it
     writes, so no rehearsal survives into the run it was rehearsing for.
 
+ostler qa sensitivity [--node <substr>] [--json]
+    Ask, of the book alone, whether each claim's declared checks could have gone
+    red. Every verifier is a pure function of the observation, so each declared
+    call is given a witness observation that satisfies it and then a family of
+    perturbations — the field the claim names missing or holding something else,
+    a different route answering, the ledger the write was to leave alone moved,
+    the refusal carrying the credential it may not. Exits non-zero when some
+    claim's every declared call survives all of them: that claim is `covered`
+    whatever the product does, which is not coverage. Runs nothing and boots
+    nothing, so it is available before a plan exists.
+
 ostler qa clean --spec <dir> [--yes]
     List the legacy qa-* scratch directories the old sibling layout left beside a
     spec — qa-dry-run/, qa-fix-*/, qa-operator-*/ — and, with --yes, delete them.

@@ -214,12 +214,13 @@ ostler qa context --base <rev> --head WORKTREE --spec docs/specs/<story> \
 ostler qa validate docs/specs/<story>/qa-plan.yml --json
 ostler qa run      docs/specs/<story>/qa-plan.yml --json
 ostler qa evidence-map --spec docs/specs/<story>
+ostler qa sensitivity
 ```
 
 After the run, `qa evidence-map` joins those four artifacts — the obligation scope, the
 ledger, the manifest and the published verdict — into one row per obligation and a status:
-`covered`, `claimed-but-unasserted`, `uncovered`, `unproven`, or `contradicted`. That last
-one is the
+`covered`, `claimed-but-unasserted`, `uncovered`, `unproven`, `insensitive`, or
+`contradicted`. That last one is the
 case worth naming: `qa-evidence.json` is a summary of the ledger, and where it publishes a
 verdict the ledger does not hold, every consumer downstream reads the summary and none of
 them goes back to check. `unproven` is its neighbour and its opposite: a scenario that died
@@ -227,6 +228,15 @@ mid-body observed nothing, so the obligation is unproven and the plan is what ne
 scoring it as a disproof accuses the product of a defect the run never looked for. The whole
 thing is a set difference, which is why it belongs in a command rather than in a reviewer's
 instructions.
+
+`insensitive` is the one status the set difference cannot see, and `qa sensitivity` is what
+decides it. Every verifier is a pure function of what was observed, so each declared call can be
+given a witness observation that satisfies it and then perturbed — the field the claim names
+missing or holding something else, a different route answering, the ledger the write was
+supposed to leave alone moved — with no app booted and no run required. A call no perturbation
+reddens passes whatever the product does, and an obligation whose every call is like that is
+green for a reason that has nothing to do with the product. The repair is the `verify:` bullet,
+which is why the command reads the book alone and is worth running before any plan exists.
 
 The run contract is in
 [docs/QA-RUN.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/QA-RUN.md); the

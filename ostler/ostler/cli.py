@@ -634,6 +634,16 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_validate.add_argument("--spec", default=None, type=Path)
     qa_validate.add_argument("--json", action="store_true")
 
+    qa_sensitivity = qas.add_parser(
+        "sensitivity",
+        help="report which declared checks could actually have gone red",
+    )
+    qa_sensitivity.add_argument(
+        "--node", default="",
+        help="only claims whose id or book path contains this substring",
+    )
+    qa_sensitivity.add_argument("--json", action="store_true")
+
     qa_run = qas.add_parser("run", help="execute a qa_plan.py in batch mode")
     qa_run.add_argument("plan_file", type=Path)
     qa_run.add_argument("--spec", default=None, type=Path)
@@ -1171,6 +1181,14 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         if spec_dir is not None and not spec_dir.is_absolute():
             spec_dir = root / spec_dir
         result = qa_mod.cmd_validate(args.plan_file, spec_dir, root=root)
+        if args.json:
+            _out(json.dumps(result.data, indent=2))
+        else:
+            _out(result.message)
+        return 0 if result.ok else 1
+
+    if op == "sensitivity":
+        result = qa_mod.cmd_sensitivity(root, node=args.node)
         if args.json:
             _out(json.dumps(result.data, indent=2))
         else:

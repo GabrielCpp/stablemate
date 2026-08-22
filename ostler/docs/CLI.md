@@ -284,7 +284,7 @@ artifact manifest and the published verdict into one row per obligation:
 
 ```bash
 ostler qa evidence-map --spec docs/specs/<story> [--out-dir LABEL] \
-  [--status {contradicted,unproven,uncovered,claimed-but-unasserted,covered}] \
+  [--status {contradicted,unproven,uncovered,claimed-but-unasserted,insensitive,covered}] \
   [--out PATH] [--json]
 ```
 
@@ -299,12 +299,30 @@ artifacts those scenarios produced, and a status:
 | `uncovered` | no scenario claims it and no assertion is bound to it | the QA plan |
 | `contradicted` | an assertion bound to it failed, or `qa-evidence.json` publishes a verdict the ledger does not hold | the product, or the artifact |
 | `unproven` | the scenario that would have observed it did not run to completion | the QA plan |
+| `insensitive` | every declared check passed and none of them could have failed | the book's `verify:` bullets |
 
 `unproven` is the one that looks like `contradicted` and is not. An aborted scenario leaves a
 failing record bound to every obligation it claimed, but the record is the harness's note that
 the run stopped, not an observation of the product — and the usual cause is a defect in the
 plan: a misspelled field, a timeout, a step that raised. Reading it as a disproof accuses
 whatever tree was under it, a clean one included.
+
+`insensitive` is the other one that is not what it looks like, from the other side: the row is
+green everywhere a reader checks, and the checks it is green on are ones no observation of the
+product could have reddened. It is decided by `qa sensitivity`, below, and the repair is a
+`verify:` bullet that names what would be different if the claim were false.
+
+```bash
+ostler qa sensitivity [--node SUBSTR] [--json]
+```
+
+Every verifier is a pure function of what was observed, so each declared call is given a
+witness observation that satisfies it and then a family of mutations — the field the claim
+names missing or holding something else, a different route answering, the ledger the write was
+supposed to leave alone moved, the refusal carrying the credential it may not. A call is
+*sensitive* when at least one mutation turns it red, and the command exits non-zero when a
+claim's every declared call survives all of them. Nothing is executed, nothing is booted, and
+no run is needed: the question is about the declaration, not about this run of the product.
 
 The exit status is `0` only when every obligation is `covered`, so a caller can gate on the
 join without parsing it. A missing or malformed ledger is a refusal rather than a map full of

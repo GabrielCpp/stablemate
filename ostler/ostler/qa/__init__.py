@@ -12,6 +12,7 @@ Commands:
   ostler qa run     <plan-file> [--spec DIR] [--stop-on-fail]
   ostler qa lint    <plan-file>
   ostler qa validate <plan-file>
+  ostler qa sensitivity [--node SUBSTR]
   ostler qa context-show [--spec DIR] [--required] [--node SUBSTR] [--limit N]
   ostler qa evidence-map [--spec DIR] [--status S] [--out PATH]
   ostler qa clean   --spec DIR [--yes]
@@ -19,6 +20,7 @@ Commands:
 
 from ostler.qa.run import DaemonSpec, QaOutcome, cmd_assert, cmd_report, cmd_replay, cmd_run, cmd_start, cmd_step, cmd_stop, cmd_validate
 from ostler.qa.lint import cmd_lint
+from ostler.qa.sensitivity import cmd_sensitivity
 from ostler.qa.clean import cmd_clean, legacy_scratch_roots
 from ostler.qa.session import QA_DIRNAME, RESERVED_LABELS, ScratchLabelError, scratch_dirname
 from ostler.qa import tools
@@ -50,6 +52,7 @@ __all__ = [
     "cmd_replay",
     "cmd_run",
     "cmd_lint",
+    "cmd_sensitivity",
     "cmd_validate",
     "cmd_clean",
     "legacy_scratch_roots",
