@@ -12,10 +12,13 @@ instrument for a verdict and the wrong one for a fix cycle: a defect in the code
 node costs most of a day to reach twice, so you get one or two observations a day and every
 one of them is confounded by the dozen things that happened before it.
 
-The other three answer *did the workflows get stuck, and where* — which is a question you
+The three small ones — `link-shortener`, `expense-split`, `bookmarks` — answer *did the
+workflows get stuck, and where* — which is a question you
 need answered repeatedly, cheaply, and today. Their scores are deliberately not comparable
 to `todo-app`'s, or to each other's: a smaller backlog is an easier backlog, and the number
-they produce is only meaningful against the same spec's own history.
+they produce is only meaningful against the same spec's own history. `docs-app` is not on
+that axis at all — it answers *did author design the app, or transcribe the brief*, and is
+scored by a different command against expectations it was never shown.
 
 | Spec | Surfaces | Bullets | Budget | Tags | What it is for |
 |---|---|---|---|---|---|
@@ -23,6 +26,7 @@ they produce is only meaningful against the same spec's own history.
 | [`expense-split`](expense-split/benchmark.yaml) | api (Go) | 5 | 60 min | `hour workload api` | The workload run. Enough stories for the coder to loop over, which is where staleness and churn actually appear. |
 | [`bookmarks`](bookmarks/benchmark.yaml) | api (Go) + web (React Router) | 4 | 60 min | `hour cross-surface api web` | The cross-surface run. Two surfaces is where story decomposition, plan-context and per-stack templating go wrong; one surface never exercises any of it. |
 | [`todo-app`](todo-app/benchmark.yaml) | api + web + app + infra | 18 | none | `long full api web app infra` | The verdict run. The only score that means "how good are these workflows", and the only task that costs hours per cell. |
+| [`docs-app`](docs-app/benchmark.yaml) | api (Go) + web (React Router) | 5 | 30 min author | `design api web` | The design run. The only suite whose brief is *deliberately* incomplete, scored with `design-score` against expectations held out of the run. |
 
 ```bash
 uv run python benchmarks/bench.py --spec benchmarks/suites/link-shortener/benchmark.yaml all
@@ -60,6 +64,7 @@ declare. What is in use:
 | `hour` | one full chain inside the hour |
 | `long` | hours per cell — ask for it deliberately |
 | `smoke` `workload` `cross-surface` `full` | what class of failure it is built to reach |
+| `design` | scored by `design-score`, not `score` — carries a `hidden:` pack |
 | `api` `web` `app` `infra` | the surfaces it exercises |
 
 ## What makes the hour-sized ones finish in an hour
@@ -135,8 +140,9 @@ one from after.
 
 **The benchmark owns `18080-18099` and nothing else.** Every surface that listens names its
 port in its backlog's surface list, and no two specs share one — `expense-split` api 18080,
-`link-shortener` api 18081, `bookmarks` api 18082 and web 18092. A new spec takes the next
-free number in the range and writes it down the same way.
+`link-shortener` api 18081, `bookmarks` api 18082 and web 18092, `docs-app` api 18085 and
+web 18093. A new spec takes the next free number in the range and writes it down the same
+way.
 
 The frozen apps under [`benchmarks/apps/`](../apps/README.md) draw from the same range and are
 registered here for the same reason, even though they are not specs: `seat-booking` 18083 and
@@ -155,6 +161,29 @@ about it, with nothing in the evidence to say so. Naming the port removes the co
 The backlog is the right home for it even though it is otherwise strictly
 behavior-not-implementation, because the port is neither — it is a fact about the machine
 the app is allowed to occupy, and the backlog is the one document every phase reads.
+
+## The design suite is scored differently, on purpose
+
+`docs-app` is the one suite whose backlog is **not** the standard against which it is
+scored. Every other spec's `score` asks whether the workflows delivered the bullets they
+were handed; `docs-app` asks whether author *designed* an app, which is only visible in
+what the brief left out. So its directory carries a third thing:
+
+```
+suites/docs-app/
+  benchmark.yaml
+  docs/backlog.md      five bullets, deliberately underspecified
+  hidden/              the held-out answers — see hidden/README.md
+```
+
+Nothing under `hidden/` is ever copied into the target. `bench.py backlog` seeds exactly
+one file into the sandbox, and `tests/test_bench.py` asserts that — because the failure
+mode here is silent: a leaked expectation list keeps producing scores, they are just
+measuring transcription instead of design. The full metric is in
+[`../README.md`](../README.md).
+
+That also means the brief is not a defect to fix. A pull request that "completes" it by
+adding the missing sign-out bullet has deleted the experiment.
 
 ## Why three small ones, and not one
 

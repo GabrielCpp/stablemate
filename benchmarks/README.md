@@ -76,12 +76,118 @@ bench.py status     # what exists so far
 bench.py watch      # is the run alive, churning, or stalled?      (instant)
 bench.py babysit    # `watch` on a timer — blocks until it matters (until it does)
 bench.py score      # the scorecard: quality + reliability
+bench.py design-score  # did author DESIGN the app, or transcribe the brief?
 bench.py reset      # delete the target and start clean
 ```
 
 Phases are separately invocable because they have wildly different costs. Useful flags:
 `--no-judge`, `--jobs N`, `--bullet <id>` (repeatable, to re-score one bullet while tuning
 the rubric).
+
+## `design-score`: measuring what the brief implied and author never wrote
+
+`score` measures **backlog satisfaction** — every bullet the workflow was handed, judged
+against the repo. It is blind, *by construction*, to the failure that motivates this
+command.
+
+A real authoring run produced a backlog-satisfying plan for an app a person could not
+operate: no way to sign out, no way to delete a page, screens reachable only by typing a
+URL, a promised second locale nobody could switch to, labels that disagreed screen to
+screen. None of those was ever a bullet, so satisfying every bullet said nothing about
+them, and the scorecard scored the run fine. Authoring an app from a brief is a **design**
+act, and nothing measured whether author designed.
+
+```bash
+uv run python benchmarks/bench.py --spec benchmarks/suites/docs-app/benchmark.yaml design-score
+```
+
+**The invariant the whole metric rests on: a design-completeness score is judged against
+expectations the workflow under test was never shown.** The measurement *is* the gap
+between what a brief implies and what author wrote, so the moment the expectation list —
+or a paraphrase of it — reaches the backlog, a prompt, an installed skill the run
+resolves, or anything else a phase reads, the benchmark stops measuring design and starts
+measuring transcription. Silently: the scores keep printing. So the expectations live
+under `suites/<name>/hidden/`, which nothing copies into the sandbox, and the suite's
+`backlog.md` is *deliberately underspecified* — that is its job, not a defect to fix.
+
+This is the same discipline `bench.py` already applies one level down: planning documents
+are claims, not evidence. Here the input backlog itself is the claim about scope, and the
+hidden pack is the evidence standard.
+
+### What it scores
+
+Each held-out expectation is an **invariant** plus a **rendering**. The invariant is the
+type-independent symmetry — "every entered state is exitable" covers a logout button today
+and a close-connection call in a future `http-api` suite; the rendering is what that means
+for an app of this shape, and the rendering is what the judge scores. That split is what
+lets the suite family grow to other app classes without a new rubric language each time.
+
+A judge reads **only the authored epics and stories** — no coder run required — and
+assigns:
+
+| level | name | means |
+|---|---|---|
+| 0 | `absent` | no epic or story acknowledges this expectation |
+| 1 | `mentioned` | prose refers to it; no story's acceptance criteria would deliver it |
+| 2 | `covered` | a story's acceptance criteria, taken literally, deliver it |
+
+**Design satisfaction** is the mean as a percentage of 2. The honesty mechanics are
+`score`'s, unchanged and one notch stricter: every level ≥1 must cite a planning document
+that exists, an epic's own claim of completeness lifts nothing, and a citation of
+*implementation code* is refused outright on the paper run — it proves the coder shipped
+something and proves nothing about what author wrote. An unverifiable claim scores
+`absent` rather than being discounted, because unlike in `score` there is no structural
+fact underneath it to fall back on.
+
+Author-only is the point, and it is the `link-shortener` lesson: a benchmark you can only
+afford daily gets consulted daily. Author on a five-bullet brief costs tens of minutes,
+which is the budget at which a design-stage fix gets a same-session verdict — and it
+isolates the variable, since a coder failure cannot masquerade as an authoring one.
+
+### The two lenses beside the number
+
+**Dead ends per journey.** A fixed list catches what someone thought to list; the observed
+misses also included incoherence no enumeration holds. So the suite hides two or three
+persona journeys (sign in → find a page → edit → switch locale → delete a page → sign
+out), and the judge walks each *on paper* through the authored stories, counting the steps
+no story delivers. The grammar ports across app classes — web = clickpath, CLI = shell
+session, HTTP API = client sequence, library = a consumer writing a program — and the
+metric is the same everywhere.
+
+**The entity × operation matrix.** Deterministic, free, and run first: every entity the
+stories create, crossed with read/update/delete. An entity a story creates and no story
+deletes is the missing-delete failure, found with no agent turn at all. It is reported
+*alongside* the judged score the way reliability already is, never merged into it — it
+reads verbs, so a story that delivers deletion without ever saying "delete" reads as a
+gap, and averaging a heuristic into a judged number would hide both.
+
+`--no-judge` prints the matrix and **declines to name a number**. `score --no-judge` can
+still say `planned`, because the epic graph records coverage; nothing records whether
+acceptance criteria would deliver an expectation nobody wrote down, so a structural design
+score would be an invention.
+
+### The anchor run
+
+Once per author redesign — not per fix — run the full genesis→author→coder chain and score
+the same expectations against the *built* app, where level 3 `operable` becomes reachable:
+
+```bash
+uv run python benchmarks/bench.py --spec benchmarks/suites/docs-app/benchmark.yaml design-score --live
+```
+
+Its only job is calibration. It writes `design-scorecard-live.json` beside the paper
+`design-scorecard.json` rather than over it, and prints the two side by side. If they
+diverge, the *instrument* is what is wrong, and it gets fixed before any more author work
+trusts the cheap number.
+
+### What this is not
+
+- **Not a general quality rank.** Like `link-shortener`, one suite cannot rank a workflow;
+  it can say whether a specific, historically observed failure mode recurs.
+- **Not a reliability measure.** Escalations, repair loops and ACTIVE time stay in the
+  reliability half — a run can escalate ten times and design a complete app.
+- **Not a coder benchmark.** A `covered` story badly implemented is the coder's failure,
+  and `score` already catches it. This stops at what author wrote down.
 
 ### Picking up an interrupted phase
 
@@ -311,6 +417,8 @@ apps/                 finished apps with an answer key — input to *measuring* 
 evals.py              the node-replay harness: A/B one change, many samples   (PLANNED)
 evals/author.yml      which author nodes are evaluable, and what grades each  (PLANNED)
 rubric.md             the judge's prompt — the file to tune when scores feel wrong
+design-rubric.md      the design judge's prompt: one held-out expectation, 0-2
+journey-rubric.md     the design judge's other prompt: walk a persona, count dead ends
 docs/                 MATRIX.md, EVALS.md, REPLAY.md — one per harness above
 tests/                the properties the score rests on
 suites/               every benchmark, one directory each
@@ -318,6 +426,8 @@ suites/               every benchmark, one directory each
   <name>/             the directory name IS the task name
     benchmark.yaml    the app: target, backlog, surfaces, repo gates, tags
     docs/backlog.md   the pristine input, copied into the target on every run
+    hidden/           design suites only: the held-out expectations and journeys,
+                      which NOTHING ever copies into the target — see its README
     .runs/            logs, run artifacts, scorecard.json  (gitignored)
 .fixtures/            harvested node inputs                (gitignored — real run content)
 .evals/               eval results and per-sample run dirs (gitignored)
