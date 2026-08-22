@@ -51,7 +51,7 @@ def create_policy_api(qa: Qa) -> None:
     """Create, refuse, and re-read policies against the live ledger."""
     health = qa.http.get("/healthz")
     health_body = health.json()
-    qa.check("health reports the ready status", health_body["status"] == "ok", covers=["okf:docs/features/policy/http/policy-desk-api.md:contract"])
+    qa.check("health reports the ready status", qa.field(health_body, "status") == "ok", covers=["okf:docs/features/policy/http/policy-desk-api.md:contract"])
 
     reset = qa.http.delete("/api/policies", expect_status=204)
     qa.check("reset clears the register", reset.status == 204, covers=["okf:docs/features/policy/http/policy-desk-api.md:contract"])
@@ -93,9 +93,9 @@ def create_policy_api(qa: Qa) -> None:
     reread = qa.http.get("/api/policies/pn-1001", expect_status=200)
     reread_body = reread.json()
     qa.verify("persists", (policy, reread_body["policy"]), subject="policy pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:persistence:1", "okf:docs/features/policy/concepts/policy-ledger.md:contract"])
-    qa.check("the created policy is readable by its slug", reread_body["policy"]["policy_number"] == "PN-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md:contract"])
+    qa.check("the created policy is readable by its slug", qa.field(reread_body, "policy.policy_number") == "PN-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md:contract"])
     missing = qa.http.get("/api/policies/missing", expect_status=404)
-    qa.check("missing policy is refused with its documented title", missing.json()["title"] == "Unknown Policy", covers=["ac:2"])
+    qa.check("missing policy is refused with its documented title", qa.field(missing.json(), "title") == "Unknown Policy", covers=["ac:2"])
 
     duplicate = qa.http.post("/api/policies", json_body=payload, expect_status=409)
     qa.verify("http_status", duplicate, code=409, title="Duplicate Policy Number", path="/api/policies", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:2"])
@@ -116,21 +116,21 @@ def create_policy_api(qa: Qa) -> None:
     refused_type = qa.http.post("/api/policies", json_body=invalid_type, expect_status=422)
     refused_type_body = refused_type.json()
     qa.verify("json_path", refused_type_body, path="$.errors.coverage_type", absent=False, covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:1"])
-    qa.check("validation includes blank number and malformed holder email", "policy_number" in refused_type_body["errors"] and "holder_email" in refused_type_body["errors"], covers=["ac:3"])
+    qa.check("validation includes blank number and malformed holder email", "policy_number" in qa.field(refused_type_body, "errors") and "holder_email" in qa.field(refused_type_body, "errors"), covers=["ac:3"])
     invalid_home = valid_policy("PN-1006", "home@example.com", "home")
     invalid_home["property_address"] = ""
     home_refused = qa.http.post("/api/policies", json_body=invalid_home, expect_status=422)
-    qa.check("home validation names the missing property address", "property_address" in home_refused.json()["errors"], covers=["ac:4", "okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:1"])
+    qa.check("home validation names the missing property address", "property_address" in qa.field(home_refused.json(), "errors"), covers=["ac:4", "okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:1"])
 
     umbrella_without_base = valid_policy("PN-1003", "nobody@example.com", "umbrella")
     umbrella_refused = qa.http.post("/api/policies", json_body=umbrella_without_base, expect_status=422)
-    qa.check("umbrella refuses a holder with no underlying policy", "coverage_type" in umbrella_refused.json()["errors"], covers=["ac:5", "okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:1"])
+    qa.check("umbrella refuses a holder with no underlying policy", "coverage_type" in qa.field(umbrella_refused.json(), "errors"), covers=["ac:5", "okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:1"])
     umbrella_with_base = valid_policy("PN-1004", "alex@example.com", "umbrella")
     umbrella_created = qa.http.post("/api/policies", json_body=umbrella_with_base, expect_status=201)
-    qa.check("umbrella accepts the same holder's underlying auto policy", umbrella_created.json()["policy"]["status"] == "Draft", covers=["ac:5"])
-    qa.check("accepted API record is durable and correctly identified", policy["status"] == "Draft" and policy["version"] == 1 and policy["id"] == "pn-1001", covers=["ac:1", "okf:docs/features/policy/concepts/policy.md:contract", "okf:docs/features/policy/http/policy-desk-api.md:contract", "okf:docs/features/policy/http/policy-desk-api.md#post-policies:contract"])
-    qa.check("duplicate branch leaves exactly one policy", len(listing["policies"]) == 1, covers=["ac:2"])
-    qa.check("API validation covers date rules", all(field in refused_body["errors"] for field in ["start_date", "end_date"]), covers=["ac:6"])
+    qa.check("umbrella accepts the same holder's underlying auto policy", qa.field(umbrella_created.json(), "policy.status") == "Draft", covers=["ac:5"])
+    qa.check("accepted API record is durable and correctly identified", qa.field(policy, "status") == "Draft" and qa.field(policy, "version") == 1 and (qa.field(policy, "id") == "pn-1001"), covers=["ac:1", "okf:docs/features/policy/concepts/policy.md:contract", "okf:docs/features/policy/http/policy-desk-api.md:contract", "okf:docs/features/policy/http/policy-desk-api.md#post-policies:contract"])
+    qa.check("duplicate branch leaves exactly one policy", len(qa.field(listing, "policies")) == 1, covers=["ac:2"])
+    qa.check("API validation covers date rules", all((field in qa.field(refused_body, "errors") for field in ["start_date", "end_date"])), covers=["ac:6"])
     json.dump({"created": policy, "reread": reread_body, "refused": refused_body}, qa.artifact("steps/api-evidence.json", kind="json").open("w"))
 
 
@@ -156,7 +156,7 @@ def create_policy_browser_happy_path(qa: Qa) -> None:
     qa.vet("docs/features/policy/gui/screens/new-policy.md", name="new-form", components=["coverage-type-select", "vehicle-vin-field"])
     qa.screenshot("new-form")
     absent = qa.http.get("/api/policies/pn-1001", expect_status=404)
-    qa.require("policy PN-1001 is absent before submission", absent.json()["title"] == "Unknown Policy")
+    qa.require("policy PN-1001 is absent before submission", qa.field(absent.json(), "title") == "Unknown Policy")
     before = []
     qa.by_css("#policy_number").fill("PN-1001")
     qa.by_css("#holder_email").fill("alex@example.com")

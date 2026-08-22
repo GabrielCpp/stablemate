@@ -125,8 +125,8 @@ def file_a_claim_and_prove_it_outlives_the_process(qa: Qa) -> None:
     qa.verify("http_status", created, code=201, path="/api/claims", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md:contract", "okf:docs/features/claims/http/claims-api.md#submit-claim:contract", "okf:docs/features/claims/http/claims-api.md#submit-claim:does:1"])
     qa.verify("json_path", body, path="$.claim.status", equals="Submitted", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#submit-claim:does:1"])
     qa.verify("json_path", body, path="$.claim.version", equals="1", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#submit-claim:does:1"])
-    qa.check("the claim is attributed to the calling token's subject", claim["holder_uid"] == holder["uid"], covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#submit-claim:does:1", "okf:docs/features/claims/ops/auth-emulator.md:contract"])
-    qa.check("the claim is issued the first identifier the ledger has to give", claim["id"] == "cl-1001", covers=["okf:docs/features/claims/concepts/claim-ledger.md:contract"])
+    qa.check("the claim is attributed to the calling token's subject", qa.field(claim, "holder_uid") == qa.field(holder, "uid"), covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#submit-claim:does:1", "okf:docs/features/claims/ops/auth-emulator.md:contract"])
+    qa.check("the claim is issued the first identifier the ledger has to give", qa.field(claim, "id") == "cl-1001", covers=["okf:docs/features/claims/concepts/claim-ledger.md:contract"])
     qa.verify("json_path", body, path="$.claim.amount_cents", absent=False, covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1"])
     qa.verify("json_path", body, path="$.claim.holder_uid", absent=False, covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1"])
     qa.verify("json_path", body, path="$.claim.policy_number", absent=False, covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1"])
@@ -148,7 +148,7 @@ def file_a_claim_and_prove_it_outlives_the_process(qa: Qa) -> None:
     qa.eventually("the restarted service answers /healthz again", restarted_service_answers, timeout=90.0, interval=0.5, covers=["okf:docs/features/claims/http/claims-api.md#submit-claim:persistence:1"])
     reread = qa.http.get("/api/claims/cl-1001", headers=bearer(holder), expect_status=200).json()["claim"]
     qa.verify("persists", (claim, reread), subject="claim cl-1001", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#submit-claim:persistence:1"])
-    qa.check("the ledger reads back the claims it was written with", reread["holder_uid"] == holder["uid"], covers=["okf:docs/features/claims/concepts/claim-ledger.md:contract"])
+    qa.check("the ledger reads back the claims it was written with", qa.field(reread, "holder_uid") == qa.field(holder, "uid"), covers=["okf:docs/features/claims/concepts/claim-ledger.md:contract"])
 
     duplicate = qa.http.post("/api/claims", json_body=submission(), headers=bearer(holder), expect_status=409)
     qa.verify("http_status", duplicate, code=409, title="Duplicate Claim", path="/api/claims", covers=["ac:4", "okf:docs/features/claims/http/claims-api.md#submit-claim:errors:2"])

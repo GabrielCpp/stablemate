@@ -107,7 +107,7 @@ def the_artifact_bucket_is_declared_with_its_safeties_on(qa: Qa) -> None:
 
     qa.require(
         "the plan declares the artifact bucket",
-        "artifacts" in declared and declared["artifacts"]["type"] == "gcp:storage/bucket:Bucket",
+        "artifacts" in declared and qa.field(declared, "artifacts.type") == "gcp:storage/bucket:Bucket",
         actual=sorted(declared),
         covers=["ac:2", "okf:docs/features/depot/concepts/artifact-store.md:contract"],
     )

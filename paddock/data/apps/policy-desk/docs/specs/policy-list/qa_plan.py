@@ -48,7 +48,7 @@ def valid_policy(number: str, email: str = "alex@example.com", coverage: str = "
 def register_api(qa: Qa) -> None:
     """List the register over HTTP: ordering and record shape."""
     health = qa.http.get("/healthz")
-    qa.check("health reports the ready status", health.json()["status"] == "ok", covers=["okf:docs/features/policy/http/policy-desk-api.md#get-health:contract", "okf:docs/features/policy/http/policy-desk-api.md#get-health:does:1"])
+    qa.check("health reports the ready status", qa.field(health.json(), "status") == "ok", covers=["okf:docs/features/policy/http/policy-desk-api.md#get-health:contract", "okf:docs/features/policy/http/policy-desk-api.md#get-health:does:1"])
     reset = qa.http.delete("/api/policies", expect_status=204)
     qa.verify("http_status", reset, code=204, path="/api/policies", covers=["okf:docs/features/policy/http/policy-desk-api.md#delete-policies:contract", "okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:1"])
     emptied = qa.http.get("/api/policies", expect_status=200).json()["policies"]

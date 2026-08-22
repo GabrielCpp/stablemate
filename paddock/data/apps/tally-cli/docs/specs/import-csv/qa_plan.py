@@ -242,8 +242,8 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
     )
     qa.check(
         "the entries after the second import are the three the file held",
-        sorted(entry["what"] for entry in settled) == ["dinner", "museum", "taxi"],
-        actual=sorted(entry["what"] for entry in settled),
+        sorted((qa.field(entry, "what") for entry in settled)) == ["dinner", "museum", "taxi"],
+        actual=sorted((qa.field(entry, "what") for entry in settled)),
         expected=["dinner", "museum", "taxi"],
         covers=["ac:2", "okf:docs/features/tally/tally.md#import-a-csv:consistency:1"],
     )
@@ -327,8 +327,8 @@ def a_malformed_row_refuses_the_whole_file_and_leaves_the_ledger_alone(qa: Qa) -
     )
     qa.check(
         "the one entry the ledger held before the refused import is still the only one",
-        len(json.loads(after["text"])["entries"]) == 1,
-        actual=json.loads(after["text"])["entries"],
+        len(qa.field(json.loads(qa.field(after, "text")), "entries")) == 1,
+        actual=qa.field(json.loads(qa.field(after, "text")), "entries"),
         expected="the single entry added before the import",
         covers=["ac:3", "okf:docs/features/tally/tally.md#import-a-malformed-row:does:1"],
     )
@@ -561,9 +561,9 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
     stood = read(qa, there)
     qa.check(
         "the other ledger in the same directory is byte-for-byte what it was",
-        stood["sha256"] == untouched["sha256"],
-        actual=stood["sha256"],
-        expected=untouched["sha256"],
+        qa.field(stood, "sha256") == qa.field(untouched, "sha256"),
+        actual=qa.field(stood, "sha256"),
+        expected=qa.field(untouched, "sha256"),
         covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
     )
 

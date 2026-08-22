@@ -135,8 +135,8 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
     before = read(qa, ledger)
     qa.require(
         "the scenario starts with no ledger",
-        before["exists"] is False,
-        actual=before["exists"],
+        qa.field(before, "exists") is False,
+        actual=qa.field(before, "exists"),
         expected=False,
         covers=["okf:docs/features/tally/tally.md#init-a-ledger:when:1"],
     )
@@ -192,8 +192,8 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
     )
     qa.check(
         "the ledger it created holds no entries",
-        len(document["entries"]) == 0,
-        actual=document["entries"],
+        len(qa.field(document, "entries")) == 0,
+        actual=qa.field(document, "entries"),
         expected=[],
         covers=["ac:1", "okf:docs/features/tally/tally.md#init-a-ledger:does:1"],
     )
@@ -242,8 +242,8 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
     )
     qa.check(
         "the entry the refused `init` was standing on is still in the ledger",
-        len(json.loads(stood["text"])["entries"]) == 1,
-        actual=json.loads(stood["text"])["entries"],
+        len(qa.field(json.loads(qa.field(stood, "text")), "entries")) == 1,
+        actual=qa.field(json.loads(qa.field(stood, "text")), "entries"),
         expected=1,
         covers=[
             "ac:2",
@@ -322,8 +322,8 @@ def the_currency_is_recorded_once_at_init_and_never_moves(qa: Qa) -> None:
     still = json.loads(read(qa, named)["text"])
     qa.check(
         "the code the ledger was created with is still the code it holds after an expense",
-        still["currency"] == "USD",
-        actual=still["currency"],
+        qa.field(still, "currency") == "USD",
+        actual=qa.field(still, "currency"),
         expected="USD",
         covers=[
             "ac:1",
@@ -333,8 +333,8 @@ def the_currency_is_recorded_once_at_init_and_never_moves(qa: Qa) -> None:
     )
     qa.check(
         "the two ledgers did not converge on one currency",
-        json.loads(told["text"])["currency"] != still["currency"],
-        actual=[json.loads(told["text"])["currency"], still["currency"]],
+        qa.field(json.loads(qa.field(told, "text")), "currency") != qa.field(still, "currency"),
+        actual=[qa.field(json.loads(qa.field(told, "text")), "currency"), qa.field(still, "currency")],
         expected=["EUR", "USD"],
         covers=["okf:docs/features/tally/tally.md#currency:default:1"],
     )
@@ -417,8 +417,8 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
     )
     qa.check(
         "the expense was on disk before the process exited",
-        json.loads(held["text"])["entries"][0]["who"] == "ana",
-        actual=json.loads(held["text"])["entries"][0],
+        qa.field(json.loads(qa.field(held, "text")), "entries.0.who") == "ana",
+        actual=qa.field(json.loads(qa.field(held, "text")), "entries.0"),
         expected="ana",
         covers=[
             "ac:3",
@@ -632,15 +632,15 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
     rent = json.loads(read(qa, there)["text"])
     qa.check(
         "the ledger that was written holds the expense",
-        len(trip["entries"]) == 1,
-        actual=trip["entries"],
+        len(qa.field(trip, "entries")) == 1,
+        actual=qa.field(trip, "entries"),
         expected=1,
         covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
     )
     qa.check(
         "the other ledger in the same directory never saw it",
-        len(rent["entries"]) == 0,
-        actual=rent["entries"],
+        len(qa.field(rent, "entries")) == 0,
+        actual=qa.field(rent, "entries"),
         expected=0,
         covers=[
             "okf:docs/features/tally/tally.md#file:semantics:1",

@@ -106,11 +106,11 @@ def a_register_holds_the_claims_of_whoever_asked(qa: Qa) -> None:
 
     theirs = qa.http.get("/api/claims", headers=bearer(who["b"]), expect_status=200).json()["claims"]
     qa.verify("count", theirs, subject="claims", equals=1, covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#list-claims:authorization:1"])
-    qa.check("the second holder is shown their own claim and not the first holder's", theirs[0]["id"] == "cl-1002" and theirs[0]["holder_uid"] == who["b"]["uid"], covers=["ac:2", "okf:docs/features/claims/concepts/claim-tenancy.md:contract"])
+    qa.check("the second holder is shown their own claim and not the first holder's", qa.field(theirs, "0.id") == "cl-1002" and qa.field(theirs, "0.holder_uid") == qa.field(who, "b.uid"), covers=["ac:2", "okf:docs/features/claims/concepts/claim-tenancy.md:contract"])
 
     everything = qa.http.get("/api/claims", headers=bearer(who["adjuster"]), expect_status=200).json()["claims"]
     qa.verify("count", everything, subject="claims", equals=2, covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#list-claims:authorization:2"])
-    qa.check("the adjuster's register is in the order the claims were written", [claim["id"] for claim in everything] == ["cl-1001", "cl-1002"], covers=["okf:docs/features/claims/concepts/claim-tenancy.md:contract"])
+    qa.check("the adjuster's register is in the order the claims were written", [qa.field(claim, "id") for claim in everything] == ["cl-1001", "cl-1002"], covers=["okf:docs/features/claims/concepts/claim-tenancy.md:contract"])
 
     # An empty register is a register, not a 404: the adjuster empties the desk and holder A
     # — who had a claim a moment ago — is still answered on the same terms.
@@ -148,7 +148,7 @@ def a_claim_answers_to_its_holder_and_to_an_adjuster(qa: Qa) -> None:
     owned_body = owned.json()
     qa.verify("http_status", owned, code=200, path="/api/claims/cl-1001", covers=["ac:3", "okf:docs/features/claims/http/claims-api.md#get-claim:does:1", "okf:docs/features/claims/http/claims-api.md#get-claim:contract"])
     qa.verify("json_path", owned_body, path="$.claim.id", equals="cl-1001", covers=["ac:3", "okf:docs/features/claims/http/claims-api.md#get-claim:does:1"])
-    qa.check("the claim the holder is shown is the one they filed", owned_body["claim"]["holder_uid"] == who["a"]["uid"], covers=["ac:3", "okf:docs/features/claims/concepts/claim-tenancy.md:contract"])
+    qa.check("the claim the holder is shown is the one they filed", qa.field(owned_body, "claim.holder_uid") == qa.field(who, "a.uid"), covers=["ac:3", "okf:docs/features/claims/concepts/claim-tenancy.md:contract"])
 
     overseen = qa.http.get("/api/claims/cl-1001", headers=bearer(who["adjuster"]), expect_status=200)
     qa.verify("http_status", overseen, code=200, path="/api/claims/cl-1001", covers=["ac:3", "okf:docs/features/claims/http/claims-api.md#get-claim:contract"])

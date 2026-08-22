@@ -179,9 +179,7 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
     )
     qa.check(
         "the totals are the ledger's, and the overall is the sum of the per-person ones",
-        decoded["entries"] == 3
-        and decoded["total_cents"] == 7450
-        and sum(decoded["per_person"].values()) == decoded["total_cents"],
+        qa.field(decoded, "entries") == 3 and qa.field(decoded, "total_cents") == 7450 and (sum(qa.field(decoded, "per_person").values()) == qa.field(decoded, "total_cents")),
         actual=decoded,
         expected={"entries": 3, "total_cents": 7450, "per_person": {"ana": 3050, "bo": 4400}},
         covers=["ac:1", "ac:3", "okf:docs/features/tally/tally.md#report-as-json:does:1"],
@@ -230,7 +228,7 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
     before = read(qa, destination)
     qa.require(
         "nothing is at the destination before the export",
-        not before["exists"],
+        not qa.field(before, "exists"),
         actual=before,
         covers=["okf:docs/features/tally/tally.md#export:contract"],
     )
@@ -365,7 +363,7 @@ def a_report_totals_the_ledger_it_was_given_and_not_its_neighbour(qa: Qa) -> Non
     )
     qa.check(
         "and it gets that ledger's numbers, not the other one's in the same directory",
-        json.loads(neighbour.stdout)["total_cents"] == 300,
+        qa.field(json.loads(neighbour.stdout), "total_cents") == 300,
         actual=json.loads(neighbour.stdout),
         expected="the 300 the second ledger holds, not the 7450 the first does",
         covers=["okf:docs/features/tally/tally.md#file:semantics:1"],

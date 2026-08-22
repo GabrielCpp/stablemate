@@ -93,14 +93,14 @@ def a_decision_is_recorded_and_outlives_the_process(qa: Qa) -> None:
     adjuster = who["adjuster"]
 
     register = qa.http.get("/api/claims", headers=bearer(adjuster), expect_status=200).json()["claims"]
-    qa.check("the adjuster reaches the claim through their own register", [claim["id"] for claim in register] == ["cl-1001"], covers=["ac:1", "okf:docs/features/claims/flows/decide-a-claim.md:start:1"])
+    qa.check("the adjuster reaches the claim through their own register", [qa.field(claim, "id") for claim in register] == ["cl-1001"], covers=["ac:1", "okf:docs/features/claims/flows/decide-a-claim.md:start:1"])
 
     decided = qa.http.post("/api/claims/cl-1001/decision", json_body={"decision": "approve", "version": 1, "note": "Cover confirmed against the schedule."}, headers=bearer(adjuster), expect_status=200)
     body = decided.json()
     qa.verify("http_status", decided, code=200, path="/api/claims/cl-1001/decision", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:contract"])
     qa.verify("json_path", body, path="claim.status", equals="Approved", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1", "okf:docs/features/claims/flows/decide-a-claim.md:start:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1", "okf:docs/features/claims/flows/decide-a-claim.md:end-state"])
     qa.verify("json_path", body, path="claim.version", equals="2", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1"])
-    qa.check("the adjuster's note is carried onto the decided claim", body["claim"]["decision_note"] == "Cover confirmed against the schedule.", covers=["ac:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1"])
+    qa.check("the adjuster's note is carried onto the decided claim", qa.field(body, "claim.decision_note") == "Cover confirmed against the schedule.", covers=["ac:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1"])
 
     # The claim was Submitted a moment ago in this same process, so a re-read here is answered
     # by whatever the process is holding. The process has to go before the re-read means anything.
@@ -152,7 +152,7 @@ def a_decision_quoting_a_spent_version_is_refused(qa: Qa) -> None:
     version = opened["version"]
 
     first = qa.http.post("/api/claims/cl-1001/decision", json_body={"decision": "approve", "version": version, "note": "Approved on the first reading."}, headers=bearer(adjuster), expect_status=200).json()["claim"]
-    qa.check("the first decision off the reading is accepted", first["status"] == "Approved" and first["version"] == version + 1, covers=["ac:3", "okf:docs/features/claims/http/claims-api.md#decide-claim:concurrency:1"])
+    qa.check("the first decision off the reading is accepted", qa.field(first, "status") == "Approved" and qa.field(first, "version") == version + 1, covers=["ac:3", "okf:docs/features/claims/http/claims-api.md#decide-claim:concurrency:1"])
 
     stale = qa.http.post("/api/claims/cl-1001/decision", json_body={"decision": "deny", "version": version, "note": "Denied from a stale reading."}, headers=bearer(adjuster), expect_status=409)
     qa.verify("conflict_on_stale", stale.status, subject="claim cl-1001", token="version", covers=["ac:3", "okf:docs/features/claims/http/claims-api.md#decide-claim:concurrency:1"])
