@@ -137,7 +137,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - verify: created(subject="the rows the ledger did not already hold")
 - verify: count(subject="entries in the ledger", equals=3)
 - code: tally/ledger.py::merge
-- consistency: importing the same file twice leaves the ledger holding what importing it once
+- consistency: ledger-file — importing the same file twice leaves the ledger holding what importing it once
   left it holding.
 
 ### import-a-malformed-row
@@ -158,8 +158,8 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
   - Writes the totals as one JSON object.
 - verify: json_path(path="$.currency", equals="EUR")
 - code: tally/report.py::summarize
-- consistency: stdout carries exactly that one JSON object and nothing else.
-- consistency: every human-facing line the command writes goes to stderr.
+- consistency: command-output — stdout carries exactly that one JSON object and nothing else.
+- consistency: command-output — every human-facing line the command writes goes to stderr.
 
 ### export-to-csv
 - on: [export](#export)
@@ -168,7 +168,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
   - Writes one CSV file holding every entry.
 - verify: created(subject="the exported CSV file")
 - code: tally/report.py::export_rows
-- consistency: the file's first line is the header `who,what,amount_cents,spent_on`, whether or
+- consistency: export-csv — the file's first line is the header `who,what,amount_cents,spent_on`, whether or
   not the ledger has entries.
 
 ## Fields

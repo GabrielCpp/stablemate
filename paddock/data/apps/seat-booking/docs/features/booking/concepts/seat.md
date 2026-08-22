@@ -37,6 +37,8 @@ to it. The durable side — where the states are written and how — is
 - verify: http_status(404, title="No Such Seat")
 - code: app/hold.py::hold
 - does: moves the seat from `free` to `held` and increments its version.
+- concurrency: seat-record — the version it hands back is the seat's own, so a hold taken while
+  another caller is deciding cannot be spent against a stale token.
 - parent: [Seat](#seat)
 
 ### release
@@ -50,6 +52,8 @@ to it. The durable side — where the states are written and how — is
 - code: app/hold.py::release
 - does: moves the seat from `held` to `free`, increments its version, and clears the hold.
 - does: writes exactly the released seat; every other seat keeps its state, version and booking.
+- concurrency: seat-record — the release increments the version like any other transition, so the
+  hold it gave back cannot be confirmed afterwards.
 - parent: [Seat](#seat)
 
 ### confirm
@@ -61,7 +65,7 @@ to it. The durable side — where the states are written and how — is
 - verify: http_status(409, title="Seat Not Held")
 - code: app/confirm.py::confirm
 - does: moves the seat from `held` to `booked`, increments its version, and records the booking name.
-- concurrency: refuses a caller quoting any version but the seat's current one, which is what makes
+- concurrency: seat-record — refuses a caller quoting any version but the seat's current one, which is what makes
   a hold spendable exactly once.
 - verify: conflict_on_stale(subject="seat A1", token="version")
 - parent: [Seat](#seat)

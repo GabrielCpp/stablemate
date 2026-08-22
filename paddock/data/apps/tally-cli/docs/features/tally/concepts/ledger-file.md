@@ -8,10 +8,10 @@ title: The ledger file
 - code: tally/ledger.py::save
 - code: tally/ledger.py::load
 - extends:
-- persistence: a command that changes the tally has written the whole ledger before it exits, so
+- persistence: ledger-file — a command that changes the tally has written the whole ledger before it exits, so
   the next process reads back exactly what the previous one left.
-- consistency: the file is one JSON object, with a `currency` string and an `entries` array.
-- consistency: a reader never observes half a ledger — a write goes to a temporary path and is
+- consistency: ledger-file — the file is one JSON object, with a `currency` string and an `entries` array.
+- consistency: ledger-file — a reader never observes half a ledger — a write goes to a temporary path and is
   renamed over the file.
 
 The ledger file — `tally.json` in the working directory, or whatever `--file` names — is the

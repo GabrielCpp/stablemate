@@ -71,7 +71,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - auth: a token past its expiry is refused `401` on the same terms as a missing one, so a session
   that was legitimate an hour ago does not keep filing claims.
 - verify: http_status(401, title="Unauthorized", path="/api/claims")
-- consistency: the stored claim comes back under exactly the field names `openapi.yml` declares —
+- consistency: claim-record — the stored claim comes back under exactly the field names `openapi.yml` declares —
   `policy_number`, `holder_uid`, `incident_date`, `amount_cents` — because the response is a
   conversion into the generated type rather than an object built by hand beside it.
 - verify: json_path("claim.amount_cents", equals="125000")
@@ -91,7 +91,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
   request. Nothing taken out of the rejected credential appears in either, on any path.
 - verify: http_status(401, title="Unauthorized", path="/api/claims")
 - verify: omits(subject="detail", matches="eyJ[A-Za-z0-9_-]{6,}")
-- persistence: an accepted claim is written through the ledger before the response that announces
+- persistence: claim-record — an accepted claim is written through the ledger before the response that announces
   it, and is still on file after the service restarts.
 - verify: persists(subject="claim cl-1001")
 - route: `POST /api/claims`
@@ -173,12 +173,12 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - authorization: `403 Adjusters Only` unless the token carries the `adjuster` role. The role is
   read before the claim is looked up, so a holder learns nothing about a claim they may not decide.
 - verify: http_status(403, title="Adjusters Only", path="/api/claims/cl-9999/decision")
-- concurrency: refuses a decision quoting a version other than the claim's current one with
+- concurrency: claim-record — refuses a decision quoting a version other than the claim's current one with
   `409 Stale Decision`, so an adjuster who read the claim, went away and came back does not
   overwrite the decision that landed meanwhile.
 - verify: conflict_on_stale(subject="claim cl-1001", token="version")
 - verify: http_status(409, title="Stale Decision", path="/api/claims/cl-1001/decision")
-- persistence: a decision is written through the ledger before the response that announces it, and
+- persistence: claim-record — a decision is written through the ledger before the response that announces it, and
   the claim is still `Approved`, at the version the decision returned, after the service restarts.
 - verify: persists(subject="claim cl-1001")
 - errors: `422` with `errors.decision` for a decision outside `approve`/`deny`, and

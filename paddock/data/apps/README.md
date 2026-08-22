@@ -222,11 +222,19 @@ map is built over `[o for o in scope if o.get("required", True)]` and nothing el
 pointed at a context-only obligation returns `inconclusive` — *"obligation not owed by this
 trial"* — forever. It can never be a catch and never a miss.
 
-Owedness is not a property of the book alone. Grounding for a file with no symbol behind the
-citation is by file, and ostler demotes a `file-owner` citation the moment a second OKF node
-cites the same file — a bare-file citation shared by several nodes localizes nothing. The
-practical consequence for a fixture author is a layout rule stronger than "one file per
-concern":
+Owedness is not a property of the book alone, and it is decided by two rules pulling opposite
+ways. A `code:` citation stops localizing the change once enough nodes share it — for a bare
+file with no symbol behind it that is the second node, because a bare-file citation shared by
+several nodes localizes nothing; for an exact symbol it takes `_CONTAINER_FANOUT` (three),
+since two nodes citing one function is a book written well rather than a container. Pulling
+the other way, a node is *also* owed when it names the same relation `subject:` — the record,
+the event, the lock — as a node the change reached directly, stamped `relation-of-required`.
+That is the split-story case: the screen that creates the record the story reshaped is out of
+scope and broken by it all the same. A node reached only that way owes live evidence for the
+relation bullets themselves and for its `contract`, and keeps the rest of its surface as
+context — the hop asks whether the shared invariant survived, not whether an untouched node's
+whole documented behaviour did. A fixture author gets both rules by naming subjects on
+relation bullets and by following a layout rule stronger than "one file per concern":
 
 > **One OKF node per source file.** A component extracted into its own file is scorable; two
 > components sharing a file are context, and every defect seeded in either is unscorable.

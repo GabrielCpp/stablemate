@@ -103,7 +103,7 @@ The journeys that stitch these routes together are
   the ledger as it was.
 - verify: http_status(409, title="Duplicate Policy Number", path="/api/policies")
 - verify: count(subject="policies", equals=1)
-- persistence: an accepted policy is written through the ledger before the response is sent, and is
+- persistence: policy-record — an accepted policy is written through the ledger before the response is sent, and is
   still on the books after the service restarts.
 - verify: persists(subject="policy pn-1001")
 - route: `POST /api/policies`
@@ -153,7 +153,7 @@ The journeys that stitch these routes together are
 - verify: unchanged(subject="policy pn-1002", except_fields=[])
 - verify: keys_unchanged(subject="policies")
 - code: app/api/update.go
-- concurrency: refuses a request quoting a version other than the policy's current one with
+- concurrency: policy-record — refuses a request quoting a version other than the policy's current one with
   `409 Stale Policy`, so an editor who opened the form, went away, and came back with the number
   they were given does not overwrite the edit that landed meanwhile.
 - verify: conflict_on_stale(subject="policy pn-1001", token="version")

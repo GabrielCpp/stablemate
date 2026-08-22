@@ -7,13 +7,13 @@ title: The artifact store
 
 - code: pulumi/bucket.go
 - extends:
-- consistency: the plan turns uniform bucket-level access on for the artifact bucket, so an
+- consistency: artifact-bucket — the plan turns uniform bucket-level access on for the artifact bucket, so an
   object's access is decided by the bucket's IAM policy alone.
-- consistency: the plan declares the artifact bucket with force-destroy off, so destroying the
+- consistency: artifact-bucket — the plan declares the artifact bucket with force-destroy off, so destroying the
   stack cannot take the published artifacts with it.
-- consistency: the plan keeps object versioning on for the artifact bucket.
-- consistency: the readers binding on the artifact bucket lists exactly the build group.
-- consistency: no member of that binding is `allUsers` or `allAuthenticatedUsers` — the
+- consistency: artifact-bucket — the plan keeps object versioning on for the artifact bucket.
+- consistency: artifact-bucket — the readers binding on the artifact bucket lists exactly the build group.
+- consistency: artifact-bucket — no member of that binding is `allUsers` or `allAuthenticatedUsers` — the
   artifact store is not public, and no plan may make it so.
 
 One bucket holds every artifact the depot keeps, and one binding says who may read it. Both are

@@ -7,8 +7,8 @@ title: The artifact sweep
 
 - code: pulumi/scheduler.go
 - extends:
-- consistency: the plan contains exactly one Cloud Scheduler job — the artifact sweep.
-- consistency: the sweep runs nightly at 03:00 in `Etc/UTC`, stated as an absolute zone so the
+- consistency: artifact-sweep-job — the plan contains exactly one Cloud Scheduler job — the artifact sweep.
+- consistency: artifact-sweep-job — the sweep runs nightly at 03:00 in `Etc/UTC`, stated as an absolute zone so the
   hour does not move under a machine's local time.
 
 Artifacts expire because something deletes them on a schedule. That something is a scheduler job

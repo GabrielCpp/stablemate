@@ -38,6 +38,6 @@ durable half of [the claims API](../http/claims-api.md); who may read what out o
 - returns: an error only when the file cannot be written.
 - verify: keys_unchanged(subject="claims")
 - verify: persists(subject="claim cl-1001")
-- persistence: an accepted claim is on disk before the response that announces it, and is still on
+- persistence: claim-record — an accepted claim is on disk before the response that announces it, and is still on
   file — at the version that response carried, with the same amount — after the service restarts.
 - parent: [Claim ledger](#claim-ledger)

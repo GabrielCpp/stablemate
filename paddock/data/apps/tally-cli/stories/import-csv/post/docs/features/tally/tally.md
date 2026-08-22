@@ -107,7 +107,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - code: tally/ledger.py::merge
 - verify: created(subject="the rows the ledger did not already hold")
 - verify: count(subject="entries in the ledger", equals=3)
-- consistency: importing the same file twice leaves the ledger holding what importing it once
+- consistency: ledger-file — importing the same file twice leaves the ledger holding what importing it once
   left it holding.
 
 ### import-a-malformed-row

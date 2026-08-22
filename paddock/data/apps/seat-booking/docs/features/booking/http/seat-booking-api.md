@@ -133,12 +133,12 @@ confirming a hold has to quote the number the caller was given.
 - verify: http_status(201, path="/api/seats/A1/booking")
 - verify: json_path("booking.name", equals="Dana Okonkwo")
 - code: app/confirm.py::confirm
-- concurrency: refuses a request quoting a version other than the seat's current one with
+- concurrency: seat-record — refuses a request quoting a version other than the seat's current one with
   `409 Stale Hold`, so a caller who lost the seat and came back with the number it was given does
   not overwrite the booking that replaced it.
 - verify: conflict_on_stale(subject="seat A1", token="version")
 - verify: http_status(409, title="Stale Hold", path="/api/seats/A1/booking")
-- persistence: a confirmed booking is written through the ledger before the response is sent, and is
+- persistence: booking-record — a confirmed booking is written through the ledger before the response is sent, and is
   still listed on the seat — `booked`, at the version the confirmation returned, under the same name
   — after the service restarts.
 - verify: persists(subject="seat A1 booking")

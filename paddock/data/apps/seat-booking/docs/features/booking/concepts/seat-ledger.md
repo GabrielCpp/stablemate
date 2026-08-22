@@ -43,6 +43,6 @@ at the next restart, and the defect would look like a store bug from every surfa
   showing.
 - verify: keys_unchanged(subject="seats")
 - verify: persists(subject="seat A1 booking")
-- persistence: a booking is on disk before the response that announces it, and survives a restart of
+- persistence: booking-record — a booking is on disk before the response that announces it, and survives a restart of
   the service.
 - parent: [Seat ledger](#seat-ledger)
