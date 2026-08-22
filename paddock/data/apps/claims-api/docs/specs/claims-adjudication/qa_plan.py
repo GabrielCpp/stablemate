@@ -27,18 +27,27 @@ def one_claim_awaiting_a_decision(qa: Qa) -> dict:
     """An emptied desk holding exactly cl-1001, filed by holder A at version 1."""
     holder, adjuster = sign_in(qa, HOLDER_A), sign_in(qa, ADJUSTER)
     qa.http.delete("/api/claims", headers=bearer(adjuster), expect_status=204)
-    filed = qa.http.post(
+    # The filed values are the ones the book's own `verify:` bullets on `#submit-claim` name.
+    # Filing writes the same claim record this story changes the decider of, so the sibling
+    # write is proven here rather than on values nothing in the book can check.
+    filing = qa.http.post(
         "/api/claims",
         json_body={
             "policy_number": "PL-7730",
-            "incident_date": "2099-05-19",
-            "amount_cents": 240000,
+            "incident_date": "2099-03-14",
+            "amount_cents": 125000,
             "description": "Storm damage to the outbuildings.",
         },
         headers=bearer(holder),
         expect_status=201,
-    ).json()["claim"]
-    return {"holder": holder, "adjuster": adjuster, "claim": filed}
+    )
+    filed_body = filing.json()
+    return {
+        "holder": holder,
+        "adjuster": adjuster,
+        "claim": filed_body["claim"],
+        "filed_body": filed_body,
+    }
 
 
 @scenario(
@@ -53,6 +62,9 @@ def one_claim_awaiting_a_decision(qa: Qa) -> dict:
         "okf:docs/features/claims/flows/decide-a-claim.md:start:1",
         "okf:docs/features/claims/flows/decide-a-claim.md:end:1",
         "okf:docs/features/claims/flows/decide-a-claim.md:end-state",
+        "okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1",
+        "okf:docs/features/claims/http/claims-api.md#submit-claim:persistence:1",
+        "okf:docs/features/claims/http/claims-api.md#submit-claim:contract",
     ],
     preconditions=[
         "cl-1001 is on file at version 1, filed by holder A",
@@ -99,6 +111,15 @@ def a_decision_is_recorded_and_outlives_the_process(qa: Qa) -> None:
     qa.eventually("the restarted service answers /healthz again", restarted_service_answers, timeout=90.0, interval=0.5, covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1"])
     reread = qa.http.get("/api/claims/cl-1001", headers=bearer(adjuster), expect_status=200).json()["claim"]
     qa.verify("persists", (body["claim"], reread), subject="claim cl-1001", covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1", "okf:docs/features/claims/flows/decide-a-claim.md:start:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1", "okf:docs/features/claims/flows/decide-a-claim.md:end-state"])
+
+    # This scenario already files a claim and then takes the process away, so what that proves
+    # about the record's *other* author is asserted here rather than left to the story that
+    # happens to touch the writer. The checks are the ones `#submit-claim` declares.
+    filed = who["claim"]
+    filed_body = who["filed_body"]
+    qa.verify("json_path", filed_body, path="claim.amount_cents", equals="125000", covers=["okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1", "okf:docs/features/claims/http/claims-api.md#submit-claim:contract"])
+    qa.verify("json_path", filed_body, path="claim.incident_date", equals="2099-03-14", covers=["okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1"])
+    qa.verify("persists", (filed, reread), subject="claim cl-1001", covers=["okf:docs/features/claims/http/claims-api.md#submit-claim:persistence:1"])
     json.dump({"filed": who["claim"], "decided": body, "after_restart": reread}, qa.artifact("steps/decision.json", kind="json").open("w"))
 
 

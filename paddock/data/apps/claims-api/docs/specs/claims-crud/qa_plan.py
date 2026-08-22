@@ -235,3 +235,69 @@ def health_needs_no_token_and_reset_needs_a_role(qa: Qa) -> None:
     qa.check("the adjuster's reset carries no body", not emptied.text.strip(), covers=["ac:6", "okf:docs/features/claims/http/claims-api.md#reset-claims:does:1"])
     remaining = qa.http.get("/api/claims", headers=bearer(adjuster), expect_status=200).json()["claims"]
     qa.verify("count", remaining, subject="claims", equals=0, covers=["ac:6", "okf:docs/features/claims/http/claims-api.md#reset-claims:does:1", "okf:docs/features/claims/http/claims-api.md#reset-claims:contract"])
+
+
+@scenario(
+    target=api,
+    mechanism="live",
+    covers=[
+        "okf:docs/features/claims/http/claims-api.md#decide-claim:contract",
+        "okf:docs/features/claims/http/claims-api.md#decide-claim:concurrency:1",
+        "okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1",
+    ],
+    preconditions=[
+        "the desk is emptied, and cl-1001 is filed by holder A at version 1",
+        "the claim is read exactly once, and both decisions quote the version from that reading",
+    ],
+    checkpoints=[
+        "the first decision off the reading answers 200 with the claim Approved at version 2",
+        "the second, quoting the version the first spent, is refused 409 Stale Decision",
+        "the service is restarted between the accepted decision and the re-read",
+        "the restarted service answers with the decided claim, unchanged",
+    ],
+    forbid=[
+        "re-reading the claim between the accepted decision and the stale one",
+        "reading the ledger file instead of the documented route",
+    ],
+)
+def the_other_writer_of_the_claim_record_still_works(qa: Qa) -> None:
+    """This story changes how a claim is written; deciding writes the same record.
+
+    Nothing here is in the story's diff, and that is the point: a claim the story files and a
+    decision it never touched are two authors of one ledger record, so a change to the shape of
+    that record breaks the half nobody is looking at. The book names the binding —
+    `persistence: claim-record` on both — and this scenario is what stops the split from
+    shipping the app broken.
+    """
+    holder, adjuster = sign_in(qa, HOLDER_A), sign_in(qa, ADJUSTER)
+    qa.http.delete("/api/claims", headers=bearer(adjuster), expect_status=204)
+    qa.http.post("/api/claims", json_body=submission(), headers=bearer(holder), expect_status=201)
+
+    reading = qa.http.get("/api/claims/cl-1001", headers=bearer(adjuster), expect_status=200).json()["claim"]
+    version = qa.field(reading, "version")
+
+    decided = qa.http.post("/api/claims/cl-1001/decision", json_body={"decision": "approve", "version": version, "note": "Cover confirmed against the schedule."}, headers=bearer(adjuster), expect_status=200)
+    decided_body = decided.json()
+    qa.verify("http_status", decided, code=200, path="/api/claims/cl-1001/decision", covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:contract"])
+    qa.verify("json_path", decided_body, path="claim.status", equals="Approved", covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:contract"])
+    qa.verify("json_path", decided_body, path="claim.version", equals="2", covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:contract"])
+
+    # The version this quotes was spent by the decision above, and nothing has re-read the claim
+    # since — which is the only arrangement in which a stale token is stale by fact rather than
+    # by construction.
+    stale = qa.http.post("/api/claims/cl-1001/decision", json_body={"decision": "deny", "version": version, "note": "Denied on a reading that had moved."}, headers=bearer(adjuster), expect_status=409)
+    qa.verify("conflict_on_stale", stale, subject="claim cl-1001", token="version", covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:concurrency:1"])
+    qa.verify("http_status", stale, code=409, title="Stale Decision", path="/api/claims/cl-1001/decision", covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:concurrency:1"])
+
+    restart = qa.tool("docker").run("compose", "-f", "compose.yml", "restart", "app", timeout=120.0)
+    qa.check("the service restarts cleanly between the decision and the re-read", restart.ok, covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1"])
+
+    def restarted_service_answers() -> bool:
+        try:
+            return qa.http.get("/healthz").json()["status"] == "ok"
+        except HttpError:
+            return False
+
+    qa.eventually("the restarted service answers /healthz again", restarted_service_answers, timeout=90.0, interval=0.5, covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1"])
+    reread = qa.http.get("/api/claims/cl-1001", headers=bearer(adjuster), expect_status=200).json()["claim"]
+    qa.verify("persists", (decided_body["claim"], reread), subject="claim cl-1001", covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1"])

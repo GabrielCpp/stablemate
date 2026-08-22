@@ -1,6 +1,6 @@
 import json
 
-from _fixtures.policies import valid_policy
+from _fixtures.policies import amendment_body, valid_policy
 from ostler_qa import HttpError, Qa, plan, scenario, target
 
 
@@ -30,6 +30,8 @@ web = target(
         "okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:2",
         "okf:docs/features/policy/http/policy-desk-api.md#post-policies:persistence:1",
         "okf:docs/features/policy/concepts/policy.md:contract",
+        "okf:docs/features/policy/http/policy-desk-api.md#put-policy:contract",
+        "okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1",
     ],
     preconditions=["GET /healthz returns status ok", "the register can be reset through its documented route"],
     checkpoints=["accepted record is returned with Draft/version 1", "the service is restarted between the accepted write and the persistence re-read", "duplicate and validation refusals leave the ledger correct", "the created record is readable by its slug"],
@@ -119,6 +121,19 @@ def create_policy_api(qa: Qa) -> None:
     qa.check("accepted API record is durable and correctly identified", qa.field(policy, "status") == "Draft" and qa.field(policy, "version") == 1 and (qa.field(policy, "id") == "pn-1001"), covers=["ac:1", "okf:docs/features/policy/concepts/policy.md:contract", "okf:docs/features/policy/http/policy-desk-api.md:contract", "okf:docs/features/policy/http/policy-desk-api.md#post-policies:contract"])
     qa.check("duplicate branch leaves exactly one policy", len(qa.field(listing, "policies")) == 1, covers=["ac:2"])
     qa.check("API validation covers date rules", all((field in qa.field(refused_body, "errors") for field in ["start_date", "end_date"])), covers=["ac:6"])
+
+    # Editing writes the same policy record creating one does — the book names the binding,
+    # `persistence: policy-record` here and `concurrency: policy-record` on the edit. A change
+    # to the shape of that record breaks the editor as surely as the creator, and the editor is
+    # in no story's diff, so it is proved here rather than left to whoever touches it next.
+    reading = qa.http.get("/api/policies/pn-1001", expect_status=200).json()["policy"]
+    amended = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(reading, reading["premium"] + 1), expect_status=200)
+    qa.verify("http_status", amended, code=200, path="/api/policies/pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:contract"])
+    # The version below was spent by the amendment above, and nothing has re-read the policy
+    # since — a token re-fetched first is current by construction and refutes nothing.
+    stale = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(reading, reading["premium"] + 2), expect_status=409)
+    qa.verify("conflict_on_stale", stale, subject="policy pn-1001", token="version", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1"])
+    qa.verify("http_status", stale, code=409, title="Stale Policy", path="/api/policies/pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1"])
     json.dump({"created": policy, "reread": reread_body, "refused": refused_body}, qa.artifact("steps/api-evidence.json", kind="json").open("w"))
 
 

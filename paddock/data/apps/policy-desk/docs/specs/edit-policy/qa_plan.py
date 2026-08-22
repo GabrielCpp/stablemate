@@ -1,7 +1,7 @@
 import json
 
 from _fixtures.policies import amendment_body, valid_policy
-from ostler_qa import Qa, plan, scenario, target
+from ostler_qa import HttpError, Qa, plan, scenario, target
 
 
 plan(run_id="qa-edit-policy", story="edit-policy")
@@ -27,6 +27,8 @@ web = target(
         "okf:docs/features/policy/http/policy-desk-api.md#put-policy:does:1",
         "okf:docs/features/policy/http/policy-desk-api.md#put-policy:does:2",
         "okf:docs/features/policy/http/policy-desk-api.md#put-policy:errors:2",
+        "okf:docs/features/policy/http/policy-desk-api.md#post-policies:contract",
+        "okf:docs/features/policy/http/policy-desk-api.md#post-policies:persistence:1",
     ],
     preconditions=[
         "PN-1001 is created through POST /api/policies on the empty desk",
@@ -35,6 +37,7 @@ web = target(
     checkpoints=[
         "the amendment omits policy_number and carries the captured version",
         "the response is 200 with version incremented and status unchanged",
+        "the created record survives a restart of the service before the amendment",
         "the other records retain their complete fields, status, and versions",
         "an invalid premium is rejected with a premium field error",
         "a past start date remains acceptable for the existing policy",
@@ -44,8 +47,38 @@ web = target(
 def amend_policy_and_preserve_the_ledger(qa: Qa) -> None:
     """A valid amendment is conditional, durable, and does not rewrite neighbours."""
     qa.http.delete("/api/policies", expect_status=204)
-    qa.http.post("/api/policies", json_body=valid_policy("PN-1001"), expect_status=201)
+    created = qa.http.post("/api/policies", json_body=valid_policy("PN-1001"), expect_status=201).json()["policy"]
     qa.http.post("/api/policies", json_body=valid_policy("PN-1002", email="sam@example.com"), expect_status=201)
+    # Amending writes the same policy record creating one does — the book binds them by name,
+    # `persistence: policy-record` on the creator and `concurrency: policy-record` on this
+    # editor. A change to the shape of that record breaks the writer as surely as the editor,
+    # and creation is in no story's diff, so what it promises is proved on the way past here.
+    # The promise is survival of a restart, so the process that accepted the write must die.
+    restart = qa.tool("docker").run("compose", "-f", "compose.yml", "restart", timeout=120.0)
+    qa.check(
+        "the service restarts cleanly between the creating write and the re-read",
+        restart.ok,
+        covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:persistence:1"],
+    )
+
+    def restarted_service_answers() -> bool:
+        # A connection refused during the restart window is "not yet", not a verdict —
+        # the harness's `eventually` retries only timeouts, so the swallow lives here.
+        try:
+            return qa.http.get("/healthz").json()["status"] == "ok"
+        except HttpError:
+            return False
+
+    qa.eventually(
+        "the restarted service answers /healthz again",
+        restarted_service_answers,
+        timeout=60.0,
+        interval=0.5,
+        covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:persistence:1"],
+    )
+    survivor = qa.http.get("/api/policies/pn-1001", expect_status=200).json()["policy"]
+    qa.verify("persists", (created, survivor), subject="policy pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:persistence:1"])
+    qa.check("the created record answers at the id its policy number derives", qa.field(survivor, "id") == "pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:contract"])
     before_ledger = qa.http.get("/api/policies").json()
     before = qa.http.get("/api/policies/pn-1001").json()["policy"]
     qa.check("fixture is the expected amendable policy", qa.field(before, "policy_number") == "PN-1001", covers=["ac:1", "ac:3"])

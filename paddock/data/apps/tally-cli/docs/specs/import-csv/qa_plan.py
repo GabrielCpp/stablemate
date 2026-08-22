@@ -94,6 +94,10 @@ def entries(qa: Qa, ledger):
         "okf:docs/features/tally/tally.md#import-a-csv:consistency:1",
         "okf:docs/features/tally/tally.md#import-a-csv:contract",
         "okf:docs/features/tally/tally.md#import-a-csv:does:1",
+        "okf:docs/features/tally/concepts/ledger-file.md:contract",
+        "okf:docs/features/tally/concepts/ledger-file.md:consistency:1",
+        "okf:docs/features/tally/concepts/ledger-file.md:consistency:2",
+        "okf:docs/features/tally/concepts/ledger-file.md:persistence:1",
     ],
     preconditions=[
         "the scenario owns a directory under the evidence dir holding a freshly initialised ledger",
@@ -103,6 +107,8 @@ def entries(qa: Qa, ledger):
         "importing a three-row file into an empty ledger adds all three and exits 0",
         "importing the same file a second time exits 0 and leaves three",
         "the entries after the second import are the same three, not three of six",
+        "the file the importing process left is one whole JSON object a later process reads back intact",
+        "no temporary file from either write survives beside the ledger",
     ],
     forbid=[
         "asserting idempotence by the second import's exit code — the doubling form of this defect exits 0",
@@ -191,6 +197,48 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         actual=sorted((qa.field(entry, "what") for entry in settled)),
         expected=["dinner", "museum", "taxi"],
         covers=["ac:2", "okf:docs/features/tally/tally.md#import-a-csv:consistency:1"],
+    )
+
+    # Import writes the ledger file, and so does every other command that changes the tally —
+    # the book binds them by name, `persistence: ledger-file`. What the file itself promises is
+    # therefore in no one story's diff, and is proved on the way past here: two imports have
+    # just run, so whatever they left is what a later process has to be able to read.
+    document = json.loads(qa.field(read(qa, ledger), "text"))
+    qa.check(
+        "the ledger is one JSON object carrying a currency string and an entries array",
+        isinstance(document, dict)
+        and isinstance(document.get("currency"), str)
+        and isinstance(document.get("entries"), list),
+        actual=sorted(document) if isinstance(document, dict) else document,
+        expected="an object with a string `currency` and a list `entries`",
+        covers=[
+            "okf:docs/features/tally/concepts/ledger-file.md:contract",
+            "okf:docs/features/tally/concepts/ledger-file.md:consistency:1",
+        ],
+    )
+    # `settled` was read by a process that has since exited; this is the next one. Equality
+    # across the two is the claim that the importing command finished its write before it
+    # returned, rather than leaving the tail of it to a flush that may not have happened.
+    qa.verify(
+        "persists",
+        (settled, entries(qa, ledger)),
+        subject="the ledger file",
+        covers=[
+            "okf:docs/features/tally/concepts/ledger-file.md:contract",
+            "okf:docs/features/tally/concepts/ledger-file.md:persistence:1",
+        ],
+    )
+    # Atomicity is not observable from outside a single-threaded plan, but its mechanism is:
+    # a write that renames a temporary path over the file leaves no temporary path behind, and
+    # a half-written ledger would not have parsed two assertions ago. A write that truncated
+    # the real file in place instead is what this would catch.
+    directory = census(qa, ledger)
+    qa.check(
+        "two imports have left the ledger and the CSV, and no half-written file beside them",
+        sorted(directory) == ["tally.csv", "tally.json"] or sorted(directory) == ["tally.json", "trip.csv"],
+        actual=sorted(directory),
+        expected="only the ledger and the file that was imported",
+        covers=["okf:docs/features/tally/concepts/ledger-file.md:consistency:2"],
     )
 
 
