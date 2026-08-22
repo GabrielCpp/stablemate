@@ -44,6 +44,15 @@ _CITABLE_SUFFIXES = frozenset(
     ).split()
 )
 
+#: How many nodes must cite one `code:` symbol before the citation stops localizing the
+#: change. Two nodes citing one symbol is a well-written book, not a fan-out — an endpoint
+#: documenting the wire contract and a concept documenting the domain rule, both honestly
+#: grounded in the one function that implements them. Both are at risk when it changes, and
+#: demoting them left a story whose only changed file was that symbol owing nothing at all.
+#: What the demotion is for is the container: the page component every panel is documented
+#: against, where adding one control marked a dozen unrelated claims changed.
+_CONTAINER_FANOUT = 3
+
 #: Bullets the relation fixpoint joins nodes on. A node naming the same consistency group,
 #: persistence store, event or idempotency key as an already-selected node is pulled in.
 _RELATION_KEYS = (
@@ -248,14 +257,16 @@ def build_context(
     # change touched any particular one. Which of those citations are shared is a property
     # of the whole change set, so it is known here and not inside the loop above.
     #
-    # A `code:` citation of an exact *symbol* stops localizing for the same reason once
-    # several nodes cite that one symbol. A container — a toolbar component owning a dozen
-    # documented controls, a page component owning every panel on it — is the honest anchor
-    # for each of them, so editing it to render one new control marks all twelve changed.
-    # A story that added a publish button was charged with proving undo, redo, the heading
-    # toggles and the list toggles, which is a plan the change cannot justify and no
-    # planner can write. A node the diff also reached by a symbol only *it* cites keeps its
-    # own reason and stays required, which is what leaves the story's real work owed.
+    # A `code:` citation of an exact *symbol* stops localizing for the same reason, but not
+    # at the same count — a symbol is a far better anchor than a bare file, so it takes
+    # `_CONTAINER_FANOUT` nodes rather than two. A container — a toolbar component owning a
+    # dozen documented controls, a page component owning every panel on it — is the honest
+    # anchor for each of them, so editing it to render one new control marks all twelve
+    # changed. A story that added a publish button was charged with proving undo, redo, the
+    # heading toggles and the list toggles, which is a plan the change cannot justify and no
+    # planner can write. Below that count the citation is still evidence: an endpoint and a
+    # concept both grounded in one function are two true readings of it, and a change to it
+    # can break either.
     file_owners: dict[str, set[str]] = {}
     symbol_owners: dict[str, set[str]] = {}
     for node_id, reasons in direct_reasons.items():
@@ -265,7 +276,9 @@ def build_context(
             elif reason["kind"] == "changed-code":
                 symbol_owners.setdefault(reason["ref"], set()).add(node_id)
     shared_files = {ref for ref, owners in file_owners.items() if len(owners) > 1}
-    shared_symbols = {ref for ref, owners in symbol_owners.items() if len(owners) > 1}
+    shared_symbols = {
+        ref for ref, owners in symbol_owners.items() if len(owners) >= _CONTAINER_FANOUT
+    }
 
     # Containment and graph links broaden impact without lexical inference.
     impacted = set(direct_reasons)
@@ -1255,11 +1268,13 @@ def _is_required(
     justify and the planner cannot write. Those nodes stay in the packet as context; a node
     the diff also reached by an exact symbol keeps its own reason and stays required.
 
-    A `changed-code` reason is demoted on the same test and for the same reason. An exact
-    symbol localizes better than a bare file but not perfectly: a container cited by a
-    dozen nodes — the toolbar that owns every control documented against it — marks all of
-    them changed when one new control is added to it. What survives is the node reached by
-    a symbol only it cites, which is the story's own work.
+    A `changed-code` reason is demoted on the same test but at a higher count. An exact
+    symbol localizes better than a bare file, so two nodes citing one is a book written
+    well rather than a citation gone vague — the endpoint stating the wire contract and the
+    concept stating the domain rule, both grounded in the function that implements them,
+    both breakable by a change to it. It takes `_CONTAINER_FANOUT` owners before the
+    citation reads as a container: the toolbar that owns every control documented against
+    it, which marks all of them changed when one new control is added.
     """
     kinds = {
         reason.get("kind", "")

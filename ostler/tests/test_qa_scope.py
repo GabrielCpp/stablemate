@@ -236,6 +236,71 @@ def test_a_symbol_cited_by_many_nodes_is_context_not_live_evidence(tmp_path: Pat
     assert published["evidenceRequired"] == "live"
 
 
+def _two_readings_book(tmp_path: Path) -> Path:
+    """One function, documented twice: the wire contract and the domain rule.
+
+    This is the shape `seat-booking` has. `app/confirm.py::confirm` is cited by the endpoint
+    that states what the request does and by the concept that states what confirming a seat
+    means. Neither citation is vague and neither document is a container — they are two true
+    readings of one function, and a change to it can break either.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/demo/api.md").write_text(
+        "---\ntype: screen\ntitle: Booking API\n---\n# Booking API\n\n"
+        "- route: /api\n"
+        "- code:\n\n"
+        "## Confirm\n\n"
+        "- role: button\n"
+        "- name: Confirm booking\n"
+        "- code: app/confirm.py::confirm\n"
+        "- tests: tests/api_test.py::confirms\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo/seat.md").write_text(
+        "---\ntype: screen\ntitle: Seat\n---\n# Seat\n\n"
+        "- route: /seat\n"
+        "- code:\n\n"
+        "## Held\n\n"
+        "- role: status\n"
+        "- name: Seat held\n"
+        "- code: app/confirm.py::confirm\n"
+        "- tests: tests/seat_test.py::holds\n",
+        encoding="utf-8",
+    )
+    confirm = tmp_path / "app/confirm.py"
+    confirm.write_text("def confirm():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    confirm.write_text("def confirm():\n    return 'new'\n", encoding="utf-8")
+    return confirm
+
+
+def test_a_symbol_cited_by_two_nodes_still_owes_live_evidence(tmp_path: Path):
+    """Two readings of one function is a book written well, not a container.
+
+    `seat-booking` scored 3 of 9 seeded defects on this: its book cites
+    `app/confirm.py::confirm` from the endpoint and from the concept, the story's only
+    changed file was that symbol, and demoting at two owners left the whole owed set empty.
+    Every obligation came back `required: false`, the evidence map was built from nothing,
+    and six defects were reported "not owed by this trial" against a plan that had in fact
+    asserted exactly the right claims.
+    """
+    _two_readings_book(tmp_path)
+
+    packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
+    assert validate_context(packet) == []
+    by_id = {item["id"]: item for item in packet["obligations"]}
+
+    for node in ("docs/features/demo/api.md#confirm", "docs/features/demo/seat.md#held"):
+        obligation = by_id[f"okf:{node}:contract"]
+        assert obligation["required"] is True, f"{node} is not owed live evidence"
+        assert obligation["evidenceRequired"] == "live"
+
+
 def _event_book(tmp_path: Path) -> Path:
     """A changed producer, and an untouched consumer the relation fixpoint walks to.
 
