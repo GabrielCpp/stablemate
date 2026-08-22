@@ -178,7 +178,7 @@ def only_an_adjuster_decides_and_only_in_the_documented_shape(qa: Qa) -> None:
     # Against cl-9999 deliberately: a 403 for a claim that does not exist can only have come
     # from the role, so the ordering the book documents is what is being proved.
     forbidden = qa.http.post("/api/claims/cl-9999/decision", json_body={"decision": "approve", "version": 1}, headers=bearer(holder), expect_status=403)
-    qa.verify("http_status", forbidden, code=403, title="Adjusters Only", path="/api/claims/cl-1001/decision", covers=["ac:4", "okf:docs/features/claims/http/claims-api.md#decide-claim:authorization:1"])
+    qa.verify("http_status", forbidden, code=403, title="Adjusters Only", path="/api/claims/cl-9999/decision", covers=["ac:4", "okf:docs/features/claims/http/claims-api.md#decide-claim:authorization:1"])
 
     unknown_word = qa.http.post("/api/claims/cl-1001/decision", json_body={"decision": "escalate", "version": 1}, headers=bearer(adjuster), expect_status=422)
     qa.verify("http_status", unknown_word, code=422, path="/api/claims/cl-1001/decision", covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#decide-claim:errors:1"])
