@@ -43,7 +43,12 @@ power:
 budget:
   genesis: 1800
   author: 3600
-  coder: 5400
+  # 5400 was an estimate, and the first anchor run spent all of it on story one: the QA
+  # runner blocked on two `from_env` secrets nothing provisions, and `setup-fix` took 61
+  # turns without producing a `qa-stack.yml`. 21600 is what a nine-story two-surface queue
+  # with an authenticated surface actually needs — and it is deliberately generous, because
+  # a ceiling reached mid-queue scores a repo nobody finished.
+  coder: 21600
 
 # The headline metric — `design-score` — is author-only and spends the hour by itself. The
 # coder budget above belongs to the anchor run, which is deliberately rare: once per author
