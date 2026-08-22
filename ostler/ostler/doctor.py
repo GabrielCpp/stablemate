@@ -825,27 +825,31 @@ def _states_a_lifecycle_claim(value: str) -> str:
 def _rubber_stamp(call: checks.CheckCall) -> str:
     """Why this call would stay green against the defect its bullet describes, or "".
 
-    Not a judgment about the check's name: `json_path` and `http_status` are the two calls
-    whose *arguments* decide whether anything is being told apart, and both have a spelling
-    that asserts only that the code ran. Every other check in the vocabulary compares
-    something by construction.
+    Read off the vocabulary rather than second-guessing it: `CheckSpec.excludes` already
+    names the defect a weaker assertion admits, and that sentence is the finding — the
+    field is the test of whether a check earns a place in the vocabulary at all, so a
+    check it cannot describe has no business being judged here.
+
+    Two legal spellings reach this. A 2xx `http_status` naming neither route nor title:
+    its one required argument is satisfied by any working request, so it observes only
+    that the scenario got this far. And `json_path(absent=false)`, the one way left to
+    spell presence now that `checks.bind` refuses a `json_path` carrying no comparison
+    at all. Every other check compares something the moment its arguments are bound.
     """
     if call.name == "json_path":
-        if "equals" in call.args or "matches" in call.args:
+        if {"equals", "matches"} & set(call.args) or call.args.get("absent") is True:
             return ""
-        if call.args.get("absent") is True:
-            return ""
-        return (f"`json_path(path=\"{call.args.get('path', '')}\")` asserts the field is "
-                f"present without saying what it holds, so it passes on the default the "
-                f"defect also produces")
-    if call.name == "http_status":
-        code = call.args.get("code")
-        if isinstance(code, int) and 200 <= code < 300 and not ({"title", "path"} & set(call.args)):
-            return (f"`http_status(code={code})` names neither a `path:` nor a `title:`, so it "
-                    f"says the request succeeded and nothing about which request or what it "
-                    f"answered")
+        return (f"`{call.text()}` asserts the field is present without saying what it "
+                f"holds, which admits {checks.CHECK_BY_NAME[call.name].excludes}")
+    if call.name != "http_status":
         return ""
-    return ""
+    code = call.args.get("code")
+    if not isinstance(code, int) or not (200 <= code < 300):
+        return ""
+    if {"title", "path"} & set(call.args):
+        return ""
+    return (f"`{call.text()}` says the request succeeded and nothing about which request "
+            f"or what it answered, which admits {checks.CHECK_BY_NAME[call.name].excludes}")
 
 
 def _ui_graph(graph: Graph, resolver: links_mod.LinkResolver) -> dict | None:
@@ -1065,25 +1069,34 @@ def _check_ui(graph: Graph, f: list[Finding],
                 else:
                     parsed_calls.append(parsed)
 
-        # Two ways a node passes `undeclared-obligation` and still proves nothing. Both are
-        # `warn` for that rule's reason — the remedy is authoring judgment, not a rewrite a
-        # tool can compute — and both are prose-driven heuristics, so both are meant to be
+        # Every check the node declared could go red for the reason the node exists, or the
+        # claim it was written under proves nothing. Per claim rather than per node: a node
+        # declaring one discriminating check used to silence this for every sibling bullet,
+        # which is the same fan-out that credited one strong call to a claim nothing observed
+        # — and the binding of a check to a claim is written down now (`attributed_checks`).
+        # An `error`, unlike the prose heuristics around it, because the remedy is mechanical:
+        # the check names the value, the route or the title the claim turns on, or it does not.
+        verify_key = check_keys[0] if check_keys else "verify"
+        contract_checks, claim_checks = registry.attributed_checks(node.type, node.bullet_order)
+        claims = [(f"{node.id}:contract", contract_checks)]
+        claims += [(f"{node.id}:{key}:{index}", values)
+                   for (key, index), values in claim_checks.items()]
+        for claim, values in claims:
+            calls = [c for c in (checks.parse_check(v) for v in values)
+                     if isinstance(c, checks.CheckCall)]
+            stamps = [_rubber_stamp(call) for call in calls]
+            if calls and all(stamps):
+                f.append(Finding(
+                    "error", "weak-check",
+                    f"{claim}: every check declared for this claim passes on the defect it is "
+                    f"meant to catch — {stamps[0]}",
+                    path=rel, line=node.line, ref=f"{node.id}#{verify_key}",
+                    suggestion=f'- {verify_key}: json_path(path="…", equals="…")'))
+
+        # A prose-driven heuristic, `warn` for `compound-normative-bullet`'s reason — the
+        # remedy is authoring judgment, not a rewrite a tool can compute — and meant to be
         # waived per finding where the book knows better than the rule.
         if parsed_calls:
-            # Every declared check, and not one of them could go red for the reason the node
-            # exists. Node-level and all-or-nothing on purpose: a node that declares one
-            # discriminating check has made the judgment, and second-guessing which bullet it
-            # belongs to is the pairing nobody has written down (see `undeclared-obligation`).
-            stamps = [_rubber_stamp(call) for call in parsed_calls]
-            if all(stamps):
-                f.append(Finding(
-                    "warn", "weak-check",
-                    f"{node.id}: every declared check passes on the defect it is meant to "
-                    f"catch — {stamps[0]}. Name the value, the route or the title the claim "
-                    f"turns on, so there is a state of the world in which the check goes red",
-                    path=rel, line=node.line, ref=f"{node.id}#{check_keys[0]}",
-                    suggestion=f'- {check_keys[0]}: json_path(path="…", equals="…")'))
-
             if lifecycle and not any(c.name in LIFECYCLE_CHECKS for c in parsed_calls):
                 key, verb = lifecycle[0]
                 f.append(Finding(
@@ -1098,10 +1111,11 @@ def _check_ui(graph: Graph, f: list[Finding],
         # The gap `unparsed-check` cannot see: a node that declares nothing at all. `verify:` is
         # on no type's required list, so a book stays green while every obligation it mints goes
         # into QA with nothing to bind — `qa validate` has no declaration to enforce and the
-        # evidence map has no deficit to report. Node-level and not a count, because `verify:`
-        # sits on the node rather than the bullet (see `qa/context.py`'s `checksDeclared`):
-        # pairing a check to one bullet is a judgment nobody has written down yet, and the
-        # honest computable question is whether the node declares any observation at all.
+        # evidence map has no deficit to report. Node-level and not a count even though the
+        # binding is written down now (`registry.attributed_checks`): the per-claim gap — this
+        # bullet is claimed and nothing observes it — is `qa validate`'s `claimed-but-unasserted`,
+        # raised against the plan that has to prove it. What is left for the book is the whole
+        # of it: a node that declares no observation at all.
         # A `warn` for `compound-normative-bullet`'s reason — the remedy is authoring judgment,
         # and books written before the rule carry these by the hundred.
         if check_keys and normative and not declared:

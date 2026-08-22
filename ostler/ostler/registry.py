@@ -9,9 +9,10 @@ place.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Seed lifecycle
@@ -303,6 +304,52 @@ def check_keys(node_type: str) -> tuple[str, ...]:
     """
     uitype = UI_TYPES_BY_NAME.get(node_type)
     return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.check)
+
+
+def attributed_checks(
+    node_type: str, bullet_order: Iterable[Sequence[Any]]
+) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
+    """Split a node's check bullets between the contract and the claims they observe.
+
+    Document order is the binding, and it is the only place the binding is written: a book
+    states a claim and then the checks that observe it, which is how every book in the corpus
+    is already written. So each `verify:` belongs to the nearest normative bullet above it, and
+    the ones above every normative bullet — the node opens with them — belong to the node's own
+    contract obligation, where a node-level check has always belonged.
+
+    "Nearest bullet" means the authored one. A normative bullet with nested children mints an
+    obligation per child, and a `verify:` written under the parent was written against the whole
+    of it, so it attaches to every child rather than to the last one to be flattened. That is
+    fan-out, but only inside a single bullet the author wrote as one claim — unlike the
+    node-level list it replaces, which fanned one check across claims written separately.
+
+    Here rather than beside either caller for `NORMATIVE_KEYS_BY_TYPE`'s reason: the obligation
+    mapper credits a check to a claim and `doctor` refuses a claim whose checks cannot go red,
+    and the two disagreeing produces an obligation graded against a check the lint never read.
+
+    Returned as raw bullet values, so each caller parses once. The keys of the second half are
+    `(bullet key, 1-based index)`, counted the way obligation ids are minted.
+    """
+    normative = set(normative_keys(node_type))
+    observing = set(check_keys(node_type))
+    contract: list[str] = []
+    per_bullet: dict[tuple[str, int], list[str]] = {}
+    counts: dict[str, int] = {}
+    owner: list[tuple[str, int]] = []
+    authored = -1
+    for row in bullet_order:
+        key, value, bullet = str(row[0]), str(row[1]), int(row[2])
+        if key in normative:
+            counts[key] = counts.get(key, 0) + 1
+            if bullet != authored:
+                owner, authored = [], bullet
+            owner.append((key, counts[key]))
+        elif key in observing:
+            if not owner:
+                contract.append(value)
+            for target in owner:
+                per_bullet.setdefault(target, []).append(value)
+    return contract, per_bullet
 
 
 UI_TYPES: tuple[UINodeType, ...] = (

@@ -153,4 +153,4 @@ def test_json_path_without_a_comparison_is_red_not_green() -> None:
     )
     assert ok is False
     assert actual == "abc"
-    assert "presence alone asserts nothing" in expected
+    assert "presence asserts nothing" in expected

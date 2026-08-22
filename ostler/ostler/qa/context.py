@@ -1354,48 +1354,6 @@ def _dedup_checks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list({row["call"]: row for row in rows}.values())
 
 
-def _attributed_checks(node: dict[str, Any]) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
-    """Split a node's `verify:` bullets between the contract and the bullets they observe.
-
-    Document order is the binding, and it is the only place the binding is written: a book
-    states a claim and then the checks that observe it, which is how every book in the corpus
-    is already written. So each `verify:` belongs to the nearest normative bullet above it, and
-    the ones above every normative bullet — the node opens with them — belong to the node's own
-    contract obligation, where a node-level check has always belonged.
-
-    "Nearest bullet" means the authored one. A normative bullet with nested children mints an
-    obligation per child, and a `verify:` written under the parent was written against the
-    whole of it, so it attaches to every child rather than to the last one to be flattened.
-    That is fan-out, but only inside a single bullet the author wrote as one claim — unlike the
-    node-level list it replaces, which fanned one check across claims written separately.
-
-    Returned as raw bullet values rather than parsed rows so the caller parses once. The keys of
-    the second half are `(bullet key, 1-based index)`, counted the same way `_obligations` mints
-    ids, because `bulletOrder` lists a repeated key's values in the order the dict stores them.
-    """
-    node_type = str(node.get("type", ""))
-    normative = set(registry.normative_keys(node_type))
-    checks = set(registry.check_keys(node_type))
-    contract: list[str] = []
-    per_bullet: dict[tuple[str, int], list[str]] = {}
-    counts: dict[str, int] = {}
-    owner: list[tuple[str, int]] = []
-    authored = -1
-    for row in node.get("bulletOrder") or []:
-        key, value, bullet = str(row[0]), str(row[1]), int(row[2])
-        if key in normative:
-            counts[key] = counts.get(key, 0) + 1
-            if bullet != authored:
-                owner, authored = [], bullet
-            owner.append((key, counts[key]))
-        elif key in checks:
-            if not owner:
-                contract.append(value)
-            for target in owner:
-                per_bullet.setdefault(target, []).append(value)
-    return contract, per_bullet
-
-
 def _locators(node: dict[str, Any]) -> dict[str, list[str]]:
     bullets = node.get("bullets", {})
     return {key: _values(bullets.get(key)) for key in _LOCATOR_KEYS if _values(bullets.get(key))}
@@ -1425,8 +1383,10 @@ def _obligations(
     # Per bullet, not per node. A node-level list credits every obligation the node mints with
     # every check the node declares, so one discriminating call covers a sibling claim that
     # nothing observes — the claim rides on an assertion that was never about it. The book
-    # already writes each check under the claim it observes; `_attributed_checks` reads that.
-    contract, per_bullet = _attributed_checks(node)
+    # already writes each check under the claim it observes; `registry.attributed_checks` reads it.
+    contract, per_bullet = registry.attributed_checks(
+        str(node.get("type", "")), node.get("bulletOrder") or []
+    )
     contract_rows = _dedup_checks(_parse_checks(contract))
     if contract_rows:
         base["checksDeclared"] = contract_rows

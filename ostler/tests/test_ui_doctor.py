@@ -347,8 +347,11 @@ def test_a_check_that_cannot_go_red_is_reported(repo: Path):
     write(repo / "docs/features/groom/concepts/publisher.md",
           _method('json_path(path="$.revision", absent=false)'))
     finding = next(f for f in _run(repo).findings if f.code == "weak-check")
-    assert finding.severity == "warn"
+    # An `error`, unlike the prose heuristics beside it: the remedy is mechanical — the check
+    # names the value the claim turns on, or it does not.
+    assert finding.severity == "error"
     assert "passes on the default" in finding.message
+    assert "publish:returns:1" in finding.message
     assert finding.ref == f"{finding.path}#publish#verify"
 
 
@@ -357,10 +360,9 @@ def test_a_success_status_naming_neither_route_nor_title_is_weak(repo: Path):
     assert "weak-check" in all_codes(_run(repo))
 
 
-def test_one_discriminating_check_answers_the_node(repo: Path):
-    # All-or-nothing, for `undeclared-obligation`'s reason: a node that declares one check
-    # that can fail has made the judgment, and which bullet it belongs to is a pairing nobody
-    # has written down.
+def test_one_discriminating_check_answers_the_claim_it_was_written_under(repo: Path):
+    # All-or-nothing within one claim: an author who observes `returns:` two ways has made
+    # the judgment, and only the weakest of them is not the finding.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n- returns: the published revision\n"
@@ -638,3 +640,20 @@ def test_sharing_the_resolver_leaves_the_report_byte_identical(tmp_path: Path, m
     assert json.dumps(payload, indent=2, sort_keys=True,
                       ensure_ascii=False) == LINKED_REPORT_JSON
     assert len(made) == 1, f"{len(made)} LinkResolvers built in one doctor run, want 1"
+
+
+def test_a_sibling_claims_strong_check_no_longer_answers_this_one(repo: Path):
+    """The fan-out this rule used to have: one discriminating check anywhere on the node
+    silenced it for every other bullet, so a claim observed only by a rubber stamp read as
+    judged. Each claim now answers for the checks written under it."""
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- returns: the published revision\n"
+          '- verify: json_path(path="$.state", equals="published")\n'
+          "- raises: a conflict when the revision moved under the caller\n"
+          '- verify: json_path(path="$.revision", absent=false)\n')
+    findings = [f for f in _run(repo).findings if f.code == "weak-check"]
+    assert [f.message for f in findings] and all(
+        "publish:raises:1" in f.message for f in findings
+    )

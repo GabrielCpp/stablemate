@@ -739,7 +739,7 @@ def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any
     # comparison at validate time — presence alone passes on the default the defect also
     # produces, so it is not an assertion. A call that arrives here anyway got past the
     # declaration gate, and the honest verdict for an assertion that cannot fail is red.
-    return False, value, "one of equals=, matches=, absent= — presence alone asserts nothing"
+    return False, value, "equals=, matches= or absent=true — presence asserts nothing"
 
 
 def _verify_unchanged(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
