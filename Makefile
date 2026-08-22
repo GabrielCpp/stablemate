@@ -158,7 +158,9 @@ check-fixtures: ## Guard the declared-fixture rule across the benchmark corpus
 	# "until somebody runs it" can be months.
 	#
 	# `--all-packages` because the guard reads the declarations through ostler itself
-	# rather than reimplementing the schema: a second parser is a second thing to drift.
+	# rather than reimplementing the schema — and the story-side lift through the coder
+	# schema, so this guard and the prompt the QA planner is handed can never disagree
+	# about which entries in a story's fixture list are names and which are prose.
 	uv run --all-packages python scripts/check_fixtures.py
 
 .PHONY: check-prompt-agnostic
