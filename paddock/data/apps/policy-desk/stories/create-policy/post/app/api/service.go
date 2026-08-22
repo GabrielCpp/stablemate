@@ -24,6 +24,13 @@ func (s *Server) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/policies", s.handleCreate)
 	mux.HandleFunc("DELETE /api/policies", s.handleReset)
 	mux.HandleFunc("GET /api/policies/{id}", s.handleGet)
+	// The amendment route is wired from the first story even though the screens that use
+	// it arrive with the last. `app/api/update.go` is on disk in every story's tree — the
+	// fixture keeps one app tree and pins only the route table back — and the book
+	// documents `#put-policy` against it. A book node grounded in code the trial ships but
+	// never routes is owed evidence no trial can produce, which reads as a product defect
+	// on a clean control.
+	mux.HandleFunc("PUT /api/policies/{id}", s.handleUpdate)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
