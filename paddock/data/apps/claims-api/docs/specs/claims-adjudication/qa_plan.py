@@ -100,7 +100,7 @@ def a_decision_is_recorded_and_outlives_the_process(qa: Qa) -> None:
     qa.verify("http_status", decided, code=200, path="/api/claims/cl-1001/decision", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:contract"])
     qa.verify("json_path", body, path="claim.status", equals="Approved", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1", "okf:docs/features/claims/flows/decide-a-claim.md:start:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1", "okf:docs/features/claims/flows/decide-a-claim.md:end-state"])
     qa.verify("json_path", body, path="claim.version", equals="2", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1"])
-    qa.check("the adjuster's note is carried onto the decided claim", body["claim"]["note"] == "Cover confirmed against the schedule.", covers=["ac:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1"])
+    qa.check("the adjuster's note is carried onto the decided claim", body["claim"]["decision_note"] == "Cover confirmed against the schedule.", covers=["ac:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1"])
 
     # The claim was Submitted a moment ago in this same process, so a re-read here is answered
     # by whatever the process is holding. The process has to go before the re-read means anything.

@@ -349,6 +349,10 @@ def classify(
     this machine.
     """
     refuted = str(audit.get("verdict", "")) == "refuted"
+    # `unproven` is deliberately not read anywhere below. On the clean control it is not a
+    # false alarm — the run never observed the product, so it accused nothing — and on a
+    # defect row it is neither a catch nor a miss, since a plan that aborted had no chance to
+    # notice. Both fall through to `inconclusive`, which is what an aborted scenario is.
     if row is None:  # the clean control: any contradiction at all is a false alarm
         if statuses is None:
             return "inconclusive", "no evidence map"
@@ -401,9 +405,9 @@ LEVERAGE_LABELS = {
     "journeys": "journeys",
 }
 
-#: The one evidence-map status that is a discharged obligation. The other three
-#: (`uncovered`, `claimed-but-unasserted`, `contradicted`) are each a different way of not
-#: having proved it, and none of them counts here.
+#: The one evidence-map status that is a discharged obligation. The other four
+#: (`uncovered`, `claimed-but-unasserted`, `contradicted`, `unproven`) are each a different
+#: way of not having proved it, and none of them counts here.
 PASSING_STATUS = "covered"
 
 
