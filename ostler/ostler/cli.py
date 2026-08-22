@@ -711,6 +711,26 @@ def _build_parser() -> argparse.ArgumentParser:
                                  help="omit each obligation's locator bullets")
     qa_context_show.add_argument("--json", action="store_true")
 
+    qa_compile_plan = qas.add_parser(
+        "compile-plan",
+        help="compile a qa_plan.py skeleton from the context packet, reading no source",
+    )
+    qa_compile_plan.add_argument("--spec", required=True, type=Path)
+    qa_compile_plan.add_argument(
+        "--out", default=None, type=Path, metavar="PATH",
+        help="write the plan here; omit to print it. An existing file is never overwritten",
+    )
+    qa_compile_plan.add_argument(
+        "--story", default="",
+        help="story name for `plan(story=...)`; default: the one the packet was built for",
+    )
+    qa_compile_plan.add_argument("--run-id", default=None, dest="run_id")
+    qa_compile_plan.add_argument(
+        "--base-url", default="http://localhost:8000", dest="base_url",
+        help="base URL for the compiled `target(...)`",
+    )
+    qa_compile_plan.add_argument("--json", action="store_true")
+
     qa_context_validate = qas.add_parser(
         "context-validate", help="validate qa-okf-context.json"
     )
@@ -1283,6 +1303,18 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         _out(f"\n# showing {args.offset + 1 if page else 0}-{shown} of {matched} matched "
              f"({len(packet.get('obligations', []))} in packet)")
         return 0
+
+    if op == "compile-plan":
+        spec_dir = _resolve_spec(args.spec)
+        result = qa_mod.cmd_compile_plan(
+            spec_dir,
+            out=args.out,
+            story=args.story,
+            run_id=args.run_id,
+            base_url=args.base_url,
+        )
+        _out(json.dumps(result.data, indent=2) if args.json else result.message)
+        return 0 if result.ok else 1
 
     if op == "context-validate":
         spec_dir = _resolve_spec(args.spec)
