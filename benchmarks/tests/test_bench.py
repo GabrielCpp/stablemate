@@ -546,6 +546,78 @@ def test_the_hour_sized_tasks_fit_the_hour():
             f"saying why that is deliberate"
 
 
+# ── the grill gate: the one operator block a benchmark has to answer itself ───────────
+
+
+GRILL_NOTES = "Run /bench-grill to grill this backlog before it is split into epics."
+
+
+def gate(tmp_path: Path, status: str = bench.AWAITING, notes: str = GRILL_NOTES) -> Path:
+    path = tmp_path / "docs" / "epics" / "_author-context.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{status}\n\n## Questions from the agent\n\n{notes}\n", encoding="utf-8")
+    return path
+
+
+def test_the_shipped_answer_settles_nothing_the_backlog_had_not() -> None:
+    """The answer is what keeps the grill from becoming the leak that voids the metric.
+
+    A grill asks exactly the held-out questions, so an operator who answers one has told
+    the workflow what to design. This asserts the shipped answer names none of the shipped
+    expectations — the check that would have caught a well-meaning edit adding "and yes,
+    people need to sign out".
+    """
+    answer = bench.grill_answer(bench.load_spec(DESIGN_SUITES[0])).lower()
+    for path in DESIGN_SUITES:
+        spec = bench.load_spec(path)
+        for exp in bench.load_expectations(spec):
+            assert exp["id"] not in answer
+            content = re.findall(r"[a-z]{4,}", exp["rendering"].lower())
+            hits = sum(w in answer for w in content)
+            assert hits < len(content) / 2, f"{exp['id']} reads as leaked into the answer"
+
+
+def test_an_answered_gate_carries_the_answer_in_the_first_status_line(tmp_path: Path) -> None:
+    """Only the first `STATUS:` line is read — an answer written anywhere else is inert."""
+    path = gate(tmp_path)
+    assert bench.answer_grill(path, "decide it yourself") is True
+    text = path.read_text(encoding="utf-8")
+    assert text.splitlines()[0] == "STATUS: ANSWERED"
+    assert bench.AWAITING not in text
+    assert "decide it yourself" in text
+
+
+def test_a_gate_that_is_not_the_grill_is_left_parked(tmp_path: Path) -> None:
+    """Every other block reached a person because the resolver could not ground it.
+
+    Answering one of those with a canned non-answer is a give-up wearing an answer's
+    clothes: the run continues past a question nobody settled.
+    """
+    path = gate(tmp_path, notes="The story's acceptance criteria contradict the epic.")
+    assert bench.answer_grill(path, "decide it yourself") is False
+    assert bench.AWAITING in path.read_text(encoding="utf-8")
+
+
+def test_an_already_answered_gate_is_not_stamped_twice(tmp_path: Path) -> None:
+    path = gate(tmp_path, status="STATUS: ANSWERED")
+    assert bench.answer_grill(path, "decide it yourself") is False
+
+
+def test_a_missing_answers_file_is_fatal(design_spec: "bench.Spec") -> None:
+    """Silently skipping the answer would park every run until its budget expired."""
+    object.__setattr__(design_spec, "grill", "nope.md")
+    with pytest.raises(SystemExit):
+        bench.grill_answer(design_spec)
+
+
+def test_answers_without_the_rule_are_fatal(tmp_path: Path, design_spec: "bench.Spec") -> None:
+    """The prose above the rule explains the file to a person; below it is the answer."""
+    (tmp_path / "bare.md").write_text("just some prose\n", encoding="utf-8")
+    object.__setattr__(design_spec, "grill", "bare.md")
+    with pytest.raises(SystemExit):
+        bench.grill_answer(design_spec)
+
+
 # ── design completeness: the metric whose whole validity is that it was held out ──────
 
 
