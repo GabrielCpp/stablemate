@@ -37,9 +37,9 @@ def item_is_emitted(qa: Qa) -> None:
         qa.require(isinstance(payload, dict))
         qa.check(
             "the item is the one requested",
-            payload["item"]["id"] == record["seat"],
-            actual=payload["item"]["id"],
-            expected=record["seat"],
+            qa.field(payload, "item.id") == qa.field(record, "seat"),
+            actual=qa.field(payload, "item.id"),
+            expected=qa.field(record, "seat"),
             covers=["okf:docs/features/demo/item.md:contract"],
         )
 '''
@@ -191,3 +191,52 @@ def test_a_settle_used_as_a_value_is_left_alone() -> None:
 def test_the_settle_that_reads_is_what_the_rule_leaves_standing() -> None:
     """A bound method satisfies `eventually`'s callable without a lambda."""
     assert lint_source('qa.eventually("the row lands", row.is_visible, covers=["ac:1"])\n') == []
+
+
+SUBSCRIPT_PLAN = '''\
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-story-1", story="story-1")
+
+api = target("api")
+
+
+@scenario(target=api, mechanism="live", covers=["okf:docs/features/demo/item.md:contract"])
+def reads_a_field_by_subscript(qa: Qa) -> None:
+    body = qa.http.get("/api/items/1", expect_status=200).json()
+    qa.check("the item is named", body["item"]["name"] == "chair", covers=["ac:1"])
+'''
+
+EVIDENCE_SUBSCRIPT_PLAN = SUBSCRIPT_PLAN.replace(
+    'body["item"]["name"] == "chair", covers=["ac:1"]',
+    'qa.field(body, "item.name") == "chair", actual=body["item"], covers=["ac:1"]',
+)
+
+INDEX_PLAN = SUBSCRIPT_PLAN.replace(
+    'body["item"]["name"] == "chair", covers=["ac:1"]',
+    'qa.field(body, "item.name") == "chair", actual=repr(body)[-200:], covers=["ac:1"]',
+)
+
+
+def test_an_assertion_that_reads_a_named_field_by_subscript_is_rejected() -> None:
+    problems = lint_source(SUBSCRIPT_PLAN, filename="qa_plan.py")
+
+    assert len(problems) == 1
+    assert "subscript" in problems[0]
+    assert 'qa.field(obj, "a.b")' in problems[0]
+
+
+def test_the_evidence_arguments_are_read_the_same_way_as_the_condition() -> None:
+    # `actual=` is evaluated on the way into the call, so a plan that fixed only the
+    # condition still dies on the argument that was supposed to explain the failure.
+    problems = lint_source(EVIDENCE_SUBSCRIPT_PLAN, filename="qa_plan.py")
+
+    assert len(problems) == 1
+    assert "subscript" in problems[0]
+
+
+def test_indexing_something_the_plan_already_shaped_is_left_alone() -> None:
+    # A slice of a captured stream is not a claim about how the product spells a field,
+    # and a rule that flagged it would push authors to route it through `qa.field` for
+    # nothing.
+    assert lint_source(INDEX_PLAN, filename="qa_plan.py") == []

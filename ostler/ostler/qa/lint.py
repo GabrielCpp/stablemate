@@ -168,6 +168,26 @@ class PlanLintVisitor(ast.NodeVisitor):
             return
         self.generic_visit(node)
 
+    def _check_condition(self, node: ast.Call) -> None:
+        # The condition and the two evidence arguments alike: `actual=body["claim"]` is
+        # evaluated on the way into the call, so it raises exactly where the condition
+        # would have, and a plan that fixed only the condition still dies on the argument
+        # that was supposed to explain the failure.
+        watched = [*node.args[1:2]]
+        watched += [kw.value for kw in node.keywords if kw.arg in {"actual", "expected"}]
+        for inner in [n for arg in watched for n in ast.walk(arg)]:
+            # A *named* key only. `stderr[-2000:]` and `entries[0]` are indexing something
+            # the plan already knows the shape of; the hazard is the plan spelling a field
+            # the product spells differently, and that always reads as a string literal.
+            if isinstance(inner, ast.Subscript) and isinstance(inner.slice, ast.Constant) and isinstance(inner.slice.value, str):
+                self.problems.append(
+                    f"line {node.lineno}: this assertion reads observed data by subscript — "
+                    f"a key the product spells differently raises instead of failing this "
+                    f"check, which kills the scenario and leaves every obligation it covers "
+                    f"`unproven` rather than red; read it with `qa.field(obj, \"a.b\")`"
+                )
+                return
+
     def visit_Call(self, node: ast.Call) -> None:
         if isinstance(node.func, ast.Attribute) and node.func.attr in _FILESYSTEM_METHODS:
             self.problems.append(
@@ -176,6 +196,8 @@ class PlanLintVisitor(ast.NodeVisitor):
                 f"evidence in `qa.artifact(...)`"
             )
             return
+        if isinstance(node.func, ast.Attribute) and node.func.attr in _ASSERTION_METHODS:
+            self._check_condition(node)
         if isinstance(node.func, ast.Name) and node.func.id not in ALLOWED_BUILTIN_CALLS:
             # A bare-name call to anything other than a known-safe builtin is only legitimate
             # when the name resolves to something defined in the plan itself (a helper
@@ -246,6 +268,14 @@ _FILESYSTEM_METHODS = frozenset({
 #:
 #: A settle used as a *value* is untouched: `with qa.page.expect_response(...)` and any
 #: `x = something.wait_for(...)` are handling the result rather than betting the trial on it.
+#: The assertion verbs whose condition argument is plan-authored Python rather than a
+#: declared check. A missing key reached by subscript there is not a failed assertion, it is
+#: a dead scenario: the traceback aborts before the checks that would have named the defect,
+#: and the run reports `unproven` — nothing observed the product — for obligations the plan
+#: was one comparison away from settling. `qa.field()` yields `None` instead, so the same
+#: misspelling comes out red in the one place that can explain it.
+_ASSERTION_METHODS = frozenset({"check", "require", "eventually"})
+
 _SETTLE_METHODS = frozenset({
     "wait_for", "wait_for_selector", "wait_for_url", "wait_for_load_state",
     "wait_for_timeout", "wait_for_event", "wait_for_function",

@@ -34,8 +34,8 @@ api = target("api")
 def item_is_emitted(qa: Qa) -> None:
     """The emitted item carries the id it was asked for."""
     payload = json.load((qa.root / "out.json").open(encoding="utf-8"))
-    qa.check("the item is the one requested", payload["item"]["id"] == "abc",
-             actual=payload["item"]["id"], expected="abc", covers=["{obligation}"])
+    qa.check("the item is the one requested", qa.field(payload, "item.id") == "abc",
+             actual=qa.field(payload, "item.id"), expected="abc", covers=["{obligation}"])
 '''
 
 
@@ -351,12 +351,12 @@ def test_a_module_helper_s_checks_count_for_the_scenario_that_calls_it(tmp_path:
     """
     spec = _spec(tmp_path)
     factored = PLAN.replace(
-        '    qa.check("the item is the one requested", payload["item"]["id"] == "abc",\n'
-        '             actual=payload["item"]["id"], expected="abc", covers=["{obligation}"])\n',
+        '    qa.check("the item is the one requested", qa.field(payload, "item.id") == "abc",\n'
+        '             actual=qa.field(payload, "item.id"), expected="abc", covers=["{obligation}"])\n',
         "    _assert_it(qa, payload)\n\n\n"
         "def _assert_it(qa: Qa, payload: dict) -> None:\n"
-        '    qa.check("the item is the one requested", payload["item"]["id"] == "abc",\n'
-        '             actual=payload["item"]["id"], expected="abc", covers=["{obligation}"])\n',
+        '    qa.check("the item is the one requested", qa.field(payload, "item.id") == "abc",\n'
+        '             actual=qa.field(payload, "item.id"), expected="abc", covers=["{obligation}"])\n',
     )
     document, problems = load_plan(_plan(spec, factored), spec, tmp_path)
     assert not problems and document is not None
@@ -791,8 +791,8 @@ def test_a_scenario_whose_only_assertion_retries_validates_clean(tmp_path: Path)
     """
     spec = _spec(tmp_path)
     retrying = PLAN.replace(
-        '    qa.check("the item is the one requested", payload["item"]["id"] == "abc",\n'
-        '             actual=payload["item"]["id"], expected="abc", covers=["{obligation}"])\n',
+        '    qa.check("the item is the one requested", qa.field(payload, "item.id") == "abc",\n'
+        '             actual=qa.field(payload, "item.id"), expected="abc", covers=["{obligation}"])\n',
         '    qa.eventually("the item is the one requested",\n'
         '                  lambda: payload["item"]["id"] == "abc",\n'
         '                  expected="abc", covers=["{obligation}"])\n',

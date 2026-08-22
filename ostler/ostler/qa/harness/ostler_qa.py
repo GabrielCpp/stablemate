@@ -48,6 +48,7 @@ from types import FunctionType
 from typing import Any
 
 __all__ = [
+    "MISSING",
     "CheckFailed",
     "HttpError",
     "Qa",
@@ -846,6 +847,68 @@ VERIFIERS: dict[str, Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]] 
 }
 
 
+class _Missing:
+    """The value `qa.field` yields for something the product did not put there.
+
+    `None` would be the obvious answer and it is the wrong one: the plan that asked is
+    about to call `len()` on it, iterate it, or compare it, and each of those raises —
+    which is the abort `qa.field` exists to prevent, moved one line down. So this answers
+    every question negatively instead. It is falsy, empty, contains nothing, indexes to
+    itself, and equals nothing at all — not even another absence — so the comparison it
+    lands in comes out `False` and the check goes red with the rest of the scenario still
+    to run.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<missing>"
+
+    def __bool__(self) -> bool:
+        return False
+
+    def __len__(self) -> int:
+        return 0
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(())
+
+    def __contains__(self, item: Any) -> bool:
+        return False
+
+    def __getitem__(self, key: Any) -> "_Missing":
+        return self
+
+    def __eq__(self, other: object) -> bool:
+        # Including another absence: `qa.field(a, "x") == qa.field(b, "x")` must not pass
+        # by both sides being gone, which is a whole assertion that cannot go red. Ask with
+        # `is MISSING` when the absence is the thing being asserted.
+        return False
+
+    def __ne__(self, other: object) -> bool:
+        return True
+
+    def __hash__(self) -> int:
+        return hash("<missing>")
+
+    def __lt__(self, other: object) -> bool:
+        return False
+
+    def __le__(self, other: object) -> bool:
+        return False
+
+    def __gt__(self, other: object) -> bool:
+        return False
+
+    def __ge__(self, other: object) -> bool:
+        return False
+
+
+#: The one absence. Exported so a plan can say `qa.field(body, "a.b") is MISSING` when the
+#: absence is the thing it means to assert.
+MISSING = _Missing()
+
+
 class Qa:
     """Everything a scenario is given. One instance per scenario process.
 
@@ -1004,6 +1067,38 @@ class Qa:
             list(allowed),
             self.covers,
         )
+
+    def field(self, data: Any, path: str, default: Any = MISSING) -> Any:
+        """Read one value out of observed product data without ever raising.
+
+        The name a plan spells is a claim about the product, and when the product spells
+        it differently that is exactly the contradiction the run exists to find. Reached
+        by subscript it is not a contradiction at all — the `KeyError` kills the scenario
+        mid-way, so nothing after it observes anything, and the obligations it covered
+        come back `unproven` instead of red. A whole seeded field-casing defect went
+        uncaught that way.
+
+        So walk the path instead. `path` is dotted; a segment that is all digits indexes a
+        sequence. Anything missing, of the wrong shape, or out of range yields `default`,
+        which is `MISSING` unless the caller names another — and `MISSING` is a value every
+        way of asking about it answers negatively, so it fails the check it is compared in
+        loudly, in the right place, with the rest of the scenario still to run.
+
+            qa.check("attributed to the caller", qa.field(body, "claim.holder_uid") == uid, covers=[...])
+        """
+        cursor = data
+        for segment in path.split("."):
+            if isinstance(cursor, Mapping):
+                if segment not in cursor:
+                    return default
+                cursor = cursor[segment]
+            elif isinstance(cursor, Sequence) and not isinstance(cursor, str | bytes):
+                if not segment.isdigit() or int(segment) >= len(cursor):
+                    return default
+                cursor = cursor[int(segment)]
+            else:
+                return default
+        return cursor
 
     def check(
         self,
