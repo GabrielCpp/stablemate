@@ -42,6 +42,7 @@ benchmark the same workflows against a different backlog and stack.
     bench.py --spec suites/todo-app/benchmark.yaml status    what exists so far
     bench.py --spec suites/todo-app/benchmark.yaml watch     is the RUNNING run progressing?      (free)
     bench.py --spec suites/todo-app/benchmark.yaml score     THE SCORECARD: quality + reliability
+    bench.py --spec suites/docs-app/benchmark.yaml design-score  did author DESIGN, or transcribe?
     bench.py --spec suites/todo-app/benchmark.yaml reset     delete the target and start clean
 
 Phases are separately invocable because they have wildly different costs and failure
@@ -180,6 +181,12 @@ class Spec:
     #: Wall-clock ceiling per phase, in seconds (`budget: {author: 1800, coder: 2400}`).
     #: Absent or 0 for a phase means unbounded, which is the old behavior.
     budget: dict = field(default_factory=dict)
+    #: The held-out half of a design suite: a directory beside the spec holding
+    #: `expectations.yaml` and `journeys.yaml`. Nothing in it is ever copied into
+    #: `target` or named to a workflow — see `suites/docs-app/hidden/README.md` for why
+    #: the whole metric collapses the moment it is. Empty means this task has no design
+    #: score, which is every task but `docs-app`.
+    hidden: str = ""
     #: A `power.<level>.<backend>` overlay for the runs this spec drives — the tier the
     #: benchmark is *meant* to be run at, as spec data rather than machine state.
     power: dict = field(default_factory=dict)
@@ -214,6 +221,10 @@ class Spec:
         # reliability report then cheerfully answered "no runs recorded yet" rather than
         # noticing its own history had been erased.
         return self.logs / "artifacts"
+
+    @property
+    def hidden_dir(self) -> Path | None:
+        return self.path.parent / self.hidden if self.hidden else None
 
     def surface(self, name: str) -> dict:
         for s in self.surfaces:
@@ -308,6 +319,7 @@ def load_spec(path: Path) -> Spec:
         judge={**(raw.get("judge") or {}), **env_json("BENCH_JUDGE")},
         budget=raw.get("budget") or {},
         power=power,
+        hidden=raw.get("hidden") or "",
         over_hour=raw.get("over_hour") or "",
         tags=tags,
         label=os.environ.get("BENCH_SET", ""),
@@ -1400,6 +1412,468 @@ def write_scorecard(spec: Spec, bullets: list[dict], checks: list[dict], pct: fl
     return out
 
 
+# ── Design completeness: what the brief implied, and author never wrote ────────────────
+#
+# `score` measures backlog satisfaction, and is blind to this failure by construction: the
+# things a real docs-app run left out — no sign-out, no way to delete a page, screens
+# reachable only by typing a URL — were never bullets, so satisfying every bullet said
+# nothing about them. Authoring an app from a brief is a *design* act; this is the
+# instrument that says whether the workflow performed one.
+#
+# The invariant the whole metric rests on: **a design-completeness score is judged against
+# expectations the workflow under test was never shown.** They live under `hidden/` beside
+# the spec, no phase of the run reads them, and the suite's `backlog.md` is deliberately
+# underspecified. See `suites/docs-app/hidden/README.md`.
+
+DESIGN_LEVELS = {
+    0: ("absent", "no epic or story acknowledges this expectation"),
+    1: ("mentioned", "prose refers to it; no story's acceptance criteria would deliver it"),
+    2: ("covered", "a story's acceptance criteria, taken literally, deliver it"),
+}
+DESIGN_MAX = 2
+# Only reachable on the anchor run (`--live`), which scores the same expectations against
+# the app the coder actually built. Its job is calibration, not scoring: if the cheap
+# author-phase number stops predicting the live one, the instrument is wrong and gets
+# fixed before any more author work trusts it.
+OPERABLE = (3, "operable", "the built app does it — executable evidence exercises it live")
+
+PAPER_NOTE = """The epics and stories are the **only** thing you may score from. Do not
+open implementation code, and do not let its presence or absence move the level: this
+metric grades what the planning step wrote down, and a story the coder happened to build
+well is still a story, while a feature built without a story is not this workflow's doing.
+Level 2 is the ceiling here."""
+
+LIVE_NOTE = """This is the anchor run, so the built application is in scope **in addition
+to** the planning documents. Score levels 0-2 exactly as you would on the documents alone;
+award level 3 only when the running app's behavior is exercised by executable evidence you
+can point at — a test, an end-to-end script, a recorded QA artifact — that would fail if
+the rendering stopped holding. Implementing code that merely looks correct is level 2."""
+
+
+def design_levels(live: bool) -> dict[int, tuple[str, str]]:
+    levels = dict(DESIGN_LEVELS)
+    if live:
+        levels[OPERABLE[0]] = (OPERABLE[1], OPERABLE[2])
+    return levels
+
+
+def load_pack(spec: Spec, name: str, required: tuple[str, ...]) -> list[dict]:
+    """One held-out YAML file, validated at load.
+
+    Hand-edited data whose fields are only ever read inside a rendered prompt: a typo'd
+    key would otherwise reach the judge as the literal string `None`, and the judge would
+    grade whatever it made of that rather than refusing.
+    """
+    if spec.hidden_dir is None:
+        die(f"{spec.path.parent.name}: no `hidden:` in the spec — this task has no design score")
+    path = spec.hidden_dir / name
+    if not path.is_file():
+        die(f"no {name} at {path}")
+    items = yaml.safe_load(path.read_text(encoding="utf-8")) or []
+    if not isinstance(items, list) or not items:
+        die(f"{path}: expected a non-empty list")
+    for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            die(f"{path}[{i}]: expected a mapping, got {type(item).__name__}")
+        for key in required:
+            value = item.get(key)
+            if not isinstance(value, str) or not value.strip():
+                die(f"{path}[{i}]: `{key}` must be a non-empty string, got {value!r}")
+    return [dict(item) for item in items]
+
+
+def load_expectations(spec: Spec) -> list[dict]:
+    """The held-out pack: an invariant plus its rendering for this app.
+
+    The invariant is the type-independent symmetry ("every entered state is exitable"),
+    which is what lets the pack format outlive this suite; the rendering is what that
+    means for an app of this shape, and the rendering is what the judge scores.
+    """
+    return load_pack(spec, "expectations.yaml", ("id", "invariant", "rendering"))
+
+
+def load_journeys(spec: Spec) -> list[dict]:
+    journeys = load_pack(spec, "journeys.yaml", ("id", "persona"))
+    for j in journeys:
+        steps = j.get("steps") or []
+        if not isinstance(steps, list) or not all(isinstance(s, str) and s.strip() for s in steps):
+            die(f"journey {j['id']!r}: `steps` must be a non-empty list of strings")
+        j["steps"] = [" ".join(s.split()) for s in steps]
+    return journeys
+
+
+def authored_docs(spec: Spec) -> list[str]:
+    """Every epic and story author wrote, repo-relative — the judge's whole corpus."""
+    out = []
+    for epic_md in find_epics(spec.target):
+        out.append(str(epic_md.relative_to(spec.target)))
+        out += [str(s.relative_to(spec.target))
+                for s in sorted(epic_md.parent.glob("stories/*/story.md"))]
+    return out
+
+
+def bad_citations(spec: Spec, evidence: list[str], *, docs_only: bool) -> list[str]:
+    """The citations that do not resolve — the judge's commonest failure, checked for free.
+
+    `docs_only` is what keeps the paper score a *paper* score: a citation of
+    `web/app/routes/page.tsx` proves the coder built something and proves nothing about
+    what author wrote, so on the author-phase run it counts as no citation at all.
+    """
+    bad = []
+    for e in evidence:
+        rel = e.split(":", 1)[0].strip()
+        if not (spec.target / rel).exists() or (docs_only and not rel.startswith("docs/")):
+            bad.append(e)
+    return bad
+
+
+def judge_expectation(spec: Spec, exp: dict, rubric: str, judge: Judge, docs: list[str],
+                      *, live: bool) -> dict:
+    levels = design_levels(live)
+    prompt = render(
+        rubric,
+        expectation_id=exp["id"],
+        invariant=exp["invariant"],
+        rendering=" ".join(exp["rendering"].split()),
+        target=str(spec.target),
+        documents="\n".join(f"  - {d}" for d in docs) or "  (none — author wrote nothing)",
+        mode_note=LIVE_NOTE if live else PAPER_NOTE,
+        levels="\n".join(f"  {n} {name} — {desc}" for n, (name, desc) in sorted(levels.items())),
+    )
+    text = call_agent(judge, prompt, node_id=f"design_{exp['id']}", spec=spec)
+    parsed = wh_extract.parse_json_from_text(text, ["level", "evidence", "reason"]) or {}
+    try:
+        level = max(0, min(max(levels), int(parsed.get("level", 0))))
+    except (TypeError, ValueError):
+        level = 0
+    evidence = [str(e) for e in (parsed.get("evidence") or []) if str(e).strip()]
+    reason = str(parsed.get("reason") or "").strip() or "(judge returned no reason)"
+
+    # Stricter than `score`'s, and deliberately: there the unproven claim falls back to a
+    # structural fact (`planned`) that the epic graph independently establishes. Here
+    # there is no such fallback — the citation IS the finding — so an unverifiable claim
+    # scores `absent` rather than being discounted to `mentioned`.
+    bad = bad_citations(spec, evidence, docs_only=not live)
+    unverified = bool(bad) or (level >= 1 and not evidence)
+    if unverified and level >= 1:
+        level = 0
+    return {**exp, "level": level, "evidence": evidence, "reason": reason,
+            "unverified_citations": bad, "capped": unverified}
+
+
+def judge_journey(spec: Spec, journey: dict, rubric: str, judge: Judge,
+                  docs: list[str]) -> dict:
+    """Walk one persona journey on paper and count the steps no story delivers.
+
+    A checklist catches what someone thought to list; this catches what no enumeration
+    holds — a control that exists on a screen the journey never reaches, a step that falls
+    between two stories that each assumed the other had it.
+    """
+    prompt = render(
+        rubric,
+        journey_id=journey["id"],
+        persona=journey["persona"],
+        steps="\n".join(f"  {i + 1}. {s}" for i, s in enumerate(journey["steps"])),
+        target=str(spec.target),
+        documents="\n".join(f"  - {d}" for d in docs) or "  (none — author wrote nothing)",
+    )
+    text = call_agent(judge, prompt, node_id=f"journey_{journey['id']}", spec=spec)
+    parsed = wh_extract.parse_json_from_text(text, ["steps"]) or {}
+    answers = parsed.get("steps")
+    answers = answers if isinstance(answers, list) else []
+
+    steps = []
+    for i, script in enumerate(journey["steps"]):
+        # Aligned by position, never by the judge's echo of the step text: a judge that
+        # paraphrases (or returns nine answers for ten steps) must not silently drop a
+        # step from the denominator. An unanswered step is a dead end, not an absence.
+        answer = answers[i] if i < len(answers) and isinstance(answers[i], dict) else {}
+        evidence = [str(e) for e in (answer.get("evidence") or []) if str(e).strip()]
+        bad = bad_citations(spec, evidence, docs_only=True)
+        delivered = bool(answer.get("delivered")) and bool(evidence) and not bad
+        why = str(answer.get("why") or "").strip()
+        if not answer:
+            why = "the judge returned no verdict for this step"
+        elif answer.get("delivered") and not delivered:
+            why = f"cited nothing that resolves ({', '.join(bad) or 'no citation'})"
+        steps.append({"step": script, "delivered": delivered, "evidence": evidence,
+                      "why": why or "(no reason given)", "unverified_citations": bad})
+    return {**journey, "steps": steps,
+            "dead_ends": [s["step"] for s in steps if not s["delivered"]]}
+
+
+# ── The deterministic sub-check: which entities the stories forgot half of ─────────────
+#
+# Free, runs first, and reported *alongside* the judged score rather than merged into it —
+# the same way reliability already is. It is a second lens with its own failure mode (it
+# reads verbs, so a story that delivers deletion without ever saying "delete" is a false
+# gap), and averaging a heuristic into a judged number would hide both.
+
+OPERATIONS = {
+    "create": ("create", "creates", "creating", "add", "adds", "adding", "start", "starts"),
+    "read": ("see", "sees", "view", "views", "read", "reads", "list", "lists", "browse",
+             "browses", "open", "opens", "find", "finds"),
+    "update": ("edit", "edits", "editing", "update", "updates", "rename", "renames",
+               "change", "changes", "move", "moves", "save", "saves"),
+    "delete": ("delete", "deletes", "deleting", "remove", "removes", "archive", "archives"),
+}
+VERB_OP = {verb: op for op, verbs in OPERATIONS.items() for verb in verbs}
+# Words that stand between a verb and the thing it acts on. Not a parser — a determiner
+# list, which is the whole extent of the grammar this needs.
+DETERMINERS = {"a", "an", "the", "their", "its", "his", "her", "our", "any", "all", "each",
+               "that", "this", "these", "those", "new", "existing", "another", "other",
+               "same", "first", "second", "own", "one", "more", "up", "it", "them", "to",
+               "into", "from", "of", "on", "in", "at", "by", "for", "with", "and", "or"}
+WORD = re.compile(r"[a-z][a-z'-]*")
+
+
+def singular(word: str) -> str:
+    if word.endswith("ies") and len(word) > 4:
+        return word[:-3] + "y"
+    if word.endswith("sses"):
+        return word[:-2]
+    if word.endswith("s") and not word.endswith("ss") and len(word) > 3:
+        return word[:-1]
+    return word
+
+
+def entity_operations(text: str) -> dict[str, set[str]]:
+    """`verb → the noun it acts on`, over one document. Deterministic, and only that."""
+    words = WORD.findall(text.lower())
+    found: dict[str, set[str]] = defaultdict(set)
+    for i, word in enumerate(words):
+        op = VERB_OP.get(word)
+        if not op:
+            continue
+        for candidate in words[i + 1:i + 5]:
+            if candidate in DETERMINERS:
+                continue
+            found[singular(candidate)].add(op)
+            break
+    return found
+
+
+def crud_matrix(spec: Spec) -> list[dict]:
+    """Every entity the stories create, crossed with read/update/delete.
+
+    `create` is the anchor because it is the operation a brief always names — nobody
+    writes an app that never makes anything — while the other three are exactly what a
+    stakeholder assumes and a transcribing planner drops. An entity a story creates and no
+    story deletes is the `page-delete` miss, found without an agent turn.
+    """
+    combined: dict[str, set[str]] = defaultdict(set)
+    for epic_md in find_epics(spec.target):
+        for story in sorted(epic_md.parent.glob("stories/*/story.md")):
+            try:
+                text = story.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            for entity, ops in entity_operations(text).items():
+                combined[entity] |= ops
+    return sorted(
+        ({"entity": entity, "operations": sorted(ops),
+          "missing": sorted({"read", "update", "delete"} - ops)}
+         for entity, ops in combined.items() if "create" in ops),
+        key=lambda row: (-len(row["missing"]), row["entity"]))
+
+
+def report_crud_matrix(spec: Spec) -> list[dict]:
+    say("entity × operation (deterministic — a second lens, not part of the score)")
+    rows = crud_matrix(spec)
+    if not rows:
+        print("  no story text names anything being created — nothing to cross")
+        return rows
+    ops = ("create", "read", "update", "delete")
+    print(f"  {'entity':<24}" + "".join(f"{o:<9}" for o in ops))
+    print(f"  {'-' * 60}")
+    for row in rows:
+        marks = "".join(f"{'✓' if o in row['operations'] else '·':<9}" for o in ops)
+        print(f"  {row['entity'][:23]:<24}{marks}")
+    print(f"  {'-' * 60}")
+    print(f"  {DIM}read from the stories' verbs, so a story that delivers an operation "
+          f"without naming it{RESET}")
+    print(f"  {DIM}reads as a gap. Gaps are questions to ask the plan, never a score.{RESET}")
+    return rows
+
+
+def cmd_design_score(spec: Spec, *, judge: bool, jobs: int, only: list[str],
+                     live: bool, journeys: bool) -> int:
+    """Score what author designed against expectations it was never shown."""
+    if not spec.target.is_dir():
+        die(f"no target at {spec.target} — nothing to score")
+    expectations = load_expectations(spec)
+    if only:
+        expectations = [e for e in expectations if e["id"] in set(only)]
+        if not expectations:
+            die(f"no expectation matches {', '.join(only)}")
+    docs = authored_docs(spec)
+    if not docs:
+        die(f"no epics or stories under {spec.target}/docs/epics — run author first")
+
+    say(f"design completeness ({spec.target} — {len(docs)} authored document(s))")
+    rows = report_crud_matrix(spec)
+
+    if not judge:
+        # There is no structural stand-in for "would these acceptance criteria deliver
+        # this". `score --no-judge` can still say `planned` because the epic graph records
+        # coverage; nothing records this, so the honest structural answer is to print the
+        # deterministic lens and decline to name a number.
+        print("\n  --no-judge: the entity × operation matrix above is the whole output.")
+        print("  Design satisfaction is a judgement about acceptance criteria and has no")
+        print("  structural stand-in — a score without the judge would be an invention.")
+        out = write_design_scorecard(spec, [], [], rows, live=live, judged=False)
+        print(f"\n  scorecard written to {out}")
+        return 0
+
+    rubric_path = HERE / "design-rubric.md"
+    journey_rubric_path = HERE / "journey-rubric.md"
+    for path in (rubric_path, journey_rubric_path):
+        if not path.is_file():
+            die(f"no rubric at {path}")
+    rubric = rubric_path.read_text(encoding="utf-8")
+    grader = Judge(get_backend(spec.judge.get("cli")), AgentResilience.from_env(), SYSTEM_CLOCK)
+    mode = "live (built app in scope)" if live else "paper (epics + stories only)"
+    print(f"\n  judging {len(expectations)} expectation(s) with {grader.backend.name}, "
+          f"{jobs} at a time — {mode}", flush=True)
+    with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+        scored = list(pool.map(
+            lambda e: judge_expectation(spec, e, rubric, grader, docs, live=live), expectations))
+
+    levels = design_levels(live)
+    say("design satisfaction")
+    print(f"  {'expectation':<24}{'level':<14}invariant / why")
+    print(f"  {'-' * 92}")
+    for e in sorted(scored, key=lambda x: -x["level"]):
+        flag = " ⚠" if e.get("capped") else ""
+        print(f"  {e['id']:<24}{e['level']} {levels[e['level']][0]:<12}{e['invariant'][:36]:<38}"
+              f"{e['reason'][:28]}{flag}")
+    print(f"  {'-' * 92}")
+
+    total = sum(e["level"] for e in scored)
+    pct = 100.0 * total / (DESIGN_MAX * len(scored))
+    tally: dict[int, int] = defaultdict(int)
+    for e in scored:
+        tally[e["level"]] += 1
+    # Always a percentage of 2, live run included. The anchor exists to be *compared* with
+    # the paper run, and a denominator that moved between them would make the comparison
+    # measure the denominator; level 3 is reported as its own count instead.
+    print(f"\n  {BOLD}design satisfaction: {pct:.0f}%{RESET}  "
+          f"({total}/{DESIGN_MAX * len(scored)} across {len(scored)} expectations, "
+          f"as a percentage of {DESIGN_MAX})")
+    print("  " + "   ".join(f"{levels[n][0]}: {tally[n]}" for n in sorted(levels, reverse=True)))
+
+    capped = [e for e in scored if e.get("capped")]
+    if capped:
+        print(f"\n  ⚠ {len(capped)} expectation(s) scored `absent`: the judge claimed coverage")
+        print("    but cited planning documents that do not resolve. Unproven, not near-misses:")
+        for e in capped:
+            print(f"      - {e['id']}: {', '.join(e['unverified_citations']) or '(no citation)'}")
+
+    walked = []
+    if journeys:
+        scripts = load_journeys(spec)
+        journey_rubric = journey_rubric_path.read_text(encoding="utf-8")
+        print(f"\n  walking {len(scripts)} journey(s)…", flush=True)
+        with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+            walked = list(pool.map(
+                lambda j: judge_journey(spec, j, journey_rubric, grader, docs), scripts))
+        report_journeys(walked)
+
+    out = write_design_scorecard(spec, scored, walked, rows, live=live, judged=True, pct=pct)
+    print(f"\n  scorecard written to {out}")
+    if live:
+        compare_paper_and_live(spec, scored)
+    return 0
+
+
+def report_journeys(walked: list[dict]) -> None:
+    say("journey walkthrough — dead ends per journey")
+    dead = 0
+    for j in walked:
+        n = len(j["dead_ends"])
+        dead += n
+        mark = "✓" if not n else "✗"
+        print(f"\n  {mark} {j['id']:<24}{n} dead end(s) of {len(j['steps'])} step(s)"
+              f"  {DIM}{j['persona'][:40]}{RESET}")
+        for step in j["steps"]:
+            bullet = " " if step["delivered"] else "✗"
+            print(f"      {bullet} {step['step'][:56]:<58}{DIM}{step['why'][:30]}{RESET}")
+    if walked:
+        print(f"\n  {BOLD}dead ends per journey: {dead / len(walked):.1f}{RESET}  "
+              f"({dead} across {len(walked)} journeys)")
+        print(f"  {DIM}A checklist catches what someone thought to list. This catches the "
+              f"steps that fall{RESET}")
+        print(f"  {DIM}between two stories that each assumed the other had them.{RESET}")
+
+
+def compare_paper_and_live(spec: Spec, scored: list[dict]) -> None:
+    """The anchor's only job: does the cheap paper score predict the live one?
+
+    Not a second score. If the two diverge, the *instrument* is what is wrong, and it gets
+    fixed before any more author work is judged by it — a paper number nobody has
+    calibrated is a number about documents, not about an app anyone can use.
+    """
+    paper_path = spec.logs / "design-scorecard.json"
+    if not paper_path.is_file():
+        print(f"\n  {DIM}no paper scorecard at {paper_path} — nothing to calibrate against{RESET}")
+        return
+    paper = json.loads(paper_path.read_text(encoding="utf-8"))
+    before = {e["id"]: e["level"] for e in paper.get("expectations", [])}
+    say("calibration — paper (author only) vs live (built app)")
+    print(f"  {'expectation':<24}{'paper':<10}{'live':<10}")
+    print(f"  {'-' * 48}")
+    diverged = []
+    for e in sorted(scored, key=lambda x: x["id"]):
+        was = before.get(e["id"])
+        if was is None:
+            continue
+        # A live level of 3 is the paper 2 confirmed, not a disagreement.
+        if abs(min(e["level"], DESIGN_MAX) - was) >= 1:
+            diverged.append(e["id"])
+        print(f"  {e['id']:<24}{was:<10}{e['level']:<10}"
+              f"{'← diverges' if e['id'] in diverged else ''}")
+    print(f"  {'-' * 48}")
+    if diverged:
+        print(f"\n  ⚠ {len(diverged)} expectation(s) diverge: {', '.join(diverged)}.")
+        print("    The paper score is not predicting what a user experiences. Fix the")
+        print("    instrument before trusting another author-phase number.")
+    else:
+        print("\n  ✓ paper and live agree — the cheap score is predicting the expensive one.")
+
+
+def write_design_scorecard(spec: Spec, expectations: list[dict], journeys: list[dict],
+                           crud: list[dict], *, live: bool, judged: bool,
+                           pct: float | None = None) -> Path:
+    # A separate file from `scorecard.json`, and separately named for the live run: the
+    # anchor's whole purpose is to be compared with the paper run it would otherwise
+    # overwrite.
+    out = spec.logs / ("design-scorecard-live.json" if live else "design-scorecard.json")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    levels = design_levels(live)
+    dead = sum(len(j["dead_ends"]) for j in journeys)
+    out.write_text(json.dumps({
+        "spec": str(spec.path),
+        "target": str(spec.target),
+        "mode": "live" if live else "paper",
+        "judged": judged,
+        "set": {"label": spec.label, "cli": os.environ.get("AGENT_CLI", "claude"),
+                "power": spec.power, "judge": spec.judge},
+        "design_satisfaction_pct": round(pct, 1) if pct is not None else None,
+        "max_level": DESIGN_MAX,
+        "levels": {n: name for n, (name, _) in levels.items()},
+        "expectations": [{k: e[k] for k in
+                          ("id", "invariant", "rendering", "level", "reason", "evidence",
+                           "capped", "unverified_citations")} for e in expectations],
+        "journeys": [{"id": j["id"], "persona": j["persona"],
+                      "steps": j["steps"], "dead_ends": j["dead_ends"]} for j in journeys],
+        "dead_ends_per_journey": round(dead / len(journeys), 2) if journeys else None,
+        "entity_operations": crud,
+        "authored_documents": authored_docs(spec),
+        "runs": read_runs(spec),
+    }, indent=2), encoding="utf-8")
+    return out
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────────────
 
 
@@ -1408,7 +1882,8 @@ def main(argv: list[str] | None = None) -> int:
         prog="bench.py", description=__doc__.split("\n\n")[0],
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("command", choices=["genesis", "backlog", "author", "coder", "all",
-                                       "status", "watch", "babysit", "score", "reset"])
+                                       "status", "watch", "babysit", "score", "design-score",
+                                       "reset"])
     p.add_argument("--spec", default=str(HERE / "suites" / "todo-app" / "benchmark.yaml"),
                    help="the benchmark app's spec file (default: the todo-app benchmark)")
     p.add_argument("--no-judge", action="store_true",
@@ -1416,6 +1891,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--jobs", type=int, default=4, help="judge turns to run at once")
     p.add_argument("--bullet", action="append", default=[],
                    help="score only this bullet id (repeatable)")
+    p.add_argument("--expectation", action="append", default=[],
+                   help="design-score: score only this expectation id (repeatable)")
+    p.add_argument("--live", action="store_true",
+                   help="design-score: the anchor run — score the same expectations "
+                        "against the BUILT app and calibrate the paper score against it")
+    p.add_argument("--no-journeys", action="store_true",
+                   help="design-score: skip the journey walkthrough (expectations only)")
     p.add_argument("--silence", type=float, default=900.0,
                    help="watch: seconds of no artifact write before a run is called stalled")
     p.add_argument("--every", type=float, default=180.0,
@@ -1438,6 +1920,10 @@ def main(argv: list[str] | None = None) -> int:
     for flag, given in (("--resume", args.resume), ("--budget", args.budget is not None)):
         if given and args.command not in ("author", "coder"):
             die(f"{flag} applies to `author` and `coder`, not `{args.command}`")
+    for flag, given in (("--expectation", bool(args.expectation)), ("--live", args.live),
+                        ("--no-journeys", args.no_journeys)):
+        if given and args.command != "design-score":
+            die(f"{flag} applies to `design-score`, not `{args.command}`")
 
     spec = load_spec(Path(args.spec).resolve())
     if args.command == "genesis":
@@ -1465,6 +1951,10 @@ def main(argv: list[str] | None = None) -> int:
         cmd_reset(spec)
     elif args.command == "score":
         return cmd_score(spec, judge=not args.no_judge, jobs=args.jobs, only=args.bullet)
+    elif args.command == "design-score":
+        return cmd_design_score(spec, judge=not args.no_judge, jobs=args.jobs,
+                                only=args.expectation, live=args.live,
+                                journeys=not args.no_journeys)
     return 0
 
 
