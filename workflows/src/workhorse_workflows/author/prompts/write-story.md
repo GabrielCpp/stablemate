@@ -143,10 +143,10 @@ about real behavior — not the mere presence of an element in the DOM.
 
 ## Write `{{ workhorse_var('story_path') }}`
 
-`ostler create story` already scaffolded this `story.md` with `## Dependencies`, `## Context`,
-`## Acceptance Criteria`, and `## Implementation Status` (`- **Status**: Not started`). Fill in the
-**Context** and **Acceptance Criteria** bodies — and only those. Add no other sections. The result
-should read:
+`ostler create story` already scaffolded this `story.md` with `## Dependencies`, `## Fixtures`,
+`## Context`, `## Acceptance Criteria`, and `## Implementation Status` (`- **Status**: Not
+started`). Fill in the **Context** and **Acceptance Criteria** bodies — and only those. Add no
+other sections. The result should read:
 
 ```markdown
 # Story: <title>
@@ -154,6 +154,10 @@ should read:
 ## Dependencies
 
 - Blocked by: <sibling-slug>      # reproduce verbatim; `(none)` when nothing blocks it
+
+## Fixtures
+
+(none)                            # reproduce verbatim; the coder's plan lane fills this in
 
 ## Context
 
@@ -173,6 +177,11 @@ Do not add Description, Evidence, Verification setup, QA, or Required skills sec
 discovers all of that. Leave `## Implementation Status` as scaffolded; do not hand-edit the
 `- **Status**:` line — status transitions go through `ostler set-status <slug> "<status>"`
 (the coder owns them).
+
+`## Fixtures` is not yours to write either. It names the QA arrangements this story's plan
+stands up — `- Fixture: <name>` per declared fixture — and which those are is not knowable
+until the plan exists. Leave it exactly as scaffolded; the coder fills it and `ostler doctor`
+holds each name to the repo's own declaration.
 
 `## Dependencies` is likewise not yours to write. It is the story dependency graph — one
 `- Blocked by: <sibling-slug>` per blocker, or the bare `(none)` — and the planner already set it.

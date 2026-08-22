@@ -44,6 +44,7 @@ Address every error or finding above. Common fixes:
   why) and **Acceptance Criteria** (observable, user-facing) — do NOT re-add Description, QA,
   Evidence, Verification setup, or Required skills; those are the coder's job now. Leave
   `## Dependencies` exactly as you found it — it is the story DAG, not prose to rewrite.
+  Leave `## Fixtures` alone for the same reason — it is the coder's to fill.
 - Add the `- **Status**: Not started` line under `## Implementation Status`.
 - Make any vague acceptance criterion **observable and user-facing** — what a person using the app
   would see or do (behaviour, visible content, parity with the source of truth), not a DOM selector
