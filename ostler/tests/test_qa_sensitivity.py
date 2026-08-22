@@ -62,6 +62,27 @@ def test_a_check_nothing_could_falsify_is_insensitive(monkeypatch: pytest.Monkey
     assert trial.survived and not trial.flipped
 
 
+@pytest.mark.parametrize(
+    "call",
+    [
+        'json_path(path="claim.status", matches=".*")',
+        'json_path(path="claim.status", matches=".")',
+    ],
+)
+def test_a_pattern_that_admits_any_value_is_insensitive(call: str) -> None:
+    """The shape a lax rule blesses: a stamp rescued by the mutation it was not written for.
+
+    Both patterns parse, and both notice the field going missing — which is enough for an
+    `any(flipped)` rule to call them discriminating. Neither can tell one value from
+    another, so the mutation that matters survives, and that is what has to disqualify them.
+    """
+    trial = _trial(call)
+    assert trial.witnessed
+    assert trial.flipped == ("the field is not there at all",)
+    assert trial.survived == ("the field holds something else",)
+    assert not trial.sensitive
+
+
 def test_a_pattern_no_string_can_be_invented_for_is_unwitnessed_not_green() -> None:
     """Reporting a guess as a witness would credit sensitivity the experiment never showed."""
     trial = _trial(r'omits(subject="detail", matches="(?=x)(?!x)")')

@@ -77,7 +77,15 @@ class Trial:
 
     @property
     def sensitive(self) -> bool:
-        return self.witnessed and bool(self.flipped)
+        """Green on the witness, and red under *every* mutation the call is meant to catch.
+
+        A survivor is a defect this call admits, so one is enough to disqualify it: an
+        `any(flipped)` rule would score `json_path("claim.status", matches=".*")` sensitive
+        off the field-absence mutation alone, while the mutation that matters — the field
+        holding something else — walks straight past it. `_plan` lists only mutations the
+        call is expected to catch, which is what makes "all of them" the honest bar.
+        """
+        return self.witnessed and bool(self.flipped) and not self.survived
 
 
 @dataclass(frozen=True)
