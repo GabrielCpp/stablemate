@@ -352,6 +352,15 @@ a static count of the `qa.check`/`qa.require` calls in its body, and again at ru
   how two plans share a helper instead of each carrying a copy of it. A static input file is
   declared with `input_file("name", "qa-inputs/thing.json")`; validation checks it exists
   and lives outside disposable `qa/`.
+- **Say in the story which fixtures it arranges with.** Every fixture this plan reaches for
+  belongs under `## Fixtures` in the story's own `story.md`, one `- Fixture: <name>` bullet
+  each, or the bare `(none)` when the plan arranges nothing:
+  `ostler update story <slug> --title … --covers … --depends … --fixtures '<a>, <b>'`.
+  `ostler doctor` reads that section against both the repo's declarations and this plan, and
+  refuses a name only one of the three knows about. The reason it is in the story rather than
+  inferred from the plan is the reader deciding whether the story is safe to change: an
+  arrangement visible only inside a Python file nobody opens is an arrangement nobody accounts
+  for.
 
 **Every Playwright locator and every URL comes from the book, not from the running page and
 not from your memory of it.** `ostler qa validate` enforces this statically and will reject
