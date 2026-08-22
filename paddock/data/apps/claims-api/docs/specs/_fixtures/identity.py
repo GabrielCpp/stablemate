@@ -6,8 +6,13 @@ it does. It exists because this was copied into all three plans, byte for byte â
 block of code that lives in three places is a field that gets spelled two ways in two of
 them, which is exactly the defect that made a clean tree read as contradicted.
 
-The accounts are the emulator's seeded ones. There is no credential here worth protecting:
-the emulator issues unsigned tokens for a project that exists only inside the trial.
+The accounts are the emulator's seeded ones â€” the arrangement `agents.yml` declares as the
+`seeded_accounts` fixture, which runs the app's own `auth/seed.mjs`. The emails below are
+the ones that seeder creates, and it is the app-language tier that makes that a shared
+fact rather than a coincidence: nothing here re-implements the seeding.
+
+There is no credential here worth protecting: the emulator issues unsigned tokens for a
+project that exists only inside the trial.
 """
 
 from ostler_qa import Qa

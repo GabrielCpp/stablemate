@@ -54,6 +54,24 @@ services:
 qa:
   tools:
     - docker
+  # The app-language tier. `auth/seed.mjs` is the app's own seeder — the same file the
+  # `seed` compose service runs at boot — so the identities the QA lane authenticates as
+  # are the identities the app itself considers seeded. That is the whole point of this
+  # tier: no second copy of the arrangement to drift from the first.
+  #
+  # It names `docker`, which this repo already opted into above. A fixture is a *named
+  # invocation* of an admitted tool and never a new door onto the process, which is why
+  # `ostler.qa.fixtures.preflight_errors` refuses one whose `tool:` is not in that list.
+  #
+  # Re-running it is safe: the seeder treats an account that already exists as done.
+  fixtures:
+    seeded_accounts:
+      tool: docker
+      args: [compose, run, --rm, seed]
+      provides: >-
+        two claim holders and one adjuster in the auth emulator, at
+        holder-a@example.com, holder-b@example.com and adjuster@example.com, the last
+        carrying the adjuster role claim
   # The Python fixture modules the frozen plans import, under `docs/specs/_fixtures/`.
   # Declaring them is what admits the import: `ostler qa lint` allows `_fixtures.<name>`
   # only for a name listed here, and lints the module itself with the same allowlist it
