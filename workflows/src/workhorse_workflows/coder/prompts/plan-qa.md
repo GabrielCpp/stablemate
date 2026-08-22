@@ -404,6 +404,21 @@ An obligation marked `"required": false` — the ones `--context-only` selects, 
 names something this story neither built nor touched — an endpoint with no implementation
 behind it, a screen no change reached. Read it for context; do not write a scenario against
 it, and do not invent a route to reach it.
+
+An obligation is owed the other way round for two reasons, and the second one surprises
+people: the change reached its node, **or** its node names the same relation `subject:` — the
+record, the event, the lock — as a node the change reached. That second kind is not scope
+creep. Add a field to a persisted record and update the screen that displays it, and the
+screen that *creates* that record is bound to the same record, out of this story, and broken
+by it unless someone proves otherwise. Its reason reads `relation-of-required`.
+
+What such a node owes is narrower than its whole surface: the bullets naming the thing it
+shares — `persistence:`, `consistency:`, `concurrency:`, `idempotency:`, `emits:`, `consumes:`
+— plus its node-level `contract`. Its `errors:`, `auth:` and `does:` stay context. The
+question the hop asks is whether the change broke the shared invariant, not whether that
+node's whole documented behaviour still holds; a story is not on the hook for re-proving an
+endpoint it never touched.
+
 The obligation packet is also the **upper** bound, not only the lower one. Your scenario
 budget is one scenario per coverable id — every obligation plus every acceptance criterion
 the packet lists — with room for half as many again, at least one, for a requirement whose
