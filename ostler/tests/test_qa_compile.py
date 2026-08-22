@@ -174,3 +174,66 @@ def test_a_missing_packet_is_a_problem_not_a_traceback(tmp_path: Path) -> None:
     result = cmd_compile_plan(tmp_path, out=tmp_path / "qa_plan.py")
     assert not result.ok
     assert result.status == "invalid"
+
+
+def _check(**args: object) -> dict:
+    return {"call": "created", "name": "http_status",
+            "args": {"code": 201, "path": "/api/things", **args}}
+
+
+def test_the_book_arrangement_compiles_to_the_call_and_the_precondition() -> None:
+    """Both halves of a `fixture:` bullet land, in the two places a plan keeps them.
+
+    The name and its arguments become the `qa.fixture(...)` the scenario opens with; the prose
+    after the em dash becomes the precondition. The alternative was a `TODO(arrange)` marker an
+    author filled in by reading the code — which is the contamination this whole compiler exists
+    to remove, arriving through the one door it had left open.
+    """
+    context = _context(
+        _obligation(
+            "okf:docs/features/demo/api.md#post-things:does:1",
+            checksDeclared=[_check()],
+            fixturesDeclared=[
+                {"name": "seeded-ledger", "args": ["2", "draft"],
+                 "provides": "two draft policies on file"},
+            ],
+        )
+    )
+    source = compile_plan(context, story="demo-story")
+    assert 'qa.fixture("seeded-ledger", "2", "draft")' in source
+    assert '"two draft policies on file"' in source
+    assert "preconditions=[]" not in source
+    ast.parse(source)
+
+
+def test_one_state_two_claims_is_arranged_once() -> None:
+    """Two claims documented in the same seeded ledger name one arrangement between them.
+
+    Running it twice would be a second ledger rather than the one both claims are about, so the
+    dedup is not tidiness — it is the difference between the state the book described and a
+    state nothing described.
+    """
+    ledger = {"name": "seeded-ledger", "args": ["2"], "provides": "two policies on file"}
+    context = _context(
+        _obligation("okf:docs/features/demo/api.md#post-things:does:1",
+                    checksDeclared=[_check()], fixturesDeclared=[ledger]),
+        _obligation("okf:docs/features/demo/api.md#post-things:does:2",
+                    checksDeclared=[_check()], fixturesDeclared=[ledger]),
+    )
+    source = compile_plan(context, story="demo-story")
+    assert source.count('qa.fixture("seeded-ledger", "2")') == 1
+
+    # Two that differ in an argument are two states, and both are reached.
+    other = {"name": "seeded-ledger", "args": ["5"], "provides": "five policies on file"}
+    context["obligations"][1]["fixturesDeclared"] = [other]
+    source = compile_plan(context, story="demo-story")
+    assert source.count('qa.fixture("seeded-ledger"') == 2
+
+
+def test_a_book_that_arranges_nothing_still_says_so_out_loud() -> None:
+    """Silence in the book is plan debt, and it stays visible as a marker rather than becoming
+    an empty `preconditions=[]` a reader would take for a considered answer."""
+    context = _context(
+        _obligation("okf:docs/features/demo/api.md#post-things:does:1", checksDeclared=[_check()])
+    )
+    assert "preconditions=[],  # TODO(arrange)" in compile_plan(context, story="demo-story")

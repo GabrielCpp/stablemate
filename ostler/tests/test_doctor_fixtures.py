@@ -125,3 +125,53 @@ def test_a_story_missing_the_section_entirely_reads_as_unwritten(repo: Path) -> 
     found = _findings(repo, "unwritten-story")
     assert [f.severity for f in found] == ["error"]
     assert "Fixtures (missing)" in found[0].message
+
+
+BOOK = """\
+---
+type: endpoint
+title: Claims
+---
+# Claims
+
+## Invocations
+
+### list-claims
+- route: `GET /api/claims`
+- fixture: {bullet}
+- authorization: an adjuster reads every claim on file.
+"""
+
+BOOK_PATH = "docs/features/area/claims.md"
+
+
+def test_a_book_fixture_the_repo_never_declared_is_an_error(repo: Path) -> None:
+    """The same bar a story's `## Fixtures` is held to, applied where the arrangement now lives.
+
+    A book bullet naming nothing is worse than a story one: it compiles straight into a
+    `qa.fixture(...)` call, so the miss surfaces as a scenario that cannot arrange rather than as
+    a declaration a reader could have checked.
+    """
+    _declare(repo)
+    write(repo / BOOK_PATH, BOOK.format(bullet="no-such — a state nobody declared"))
+    found = _findings(repo, "unknown-book-fixture")
+    assert [(f.severity, f.ref) for f in found] == [("error", "no-such")]
+    assert "seeded-accounts" in found[0].message
+
+
+def test_a_declared_book_fixture_is_clean(repo: Path) -> None:
+    _declare(repo)
+    write(repo / BOOK_PATH, BOOK.format(bullet="seeded-accounts 2 — two claims on file"))
+    assert _findings(repo, "unknown-book-fixture") == []
+    assert _findings(repo, "qa-fixture-bullet") == []
+
+
+def test_a_book_fixture_that_is_not_a_reference_is_an_error(repo: Path) -> None:
+    """`Seeded Accounts` could not be a key under `qa: {fixtures:}`, so it names no arrangement.
+    Reported as a grammar problem rather than a missing declaration, because the repair is in
+    the bullet and not in `agents.yml`."""
+    _declare(repo)
+    write(repo / BOOK_PATH, BOOK.format(bullet="Seeded Accounts"))
+    found = _findings(repo, "qa-fixture-bullet")
+    assert [f.severity for f in found] == ["error"]
+    assert "is not a fixture name" in found[0].message

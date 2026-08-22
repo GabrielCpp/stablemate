@@ -1058,3 +1058,66 @@ def test_rendering_a_slice_can_drop_the_locator_bullets():
     assert any("role:" in line for line in render_obligations(page))
     assert not any("role:" in line for line in render_obligations(page, locators=False))
     assert render_obligations([]) == ["- (none)"]
+
+
+def test_a_leading_fixture_is_ambient_while_a_nested_one_binds_to_its_claim(tmp_path: Path):
+    """The asymmetry between the two things a bullet above every claim can be.
+
+    A `verify:` written there observes the node's own contract and nothing else — an observation
+    is specific by nature, and crediting it to claims it was not written for is how a weak check
+    comes to cover a sharp claim. An arrangement is the opposite: the state the node as a whole is
+    documented in is the state every claim it mints is documented in, so a leading `fixture:` fans
+    out and a nested one adds to it rather than replacing it.
+    """
+    (tmp_path / "docs/features/acme/http").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/http/claims.md").write_text(
+        """---
+type: endpoint
+title: Claims
+---
+# Claims
+
+## Invocations
+
+### list-claims
+- route: `GET /api/claims`
+- code: app/list.py::list_claims
+- fixture: three-identities — the adjuster and both holders exist
+- authorization: a holder reads only their own claims.
+- authorization: an adjuster reads every claim on file.
+- fixture: seeded-ledger 2 — two claims on file
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "app/list.py").write_text("def list_claims():\n    return []\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/list.py").write_text("def list_claims():\n    return [1]\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    arranged = {
+        item["id"].rsplit("#", 1)[-1]: [
+            (row["name"], tuple(row["args"])) for row in item.get("fixturesDeclared", [])
+        ]
+        for item in packet["obligations"]
+    }
+
+    ambient = ("three-identities", ())
+    assert arranged["list-claims:contract"] == [ambient]
+    assert arranged["list-claims:authorization:1"] == [ambient]
+    # The second claim is documented in the seeded ledger *as well as* the identities — an
+    # arrangement written under it narrows nothing, it adds a second state to reach.
+    assert arranged["list-claims:authorization:2"] == [ambient, ("seeded-ledger", ("2",))]
+
+    provides = {
+        row["name"]: row["provides"]
+        for item in packet["obligations"]
+        for row in item.get("fixturesDeclared", [])
+    }
+    assert provides["three-identities"] == "the adjuster and both holders exist"
+    assert provides["seeded-ledger"] == "two claims on file"

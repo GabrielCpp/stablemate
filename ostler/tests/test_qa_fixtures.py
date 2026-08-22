@@ -120,3 +120,56 @@ def test_an_unparseable_plan_yields_nothing(tmp_path: Path) -> None:
     plan = tmp_path / "qa_plan.py"
     plan.write_text("def broken(:\n", encoding="utf-8")
     assert fixtures.referenced(plan) == (set(), set())
+
+
+def test_a_bare_name_is_the_whole_bullet() -> None:
+    """The common case: a claim documented in a state some declared fixture already reaches.
+
+    Nothing else needs saying, and the grammar must not make the book say it — the declaration
+    in `agents.yml` already carries the tool, the argv and the prose.
+    """
+    ref = fixtures.parse_bullet("three-identities")
+    assert isinstance(ref, fixtures.FixtureRef)
+    assert (ref.name, ref.args, ref.provides) == ("three-identities", (), "")
+
+
+def test_arguments_and_the_state_they_leave_behind_parse_apart() -> None:
+    """The em dash is the join/read split the relation subjects already use: the head is what
+    the harness runs and the tail is what a person reads in `preconditions`."""
+    ref = fixtures.parse_bullet("seeded-ledger 3 draft — one draft policy on file")
+    assert isinstance(ref, fixtures.FixtureRef)
+    assert ref.name == "seeded-ledger"
+    assert ref.args == ("3", "draft")
+    assert ref.provides == "one draft policy on file"
+
+
+def test_a_quoted_argument_stays_one_argument() -> None:
+    """An arrangement argument is prose often enough — a title, a note — that splitting it on
+    spaces would silently hand the fixture two arguments where the book wrote one."""
+    ref = fixtures.parse_bullet('seeded-ledger "policy of record" — one policy')
+    assert isinstance(ref, fixtures.FixtureRef)
+    assert ref.args == ("policy of record",)
+
+
+def test_a_name_no_declaration_could_carry_is_rejected_at_parse_time() -> None:
+    """`Seeded Ledger` cannot be a key under `qa: {fixtures:}`, so it cannot be a reference to
+    one. Saying that here beats a lookup miss, which reads like a missing declaration and sends
+    the author to edit the wrong file."""
+    problem = fixtures.parse_bullet("Seeded Ledger")
+    assert isinstance(problem, str)
+    assert "is not a fixture name" in problem
+
+
+def test_an_empty_bullet_and_unbalanced_quoting_are_both_sentences() -> None:
+    assert fixtures.parse_bullet("   ") == "empty"
+    problem = fixtures.parse_bullet('seeded-ledger "unclosed')
+    assert isinstance(problem, str)
+    assert "unbalanced quoting" in problem
+
+
+def test_prose_after_the_dash_may_contain_anything() -> None:
+    """Only the head is a grammar. The tail is a sentence, and a sentence with a comma, a colon
+    or a quote in it must not become a parse error."""
+    ref = fixtures.parse_bullet("ledger — one claim, awaiting a decision: \"open\"")
+    assert isinstance(ref, fixtures.FixtureRef)
+    assert ref.provides == 'one claim, awaiting a decision: "open"'

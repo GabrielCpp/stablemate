@@ -153,12 +153,30 @@ def compile_plan(
         lines.append("    covers=[")
         lines.extend(f"        {_lit(o['id'])}," for o in declared)
         lines.append("    ],")
-        lines.append("    preconditions=[],  # TODO(arrange): what must hold before this scenario runs")
+        arranged = _arrangements(declared)
+        if arranged:
+            # The preconditions are the book's own words for the state each fixture leaves
+            # behind. A scenario states what must hold before it runs, and the node that owns
+            # the claim already said it — copying it here beats an author paraphrasing it.
+            lines.append("    preconditions=[")
+            lines.extend(f"        {_lit(row['provides'] or row['name'])},"
+                         for row in arranged)
+            lines.append("    ],")
+        else:
+            lines.append("    preconditions=[],  # TODO(arrange): what must hold before this scenario runs")
         lines.append("    checkpoints=[],  # TODO(arrange): what an observer should see it prove")
         lines.append("    forbid=[],  # TODO: the weaker observations this scenario must not settle for")
         lines.append(")")
         lines.append(f"def {_slug(source)}_from_the_book(qa: Qa) -> None:")
         lines.append(f'    """Obligations {source} owes live evidence for."""')
+        if arranged:
+            lines.append("")
+            lines.extend(
+                f"    qa.fixture({_lit(row['name'])}"
+                + "".join(f", {_lit(arg)}" for arg in row.get("args", []))
+                + ")"
+                for row in arranged
+            )
         lines.extend(_scenario_body(declared))
 
     if debt:
@@ -173,6 +191,19 @@ def compile_plan(
             lines.append(f"#     {requirement[:100]}")
 
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _arrangements(obligations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every fixture the obligations in one scenario declare, in order, arranged once each.
+
+    Deduped on name *and* arguments: two claims documented in the same seeded ledger name one
+    arrangement, and running it twice would be a second ledger rather than the one they share.
+    Two that differ in an argument are two states, and both are arranged.
+    """
+    rows: list[dict[str, Any]] = []
+    for obligation in obligations:
+        rows.extend(obligation.get("fixturesDeclared", []))
+    return list({(row["name"], tuple(row.get("args", []))): row for row in rows}.values())
 
 
 def _scenario_body(obligations: list[dict[str, Any]]) -> list[str]:

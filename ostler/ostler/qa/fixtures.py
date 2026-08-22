@@ -27,6 +27,8 @@ door into the process.
 from __future__ import annotations
 
 import ast
+import re
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -68,6 +70,53 @@ class FixtureSpec:
             "provides": self.provides,
             "timeout": self.timeout,
         }
+
+
+#: The em dash separating a fixture reference from the prose saying what state it leaves
+#: behind. The same separator relation subjects use, for the same reason: the head is what a
+#: tool joins on and the tail is what a person reads, and one bullet can carry both.
+_PROVIDES_SEP = "\u2014"
+
+#: What a fixture name may look like in a book bullet. Deliberately the shape `agents.yml`
+#: keys already have — a name that cannot be a key there is a reference nothing could resolve,
+#: and saying so at parse time beats a lookup miss that reads like a missing declaration.
+_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+
+
+@dataclass(frozen=True)
+class FixtureRef:
+    """One `fixture:` bullet in the book: the arrangement a claim is documented in."""
+
+    name: str
+    args: tuple[str, ...]
+    provides: str
+
+
+def parse_bullet(value: str) -> FixtureRef | str:
+    """Parse one `fixture:` bullet, or return the sentence explaining why it is not one.
+
+    The grammar is `name [arg ...] [\u2014 what state it leaves behind]`. Not a call like
+    `verify:`, because a fixture is not one: `qa.fixture` takes a name this repo declared and
+    positional strings appended to the declared argv, and spelling that as Python would invite
+    a book to write arguments the harness has no way to bind.
+    """
+    text = " ".join(value.split())
+    if not text:
+        return "empty"
+    head, _, provides = text.partition(_PROVIDES_SEP)
+    try:
+        tokens = shlex.split(head.strip())
+    except ValueError as exc:
+        return f"unbalanced quoting: {exc}"
+    if not tokens:
+        return "names no fixture"
+    name, *args = tokens
+    if not _NAME_RE.match(name):
+        return (
+            f"`{name}` is not a fixture name — it must match the key `agents.yml` declares it "
+            f"under (lowercase, digits, `.`, `_`, `-`)"
+        )
+    return FixtureRef(name=name, args=tuple(args), provides=provides.strip())
 
 
 def declared(root: Path) -> tuple[dict[str, FixtureSpec], list[str]]:

@@ -236,6 +236,10 @@ class BulletKey:
     link: bool = False     # value is a reference ostler resolves (doc link, or a code ref)
     check: bool = False    # value is a named check from ``ostler.checks`` — an *observation*
                            # that fulfils this node's obligations, with its arguments
+    arrange: bool = False  # value names a fixture this repo declares — the *arrangement* that
+                           # reaches the state the claim above it is about. The counterpart of
+                           # ``check``: one says what observing the claim looks like, the other
+                           # says how to get to where it can be observed.
 
 
 @dataclass(frozen=True)
@@ -306,6 +310,38 @@ def check_keys(node_type: str) -> tuple[str, ...]:
     return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.check)
 
 
+def arrange_keys(node_type: str) -> tuple[str, ...]:
+    """Every bullet key on `node_type` whose value names a declared fixture.
+
+    The third leg of the same triple: `normative_keys` says what the node claims,
+    `check_keys` says what observing the claim looks like, and these say how to reach the
+    state where observing it is possible. It belongs in the book with the other two because
+    it is a fact about the invariant, not about any one plan — the state a claim is true *in*
+    is part of what the claim says, and a plan that arranges some other state proves nothing
+    about it.
+    """
+    uitype = UI_TYPES_BY_NAME.get(node_type)
+    return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.arrange)
+
+
+def attributed_fixtures(
+    node_type: str, bullet_order: Iterable[Sequence[Any]]
+) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
+    """Split a node's fixture bullets between the node and the claims they arrange for.
+
+    Document order binds these exactly as it binds checks, with one difference in what the
+    first half means. A check written above every normative bullet observes *the node's own
+    contract* and nothing else. A fixture written there arranges the state the whole node is
+    documented in — the ledger every claim below it is about — so it applies to every
+    obligation the node mints, and the caller fans it out rather than filing it alone.
+
+    That asymmetry is the honest reading of both. An observation is specific by nature: it
+    settles the one claim it was written under. An arrangement is ambient by nature: state
+    reached once is the state every later claim is read in.
+    """
+    return _attributed(node_type, bullet_order, arrange_keys(node_type))
+
+
 def attributed_checks(
     node_type: str, bullet_order: Iterable[Sequence[Any]]
 ) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
@@ -330,8 +366,15 @@ def attributed_checks(
     Returned as raw bullet values, so each caller parses once. The keys of the second half are
     `(bullet key, 1-based index)`, counted the way obligation ids are minted.
     """
+    return _attributed(node_type, bullet_order, check_keys(node_type))
+
+
+def _attributed(
+    node_type: str, bullet_order: Iterable[Sequence[Any]], keys: Sequence[str]
+) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
+    """Bind each bullet in *keys* to the nearest normative bullet above it, in document order."""
     normative = set(normative_keys(node_type))
-    observing = set(check_keys(node_type))
+    observing = set(keys)
     contract: list[str] = []
     per_bullet: dict[tuple[str, int], list[str]] = {}
     counts: dict[str, int] = {}
@@ -394,6 +437,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("steps", nested=True, link=True),
             BulletKey("end"),
             BulletKey("verify", check=True),
+            BulletKey("fixture", arrange=True),
             # The test files covering this node, as `path` or `path::name`. Not an obligation
             # and not evidence: one reader wants it, the regression node, which attributes a
             # failing suite test back to the node that owns it. That reader needs a *path* and
@@ -434,6 +478,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # the scenario happened to assert, and the pin the program lost read exactly like the
             # pin it kept.
             BulletKey("verify", check=True),
+            BulletKey("fixture", arrange=True),
         ),
     ),
     # ---- section-level elements / behaviors (a `### id` under a typed `## Heading`) ----
@@ -464,6 +509,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("states"),
             BulletKey("code", link=True),
             BulletKey("verify", check=True),
+            BulletKey("fixture", arrange=True),
         ),
     ),
     UINodeType(
@@ -477,6 +523,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("code", link=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
+            BulletKey("fixture", arrange=True),
         ),
     ),
     UINodeType(
@@ -497,6 +544,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # the scenario chose to assert. Books were already writing `verify:` here — the key
             # not being declared meant nobody read them.
             BulletKey("verify", check=True),
+            BulletKey("fixture", arrange=True),
         ),
     ),
     UINodeType(
@@ -517,6 +565,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("does", required=True, nested=True),
             BulletKey("code", link=True),
             BulletKey("verify", check=True),
+            BulletKey("fixture", arrange=True),
             BulletKey("tests", link=True),
         ),
     ),
@@ -531,6 +580,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("consumes"),
             BulletKey("code", link=True),
             BulletKey("verify", check=True),
+            BulletKey("fixture", arrange=True),
             BulletKey("tests", link=True),
         ),
     ),
@@ -545,6 +595,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("returns"),
             BulletKey("code", link=True),
             BulletKey("verify", check=True),
+            BulletKey("fixture", arrange=True),
             BulletKey("tests", link=True),
         ),
     ),
@@ -559,6 +610,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("required"),
             BulletKey("semantics"),
             BulletKey("verify", check=True),
+            BulletKey("fixture", arrange=True),
         ),
     ),
     # One ordered boot step of a `runbook` — a `### id` under its `## Steps` (docs/okf-runbook.md §4.3).

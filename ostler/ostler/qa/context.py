@@ -17,6 +17,7 @@ from ostler import graph as graph_mod
 from ostler import checks as checks_mod
 from ostler import inventory, markdown, path as path_mod, refs as refs_mod, registry, syntax
 from ostler.model import Graph, _parse_ui_nodes, load
+from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.outcome import QaOutcome
 
 #: The last-resort declaration shape, for a language with no parser and no entry in
@@ -1536,6 +1537,22 @@ def _dedup_checks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list({row["call"]: row for row in rows}.values())
 
 
+def _parse_fixtures(values: list[str]) -> list[dict[str, Any]]:
+    """The declared arrangements among *values*, in order, deduped on name and arguments.
+
+    A bullet that does not parse is dropped here and reported by `ostler doctor`, the same
+    division of labour `_parse_checks` keeps: the packet says what the book successfully
+    declared, and the lint says what it tried to.
+    """
+    rows: list[dict[str, Any]] = []
+    for value in values:
+        parsed = fixtures_mod.parse_bullet(value)
+        if isinstance(parsed, fixtures_mod.FixtureRef):
+            rows.append({"name": parsed.name, "args": list(parsed.args),
+                         "provides": parsed.provides})
+    return list({(row["name"], tuple(row["args"])): row for row in rows}.values())
+
+
 def _locators(node: dict[str, Any]) -> dict[str, list[str]]:
     bullets = node.get("bullets", {})
     return {key: _values(bullets.get(key)) for key in _LOCATOR_KEYS if _values(bullets.get(key))}
@@ -1580,6 +1597,15 @@ def _obligations(
     contract_rows = _dedup_checks(_parse_checks(contract))
     if contract_rows:
         base["checksDeclared"] = contract_rows
+    # A fixture written above every claim arranges the state the node as a whole is documented
+    # in, so it rides on `base` and reaches every obligation minted below — see
+    # `registry.attributed_fixtures` for why that differs from how a leading check is filed.
+    node_fixtures, fixtures_per_bullet = registry.attributed_fixtures(
+        str(node.get("type", "")), node.get("bulletOrder") or []
+    )
+    ambient = _parse_fixtures(node_fixtures)
+    if ambient:
+        base["fixturesDeclared"] = ambient
     output = [base]
     for key in registry.normative_keys(str(node.get("type", ""))):
         for index, requirement in enumerate(_values(node.get("bullets", {}).get(key)), start=1):
@@ -1605,6 +1631,13 @@ def _obligations(
                 obligation["checksDeclared"] = rows
             else:
                 obligation.pop("checksDeclared", None)
+            arranged = _parse_fixtures(fixtures_per_bullet.get((key, index), []))
+            combined = list({(row["name"], tuple(row["args"])): row
+                             for row in [*ambient, *arranged]}.values())
+            if combined:
+                obligation["fixturesDeclared"] = combined
+            else:
+                obligation.pop("fixturesDeclared", None)
             output.append(obligation)
     return output
 

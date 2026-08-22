@@ -333,6 +333,8 @@ def _check_fixtures(graph: Graph, f: list[Finding]) -> None:
     specs, _errors = fixtures_mod.declared(graph.root)
     known = set(specs) | fixtures_mod.declared_modules(graph.root)
 
+    _check_book_fixtures(graph, known, f)
+
     for epic in graph.epics:
         for story in epic.stories:
             if story.story_md is None:
@@ -376,6 +378,40 @@ def _check_fixtures(graph: Graph, f: list[Finding]) -> None:
                     f"story '{story.slug}' names fixture '{name}' but its qa_plan.py never asks "
                     f"for it ({plan_rel})",
                     epic.name, name, path=rel, line=1))
+
+
+def _check_book_fixtures(graph: Graph, known: set[str], f: list[Finding]) -> None:
+    """A `fixture:` bullet in the book names an arrangement this repo actually declares.
+
+    The book says what a claim is true of and how to observe it; a `fixture:` bullet says
+    which state it is true *in*, and that is a fact about the invariant rather than about any
+    one plan — which is why it is written here and not left for each plan to rediscover. The
+    bar is the story bullet's, for the same reason: a name nothing declares arranges nothing,
+    and a compiler reading the book would emit a call the harness refuses at run time.
+    """
+    for node in graph.ui_nodes:
+        arrange = registry.arrange_keys(node.type)
+        if not arrange:
+            continue
+        rel = node.path.relative_to(graph.root).as_posix()
+        for key, value, _bullet in node.bullet_order:
+            if key not in arrange:
+                continue
+            parsed = fixtures_mod.parse_bullet(value)
+            if isinstance(parsed, str):
+                f.append(Finding(
+                    "error", "qa-fixture-bullet",
+                    f"{node.id}: `{key}: {value}` is not a fixture reference — {parsed}",
+                    path=rel, line=node.line, ref=value))
+                continue
+            if parsed.name not in known:
+                f.append(Finding(
+                    "error", "unknown-book-fixture",
+                    f"{node.id}: `{key}:` names fixture '{parsed.name}', which this repo does "
+                    f"not declare — add it to `qa: {{fixtures:}}` or `qa: {{fixture_modules:}}` "
+                    f"in agents.yml. Declared here: "
+                    f"{', '.join(sorted(known)) or '(none)'}",
+                    path=rel, line=node.line, ref=parsed.name))
 
 
 def _epic_ref(epic_name: str) -> str:
