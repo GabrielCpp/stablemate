@@ -81,6 +81,7 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) check-public
 	$(MAKE) check-no-env
 	$(MAKE) check-no-giveup
+	$(MAKE) check-fixtures
 	$(MAKE) check-prompt-agnostic
 	$(MAKE) check-parsers
 	$(MAKE) check-portability
@@ -116,7 +117,10 @@ test-scripts: ## Run the repo-level guard scripts' own tests
 	# The guards in `scripts/` are the only code here with no package to be tested by, and
 	# they are exactly the code whose failure mode is silence: a hook check that looks in
 	# the wrong place reports every guard missing on a clone where they all run.
-	uv run pytest scripts/tests -q
+	# `--all-packages` because `check_fixtures.py` reads the fixture declarations through
+	# ostler. A bare `uv run` resolves that import only on a machine that has already run
+	# `make install`, which is the one condition a guard's own test must not depend on.
+	uv run --all-packages pytest scripts/tests -q
 
 .PHONY: check-public
 check-public: ## Guard the public/private split (no private names; the base stands alone)
@@ -144,6 +148,18 @@ check-no-giveup: ## Guard the "a workflow never gives up" rule (blocked, not fai
 	# This can only catch the vocabulary of the deleted pattern reappearing, not every
 	# way the rule could be broken again — see the script's docstring for what it misses.
 	uv run python scripts/check_no_giveup.py
+
+.PHONY: check-fixtures
+check-fixtures: ## Guard the declared-fixture rule across the benchmark corpus
+	# `ostler qa lint` and the run's own preflight see one plan and one app at a time,
+	# so a fixture module nobody declares — or a declaration with no file behind it in
+	# an app this round does not materialize — is invisible until somebody runs that
+	# task. The corpus plans are frozen and most rounds spend zero agent turns, so
+	# "until somebody runs it" can be months.
+	#
+	# `--all-packages` because the guard reads the declarations through ostler itself
+	# rather than reimplementing the schema: a second parser is a second thing to drift.
+	uv run --all-packages python scripts/check_fixtures.py
 
 .PHONY: check-prompt-agnostic
 check-prompt-agnostic: ## Guard invariant 1 (the coder workflow names no stack of its own)
