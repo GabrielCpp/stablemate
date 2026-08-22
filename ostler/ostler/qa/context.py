@@ -80,6 +80,11 @@ _EVENT_KEYS = ("emits", "consumes")
 #: are silently inert. The head shape is narrow (lowercase identifier, em dash, space either
 #: side) so an existing sentence cannot claim a subject by accident; a value without one has
 #: none and joins nothing, which is today's behaviour made explicit rather than incidental.
+#: What a node reached only by the one-hop rule is owed live evidence for: the bullets naming
+#: the thing it shares — the record, the event, the lock — and nothing else. Its node-level
+#: contract is owed alongside these, minted apart from them.
+_SHARED_INVARIANT_KEYS = frozenset(RELATION_KEYS) | frozenset(_EVENT_KEYS)
+
 _RELATION_SUBJECT_RE = re.compile(r"^([a-z0-9][a-z0-9._-]*)\s+—\s+(\S.*)$", re.DOTALL)
 
 #: How many nodes one relation subject may bind before it is worth a look. Warned about, never
@@ -471,6 +476,14 @@ def build_context(
     # `relation-of-required` is in neither context-only set, so `_is_required` needs no change
     # to honour it — and its `grounded` gate still applies, so a node with nothing built
     # behind it is still not owed live proof.
+    #
+    # What such a node owes is the invariant it shares, not the whole surface it happens to
+    # document. The sibling endpoint that writes the same record can be broken by a change to
+    # the record's shape; its own `422` body and its own auth rule cannot, and owing them
+    # would make every story re-prove each of its neighbours end to end. So a node reached
+    # only by the hop is owed live evidence for its relation bullets and its contract, and
+    # keeps the rest as context.
+    reached_by_the_diff = set(required_contracts)
     required_subjects = {
         subject for node_id in required_contracts for subject in _named_subjects(nodes_by_id[node_id])
     }
@@ -513,6 +526,7 @@ def build_context(
             direct_reasons.get(node_id, []),
             journey=False,
             required=node_id in required_contracts,
+            owed_keys=None if node_id in reached_by_the_diff else _SHARED_INVARIANT_KEYS,
         )
     ] + [
         obligation
@@ -1533,7 +1547,15 @@ def _obligations(
     *,
     journey: bool,
     required: bool = True,
+    owed_keys: frozenset[str] | None = None,
 ) -> list[dict[str, Any]]:
+    """Mint one obligation per normative bullet, plus the node-level contract.
+
+    `owed_keys` narrows what a *required* node owes live evidence for. It is `None` for a node
+    the change reached, which owes all of it; it names the relation keys for a node reached
+    only by sharing a subject with one, which is at risk through the record they share and not
+    through the refusal shapes it documents on its own account.
+    """
     suffix = "end-state" if journey else "contract"
     base = {
         "id": f"okf:{node['id']}:{suffix}",
@@ -1575,6 +1597,9 @@ def _obligations(
                 obligation["requirement"] = prose
                 if subject is not None:
                     obligation["subject"] = subject
+            if required and owed_keys is not None and key not in owed_keys:
+                obligation["required"] = False
+                obligation["evidenceRequired"] = "context"
             rows = _dedup_checks(_parse_checks(per_bullet.get((key, index), [])))
             if rows:
                 obligation["checksDeclared"] = rows

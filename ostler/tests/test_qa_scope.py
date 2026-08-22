@@ -473,14 +473,11 @@ def test_the_hop_does_not_chain_past_one_node(tmp_path: Path):
     assert archiver["evidenceRequired"] == "context"
 
 
-def test_the_screen_that_creates_the_record_is_owed_when_the_record_changes(tmp_path: Path):
-    """The user's case: a story splits, and the half nobody touched ships broken.
+def _record_book(tmp_path: Path) -> dict:
+    """Two grounded screens bound to one named record, and a third nobody has built.
 
-    Add a field to a persisted record, update the screen that displays it, and the screen that
-    *creates* that record is bound to the same record, out of scope, and never re-proved. It
-    is named on both nodes — `persistence: booking-record — …` — so the packet can find it.
-    Prose alone could not: every persistence value in a real book is a unique sentence, and an
-    equality join over sentences matches nothing.
+    The diff reaches the screen that *displays* the record. The screen that *creates* it is
+    out of scope and co-bound; the report screen is co-bound and ungrounded.
     """
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
@@ -501,10 +498,12 @@ def test_the_screen_that_creates_the_record_is_owed_when_the_record_changes(tmp_
         "---\ntype: screen\ntitle: New Booking\n---\n# New Booking\n\n"
         "- route: /booking/new\n"
         "- code:\n\n"
-        "## Create\n\n"
+        "## Components\n\n"
+        "### create\n\n"
         "- role: form\n"
         "- name: New booking\n"
         "- persistence: booking-record — submitting the form writes one booking and no more.\n"
+        "- keyboard: enter submits the form.\n"
         "- code: app/create.py::create\n"
         "- tests: tests/create_test.py::writes\n",
         encoding="utf-8",
@@ -531,7 +530,19 @@ def test_the_screen_that_creates_the_record_is_owed_when_the_record_changes(tmp_
     _git(tmp_path, "commit", "-m", "base")
     detail.write_text("def detail():\n    return {'seat': 1, 'row': 'A'}\n", encoding="utf-8")
 
-    packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
+    return build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
+
+
+def test_the_screen_that_creates_the_record_is_owed_when_the_record_changes(tmp_path: Path):
+    """The user's case: a story splits, and the half nobody touched ships broken.
+
+    Add a field to a persisted record, update the screen that displays it, and the screen that
+    *creates* that record is bound to the same record, out of scope, and never re-proved. It
+    is named on both nodes — `persistence: booking-record — …` — so the packet can find it.
+    Prose alone could not: every persistence value in a real book is a unique sentence, and an
+    equality join over sentences matches nothing.
+    """
+    packet = _record_book(tmp_path)
     assert validate_context(packet) == []
     by_id = {item["id"]: item for item in packet["obligations"]}
 
@@ -549,6 +560,29 @@ def test_the_screen_that_creates_the_record_is_owed_when_the_record_changes(tmp_
     report = by_id["okf:docs/features/demo/report.md#report:contract"]
     assert report["required"] is False
     assert report["evidenceRequired"] == "context"
+
+
+def test_a_hopped_node_owes_the_invariant_it_shares_and_not_its_whole_surface(tmp_path: Path):
+    """One hop is a claim about the record, not about everything the neighbour documents.
+
+    The screen that writes the record can be broken by the record's shape changing under it.
+    Its own refusal message cannot — nothing in the diff reached it — and owing it would make
+    every story re-prove each of its neighbours end to end, which is the scope explosion the
+    fixpoint was excluded for in the first place.
+    """
+    packet = _record_book(tmp_path)
+    by_id = {item["id"]: item for item in packet["obligations"]}
+
+    shared = by_id["okf:docs/features/demo/create.md#create:persistence:1"]
+    assert shared["required"] is True
+    assert shared["evidenceRequired"] == "live"
+
+    its_own = by_id["okf:docs/features/demo/create.md#create:keyboard:1"]
+    assert its_own["required"] is False
+    assert its_own["evidenceRequired"] == "context"
+
+    # The node the diff did reach owes all of itself, hop or no hop.
+    assert by_id["okf:docs/features/demo/detail.md#detail:persistence:1"]["required"] is True
 
 
 def test_a_relation_bullet_without_a_subject_names_nothing_and_joins_nothing(tmp_path: Path):
