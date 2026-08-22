@@ -37,6 +37,7 @@ The durable side is [the policy ledger](policy-ledger.md); the machine surface i
 - type: string
 - default: none
 - required: true on creation, and rejected as `policy_number` when blank.
+- verify: json_path("errors.policy_number", equals="Policy number is required.")
 - semantics: the human-facing identity of the contract, and the only field the id is derived from —
   `PN-1001` is always the policy at `/policies/pn-1001`. It is settled at creation: an edit neither
   sends it nor may change it.
@@ -46,6 +47,7 @@ The durable side is [the policy ledger](policy-ledger.md); the machine surface i
 - type: string
 - default: none
 - required: true, on creation and on every edit.
+- verify: json_path("errors.holder_email", equals="Holder email is required.")
 - semantics: the person the contract covers, matched case-insensitively when the umbrella
   prerequisite looks for this holder's other policies.
 
@@ -54,6 +56,7 @@ The durable side is [the policy ledger](policy-ledger.md); the machine surface i
 - type: string
 - default: `auto`, which is what [the new policy form](../gui/screens/new-policy.md) opens on.
 - required: true, and refused unless it is one of `auto`, `home`, `umbrella`.
+- verify: json_path("errors.coverage_type", equals="Choose a coverage type: auto, home or umbrella.")
 - semantics: the discriminator. It decides which further field is required, which premium band
   applies, and whether the cross-record umbrella prerequisite is checked at all.
 
@@ -62,6 +65,7 @@ The durable side is [the policy ledger](policy-ledger.md); the machine surface i
 - type: string
 - default: none
 - required: true when `coverage_type` is `auto`, and ignored otherwise.
+- verify: json_path("errors.vehicle_vin", equals="Auto coverage needs the vehicle VIN.")
 - semantics: the vehicle the auto policy covers. Its requirement is conditional, so a form that
   drops the field when the coverage type changes drops the rule with it.
 
@@ -70,6 +74,7 @@ The durable side is [the policy ledger](policy-ledger.md); the machine surface i
 - type: string
 - default: none
 - required: true when `coverage_type` is `home`, and ignored otherwise.
+- verify: json_path("errors.property_address", equals="Home coverage needs the property address.")
 - semantics: the property the home policy covers, on the same conditional footing as the VIN.
 
 ### start_date
@@ -78,6 +83,7 @@ The durable side is [the policy ledger](policy-ledger.md); the machine surface i
 - default: none
 - required: true, and refused when the date is in the past *on creation only* — an existing policy
   can be edited long after it started.
+- verify: json_path("errors.start_date", equals="Start date cannot be in the past.")
 - semantics: the day cover begins.
 
 ### end_date
@@ -85,6 +91,7 @@ The durable side is [the policy ledger](policy-ledger.md); the machine surface i
 - type: string, as `YYYY-MM-DD`
 - default: none
 - required: true, and refused unless it is strictly after `start_date`.
+- verify: json_path("errors.end_date", equals="End date must be after the start date.")
 - semantics: the day cover ends. Equal dates are a zero-length term and are refused as such.
 
 ### premium
@@ -92,6 +99,7 @@ The durable side is [the policy ledger](policy-ledger.md); the machine surface i
 - type: number
 - default: none
 - required: true, within the band its coverage type sets.
+- verify: json_path("errors.premium", equals="Premium for auto coverage must be between 100 and 10000.")
 - semantics: the annual price, banded per coverage type, so the same number is acceptable on one
   contract and refused on another.
 

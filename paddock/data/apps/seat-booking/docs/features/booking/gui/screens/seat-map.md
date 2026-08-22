@@ -32,10 +32,10 @@ server wrote, and every locator the book names is addressable the moment the pag
 - name: Seat map
 - placement: width 40-100%, x 0-30%, y 10-100%
 - keyboard: reachable by `Tab` from the document start, with no shortcut of its own.
+- verify: visible(locator="region:Seat map")
 - parent: [Seat map](#seat-map)
 - code: app/page.py::render
 - does: holds every seat button for the showing and nothing else.
-- verify: visible(locator="region:Seat map")
 
 ### seat-button
 
@@ -46,14 +46,14 @@ server wrote, and every locator the book names is addressable the moment the pag
 - parent: [Seat map](#seat-map)
 - states: carries the seat's state as `data-state`, one of `free`, `held` or `booked`.
 - states: a seat that is not free is rendered `disabled`, so a sold seat cannot be clicked at all.
-- code: app/page.py::_seat_button
-- does: renders one button per seat in the showing — twelve, in three rows of four.
 - verify: count(subject="seat buttons", equals=12)
-- does: names the button by its seat id alone, so the name a scenario addresses does not change when
-  the seat does.
 - verify: visible(locator="button:Seat A1", text="A1")
 - verify: visible(locator="button:Seat A1", text="free")
 - verify: visible(locator="button[data-state='booked'][disabled]")
+- code: app/page.py::_seat_button
+- does: renders one button per seat in the showing — twelve, in three rows of four.
+- does: names the button by its seat id alone, so the name a scenario addresses does not change when
+  the seat does.
 - refs: [seat](../../concepts/seat.md)
 
 ### free-seat-summary
@@ -62,9 +62,9 @@ server wrote, and every locator the book names is addressable the moment the pag
 - role: status
 - name: seats free
 - keyboard: none, because it is announced rather than operated.
+- verify: visible(locator="status", text="12 of 12 seats free")
+- verify: visible(locator="status", text="11 of 12 seats free")
 - parent: [Seat map](#seat-map)
 - code: app/page.py::render
 - does: states how many of the showing's seats are still free, out of the total.
-- verify: visible(locator="status", text="12 of 12 seats free")
 - does: counts only seats in state `free`, so a held seat reads as taken while somebody is deciding.
-- verify: visible(locator="status", text="11 of 12 seats free")

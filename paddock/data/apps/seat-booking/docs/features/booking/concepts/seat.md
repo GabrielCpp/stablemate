@@ -30,12 +30,12 @@ to it. The durable side — where the states are written and how — is
 - sig: `hold(store: Store, seat: str) -> dict`
 - abstract: takes a free seat off the market for whoever is deciding, and hands back the version to
   confirm against.
-- raises: `Seat Unavailable` when the seat is held or booked, leaving the ledger untouched.
-- raises: `No Such Seat` for an id that is not in the showing.
-- code: app/hold.py::hold
 - verify: json_path("hold.version", equals="1")
+- raises: `Seat Unavailable` when the seat is held or booked, leaving the ledger untouched.
 - verify: unchanged(subject="seat A1", except_fields=[])
+- raises: `No Such Seat` for an id that is not in the showing.
 - verify: http_status(404, title="No Such Seat")
+- code: app/hold.py::hold
 - does: moves the seat from `free` to `held` and increments its version.
 - parent: [Seat](#seat)
 
@@ -43,11 +43,11 @@ to it. The durable side — where the states are written and how — is
 
 - sig: `release(store: Store, seat: str) -> None`
 - abstract: gives a held seat back to the showing.
-- raises: `Seat Not Held` when the seat is free or booked, so releasing cannot undo a booking.
-- code: app/hold.py::release
 - verify: http_status(204)
 - verify: unchanged(subject="seats", except_fields=["A1.state", "A1.version", "A1.hold"])
+- raises: `Seat Not Held` when the seat is free or booked, so releasing cannot undo a booking.
 - verify: http_status(409, title="Seat Not Held")
+- code: app/hold.py::release
 - does: moves the seat from `held` to `free`, increments its version, and clears the hold.
 - does: writes exactly the released seat; every other seat keeps its state, version and booking.
 - parent: [Seat](#seat)
@@ -56,12 +56,12 @@ to it. The durable side — where the states are written and how — is
 
 - sig: `confirm(store: Store, seat: str, *, version: int, name: str) -> dict`
 - abstract: spends a hold on a booking in somebody's name.
-- raises: `Seat Not Held` when the seat was never held.
-- code: app/confirm.py::confirm
 - verify: json_path("booking.name", equals="Dana Okonkwo")
-- verify: conflict_on_stale(subject="seat A1", token="version")
+- raises: `Seat Not Held` when the seat was never held.
 - verify: http_status(409, title="Seat Not Held")
+- code: app/confirm.py::confirm
 - does: moves the seat from `held` to `booked`, increments its version, and records the booking name.
 - concurrency: refuses a caller quoting any version but the seat's current one, which is what makes
   a hold spendable exactly once.
+- verify: conflict_on_stale(subject="seat A1", token="version")
 - parent: [Seat](#seat)

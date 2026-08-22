@@ -28,16 +28,16 @@ that looks current is the one failure mode a register must not have.
 - selector: `table`
 - role: table
 - name: Policies on file
+- verify: visible(locator="table:Policies on file")
+- verify: visible(locator="table:Policies on file", text="PN-1001")
+- verify: visible(locator="link:PN-1001")
 - placement: width 60-100%, x 0-20%, y 10-100%
 - keyboard: reachable by `Tab` from the document start, with no shortcut of its own.
 - parent: [Policy register](#policy-register)
 - code: app/web/src/PolicyList.tsx
 - does: renders one row per policy on the books, with its number, holder, coverage, premium and
   status.
-- verify: visible(locator="table:Policies on file")
-- verify: visible(locator="table:Policies on file", text="PN-1001")
 - does: names each row by its policy number, as a link to that policy's detail screen.
-- verify: visible(locator="link:PN-1001")
 
 ### empty-register-notice
 
@@ -46,11 +46,11 @@ that looks current is the one failure mode a register must not have.
 - name: none
 - placement: width 40-100%, x 0-20%, y 10-60%
 - keyboard: none, because it is read rather than operated.
+- verify: visible(locator="text=No policies are on file yet")
 - parent: [Policy register](#policy-register)
 - exclusive-with: [policy-table](#policy-table)
 - code: app/web/src/PolicyList.tsx
 - does: stands in for the table when the books are empty, and points at the way to start one.
-- verify: visible(locator="text=No policies are on file yet")
 
 ### register-error-alert
 
@@ -61,23 +61,23 @@ that looks current is the one failure mode a register must not have.
 - keyboard: none, because it is announced rather than operated.
 - parent: [Policy register](#policy-register)
 - states: present only after a register read fails.
+- verify: visible(locator="alert")
 - code: app/web/src/RegisterError.tsx
 - does: says so when the register cannot be re-read, rather than leaving the previous table on
   screen looking current.
-- verify: visible(locator="alert")
 
 ### new-policy-link
 
 - selector: `#new-policy`
 - role: link
 - name: New policy
+- verify: visible(locator="link:New policy")
 - placement: width 0-40%, x 0-30%, y 0-20%
 - keyboard: `Tab` to the link, `Enter` to follow it.
 - parent: [Policy register](#policy-register)
 - code: app/web/src/Nav.tsx
 - does: opens [the new policy form](new-policy.md) as a client route, without reloading the
   document.
-- verify: visible(locator="link:New policy")
 
 ## Interactions
 
@@ -90,5 +90,5 @@ that looks current is the one failure mode a register must not have.
 - keyboard: `Tab` to the link, `Enter` to follow it.
 - does:
   - navigates to [the policy's detail screen](policy-detail.md) at `/policies/{id}`, client-side, and the detail screen shows that policy rather than the one visited before it.
-- code: app/web/src/PolicyList.tsx
 - verify: visible(locator="heading:Policy PN-1001")
+- code: app/web/src/PolicyList.tsx

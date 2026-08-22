@@ -28,21 +28,21 @@ at the next restart, and the defect would look like a store bug from every surfa
 
 - sig: `read() -> dict`
 - abstract: the current ledger, completed from the empty showing so an absent seat reads as free.
-- verify: count(subject="seats", equals=12)
-- verify: persists(subject="seat A1 booking")
 - does: returns every seat in the showing, whether or not the file mentions it.
 - does: reads the file on each call, so a booking written by another process is visible to the next
   request rather than at the next restart.
 - parent: [Seat ledger](#seat-ledger)
+- verify: count(subject="seats", equals=12)
+- verify: persists(subject="seat A1 booking")
 
 ### write
 
 - sig: `write(ledger: dict) -> None`
 - abstract: replaces the ledger atomically.
-- verify: keys_unchanged(subject="seats")
-- verify: persists(subject="seat A1 booking")
 - does: writes a temporary file and renames it over the ledger, so a reader never observes half a
   showing.
+- verify: keys_unchanged(subject="seats")
+- verify: persists(subject="seat A1 booking")
 - persistence: a booking is on disk before the response that announces it, and survives a restart of
   the service.
 - parent: [Seat ledger](#seat-ledger)

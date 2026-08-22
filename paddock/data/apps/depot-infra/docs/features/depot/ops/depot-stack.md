@@ -12,6 +12,8 @@ title: The depot stack
     and ignored by git. No `pulumi login` runs anywhere in this repository.
   - project: `depot-example` in `us-central1`, which does not exist. The plan names it; nothing
     reaches it.
+  - provider: the `gcp` plugin is pinned to `8.16.0` by the program itself, so a fresh machine
+    resolves the plugin the stack was written against rather than whatever is newest.
 - local-only: true
 - code: pulumi/Pulumi.yaml
 - code: pulumi/main.go
@@ -19,6 +21,7 @@ title: The depot stack
 - code: pulumi/go.mod
 - code: pulumi/go.sum
 - code: pulumi/.gitignore
+- verify: json_path("inputs.version", equals="8.16.0")
 
 Nothing in this stack runs, and that is the shape rather than an omission. There is no container,
 no port and no process to reach: the program declares resources, and the only thing it produces is

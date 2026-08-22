@@ -42,9 +42,9 @@ The journeys that stitch these routes together are
 
 - does:
   - answers `200` with `{"status": "ok"}` as soon as the process is serving, reading no ledger.
-- code: app/api/service.go
 - verify: http_status(200, path="/healthz")
 - verify: json_path("status", equals="ok")
+- code: app/api/service.go
 - route: `GET /healthz`
 - parent: [Policy desk API](#policy-desk-api)
 - request:
@@ -60,13 +60,13 @@ The journeys that stitch these routes together are
 
 - does:
   - returns every policy on the books, ordered by policy number, whatever status it is in.
-- does:
-  - gives each policy its `id`, `policy_number`, `holder_email`, `coverage_type`, term, `premium`, `status` and `version`, so the register can be rendered and an edit prepared without a second request.
-- code: app/api/list.go
 - verify: http_status(200, path="/api/policies")
 - verify: json_path("policies[0].id", equals="pn-1001")
+- does:
+  - gives each policy its `id`, `policy_number`, `holder_email`, `coverage_type`, term, `premium`, `status` and `version`, so the register can be rendered and an edit prepared without a second request.
 - verify: json_path("policies[0].version", absent=false)
 - verify: json_path("policies[0].status", matches="Draft|Cancelled")
+- code: app/api/list.go
 - route: `GET /api/policies`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
@@ -83,11 +83,11 @@ The journeys that stitch these routes together are
 
 - does:
   - writes an acceptable policy to the ledger at version `1` with status `Draft`, and answers `201` with the stored record — including the `id` derived from its policy number, which is the address the caller is expected to go to next.
-- code: app/api/create.go
 - verify: http_status(201, path="/api/policies")
 - verify: json_path("policy.status", equals="Draft")
 - verify: json_path("policy.version", equals="1")
 - verify: json_path("policy.id", equals="pn-1001")
+- code: app/api/create.go
 - errors: `422` with an `errors` object keyed by field name for every rule
   [`Validate`](../concepts/policy.md#validate) decides — a blank policy number, a malformed holder
   email, a coverage type outside the enum, a missing VIN on auto coverage, a missing address on home
@@ -123,9 +123,9 @@ The journeys that stitch these routes together are
 
 - does:
   - returns the one policy the id names, with the version an edit has to quote.
-- code: app/api/service.go
 - verify: http_status(200, path="/api/policies/pn-1001")
 - verify: json_path("policy.policy_number", equals="PN-1001")
+- code: app/api/service.go
 - errors: `404 Unknown Policy` for an id that is not on the books.
 - verify: http_status(404, title="Unknown Policy", path="/api/policies/missing")
 - route: `GET /api/policies/{id}`
@@ -146,13 +146,13 @@ The journeys that stitch these routes together are
 
 - does:
   - applies an acceptable edit to the named policy, increments its version, and answers `200` with the stored record.
-- does:
-  - touches the edited policy and no other — every other record keeps its fields, its status and its version.
-- code: app/api/update.go
 - verify: http_status(200, path="/api/policies/pn-1001")
 - verify: json_path("policy.version", equals="2")
+- does:
+  - touches the edited policy and no other — every other record keeps its fields, its status and its version.
 - verify: unchanged(subject="policy pn-1002", except_fields=[])
 - verify: keys_unchanged(subject="policies")
+- code: app/api/update.go
 - concurrency: refuses a request quoting a version other than the policy's current one with
   `409 Stale Policy`, so an editor who opened the form, went away, and came back with the number
   they were given does not overwrite the edit that landed meanwhile.
@@ -185,19 +185,19 @@ The journeys that stitch these routes together are
 
 - does:
   - moves the named policy to status `Cancelled`, increments its version, and answers `200` with the stored record.
+- verify: http_status(200, path="/api/policies/pn-1001/cancel")
+- verify: json_path("policy.status", equals="Cancelled")
 - does:
   - keeps the cancelled policy on the books rather than dropping it: `GET /api/policies` still lists it, with status `Cancelled`, so the register keeps its shape as policies are cancelled.
 - code: app/api/cancel.go
-- verify: http_status(200, path="/api/policies/pn-1001/cancel")
-- verify: json_path("policy.status", equals="Cancelled")
 - errors: `422` with `errors.confirm` when the body's `confirm` is not the policy's own number, so a
   cancellation is typed out rather than clicked through.
 - verify: http_status(422, path="/api/policies/pn-1001/cancel")
 - verify: json_path("errors.confirm", absent=false)
 - errors: `400 Version Required` when the body carries no integer `version`.
 - errors: `409 Stale Policy` when the quoted version is not the policy's current one.
-- errors: `404 Unknown Policy` for an id that is not on the books.
 - verify: http_status(409, title="Stale Policy", path="/api/policies/pn-1001/cancel")
+- errors: `404 Unknown Policy` for an id that is not on the books.
 - route: `POST /api/policies/{id}/cancel`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
@@ -216,12 +216,13 @@ The journeys that stitch these routes together are
 
 - does:
   - empties the books — every policy dropped — and answers `204` with no body.
-- does:
-  - is idempotent: resetting books that are already empty answers `204` and changes nothing.
-- code: app/api/service.go
 - verify: http_status(204, path="/api/policies")
 - verify: count(subject="policies", equals=0)
+- does:
+  - is idempotent: resetting books that are already empty answers `204` and changes nothing.
 - verify: http_status(204, path="/api/policies")
+- verify: count(subject="policies", equals=0)
+- code: app/api/service.go
 - route: `DELETE /api/policies`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy ledger](../concepts/policy-ledger.md)
