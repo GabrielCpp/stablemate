@@ -42,9 +42,9 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 - does:
   - answers `200` with `{"status": "ok"}` as soon as the process is serving, reading no ledger and asking for no identity.
-- code: app/api/service.go
 - verify: http_status(200, path="/healthz")
 - verify: json_path("status", equals="ok")
+- code: app/api/service.go
 - route: `GET /healthz`
 - parent: [Claims API](#claims-api)
 - request:
@@ -60,22 +60,22 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 - does:
   - writes an acceptable claim to the ledger at version `1` with status `Submitted`, attributes it to the calling holder, and answers `201` with the stored record.
-- code: app/api/submit.go
 - verify: http_status(201, path="/api/claims")
 - verify: json_path("claim.status", equals="Submitted")
 - verify: json_path("claim.version", equals="1")
+- code: app/api/submit.go
 - auth: requires a bearer token minted by the configured Firebase project. A request with no
   `Authorization` header, or one carrying a token issued for any other project, is refused `401`
   and writes nothing — a well-formed JWT is not a verified one.
-- verify: http_status(401, path="/api/claims")
+- verify: http_status(401, title="Unauthorized", path="/api/claims")
 - auth: a token past its expiry is refused `401` on the same terms as a missing one, so a session
   that was legitimate an hour ago does not keep filing claims.
-- verify: http_status(401, path="/api/claims")
+- verify: http_status(401, title="Unauthorized", path="/api/claims")
 - consistency: the stored claim comes back under exactly the field names `openapi.yml` declares —
   `policy_number`, `holder_uid`, `incident_date`, `amount_cents` — because the response is a
   conversion into the generated type rather than an object built by hand beside it.
-- verify: json_path("claim.amount_cents", absent=false)
-- verify: json_path("claim.holder_uid", absent=false)
+- verify: json_path("claim.amount_cents", equals="125000")
+- verify: json_path("claim.incident_date", equals="2099-03-14")
 - errors: `422` with an `errors` object keyed by field name for every rule the submission is
   refused by — a blank policy number, an incident date that is not a calendar date, an amount that
   is not a positive number of cents, and a blank description.
@@ -90,6 +90,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - errors: a refusal is a `Problem` — a `title` naming the refusal and a `detail` describing the
   request. Nothing taken out of the rejected credential appears in either, on any path.
 - verify: http_status(401, title="Unauthorized", path="/api/claims")
+- verify: omits(subject="detail", matches="eyJ[A-Za-z0-9_-]{6,}")
 - persistence: an accepted claim is written through the ledger before the response that announces
   it, and is still on file after the service restarts.
 - verify: persists(subject="claim cl-1001")
@@ -110,10 +111,10 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 - does:
   - returns the claims the caller is entitled to read, each with its `id`, `status` and `version`, so a register can be rendered and a decision prepared without a second request.
-- code: app/api/list.go
 - verify: http_status(200, path="/api/claims")
 - verify: json_path("claims[0].version", absent=false)
 - verify: json_path("claims[0].status", matches="Submitted|Approved|Denied")
+- code: app/api/list.go
 - authorization: a holder reads only the claims whose `holder_uid` is the subject of their own
   token. The list is scoped by the verified identity rather than by a query parameter, so there is
   no way to ask for someone else's.
@@ -138,9 +139,9 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 - does:
   - returns the one claim the id names, with the version a decision has to quote.
-- code: app/api/get.go
 - verify: http_status(200, path="/api/claims/cl-1001")
 - verify: json_path("claim.id", equals="cl-1001")
+- code: app/api/get.go
 - authorization: `403 Not Your Claim` when the claim is on file and belongs to another holder.
   The refusal is decided after the lookup, so an id that exists and an id that does not answer
   differently only to whoever is entitled to the difference.
@@ -165,10 +166,10 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 - does:
   - moves the named claim to `Approved` or `Denied`, keeps the adjuster's note on the record, increments its version, and answers `200` with the stored claim.
-- code: app/api/decide.go
 - verify: http_status(200, path="/api/claims/cl-1001/decision")
 - verify: json_path("claim.status", equals="Approved")
 - verify: json_path("claim.version", equals="2")
+- code: app/api/decide.go
 - authorization: `403 Adjusters Only` unless the token carries the `adjuster` role. The role is
   read before the claim is looked up, so a holder learns nothing about a claim they may not decide.
 - verify: http_status(403, title="Adjusters Only", path="/api/claims/cl-1001/decision")
@@ -204,9 +205,9 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 - does:
   - empties the ledger — every claim dropped, numbering back to `cl-1001` — and answers `204` with no body.
-- code: app/api/reset.go
 - verify: http_status(204, path="/api/claims")
 - verify: count(subject="claims", equals=0)
+- code: app/api/reset.go
 - authorization: `403 Adjusters Only` unless the token carries the `adjuster` role, so the one
   destructive route is the one route whose role gate is provable from both sides.
 - verify: http_status(403, title="Adjusters Only", path="/api/claims")

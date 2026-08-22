@@ -48,8 +48,8 @@
 # ---------------------------------------------------------------
 # C9 was speced as a defect **no obligation names** — true negative space, seeded to ask
 # whether QA can report something the book never asked about. It is written down here as an
-# ordinary audit-only row against `submit-claim:errors:3` instead, and the conversion is
-# deliberate rather than a drift:
+# ordinary row against `submit-claim:errors:3` instead, and the conversion is deliberate
+# rather than a drift:
 #
 #   `Fixture.classify()` reaches a catch through two routes, and *both* require a citable
 #   obligation id to attribute the catch to. A row with no obligation is therefore not
@@ -58,8 +58,11 @@
 #
 # So TRUE negative-space scoring is **deferred, not delivered**. It needs a
 # catch-without-obligation route in the scorer, and the two places that will demand one are
-# Part II phase F's probes and the mutation plan's pin-rate gap. Read C9 below as an
-# audit-only row that stands in for a measurement this harness cannot yet take.
+# Part II phase F's probes and the mutation plan's pin-rate gap. Read C9 below as an ordinary
+# row that stands in for a measurement this harness cannot yet take. It was
+# filed `caught_by: audit` for as long as the check vocabulary had no way to state what a
+# response may not carry; `omits` closed that gap, so the row is `caught_by: run` now and
+# the deferral above is about negative space alone.
 
 defects:
   - id: C1
@@ -168,11 +171,12 @@ defects:
     path: app/api/authz.go
     obligation: okf:docs/features/claims/http/claims-api.md#submit-claim:errors:3
     expect: contradicted
-    caught_by: audit
+    caught_by: run
     why: >
       the refusal's `detail` quotes the credential it rejected — "The bearer token
       eyJhbGciOi… was not accepted." — which puts the presented token into every access log,
       proxy trace and bug report the response passes through. The status is `401`, the title
-      is `Unauthorized`, the body is a well-formed `Problem`, and nothing is written: no
-      declared check can fail, and the clause the book states about what a refusal may
-      contain is a property of prose only a reader of the evidence can hold it to.
+      is `Unauthorized`, the body is a well-formed `Problem`, and nothing is written, so
+      every other check in the vocabulary passes on it. `omits` is the one that does not:
+      the clause is about what the refusal may *not* carry, which has no positive form, and
+      until the vocabulary had a negative observation this row was audit-only.

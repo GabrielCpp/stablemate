@@ -73,8 +73,12 @@ def a_register_holds_the_claims_of_whoever_asked(qa: Qa) -> None:
     mine_body = mine.json()
     qa.verify("http_status", mine, code=200, path="/api/claims", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#list-claims:does:1", "okf:docs/features/claims/http/claims-api.md#list-claims:contract"])
     qa.verify("json_path", mine_body, path="$.claims[0].version", absent=False, covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#list-claims:does:1"])
-    qa.verify("json_path", mine_body, path="claims[0].status", equals="Submitted", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#list-claims:does:1", "okf:docs/features/claims/flows/file-a-claim.md:start:1", "okf:docs/features/claims/flows/file-a-claim.md:end:1", "okf:docs/features/claims/flows/file-a-claim.md:end-state"])
+    # Two claims on one field: the book's is that a listed claim carries one of the three
+    # statuses at all, and this scenario's is which one a freshly filed claim carries.
+    qa.verify("json_path", mine_body, path="claims[0].status", matches="Submitted|Approved|Denied", covers=["okf:docs/features/claims/http/claims-api.md#list-claims:does:1"])
+    qa.verify("json_path", mine_body, path="claims[0].status", equals="Submitted", covers=["ac:1", "okf:docs/features/claims/flows/file-a-claim.md:start:1", "okf:docs/features/claims/flows/file-a-claim.md:end:1", "okf:docs/features/claims/flows/file-a-claim.md:end-state"])
     qa.verify("count", mine_body["claims"], subject="claims", equals=1, covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#list-claims:authorization:1", "okf:docs/features/claims/flows/file-a-claim.md:start:1", "okf:docs/features/claims/flows/file-a-claim.md:end:1", "okf:docs/features/claims/flows/file-a-claim.md:end-state"])
+    qa.verify("json_path", mine_body, path="claims[0].holder_uid", absent=False, covers=["okf:docs/features/claims/http/claims-api.md#list-claims:authorization:1"])
     qa.verify("json_path", mine_body, path="$.claims[0].holder_uid", equals=who["a"]["uid"], covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#list-claims:authorization:1"])
 
     theirs = qa.http.get("/api/claims", headers=bearer(who["b"]), expect_status=200).json()["claims"]

@@ -103,10 +103,10 @@ def file_a_claim_and_prove_it_outlives_the_process(qa: Qa) -> None:
     qa.verify("json_path", body, path="$.claim.version", equals="1", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#submit-claim:does:1"])
     qa.check("the claim is attributed to the calling token's subject", qa.field(claim, "holder_uid") == qa.field(holder, "uid"), covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#submit-claim:does:1", "okf:docs/features/claims/ops/auth-emulator.md:contract"])
     qa.check("the claim is issued the first identifier the ledger has to give", qa.field(claim, "id") == "cl-1001", covers=["okf:docs/features/claims/concepts/claim-ledger.md:contract"])
-    qa.verify("json_path", body, path="$.claim.amount_cents", absent=False, covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1"])
+    qa.verify("json_path", body, path="$.claim.amount_cents", equals="125000", covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1"])
     qa.verify("json_path", body, path="$.claim.holder_uid", absent=False, covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1"])
     qa.verify("json_path", body, path="$.claim.policy_number", absent=False, covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1"])
-    qa.verify("json_path", body, path="$.claim.incident_date", absent=False, covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1"])
+    qa.verify("json_path", body, path="$.claim.incident_date", equals="2099-03-14", covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1"])
 
     # The book promises the claim is still on file after the service restarts, and a
     # re-read inside the process that took the write is exactly what a ledger held in
@@ -178,18 +178,21 @@ def refuse_credentials_this_project_never_issued(qa: Qa) -> None:
 
     anonymous = qa.http.post("/api/claims", json_body=submission("PL-9000"), expect_status=401)
     qa.verify("http_status", anonymous, code=401, title="Unauthorized", path="/api/claims", covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#submit-claim:auth:1", "okf:docs/features/claims/http/claims-api.md#submit-claim:errors:3"])
+    qa.verify("omits", anonymous, subject="$.detail", matches="eyJ[A-Za-z0-9_-]{6,}", covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#submit-claim:errors:3"])
 
     stranger = qa.http.post("/api/claims", json_body=submission("PL-9001"), headers={"Authorization": f"Bearer {FOREIGN_PROJECT_TOKEN}"}, expect_status=401)
     qa.verify("http_status", stranger, code=401, title="Unauthorized", path="/api/claims", covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#submit-claim:auth:1", "okf:docs/features/claims/http/claims-api.md#submit-claim:errors:3"])
+    qa.verify("omits", stranger, subject="$.detail", matches="eyJ[A-Za-z0-9_-]{6,}", covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#submit-claim:errors:3"])
 
     expired = qa.http.post("/api/claims", json_body=submission("PL-9002"), headers={"Authorization": f"Bearer {EXPIRED_TOKEN}"}, expect_status=401)
     qa.verify("http_status", expired, code=401, title="Unauthorized", path="/api/claims", covers=["ac:3", "okf:docs/features/claims/http/claims-api.md#submit-claim:auth:2", "okf:docs/features/claims/http/claims-api.md#submit-claim:errors:3"])
+    qa.verify("omits", expired, subject="$.detail", matches="eyJ[A-Za-z0-9_-]{6,}", covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#submit-claim:errors:3"])
 
     after = qa.http.get("/api/claims", headers=bearer(holder), expect_status=200).json()["claims"]
     qa.verify("unchanged", (before, after), subject="claims", covers=["ac:2", "ac:3", "okf:docs/features/claims/http/claims-api.md#submit-claim:auth:1", "okf:docs/features/claims/http/claims-api.md#submit-claim:auth:2"])
-    # The bodies are written down whole rather than asserted about, because what the clause
-    # forbids — anything out of the rejected credential appearing in the refusal — is a
-    # property of prose the status code cannot see. The record is what makes it readable.
+    # The bodies are written down whole as well as asserted about. `omits` is what holds the
+    # clause — no status code can see a `detail` quoting the credential it rejected — and the
+    # record is what lets a reader check the pattern was looking for the right thing.
     json.dump({"presented": {"foreign": FOREIGN_PROJECT_TOKEN, "expired": EXPIRED_TOKEN}, "anonymous": anonymous.json(), "foreign_project": stranger.json(), "past_expiry": expired.json()}, qa.artifact("steps/refusals.json", kind="json").open("w"))
 
 
@@ -228,6 +231,7 @@ def health_needs_no_token_and_reset_needs_a_role(qa: Qa) -> None:
     qa.verify("count", survived, subject="claims", equals=1, covers=["ac:6", "okf:docs/features/claims/http/claims-api.md#reset-claims:authorization:1"])
 
     emptied = qa.http.delete("/api/claims", headers=bearer(adjuster), expect_status=204)
-    qa.check("the adjuster's reset answers 204 with no body", emptied.status == 204 and not emptied.text.strip(), covers=["ac:6", "okf:docs/features/claims/http/claims-api.md#reset-claims:does:1"])
+    qa.verify("http_status", emptied, code=204, path="/api/claims", covers=["ac:6", "okf:docs/features/claims/http/claims-api.md#reset-claims:does:1"])
+    qa.check("the adjuster's reset carries no body", not emptied.text.strip(), covers=["ac:6", "okf:docs/features/claims/http/claims-api.md#reset-claims:does:1"])
     remaining = qa.http.get("/api/claims", headers=bearer(adjuster), expect_status=200).json()["claims"]
     qa.verify("count", remaining, subject="claims", equals=0, covers=["ac:6", "okf:docs/features/claims/http/claims-api.md#reset-claims:does:1", "okf:docs/features/claims/http/claims-api.md#reset-claims:contract"])
