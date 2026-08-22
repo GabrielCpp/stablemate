@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from ostler.qa import sensitivity
 from ostler.qa.evidence_map import EvidenceMapError, build_evidence_map, render_evidence_map
 
 CONTRACT = "okf:docs/features/orders/publish.md:contract"
@@ -327,6 +328,7 @@ def test_the_counts_and_the_rendering_lead_with_what_needs_work(tmp_path: Path) 
         "unproven": 0,
         "uncovered": 1,
         "claimed-but-unasserted": 0,
+        "insensitive": 0,
         "covered": 1,
     }
     body = "\n".join(lines)
@@ -420,3 +422,33 @@ def test_an_obligation_only_passing_inside_an_aborted_scenario_is_unproven(
 
     assert row["status"] == "unproven"
     assert row["abortedLogRefs"] == ["decide-a-claim:assert:1"]
+
+
+def test_a_pass_off_a_check_nothing_could_falsify_is_not_covered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The quietest failure: every declared check ran, passed, and proved nothing.
+
+    Forced here rather than found, because the vocabulary currently has no such check — which
+    is the point of asking. `covered` is what a reader routes on, and routing on it when no
+    observation of the product could have produced anything else is how a rubber stamp
+    becomes a coverage number.
+    """
+    monkeypatch.setitem(
+        sensitivity._VERIFIERS, "conflict_on_stale", lambda observed, args: (True, {}, {})
+    )
+    spec = _spec(
+        tmp_path,
+        obligations=[_obligation(CONFLICT, declared=[DECLARED])],
+        log=[
+            _claim("publish-conflict", CONFLICT),
+            _assert("publish-conflict", 1, "PASS", CONFLICT,
+                    check="conflict_on_stale", args={"subject": "manifest", "token": "etag"}),
+        ],
+    )
+
+    row = _by_id(build_evidence_map(spec))[CONFLICT]
+
+    assert row["status"] == "insensitive", row["why"]
+    assert row["checksInsensitive"] == [DECLARED]
+    assert row["checksMissing"] == []

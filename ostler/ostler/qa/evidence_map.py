@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler import checks
+from ostler.qa import sensitivity
 from ostler.qa.session import QA_DIRNAME, scratch_dirname
 from ostler.util import is_mapping
 
@@ -43,7 +44,18 @@ VERSION = 1
 #: left unclean — never observed the product at all, and reporting that as a disproof is how
 #: a clean tree with a correct book got accused of a defect it did not have. The obligation
 #: is unproven, the plan is what failed, and the two route to different repairs.
-STATUSES = ("contradicted", "unproven", "uncovered", "claimed-but-unasserted", "covered")
+#: `insensitive` sits just above `covered` because it is the quietest of the failures: every
+#: assertion ran, every one passed, and none of them could have done anything else. It is
+#: below the three that report missing evidence because there *is* evidence here — it just
+#: does not discriminate — and a reader with both should repair the missing one first.
+STATUSES = (
+    "contradicted",
+    "unproven",
+    "uncovered",
+    "claimed-but-unasserted",
+    "insensitive",
+    "covered",
+)
 
 
 class EvidenceMapError(RuntimeError):
@@ -249,6 +261,14 @@ def _row(
         and (call := _call_text(str(record["check"]), record.get("check_args"))) is not None
     }
     missing = [call for call in declared if call not in observed]
+    # Asked of the *declaration*, not of the run: a call's sensitivity is a property of the
+    # check and its arguments, so it is the same answer whatever the product did, and asking
+    # it here is what keeps a green ledger from being read as a proof it is not.
+    insensitive = [
+        call for call in declared
+        if isinstance(parsed := checks.parse_check(call), checks.CheckCall)
+        and not sensitivity.trial(parsed).sensitive
+    ]
 
     evidence_files = sorted(
         {path for record in passing for path in artifacts.get(str(record.get("scenario", "")), [])}
@@ -262,6 +282,7 @@ def _row(
         sentinels=sentinels,
         declared=declared,
         missing=missing,
+        insensitive=insensitive,
         published=published.get(obligation_id),
     )
     row: dict[str, Any] = {
@@ -277,6 +298,7 @@ def _row(
         "checksDeclared": declared,
         "checksObserved": sorted(observed),
         "checksMissing": missing,
+        "checksInsensitive": insensitive,
         "evidence": evidence_files,
         "logRefs": [_ref(record) for record in bound],
     }
@@ -306,6 +328,7 @@ def _classify(
     sentinels: list[dict[str, Any]],
     declared: list[str],
     missing: list[str],
+    insensitive: list[str],
     published: dict[str, Any] | None,
 ) -> tuple[str, str]:
     """The status, and the sentence that says how it was reached.
@@ -364,6 +387,15 @@ def _classify(
             "uncovered",
             "no scenario claims it and no assertion is bound to it — nothing in this run "
             "observed it.",
+        )
+    if not missing and declared and len(insensitive) == len(declared):
+        return (
+            "insensitive",
+            "every check its `verify:` bullets declare passed, and no observation of the "
+            "product could have made any of them fail: "
+            + ", ".join(f"`{call}`" for call in insensitive)
+            + ". A pass here says the assertion ran, not that the product does this — "
+            "repair the declaration, not the app.",
         )
     if missing:
         return (
