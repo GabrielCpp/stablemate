@@ -26,11 +26,19 @@ def two_holders_file_one_claim_each(qa: Qa) -> dict:
 
     Written as a helper rather than a precondition step because all three scenarios need
     the *same* two claims and the ids are what the book's own checks name.
+
+    Both claims are filed on **one** policy, which is the whole point of the arrangement.
+    `list-claims:authorization:1` says a register is scoped by the verified identity and not
+    by anything else; two holders on two policies cannot tell that apart from a register
+    scoped by policy number, because each holder is on exactly one of them either way. The
+    book documents this very pairing — two different holders filing on one policy for one
+    day are two claims and not a duplicate — so the arrangement it describes is the one
+    that can observe the rule it states.
     """
     a, b, adjuster = sign_in(qa, HOLDER_A), sign_in(qa, HOLDER_B), sign_in(qa, ADJUSTER)
     qa.http.delete("/api/claims", headers=bearer(adjuster), expect_status=204)
     qa.http.post("/api/claims", json_body=submission("PL-5510", description="Water ingress in the basement."), headers=bearer(a), expect_status=201)
-    qa.http.post("/api/claims", json_body=submission("PL-6620", description="Windscreen cracked on the motorway."), headers=bearer(b), expect_status=201)
+    qa.http.post("/api/claims", json_body=submission("PL-5510", description="Windscreen cracked on the motorway."), headers=bearer(b), expect_status=201)
     return {"a": a, "b": b, "adjuster": adjuster}
 
 
@@ -52,7 +60,7 @@ def two_holders_file_one_claim_each(qa: Qa) -> dict:
     ],
     preconditions=[
         "the desk is emptied through DELETE /api/claims, holding the adjuster's token",
-        "holder A files cl-1001 and holder B files cl-1002, each with their own token",
+        "holder A files cl-1001 and holder B files cl-1002 on one policy, each with their own token",
     ],
     checkpoints=[
         "holder A's register holds exactly their own claim",
