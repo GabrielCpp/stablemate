@@ -58,6 +58,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### submit-claim
 
+- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - does:
   - writes an acceptable claim to the ledger at version `1` with status `Submitted`, attributes it to the calling holder, and answers `201` with the stored record.
 - verify: http_status(201, path="/api/claims")
@@ -109,6 +110,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### list-claims
 
+- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - does:
   - returns the claims the caller is entitled to read, each with its `id`, `status` and `version`, so a register can be rendered and a decision prepared without a second request.
 - verify: http_status(200, path="/api/claims")
@@ -137,6 +139,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### get-claim
 
+- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - does:
   - returns the one claim the id names, with the version a decision has to quote.
 - verify: http_status(200, path="/api/claims/cl-1001")
@@ -164,6 +167,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### decide-claim
 
+- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - does:
   - moves the named claim to `Approved` or `Denied`, keeps the adjuster's note on the record, increments its version, and answers `200` with the stored claim.
 - verify: http_status(200, path="/api/claims/cl-1001/decision")
@@ -203,6 +207,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### reset-claims
 
+- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - does:
   - empties the ledger — every claim dropped, numbering back to `cl-1001` — and answers `204` with no body.
 - verify: http_status(204, path="/api/claims")
