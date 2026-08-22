@@ -84,6 +84,30 @@ Phases are separately invocable because they have wildly different costs. Useful
 `--no-judge`, `--jobs N`, `--bullet <id>` (repeatable, to re-score one bullet while tuning
 the rubric).
 
+## The grill gate, and why the harness answers it the way it does
+
+`author` opens with a grill: it briefs the operator on what the backlog leaves open and
+then blocks on `docs/epics/_author-context.md`, unconditionally — `operator_mode` does not
+gate it, because the premise is that those decisions belong to a person. A benchmark has no
+person. Without a standing answer, every suite's `author` phase parks until its budget
+expires and nothing is ever scored.
+
+So `bench.py author` runs a watcher beside the phase that stamps that one gate answered,
+with the text below the rule in [`grill-answers.md`](grill-answers.md) (per-suite override:
+`grill:` in the spec). Two properties matter more than the mechanism:
+
+- **It answers only the grill.** Every other block reached an operator because the
+  resolver could not ground it in something already written, and a canned answer to one of
+  those is a give-up wearing an answer's clothes. Those park, and the escalation shows up
+  in the reliability half of the scorecard where it belongs.
+- **It settles nothing the backlog had not.** The answer hands every open question back as
+  a design decision. For a `design:` suite this is not a stylistic choice: a grill asks
+  precisely the questions whose answers are the thing being measured — the run above asked
+  outright whether locale switching is per-person or a switcher on the page — so an
+  operator who answers helpfully has told the workflow what to design, and every design
+  score after that measures transcription. A test asserts the shipped answer names none of
+  the shipped expectations.
+
 ## `design-score`: measuring what the brief implied and author never wrote
 
 `score` measures **backlog satisfaction** — every bullet the workflow was handed, judged
@@ -419,6 +443,7 @@ evals/author.yml      which author nodes are evaluable, and what grades each  (P
 rubric.md             the judge's prompt — the file to tune when scores feel wrong
 design-rubric.md      the design judge's prompt: one held-out expectation, 0-2
 journey-rubric.md     the design judge's other prompt: walk a persona, count dead ends
+grill-answers.md      the operator's standing answer to author's grill gate
 docs/                 MATRIX.md, EVALS.md, REPLAY.md — one per harness above
 tests/                the properties the score rests on
 suites/               every benchmark, one directory each
