@@ -21,6 +21,7 @@ from ostler.refs import normalize_ref
 from ostler.model import Graph, Epic, read_doc, required_section_problems
 from ostler.path import specs_root_in
 from ostler.qa import fixtures as fixtures_mod
+from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
 
 
@@ -1037,6 +1038,20 @@ def _check_ui(graph: Graph, f: list[Finding],
                 # strict `doctor` cannot converge on it the way it converges on `fmt`. What the
                 # rule buys is that the judgment gets made once, at the node, instead of once
                 # per story that touches it for as long as the node exists.
+                # Not an error: a book written before subjects existed has none anywhere, and a
+                # finding it cannot clear in one sitting is one an author learns to page past.
+                # What the subject buys is the join — two nodes are known to be about the same
+                # record only when both name it, and prose never says so, because every
+                # persistence bullet in a real book is a unique sentence. Without one, the node
+                # is invisible to the one-hop rule that would have owed it live evidence when
+                # the record changed under it.
+                if key in RELATION_KEYS and relation_subject(value)[0] is None:
+                    f.append(Finding(
+                        "warn", "relation-without-subject",
+                        f"{node.id}: `{key}:` names no subject, so no other node can be found "
+                        f"to share it; lead with the record, event or lock it is about — "
+                        f"`- {key}: <subject> — {_prose(value)[:40]}…`",
+                        path=rel, line=node.line, ref=f"{node.id}#{key}"))
                 reasons = _split_signals(value)
                 if reasons:
                     f.append(Finding(
