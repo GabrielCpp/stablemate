@@ -30,6 +30,7 @@ names the arm a blank falls into.
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Any
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
@@ -60,6 +61,23 @@ class PlanService(CoderResult):
     #: The directory does not exist yet and implementation will scaffold it, so the path
     #: and marker checks are skipped for this entry.
     new_service: bool = False
+
+
+#: What `qa.fixture()` can spell. A bare string in a story's fixture list is the fixture's
+#: name when it is one of these — the same lift `shared_packages` gets, for the same reason,
+#: since rejecting the shorter spelling spends a rework lap teaching a planner punctuation.
+#: A sentence is not a key, and the corpus is full of sentences: every frozen story describes
+#: its arrangements in prose there, and reading one as a name told the QA planner to call a
+#: fixture nobody declared. It found none, rewrote the plan and the registry to invent them,
+#: and a round that had been costing zero agent turns started costing four.
+FIXTURE_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*\Z")
+
+
+def lift_fixture(item: str) -> dict[str, str]:
+    """A bare string as a fixture: its name if it is a key, otherwise what it promises."""
+    if FIXTURE_KEY.match(item):
+        return {"name": item}
+    return {"name": "", "provides": item}
 
 
 class PlanFixture(CoderResult):
@@ -140,12 +158,21 @@ class PlanResult(CoderResult):
         if isinstance(nested, list):
             return {
                 **data,
-                # A bare string is the fixture's name: the same lift `shared_packages` gets,
-                # for the same reason — the shorter spelling is unambiguous, and rejecting it
-                # spends a rework lap teaching a planner punctuation.
-                "fixtures": [{"name": item} if isinstance(item, str) else item for item in nested],
+                "fixtures": [lift_fixture(item) if isinstance(item, str) else item for item in nested],
             }
         return data
+
+    @field_validator("fixtures", mode="before")
+    @classmethod
+    def _lift_bare_fixtures(cls, v: Any) -> Any:
+        """A bare string in the typed list gets the same reading as one in the nested one.
+
+        Which spelling a planner reached for says nothing about what it meant, so the two
+        lists cannot disagree about how to read a string.
+        """
+        if isinstance(v, list):
+            return [lift_fixture(item) if isinstance(item, str) else item for item in v]
+        return v
 
     @field_validator("shared_packages", mode="before")
     @classmethod

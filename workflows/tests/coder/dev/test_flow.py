@@ -23,6 +23,7 @@ only returned a status would be testing the state machine against a fiction.
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from collections import Counter
 from collections.abc import Callable
@@ -42,6 +43,7 @@ from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.shared.schemas.dev import FixResult, PlanResult
 from workhorse_workflows.coder.shared.dev import (
     plan_document,
+    plan_summary,
     read_operator_context,
     record_plan,
     resolve_impl_context,
@@ -87,7 +89,7 @@ status: active
 """
 
 #: An *authored* story: ostler's `Story.authored` wants `Context` and `Acceptance Criteria`
-#: filled and `Implementation Status` present. A scaffold with empty sections fails
+#: filled and `Dependencies`, `Fixtures` and `Implementation Status` present. A scaffold with empty sections fails
 #: `prepare_story`, which is the gate `test_an_unauthored_story_is_refused` drives.
 STORY_MD = """---
 type: story
@@ -96,6 +98,10 @@ type: story
 # Story One
 
 ## Dependencies
+
+(none)
+
+## Fixtures
 
 (none)
 
@@ -541,6 +547,23 @@ def test_a_bare_string_fixture_is_the_fixture_it_names() -> None:
     ]
 
 
+def test_a_bare_sentence_is_lifted_as_prose_rather_than_as_a_name() -> None:
+    """The same lift, applied to what the corpus actually contains.
+
+    `qa.fixture()` takes a name exactly, so a name is a key or it is nothing. Lifting
+    `"an empty desk (DELETE /api/claims)"` into the name slot handed the QA planner a
+    declaration to look up, and the lane it could not find it in was `agents.yml`.
+    """
+    result = PlanResult.model_validate(
+        {"fixtures": ["seeded_accounts", "an empty desk (DELETE /api/claims)"]}
+    )
+
+    assert [(f.name, f.provides) for f in result.fixtures] == [
+        ("seeded_accounts", ""),
+        ("", "an empty desk (DELETE /api/claims)"),
+    ]
+
+
 def test_an_explicit_fixture_list_is_not_overwritten_by_the_nested_one() -> None:
     """A planner that filled in the typed field said what it meant there; the lift is a
     fallback for the documents that predate it, not a second opinion about them."""
@@ -566,12 +589,69 @@ def test_the_projection_carries_the_fixtures_under_either_spelling() -> None:
     ]
 
 
-def test_a_fixture_with_no_name_is_dropped_from_the_projection() -> None:
-    """A nameless fixture is nothing `qa.fixture()` can resolve, so carrying it forward
-    only produces a failure in the lane furthest from whoever could fix it."""
-    plan = {"services": [], "fixtures": [{"provides": "an account"}, "signed_in"]}
+def test_a_nameless_arrangement_is_kept_and_an_empty_entry_is_dropped() -> None:
+    """A nameless fixture is nothing `qa.fixture()` can resolve — but it is still something
+    the story needs standing up, and dropping it told the QA planner the story had declared
+    nothing at all. It is carried as prose instead, apart from the names; only an entry that
+    says neither is dropped, because that one carries no instruction to anybody."""
+    plan = {
+        "services": [],
+        "fixtures": [{"provides": "an account"}, "signed_in", {"name": "", "provides": ""}],
+    }
 
-    assert plan_document(plan, {})["fixtures"] == [{"name": "signed_in", "provides": ""}]
+    assert plan_document(plan, {})["fixtures"] == [
+        {"name": "", "provides": "an account"},
+        {"name": "signed_in", "provides": ""},
+    ]
+
+
+def test_a_sentence_in_the_fixture_list_is_an_arrangement_and_not_a_name() -> None:
+    """Every frozen story in the benchmark corpus describes its arrangements in prose here,
+    and reading one as a name is not harmless: the QA planner was handed a "declared fixture"
+    called `an empty desk (DELETE /api/claims)`, found no such declaration in `agents.yml`,
+    and rewrote the plan *and* the registry to invent it — four agent turns on a round that
+    had been costing zero."""
+    plan = {
+        "services": [],
+        "fixtures": ["seeded_accounts", "an empty desk (DELETE /api/claims)"],
+    }
+
+    assert plan_document(plan, {})["fixtures"] == [
+        {"name": "seeded_accounts", "provides": ""},
+        {"name": "", "provides": "an empty desk (DELETE /api/claims)"},
+    ]
+
+
+def test_the_summary_says_the_names_apart_from_the_arrangements(tmp_path: Path) -> None:
+    """The two halves of a fixture list are acted on differently and so are said apart.
+
+    A declared name is something the QA plan *calls*; an arrangement is something it has to
+    build for itself. Rendered as one list they read as one instruction, and a QA turn that
+    tried to call a sentence went looking for its declaration, did not find it, and set about
+    writing one — into the plan and into `agents.yml` both.
+    """
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    spec = tmp_path / SPEC_REL
+    spec.mkdir(parents=True)
+    (spec / "plan-context.json").write_text(
+        json.dumps(
+            {
+                "services": [{"repo": "api", "path": ".", "type": "go", "plan_file": "plan.md"}],
+                "fixtures": [
+                    {"name": "seeded_accounts", "provides": "three funded accounts"},
+                    {"name": "", "provides": "an empty desk"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    text = plan_summary(
+        logging.getLogger(__name__), spec_dir=SPEC_REL, repo_dir=str(tmp_path)
+    ).text
+
+    assert "Declared fixtures: seeded_accounts (three funded accounts)" in text
+    assert "Arrangements this story described without declaring: an empty desk" in text
 
 
 def test_a_bare_string_shared_package_is_the_directory_it_names() -> None:

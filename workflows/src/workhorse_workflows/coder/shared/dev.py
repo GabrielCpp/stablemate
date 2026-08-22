@@ -55,6 +55,7 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     PlanSummary,
     PlanValidation,
     QaRunEntry,
+    lift_fixture,
 )
 from workhorse_workflows.kit import (
     build_dispatch_list,
@@ -207,7 +208,9 @@ def _fixtures(doc: dict[str, Any]) -> list[dict[str, str]]:
     `fixtures:` inside `## Verification setup` since before the field existed, and every
     `plan-context.json` written that way is still what some resume validates against. A
     bare string is the fixture's name — the lift `PlanFixture` gives it, repeated here
-    because this projection reads raw documents rather than the model.
+    because this projection reads raw documents rather than the model. An entry with prose
+    and no name is kept: it is a real arrangement the story needs, and dropping it told the
+    QA planner the story had declared nothing at all.
     """
     raw = doc.get("fixtures")
     if not isinstance(raw, list):
@@ -218,12 +221,12 @@ def _fixtures(doc: dict[str, Any]) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     for item in raw:
         if isinstance(item, str):
-            out.append({"name": item, "provides": ""})
+            out.append({"name": "", "provides": "", **lift_fixture(item)})
         elif isinstance(item, dict):
             out.append(
                 {"name": str(item.get("name", "")), "provides": str(item.get("provides", ""))}
             )
-    return [item for item in out if item["name"]]
+    return [item for item in out if item["name"] or item["provides"]]
 
 
 def _plan_context(
@@ -510,14 +513,21 @@ def plan_summary(
     # only part of the setup a QA plan *calls*, and `qa.fixture()` takes the name exactly.
     # A name a turn had to dig out of a dumped object is a name it can paraphrase.
     fixtures = _fixtures(plan_ctx)
-    if fixtures:
+    declared = [item for item in fixtures if item["name"]]
+    if declared:
         lines.append(
             "Declared fixtures: "
             + ", ".join(
                 f"{item['name']} ({item['provides']})" if item["provides"] else item["name"]
-                for item in fixtures
+                for item in declared
             )
         )
+    # Said apart from the declared names, because the two are acted on differently: a name
+    # is called, an arrangement is built. Reported as one list, a QA turn calls the prose,
+    # finds no such fixture, and sets about inventing declarations for sentences.
+    described = [item["provides"] for item in fixtures if not item["name"]]
+    if described:
+        lines.append("Arrangements this story described without declaring: " + "; ".join(described))
     return PlanSummary(text="\n".join(lines))
 
 
