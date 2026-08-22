@@ -146,7 +146,7 @@ value — so `scaffold`'s stubs clear it. **`code:` / `tests:` bullets are code 
 **`verify:` is not one of them.** It declares the *observation* that fulfils the node's
 obligations, as a named check with typed arguments from ostler's vocabulary — `http_status`,
 `json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `created`, `removed`, `visible`,
-`persists`, `emitted`, `conflict_on_stale`:
+`persists`, `emitted`, `omits`, `conflict_on_stale`:
 
 ```markdown
 - verify: http_status(409, title="Manifest Conflict")
@@ -164,8 +164,10 @@ meaning (how to tell the step ran) and is not a check.
 so a node whose `does:`/`raises:`/`states:` bullets carry none is green while every obligation it
 mints reaches QA with nothing to bind: `qa validate` has no declaration to enforce, and the evidence
 map reports no deficit. `undeclared-obligation` is that gap, reported per **node** rather than per
-bullet — `verify:` sits on the node, and pairing one check to one bullet is a judgement nobody has
-written down yet — so what it asks is whether the node declares any observation at all. A node that
+bullet: the pairing *is* written down — each `verify:` observes the nearest normative bullet above
+it, and one written before any of them belongs to the node's contract — but the per-claim version of
+this gap is `qa validate`'s `claimed-but-unasserted`, raised against the plan that has to prove it.
+So what this asks is whether the node declares any observation at all. A node that
 declared and got the call wrong gets `unparsed-check` and not this, for the same reason an overlong
 bullet is not also reported as compound: one defect, one finding, one thing to waive.
 

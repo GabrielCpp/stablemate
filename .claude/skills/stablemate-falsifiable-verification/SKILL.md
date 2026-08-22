@@ -81,6 +81,7 @@ Ask what the *likely* bug is, not the worst one, and choose the check that separ
 | the update is conditional | it is an unconditional overwrite | `conflict_on_stale(subject=…, token=…)` |
 | the effect fired | it fired at the source, or fired twice | `emitted(event=…, count=…)` |
 | one row was deleted | the neighbours were rewritten too | `unchanged(subject=…, except_fields=[…])` |
+| the refusal says nothing it may not | it quotes the credential, path or query it rejected | `omits(subject=…, matches=…)` |
 
 Every check in the vocabulary carries the defect it excludes in its own spec — `ostler checks`
 prints them. If you cannot say which line of that table your check is on, you have not chosen a
@@ -90,11 +91,15 @@ check yet.
 
 ## One check per obligation
 
-Obligations are minted per normative bullet, and a check is bound to what it observes. A node with
-six `does:` bullets and one `verify:` has declared one observation and left five claims unprovable
-— and `undeclared-obligation` will not fire, because the node declared *something*. Write the
-checks in the bullets' own order, one per observation, so the pairing is readable even though the
-book does not encode it.
+Obligations are minted per normative bullet, and a check is bound to what it observes — **document
+order is the binding**, not a convention. Each `verify:` belongs to the nearest normative bullet
+above it, and one written before any of them belongs to the node's own contract. So a node with six
+`does:` bullets and one `verify:` has declared one observation and left five claims unprovable, and
+`undeclared-obligation` will not fire, because the node declared *something*: the per-claim gap is
+`qa validate`'s `claimed-but-unasserted`, raised against the plan that has to prove it.
+
+Write each check under the bullet it observes. A check written above the claim attaches to whatever
+precedes it, which is how a refusal's status ends up filed as the observation of the success case.
 
 The reverse move is worse and is forbidden: **never collapse bullets to make one check cover
 them.** That deletes obligations to make a count come out even.
@@ -107,14 +112,16 @@ removing the thing under test.
 
 ## What `doctor` can see, and what it cannot
 
-Three warns exist for the three ways a node ends up unprovable. All three are `warn` rather than
-`error` because the remedy is authoring judgment, and all three are waivable per finding through
-the waivers file when the book knows better than the rule.
+Three findings exist for the three ways a node ends up unprovable, and all three are waivable per
+finding through the waivers file when the book knows better than the rule. Two are `warn`, because
+the remedy is authoring judgment. `weak-check` is an `error`: a claim whose every check passes on
+the defect it names is not a judgment call, and it is raised per claim — a discriminating check
+written under one bullet no longer answers for its siblings.
 
 | Code | What it caught | What to write instead |
 | --- | --- | --- |
 | `undeclared-obligation` | the node mints obligations and declares no check at all | a check per observation |
-| `weak-check` | every check it declares passes on the defect it names — presence with no value, a `2xx` naming neither `path:` nor `title:` | name the value, the route, or the title the claim turns on |
+| `weak-check` | every check declared *for that claim* passes on the defect it names — a field asserted present with no value, a `2xx` naming neither `path:` nor `title:` | name the value, the route, or the title the claim turns on |
 | `unstated-precondition` | a bullet says the node creates or removes something and the checks read only the state afterwards | `created(subject=…)` / `removed(subject=…)` |
 
 What no linter can see is precondition **3**: whether the value you asserted is the one the defect

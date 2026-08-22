@@ -136,7 +136,8 @@ Two blind spots to hunt deliberately:
 Every normative bullet mints a QA obligation, and `verify:` is where the node says **what would be
 observed** if that obligation holds. It is a call from ostler's check vocabulary with typed
 arguments — `http_status`, `json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `created`,
-`removed`, `visible`, `persists`, `emitted`, `conflict_on_stale` — never a test id, never prose:
+`removed`, `visible`, `persists`, `emitted`, `omits`, `conflict_on_stale` — never a test id, never
+prose:
 
 ```markdown
 - does: on conflict the manifest is left byte-identical
@@ -144,6 +145,11 @@ arguments — `http_status`, `json_path`, `unchanged`, `keys_unchanged`, `count`
 - verify: http_status(409, title="Manifest Conflict")
 - tests: `api/publish_test.go::TestPublish_Conflict`
 ```
+
+**Write each check under the claim it observes.** Document order is the binding: a `verify:` is
+attributed to the nearest normative bullet above it, and one written before any of them belongs to
+the node's own contract. A check placed above its claim is credited to whatever precedes it, so the
+observation of a refusal ends up filed as the observation of the success case.
 
 `doctor` grounds each call against the vocabulary (`unparsed-check`, an **error**), `ostler qa
 validate` refuses a QA plan that claims the obligation without invoking the declared call with the
