@@ -1,0 +1,418 @@
+{
+  "spec": "/mnt/data/worktrees/stablemate-optimize-full/benchmarks/suites/docs-app/benchmark.yaml",
+  "target": "/tmp/bench-docs-app",
+  "mode": "paper",
+  "judged": true,
+  "set": {
+    "label": "",
+    "cli": "claude",
+    "power": {
+      "low": {
+        "claude": {
+          "model": "sonnet",
+          "effort": "low"
+        }
+      },
+      "medium": {
+        "claude": {
+          "model": "sonnet",
+          "effort": "low"
+        }
+      },
+      "high": {
+        "claude": {
+          "model": "sonnet",
+          "effort": "low"
+        }
+      }
+    },
+    "judge": {}
+  },
+  "design_satisfaction_pct": 50.0,
+  "max_level": 2,
+  "levels": {
+    "0": "absent",
+    "1": "mentioned",
+    "2": "covered"
+  },
+  "expectations": [
+    {
+      "id": "session-exit",
+      "invariant": "every entered state is exitable",
+      "rendering": "a signed-in user can sign out from any screen",
+      "level": 0,
+      "reason": "No epic or story mentions signing out, ending a session, or any way to leave the signed-in state; sessions only persist.",
+      "evidence": [],
+      "capped": false,
+      "unverified_citations": []
+    },
+    {
+      "id": "page-delete",
+      "invariant": "every created thing is destroyable",
+      "rendering": "a user who can create a page can delete one, with confirmation",
+      "level": 1,
+      "reason": "Epic 0002 lists 'Deleting pages' under Non-Goals; no story has acceptance criteria for deleting a page or confirming deletion.",
+      "evidence": [
+        "docs/epics/0002-create-and-edit-pages/epic.md:Non-Goals"
+      ],
+      "capped": false,
+      "unverified_citations": []
+    },
+    {
+      "id": "screen-reachability",
+      "invariant": "every surface is reachable",
+      "rendering": "every screen is linked from the navigation or another screen; none requires typing a URL",
+      "level": 2,
+      "reason": "Criteria chain every screen: sign-in lands on tree, tree click opens detail, detail Edit opens edit mode, tree/page offers new-page form.",
+      "evidence": [
+        "docs/epics/0002-create-and-edit-pages/stories/view-page-detail/story.md:acceptance criteria",
+        "docs/epics/0001-sign-in-and-page-tree/stories/sign-in-and-land-on-tree/story.md:acceptance criteria",
+        "docs/epics/0002-create-and-edit-pages/stories/create-page/story.md:acceptance criteria",
+        "docs/epics/0002-create-and-edit-pages/stories/edit-page/story.md:acceptance criteria"
+      ],
+      "capped": false,
+      "unverified_citations": []
+    },
+    {
+      "id": "locale-switch",
+      "invariant": "promised capabilities are operable",
+      "rendering": "the brief's two locales are switchable by the user, and the choice persists",
+      "level": 1,
+      "reason": "Switcher criteria deliver switching, but a criterion requires a fresh view to reset to English, so the choice does not persist.",
+      "evidence": [
+        "docs/epics/0003-bilingual-pages/stories/read-page-in-chosen-language/story.md:acceptance criteria",
+        "docs/epics/0003-bilingual-pages/epic.md:Guardrails"
+      ],
+      "capped": false,
+      "unverified_citations": []
+    },
+    {
+      "id": "label-coherence",
+      "invariant": "one name per concept",
+      "rendering": "a concept carries the same label on every screen that shows it",
+      "level": 0,
+      "reason": "No epic or story criterion requires a concept to carry the same label across screens; no glossary or naming-consistency requirement exists.",
+      "evidence": [],
+      "capped": false,
+      "unverified_citations": []
+    },
+    {
+      "id": "failure-surfacing",
+      "invariant": "every failure is surfaced",
+      "rendering": "a failed save or sign-in tells the user what happened and what to do",
+      "level": 2,
+      "reason": "Criteria require specific on-page errors for bad credentials/unreachable service and inline save-failure errors with retry and preserved edits.",
+      "evidence": [
+        "docs/epics/0001-sign-in-and-page-tree/stories/reject-bad-signin/story.md:acceptance criteria",
+        "docs/epics/0002-create-and-edit-pages/stories/edit-page/story.md:acceptance criteria",
+        "docs/epics/0002-create-and-edit-pages/stories/create-page/story.md:acceptance criteria"
+      ],
+      "capped": false,
+      "unverified_citations": []
+    }
+  ],
+  "journeys": [
+    {
+      "id": "write-and-leave",
+      "persona": "a technical writer with an account, on a laptop",
+      "steps": [
+        {
+          "step": "sign in with an email address and a password",
+          "delivered": true,
+          "evidence": [
+            "docs/epics/0001-sign-in-and-page-tree/stories/sign-in-and-land-on-tree/story.md:A person can enter the email and password of a provisioned account on the sign-in page and submit the form."
+          ],
+          "why": "Sign-in form with email/password and submit is explicitly required.",
+          "unverified_citations": []
+        },
+        {
+          "step": "land somewhere that shows the site's pages without typing a URL",
+          "delivered": true,
+          "evidence": [
+            "docs/epics/0001-sign-in-and-page-tree/stories/sign-in-and-land-on-tree/story.md:On a successful sign-in, the person is taken directly to the page-tree view without any extra confirmation step."
+          ],
+          "why": "Successful sign-in redirects straight to the page-tree view listing pages.",
+          "unverified_citations": []
+        },
+        {
+          "step": "open an existing page from the tree",
+          "delivered": true,
+          "evidence": [
+            "docs/epics/0002-create-and-edit-pages/stories/view-page-detail/story.md:Opening a page from the tree navigates to a detail screen showing that page's title, its saved body text"
+          ],
+          "why": "Clicking a page in the tree opens its detail screen.",
+          "unverified_citations": []
+        },
+        {
+          "step": "edit its text and save it",
+          "delivered": true,
+          "evidence": [
+            "docs/epics/0002-create-and-edit-pages/stories/edit-page/story.md:Clicking Edit on the page detail screen switches it into edit mode",
+            "docs/epics/0002-create-and-edit-pages/stories/edit-page/story.md:Clicking Save sends the edit"
+          ],
+          "why": "Edit button on detail screen enters edit mode; Save persists the body text.",
+          "unverified_citations": []
+        },
+        {
+          "step": "see confirmation that the save succeeded",
+          "delivered": true,
+          "evidence": [
+            "docs/epics/0002-create-and-edit-pages/stories/edit-page/story.md:on success returns to view mode showing the newly saved title, body, and an updated \"Last saved\" timestamp",
+            "docs/epics/0003-bilingual-pages/stories/write-page-in-both-languages/story.md:On successful save, the screen reflects the new saved state (e.g. a \"saved\"/\"all changes saved\" indicator)"
+          ],
+          "why": "Save success shows updated Last saved timestamp and a saved indicator.",
+          "unverified_citations": []
+        },
+        {
+          "step": "sign out",
+          "delivered": false,
+          "evidence": [],
+          "why": "No story or epic mentions a sign-out control or ending a session.",
+          "unverified_citations": []
+        }
+      ],
+      "dead_ends": [
+        "sign out"
+      ]
+    },
+    {
+      "id": "reorganize-the-tree",
+      "persona": "a documentation lead tidying up a stale section",
+      "steps": [
+        {
+          "step": "sign in",
+          "delivered": true,
+          "evidence": [
+            "docs/epics/0001-sign-in-and-page-tree/stories/sign-in-and-land-on-tree/story.md:A person can enter the email and password of a provisioned account on the sign-in page and submit the form"
+          ],
+          "why": "sign-in form with provisioned account lands on page tree",
+          "unverified_citations": []
+        },
+        {
+          "step": "create a new page and place it under an existing one",
+          "delivered": true,
+          "evidence": [
+            "docs/epics/0002-create-and-edit-pages/stories/create-page/story.md:A \"new page\" control is available from the page tree (root-level) and from an open page (create a child under it)",
+            "docs/epics/0002-create-and-edit-pages/stories/create-page/story.md:parent selector includes \"root\" as an explicit, selectable option alongside existing pages"
+          ],
+          "why": "new-page control from tree; parent selector picks an existing page",
+          "unverified_citations": []
+        },
+        {
+          "step": "open the page that has been superseded",
+          "delivered": true,
+          "evidence": [
+            "docs/epics/0002-create-and-edit-pages/stories/view-page-detail/story.md:Opening a page from the tree navigates to a detail screen showing that page's title, its saved body text"
+          ],
+          "why": "any page in the tree can be opened to its detail screen",
+          "unverified_citations": []
+        },
+        {
+          "step": "delete that page",
+          "delivered": false,
+          "evidence": [],
+          "why": "no story covers deletion; epic 0002 lists 'Deleting pages' as a non-goal",
+          "unverified_citations": []
+        },
+        {
+          "step": "confirm the deletion before it happens",
+          "delivered": false,
+          "evidence": [],
+          "why": "no deletion exists, so no confirmation dialog is specified anywhere",
+          "unverified_citations": []
+        },
+        {
+          "step": "see the tree afterwards without the deleted page in it",
+          "delivered": false,
+          "evidence": [],
+          "why": "no story removes a page from the tree; tree only updates on create",
+          "unverified_citations": []
+        }
+      ],
+      "dead_ends": [
+        "delete that page",
+        "confirm the deletion before it happens",
+        "see the tree afterwards without the deleted page in it"
+      ]
+    },
+    {
+      "id": "read-in-french",
+      "persona": "a French-speaking reader who has an account",
+      "steps": [
+        {
+          "step": "sign in",
+          "delivered": true,
+          "evidence": [
+            "docs/epics/0001-sign-in-and-page-tree/stories/sign-in-and-land-on-tree/story.md:A person can enter the email and password of a provisioned account on the sign-in page and submit the form"
+          ],
+          "why": "sign-in form authenticates a provisioned account and lands on the page tree",
+          "unverified_citations": []
+        },
+        {
+          "step": "switch the interface to French",
+          "delivered": false,
+          "evidence": [],
+          "why": "epic explicitly excludes localizing UI chrome; switcher only swaps page body text and exists only on a page view, not the tree landing",
+          "unverified_citations": []
+        },
+        {
+          "step": "open a page and read its French text",
+          "delivered": true,
+          "evidence": [
+            "docs/epics/0002-create-and-edit-pages/stories/view-page-detail/story.md:Opening a page from the tree navigates to a detail screen",
+            "docs/epics/0003-bilingual-pages/stories/read-page-in-chosen-language/story.md:Clicking the language switcher to French updates the visible text to the page's saved French content"
+          ],
+          "why": "page opens from tree; visible switcher shows the page's saved French body",
+          "unverified_citations": []
+        },
+        {
+          "step": "navigate to another page and find the interface still in French",
+          "delivered": false,
+          "evidence": [],
+          "why": "interface is never French; and criteria say a fresh page view starts back at English, so even content resets",
+          "unverified_citations": []
+        },
+        {
+          "step": "reload the app and find the choice of French remembered",
+          "delivered": false,
+          "evidence": [],
+          "why": "criteria explicitly require the choice not be remembered: reopening starts back at English; epic forbids stored preference",
+          "unverified_citations": []
+        },
+        {
+          "step": "return to English",
+          "delivered": true,
+          "evidence": [
+            "docs/epics/0003-bilingual-pages/stories/read-page-in-chosen-language/story.md:Switching back to English restores the English text, in place"
+          ],
+          "why": "on a page view the switcher returns the content to English",
+          "unverified_citations": []
+        }
+      ],
+      "dead_ends": [
+        "switch the interface to French",
+        "navigate to another page and find the interface still in French",
+        "reload the app and find the choice of French remembered"
+      ]
+    }
+  ],
+  "dead_ends_per_journey": 2.33,
+  "entity_operations": [
+    {
+      "entity": "back",
+      "operations": [
+        "create"
+      ],
+      "missing": [
+        "delete",
+        "read",
+        "update"
+      ]
+    },
+    {
+      "entity": "child",
+      "operations": [
+        "create"
+      ],
+      "missing": [
+        "delete",
+        "read",
+        "update"
+      ]
+    },
+    {
+      "entity": "creation",
+      "operations": [
+        "create"
+      ],
+      "missing": [
+        "delete",
+        "read",
+        "update"
+      ]
+    },
+    {
+      "entity": "in-page",
+      "operations": [
+        "create"
+      ],
+      "missing": [
+        "delete",
+        "read",
+        "update"
+      ]
+    },
+    {
+      "entity": "request",
+      "operations": [
+        "create",
+        "update"
+      ],
+      "missing": [
+        "delete",
+        "read"
+      ]
+    },
+    {
+      "entity": "page",
+      "operations": [
+        "create",
+        "read",
+        "update"
+      ],
+      "missing": [
+        "delete"
+      ]
+    }
+  ],
+  "authored_documents": [
+    "docs/epics/0001-sign-in-and-page-tree/epic.md",
+    "docs/epics/0001-sign-in-and-page-tree/stories/reject-bad-signin/story.md",
+    "docs/epics/0001-sign-in-and-page-tree/stories/sign-in-and-land-on-tree/story.md",
+    "docs/epics/0001-sign-in-and-page-tree/stories/stay-signed-in-across-reload/story.md",
+    "docs/epics/0002-create-and-edit-pages/epic.md",
+    "docs/epics/0002-create-and-edit-pages/stories/create-page/story.md",
+    "docs/epics/0002-create-and-edit-pages/stories/edit-page/story.md",
+    "docs/epics/0002-create-and-edit-pages/stories/view-page-detail/story.md",
+    "docs/epics/0003-bilingual-pages/epic.md",
+    "docs/epics/0003-bilingual-pages/stories/read-page-in-chosen-language/story.md",
+    "docs/epics/0003-bilingual-pages/stories/show-missing-translation-placeholder/story.md",
+    "docs/epics/0003-bilingual-pages/stories/write-page-in-both-languages/story.md"
+  ],
+  "runs": [
+    {
+      "run": "author-pc026a10e",
+      "nodes": 267,
+      "repairs": [
+        "rework_story",
+        "rework_story",
+        "rework_story",
+        "rework_story",
+        "rework_story",
+        "rework_story",
+        "rework_story",
+        "rework_story",
+        "rework_story"
+      ],
+      "escalations": [],
+      "failed": false,
+      "stale": false
+    },
+    {
+      "run": "coder-p63d42f94",
+      "nodes": 10,
+      "repairs": [],
+      "escalations": [],
+      "failed": false,
+      "stale": false
+    },
+    {
+      "run": "coder-p95456d21",
+      "nodes": 12,
+      "repairs": [],
+      "escalations": [],
+      "failed": false,
+      "stale": false
+    }
+  ]
+}
