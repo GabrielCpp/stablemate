@@ -34,42 +34,20 @@ Run:
 
 from __future__ import annotations
 
-import ast
 import sys
 from pathlib import Path
 
-from ostler.qa.fixtures import FIXTURES_DIRNAME, declared, declared_modules, preflight_errors
+from ostler.qa.fixtures import (
+    FIXTURES_DIRNAME,
+    declared,
+    declared_modules,
+    preflight_errors,
+    referenced,
+)
 
 #: Where the benchmark apps live. The only trees in this repo that carry QA plans at all:
 #: stablemate's own code is tested with pytest, not with an OKF QA lane.
 CORPUS = Path(__file__).resolve().parent.parent / "paddock" / "data" / "apps"
-
-
-def _fixture_names_called(plan: Path) -> set[str]:
-    """Every literal name a plan hands to `qa.fixture(...)`.
-
-    Read off the AST rather than by grep, for the same reason `covers=` is: a name built
-    at runtime claims nothing a static check could have verified, and this pass would
-    rather see none than see a fragment of one.
-    """
-    try:
-        tree = ast.parse(plan.read_text(encoding="utf-8"))
-    except (OSError, SyntaxError):
-        # Not this guard's finding: `ostler qa lint` and ruff both fail on it first, and
-        # reporting it twice in two vocabularies helps nobody.
-        return set()
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "fixture"
-            and node.args
-            and isinstance(node.args[0], ast.Constant)
-            and isinstance(node.args[0].value, str)
-        ):
-            names.add(node.args[0].value)
-    return names
 
 
 def _check_app(root: Path) -> list[str]:
@@ -98,7 +76,7 @@ def _check_app(root: Path) -> list[str]:
         problems.extend(
             f"{root.name}/{story}: `qa.fixture({name!r})` names a fixture this repo has "
             f"not declared. Declared here: {known}"
-            for name in sorted(_fixture_names_called(plan))
+            for name in sorted(referenced(plan)[0])
             if name not in specs
         )
     return problems
