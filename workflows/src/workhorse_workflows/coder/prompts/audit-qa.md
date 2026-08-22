@@ -54,6 +54,11 @@ Route on `status` rather than judging it:
 - **`contradicted`** — the ledger and `qa-evidence.json` disagree, or a bound assertion
   failed under a published pass. Refute it and quote both sides from `why` and
   `failingLogRefs`; this is the one status that is never a judgement call.
+- **`unproven`** — the scenario that would have observed it did not run to completion, so
+  nothing looked at the product. This is **not** a refutation and must never be filed as one:
+  it is an `evidence-defect`, the repair is in the plan (a misspelled field, a step that
+  raised, a timeout), and `abortedLogRefs` names the scenario that stopped. Filing it against
+  the product accuses a tree the run never examined.
 
 An obligation whose row reports no `checksDeclared` is a hole in the *book*, not in the run:
 nothing downstream could bind it, so any assertion satisfied it. Say so in `notes` — the
