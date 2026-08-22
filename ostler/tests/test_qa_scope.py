@@ -236,6 +236,56 @@ def test_a_symbol_cited_by_many_nodes_is_context_not_live_evidence(tmp_path: Pat
     assert published["evidenceRequired"] == "live"
 
 
+def test_the_demotion_is_dropped_rather_than_owe_nothing_at_all(tmp_path: Path):
+    """When every changed symbol is a container, the story still owes proof of something.
+
+    An empty owed set is a bug signal, not a valid state: the trial is handed an evidence
+    map built from zero rows and reports every defect `inconclusive — not owed by this
+    trial`, which reads on a scorecard exactly like a change nobody could break. So the
+    demotion is taken back and the finding published, because the floor firing means the
+    fan-out threshold was wrong for this book rather than that the change was harmless.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/demo/screen.md").write_text(
+        "---\ntype: screen\ntitle: Demo Screen\n---\n# Demo Screen\n\n"
+        "- route: /demo\n"
+        "- code:\n\n"
+        "## Undo\n\n"
+        "- role: button\n"
+        "- name: Undo\n"
+        "- code: app/toolbar.ts::Toolbar\n"
+        "- tests: tests/toolbar.test.ts::undoes\n\n"
+        "## Redo\n\n"
+        "- role: button\n"
+        "- name: Redo\n"
+        "- code: app/toolbar.ts::Toolbar\n"
+        "- tests: tests/toolbar.test.ts::redoes\n\n"
+        "## Publish\n\n"
+        "- role: button\n"
+        "- name: Publish\n"
+        "- code: app/toolbar.ts::Toolbar\n"
+        "- tests: tests/toolbar.test.ts::publishes\n",
+        encoding="utf-8",
+    )
+    toolbar = tmp_path / "app/toolbar.ts"
+    toolbar.write_text("export function Toolbar() { return 'undo redo' }\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    toolbar.write_text(
+        "export function Toolbar() { return 'undo redo publish' }\n", encoding="utf-8"
+    )
+
+    packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
+    assert validate_context(packet) == []
+    owed = [item for item in packet["obligations"] if item["required"]]
+    assert owed, "the change owes live evidence for nothing at all"
+    assert any(item["kind"] == "shared-symbol-floor" for item in packet["healthFindings"])
+
+
 def _two_readings_book(tmp_path: Path) -> Path:
     """One function, documented twice: the wire contract and the domain rule.
 

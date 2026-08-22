@@ -406,6 +406,33 @@ def build_context(
         for node_id in contracts
         if _is_required(node_id, direct_reasons, grounded, shared_files, shared_symbols)
     }
+    if not required_contracts:
+        # A story whose diff reached a grounded node and which nevertheless owes nothing is
+        # reporting a bug in this filter, not a story with nothing to prove: the trial is
+        # handed an empty evidence map and every seeded defect comes back "not owed by this
+        # trial". So when the fan-out demotion is what emptied the set, take the demotion
+        # back rather than ship a packet that asks for nothing. Only `shared_symbols` is
+        # relaxed — a bare-file citation localizes nothing at any count, which is why
+        # `shared_files` is not — and the finding is a warning rather than a silent repair,
+        # because the floor firing means `_CONTAINER_FANOUT` was wrong for this book.
+        floored = {
+            node_id
+            for node_id in contracts
+            if _is_required(node_id, direct_reasons, grounded, shared_files, frozenset())
+        }
+        if floored:
+            required_contracts = floored
+            health.append(
+                {
+                    "kind": "shared-symbol-floor",
+                    "severity": "warning",
+                    "message": (
+                        "every changed symbol is cited by enough nodes to be demoted, which"
+                        " would leave this change owing no live evidence at all; the"
+                        " demotion was dropped and the changed-code reasons kept"
+                    ),
+                }
+            )
     obligations = [
         obligation
         for node_id in sorted(contracts)
