@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ostler import checks
+from ostler import checks, model
 from ostler.qa import sensitivity
 
 
@@ -104,3 +104,45 @@ def test_the_benchmark_corpus_declares_no_check_that_cannot_go_red() -> None:
             continue
         outcome = sensitivity.cmd_sensitivity(app)
         assert outcome.ok, f"{app.name}: {outcome.message}"
+
+
+def _book(tmp_path: Path, endpoint: str) -> Path:
+    docs = tmp_path / "docs" / "features"
+    docs.mkdir(parents=True)
+    (docs / "api.md").write_text(
+        "---\ntype: server\nslug: api\ntitle: API\n---\n# API\n\n"
+        "## Endpoints\n\n### post-policies\n\n" + endpoint,
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+def test_a_claim_no_check_observes_is_counted_undeclared_not_dropped(tmp_path: Path) -> None:
+    """The denominator is every claim the book mints, not every claim that declares a check.
+
+    Dropping the unobserved ones lets a book raise its score by deleting an assertion instead
+    of strengthening one, which is the opposite of what the metric is for.
+    """
+    root = _book(tmp_path, (
+        "- errors: `409` when the policy number is already on the books\n"
+        '- verify: http_status(409, path="/api/policies")\n'
+        "- errors: `422` when a field does not validate\n"
+    ))
+    rows = {row.claim: row.status for row in sensitivity.report(model.load(root))}
+    assert rows["docs/features/api.md#post-policies:errors:1"] == "sensitive"
+    assert rows["docs/features/api.md#post-policies:errors:2"] == "undeclared"
+
+
+def test_an_unobserved_claim_does_not_fail_the_command_but_is_named(tmp_path: Path) -> None:
+    """`doctor` refuses an unasserted claim; this command grades the assertions that exist.
+
+    Two refusals for one defect teaches the author to silence whichever complains first, so
+    the report says the number out loud and leaves the gate where it already was.
+    """
+    root = _book(tmp_path, "- errors: `422` when a field does not validate\n")
+    outcome = sensitivity.cmd_sensitivity(root)
+    assert outcome.ok
+    assert "0 insensitive" in outcome.message
+    assert "unobserved" in outcome.message
+    unobserved = [row["claim"] for row in outcome.data["claims"] if row["status"] == "undeclared"]
+    assert "docs/features/api.md#post-policies:errors:1" in unobserved

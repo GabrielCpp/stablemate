@@ -410,8 +410,34 @@ def _green(verifier: Any, observed: Any, args: Any) -> bool:
     return bool(passed)
 
 
+def _minted(node: model.UINode) -> list[tuple[str, int]]:
+    """Every claim obligation the node mints, keyed the way its id is numbered.
+
+    The same walk as `_obligations` in `qa/context.py`: one per normative bullet, counted per
+    key in document order. Read here rather than taken from `attributed_checks` because that
+    map holds only the bullets a `verify:` was attached to, and a claim nothing observes is
+    precisely the one this report exists to name.
+    """
+    normative = set(registry.normative_keys(node.type))
+    counts: dict[str, int] = {}
+    minted: list[tuple[str, int]] = []
+    for row in node.bullet_order:
+        key = str(row[0])
+        if key in normative:
+            counts[key] = counts.get(key, 0) + 1
+            minted.append((key, counts[key]))
+    return minted
+
+
 def report(graph: Graph) -> list[ClaimReport]:
-    """Every claim in the book that declares a check, and whether its checks can go red."""
+    """Every obligation the book mints, and whether the checks on it can go red.
+
+    Every obligation, not every obligation that declares a check. Skipping the undeclared ones
+    makes the metric flatter the book that asserts least: a claim with no check at all would
+    leave the denominator rather than fail, so a book could reach `9/9` by never observing the
+    other fifty-eight things it promises. `ClaimReport.status` has always had an `undeclared`
+    arm for this; it just had no way to fire.
+    """
     rows: list[ClaimReport] = []
     for node in graph.ui_nodes:
         if registry.ui_type(node.type) is None:
@@ -419,13 +445,11 @@ def report(graph: Graph) -> list[ClaimReport]:
         rel = _rel(node.path, graph.root)
         contract, per_claim = registry.attributed_checks(node.type, node.bullet_order)
         claims = [(f"{node.id}:contract", contract)]
-        claims += [(f"{node.id}:{key.replace(' ', '-')}:{index}", values)
-                   for (key, index), values in per_claim.items()]
+        claims += [(f"{node.id}:{key.replace(' ', '-')}:{index}", per_claim.get((key, index), []))
+                   for key, index in _minted(node)]
         for claim, values in claims:
             calls = [call for call in (checks.parse_check(value) for value in values)
                      if isinstance(call, checks.CheckCall)]
-            if not calls:
-                continue
             rows.append(ClaimReport(claim, rel, node.line, tuple(trial(call) for call in calls)))
     return sorted(rows, key=lambda row: (row.path, row.line, row.claim))
 
@@ -440,12 +464,14 @@ def _rel(path: Path, root: Path) -> str:
 def render(rows: list[ClaimReport]) -> str:
     """The report, as the operator and the QA-plan repair lap read it."""
     if not rows:
-        return "no claim in this book declares a check — nothing to put to the experiment"
+        return "this book mints no claim — nothing to put to the experiment"
     lines = []
     for row in rows:
         if row.status == "sensitive" and not any(t.survived or not t.witnessed for t in row.trials):
             continue
         lines.append(f"{row.status:<12} {row.path}#{row.claim}")
+        if not row.trials:
+            lines.append("    unobserved   no `verify:` is attached to this claim")
         for trial_ in row.trials:
             if not trial_.witnessed:
                 lines.append(f"    unwitnessed  {trial_.call} — {trial_.note}")
@@ -454,11 +480,18 @@ def render(rows: list[ClaimReport]) -> str:
             elif trial_.survived:
                 lines.append(f"    partial      {trial_.call} — survived: {', '.join(trial_.survived)}")
     insensitive = [row for row in rows if row.status == "insensitive"]
-    verdict = (
-        f"{len(rows)} claims put to the experiment, {len(insensitive)} insensitive"
-        if insensitive
-        else f"every declared check can go red ({len(rows)} claim{'' if len(rows) == 1 else 's'})"
-    )
+    undeclared = [row for row in rows if row.status == "undeclared"]
+    # Counted apart from the insensitive ones, and never folded into a clean verdict: an
+    # unobserved claim is a hole in the book rather than a weak assertion, and `doctor` is
+    # where it is refused. Saying "every declared check can go red" over a book that declares
+    # almost none is true and useless.
+    if insensitive or undeclared:
+        verdict = (
+            f"{len(rows)} claims put to the experiment, "
+            f"{len(insensitive)} insensitive, {len(undeclared)} unobserved"
+        )
+    else:
+        verdict = f"every claim can be made to fail ({len(rows)} claim{'' if len(rows) == 1 else 's'})"
     return "\n".join([*lines, verdict]) if lines else verdict
 
 
