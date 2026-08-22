@@ -1,10 +1,10 @@
 name = "depot-infra"
 repo_dir = "depot-infra"
-sha256 = "82cf2e4df341c78ede4d7e900f01cda56530efb43277eae02c38199e3ae5fffa"
-bytes = 61209
-head = "f142eff013d81d1aae73576c629d9e039fc1231b"
+sha256 = "7b4bba06ecfd122a101fd3cd00a67f2d23f427ed5bc20759e1abcc44085dcfd4"
+bytes = 61621
+head = "8920399cbcd96b65d3ea2c328b843540c3ebff9d"
 dirty = true
 url = ""
 note = "the frozen depot-infra fixture as tracked"
 source = "apps/depot-infra"
-tree_sha256 = "ed9335e3d729e5039c3df3e1d05be9c50832afa7395e5f4d442ee81d65cd1c1e"
+tree_sha256 = "cf0309c479689fd6eb01fe7b04d60e7db9120368baa48a0eeaa1d3c0183ba364"
