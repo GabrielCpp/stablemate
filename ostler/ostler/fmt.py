@@ -116,15 +116,44 @@ def _bullet_edit(section: markdown.Section, uitype: registry.UINodeType,
     if not run:
         return None
     order = {b.key: i for i, b in enumerate(uitype.bullet_keys)}
+    normative = set(registry.normative_keys(uitype.name))
+    observing = set(registry.check_keys(uitype.name))
 
-    def rank(bullet: markdown.Bullet) -> tuple[int, int]:
+    # A check observes the nearest normative bullet above it (`registry.attributed_checks`), so
+    # sorting the keys independently would re-attribute it: hoisting every `verify:` into one
+    # block credits the observation of a refusal to whichever claim ends up last. Group each
+    # check with the claim it was written under, and move the group.
+    contract: list[markdown.Bullet] = []
+    groups: list[tuple[markdown.Bullet, list[markdown.Bullet]]] = []
+    anchor: int | None = None
+    for bullet in run:
         key = _bullet_key(bullet.text)
+        if key in observing:
+            # Above every claim, it is the node's own contract; otherwise it belongs to the
+            # nearest claim above, whatever non-normative bullets were written between them.
+            (contract if anchor is None else groups[anchor][1]).append(bullet)
+            continue
+        if key in normative:
+            anchor = len(groups)
+        groups.append((bullet, []))
+
+    def rank(group: tuple[markdown.Bullet, list[markdown.Bullet]]) -> tuple[int, int]:
+        key = _bullet_key(group[0].text)
         return (0, order[key]) if key in order else (1, 0)
 
-    ordered = sorted(run, key=rank)  # stable: unknown keys keep their relative order, after known
+    ordered = sorted(groups, key=rank)  # stable: unknown keys keep their relative order, after known
+    flat: list[markdown.Bullet] = []
+    for claim, attached in ordered:
+        # The contract's own checks stay above every claim, or nothing distinguishes them.
+        if contract and _bullet_key(claim.text) in normative:
+            flat.extend(contract)
+            contract = []
+        flat.append(claim)
+        flat.extend(attached)
+    flat.extend(contract)
     start, end = run[0].line_start, run[-1].line_end
     new_lines: list[str] = []
-    for bullet in ordered:
+    for bullet in flat:
         block = _emit_bullet(bullet, uitype, body_lines)
         # A bullet's raw span can absorb trailing blank list-separators; drop them so reordering
         # never strands a blank *between* bullets.

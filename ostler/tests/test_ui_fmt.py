@@ -136,3 +136,37 @@ def test_fmt_writes_canonical(repo: Path):
     assert p.read_text().startswith("---\ntype: screen\nslug: s\ntitle: T\n")
     # loads clean afterwards
     assert load(repo).ui_nodes_of_type("screen")
+
+
+def test_a_check_is_reordered_with_the_claim_it_observes():
+    """Sorting `verify:` by key alone would re-file every observation onto one claim."""
+    text = (
+        "---\ntype: api\nslug: s\ntitle: T\n---\n# T\n\n"
+        "## Endpoints\n\n### submit\n"
+        "- route: `POST /x`\n"
+        '- errors: `409` when it is already on file.\n'
+        '- verify: http_status(409, title="Duplicate")\n'
+        "- does:\n  - files it.\n"
+        '- verify: http_status(201, path="/x")\n'
+    )
+    body = fmt.format_text(text).splitlines()
+    order = {line.split(":", 1)[0]: i for i, line in enumerate(body) if line.startswith("- ")}
+    assert body.index('- verify: http_status(201, path="/x")') < order["- errors"]
+    assert body.index('- verify: http_status(409, title="Duplicate")') > order["- errors"]
+
+
+def test_a_check_written_above_every_claim_stays_above_them():
+    """It belongs to the node's own contract, and only its position says so."""
+    text = (
+        "---\ntype: concept\nslug: s\ntitle: T\n---\n# T\n\n"
+        "## Methods\n\n### hold\n"
+        "- sig: `hold(seat: str) -> dict`\n"
+        '- verify: json_path("hold.version", equals="1")\n'
+        "- raises: `Seat Unavailable` when it is taken.\n"
+        '- verify: http_status(409)\n'
+        "- code: app/hold.py::hold\n"
+    )
+    body = fmt.format_text(text).splitlines()
+    i_contract = body.index('- verify: json_path("hold.version", equals="1")')
+    i_raises = body.index("- raises: `Seat Unavailable` when it is taken.")
+    assert i_contract < i_raises < body.index("- verify: http_status(409)")

@@ -26,7 +26,17 @@ from ostler.model import Graph
 
 
 def _bullet_stubs(uitype: registry.UINodeType) -> list[str]:
-    return [f"- {bk.key}:" for bk in uitype.bullet_keys]
+    """The type's keys in canonical order, with the check stubs under the last claim.
+
+    A check observes the nearest claim above it, so `ostler fmt` keeps it there — and a stub
+    written anywhere else is one the formatter moves the first time the file is touched.
+    """
+    normative = set(registry.normative_keys(uitype.name))
+    checks = [f"- {bk.key}:" for bk in uitype.bullet_keys if bk.check]
+    rest = [f"- {bk.key}:" for bk in uitype.bullet_keys if not bk.check]
+    claims = [i for i, stub in enumerate(rest) if stub[2:-1] in normative]
+    at = claims[-1] + 1 if claims else len(rest)
+    return rest[:at] + checks + rest[at:]
 
 
 def _file_body(uitype: registry.UINodeType, title: str) -> str:
