@@ -31,7 +31,7 @@ from types import ModuleType
 
 import pytest
 
-from ostler.qa.lint import lint_source
+from ostler.qa.lint import cmd_lint
 
 DATA = Path(__file__).parents[1]
 PLANS = sorted((DATA / "apps").glob("*/docs/specs/*/qa_plan.py"))
@@ -73,8 +73,15 @@ def test_the_corpus_has_plans_to_lint() -> None:
 
 @pytest.mark.parametrize("plan", PLANS, ids=_plan_id)
 def test_a_frozen_plan_passes_the_lint_that_ships_today(plan: Path) -> None:
-    problems = lint_source(plan.read_text(encoding="utf-8"), filename=str(plan))
-    assert not problems, "\n".join(problems)
+    """Lint through the shipping entry point, so the app's own declarations apply.
+
+    `cmd_lint` reads `fixture_modules:` out of the app's `agents.yml` and lints the
+    declared fixture modules in the same pass — calling the visitor directly would
+    reject every plan that imports a fixture the app did declare.
+    """
+    app = plan.parents[3]
+    outcome = cmd_lint(plan, plan.parent, root=app)
+    assert outcome.ok, outcome.message
 
 
 def _story_file(root: Path, story: str) -> Path:
