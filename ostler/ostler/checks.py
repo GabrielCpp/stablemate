@@ -173,6 +173,20 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "at-most-once effect fired twice",
     ),
     CheckSpec(
+        name="omits",
+        params=(
+            CheckParam("subject", "str", required=True),
+            CheckParam("text", "str"),
+            CheckParam("matches", "str"),
+        ),
+        one_of=("text", "matches"),
+        excludes="a value the response was never supposed to carry — a refusal quoting the "
+                 "credential it rejected, an error echoing an internal path — which every "
+                 "other check in this vocabulary passes over, because they all assert what "
+                 "the subject does hold and a book's clause about what it may *not* hold has "
+                 "no positive form",
+    ),
+    CheckSpec(
         name="conflict_on_stale",
         params=(
             CheckParam("subject", "str", required=True),

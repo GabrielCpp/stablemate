@@ -852,6 +852,49 @@ def _verify_emitted(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, 
     return found > 0, found, "at least one"
 
 
+def _verify_omits(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    """What the subject must not carry — the one assertion the rest of the vocabulary cannot make.
+
+    Every other check says what a value *is*, and a book's clause about what a response may not
+    contain has no positive form: the refusal that quotes the credential it rejected has the
+    right status, the right title and a well-formed body, so nothing that reads what is there
+    can go red. This reads it looking for what must not be.
+
+    `subject` names a field when the observation is a document the path resolves in, and stands
+    for the whole of it otherwise — a response body, a command's output. A subject that does not
+    resolve searches everything rather than passing: a leak lands wherever the defect put it, not
+    where the author guessed, and the wrong guess must not read as absence.
+    """
+    document = observed
+    reader = getattr(document, "json", None)
+    if callable(reader):
+        try:
+            document = reader()
+        except Exception:  # noqa: BLE001 — a non-JSON body is still searchable as text
+            document = getattr(observed, "text", observed)
+    if isinstance(document, Mapping):
+        resolved, value = _resolve_path(document, args["subject"])
+        if resolved:
+            document = value
+    haystack = document if isinstance(document, str) else _rendered(document)
+    found: list[str] = []
+    if "text" in args and args["text"] in haystack:
+        found.append(args["text"])
+    if "matches" in args:
+        hit = re.search(args["matches"], haystack)
+        if hit is not None:
+            found.append(hit.group(0))
+    return not found, {"found": found}, {"found": []}
+
+
+def _rendered(document: Any) -> str:
+    """Everything the subject carries, as one string to search."""
+    try:
+        return json.dumps(document, default=str, sort_keys=True)
+    except (TypeError, ValueError):
+        return str(document)
+
+
 def _verify_conflict_on_stale(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     status, _ = _observed_status(observed)
     # Any refusal counts, 409 is what the contract usually says. What must not pass is a 2xx:
@@ -880,6 +923,7 @@ VERIFIERS: dict[str, Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]] 
     "visible": _verify_visible,
     "persists": _verify_persists,
     "emitted": _verify_emitted,
+    "omits": _verify_omits,
     "conflict_on_stale": _verify_conflict_on_stale,
 }
 

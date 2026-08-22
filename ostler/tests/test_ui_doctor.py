@@ -496,6 +496,7 @@ Presents the [diff](../../concepts/diff.md) concept and a [gone](./gone.md) one.
 - name: Row
 - extends: [tree-node](../components/design-system.md#tree-node)
 - keyboard: Enter activates
+- verify: visible(locator="[role=button][name='Row']")
 
 ## Interactions
 
@@ -525,6 +526,7 @@ title: DS
 - role: button
 - name: Node
 - keyboard: Enter activates
+- verify: visible(locator="[role=button][name='Node']")
 """
 
 LINKED_DIFF = """\

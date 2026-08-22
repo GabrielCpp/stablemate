@@ -154,3 +154,46 @@ def test_json_path_without_a_comparison_is_red_not_green() -> None:
     assert ok is False
     assert actual == "abc"
     assert "presence asserts nothing" in expected
+
+
+def test_omits_reads_the_field_its_subject_names() -> None:
+    """The C9 shape: a well-formed refusal carrying the credential it rejected. Status, title
+    and body all read correctly, so the leak is only visible to a check that looks for it."""
+    leak = "The bearer token eyJhbGciOi… was not accepted."
+    ok, actual, _ = harness.VERIFIERS["omits"](
+        _Response(401, {"title": "Unauthorized", "detail": leak}, "http://x/api/claims"),
+        {"subject": "$.detail", "matches": "eyJ[A-Za-z0-9]+"},
+    )
+    assert ok is False
+    assert actual["found"] == ["eyJhbGciOi"]
+
+
+def test_omits_passes_when_the_subject_says_nothing_it_may_not() -> None:
+    ok, actual, expected = harness.VERIFIERS["omits"](
+        _Response(401, {"title": "Unauthorized", "detail": "The credential was not accepted."},
+                  "http://x/api/claims"),
+        {"subject": "$.detail", "matches": "eyJ[A-Za-z0-9]+"},
+    )
+    assert ok is True
+    assert actual == expected == {"found": []}
+
+
+def test_omits_searches_everything_when_its_subject_does_not_resolve() -> None:
+    """A leak lands where the defect put it, not where the author guessed. So a subject that
+    names no field in the document widens the search rather than reading as absence."""
+    ok, actual, _ = harness.VERIFIERS["omits"](
+        _Response(401, {"error": {"note": "token eyJabc rejected"}}, "http://x/api/claims"),
+        {"subject": "$.detail", "text": "eyJabc"},
+    )
+    assert ok is False
+    assert actual["found"] == ["eyJabc"]
+
+
+def test_omits_searches_a_plain_string_observation() -> None:
+    """A command's output is not a document, and its stderr is where a path leaks."""
+    ok, actual, _ = harness.VERIFIERS["omits"](
+        "error: cannot open /home/ci/.secrets/ledger.key",
+        {"subject": "the message", "text": "/home/ci/.secrets"},
+    )
+    assert ok is False
+    assert actual["found"] == ["/home/ci/.secrets"]

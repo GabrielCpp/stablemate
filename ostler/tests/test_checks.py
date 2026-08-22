@@ -48,6 +48,9 @@ def test_list_arguments_round_trip() -> None:
         # An assertion that cannot go red, refused where it is written: a `json_path` with
         # no comparison observes only that the path resolved.
         ('json_path(path="$.item.id")', "needs one of `equals`, `matches`, `absent`"),
+        # Same rule on the one check whose whole job is negative: without a thing it must
+        # not carry, `omits` reads the subject and objects to nothing in it.
+        ('omits(subject="$.detail")', "needs one of `text`, `matches`"),
         ("", "empty"),
     ],
 )
@@ -113,6 +116,17 @@ def test_verify_is_a_check_key_on_the_normative_types() -> None:
         assert registry.check_keys(node_type) == ("verify",)
 
 
+def test_every_type_that_states_claims_can_say_what_observing_one_looks_like() -> None:
+    """A type with claims and no check key is covered unconditionally: `checksDeclared` is
+    empty by construction, so whatever the scenario happened to assert fulfils it. `endpoint`
+    and `component` were in that state while their books wrote `verify:` bullets nobody read,
+    and `environment` was in it while a stack's provider pin went missing under a plan that
+    could not be held to it."""
+    for node_type in registry.NORMATIVE_KEYS_BY_TYPE:
+        assert registry.check_keys(node_type) == ("verify",), node_type
+    assert registry.check_keys("environment") == ("verify",)
+
+
 def test_a_runbook_step_verify_stays_a_reference() -> None:
     """Same word, different job: a boot step's `verify:` says how to tell the *step* ran."""
     assert registry.check_keys("step") == ()
@@ -153,3 +167,12 @@ def test_a_one_of_spec_shows_the_choice_in_its_signature() -> None:
     """The signature is what a refusal offers an author as the shape that would be accepted,
     and an optional-looking argument list does not say that one of them is mandatory."""
     assert "one of equals, matches, absent" in checks.CHECK_BY_NAME["json_path"].signature()
+
+
+def test_omits_is_the_vocabularys_one_negative_observation() -> None:
+    """Every other check asserts what a subject holds, and a clause about what a response may
+    *not* contain has no positive form — so a book stating one had nothing to declare."""
+    call = checks.parse_check('omits(subject="$.detail", matches="eyJ[A-Za-z0-9]+")')
+    assert isinstance(call, checks.CheckCall)
+    assert call.args == {"subject": "$.detail", "matches": "eyJ[A-Za-z0-9]+"}
+    assert "credential it rejected" in checks.CHECK_BY_NAME["omits"].excludes

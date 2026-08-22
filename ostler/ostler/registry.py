@@ -427,6 +427,13 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # environment's own files are `unmapped-change` errors on the first packet that
             # touches them, and the book has no lawful way to own them.
             BulletKey("code", link=True),
+            # An environment states facts a plan can be held to — a pinned provider version, a
+            # backend that is local, a service on the address the book gives — and until this key
+            # existed it had no way to say what observing one looks like. `checksDeclared` was
+            # empty by construction, so every obligation this node minted was covered by whatever
+            # the scenario happened to assert, and the pin the program lost read exactly like the
+            # pin it kept.
+            BulletKey("verify", check=True),
         ),
     ),
     # ---- section-level elements / behaviors (a `### id` under a typed `## Heading`) ----
@@ -456,6 +463,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("exclusive-with", link=True),
             BulletKey("states"),
             BulletKey("code", link=True),
+            BulletKey("verify", check=True),
         ),
     ),
     UINodeType(
@@ -468,6 +476,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("does", nested=True),
             BulletKey("code", link=True),
             BulletKey("detail", link=True),
+            BulletKey("verify", check=True),
         ),
     ),
     UINodeType(
@@ -483,6 +492,11 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("code", link=True),
             BulletKey("openapi", link=True),
             BulletKey("detail", link=True),
+            # As on `interaction`/`invocation`/`method`, and for the same reason: the bullets
+            # above are claims, and a claim with no declared observation is covered by whatever
+            # the scenario chose to assert. Books were already writing `verify:` here — the key
+            # not being declared meant nobody read them.
+            BulletKey("verify", check=True),
         ),
     ),
     UINodeType(
@@ -544,6 +558,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("default"),
             BulletKey("required"),
             BulletKey("semantics"),
+            BulletKey("verify", check=True),
         ),
     ),
     # One ordered boot step of a `runbook` — a `### id` under its `## Steps` (docs/okf-runbook.md §4.3).
