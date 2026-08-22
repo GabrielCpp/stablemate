@@ -692,7 +692,10 @@ class Lap:
 
 
 def loop_convergence(
-    run: str = "", workflow: str = "", min_work_items: int = MIN_LOOP_WORK_ITEMS
+    run: str = "",
+    workflow: str = "",
+    min_work_items: int = MIN_LOOP_WORK_ITEMS,
+    since_ts: float | None = None,
 ) -> list[dict[str, Any]]:
     """Per-node lap distributions: which review→rework loops converge, and what the
     ones that don't are costing.
@@ -710,6 +713,10 @@ def loop_convergence(
     already objected. Read it as *how often this gate says yes*. A gate at 0.8 accepts
     four times in five; a gate at 0.2 asks five times before it is satisfied, and the
     four refusals are the churn.
+
+    `since_ts` bounds the window from below. A caller that reuses a run id — a benchmark
+    harness replays the same trial under the same name every round — otherwise pools every
+    round that ever ran under that id, and the union reads as one very expensive round.
 
     `excess_turns` and `excess_cost_usd` are the laps after the first, and their money
     — the part of the bill that exists only because the loop did not converge. That is
@@ -758,6 +765,9 @@ def loop_convergence(
     if workflow:
         clauses.append("workflow = ?")
         params.append(workflow)
+    if since_ts is not None:
+        clauses.append("start_ts >= ?")
+        params.append(float(since_ts))
     rows = _connection().execute(
         "SELECT node, run_id,"  # noqa: S608 — clauses are literals; every value is bound
         " json_extract(attrs_json, '$.work_id') AS work_id,"
@@ -1106,6 +1116,7 @@ def query_spans(
     slower_than: float | None = None,
     limit: int = 200,
     before_ts: float | None = None,
+    since_ts: float | None = None,
 ) -> list[dict[str, Any]]:
     """The /traces search: filter the spans table, newest first. ``slower_than``
     is a minimum duration in seconds. ``before_ts`` is the keyset cursor — the
@@ -1128,6 +1139,9 @@ def query_spans(
     if before_ts is not None:
         clauses.append("start_ts < ?")
         params.append(float(before_ts))
+    if since_ts is not None:
+        clauses.append("start_ts >= ?")
+        params.append(float(since_ts))
     params.append(max(1, min(int(limit), 1000)))
     rows = _connection().execute(
         f"SELECT {_SPAN_COLUMNS} FROM spans WHERE {' AND '.join(clauses)}"  # noqa: S608 - literals

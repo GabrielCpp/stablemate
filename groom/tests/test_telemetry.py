@@ -429,6 +429,36 @@ def test_loop_convergence_reports_the_shape_of_a_lap_distribution():
         ]
 
 
+def test_loop_convergence_can_be_bounded_away_from_an_earlier_run_of_the_same_id():
+    """A benchmark harness replays the same trial under the same run id every round, and
+    the store keeps every round forever. Without a lower bound the union reads as one
+    very expensive round — turns and money the round being measured never spent."""
+    with _TelemetryEnv():
+        store.insert_spans(
+            otlp.parse_traces(
+                _trace_request(
+                    [
+                        # Yesterday's round under this id: two laps on one story.
+                        _turn("plan-qa", "story-a", 2.0, "51" * 8, start=1000.0),
+                        _turn("plan-qa", "story-a", 3.0, "52" * 8, start=1010.0),
+                        # Today's, which converged on the first lap and cost $1.
+                        _turn("plan-qa", "story-a", 1.0, "53" * 8, start=9000.0),
+                    ]
+                )
+            )
+        )
+        pooled = store.loop_convergence(min_work_items=1)[0]
+        assert (pooled["turns"], pooled["cost_usd"]) == (3, 6.0)
+
+        today = store.loop_convergence(min_work_items=1, since_ts=8000.0)[0]
+        assert (today["turns"], today["cost_usd"]) == (1, 1.0)
+        assert today["excess_turns"] == 0
+
+        # The same bound reaches the raw spans, which is where the wall clock and the
+        # per-node table are read from.
+        assert len(store.query_spans(since_ts=8000.0)) == 1
+
+
 def test_loop_convergence_counts_the_turns_whose_cost_cannot_be_trusted():
     """A thrashing node under subscription auth reports $0 of excess and would sort to
     the bottom of a money-ranked report. Both ways a turn goes unpriced are counted, so
