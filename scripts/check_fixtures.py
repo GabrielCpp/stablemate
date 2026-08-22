@@ -18,6 +18,11 @@ The three failures below are all invisible to a run:
 - **A plan calling `qa.fixture("name")` for a name no `qa: {fixtures:}` entry declares.**
   This one *does* fail the run, at the moment the scenario reaches for it — which is
   after the app booted, and reported as a blocked scenario rather than as the typo it is.
+- **A story naming a fixture in its `plan-context.json` that the repo never declared.**
+  Nothing fails on this at all: the QA planner is simply told the story declared it, goes
+  looking for the declaration, does not find it, and writes one — spending agent turns
+  inventing an `agents.yml` entry instead of reporting a story that names a fixture that
+  does not exist.
 
 The corpus is where this bites hardest: its plans are frozen, most rounds spend zero
 agent turns, and a benchmark app is only ever exercised by the one task that names it. A
@@ -34,6 +39,7 @@ Run:
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -44,6 +50,7 @@ from ostler.qa.fixtures import (
     preflight_errors,
     referenced,
 )
+from workhorse_workflows.coder.shared.schemas.dev import lift_fixture
 
 #: Where the benchmark apps live. The only trees in this repo that carry QA plans at all:
 #: stablemate's own code is tested with pytest, not with an OKF QA lane.
@@ -70,6 +77,7 @@ def _check_app(root: Path) -> list[str]:
         )
 
     specs, _errors = declared(root)
+    problems.extend(_story_declaration_problems(root, spec_root, specs))
     for plan in sorted(spec_root.glob("*/qa_plan.py")):
         story = plan.parent.name
         known = ", ".join(sorted(specs)) or "(none declared)"
@@ -77,6 +85,51 @@ def _check_app(root: Path) -> list[str]:
             f"{root.name}/{story}: `qa.fixture({name!r})` names a fixture this repo has "
             f"not declared. Declared here: {known}"
             for name in sorted(referenced(plan)[0])
+            if name not in specs
+        )
+    return problems
+
+
+def _story_fixture_names(document: dict) -> list[str]:
+    """The fixture *names* a `plan-context.json` declares, under either spelling.
+
+    Read through the same lift the schema applies, so this guard and the prompt the QA
+    planner is handed can never disagree about which entries are names: prose in that list
+    is an arrangement the story described, not a declaration, and holding it to a
+    declaration's bar would fail every story in the corpus for writing English.
+    """
+    raw = document.get("fixtures")
+    if not isinstance(raw, list):
+        setup = document.get("verification_setup") or document.get("qa_stack") or {}
+        raw = setup.get("fixtures") if isinstance(setup, dict) else None
+    if not isinstance(raw, list):
+        return []
+    names = []
+    for item in raw:
+        name = lift_fixture(item).get("name") if isinstance(item, str) else None
+        if isinstance(item, dict):
+            name = str(item.get("name") or "")
+        if name:
+            names.append(name)
+    return names
+
+
+def _story_declaration_problems(root: Path, spec_root: Path, specs: dict) -> list[str]:
+    """Every story that names a fixture the repo never declared."""
+    problems = []
+    for document_path in sorted(spec_root.glob("*/plan-context.json")):
+        try:
+            document = json.loads(document_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            problems.append(f"{root.name}/{document_path.parent.name}: unreadable plan-context.json ({exc})")
+            continue
+        if not isinstance(document, dict):
+            continue
+        known = ", ".join(sorted(specs)) or "(none declared)"
+        problems.extend(
+            f"{root.name}/{document_path.parent.name}: the story declares fixture "
+            f"{name!r}, which this repo has not declared. Declared here: {known}"
+            for name in _story_fixture_names(document)
             if name not in specs
         )
     return problems
