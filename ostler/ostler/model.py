@@ -154,6 +154,8 @@ class UINode:
     level: int = 0              # heading depth 1-6 (file node = 1); drives the hierarchy
     parent: str = ""            # id of the enclosing node (containment); "" for a file/root node
     meta: dict = field(default_factory=dict)                 # parsed `- key: value` bullets
+    # The same bullets in document order, which `meta` cannot express: see `_bullet_pairs`.
+    bullet_order: list[tuple[str, str, int]] = field(default_factory=list)
     links: list = field(default_factory=list)                # (text, href) inside the node's region
     data: dict = field(default_factory=dict)                 # frontmatter (file nodes)
 
@@ -368,6 +370,31 @@ def story_fixture_strays(doc: markdown.MarkdownDoc) -> list[str]:
 def story_dependency_strays(doc: markdown.MarkdownDoc) -> list[str]:
     """Bullets under ``## Dependencies`` that state something other than ``- Blocked by:``."""
     return _labelled_strays(doc, registry.STORY_DEPS_HEADING, registry.STORY_DEPS_LABEL)
+
+
+def _bullet_pairs(section: markdown.Section) -> list[tuple[str, str, int]]:
+    """Every `- key: value` of a section as ``(key, value, bullet)`` in document order.
+
+    The same bullets :func:`_meta_from_bullets` folds into a dict, before the fold loses where
+    they sat. Order across keys is the whole point: a book writes a claim and then the `verify:`
+    that observes it, and that adjacency is the only place the binding between the two is
+    written down. A bullet with nested children yields one pair per value, matching the flat
+    list the dict stores, so a position in this sequence and an index into `meta[key]` count the
+    same things — and the third element says which of them came from the *same* authored
+    bullet, which the flat list can no longer tell: two sibling `- errors:` bullets and one
+    `- errors:` with two children are indistinguishable once flattened, and they bind a
+    following `verify:` differently.
+    """
+    pairs: list[tuple[str, str, int]] = []
+    for position, bullet in enumerate(section.bullets):
+        text = bullet.text.strip()
+        if ":" not in text:
+            continue
+        key, _, value = text.partition(":")
+        nested = [item.text.strip() for child in bullet.children for item in child.walk()]
+        pairs.extend((key.strip().lower(), item, position)
+                     for item in (value.strip(), *nested) if item)
+    return pairs
 
 
 def _meta_from_bullets(section: markdown.Section) -> dict[str, str | list[str]]:
@@ -907,7 +934,8 @@ def _promote_section(section: markdown.Section, rel: str, path: Path, offset: in
         type=ntype, kind="section", id=node_id, path=path, anchor=anchor,
         title=ntitle, level=section.level, parent=parent_id,
         line=offset + section.line_start + 1,
-        meta=_meta_from_bullets(section), links=section.refs.links,
+        meta=_meta_from_bullets(section), bullet_order=_bullet_pairs(section),
+        links=section.refs.links,
     ))
     # container_type applies only to a container's direct children, so it resets on descent.
     for sub in section.children:
@@ -928,6 +956,7 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
     file_id = ""
     if ftype is not None and ftype.kind == "file":
         meta = _meta_from_bullets(main) if main else {}
+        order = _bullet_pairs(main) if main else []
         # The file node's own region = its H1 content up to the first `## Heading` child, so its
         # links don't overlap the section nodes' links (keeps the linter from double-reporting).
         if main is not None:
@@ -940,7 +969,8 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
         nodes.append(UINode(
             type=ftype.name, kind="file", id=rel, path=path, level=1, parent="",
             title=str(fm.get("title") or (main.title if main else rel)),
-            line=line, meta=meta, links=markdown.extract_refs(text).links, data=fm,
+            line=line, meta=meta, bullet_order=order,
+            links=markdown.extract_refs(text).links, data=fm,
         ))
 
     # Recurse the heading tree: the H1's children (or the doc's root sections) hang off the file node.

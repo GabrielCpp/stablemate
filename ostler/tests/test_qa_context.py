@@ -353,17 +353,70 @@ title: Items
     assert len(packet["verificationRefs"]) == 2
     # `verify:` and `tests:` land in different places on purpose: the checks travel with the
     # obligations a scenario has to prove, the test paths only with the regression index.
-    declared = {
-        row["call"]
-        for item in packet["obligations"]
-        if item["node"].endswith("#save-item")
-        for row in item["checksDeclared"]
-    }
-    assert declared == {
+    by_id = {item["id"]: item for item in packet["obligations"]}
+    both = {
         'persists(subject="the saved item")',
         'visible(locator="alert", text="could not save")',
     }
-    assert not any("tests/test_items.py" in row for row in declared)
+    # Both `verify:` bullets sit under the one `does:`, so both bind to each of the claims it
+    # nests — and to neither the node's own contract nor a claim written elsewhere.
+    for suffix in (":does:1", ":does:2"):
+        obligation = next(v for k, v in by_id.items() if k.endswith(suffix))
+        assert {row["call"] for row in obligation["checksDeclared"]} == both
+    contract = next(v for k, v in by_id.items()
+                    if k.endswith("#save-item:contract"))
+    assert "checksDeclared" not in contract
+    assert not any("tests/test_items.py" in row for row in both)
+
+
+def test_a_check_binds_to_the_claim_it_was_written_under(tmp_path: Path):
+    """Two sibling claims, each with its own `verify:`, are two separately observed claims.
+
+    A node-level list credits both checks to both claims, so the weaker one covers the claim
+    the discriminating one was written for and the sharper one covers a claim nothing observes.
+    Document order is what the author used to say which is which, and it is read here.
+    """
+    (tmp_path / "docs/features/acme/http").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/http/claims.md").write_text(
+        """---
+type: endpoint
+title: Claims
+---
+# Claims
+
+## Invocations
+
+### list-claims
+- route: `GET /api/claims`
+- code: app/list.py::list_claims
+- verify: http_status(200, path="/api/claims")
+- authorization: a holder reads only their own claims.
+- verify: count(subject="claims", equals=1)
+- authorization: an adjuster reads every claim on file.
+- verify: count(subject="claims", equals=2)
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "app/list.py").write_text("def list_claims():\n    return []\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/list.py").write_text("def list_claims():\n    return [1]\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    calls = {
+        item["id"].rsplit("#", 1)[-1]: [row["call"] for row in item.get("checksDeclared", [])]
+        for item in packet["obligations"]
+    }
+
+    assert calls["list-claims:authorization:1"] == ['count(subject="claims", equals=1)']
+    assert calls["list-claims:authorization:2"] == ['count(subject="claims", equals=2)']
+    # Written before any claim, so it observes the node itself — where it has always belonged.
+    assert calls["list-claims:contract"] == ['http_status(code=200, path="/api/claims")']
 
 
 def test_a_contract_declaring_no_observation_is_a_health_warning(tmp_path: Path):

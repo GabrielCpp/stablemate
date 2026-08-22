@@ -333,10 +333,10 @@ def _validate_declared_checks(document: PlanDocument, asserted: set[str]) -> lis
     closes one wording and leaves the other standing.
     """
     invoked, problems = _invoked_checks(document)
-    # Grouped by the call, not by the obligation. `verify:` sits on the node, so every
-    # obligation a node mints carries the same declaration (`qa/context.py`'s
-    # `checksDeclared`) — a section with four bullets and four normative lines reports the
-    # same missing call sixteen times, each message naming one id. One `qa.verify` whose
+    # Grouped by the call, not by the obligation. A check binds to the claim it was written
+    # under (`qa/context.py`'s `_attributed_checks`), but one bullet's nested children still
+    # share their parent's checks, so a `does:` with four sub-claims reports the same missing
+    # call four times, each message naming one id. One `qa.verify` whose
     # `covers=` lists them all satisfies every one of them (`_invoked_checks` credits the
     # call to each id it names), so a message per id both overstates the work and reads as
     # an instruction to write sixteen near-identical assertions.

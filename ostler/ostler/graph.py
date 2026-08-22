@@ -72,6 +72,9 @@ def _node_dict(node: UINode, resolver: LinkResolver, graph: Graph, features_root
         "level": node.level,  # heading depth
         "parent": node.parent,  # containment: id of the enclosing node
         "bullets": dict(node.meta),  # every `- key: value` under the node
+        # …and the same bullets in document order, which the dict above cannot express. A book
+        # writes a claim and then the `verify:` observing it; that adjacency is the binding.
+        "bulletOrder": [list(pair) for pair in node.bullet_order],
         "edges": edges,  # resolved out-edges (parent:/extends:/on:/steps:/prose links)
     }
 

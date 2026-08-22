@@ -1337,11 +1337,63 @@ def _declared_checks(node: dict[str, Any]) -> list[dict[str, Any]]:
     """
     declared: list[dict[str, Any]] = []
     for key in registry.check_keys(str(node.get("type", ""))):
-        for value in _values(node.get("bullets", {}).get(key)):
-            parsed = checks_mod.parse_check(value)
-            if isinstance(parsed, checks_mod.CheckCall):
-                declared.append({"call": parsed.text(), "name": parsed.name, "args": parsed.args})
-    return list({row["call"]: row for row in declared}.values())
+        declared.extend(_parse_checks(_values(node.get("bullets", {}).get(key))))
+    return _dedup_checks(declared)
+
+
+def _parse_checks(values: list[str]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for value in values:
+        parsed = checks_mod.parse_check(value)
+        if isinstance(parsed, checks_mod.CheckCall):
+            rows.append({"call": parsed.text(), "name": parsed.name, "args": parsed.args})
+    return rows
+
+
+def _dedup_checks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return list({row["call"]: row for row in rows}.values())
+
+
+def _attributed_checks(node: dict[str, Any]) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
+    """Split a node's `verify:` bullets between the contract and the bullets they observe.
+
+    Document order is the binding, and it is the only place the binding is written: a book
+    states a claim and then the checks that observe it, which is how every book in the corpus
+    is already written. So each `verify:` belongs to the nearest normative bullet above it, and
+    the ones above every normative bullet — the node opens with them — belong to the node's own
+    contract obligation, where a node-level check has always belonged.
+
+    "Nearest bullet" means the authored one. A normative bullet with nested children mints an
+    obligation per child, and a `verify:` written under the parent was written against the
+    whole of it, so it attaches to every child rather than to the last one to be flattened.
+    That is fan-out, but only inside a single bullet the author wrote as one claim — unlike the
+    node-level list it replaces, which fanned one check across claims written separately.
+
+    Returned as raw bullet values rather than parsed rows so the caller parses once. The keys of
+    the second half are `(bullet key, 1-based index)`, counted the same way `_obligations` mints
+    ids, because `bulletOrder` lists a repeated key's values in the order the dict stores them.
+    """
+    node_type = str(node.get("type", ""))
+    normative = set(registry.normative_keys(node_type))
+    checks = set(registry.check_keys(node_type))
+    contract: list[str] = []
+    per_bullet: dict[tuple[str, int], list[str]] = {}
+    counts: dict[str, int] = {}
+    owner: list[tuple[str, int]] = []
+    authored = -1
+    for row in node.get("bulletOrder") or []:
+        key, value, bullet = str(row[0]), str(row[1]), int(row[2])
+        if key in normative:
+            counts[key] = counts.get(key, 0) + 1
+            if bullet != authored:
+                owner, authored = [], bullet
+            owner.append((key, counts[key]))
+        elif key in checks:
+            if not owner:
+                contract.append(value)
+            for target in owner:
+                per_bullet.setdefault(target, []).append(value)
+    return contract, per_bullet
 
 
 def _locators(node: dict[str, Any]) -> dict[str, list[str]]:
@@ -1370,26 +1422,29 @@ def _obligations(
     locators = _locators(node)
     if locators:
         base["locators"] = locators
-    # Node-level, so every obligation minted from this node carries the same list. That is the
-    # honest reading of the book as it stands — `verify:` sits on the node, not on the bullet —
-    # and it is already enough for `qa validate`: a scenario claiming any of these obligations
-    # must invoke the declared calls. Pairing a check to a single bullet needs the atomicity
-    # pass to have happened first, and inferring the pairing before then would bind assertions
-    # to claims nobody wrote down.
-    declared = _declared_checks(node)
-    if declared:
-        base["checksDeclared"] = declared
+    # Per bullet, not per node. A node-level list credits every obligation the node mints with
+    # every check the node declares, so one discriminating call covers a sibling claim that
+    # nothing observes — the claim rides on an assertion that was never about it. The book
+    # already writes each check under the claim it observes; `_attributed_checks` reads that.
+    contract, per_bullet = _attributed_checks(node)
+    contract_rows = _dedup_checks(_parse_checks(contract))
+    if contract_rows:
+        base["checksDeclared"] = contract_rows
     output = [base]
     for key in registry.normative_keys(str(node.get("type", ""))):
         for index, requirement in enumerate(_values(node.get("bullets", {}).get(key)), start=1):
-            output.append(
-                {
-                    **base,
-                    "id": f"okf:{node['id']}:{key.replace(' ', '-')}:{index}",
-                    "kind": key.replace(" ", "-"),
-                    "requirement": requirement,
-                }
-            )
+            obligation = {
+                **base,
+                "id": f"okf:{node['id']}:{key.replace(' ', '-')}:{index}",
+                "kind": key.replace(" ", "-"),
+                "requirement": requirement,
+            }
+            rows = _dedup_checks(_parse_checks(per_bullet.get((key, index), [])))
+            if rows:
+                obligation["checksDeclared"] = rows
+            else:
+                obligation.pop("checksDeclared", None)
+            output.append(obligation)
     return output
 
 

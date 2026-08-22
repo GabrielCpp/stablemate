@@ -72,10 +72,14 @@ CONFIG_KEY = "ostler_index_dir"
 #: XDG semantics — deleting it at any point costs time and never correctness.
 INDEX_DIR_NAME = "ostler-index"
 
-#: The on-disk layout of an entry file. Bump for any change an older reader would get
-#: *wrong*; the epoch already carries the ostler version, so class drift is caught for
-#: free and this only has to guard the file layout itself.
-SCHEMA_VERSION = 1
+#: The on-disk layout of an entry file. Bump for any change a reader on either side of it
+#: would get *wrong* — an older reader meeting a new layout, and equally a newer reader
+#: meeting an entry pickled from a class that has since gained a field. The epoch carries
+#: the ostler version, which catches that second case for an installed build but not for a
+#: source checkout, where the version is ``unknown`` and never moves. So a field added to a
+#: stored dataclass (`UINode`, `_DocProducts`) is a bump here too; it costs one
+#: recomputation and is the only lever that invalidates a stale entry deterministically.
+SCHEMA_VERSION = 2
 
 #: How long an entry may go unwritten before a prune removes it. Two weeks: long enough
 #: that an occasional book survives a quiet fortnight, short enough that an unattended
