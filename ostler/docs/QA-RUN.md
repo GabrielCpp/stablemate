@@ -549,9 +549,15 @@ qa.check("the app never logged the raw error",
 Assert through `qa.diagnostics` rather than by reading the file: the diagnostics file is
 written *after* the scenario returns, so a scenario that reads it is reading the previous
 run's copy — and a scenario cannot fail itself on a 5xx it provoked any other way. The live
-accessors are `console(level=…, contains=…)`, `console_errors()`, `page_errors()`,
+accessors are `console(level=…, contains=…)`, `console_errors(ignore_urls=…)`, `page_errors()`,
 `requests(url_contains=…)`, `responses(status_at_least=…, url_contains=…)` and
 `failed_requests(ignore=…)`, and they return the same records the file gets.
+
+`console_errors` and `failed_requests` both exclude by *identity* rather than by count:
+the `net::ERR_ABORTED` an app fires cancelling its own fetch, and the `/favicon.ico` 404 a
+browser provokes on a page that never asked for one. Neither is the product failing, and a
+plan held to "the page logged no console error" would otherwise redden on a clean tree —
+the one thing QA grounded on the book must not do. `console()` still carries both.
 
 `console`, `requests` and `responses` are each capped at the harness's `DIAGNOSTICS_LIMIT`
 (50,000) records — set where no real run reaches it, because the file *is* the record and a

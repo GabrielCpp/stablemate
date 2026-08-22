@@ -92,6 +92,12 @@ SENSITIVE_HEADERS = frozenset(
 DEFAULT_VIEWPORT = {"width": 1440, "height": 900}
 
 
+#: Subresources the browser requests on its own behalf, whose failures are the browser's
+#: and not the product's. Kept as a module constant so a plan that genuinely means to assert
+#: on one can pass `ignore_urls=()` and see it.
+BROWSER_ISSUED_URLS: tuple[str, ...] = ("/favicon.ico",)
+
+
 class Browser:
     """One browser, one context, one page, for the length of one scenario.
 
@@ -263,9 +269,25 @@ class Browser:
     # arguments included, so an assertion about what the app said or received is written
     # against the record rather than against a screenshot of its consequences.
 
-    def console_errors(self) -> list[dict[str, Any]]:
-        """Console messages at `error` level so far."""
-        return [entry for entry in self._console if entry.get("type") == "error"]
+    def console_errors(self, *, ignore_urls: Sequence[str] = BROWSER_ISSUED_URLS) -> list[dict[str, Any]]:
+        """Console messages at `error` level so far, minus the ones no page asked for.
+
+        A browser fetches `/favicon.ico` whether the markup requests it or not, so a page
+        that ships none logs a 404 at `error` level on a completely clean tree. A plan
+        holding the product to "the page logged no console error" — the shape the guidance
+        asks every browser plan to write — then reddens against a correct app and a correct
+        book, which is the one thing QA grounded on the book must not do. Excluded by
+        *url*, like `failed_requests` excludes by reason: an app that really does serve a
+        broken favicon route still fails every assertion about that route, and nothing is
+        hidden, since `console()` keeps the whole console including these.
+        """
+        ignored = tuple(ignore_urls)
+        return [
+            entry
+            for entry in self._console
+            if entry.get("type") == "error"
+            and not any(url in str(entry.get("location", "")) for url in ignored)
+        ]
 
     def console(self, *, level: str | None = None, contains: str | None = None) -> list[dict[str, Any]]:
         """Every console message so far, at every level, with its arguments.

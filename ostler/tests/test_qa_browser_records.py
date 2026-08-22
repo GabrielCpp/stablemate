@@ -592,6 +592,36 @@ def test_the_whole_console_is_readable_mid_scenario_not_only_after_it(tmp_path: 
     assert [entry["text"] for entry in browser.console_errors()] == ["boom"]
 
 
+def test_a_favicon_the_page_never_asked_for_is_not_the_product_failing(tmp_path: Path) -> None:
+    """Chrome fetches ``/favicon.ico`` whether the markup requests it or not, so a page
+    that ships none logs a 404 at ``error`` level on a completely clean tree. A plan held to
+    "the page logged no console error" would then fail against a correct app and a correct
+    book. It stays in the whole-console view and in the file; it is out of the verdict."""
+    browser = _browser(tmp_path)
+    browser._on_console(
+        SimpleNamespace(
+            type="error",
+            text="Failed to load resource: the server responded with a status of 404",
+            location={"url": "http://localhost:8000/favicon.ico", "lineNumber": 0},
+            args=[],
+        )
+    )
+    browser._on_console(
+        SimpleNamespace(
+            type="error",
+            text="TypeError: seats.map is not a function",
+            location={"url": "http://localhost:8000/app.js", "lineNumber": 12},
+            args=[],
+        )
+    )
+
+    assert [entry["text"] for entry in browser.console_errors()] == [
+        "TypeError: seats.map is not a function"
+    ]
+    assert len(browser.console(level="error")) == 2, "nothing is hidden from the record"
+    assert len(browser.console_errors(ignore_urls=())) == 2, "and a plan can still ask"
+
+
 def test_the_diagnostics_file_is_the_whole_record_and_names_what_it_dropped(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

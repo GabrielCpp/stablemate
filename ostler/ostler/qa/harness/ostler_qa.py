@@ -832,15 +832,38 @@ def _verify_removed(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, 
     )
 
 
+def _readings(observed: Any) -> list[str]:
+    """Every spelling of an element's text the page can offer, rendered first.
+
+    `inner_text()` reports what the browser paints, so a `text-transform: uppercase`
+    stylesheet turns a documented `free` into `FREE` and an assertion quoting the book
+    reddens against a product doing exactly what the book says. Casing applied by CSS is
+    a presentation choice, not a claim about content, so the DOM's own text is consulted
+    too. A genuinely different string is absent from both, which is what keeps the check
+    able to go red.
+    """
+    readings: list[str] = []
+    for reader in ("inner_text", "text_content"):
+        read = getattr(observed, reader, None)
+        if read is None:
+            continue
+        value = read()
+        if value is not None and str(value) not in readings:
+            readings.append(str(value))
+    return readings
+
+
 def _verify_visible(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     if hasattr(observed, "is_visible"):
         shown = bool(observed.is_visible())
-        text = observed.inner_text() if shown and "text" in args else None
+        readings = _readings(observed) if shown and "text" in args else []
     else:
-        shown, text = bool(observed), observed if "text" in args else None
+        shown = bool(observed)
+        readings = [str(observed)] if "text" in args and observed is not None else []
     if "text" not in args:
         return shown, {"visible": shown}, {"visible": True}
-    contains = shown and args["text"] in str(text)
+    text = readings[0] if readings else None
+    contains = shown and any(args["text"] in reading for reading in readings)
     return contains, {"visible": shown, "text": text}, {"visible": True, "text": args["text"]}
 
 

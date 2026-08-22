@@ -211,3 +211,42 @@ def test_absent_false_is_a_presence_assertion_that_can_go_red() -> None:
     assert present is True
     assert missing is False
     assert actual == {"present": False} and expected == {"present": True}
+
+
+class _StyledLocator:
+    """An element whose painted text is not its DOM text — a stylesheet's doing.
+
+    `text-transform: uppercase` on a status pill is the corpus's instance: the markup says
+    `free`, the book documents `free`, and the browser paints `FREE`.
+    """
+
+    def __init__(self, *, rendered: str, dom: str) -> None:
+        self._rendered = rendered
+        self._dom = dom
+
+    def is_visible(self) -> bool:
+        return True
+
+    def inner_text(self) -> str:
+        return self._rendered
+
+    def text_content(self) -> str:
+        return self._dom
+
+
+def test_visible_reads_the_dom_when_css_repainted_the_text() -> None:
+    """The one thing QA grounded on the book must not do is redden against a correct app,
+    and casing applied by CSS is not a disagreement with the book about content."""
+    element = _StyledLocator(rendered="A1\nFREE", dom="A1free")
+    ok, actual, expected = harness.VERIFIERS["visible"](element, {"text": "free"})
+    assert ok is True
+    assert actual == {"visible": True, "text": "A1\nFREE"}
+    assert expected == {"visible": True, "text": "free"}
+
+
+def test_visible_still_fails_on_text_neither_reading_carries() -> None:
+    """The fallback widens the spellings, not the verdict: a string the element does not
+    say is absent from both readings, which is what keeps the check able to go red."""
+    element = _StyledLocator(rendered="A1\nFREE", dom="A1free")
+    ok, _actual, _expected = harness.VERIFIERS["visible"](element, {"text": "booked"})
+    assert ok is False
