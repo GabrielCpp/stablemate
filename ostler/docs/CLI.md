@@ -284,7 +284,8 @@ artifact manifest and the published verdict into one row per obligation:
 
 ```bash
 ostler qa evidence-map --spec docs/specs/<story> [--out-dir LABEL] \
-  [--status {contradicted,uncovered,claimed-but-unasserted,covered}] [--out PATH] [--json]
+  [--status {contradicted,unproven,uncovered,claimed-but-unasserted,covered}] \
+  [--out PATH] [--json]
 ```
 
 Each row carries the scenarios that claimed the obligation, the passing assertions bound to
@@ -297,6 +298,13 @@ artifacts those scenarios produced, and a status:
 | `claimed-but-unasserted` | a scenario claims it, but asserted nothing — or not the declared check | the QA plan |
 | `uncovered` | no scenario claims it and no assertion is bound to it | the QA plan |
 | `contradicted` | an assertion bound to it failed, or `qa-evidence.json` publishes a verdict the ledger does not hold | the product, or the artifact |
+| `unproven` | the scenario that would have observed it did not run to completion | the QA plan |
+
+`unproven` is the one that looks like `contradicted` and is not. An aborted scenario leaves a
+failing record bound to every obligation it claimed, but the record is the harness's note that
+the run stopped, not an observation of the product — and the usual cause is a defect in the
+plan: a misspelled field, a timeout, a step that raised. Reading it as a disproof accuses
+whatever tree was under it, a clean one included.
 
 The exit status is `0` only when every obligation is `covered`, so a caller can gate on the
 join without parsing it. A missing or malformed ledger is a refusal rather than a map full of

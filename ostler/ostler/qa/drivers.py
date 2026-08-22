@@ -384,6 +384,11 @@ class PythonDriver(QaDriver):
             # locator timed out on the assertion that would have exposed the defect went out
             # as a covered obligation. A scenario that did not finish claims nothing, and it
             # says so in the one vocabulary every reader downstream already speaks.
+            #
+            # `sentinel=True` is what keeps it from saying something *else*, though. This
+            # record is the harness talking about the scenario, not the plan reporting on the
+            # product, and an evidence map that cannot tell the two apart reads a plan's own
+            # `KeyError` as a disproof and accuses a clean tree.
             action += 1
             assertions += 1
             self.session.run_assert(
@@ -400,6 +405,7 @@ class PythonDriver(QaDriver):
                 driver="python",
                 action=action,
                 covers=covers,
+                sentinel=True,
             )
             failures += 1
         status = "passed"

@@ -265,16 +265,20 @@ def test_a_scenario_that_stops_early_claims_nothing_it_covered(tmp_path: Path) -
     assert stop["aborted"] is True
 
     # And the synthesized assertion is bound to what the scenario claimed, so the evidence
-    # map reaches the same verdict from the log alone.
+    # map reaches the same verdict from the log alone. It is marked as the harness's own
+    # note rather than left to look like an observation: the map has to demote the
+    # obligation without accusing the product of a defect nothing in this run went and
+    # looked for, which is why the status is `unproven` and not `contradicted`.
     synthesized = [
         record
         for record in _records(spec)
         if record.get("kind") == "assert" and record.get("result") != "PASS"
     ]
     assert [record["covers"] for record in synthesized] == [[OBLIGATION]]
+    assert [record.get("sentinel") for record in synthesized] == [True]
 
     mapped = build_evidence_map(spec)
-    assert [row["status"] for row in mapped["obligations"]] == ["contradicted"]
+    assert [row["status"] for row in mapped["obligations"]] == ["unproven"]
 
 
 def test_one_failing_assertion_sinks_the_item_it_covers(tmp_path: Path) -> None:

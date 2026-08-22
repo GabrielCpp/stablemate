@@ -612,6 +612,7 @@ class QaSession:
         action: int | None = None,
         covers: list[str] | None = None,
         declared: tuple[str, Mapping[str, Any]] | None = None,
+        sentinel: bool = False,
     ) -> tuple[bool, dict[str, Any]]:
         """Execute a named check, write raw result, append assert record.
 
@@ -624,6 +625,14 @@ class QaSession:
         identity reported every `qa.verify()` obligation `claimed-but-unasserted`, however
         green the run. Recording both keeps the executed check honest and the observation
         attributable.
+
+        `sentinel` marks a record the *harness* synthesized about the scenario rather than an
+        observation the plan made of the product. Only the completion assert a
+        :class:`~ostler.qa.drivers.PythonDriver` writes over an aborted scenario sets it, and
+        it exists because nothing else on the record can carry that fact: `check_type` is
+        `scenario_check`, which a real `qa.verify()` transcription uses too. Downstream, a
+        failing sentinel means the run never got to look, which is a different verdict from
+        a run that looked and disagreed — see :func:`ostler.qa.evidence_map._classify`.
 
         Returns (passed, record).
         """
@@ -666,6 +675,8 @@ class QaSession:
             record["action"] = action
         if covers:
             record["covers"] = covers
+        if sentinel:
+            record["sentinel"] = True
         if declared:
             record["check_args"] = dict(declared[1])
         # Attach summary fields from raw result

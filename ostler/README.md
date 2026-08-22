@@ -218,11 +218,15 @@ ostler qa evidence-map --spec docs/specs/<story>
 
 After the run, `qa evidence-map` joins those four artifacts — the obligation scope, the
 ledger, the manifest and the published verdict — into one row per obligation and a status:
-`covered`, `claimed-but-unasserted`, `uncovered`, or `contradicted`. That last one is the
+`covered`, `claimed-but-unasserted`, `uncovered`, `unproven`, or `contradicted`. That last
+one is the
 case worth naming: `qa-evidence.json` is a summary of the ledger, and where it publishes a
 verdict the ledger does not hold, every consumer downstream reads the summary and none of
-them goes back to check. The whole thing is a set difference, which is why it belongs in a
-command rather than in a reviewer's instructions.
+them goes back to check. `unproven` is its neighbour and its opposite: a scenario that died
+mid-body observed nothing, so the obligation is unproven and the plan is what needs repairing —
+scoring it as a disproof accuses the product of a defect the run never looked for. The whole
+thing is a set difference, which is why it belongs in a command rather than in a reviewer's
+instructions.
 
 The run contract is in
 [docs/QA-RUN.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/QA-RUN.md); the

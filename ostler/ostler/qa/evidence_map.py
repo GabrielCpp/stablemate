@@ -36,8 +36,14 @@ from ostler.util import is_mapping
 
 VERSION = 1
 
-#: The four answers, ordered worst-first so a summary reads top-down.
-STATUSES = ("contradicted", "uncovered", "claimed-but-unasserted", "covered")
+#: The five answers, ordered worst-first so a summary reads top-down.
+#:
+#: `unproven` sits second because it is urgent and it is *not* `contradicted`. A scenario
+#: that died mid-body — a `KeyError` on a field the plan misspelled, a timeout, a browser
+#: left unclean — never observed the product at all, and reporting that as a disproof is how
+#: a clean tree with a correct book got accused of a defect it did not have. The obligation
+#: is unproven, the plan is what failed, and the two route to different repairs.
+STATUSES = ("contradicted", "unproven", "uncovered", "claimed-but-unasserted", "covered")
 
 
 class EvidenceMapError(RuntimeError):
@@ -216,7 +222,20 @@ def _row(
         if record.get("result") == "PASS"
         and str(record.get("scenario", "")) in aborted_scenarios
     ]
-    failing = [record for record in bound if record.get("result") != "PASS"]
+    # A failing record is only a disproof if the *plan* made it. The harness synthesizes one
+    # over every obligation an aborted scenario claimed (see `PythonDriver._grade`), and that
+    # record reports the scenario, not the product — so it is partitioned out here rather
+    # than counted as an assertion that ran and disagreed.
+    failing = [
+        record
+        for record in bound
+        if record.get("result") != "PASS" and not record.get("sentinel")
+    ]
+    sentinels = [
+        record
+        for record in bound
+        if record.get("result") != "PASS" and record.get("sentinel")
+    ]
 
     declared = [
         str(entry["call"])
@@ -240,6 +259,7 @@ def _row(
         passing=passing,
         aborted=aborted,
         failing=failing,
+        sentinels=sentinels,
         declared=declared,
         missing=missing,
         published=published.get(obligation_id),
@@ -262,8 +282,11 @@ def _row(
     }
     if failing:
         row["failingLogRefs"] = [_ref(record) for record in failing]
-    if aborted:
-        row["abortedLogRefs"] = [_ref(record) for record in aborted]
+    if aborted or sentinels:
+        # One field for both, because they are the same fact about this obligation: the
+        # scenario stopped early, so nothing it recorded — the asserts that passed before the
+        # stop, or the harness's own note that there was one — says what the product does.
+        row["abortedLogRefs"] = [_ref(record) for record in [*aborted, *sentinels]]
     if obligation_id in published:
         row["publishedVerdict"] = str(published[obligation_id].get("verdict", ""))
     return row
@@ -280,6 +303,7 @@ def _classify(
     passing: list[dict[str, Any]],
     aborted: list[dict[str, Any]],
     failing: list[dict[str, Any]],
+    sentinels: list[dict[str, Any]],
     declared: list[str],
     missing: list[str],
     published: dict[str, Any] | None,
@@ -291,6 +315,13 @@ def _classify(
     defect, and routing them the same way sends the wrong agent. A published verdict the log
     does not support outranks both: it means the artifact downstream consumers read is
     wrong about this obligation, which no amount of correct QA work below it repairs.
+
+    The same reasoning is why an aborted scenario is `unproven` and not `contradicted`. It
+    reads like a disproof — there is a failing record bound to the obligation — but the
+    record is the harness's, written *because* nothing observed the product, and the usual
+    cause is a defect in the plan: a misspelled field, a timeout, a step that raised. Scoring
+    that as a product defect accuses whatever tree happened to be under it, including a clean
+    one, and sends the repair to the wrong lane.
     """
     verdict = str(published.get("verdict", "")) if published else ""
     if failing:
@@ -299,13 +330,16 @@ def _classify(
             f"{len(failing)} assertion(s) bound to it failed — the run observed the product "
             "and it did not do this.",
         )
-    if aborted and not passing:
-        scenarios = sorted({str(record.get("scenario", "")) for record in aborted})
+    if sentinels or (aborted and not passing):
+        scenarios = sorted(
+            {str(record.get("scenario", "")) for record in [*sentinels, *aborted]}
+        )
         return (
-            "contradicted",
-            f"the only assertion(s) bound to it passed inside scenario(s) "
-            f"{', '.join(scenarios)}, which did not run to completion — a scenario that "
-            "stopped early claims nothing about what its remaining steps would have shown.",
+            "unproven",
+            f"scenario(s) {', '.join(scenarios)} did not run to completion, so nothing in "
+            "this run observed the product for this obligation — the assertion(s) that "
+            "would have are the ones that never ran. Repair the plan, then re-run: until "
+            "one does, this is a claim about the plan and not about the product.",
         )
     if verdict == "Pass" and not passing:
         return (

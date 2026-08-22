@@ -1284,8 +1284,9 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         else:
             _out("\n".join(qa_mod.render_evidence_map(data, only=args.status)))
         # Non-zero when anything is not `covered`, so a caller can gate on the join without
-        # parsing it. `contradicted` and `uncovered` are both blocking and both mean the
-        # published evidence does not describe the run.
+        # parsing it. `contradicted`, `unproven` and `uncovered` are all blocking and all
+        # mean the published evidence does not describe the run — they differ only in who
+        # has to fix it, which the caller reads off the status rather than the exit code.
         return 0 if data["counts"]["covered"] == len(data["obligations"]) else 1
 
     if op == "clean":

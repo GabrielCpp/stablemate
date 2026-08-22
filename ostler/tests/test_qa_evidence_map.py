@@ -100,6 +100,17 @@ def _assert(
     return record
 
 
+def _sentinel(scenario: str, action: int, *covers: str) -> dict[str, Any]:
+    """The completion assert `PythonDriver._grade` synthesizes over an aborted scenario."""
+    record = _assert(scenario, action, "FAIL", *covers)
+    record["sentinel"] = True
+    return record
+
+
+def _stop(scenario: str, *, aborted: bool) -> dict[str, Any]:
+    return {"kind": "scenario_stop", "scenario": scenario, "aborted": aborted}
+
+
 def _by_id(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {row["id"]: row for row in data["obligations"]}
 
@@ -313,6 +324,7 @@ def test_the_counts_and_the_rendering_lead_with_what_needs_work(tmp_path: Path) 
 
     assert data["counts"] == {
         "contradicted": 0,
+        "unproven": 0,
         "uncovered": 1,
         "claimed-but-unasserted": 0,
         "covered": 1,
@@ -320,3 +332,91 @@ def test_the_counts_and_the_rendering_lead_with_what_needs_work(tmp_path: Path) 
     body = "\n".join(lines)
     assert body.index("## uncovered") < body.index("## covered")
     assert "\n".join(render_evidence_map(data, only="uncovered")).count("## covered") == 0
+
+
+def test_a_scenario_that_aborted_is_unproven_and_never_contradicted(tmp_path: Path) -> None:
+    """The bug this status exists for: a plan defect accusing a clean product.
+
+    A `qa_plan.py` read `body["claim"]["note"]` where the book and the app both said
+    `decision_note`. The `KeyError` aborted the scenario; the driver — correctly — refused to
+    publish a Pass off the green prefix it had managed, and synthesized a failing completion
+    assert over the whole `covers=` list. This join then read that record as an assertion
+    that ran and disagreed, and reported three obligations `contradicted` on a tree with no
+    defect in it at all.
+
+    Nothing observed the product. The status has to say so, and the sentence has to send the
+    repair to the plan.
+    """
+    spec = _spec(
+        tmp_path,
+        obligations=[_obligation(CONTRACT), _obligation(CONFLICT)],
+        log=[
+            _claim("decide-a-claim", CONTRACT, CONFLICT),
+            _assert("decide-a-claim", 1, "PASS", CONTRACT),
+            _sentinel("decide-a-claim", 2, CONTRACT, CONFLICT),
+            _stop("decide-a-claim", aborted=True),
+        ],
+    )
+
+    rows = _by_id(build_evidence_map(spec))
+
+    assert [rows[CONTRACT]["status"], rows[CONFLICT]["status"]] == ["unproven", "unproven"]
+    for row in (rows[CONTRACT], rows[CONFLICT]):
+        # The sentinel is not a disproof, so it is not reported as one.
+        assert "failingLogRefs" not in row
+        assert row["assertions"]["failing"] == 0
+        assert "decide-a-claim:assert:2" in row["abortedLogRefs"]
+        assert "did not run to completion" in row["why"]
+
+
+def test_a_real_failure_inside_an_aborted_scenario_is_still_contradicted(
+    tmp_path: Path,
+) -> None:
+    """Fixing the false positive must not buy it with a false negative.
+
+    A scenario can assert, disagree with the product, and *then* abort — a browser left
+    unclean, a teardown that raised. The plan's own failing assertion is still an
+    observation, and the completion sentinel beside it does not launder it into a plan
+    defect.
+    """
+    spec = _spec(
+        tmp_path,
+        obligations=[_obligation(CONTRACT)],
+        log=[
+            _claim("decide-a-claim", CONTRACT),
+            _assert("decide-a-claim", 1, "FAIL", CONTRACT),
+            _sentinel("decide-a-claim", 2, CONTRACT),
+            _stop("decide-a-claim", aborted=True),
+        ],
+    )
+
+    row = _by_id(build_evidence_map(spec))[CONTRACT]
+
+    assert row["status"] == "contradicted"
+    assert row["failingLogRefs"] == ["decide-a-claim:assert:1"]
+    assert row["abortedLogRefs"] == ["decide-a-claim:assert:2"]
+
+
+def test_an_obligation_only_passing_inside_an_aborted_scenario_is_unproven(
+    tmp_path: Path,
+) -> None:
+    """A pass before an abort proved a state the steps after it never got to leave.
+
+    That was already refused, and correctly — but as `contradicted`, which named the product
+    for something the run never finished looking at. It is the same fact as the sentinel case
+    and it gets the same status.
+    """
+    spec = _spec(
+        tmp_path,
+        obligations=[_obligation(CONTRACT)],
+        log=[
+            _claim("decide-a-claim", CONTRACT),
+            _assert("decide-a-claim", 1, "PASS", CONTRACT),
+            _stop("decide-a-claim", aborted=True),
+        ],
+    )
+
+    row = _by_id(build_evidence_map(spec))[CONTRACT]
+
+    assert row["status"] == "unproven"
+    assert row["abortedLogRefs"] == ["decide-a-claim:assert:1"]
