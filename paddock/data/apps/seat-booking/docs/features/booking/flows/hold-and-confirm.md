@@ -5,7 +5,10 @@ title: Hold and confirm a seat
 ---
 # Hold and confirm a seat
 
+- verify: visible(locator="status", text="11 of 12 seats free")
 - start: [Seat map](../gui/screens/seat-map.md)
+- verify: visible(locator="region:Seat map")
+- verify: visible(locator="status", text="12 of 12 seats free")
 - steps:
   - Open the seat map and read which seats are free from
     [the free-seat summary](../gui/screens/seat-map.md#free-seat-summary).

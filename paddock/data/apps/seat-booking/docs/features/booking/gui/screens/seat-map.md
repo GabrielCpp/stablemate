@@ -28,11 +28,13 @@ server wrote, and every locator the book names is addressable the moment the pag
 ### seat-map-region
 
 - selector: `section[role="region"]`
+- verify: visible(locator="region:Seat map")
 - role: region
+- verify: visible(locator="region:Seat map")
 - name: Seat map
+- verify: visible(locator="region:Seat map")
 - placement: width 40-100%, x 0-30%, y 10-100%
 - keyboard: reachable by `Tab` from the document start, with no shortcut of its own.
-- verify: visible(locator="region:Seat map")
 - parent: [Seat map](#seat-map)
 - code: app/page.py::render
 - does: holds every seat button for the showing and nothing else.
@@ -40,15 +42,17 @@ server wrote, and every locator the book names is addressable the moment the pag
 ### seat-button
 
 - selector: `button.seat`
+- verify: count(subject="seat buttons", equals=12)
 - role: button
+- verify: visible(locator="button:Seat A1")
 - name: Seat A1
+- verify: visible(locator="button:Seat A1", text="A1")
 - keyboard: `Tab` to the seat, `Enter` or `Space` to act on it.
 - parent: [Seat map](#seat-map)
 - states: carries the seat's state as `data-state`, one of `free`, `held` or `booked`.
-- states: a seat that is not free is rendered `disabled`, so a sold seat cannot be clicked at all.
-- verify: count(subject="seat buttons", equals=12)
-- verify: visible(locator="button:Seat A1", text="A1")
 - verify: visible(locator="button:Seat A1", text="free")
+- verify: visible(locator="button[data-state='booked']")
+- states: a seat that is not free is rendered `disabled`, so a sold seat cannot be clicked at all.
 - verify: visible(locator="button[data-state='booked'][disabled]")
 - code: app/page.py::_seat_button
 - does: renders one button per seat in the showing — twelve, in three rows of four.
@@ -59,11 +63,13 @@ server wrote, and every locator the book names is addressable the moment the pag
 ### free-seat-summary
 
 - selector: `p.summary`
-- role: status
-- name: seats free
-- keyboard: none, because it is announced rather than operated.
 - verify: visible(locator="status", text="12 of 12 seats free")
 - verify: visible(locator="status", text="11 of 12 seats free")
+- role: status
+- verify: visible(locator="status")
+- name: seats free
+- verify: visible(locator="status", text="seats free")
+- keyboard: none, because it is announced rather than operated.
 - parent: [Seat map](#seat-map)
 - code: app/page.py::render
 - does: states how many of the showing's seats are still free, out of the total.

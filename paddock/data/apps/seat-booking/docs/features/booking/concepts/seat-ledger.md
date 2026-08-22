@@ -42,7 +42,8 @@ at the next restart, and the defect would look like a store bug from every surfa
 - does: writes a temporary file and renames it over the ledger, so a reader never observes half a
   showing.
 - verify: keys_unchanged(subject="seats")
-- verify: persists(subject="seat A1 booking")
 - persistence: booking-record — a booking is on disk before the response that announces it, and survives a restart of
   the service.
+- verify: persists(subject="seat A1 booking")
+- verify: json_path("seats[0].booking.name", equals="Dana Okonkwo")
 - parent: [Seat ledger](#seat-ledger)

@@ -39,6 +39,8 @@ to it. The durable side — where the states are written and how — is
 - does: moves the seat from `free` to `held` and increments its version.
 - concurrency: seat-record — the version it hands back is the seat's own, so a hold taken while
   another caller is deciding cannot be spent against a stale token.
+- verify: json_path("hold.version", equals="1")
+- verify: conflict_on_stale(subject="seat A1", token="version")
 - parent: [Seat](#seat)
 
 ### release
@@ -54,6 +56,8 @@ to it. The durable side — where the states are written and how — is
 - does: writes exactly the released seat; every other seat keeps its state, version and booking.
 - concurrency: seat-record — the release increments the version like any other transition, so the
   hold it gave back cannot be confirmed afterwards.
+- verify: json_path("seats[0].version", equals="2")
+- verify: conflict_on_stale(subject="seat A1", token="version")
 - parent: [Seat](#seat)
 
 ### confirm

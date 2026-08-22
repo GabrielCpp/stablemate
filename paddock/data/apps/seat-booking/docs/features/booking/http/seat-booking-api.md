@@ -27,6 +27,7 @@ confirming a hold has to quote the number the caller was given.
 
 ### get-health
 
+- verify: http_status(200, path="/healthz")
 - does:
   - answers `200` with `{"status": "ok"}` as soon as the process is serving, reading no ledger.
 - verify: http_status(200, path="/healthz")
@@ -45,17 +46,22 @@ confirming a hold has to quote the number the caller was given.
 
 ### get-seat-map
 
+- verify: http_status(200, path="/api/seats")
 - does:
   - returns every seat in the showing, in row-then-number order, whatever state it is in.
-- does:
-  - gives each seat its `id`, `row`, `number`, `state` and `version`, so a client can render the map and confirm against it without a second request.
-- does:
-  - lists a taken seat with its state rather than dropping it, so the map keeps its shape as seats are sold.
 - verify: http_status(200, path="/api/seats")
 - verify: count(subject="seats", equals=12)
 - verify: json_path("seats[0].id", equals="A1")
-- verify: json_path("seats[0].version", absent=false)
+- does:
+  - gives each seat its `id`, `row`, `number`, `state` and `version`, so a client can render the map and confirm against it without a second request.
+- verify: json_path("seats[0].row", equals="A")
+- verify: json_path("seats[0].number", equals="1")
 - verify: json_path("seats[0].state", matches="free|held|booked")
+- verify: json_path("seats[0].version", absent=false)
+- does:
+  - lists a taken seat with its state rather than dropping it, so the map keeps its shape as seats are sold.
+- verify: count(subject="seats", equals=12)
+- verify: json_path("seats[0].state", equals="booked")
 - code: app/booking.py::seat_map
 - route: `GET /api/seats`
 - parent: [Seat booking API](#seat-booking-api)
@@ -74,6 +80,7 @@ confirming a hold has to quote the number the caller was given.
 
 ### post-seat-hold
 
+- verify: http_status(201, path="/api/seats/A1/hold")
 - does:
   - moves a free seat to `held`, bumps its version, and returns the hold id together with the version the caller must quote to confirm.
 - verify: http_status(201, path="/api/seats/A1/hold")
@@ -101,11 +108,14 @@ confirming a hold has to quote the number the caller was given.
 
 ### delete-seat-hold
 
+- verify: http_status(204, path="/api/seats/A1/hold")
 - does:
   - returns a held seat to `free`, bumps its version, and answers `204` with no body.
+- verify: http_status(204, path="/api/seats/A1/hold")
+- verify: json_path("seats[0].state", equals="free")
+- verify: json_path("seats[0].version", equals="2")
 - does:
   - touches the released seat and no other — every other seat keeps its state, its version and its booking.
-- verify: http_status(204, path="/api/seats/A1/hold")
 - verify: unchanged(subject="seats", except_fields=["A1.state", "A1.version", "A1.hold"])
 - verify: keys_unchanged(subject="seats")
 - verify: http_status(409, title="Seat Not Held", path="/api/seats/B1/hold")
@@ -128,6 +138,7 @@ confirming a hold has to quote the number the caller was given.
 
 ### post-seat-booking
 
+- verify: http_status(201, path="/api/seats/A1/booking")
 - does:
   - turns a held seat into a booking under the given name, bumps its version, and returns the booking id.
 - verify: http_status(201, path="/api/seats/A1/booking")
@@ -168,13 +179,16 @@ confirming a hold has to quote the number the caller was given.
 
 ### delete-showing
 
+- verify: http_status(204, path="/api/showing")
 - does:
   - puts the showing back to its opening state — every seat `free`, every version back to `0`, every hold and booking dropped — and answers `204` with no body.
+- verify: http_status(204, path="/api/showing")
+- verify: count(subject="free seats", equals=12)
+- verify: json_path("seats[0].version", equals="0")
 - does:
   - is idempotent: resetting a showing that is already empty answers `204` and changes nothing.
 - verify: http_status(204, path="/api/showing")
-- verify: count(subject="free seats", equals=12)
-- verify: http_status(204, path="/api/showing")
+- verify: unchanged(subject="seats", except_fields=[])
 - code: app/service.py::Handler._reset_showing
 - route: `DELETE /api/showing`
 - parent: [Seat booking API](#seat-booking-api)
