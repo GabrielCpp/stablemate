@@ -75,6 +75,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -187,6 +188,12 @@ class Spec:
     #: the whole metric collapses the moment it is. Empty means this task has no design
     #: score, which is every task but `docs-app`.
     hidden: str = ""
+    #: The operator's standing answer to `author`'s grill gate, as a path beside this
+    #: spec. Empty means the shared `benchmarks/grill-answers.md`, which is what every
+    #: task uses — an override exists only because a future task might need a different
+    #: *stakeholder*, never a more helpful one. See that file for why the answer settles
+    #: nothing.
+    grill: str = ""
     #: A `power.<level>.<backend>` overlay for the runs this spec drives — the tier the
     #: benchmark is *meant* to be run at, as spec data rather than machine state.
     power: dict = field(default_factory=dict)
@@ -225,6 +232,10 @@ class Spec:
     @property
     def hidden_dir(self) -> Path | None:
         return self.path.parent / self.hidden if self.hidden else None
+
+    @property
+    def grill_file(self) -> Path:
+        return self.path.parent / self.grill if self.grill else HERE / "grill-answers.md"
 
     def surface(self, name: str) -> dict:
         for s in self.surfaces:
@@ -320,6 +331,7 @@ def load_spec(path: Path) -> Spec:
         budget=raw.get("budget") or {},
         power=power,
         hidden=raw.get("hidden") or "",
+        grill=raw.get("grill") or "",
         over_hour=raw.get("over_hour") or "",
         tags=tags,
         label=os.environ.get("BENCH_SET", ""),
@@ -523,19 +535,91 @@ def phase_rc(phase: str, rc: int, log: Path) -> int:
     return rc
 
 
+#: The one operator gate `author` opens for every run, and the file it parks on.
+AUTHOR_CONTEXT = "docs/epics/_author-context.md"
+AWAITING = "STATUS: AWAITING_OPERATOR"
+#: What the grill's own notes say, and nothing else's do. The watcher answers *only* this
+#: gate: every other block reached an operator because the resolver could not ground it in
+#: something already written, and a canned answer to one of those is a give-up wearing an
+#: answer's clothes. Those park, the phase runs out its budget, and the escalation shows up
+#: in the reliability half of the scorecard where it belongs.
+GRILL_MARK = "grill this backlog"
+GATE_POLL_S = 15.0
+
+
+def grill_answer(spec: Spec) -> str:
+    """The standing operator answer: everything below the answers file's first rule.
+
+    The prose above the rule is for the person reading the file and would only confuse a
+    workflow reading the gate, so the split is load-bearing rather than cosmetic.
+    """
+    if not spec.grill_file.is_file():
+        die(f"no grill answers at {spec.grill_file}")
+    _, rule, answer = spec.grill_file.read_text(encoding="utf-8").partition("\n---\n")
+    if not rule or not answer.strip():
+        die(f"{spec.grill_file}: expected the standing answer below a `---` rule")
+    return answer.strip()
+
+
+def answer_grill(path: Path, answer: str) -> bool:
+    """Stamp one parked grill gate answered, or report that it was not the grill.
+
+    Only the *first* `STATUS:` line is read by the workflow — an answer appended anywhere
+    else is silently inert — so the stamp is a replacement of that line, not an addition.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:  # being rewritten under us; the next poll gets it
+        return False
+    if not text.lstrip().startswith(AWAITING) or GRILL_MARK not in text:
+        return False
+    path.write_text(
+        text.replace(AWAITING, "STATUS: ANSWERED", 1).rstrip() + f"\n\n## Answer\n\n{answer}\n",
+        encoding="utf-8",
+    )
+    return True
+
+
+def watch_for_grill(spec: Spec, stop: threading.Event) -> threading.Thread:
+    """Answer the grill gate while `author` waits on it, in a thread beside the run.
+
+    `grill_backlog` is an `Await` that `operator_mode` does not gate — the whole premise
+    is that those decisions are a person's. A benchmark has no person, so without this the
+    `author` phase of every suite blocks until its budget expires and no task can be scored
+    at all. The answer it writes is deliberately scope-neutral; `grill-answers.md` says why.
+    """
+    answer = grill_answer(spec)
+    path = spec.target / AUTHOR_CONTEXT
+
+    def poll() -> None:
+        while not stop.wait(GATE_POLL_S):
+            if path.is_file() and answer_grill(path, answer):
+                print(f"  grill gate answered from {spec.grill_file.name}")
+
+    thread = threading.Thread(target=poll, daemon=True)
+    thread.start()
+    return thread
+
+
 def cmd_author(spec: Spec, *, resume: bool = False, budget_s: float | None = None) -> int:
     preflight(spec, "author")
     if not (spec.target / spec.backlog).is_file():
         die(f"no backlog at {spec.target / spec.backlog} — run genesis first")
     say("author → epics + stories" + (" (resuming)" if resume else ""))
     log = spec.logs / "author.log"
-    return phase_rc("author", run_logged(
-        ["uv", "run", "workhorse-author", "run", "--runs-dir", str(spec.artifacts),
-         *resume_flags(spec, "author", resume),
-         "--params", json.dumps({"backlog": spec.backlog})],
-        cwd=STABLEMATE, log=log,
-        env=phase_env(spec, "author", budget_s),
-    ), log)
+    stop = threading.Event()
+    watch_for_grill(spec, stop)
+    try:
+        rc = run_logged(
+            ["uv", "run", "workhorse-author", "run", "--runs-dir", str(spec.artifacts),
+             *resume_flags(spec, "author", resume),
+             "--params", json.dumps({"backlog": spec.backlog})],
+            cwd=STABLEMATE, log=log,
+            env=phase_env(spec, "author", budget_s),
+        )
+    finally:
+        stop.set()
+    return phase_rc("author", rc, log)
 
 
 def cmd_coder(spec: Spec, *, resume: bool = False, budget_s: float | None = None) -> int:
