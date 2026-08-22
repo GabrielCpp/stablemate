@@ -51,6 +51,11 @@ class CheckParam:
     name: str
     type: str
     required: bool = False
+    #: Whether the value is a path into the observed document rather than free prose. Both
+    #: resolvers strip a leading `$` root token (`_resolve_path`, `session._extract_path`),
+    #: so `$.policy.id` and `policy.id` name the same field — and a binding check that
+    #: compares spellings would otherwise refuse a plan invoking exactly what was declared.
+    path: bool = False
 
 
 @dataclass(frozen=True)
@@ -96,7 +101,7 @@ CHECKS: tuple[CheckSpec, ...] = (
     CheckSpec(
         name="json_path",
         params=(
-            CheckParam("path", "str", required=True),
+            CheckParam("path", "str", required=True, path=True),
             CheckParam("equals", "str"),
             CheckParam("matches", "str"),
             CheckParam("absent", "bool"),
@@ -175,7 +180,7 @@ CHECKS: tuple[CheckSpec, ...] = (
     CheckSpec(
         name="omits",
         params=(
-            CheckParam("subject", "str", required=True),
+            CheckParam("subject", "str", required=True, path=True),
             CheckParam("text", "str"),
             CheckParam("matches", "str"),
         ),
@@ -219,6 +224,18 @@ class CheckCall:
             f"{p.name}={literal(self.args[p.name])}" for p in spec.params if p.name in self.args
         ]
         return f"{self.name}({', '.join(parts)})"
+
+
+def _rooted(value: CheckValue) -> CheckValue:
+    """A path argument with the JSONPath root token dropped, so one spelling survives.
+
+    `$` is not a key. Every resolver in the harness strips it before walking, so the two
+    spellings observe the same field — and identity here is textual, which would make the
+    sigil the difference between a claim asserted and a claim unasserted.
+    """
+    if not isinstance(value, str) or not value.startswith("$"):
+        return value
+    return value[1:].lstrip(".")
 
 
 def literal(value: CheckValue) -> str:
@@ -345,7 +362,7 @@ def bind(name: str, args: Mapping[str, Any]) -> CheckCall | str:
             return f"`{name}` has no argument `{key}` — it takes: {allowed}"
         if not _typed(value, param.type):
             return f"`{name}`: `{key}` is {param.type}, got {type(value).__name__}"
-        bound[key] = value
+        bound[key] = _rooted(value) if param.path else value
     for param in spec.params:
         if param.required and param.name not in bound:
             return f"`{name}` requires `{param.name}: {param.type}`"

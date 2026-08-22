@@ -174,5 +174,22 @@ def test_omits_is_the_vocabularys_one_negative_observation() -> None:
     *not* contain has no positive form — so a book stating one had nothing to declare."""
     call = checks.parse_check('omits(subject="$.detail", matches="eyJ[A-Za-z0-9]+")')
     assert isinstance(call, checks.CheckCall)
-    assert call.args == {"subject": "$.detail", "matches": "eyJ[A-Za-z0-9]+"}
+    assert call.args == {"subject": "detail", "matches": "eyJ[A-Za-z0-9]+"}
     assert "credential it rejected" in checks.CHECK_BY_NAME["omits"].excludes
+
+
+def test_a_path_argument_is_the_same_call_with_or_without_the_root_token() -> None:
+    """`$` is not a key — every resolver in the harness drops it before walking. Identity
+    between a declared check and an invoked one is textual, so leaving the sigil in would make
+    a plan spelling `$.policy.id` fail to assert a bullet spelling `policy.id`, and vice versa."""
+    declared = checks.parse_check('json_path(path="$.policy.id", equals="pn-1001")')
+    invoked = checks.bind("json_path", {"path": "policy.id", "equals": "pn-1001"})
+    assert isinstance(declared, checks.CheckCall) and isinstance(invoked, checks.CheckCall)
+    assert declared.text() == invoked.text()
+
+
+def test_a_prose_argument_keeps_a_leading_sigil() -> None:
+    """Only a path is walked. `count`'s subject is prose the report quotes back."""
+    call = checks.bind("count", {"subject": "$ spent", "equals": 2})
+    assert isinstance(call, checks.CheckCall)
+    assert call.args["subject"] == "$ spent"
