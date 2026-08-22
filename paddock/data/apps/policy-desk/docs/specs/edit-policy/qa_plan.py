@@ -240,7 +240,7 @@ def stale_edit_keeps_the_open_form_and_detail_reading(qa: Qa) -> None:
     alert = qa.by_css('p[role="alert"]')
     qa.eventually("the stale write is answered with an alert", alert.is_visible)
     qa.vet("docs/features/policy/gui/screens/edit-policy.md", name="edit-form-stale-alert", components=["edit-form"])
-    qa.check("stale alert is rendered", "Stale Policy" in alert.inner_text(), covers=["ac:6", "okf:docs/features/policy/gui/screens/edit-policy.md:contract"])
+    qa.check("stale alert is rendered", alert.count() == 1 and "Stale Policy" in alert.inner_text(), covers=["ac:6", "okf:docs/features/policy/gui/screens/edit-policy.md:contract"])
     qa.check("browser remains on the edit route", qa.page.url.endswith("/policies/pn-1001/edit"), covers=["ac:6", "okf:docs/features/policy/flows/edit-policy.md:start:1"])
     qa.goto("/policies/pn-1001")
     summary = qa.by_css("dl")

@@ -122,7 +122,7 @@ def register_browser(qa: Qa) -> None:
     qa.vet("docs/features/policy/gui/screens/policy-detail.md", name="opened-detail", components=["edit-policy-link"])
     qa.screenshot("opened-detail")
     qa.verify("visible", detail, locator="heading:Policy PN-1001", covers=["ac:5", "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:contract", "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:does:1", "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:keyboard:1", "okf:docs/features/policy/gui/screens/policy-detail.md:contract"])
-    qa.check("the clicked policy is the one shown, not a neighbour", "PN-1002" not in qa.by_css("main h1").inner_text(), covers=["ac:5", "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:does:1"])
+    qa.check("the clicked policy is the one shown, not a neighbour", qa.by_css("main h1").count() == 1 and "PN-1002" not in qa.by_css("main h1").inner_text(), covers=["ac:5", "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:does:1"])
     not_reloaded = qa.page.evaluate("() => window.__qa_register_mounted === true")
     qa.check("following the row link did not reload the document", not_reloaded is True, covers=["ac:5", "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:does:1"])
     edit_link = qa.by_role("link", name="Edit policy")
@@ -131,7 +131,7 @@ def register_browser(qa: Qa) -> None:
 
     qa.goto("/policies/pn-1002")
     qa.eventually("the deep link draws the summary on a fresh load", detail.is_visible)
-    qa.check("a policy detail URL is a working deep link", "PN-1002" in qa.by_css("main h1").inner_text(), covers=["okf:docs/features/policy/gui/screens/policy-detail.md:contract"])
+    qa.check("a policy detail URL is a working deep link", qa.by_css("main h1").count() == 1 and "PN-1002" in qa.by_css("main h1").inner_text(), covers=["okf:docs/features/policy/gui/screens/policy-detail.md:contract"])
 
 
 @scenario(
