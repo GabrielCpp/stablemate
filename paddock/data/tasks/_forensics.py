@@ -274,7 +274,7 @@ def hang_candidates(
 # ── convergence: how many laps, at what cost, against how much wall clock ─────────────
 
 
-def timing_of(run_id: str, wall_s: float) -> dict[str, Any]:
+def timing_of(run_id: str, wall_s: float, since_ts: float = 0.0) -> dict[str, Any]:
     """Per-trial wall clock, the run's own time partition, and per-node seconds.
 
     Two clocks on purpose. `wall_s` is measured around the subprocess and includes
@@ -291,7 +291,7 @@ def timing_of(run_id: str, wall_s: float) -> dict[str, Any]:
 
     profile = store.run_profile(run_id) or {}
     nodes: dict[str, float] = {}
-    for span in store.query_spans(run=run_id, limit=100000):
+    for span in store.query_spans(run=run_id, limit=100000, since_ts=since_ts or None):
         if span.get("name") != span.get("node") or not span.get("node"):
             continue
         seconds = float(span.get("end_ts") or 0.0) - float(span.get("start_ts") or 0.0)
@@ -309,19 +309,27 @@ def timing_of(run_id: str, wall_s: float) -> dict[str, Any]:
     }
 
 
-def laps_of(run_id: str) -> list[dict[str, Any]]:
+def laps_of(run_id: str, since_ts: float = 0.0) -> list[dict[str, Any]]:
     """This trial's per-node lap rows, persisted so the round can be re-scored later.
 
     `min_work_items=1` because a trial is ONE story, so every node has exactly one work
     item; `groom loops`' default of 3 exists to keep one-off nodes out of a whole-machine
     report and would silence this one entirely.
+
+    `since_ts` is the epoch second this trial's subprocess started, and it is not optional
+    in practice: a run id here is deterministic (`<app>-<task>-qa-<story>-<variant>`), so
+    every round replays the same ids into the same machine-wide store. Without the bound a
+    re-run inherits the previous round's turns and cost — which reads as a round that spent
+    money it did not spend, and hides the zero-turn adoption these rounds exist to prove.
     """
     from groom import store
 
     keep = ("node", "work_items", "turns", "max_laps", "cost_usd", "est_cost_usd")
     return [
         {key: row.get(key) for key in keep}
-        for row in store.loop_convergence(run=run_id, min_work_items=1)
+        for row in store.loop_convergence(
+            run=run_id, min_work_items=1, since_ts=since_ts or None
+        )
     ]
 
 

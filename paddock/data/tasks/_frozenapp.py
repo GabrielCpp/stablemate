@@ -917,7 +917,10 @@ def run_round(run: Run, fixture: Fixture) -> None:
                 seed_defect(app, row, repo)
             reset_stack_state(repo)
 
-            started = time.monotonic()
+            # Two clocks: `monotonic` measures the trial and cannot go backwards, while the
+            # epoch second is what groom's spans are stamped with, so it is the only one that
+            # can bound this trial's telemetry away from an earlier round under the same id.
+            started, since = time.monotonic(), time.time()
             result = run.cli(
                 # `uv_run` rather than an inherited cwd: the trial process stands *in the
                 # tree under test* (see `cwd=repo`), so uv is told where its workspace is
@@ -956,8 +959,8 @@ def run_round(run: Run, fixture: Fixture) -> None:
                 "path": str(row["path"]) if row else "",
                 "rc": result.returncode,
                 "witness": str(witness.relative_to(run.stage)),
-                "timing": fx.timing_of(run_id, wall),
-                "laps": fx.laps_of(run_id),
+                "timing": fx.timing_of(run_id, wall, since),
+                "laps": fx.laps_of(run_id, since),
             })
             run.write_json(trials_dir(run) / "trials.json", ledger)
 
