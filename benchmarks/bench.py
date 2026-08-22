@@ -1528,10 +1528,17 @@ well is still a story, while a feature built without a story is not this workflo
 Level 2 is the ceiling here."""
 
 LIVE_NOTE = """This is the anchor run, so the built application is in scope **in addition
-to** the planning documents. Score levels 0-2 exactly as you would on the documents alone;
-award level 3 only when the running app's behavior is exercised by executable evidence you
-can point at — a test, an end-to-end script, a recorded QA artifact — that would fail if
-the rendering stopped holding. Implementing code that merely looks correct is level 2."""
+to** the planning documents — but only to reach level 3. Levels 0, 1 and 2 are decided by
+the epics and stories alone, exactly as they would be with no code on disk: a feature the
+coder built that no story asked for stays at the level its documents earn, because this
+metric grades what the planning step designed and a feature nobody planned is not that
+step's doing. Do not let a control you found in the UI, a route, or a test lift an
+expectation out of `absent`.
+
+Level 3 is therefore available only to an expectation already at level 2 on the documents,
+and only when the running app's behavior is exercised by executable evidence you can point
+at — a test, an end-to-end script, a recorded QA artifact — that would fail if the
+rendering stopped holding. Implementing code that merely looks correct is level 2."""
 
 # The citation rule differs by mode, and it has to: a level-3 finding is *by construction*
 # not a planning document, so the paper rule ("cite an epic.md or a story.md") would make
@@ -1838,6 +1845,21 @@ def cmd_design_score(spec: Spec, *, judge: bool, jobs: int, only: list[str],
         scored = list(pool.map(
             lambda e: judge_expectation(spec, e, rubric, grader, docs, live=live), expectations))
 
+    # The anchor judges the *same* documents in paper mode too, in the same invocation.
+    # Without that control, the only paper number to compare against is a frozen file
+    # judged hours or weeks earlier, and every disagreement in the 0-2 band reads as
+    # "paper does not predict live" when the likelier causes are judge variance at a
+    # level boundary and documents the coder has since edited. Level 3 is the only
+    # mode-specific level, so a 0-2 divergence is by construction *not* about the app.
+    control = {}
+    if live:
+        print(f"  re-judging the same {len(expectations)} expectation(s) on paper, as the "
+              f"control", flush=True)
+        with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+            control = {e["id"]: e["level"] for e in pool.map(
+                lambda e: judge_expectation(spec, e, rubric, grader, docs, live=False),
+                expectations)}
+
     levels = design_levels(live)
     say("design satisfaction")
     print(f"  {'expectation':<24}{'level':<14}invariant / why")
@@ -1881,7 +1903,7 @@ def cmd_design_score(spec: Spec, *, judge: bool, jobs: int, only: list[str],
     out = write_design_scorecard(spec, scored, walked, rows, live=live, judged=True, pct=pct)
     print(f"\n  scorecard written to {out}")
     if live:
-        compare_paper_and_live(spec, scored)
+        compare_paper_and_live(spec, scored, control)
     return 0
 
 
@@ -1905,39 +1927,72 @@ def report_journeys(walked: list[dict]) -> None:
         print(f"  {DIM}between two stories that each assumed the other had them.{RESET}")
 
 
-def compare_paper_and_live(spec: Spec, scored: list[dict]) -> None:
+def compare_paper_and_live(spec: Spec, scored: list[dict], control: dict[str, int]) -> None:
     """The anchor's only job: does the cheap paper score predict the live one?
 
-    Not a second score. If the two diverge, the *instrument* is what is wrong, and it gets
-    fixed before any more author work is judged by it — a paper number nobody has
-    calibrated is a number about documents, not about an app anyone can use.
+    Not a second score. Two columns matter and they answer different questions. The
+    **control** is the same documents judged on paper in this same invocation, so a
+    disagreement with it is a real mode effect. The **baseline** is the frozen paper
+    scorecard from the author-phase run, so a disagreement with *that* is drift — judge
+    variance, or documents the coder edited after author wrote them — and says nothing
+    about whether paper predicts live.
+
+    Only the first kind is an instrument fault. Conflating them is how a calibration pass
+    condemns a metric for the sin of having been run twice.
     """
-    paper_path = spec.logs / "design-scorecard.json"
-    if not paper_path.is_file():
-        print(f"\n  {DIM}no paper scorecard at {paper_path} — nothing to calibrate against{RESET}")
-        return
-    paper = json.loads(paper_path.read_text(encoding="utf-8"))
-    before = {e["id"]: e["level"] for e in paper.get("expectations", [])}
     say("calibration — paper (author only) vs live (built app)")
-    print(f"  {'expectation':<24}{'paper':<10}{'live':<10}")
-    print(f"  {'-' * 48}")
-    diverged = []
-    for e in sorted(scored, key=lambda x: x["id"]):
-        was = before.get(e["id"])
-        if was is None:
-            continue
-        # A live level of 3 is the paper 2 confirmed, not a disagreement.
-        if abs(min(e["level"], DESIGN_MAX) - was) >= 1:
-            diverged.append(e["id"])
-        print(f"  {e['id']:<24}{was:<10}{e['level']:<10}"
-              f"{'← diverges' if e['id'] in diverged else ''}")
-    print(f"  {'-' * 48}")
-    if diverged:
-        print(f"\n  ⚠ {len(diverged)} expectation(s) diverge: {', '.join(diverged)}.")
-        print("    The paper score is not predicting what a user experiences. Fix the")
-        print("    instrument before trusting another author-phase number.")
+    paper_path = spec.logs / "design-scorecard.json"
+    baseline = {}
+    if paper_path.is_file():
+        paper = json.loads(paper_path.read_text(encoding="utf-8"))
+        baseline = {e["id"]: e["level"] for e in paper.get("expectations", [])}
     else:
-        print("\n  ✓ paper and live agree — the cheap score is predicting the expensive one.")
+        print(f"  {DIM}no frozen scorecard at {paper_path} — drift column omitted{RESET}")
+
+    print(f"  {'expectation':<24}{'baseline':<11}{'control':<10}{'live':<10}")
+    print(f"  {'-' * 60}")
+    diverged, varied, drifted = [], [], []
+    for e in sorted(scored, key=lambda x: x["id"]):
+        was, ctl = baseline.get(e["id"]), control.get(e["id"])
+        # A live level of 3 is the paper 2 confirmed, not a disagreement.
+        capped = min(e["level"], DESIGN_MAX)
+        if ctl is not None and abs(capped - ctl) >= 1:
+            # Which kind of disagreement, decided by what the live pass cited rather than
+            # by how it reads. A level in the 0-2 band that rests entirely on planning
+            # documents is a level the paper pass could have reached from its own corpus:
+            # the two judges searched the same files and one of them found more. That is
+            # variance, and calling it a mode effect sends someone to fix a rubric whose
+            # only fault was a grep. Only a citation the paper pass is forbidden to make —
+            # a path outside `docs/` — proves the built app moved the level.
+            (diverged if any(not c.split(":", 1)[0].strip().startswith("docs/")
+                             for c in e.get("evidence", [])) else varied).append(e["id"])
+        if was is not None and ctl is not None and abs(ctl - was) >= 1:
+            drifted.append(e["id"])
+        note = ("← diverges" if e["id"] in diverged else "← variance" if e["id"] in varied
+                else "← drift" if e["id"] in drifted else "")
+        print(f"  {e['id']:<24}{'-' if was is None else was:<11}"
+              f"{'-' if ctl is None else ctl:<10}{e['level']:<10}{note}")
+    print(f"  {'-' * 60}")
+
+    operable = [e["id"] for e in scored if e["level"] > DESIGN_MAX]
+    if diverged:
+        print(f"\n  ⚠ {len(diverged)} expectation(s) diverge from the control: "
+              f"{', '.join(diverged)}.")
+        print("    Same documents, same run, different level by mode — the live pass is")
+        print("    letting built code move a level the rubric decides on paper. That is an")
+        print("    instrument fault; fix it before trusting another author-phase number.")
+    else:
+        print("\n  ✓ no expectation diverges from its control — the paper rubric scores the")
+        print("    same on both sides, which is the property the anchor exists to check.")
+    if varied:
+        print(f"\n  {DIM}judge variance (not a mode effect): {', '.join(varied)}. The two passes")
+        print("  disagreed while citing planning documents only, so the paper pass could have")
+        print(f"  reached the live level from its own corpus and did not find it.{RESET}")
+    if operable:
+        print(f"  ✓ operable: {', '.join(operable)} — the built app is exercised by a test.")
+    if drifted:
+        print(f"\n  {DIM}drift vs the frozen baseline: {', '.join(drifted)}. Judge variance at a")
+        print(f"  level boundary, or documents edited since author ran — not a mode effect.{RESET}")
 
 
 def write_design_scorecard(spec: Spec, expectations: list[dict], journeys: list[dict],

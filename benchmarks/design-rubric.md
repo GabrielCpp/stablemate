@@ -53,6 +53,12 @@ Rules for choosing:
   with nothing behind it, a criterion that gestures at the area without requiring the
   behavior. Something acknowledged it; nothing would deliver it.
 - **Level 0 is silence.** No epic and no story acknowledges the expectation at all.
+- **Naming a thing in order to exclude it is level 1, not level 0.** "Deleting pages" under
+  Non-Goals, "reload the page *without signing out*", "out of scope for this epic" — the
+  workflow reached the concept and wrote it down, then declined it. That is a different
+  finding from never having thought of it, and the metric is built to tell them apart: an
+  exclusion is a decision someone can review, and silence is not. Neither delivers the
+  rendering, so neither reaches level 2.
 - Partial coverage is level 1, not level 2. If the rendering names two things — switchable
   *and* the choice persists, deletable *with confirmation* — and the criteria deliver one
   of them, the expectation is not covered.

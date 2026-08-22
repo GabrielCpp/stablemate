@@ -817,6 +817,48 @@ def test_journey_rubric_placeholders_are_all_filled(design_spec: "bench.Spec"):
     assert "tidy-up" in prompt and "delete the stale one" in prompt
 
 
+def test_the_anchor_separates_a_mode_effect_from_judge_drift(
+        design_spec: "bench.Spec", capsys) -> None:
+    """A 0-2 disagreement is only an instrument fault if the *control* disagrees.
+
+    The control is the same documents judged on paper in the same invocation; the frozen
+    baseline was judged whenever author last ran. Comparing live against the baseline
+    alone reports judge variance at a level boundary — and documents the coder edited
+    since — as "paper does not predict live", which condemns the metric for having been
+    run twice.
+    """
+    design_spec.logs.mkdir(parents=True, exist_ok=True)
+    (design_spec.logs / "design-scorecard.json").write_text(json.dumps(
+        {"expectations": [{"id": "page-delete", "level": 0}, {"id": "drifter", "level": 0}]}),
+        encoding="utf-8")
+    scored = [{"id": "page-delete", "level": 3}, {"id": "drifter", "level": 1}]
+
+    bench.compare_paper_and_live(design_spec, scored, {"page-delete": 2, "drifter": 1})
+    out = capsys.readouterr().out
+    # page-delete: live 3 against a control of 2 is the paper level confirmed, not a
+    # disagreement. drifter moved 0 -> 1 against the *baseline* only.
+    assert "no expectation diverges from its control" in out
+    assert "drift vs the frozen baseline: drifter" in out
+    assert "operable: page-delete" in out
+
+    # A disagreement resting on a path outside `docs/` is a mode effect: the paper pass is
+    # forbidden that citation, so only the built app can have moved the level.
+    bench.compare_paper_and_live(
+        design_spec, [{"id": "page-delete", "level": 2, "evidence": ["web/routes/x.tsx:del"]}],
+        {"page-delete": 0})
+    out = capsys.readouterr().out
+    assert "1 expectation(s) diverge from the control: page-delete" in out
+
+    # The same disagreement citing a planning document is variance, not a mode effect: the
+    # paper pass reads that file too and could have reached the level from its own corpus.
+    bench.compare_paper_and_live(
+        design_spec, [{"id": "page-delete", "level": 1, "evidence": ["docs/epics/e/epic.md:a"]}],
+        {"page-delete": 0})
+    out = capsys.readouterr().out
+    assert "judge variance (not a mode effect): page-delete" in out
+    assert "diverge from the control" not in out
+
+
 def journey_walk(spec: "bench.Spec", response: str) -> dict:
     rubric = (Path(__file__).parents[1] / "journey-rubric.md").read_text(encoding="utf-8")
     return bench.judge_journey(spec, bench.load_journeys(spec)[0], rubric,
