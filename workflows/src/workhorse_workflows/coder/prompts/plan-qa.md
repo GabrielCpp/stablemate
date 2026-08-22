@@ -307,7 +307,8 @@ a static count of the `qa.check`/`qa.require` calls in its body, and again at ru
   same evidence a suite that skipped every case produces.
 - Browser diagnostics: `qa.diagnostics` is the live console and network record, and it is the
   only way a scenario can fail *itself* on what the page did. `console_errors()` is the
-  `error`-level messages; `page_errors()` is uncaught exceptions, a **different** event that
+  `error`-level messages, already excluding the `/favicon.ico` 404 a browser provokes on
+  its own behalf — pass `ignore_urls=()` to assert on that too; `page_errors()` is uncaught exceptions, a **different** event that
   appears in nothing else; `responses(status_at_least=500)` is the server-error gate;
   `failed_requests()` is requests that never completed, already excluding the
   `net::ERR_ABORTED` an app fires when it cancels its own fetch — exclude by *reason* like
