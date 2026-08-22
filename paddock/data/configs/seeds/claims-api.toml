@@ -1,10 +1,10 @@
 name = "claims-api"
 repo_dir = "claims-api"
-sha256 = "7b5bab26d6b18a5928dde0547fc9dbeafda4b069d8f08d44d3611c71fb2413fd"
-bytes = 95721
-head = "19917869993a4717139b46290c0afa11945b6ae0"
+sha256 = "374ce981b83f64d5285215bb233a0341a51681038e3b31d76008f0c158967be6"
+bytes = 95948
+head = "e7fa77f3af5e28b2071326279e4bee2fdbd92f37"
 dirty = false
 url = ""
 note = "the frozen claims-api fixture as tracked"
 source = "apps/claims-api"
-tree_sha256 = "e66bdd06e6357cb4ccdcd172dc007b857069e4f123dfbfeb9112963e47014724"
+tree_sha256 = "819160ef53655b906493fffe95b744cd8bcd845624a6c631ff3e158d43ada381"
