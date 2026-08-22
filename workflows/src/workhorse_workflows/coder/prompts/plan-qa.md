@@ -160,9 +160,9 @@ def publish_records_the_real_author(qa: Qa) -> None:
     qa.http.post("/v1/publish", json_body={"author": "attacker", "message": "hello"})
     stored = qa.http.get("/v1/objects/live/page").json()
     qa.check("author is the token uid, not the request body",
-             stored["metadata"]["author"] == uid,
-             actual=stored["metadata"]["author"], expected=uid)
-    qa.check("message is verbatim", stored["metadata"]["message"] == "hello")
+             qa.field(stored, "metadata.author") == uid,
+             actual=qa.field(stored, "metadata.author"), expected=uid)
+    qa.check("message is verbatim", qa.field(stored, "metadata.message") == "hello")
     json.dump(stored, qa.artifact("steps/publish-stored.json", kind="json").open("w"))
 ```
 
@@ -179,14 +179,24 @@ dashes, so the function name is the id — no separate uniqueness bookkeeping to
 - **Module level is declarations only.** `ostler qa validate` imports the module to read the
   plan without running it, so a request, a subprocess or a file write at module scope turns
   every validation into a run. Put all of it inside scenario functions.
-- **Do not defend against a wrong key.** `payload["items"][0]["id"]` is the correct spelling;
-  `payload.get("items", [])` converts a broken response into a scenario that passes over
-  nothing. Let it raise — the traceback is the finding, and it names the line.
+- **Read product data with `qa.field`, never by subscript.** `payload["items"][0]["id"]`
+  raises when the product spells the key differently — and that is the defect, reported as
+  an abort: the scenario dies before the checks that would have named it, and every
+  obligation it covered comes back `unproven`, meaning *nothing observed the product*.
+  `qa.field(payload, "items.0.id")` yields `MISSING` instead, which is falsy, empty, and
+  equal to nothing at all, so the check it sits in goes red in the one place that can
+  explain it and the rest of the scenario still runs. This is not `payload.get("items", [])`
+  — a default of `[]` makes a broken response *pass* over nothing; `MISSING` cannot satisfy
+  an assertion. `ostler qa lint` rejects a named-key subscript in the condition, `actual=`
+  or `expected=` of any `qa.check`/`qa.require`/`qa.eventually`.
 - Everything a scenario needs is on `qa`, already resolved. `qa.dir` is **the** evidence
   directory (this run's, including a dry run's `--out-dir`), `qa.root` the repo root,
   `qa.spec_dir` the spec directory. Never rebuild any of them from a literal path.
-- Ordinary Python is available: `subprocess.run` for a CLI, the project's own client library,
-  a helper module beside the plan in the spec directory. Prefer `qa.http` for HTTP — it is
+- Ordinary Python is available, but the process and the filesystem are not: `ostler qa lint`
+  is an allowlist, so there is no `subprocess`, no `pathlib`, and no importing a helper
+  beside the plan. A command runs through `qa.tool(name)` for a tool this repo opted into,
+  or `qa.fixture(name)` for an arrangement it declared; shared Python helpers live in a
+  declared module under `<spec-root>/_fixtures/`. Prefer `qa.http` for HTTP — it is
   bound to the target's `base_url` and raises `HttpError` on any status outside
   `expect_status=`, which is the `curl -fsS` behaviour every shell plan had to remember.
 - A value used by two scenarios is generated **inside one scenario** and asserted there.
@@ -197,6 +207,7 @@ dashes, so the function name is the id — no separate uniqueness bookkeeping to
 
 | call | what it does |
 | --- | --- |
+| `qa.field(data, "a.b.0")` | read observed data along a dotted path; missing yields `MISSING`, never raises |
 | `qa.check(label, condition, actual=…, expected=…, covers=…)` | record one claim; returns the verdict, never raises |
 | `qa.require(label, condition, …)` | record one claim and stop the scenario if it fails |
 | `qa.verify(check, observed, covers=…, **args)` | make an observation the book *declared*; ostler owns the comparison |
@@ -327,8 +338,17 @@ a static count of the `qa.check`/`qa.require` calls in its body, and again at ru
   `{{ workhorse_var('qa_dir') }}` out by hand: a pinned path writes into the scored ledger
   even when the run was pointed somewhere else, so a dry run leaves its own proof where the
   evidence gate reads it.
-- Declare a static fixture with `input_file("name", "qa-inputs/thing.json")`; validation
-  checks it exists and lives outside disposable `qa/`.
+- **Arrangement is declared, not improvised.** A state two scenarios both need — a seeded
+  account, a populated ledger, a signed-in token — is a *fixture*, held to the same bar as
+  a test: named once, declared in the repo's `agents.yml` under `qa:`, and reached by name.
+  `fixtures:` names a command in the app's own language, so the app's integration tests and
+  this plan arrange the state with the same code and cannot drift apart; `qa.fixture("name")`
+  runs it, records the invocation as evidence, and fails loudly when the state it promises
+  is not there. `fixture_modules:` names a Python module under `<spec-root>/_fixtures/` for
+  arrangements only QA needs — it is linted with the same allowlist as the plan, and it is
+  how two plans share a helper instead of each carrying a copy of it. A static input file is
+  declared with `input_file("name", "qa-inputs/thing.json")`; validation checks it exists
+  and lives outside disposable `qa/`.
 
 **Every Playwright locator and every URL comes from the book, not from the running page and
 not from your memory of it.** `ostler qa validate` enforces this statically and will reject
