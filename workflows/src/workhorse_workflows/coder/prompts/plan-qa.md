@@ -28,11 +28,14 @@ moment:
 - Spec directory: `{{ workhorse_var('spec_dir') }}`
 - Target environment: `{{ workhorse_var('target_env') }}`
 - Context status: `{{ workhorse_var('context_status') }}`
-{% if verification_setup %}- The stack that is **already up** for you{% if verification_setup.profile %}, profile `{{ verification_setup.profile }}`{% endif %}:
-{% if verification_setup.fixtures %}  - fixtures already loaded — assert against **these**, do not re-derive a path:
-{% for f in verification_setup.fixtures %}    - `{{ f }}`
-{% endfor %}{% endif %}{% if verification_setup.capable_of_rendering %}  - what it can render: {{ verification_setup.capable_of_rendering }}
-{% endif %}{% endif %}{% if shared_packages %}- Shared files this story's services both read, resolved by the implementation plan:
+{% if verification_setup %}- The stack that is **already up** for you{% if verification_setup.profile %}, profile `{{ verification_setup.profile }}`{% endif %}.
+{% endif %}{% if fixtures %}- The fixtures this story **declared**. These are the only arrangements you may stand up,
+  and `qa.fixture("name")` takes the name exactly as written here — a name you paraphrase
+  is a name the runner cannot resolve, and the scenario is blocked before it observes
+  anything. Assert against what they provide; do not re-derive a path to it:
+{% for f in fixtures %}  - `{{ f.name }}`{% if f.provides %} — {{ f.provides }}{% endif %}
+{% endfor %}{% endif %}{% if verification_setup and verification_setup.capable_of_rendering %}- What the stack can render: {{ verification_setup.capable_of_rendering }}
+{% endif %}{% if shared_packages %}- Shared files this story's services both read, resolved by the implementation plan:
 {% for p in shared_packages %}  - `{{ p }}`
 {% endfor %}{% endif %}{% if qa_only_scenarios %}- Scenarios the implementation plan marked **QA-only** — no automated test was written for
   any of these, so each one is an obligation of *this* plan and nothing else in the run

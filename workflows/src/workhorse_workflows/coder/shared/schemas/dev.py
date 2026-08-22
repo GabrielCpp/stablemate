@@ -62,6 +62,28 @@ class PlanService(CoderResult):
     new_service: bool = False
 
 
+class PlanFixture(CoderResult):
+    """One arrangement the story's QA lane stands up before it observes anything.
+
+    Declared here rather than improvised in the plan for the reason a test fixture is
+    declared: the QA plan that builds its own arrangement inline is the plan that spells a
+    field one way while the app spells it another, and the resulting `KeyError` kills the
+    scenario instead of failing a check — so every obligation that scenario covered comes
+    back `unproven` and the defect it was there to find goes unreported.
+
+    `name` is the key `qa.fixture(name)` resolves against the repo's `agents.yml` `qa:`
+    block, where the command itself lives; the story says *which* arrangements it needs,
+    not how to build one. `provides` is the state the fixture guarantees, in the words the
+    plan can assert against — it is what a failure message quotes when the fixture is the
+    thing that broke.
+    """
+
+    #: The declared fixture's key, as `qa.fixture()` spells it.
+    name: str = ""
+    #: The state the fixture guarantees once it has run.
+    provides: str = ""
+
+
 class PlanResult(CoderResult):
     """`prompts/plan-story.md` and `prompts/refine-plan.md` — the plan, or the blocker.
 
@@ -94,6 +116,36 @@ class PlanResult(CoderResult):
     verification_setup: dict[str, Any] = Field(
         default={}, validation_alias=AliasChoices("verification_setup", "qa_stack")
     )
+    #: The fixtures this story's QA lane needs, typed out of the free-form block above.
+    #: The prose stays prose — a profile, a rendering capability, whatever else the planner
+    #: found worth saying — but the fixture list is the one part of it a later lane *acts*
+    #: on, so it is the one part that is a schema rather than a JSON dump in a prompt.
+    fixtures: list[PlanFixture] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def _lift_declared_fixtures(cls, data: Any) -> Any:
+        """A `fixtures:` list nested in `## Verification setup` is the story's fixture list.
+
+        The planner writes one section, not two, and it has been writing the fixtures into
+        that section since before there was a field for them. Reading the nested spelling
+        keeps the prompt honest and keeps every `plan-context.json` already on disk — the
+        documents a resume validates against — carrying its fixtures into the typed field
+        rather than losing them at the checkpoint boundary.
+        """
+        if not isinstance(data, dict) or data.get("fixtures") is not None:
+            return data
+        setup = data.get("verification_setup") or data.get("qa_stack") or {}
+        nested = setup.get("fixtures") if isinstance(setup, dict) else None
+        if isinstance(nested, list):
+            return {
+                **data,
+                # A bare string is the fixture's name: the same lift `shared_packages` gets,
+                # for the same reason — the shorter spelling is unambiguous, and rejecting it
+                # spends a rework lap teaching a planner punctuation.
+                "fixtures": [{"name": item} if isinstance(item, str) else item for item in nested],
+            }
+        return data
 
     @field_validator("shared_packages", mode="before")
     @classmethod
@@ -412,8 +464,9 @@ class ImplContext(CoderResult):
 
     Deterministic and side-effect-free, and deliberately degrading: a missing or garbled
     plan-context yields empty lists rather than a failure, so the implementer falls back to
-    reading the plan text. `verification_setup` is copied verbatim from the plan and stays untyped —
-    it is the fixture/data description a QA turn is handed as prose. `shared_packages` is
+    reading the plan text. `verification_setup` is copied verbatim from the plan and stays prose —
+    it is the fixture/data description a QA turn is handed as text, and `fixtures` is the
+    one part of it that is typed, because it is the one part a later lane calls by name. `shared_packages` is
     the same: the plan's list of files more than one service reads, which the QA planner
     needs because a fixture the dev lane already resolved is exactly what it should assert
     against rather than re-derive.
@@ -422,6 +475,9 @@ class ImplContext(CoderResult):
     impl_instruction_paths: list[str] = []
     qa_run_plan: list[QaRunEntry] = []
     verification_setup: dict[str, Any] = {}
+    #: The plan's declared fixtures, carried through so the QA planner is handed the names
+    #: it may call rather than left to infer them from the prose beside them.
+    fixtures: list[PlanFixture] = []
     shared_packages: list[str] = []
     dispatch_list: list[DispatchEntry] = []
     affected_repos: list[str] = []

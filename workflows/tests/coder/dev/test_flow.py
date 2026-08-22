@@ -513,6 +513,67 @@ def test_a_checkpointed_plan_result_reads_back_under_the_old_field_name() -> Non
     }
 
 
+def test_the_fixtures_nested_in_the_setup_block_become_the_typed_list() -> None:
+    """The planner writes one `## Verification setup` section, and it always did.
+
+    The typed field is not a second thing to write — it is the one part of that section a
+    later lane *calls*, lifted out of the prose beside it so `qa.fixture()` gets the name
+    the story wrote rather than a name a turn paraphrased out of a dumped object.
+    """
+    plan = {"verification_setup": {"profile": "seeded", "fixtures": [{"name": "signed_in"}]}}
+
+    result = PlanResult.model_validate(plan)
+
+    assert [f.name for f in result.fixtures] == ["signed_in"]
+    # The prose is untouched: nothing typed here takes anything away from the QA turn.
+    assert result.verification_setup["profile"] == "seeded"
+
+
+def test_a_bare_string_fixture_is_the_fixture_it_names() -> None:
+    """The same lift `shared_packages` gets, and for the same reason: `"signed_in"` says
+    exactly what `{"name": "signed_in"}` says, and rejecting it spends a rework lap
+    teaching a planner punctuation."""
+    result = PlanResult.model_validate({"qa_stack": {"fixtures": ["signed_in", "seeded_db"]}})
+
+    assert [(f.name, f.provides) for f in result.fixtures] == [
+        ("signed_in", ""),
+        ("seeded_db", ""),
+    ]
+
+
+def test_an_explicit_fixture_list_is_not_overwritten_by_the_nested_one() -> None:
+    """A planner that filled in the typed field said what it meant there; the lift is a
+    fallback for the documents that predate it, not a second opinion about them."""
+    result = PlanResult.model_validate(
+        {
+            "fixtures": [{"name": "typed", "provides": "an account"}],
+            "verification_setup": {"fixtures": ["nested"]},
+        }
+    )
+
+    assert [(f.name, f.provides) for f in result.fixtures] == [("typed", "an account")]
+
+
+def test_the_projection_carries_the_fixtures_under_either_spelling() -> None:
+    """`plan-context.json` is read by lanes outside the run that produced it, including
+    ones resuming against a document written before the field existed."""
+    nested = {"services": [], "qa_stack": {"fixtures": ["seeded_db"]}}
+    typed = {"services": [], "fixtures": [{"name": "signed_in", "provides": "a bearer token"}]}
+
+    assert plan_document(nested, {})["fixtures"] == [{"name": "seeded_db", "provides": ""}]
+    assert plan_document(typed, {})["fixtures"] == [
+        {"name": "signed_in", "provides": "a bearer token"}
+    ]
+
+
+def test_a_fixture_with_no_name_is_dropped_from_the_projection() -> None:
+    """A nameless fixture is nothing `qa.fixture()` can resolve, so carrying it forward
+    only produces a failure in the lane furthest from whoever could fix it."""
+    plan = {"services": [], "fixtures": [{"provides": "an account"}, "signed_in"]}
+
+    assert plan_document(plan, {})["fixtures"] == [{"name": "signed_in", "provides": ""}]
+
+
 def test_a_bare_string_shared_package_is_the_directory_it_names() -> None:
     """`shared_packages` means "non-service directories the plan changes", so a planner
     that emits `"docs"` said exactly what `{"path": "docs"}` says — one did, and the

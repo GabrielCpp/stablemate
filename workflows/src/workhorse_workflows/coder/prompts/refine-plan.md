@@ -305,7 +305,8 @@ After refining the plan artifacts, return this exact JSON object as the LAST thi
   ],
   "implementation_order": ["acme::api", "acme::web"],
   "shared_packages": [],
-  "verification_setup": {}
+  "verification_setup": {},
+  "fixtures": [{"name": "<fixture>", "provides": "<the state it guarantees>"}]
 }
 ```
 
@@ -320,6 +321,10 @@ After refining the plan artifacts, return this exact JSON object as the LAST thi
 - `implementation_order`: `repo::path` keys in build order; every entry must name a declared service.
 - `shared_packages`: non-service directories (libs, shared code) changed as part of a dependent service's pass.
 - `verification_setup`: the story's verification setup in machine-readable form.
+- `fixtures`: the arrangements QA must stand up, one `name`/`provides` entry each. Re-state
+  the full list every time, for the same reason `services` is re-stated: what you return
+  replaces what the previous turn returned, so a fixture omitted here is one QA is never
+  told it may call.
 
 **This reply is the whole of the refinement's structure.** The workflow derives the touched
 layers and the per-service run/regression scope from it — a refinement that changed scope and

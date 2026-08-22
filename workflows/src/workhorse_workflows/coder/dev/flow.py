@@ -997,7 +997,13 @@ class Dev(Workflow):
         transition arguments to the value the next state actually needs.
         """
         return result.model_dump(
-            include={"services", "implementation_order", "shared_packages", "verification_setup"}
+            include={
+                "services",
+                "implementation_order",
+                "shared_packages",
+                "verification_setup",
+                "fixtures",
+            }
         )
 
     @property

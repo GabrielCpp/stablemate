@@ -51,6 +51,7 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     ImplContext,
     LayerPick,
     OperatorAnswer,
+    PlanFixture,
     PlanSummary,
     PlanValidation,
     QaRunEntry,
@@ -182,6 +183,7 @@ def plan_document(
         # hand-written union is a hand-written way to disagree with itself.
         "required_instructions": instructions,
         "verification_setup": _verification_setup(plan),
+        "fixtures": _fixtures(plan),
     }
 
 
@@ -196,6 +198,32 @@ def _verification_setup(doc: dict[str, Any]) -> dict[str, Any]:
     to prevent. Nothing writes the old key; this only reads it.
     """
     return doc.get("verification_setup") or doc.get("qa_stack") or {}
+
+
+def _fixtures(doc: dict[str, Any]) -> list[dict[str, str]]:
+    """The story's declared fixtures, from the typed field or nested in the setup block.
+
+    Two spellings for one thing, and both are on disk: the planner has been writing
+    `fixtures:` inside `## Verification setup` since before the field existed, and every
+    `plan-context.json` written that way is still what some resume validates against. A
+    bare string is the fixture's name — the lift `PlanFixture` gives it, repeated here
+    because this projection reads raw documents rather than the model.
+    """
+    raw = doc.get("fixtures")
+    if not isinstance(raw, list):
+        setup = _verification_setup(doc)
+        raw = setup.get("fixtures")
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, str]] = []
+    for item in raw:
+        if isinstance(item, str):
+            out.append({"name": item, "provides": ""})
+        elif isinstance(item, dict):
+            out.append(
+                {"name": str(item.get("name", "")), "provides": str(item.get("provides", ""))}
+            )
+    return [item for item in out if item["name"]]
 
 
 def _plan_context(
@@ -427,6 +455,7 @@ def resolve_impl_context(
         impl_instruction_paths=impl_instruction_paths,
         qa_run_plan=qa_run_plan,
         verification_setup=_verification_setup(plan_ctx),
+        fixtures=[PlanFixture(**item) for item in _fixtures(plan_ctx)],
         shared_packages=[_package_label(item) for item in plan_ctx.get("shared_packages") or []],
         dispatch_list=dispatch,
         affected_repos=affected_repos,
@@ -477,6 +506,18 @@ def plan_summary(
     verification_setup = _verification_setup(plan_ctx)
     if verification_setup:
         lines.append("Verification setup: " + json.dumps(verification_setup))
+    # Named on their own line, above the JSON they may also appear inside: these are the
+    # only part of the setup a QA plan *calls*, and `qa.fixture()` takes the name exactly.
+    # A name a turn had to dig out of a dumped object is a name it can paraphrase.
+    fixtures = _fixtures(plan_ctx)
+    if fixtures:
+        lines.append(
+            "Declared fixtures: "
+            + ", ".join(
+                f"{item['name']} ({item['provides']})" if item["provides"] else item["name"]
+                for item in fixtures
+            )
+        )
     return PlanSummary(text="\n".join(lines))
 
 

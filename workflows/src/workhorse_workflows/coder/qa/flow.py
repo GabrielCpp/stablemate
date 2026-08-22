@@ -968,6 +968,10 @@ class Qa(Workflow):
             "docs_path": self.docs_path,
             "target_env": self.target_env,
             "verification_setup": impl.verification_setup,
+            # The names `qa.fixture()` takes, beside the prose that describes them: a QA
+            # planner that has to read a fixture's name out of a paragraph writes the name
+            # it remembers, and a fixture called by a name nobody declared is a blocked run.
+            "fixtures": [f.model_dump() for f in impl.fixtures],
             "shared_packages": impl.shared_packages,
             "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
             "qa_only_scenarios": [
@@ -1922,6 +1926,7 @@ class Qa(Workflow):
                 "stack_manifest": self.qa_stack_manifest,
                 "qa_run_plan": impl.qa_run_plan,
                 "verification_setup": impl.verification_setup,
+                "fixtures": [f.model_dump() for f in impl.fixtures],
                 # The interpreter the QA runner's pre-flight actually checks: the QA nodes
                 # import the runner as a library, so a requirement like "requires the Playwright
                 # Python package" is a statement about *this* process. A fixer told only to

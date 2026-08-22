@@ -124,6 +124,11 @@ shape is under "Machine-Readable Result" at the end of this prompt, and it is:
 - `implementation_order`: ordered list of `repo::path` keys specifying build order. Dependencies first: whatever defines a shared contract before whatever implements it, and whatever implements it before whatever consumes it. Every entry must name a service you declared.
 - `shared_packages`: non-service directories that need changes (libs, shared code). These are implemented as part of their dependent service's pass.
 - `verification_setup`: the story's **`## Verification setup`** in machine-readable form.
+- `fixtures`: the arrangements QA must stand up before it can observe anything, one entry
+  each with a `name` and what it `provides`. A fixture is held to the same bar as a test:
+  it is named, declared, and shared — the app's own integration tests and the QA lane run
+  the same one. Name what the story's scenarios need to already be true; do not describe
+  how to build it here, and do not invent an arrangement the story does not need.
 
 **How to identify services**: A service is a directory with a marker file. The repo's own
 `agents.yml` (`workspace.service_roots`/`service_markers` and the `template.*_path` hints)
@@ -445,9 +450,11 @@ After writing the plan artifacts, return this exact JSON object as the LAST thin
   "shared_packages": [{"repo": "api-service", "path": "pkg/db/alert", "type": "go-lib"}],
   "verification_setup": {
     "profile": "the stack/compose-profile/seed that renders this surface with realistic data",
-    "fixtures": ["the specific records/rows the surface needs to display, and how to create them"],
     "capable_of_rendering": "the surface this stack can actually show (not a thin/empty default)"
-  }
+  },
+  "fixtures": [
+    {"name": "signed_in_adjuster", "provides": "a session for an adjuster who may decide claims"}
+  ]
 }
 ```
 
