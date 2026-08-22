@@ -141,4 +141,8 @@ exclude = [
     # repo's plans import the harness. The plans are still linted by ruff and executed
     # live by the benchmark itself, which is the check that actually binds.
     "paddock/data/apps/*/docs/specs/*/qa_plan.py",
+    # The same, for the fixture modules those plans share. `_fixtures/<name>.py` is
+    # reached only through the runner, imports the same injected `ostler_qa`, and is
+    # linted by the same AST allowlist `ostler qa lint` holds a plan to.
+    "paddock/data/apps/*/docs/specs/_fixtures/*.py",
 ]

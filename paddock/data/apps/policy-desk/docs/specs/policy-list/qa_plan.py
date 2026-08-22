@@ -1,3 +1,4 @@
+from _fixtures.policies import valid_policy
 from ostler_qa import Qa, plan, scenario, target
 
 
@@ -11,19 +12,6 @@ web = target(
     browser="chromium",
     recording={"required": True, "mode": "window"},
 )
-
-
-def valid_policy(number: str, email: str = "alex@example.com", coverage: str = "auto") -> dict:
-    return {
-        "policy_number": number,
-        "holder_email": email,
-        "coverage_type": coverage,
-        "vehicle_vin": "1HGCM82633A004352" if coverage == "auto" else "",
-        "property_address": "10 Main Street" if coverage == "home" else "",
-        "start_date": "2099-01-01",
-        "end_date": "2099-12-31",
-        "premium": 1000 if coverage == "auto" else 200,
-    }
 
 
 @scenario(

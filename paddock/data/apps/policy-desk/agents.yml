@@ -60,3 +60,12 @@ services:
 qa:
   tools:
     - docker
+  # The Python fixture module the frozen plans import, at `docs/specs/_fixtures/policies.py`.
+  # Declaring it is what admits the import — `ostler qa lint` allows `_fixtures.<name>` only
+  # for a name listed here, and lints the module with the allowlist it lints a plan with.
+  #
+  # `valid_policy` was byte-identical in two plans and had a third copy under another name
+  # in the third. One arrangement written three times is three chances to disagree with the
+  # app about a field name, and a plan that loses that argument kills its own scenario.
+  fixture_modules:
+    - policies

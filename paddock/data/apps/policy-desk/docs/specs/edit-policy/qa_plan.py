@@ -1,5 +1,6 @@
 import json
 
+from _fixtures.policies import amendment_body, valid_policy
 from ostler_qa import Qa, plan, scenario, target
 
 
@@ -13,38 +14,6 @@ web = target(
     browser="chromium",
     recording={"required": True, "mode": "window"},
 )
-
-
-def fixture_policy() -> dict:
-    """The amendable Draft policy every scenario below works on.
-
-    The desk opens empty — nothing seeds the ledger — so the plan creates its own
-    fixture through the public API rather than presuming a record a fresh stack
-    never held.
-    """
-    return {
-        "policy_number": "PN-1001",
-        "holder_email": "alex@example.com",
-        "coverage_type": "auto",
-        "vehicle_vin": "1HGCM82633A004352",
-        "property_address": "",
-        "start_date": "2099-01-01",
-        "end_date": "2099-12-31",
-        "premium": 1000,
-    }
-
-
-def amendment_body(policy, premium):
-    return {
-        "holder_email": policy["holder_email"],
-        "coverage_type": policy["coverage_type"],
-        "vehicle_vin": policy.get("vehicle_vin", ""),
-        "property_address": policy.get("property_address", ""),
-        "start_date": policy["start_date"],
-        "end_date": policy["end_date"],
-        "premium": premium,
-        "version": policy["version"],
-    }
 
 
 @scenario(
@@ -74,7 +43,7 @@ def amendment_body(policy, premium):
 )
 def amend_policy_and_preserve_the_ledger(qa: Qa) -> None:
     """A valid amendment is conditional, durable, and does not rewrite neighbours."""
-    qa.http.post("/api/policies", json_body=fixture_policy(), expect_status=201)
+    qa.http.post("/api/policies", json_body=valid_policy("PN-1001"), expect_status=201)
     before_ledger = qa.http.get("/api/policies").json()
     before = qa.http.get("/api/policies/pn-1001").json()["policy"]
     qa.check("fixture is the expected amendable policy", qa.field(before, "policy_number") == "PN-1001", covers=["ac:1", "ac:3"])

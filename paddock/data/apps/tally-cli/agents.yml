@@ -68,3 +68,14 @@ services:
 qa:
   tools:
     - python3
+  # The Python fixture modules the frozen plans import, under `docs/specs/_fixtures/`.
+  # Declaring them is what admits the import: `ostler qa lint` allows `_fixtures.<name>`
+  # only for a name listed here, and lints the module itself with the same allowlist it
+  # lints a plan with.
+  #
+  # `disk` exists because all three stories reach the filesystem the same way — a snippet
+  # handed to `python3`, never `pathlib` from inside the harness — and each plan carried
+  # its own copy of the reader, the census and the writer. The `covers` a precondition
+  # speaks for is still passed in by the plan, so a story keeps its own literal ids.
+  fixture_modules:
+    - disk

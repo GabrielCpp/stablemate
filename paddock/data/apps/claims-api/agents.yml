@@ -54,3 +54,15 @@ services:
 qa:
   tools:
     - docker
+  # The Python fixture modules the frozen plans import, under `docs/specs/_fixtures/`.
+  # Declaring them is what admits the import: `ostler qa lint` allows `_fixtures.<name>`
+  # only for a name listed here, and lints the module itself with the same allowlist it
+  # lints a plan with — so sharing this code costs the plans no reach into the process.
+  #
+  # They exist because `sign_in`/`bearer`/`submission` were copied byte-for-byte into all
+  # three plans. Three copies of a body is three chances to spell a field the way the app
+  # does not, and the one that did (`note` for `decision_note`) killed its scenario and
+  # reported the clean tree as contradicted.
+  fixture_modules:
+    - identity
+    - claims

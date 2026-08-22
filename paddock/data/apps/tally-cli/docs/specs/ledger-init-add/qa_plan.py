@@ -24,6 +24,7 @@ paraphrase of it.
 
 import json
 
+from _fixtures.disk import census_dir, read_file, run
 from ostler_qa import Qa, plan, scenario, target
 
 
@@ -35,59 +36,15 @@ tally = target("tally", driver="python")
 # `ostler qa validate` reads a `covers=` list statically off the AST, so a computed id claims
 # nothing.
 
-#: Read one file as evidence: whether it is there, its digest, and its text. The digest is the
-#: load-bearing half — a ledger that was rewritten with identical content is not the thing
-#: `#init-a-ledger:does:2` promises, and only the bytes distinguish the two.
-READ = """
-import hashlib, json, pathlib, sys
-p = pathlib.Path(sys.argv[1])
-if p.is_file():
-    raw = p.read_bytes()
-    json.dump({"exists": True, "sha256": hashlib.sha256(raw).hexdigest(), "text": raw.decode("utf-8")}, sys.stdout)
-else:
-    json.dump({"exists": False, "sha256": None, "text": None}, sys.stdout)
-"""
-
-#: Every file under a directory, keyed by its path and valued by its digest. A dry run that
-#: "wrote somewhere else instead" is invisible to any check that only looks at the ledger.
-CENSUS = """
-import hashlib, json, pathlib, sys
-root = pathlib.Path(sys.argv[1])
-found = {}
-for entry in sorted(root.rglob("*")):
-    if entry.is_file():
-        found[str(entry.relative_to(root))] = hashlib.sha256(entry.read_bytes()).hexdigest()
-json.dump(found, sys.stdout)
-"""
-
-
-def run(qa: Qa, ledger, *argv, timeout: float = 120.0):
-    """One invocation of the product, on the ledger this scenario owns."""
-    return qa.tool("python3").run("-m", "tally", "--file", str(ledger), *argv, timeout=timeout)
-
 
 def read(qa: Qa, path):
     """What is on disk at `path`, read by a separate process after the command exited."""
-    got = qa.tool("python3").run("-c", READ, str(path), timeout=60.0)
-    qa.require(
-        f"the harness can read {path.name} back off disk",
-        got.ok,
-        actual=got.stderr[-2000:],
-        covers=["okf:docs/features/tally/concepts/ledger-file.md:contract"],
-    )
-    return json.loads(got.stdout)
+    return read_file(qa, path, ["okf:docs/features/tally/concepts/ledger-file.md:contract"])
 
 
 def census(qa: Qa, directory):
     """Every file in `directory`, by digest — the witness for "no write at all"."""
-    got = qa.tool("python3").run("-c", CENSUS, str(directory), timeout=60.0)
-    qa.require(
-        "the harness can census the scenario's directory",
-        got.ok,
-        actual=got.stderr[-2000:],
-        covers=["okf:docs/features/tally/concepts/ledger-file.md:contract"],
-    )
-    return json.loads(got.stdout)
+    return census_dir(qa, directory, ["okf:docs/features/tally/concepts/ledger-file.md:contract"])
 
 
 @scenario(

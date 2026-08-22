@@ -17,6 +17,8 @@ names a project this service was never configured for, the other expired in 2020
 
 import json
 
+from _fixtures.claims import submission
+from _fixtures.identity import ADJUSTER, HOLDER_A, bearer, sign_in
 from ostler_qa import HttpError, Qa, plan, scenario, target
 
 
@@ -24,9 +26,6 @@ plan(run_id="qa-claims-crud", story="claims-crud")
 
 api = target("api", driver="python", base_url="http://localhost:18085")
 
-EMULATOR = "http://localhost:18086/identitytoolkit.googleapis.com/v1"
-HOLDER_A = ("holder-a@example.com", "claims-bench-a")
-ADJUSTER = ("adjuster@example.com", "claims-bench-c")
 
 #: `{"alg":"none","typ":"JWT"}` over claims naming `other-insurer-example` as both issuer and
 #: audience, `sub: constructed-holder`, and an expiry in 2286. Well-formed for some other
@@ -40,6 +39,7 @@ FOREIGN_PROJECT_TOKEN = (
     "fX0."
 )
 
+
 #: The same shape with this project's own issuer and audience, and an `exp` of 1600003600 —
 #: September 2020. The only thing wrong with it is that the session it stands for is over,
 #: which is the arm the book documents separately from a token that was never ours.
@@ -50,30 +50,6 @@ EXPIRED_TOKEN = (
     "aG9sZGVyIiwic3ViIjoiY29uc3RydWN0ZWQtaG9sZGVyIiwiaWF0IjoxNjAwMDAwMDAwLCJleHAiOjE2MDAwMDM2"
     "MDAsImZpcmViYXNlIjp7ImlkZW50aXRpZXMiOnt9LCJzaWduX2luX3Byb3ZpZGVyIjoicGFzc3dvcmQifX0."
 )
-
-
-def sign_in(qa: Qa, account: tuple[str, str]) -> dict:
-    """A live identity from the emulator: the id token and the subject it carries."""
-    email, password = account
-    body = qa.http.post(
-        f"{EMULATOR}/accounts:signInWithPassword?key=fake-api-key",
-        json_body={"email": email, "password": password, "returnSecureToken": True},
-        expect_status=200,
-    ).json()
-    return {"token": body["idToken"], "uid": body["localId"]}
-
-
-def bearer(identity: dict) -> dict:
-    return {"Authorization": f"Bearer {identity['token']}"}
-
-
-def submission(policy_number: str = "PL-4471", incident_date: str = "2099-03-14") -> dict:
-    return {
-        "policy_number": policy_number,
-        "incident_date": incident_date,
-        "amount_cents": 125000,
-        "description": "Hail damage to the roof of the insured property.",
-    }
 
 
 @scenario(

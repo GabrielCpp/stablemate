@@ -11,41 +11,14 @@ and the adjuster's role is a custom claim the emulator stamps on the token.
 
 import json
 
+from _fixtures.claims import submission
+from _fixtures.identity import ADJUSTER, HOLDER_A, HOLDER_B, bearer, sign_in
 from ostler_qa import Qa, plan, scenario, target
 
 
 plan(run_id="qa-claims-tenancy", story="claims-tenancy")
 
 api = target("api", driver="python", base_url="http://localhost:18085")
-
-EMULATOR = "http://localhost:18086/identitytoolkit.googleapis.com/v1"
-HOLDER_A = ("holder-a@example.com", "claims-bench-a")
-HOLDER_B = ("holder-b@example.com", "claims-bench-b")
-ADJUSTER = ("adjuster@example.com", "claims-bench-c")
-
-
-def sign_in(qa: Qa, account: tuple[str, str]) -> dict:
-    """A live identity from the emulator: the id token and the subject it carries."""
-    email, password = account
-    body = qa.http.post(
-        f"{EMULATOR}/accounts:signInWithPassword?key=fake-api-key",
-        json_body={"email": email, "password": password, "returnSecureToken": True},
-        expect_status=200,
-    ).json()
-    return {"token": body["idToken"], "uid": body["localId"]}
-
-
-def bearer(identity: dict) -> dict:
-    return {"Authorization": f"Bearer {identity['token']}"}
-
-
-def submission(policy_number: str, description: str) -> dict:
-    return {
-        "policy_number": policy_number,
-        "incident_date": "2099-04-02",
-        "amount_cents": 84000,
-        "description": description,
-    }
 
 
 def two_holders_file_one_claim_each(qa: Qa) -> dict:
@@ -56,8 +29,8 @@ def two_holders_file_one_claim_each(qa: Qa) -> dict:
     """
     a, b, adjuster = sign_in(qa, HOLDER_A), sign_in(qa, HOLDER_B), sign_in(qa, ADJUSTER)
     qa.http.delete("/api/claims", headers=bearer(adjuster), expect_status=204)
-    qa.http.post("/api/claims", json_body=submission("PL-5510", "Water ingress in the basement."), headers=bearer(a), expect_status=201)
-    qa.http.post("/api/claims", json_body=submission("PL-6620", "Windscreen cracked on the motorway."), headers=bearer(b), expect_status=201)
+    qa.http.post("/api/claims", json_body=submission("PL-5510", description="Water ingress in the basement."), headers=bearer(a), expect_status=201)
+    qa.http.post("/api/claims", json_body=submission("PL-6620", description="Windscreen cracked on the motorway."), headers=bearer(b), expect_status=201)
     return {"a": a, "b": b, "adjuster": adjuster}
 
 

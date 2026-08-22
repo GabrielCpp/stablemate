@@ -18,6 +18,7 @@ said about itself.
 
 import json
 
+from _fixtures.disk import census_dir, list_entries, read_file, run, write_file
 from ostler_qa import Qa, plan, scenario, target
 
 
@@ -29,38 +30,6 @@ tally = target("tally", driver="python")
 # `ostler qa validate` reads a `covers=` list statically off the AST, so a computed id claims
 # nothing.
 
-#: Read one file as evidence: whether it is there, its digest, and its text.
-READ = """
-import hashlib, json, pathlib, sys
-p = pathlib.Path(sys.argv[1])
-if p.is_file():
-    raw = p.read_bytes()
-    json.dump({"exists": True, "sha256": hashlib.sha256(raw).hexdigest(), "text": raw.decode("utf-8")}, sys.stdout)
-else:
-    json.dump({"exists": False, "sha256": None, "text": None}, sys.stdout)
-"""
-
-#: Every file beside the named one, keyed by its path and valued by its digest — the witness
-#: for "no write at all", which no check on the ledger alone can give. It is handed a file
-#: rather than a directory so the plan never does path arithmetic of its own: the scenario
-#: names its ledger, and the snippet censuses the directory that ledger lives in.
-CENSUS = """
-import hashlib, json, pathlib, sys
-root = pathlib.Path(sys.argv[1]).parent
-found = {}
-for entry in sorted(root.rglob("*")):
-    if entry.is_file():
-        found[str(entry.relative_to(root))] = hashlib.sha256(entry.read_bytes()).hexdigest()
-json.dump(found, sys.stdout)
-"""
-
-#: Lay a file down for the product to read, over the same boundary everything else crosses.
-WRITE = """
-import pathlib, sys
-path = pathlib.Path(sys.argv[1])
-path.parent.mkdir(parents=True, exist_ok=True)
-path.write_text(sys.argv[2], encoding="utf-8")
-"""
 
 #: Three expenses, none of them already in a freshly initialised ledger.
 THREE_ROWS = (
@@ -90,49 +59,24 @@ ROW_FOUR_IS_NOT_MONEY = (
 )
 
 
-def run(qa: Qa, ledger, *argv, timeout: float = 120.0):
-    """One invocation of the product, on the ledger this scenario owns."""
-    return qa.tool("python3").run("-m", "tally", "--file", str(ledger), *argv, timeout=timeout)
-
-
 def read(qa: Qa, path):
     """What is on disk at `path`, read by a separate process after the command exited."""
-    got = qa.tool("python3").run("-c", READ, str(path), timeout=60.0)
-    qa.require(
-        f"the harness can read {path.name} back off disk",
-        got.ok,
-        actual=got.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#import:contract"],
-    )
-    return json.loads(got.stdout)
+    return read_file(qa, path, ["okf:docs/features/tally/tally.md#import:contract"])
 
 
 def census(qa: Qa, sibling):
     """Every file in the directory `sibling` lives in, by digest."""
-    got = qa.tool("python3").run("-c", CENSUS, str(sibling), timeout=60.0)
-    qa.require(
-        "the harness can census the directory the ledger lives in",
-        got.ok,
-        actual=got.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#import:contract"],
-    )
-    return json.loads(got.stdout)
+    return census_dir(qa, sibling, ["okf:docs/features/tally/tally.md#import:contract"])
 
 
 def write(qa: Qa, path, text):
     """Put a file where the product will read it, without touching the disk from the plan."""
-    got = qa.tool("python3").run("-c", WRITE, str(path), text, timeout=60.0)
-    qa.require(
-        f"the harness can lay down {path.name} for the product to read",
-        got.ok,
-        actual=got.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#import:contract"],
-    )
+    write_file(qa, path, text, ["okf:docs/features/tally/tally.md#import:contract"])
 
 
 def entries(qa: Qa, ledger):
     """The entries the ledger holds right now."""
-    return json.loads(read(qa, ledger)["text"])["entries"]
+    return list_entries(qa, ledger, ["okf:docs/features/tally/tally.md#import:contract"])
 
 
 @scenario(

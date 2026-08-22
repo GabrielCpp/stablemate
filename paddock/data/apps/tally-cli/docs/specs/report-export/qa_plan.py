@@ -19,6 +19,7 @@ that writes a header only when it has something to put under it.
 
 import json
 
+from _fixtures.disk import read_file, run
 from ostler_qa import Qa, plan, scenario, target
 
 
@@ -26,33 +27,10 @@ plan(run_id="qa-report-export", story="report-export")
 
 tally = target("tally", driver="python")
 
-#: Read one file as evidence: whether it is there, its digest, and its text.
-READ = """
-import hashlib, json, pathlib, sys
-p = pathlib.Path(sys.argv[1])
-if p.is_file():
-    raw = p.read_bytes()
-    json.dump({"exists": True, "sha256": hashlib.sha256(raw).hexdigest(), "text": raw.decode("utf-8")}, sys.stdout)
-else:
-    json.dump({"exists": False, "sha256": None, "text": None}, sys.stdout)
-"""
-
-
-def run(qa: Qa, ledger, *argv, timeout: float = 120.0):
-    """One invocation of the product, on the ledger this scenario owns."""
-    return qa.tool("python3").run("-m", "tally", "--file", str(ledger), *argv, timeout=timeout)
-
 
 def read(qa: Qa, path):
     """What is on disk at `path`, read by a separate process after the command exited."""
-    got = qa.tool("python3").run("-c", READ, str(path), timeout=60.0)
-    qa.require(
-        f"the harness can read {path.name} back off disk",
-        got.ok,
-        actual=got.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#export:contract"],
-    )
-    return json.loads(got.stdout)
+    return read_file(qa, path, ["okf:docs/features/tally/tally.md#export:contract"])
 
 
 def lines(record):

@@ -14,31 +14,13 @@ token, which is what `403 Adjusters Only` is decided from.
 
 import json
 
+from _fixtures.identity import ADJUSTER, HOLDER_A, bearer, sign_in
 from ostler_qa import HttpError, Qa, plan, scenario, target
 
 
 plan(run_id="qa-claims-adjudication", story="claims-adjudication")
 
 api = target("api", driver="python", base_url="http://localhost:18085")
-
-EMULATOR = "http://localhost:18086/identitytoolkit.googleapis.com/v1"
-HOLDER_A = ("holder-a@example.com", "claims-bench-a")
-ADJUSTER = ("adjuster@example.com", "claims-bench-c")
-
-
-def sign_in(qa: Qa, account: tuple[str, str]) -> dict:
-    """A live identity from the emulator: the id token and the subject it carries."""
-    email, password = account
-    body = qa.http.post(
-        f"{EMULATOR}/accounts:signInWithPassword?key=fake-api-key",
-        json_body={"email": email, "password": password, "returnSecureToken": True},
-        expect_status=200,
-    ).json()
-    return {"token": body["idToken"], "uid": body["localId"]}
-
-
-def bearer(identity: dict) -> dict:
-    return {"Authorization": f"Bearer {identity['token']}"}
 
 
 def one_claim_awaiting_a_decision(qa: Qa) -> dict:
