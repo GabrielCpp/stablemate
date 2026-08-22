@@ -129,6 +129,8 @@ cutting the bullet on punctuation invents obligations nobody can prove.
 | `undeclared-obligation` (warn) | the node mints obligations and declares no `verify:` at all — nothing says what observing them looks like | declare a check per observation; the node is the only place that knows what the behaviour promised |
 | `weak-check` (warn) | every check the node declares passes on the defect it is meant to catch — a field asserted by presence with no value, a `2xx` naming neither `path:` nor `title:` | name the value, the route or the title the claim turns on |
 | `unstated-precondition` (warn) | a bullet says the node creates or removes something, and the checks read only the state afterwards — the same state a no-op leaves | declare the change as a change: `created(subject=…)` / `removed(subject=…)` |
+| `qa-fixture-bullet` | a `fixture:` value is not `name [arg ...] [— prose]` — a capitalised name, unbalanced quoting, nothing at all | rewrite the head as the key `agents.yml` declares it under |
+| `unknown-book-fixture` | a `fixture:` names an arrangement the repo never declared under `qa: {fixtures:}` | declare it, or name the one that already reaches that state |
 | `unresolved-relation` | a `parent:`/`extends:`/`detail:`/`on:` link doesn't resolve | fix the link target |
 | `dangling-link` | a plain link's target **file** is missing | fix the path or create the target |
 | `missing-anchor` | file exists but `#anchor` heading isn't there | fix the anchor |
@@ -178,6 +180,34 @@ alone, a success status naming neither route nor title, a creation or a delete r
 action. The bar itself — name the state of the world in which the check goes red, assert the
 before-state rather than assuming it, discriminate the claim from its nearest plausible defect —
 is the [[falsifiable-verification]] skill.
+
+**`fixture:` is the third leg of the same triple.** The normative bullets say what the node
+claims, `verify:` says what observing the claim looks like, and `fixture:` says how to reach the
+state the claim is true in. It goes in the book for the same reason the check does: which
+arrangement a claim is documented in is a fact about the claim, not about whichever plan happens
+to check it this week — so a plan compiled from the book alone opens with the arrangement instead
+of a marker an author fills in by reading the implementation.
+
+```markdown
+- fixture: seeded_accounts — two holders and one adjuster exist in the auth emulator
+- fixture: seeded-ledger 3 draft — three draft policies on file
+```
+
+The grammar is `name [arg ...] [— what state it leaves behind]`, not a call: `qa.fixture` takes a
+name the repo declared under `qa: {fixtures:}` plus positional strings appended to the declared
+argv, and spelling it as Python would invite a book to write arguments the harness cannot bind.
+The head is what the harness runs; the tail is what a person reads, and it becomes the scenario's
+precondition. Doctor grounds the name (`unknown-book-fixture`) and the grammar
+(`qa-fixture-bullet`).
+
+**Attribution is deliberately not the check's.** A `verify:` written above every normative bullet
+observes the node's own contract and nothing else — an observation is specific by nature, and
+crediting it to claims it was not written for is how a weak check comes to cover a sharp one. An
+arrangement written there is the state the node *as a whole* is documented in, so it fans out to
+every obligation the node mints; one written under a claim adds a second state to reach rather
+than replacing the ambient one. Give a node no `fixture:` when it needs none — an endpoint that
+reads no state and asks for no identity is documented in the empty arrangement, and naming one
+would describe a state nothing needs.
 
 ### Navigating the UI graph
 
