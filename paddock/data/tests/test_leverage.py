@@ -263,6 +263,21 @@ def test_pooling_sums_numerator_and_denominator_across_trials() -> None:
                       "obligations": [2, 2], "journeys": [1, 3], "sensitivity": [3, 3]}
 
 
+def test_pooling_does_not_multiply_a_book_level_metric_by_the_trial_count() -> None:
+    """Every trial in a round reads the same book, so summing its claims invents evidence.
+
+    Twelve trials over a fifty-eight-claim book printed `sensitivity 812/812` — a true ratio
+    over a total no book in the corpus has.
+    """
+    pooled = frozen.pool_leverage([
+        {"leverage": {"sensitivity": [40, 58], "obligations": [2, 3]}},
+        {"leverage": {"sensitivity": [40, 58], "obligations": [2, 3]}},
+        {"leverage": {"sensitivity": [39, 57], "obligations": [1, 3]}},
+    ])
+    assert pooled["sensitivity"] == [40, 58]
+    assert pooled["obligations"] == [5, 9]
+
+
 def test_pooling_a_ledger_written_before_the_scorecard_existed_is_all_blank() -> None:
     """Old rows carry no `leverage` key, and must not read as five zeroed metrics."""
     pooled = frozen.pool_leverage([{"run_id": "coder-1", "verdict": "caught"}])

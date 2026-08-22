@@ -575,11 +575,15 @@ def documented_routes(book: dict[str, Any]) -> set[str]:
 
 
 def book_sensitivity(repo: Path) -> list[int] | None:
-    """`[claims observed by a check that could fail, claims that declare one]`, or None.
+    """`[claims observed by a check that could fail, claims the book mints]`, or None.
 
     A property of the book rather than of the run, which is exactly why it is worth printing
     beside the run's numbers: `obligations 220/263` counts assertions that passed, and this
     is the denominator's other half — how many of them could have done anything else.
+
+    The denominator is every claim, including the ones no `verify:` observes. Counting only
+    the observed ones would let a book raise this number by deleting a weak check instead of
+    strengthening it.
     """
     try:
         from ostler import model
@@ -746,12 +750,22 @@ def leverage(witness: Path, story: str, statuses: dict[str, str] | None) -> dict
     )
 
 
+#: Metrics that measure the book rather than the trial, and so must not be summed over trials.
+BOOK_LEVEL_KEYS = frozenset({"sensitivity"})
+
+
 def pool_leverage(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Sum the metrics across trials, keeping a metric None when no trial could compute it.
 
     Summed rather than averaged, for the reason laps are pooled: these are counts over a
     denominator that varies per story, and averaging per-trial fractions would weight a
     one-flow story the same as a five-flow one.
+
+    Except for a `BOOK_LEVEL_KEYS` metric, whose denominator is the same book every trial
+    read. Summing that one multiplies both halves by the trial count and prints a book with
+    fifty-eight claims as one with eight hundred — a true ratio over an invented total, which
+    reads as far more evidence than the round holds. The widest one seen is taken instead,
+    since a trial that failed to load part of the book should not shrink it.
     """
     pooled: dict[str, Any] = dict.fromkeys(LEVERAGE_KEYS)
     for row in rows:
@@ -763,7 +777,12 @@ def pool_leverage(rows: list[dict[str, Any]]) -> dict[str, Any]:
             current = pooled[key]
             if isinstance(value, list):
                 pair = [int(value[0]), int(value[1])]
-                pooled[key] = pair if current is None else [current[0] + pair[0], current[1] + pair[1]]
+                if current is None:
+                    pooled[key] = pair
+                elif key in BOOK_LEVEL_KEYS:
+                    pooled[key] = max(current, pair, key=lambda seen: seen[1])
+                else:
+                    pooled[key] = [current[0] + pair[0], current[1] + pair[1]]
             else:
                 pooled[key] = int(value) + (current or 0)
     return pooled
