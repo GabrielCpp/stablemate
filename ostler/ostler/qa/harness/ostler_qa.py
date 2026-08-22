@@ -709,6 +709,19 @@ def _verify_http_status(observed: Any, args: Mapping[str, Any]) -> tuple[bool, A
         found = body.get("title") if isinstance(body, dict) else None
         expected["title"], actual["title"] = args["title"], found
         passed = passed and found == args["title"]
+    if "path" in args:
+        # Which request answered, not just how. A status asserted without it passes on a
+        # response to a different route entirely — the scenario that meant to read
+        # `/api/claims/cl-9999` and read `/api/claims` instead observes the same 200.
+        url = getattr(observed, "url", None)
+        if not isinstance(url, str):
+            raise TypeError(
+                "http_status(path=…) observes which request answered — pass the object "
+                f"qa.http returned, not {type(observed).__name__}"
+            )
+        route = urllib.parse.urlsplit(url).path
+        expected["path"], actual["path"] = args["path"], route
+        passed = passed and route == args["path"]
     return passed, actual, expected
 
 
@@ -722,9 +735,11 @@ def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any
         return str(value) == args["equals"], value, args["equals"]
     if "matches" in args:
         return re.search(args["matches"], str(value)) is not None, value, f"~ {args['matches']}"
-    # Presence alone is what the bullet declared, and `ostler.checks` says why that is weak.
-    # It is still the author's declaration, so it is honoured rather than second-guessed here.
-    return True, value, "present"
+    # Unreachable through `ostler.checks.bind`, which refuses a `json_path` with no
+    # comparison at validate time — presence alone passes on the default the defect also
+    # produces, so it is not an assertion. A call that arrives here anyway got past the
+    # declaration gate, and the honest verdict for an assertion that cannot fail is red.
+    return False, value, "one of equals=, matches=, absent= — presence alone asserts nothing"
 
 
 def _verify_unchanged(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
@@ -750,7 +765,29 @@ def _verify_keys_unchanged(observed: Any, args: Mapping[str, Any]) -> tuple[bool
 
 
 def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    found = observed if isinstance(observed, int) and not isinstance(observed, bool) else len(observed)
+    """How many of `subject` there are — the subject resolved, not taken on trust.
+
+    A scenario may hand over the collection itself, or the document holding it. In the
+    second case counting `observed` counts the document's own keys: `{"claims": [a, b]}`
+    is one key and satisfies `equals=1` while the product returned two claims. So when
+    the observation is a document, `subject` is walked into it — and a subject that does
+    not resolve is red, because the product omitting the collection is a defect, not a
+    scenario shape error. A subject naming something no path can address (a CLI's
+    "entries in the ledger") leaves an already-extracted collection counted as it is.
+    """
+    document = observed
+    reader = getattr(document, "json", None)
+    if callable(reader):
+        document = reader()
+    if isinstance(document, Mapping):
+        resolved, document = _resolve_path(document, args["subject"])
+        if not resolved:
+            return False, {"subject": args["subject"], "present": False}, args["equals"]
+    found = (
+        document
+        if isinstance(document, int) and not isinstance(document, bool)
+        else len(document)
+    )
     return found == args["equals"], found, args["equals"]
 
 

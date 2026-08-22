@@ -60,6 +60,12 @@ class CheckSpec:
     name: str
     params: tuple[CheckParam, ...]
     excludes: str
+    #: Arguments of which the call must carry at least one. `required` cannot say this: each
+    #: of these is optional on its own, and it is the *choice* that is mandatory. Without it
+    #: a check can be spelled so that nothing it observes can come out false — `json_path`
+    #: with no comparison passes on any value the path resolves to — and an assertion that
+    #: cannot fail is refused where it is written, not discovered green at runtime.
+    one_of: tuple[str, ...] = ()
 
     @property
     def param_by_name(self) -> dict[str, CheckParam]:
@@ -67,7 +73,10 @@ class CheckSpec:
 
     def signature(self) -> str:
         parts = [f"{p.name}: {p.type}{'' if p.required else ' = …'}" for p in self.params]
-        return f"{self.name}({', '.join(parts)})"
+        rendered = f"{self.name}({', '.join(parts)})"
+        if self.one_of:
+            rendered += f" — one of {', '.join(self.one_of)}"
+        return rendered
 
 
 #: The vocabulary. Small on purpose: every entry has to name a defect class that a plausible
@@ -92,6 +101,7 @@ CHECKS: tuple[CheckSpec, ...] = (
             CheckParam("matches", "str"),
             CheckParam("absent", "bool"),
         ),
+        one_of=("equals", "matches", "absent"),
         excludes="a field asserted by presence rather than value, which passes on the "
                  "default the defect also produces",
     ),
@@ -325,6 +335,12 @@ def bind(name: str, args: Mapping[str, Any]) -> CheckCall | str:
     for param in spec.params:
         if param.required and param.name not in bound:
             return f"`{name}` requires `{param.name}: {param.type}`"
+    if spec.one_of and not any(key in bound for key in spec.one_of):
+        choices = ", ".join(f"`{key}`" for key in spec.one_of)
+        return (
+            f"`{name}` needs one of {choices} — without a comparison it asserts only that "
+            f"the path resolved, and {spec.excludes}"
+        )
     return CheckCall(name=name, args=bound)
 
 

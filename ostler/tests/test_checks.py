@@ -45,6 +45,9 @@ def test_list_arguments_round_trip() -> None:
         ("count(subject=\"pages\", equals=true)", "`equals` is int, got bool"),
         ("manifest_unchanged_except(page='a')", "is not a known check"),
         ('http_status(code=int("409"))', "must be literals"),
+        # An assertion that cannot go red, refused where it is written: a `json_path` with
+        # no comparison observes only that the path resolved.
+        ('json_path(path="$.item.id")', "needs one of `equals`, `matches`, `absent`"),
         ("", "empty"),
     ],
 )
@@ -135,3 +138,18 @@ def test_the_expected_form_falls_back_to_the_whole_vocabulary() -> None:
     form = checks.expected_form("api/publish.go::Publish")
     for spec in checks.CHECKS:
         assert spec.signature() in form
+
+
+def test_the_one_of_rule_holds_on_both_sides_of_the_binding() -> None:
+    """`parse_check` reads the book's bullet and `bind` reads the plan's recovered call. A
+    rule applied on one side only would refuse a plan that invokes exactly what was declared,
+    so the refusal lives in the shared tail and both spellings feel it identically."""
+    assert isinstance(checks.bind("json_path", {"path": "$.item.id"}), str)
+    for args in ({"equals": "abc"}, {"matches": "^a"}, {"absent": True}):
+        assert isinstance(checks.bind("json_path", {"path": "$.item.id", **args}), checks.CheckCall)
+
+
+def test_a_one_of_spec_shows_the_choice_in_its_signature() -> None:
+    """The signature is what a refusal offers an author as the shape that would be accepted,
+    and an optional-looking argument list does not say that one of them is mandatory."""
+    assert "one of equals, matches, absent" in checks.CHECK_BY_NAME["json_path"].signature()
