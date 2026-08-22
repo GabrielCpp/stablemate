@@ -469,7 +469,10 @@ def render(rows: list[ClaimReport]) -> str:
     for row in rows:
         if row.status == "sensitive" and not any(t.survived or not t.witnessed for t in row.trials):
             continue
-        lines.append(f"{row.status:<12} {row.path}#{row.claim}")
+        # Not `{row.path}#{row.claim}`: the claim id already opens with the file path, so
+        # prefixing it printed the path twice and produced a string no `covers=` list could
+        # be grepped for. `row.path` still orders the rows and still rides in the JSON.
+        lines.append(f"{row.status:<12} {row.claim}")
         if not row.trials:
             lines.append("    unobserved   no `verify:` is attached to this claim")
         for trial_ in row.trials:
