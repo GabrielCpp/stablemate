@@ -26,6 +26,7 @@ door into the process.
 
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -156,6 +157,43 @@ def preflight_errors(root: Path, *, spec_root: Path | None = None) -> list[str]:
             if not (directory / f"{name}.py").is_file()
         )
     return errors
+
+
+def referenced(plan: Path) -> tuple[set[str], set[str]]:
+    """`(fixture names, module names)` one plan asks for, read off its AST.
+
+    Read statically rather than by grep, for the same reason `covers=` is: a name built at
+    runtime claims nothing a static check could verify, and a caller would rather see none
+    than see a fragment of one. An unparseable plan yields nothing — `ostler qa lint` and
+    ruff both fail on it first, and reporting it twice in two vocabularies helps nobody.
+    """
+    try:
+        tree = ast.parse(plan.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return set(), set()
+
+    names: set[str] = set()
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "fixture"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        ):
+            names.add(node.args[0].value)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            parts = node.module.split(".")
+            if parts[0] == FIXTURES_PACKAGE and len(parts) > 1:
+                modules.add(parts[1])
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                parts = alias.name.split(".")
+                if parts[0] == FIXTURES_PACKAGE and len(parts) > 1:
+                    modules.add(parts[1])
+    return names, modules
 
 
 def resolved(root: Path) -> dict[str, dict[str, Any]]:

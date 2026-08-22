@@ -63,25 +63,30 @@ def _dependency_lines(depends: list[str]) -> list[str]:
     return [f"- {registry.STORY_DEPS_LABEL}: {slug}" for slug in slugs]
 
 
-def _write_dependencies(doc: markdown.MarkdownDoc, depends: list[str]) -> bool:
-    """Rewrite a story doc's ``## Dependencies`` body; False when it has no such heading.
+def _write_section_body(doc: markdown.MarkdownDoc, heading: str, body: list[str]) -> bool:
+    """Rewrite one ``## heading`` body in a story doc; False when it has no such heading.
 
-    Replaces the section's whole body rather than editing bullets in place: the edge set is
+    Replaces the section's whole body rather than editing bullets in place: the list is
     ostler's to state, and a stale ``- Blocked by:`` left behind by a shorter new list would be
     read as a real blocker. Refusing when the heading is absent is what keeps a malformed story
-    from silently acquiring a second Dependencies section.
+    from silently acquiring a second section of the same name.
     """
-    section = doc.find_section(registry.STORY_DEPS_HEADING)
+    section = doc.find_section(heading)
     if section is None:
         return False
     lines = doc.body.split("\n")
     end = section.line_end
     while end > section.line_start + 1 and not lines[end - 1].strip():
         end -= 1                                  # keep the blank line before the next heading
-    lines[section.line_start + 1:end] = ["", *_dependency_lines(depends)]
+    lines[section.line_start + 1:end] = ["", *body]
     doc.body = "\n".join(lines)
     doc._sections = None
     return True
+
+
+def _write_dependencies(doc: markdown.MarkdownDoc, depends: list[str]) -> bool:
+    """Rewrite a story doc's ``## Dependencies`` body; False when it has no such heading."""
+    return _write_section_body(doc, registry.STORY_DEPS_HEADING, _dependency_lines(depends))
 
 
 def ensure_dependencies(doc: markdown.MarkdownDoc, depends: list[str]) -> None:
@@ -98,6 +103,41 @@ def ensure_dependencies(doc: markdown.MarkdownDoc, depends: list[str]) -> None:
     after_title = next((i + 1 for i, ln in enumerate(lines) if ln.startswith("# ")), 0)
     lines[after_title:after_title] = [
         "", f"## {registry.STORY_DEPS_HEADING}", "", *_dependency_lines(depends),
+    ]
+    doc.body = "\n".join(lines)
+    doc._sections = None
+
+
+def _fixture_lines(fixtures: list[str]) -> list[str]:
+    """The body of a story's ``## Fixtures`` section: a bullet each, or the bare ``(none)``."""
+    names = [n.strip() for n in fixtures if n.strip().lower() not in registry.EMPTY_TOKENS]
+    if not names:
+        return [registry.STORY_FIXTURES_NONE]
+    return [f"- {registry.STORY_FIXTURES_LABEL}: {name}" for name in names]
+
+
+def ensure_fixtures(doc: markdown.MarkdownDoc, fixtures: list[str]) -> None:
+    """State *fixtures* in a story doc's ``## Fixtures``, adding the section when it has none.
+
+    The tolerant form, for a migration meeting story.md files written before the section
+    existed. Those stories arranged state anyway — in a block of Python copied into each plan
+    that needed it — so the migration writes ``(none)`` and the first `doctor` run over a repo
+    with QA plans is what says which names belong there instead.
+    """
+    if _write_section_body(doc, registry.STORY_FIXTURES_HEADING, _fixture_lines(fixtures)):
+        return
+    lines = doc.body.split("\n")
+    deps = doc.find_section(registry.STORY_DEPS_HEADING)
+    # Directly under Dependencies when there is one, so the two machine-stated lists stay
+    # together; under the H1 otherwise, which is where Dependencies itself would have gone.
+    at = deps.line_end if deps is not None else next(
+        (i + 1 for i, ln in enumerate(lines) if ln.startswith("# ")), 0)
+    # A section's end already carries whatever blank lines separated it from the next heading;
+    # back over them so the insertion owns its own spacing and cannot double it.
+    while at > 0 and not lines[at - 1].strip():
+        at -= 1
+    lines[at:at] = [
+        "", f"## {registry.STORY_FIXTURES_HEADING}", "", *_fixture_lines(fixtures), "",
     ]
     doc.body = "\n".join(lines)
     doc._sections = None
@@ -318,6 +358,7 @@ def update_story(
     title: str,
     covers: list[str],
     depends: list[str],
+    fixtures: list[str] | None = None,
 ) -> Result:
     """Replace a story's graph metadata without touching its id, body, status, or extra fields.
 
@@ -325,6 +366,11 @@ def update_story(
     the epic and is rewritten there, while the blockers are rewritten in the story's own
     ``## Dependencies`` section. Both are written or the call fails — a half-applied update would
     leave the DAG stating one thing in one file and another in the other.
+
+    *fixtures* is optional and rewritten tolerantly, because unlike the other two it is not known
+    when a story is created: which arrangements a story needs is settled by its QA plan, which is
+    written much later. ``None`` leaves the section alone; a list — including the empty one —
+    states it, adding the section to a story.md written before the contract required it.
     """
     found = graph.find_story(slug)
     if found is None:
@@ -352,6 +398,8 @@ def update_story(
             False,
             f"story '{slug}' has no '## {registry.STORY_DEPS_HEADING}' section to update",
         )
+    if fixtures is not None:
+        ensure_fixtures(story_doc, fixtures)
 
     values = {
         "title": title,

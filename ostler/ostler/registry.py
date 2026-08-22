@@ -85,6 +85,16 @@ STORY_DEPS_HEADING = "Dependencies"
 STORY_DEPS_LABEL = "Blocked by"        # `- Blocked by: <sibling-slug>`
 STORY_DEPS_NONE = "(none)"
 
+# The QA fixtures a story's plan is allowed to arrange state with, in the story's own body. Same
+# shape as the blockers above and for the same reason: one bullet per fixture, and the bare
+# `(none)` when the story needs no arrangement, so "this story arranges nothing" is a stated fact
+# rather than an empty section that might equally mean nobody wrote it down. A fixture named here
+# is checked twice — the repo must declare it (`qa: {fixtures:}` / `{fixture_modules:}`), and the
+# story's own `qa_plan.py` must be the thing that asks for it.
+STORY_FIXTURES_HEADING = "Fixtures"
+STORY_FIXTURES_LABEL = "Fixture"       # `- Fixture: <declared-name>`
+STORY_FIXTURES_NONE = "(none)"
+
 # story.md's body contract. `crud.create_story` scaffolds *from this table* and `model` /
 # `doctor` check against it, so the scaffold cannot drift into satisfying its own checkers —
 # the exact failure that let 44 empty stories read as authored.
@@ -92,6 +102,10 @@ STORY_SECTIONS: tuple[SectionSpec, ...] = (
     # Dependencies leads: what blocks a story is the first thing a reader needs to know, and
     # putting it above the prose keeps it out of the way of the sections an author rewrites.
     SectionSpec(STORY_DEPS_HEADING, filled=False, stub=STORY_DEPS_NONE),
+    # Fixtures sits with Dependencies rather than beside Acceptance Criteria: both are
+    # machine-stated lists an author does not compose, and keeping them above the prose leaves
+    # the sections a rewrite touches contiguous.
+    SectionSpec(STORY_FIXTURES_HEADING, filled=False, stub=STORY_FIXTURES_NONE),
     SectionSpec("Context", filled=True),
     SectionSpec("Acceptance Criteria", filled=True),
     SectionSpec(STORY_STATUS_HEADING, filled=False,

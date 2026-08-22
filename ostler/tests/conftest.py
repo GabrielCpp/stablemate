@@ -58,13 +58,16 @@ def epic_md(eid: str, title: str, seeds: list[tuple[str, str, str]],
 
 
 def story_md(slug: str, title: str, status: str,
-             doc_ref: str | None = None, depends: list[str] | None = None) -> str:
+             doc_ref: str | None = None, depends: list[str] | None = None,
+             fixtures: list[str] | None = None) -> str:
     # A written story: every `filled` section of registry.STORY_SECTIONS carries prose, so the
     # fixture repo is authored and `doctor` stays green. Leave one blank and it reports
     # `unwritten-story` — which is the point of the check.
     deps = [f"- Blocked by: {d}" for d in (depends or [])] or ["(none)"]
+    fixes = [f"- Fixture: {name}" for name in (fixtures or [])] or ["(none)"]
     body = ["---", "type: story", f"slug: {slug}", f"status: {status}", "---",
             f"# Story: {title}", "", "## Dependencies", "", *deps, "",
+            "## Fixtures", "", *fixes, "",
             "## Context", "",
             f"Why {title} matters.", "", "## Implementation Status", "",
             f"- **Status**: {status}", "", "## Acceptance Criteria", ""]

@@ -78,6 +78,11 @@ class Story:
     # `story_dependency_strays`. Non-empty means the section's shape is wrong, which is
     # indistinguishable from "no blockers" in `dependencies` alone.
     dependency_strays: list[str] = field(default_factory=list)
+    # The declared QA fixtures this story's `## Fixtures` section says its plan arranges state
+    # with, and the bullets under that heading that state something else. Same pair, and the
+    # same reason, as `dependencies` / `dependency_strays` above.
+    fixtures: list[str] = field(default_factory=list)
+    fixture_strays: list[str] = field(default_factory=list)
 
     @property
     def authored(self) -> bool:
@@ -294,46 +299,75 @@ def story_body_status(doc: markdown.MarkdownDoc) -> str:
     return str(bullet.value if bullet else "" or "")
 
 
-def story_dependencies(doc: markdown.MarkdownDoc) -> list[str]:
-    """The sibling slugs a story's ``## Dependencies`` section says block it.
+def _labelled_values(doc: markdown.MarkdownDoc, heading: str, label: str) -> list[str]:
+    """The values of every ``- <label>: <value>`` bullet under ``## <heading>``, in order.
 
-    The one place that answers "what does this story.md say blocks it". Only ``- Blocked by:``
-    bullets carry an edge, so the section's ``(none)`` — and any prose somebody adds around the
-    list — contributes nothing without the parser having to recognize the word.
+    Shared by the two list sections a story states in its own body — its blockers and its QA
+    fixtures. Only labelled bullets carry an entry, so the section's ``(none)`` — and any prose
+    somebody adds around the list — contributes nothing without the parser having to recognize
+    the word.
     """
-    section = doc.find_section(registry.STORY_DEPS_HEADING)
+    section = doc.find_section(heading)
     if section is None:
         return []
-    want = registry.STORY_DEPS_LABEL.strip().lower()
-    deps: list[str] = []
+    want = label.strip().lower()
+    values: list[str] = []
     for top in section.bullets:
         for bullet in top.walk():
             if bullet.label != want:
                 continue
             # A comma list on one bullet is tolerated: the canonical form is a bullet each, but
             # a hand edit that writes `- Blocked by: a, b` states the same graph.
-            deps += [dep for dep in _split_list(bullet.value) if dep not in deps]
-    return deps
+            values += [value for value in _split_list(bullet.value) if value not in values]
+    return values
 
 
-def story_dependency_strays(doc: markdown.MarkdownDoc) -> list[str]:
-    """Bullets under ``## Dependencies`` that state something other than ``- Blocked by:``.
+def _labelled_strays(doc: markdown.MarkdownDoc, heading: str, label: str) -> list[str]:
+    """Bullets under ``## <heading>`` stating something other than ``- <label>:``.
 
     A story.md is written by an agent, and the failure mode that costs the most is the quiet one:
-    a rewrite that turns the blockers into prose or renames the label empties the DAG without
-    anything failing. :func:`story_dependencies` cannot tell that apart from a story with no
-    blockers, so the shape is reported separately and `doctor` turns it into an error.
+    a rewrite that turns the list into prose or renames the label empties it without anything
+    failing. :func:`_labelled_values` cannot tell that apart from a story with no entries, so the
+    shape is reported separately and `doctor` turns it into an error.
     """
-    section = doc.find_section(registry.STORY_DEPS_HEADING)
+    section = doc.find_section(heading)
     if section is None:
         return []
-    want = registry.STORY_DEPS_LABEL.strip().lower()
+    want = label.strip().lower()
     return [
         bullet.text.strip()
         for top in section.bullets
         for bullet in top.walk()
         if bullet.label != want
     ]
+
+
+def story_dependencies(doc: markdown.MarkdownDoc) -> list[str]:
+    """The sibling slugs a story's ``## Dependencies`` section says block it.
+
+    The one place that answers "what does this story.md say blocks it".
+    """
+    return _labelled_values(doc, registry.STORY_DEPS_HEADING, registry.STORY_DEPS_LABEL)
+
+
+def story_fixtures(doc: markdown.MarkdownDoc) -> list[str]:
+    """The declared QA fixtures a story's ``## Fixtures`` section says its plan arranges with.
+
+    The one place that answers "what does this story.md say it arranges". A name here is a
+    claim in both directions — the repo declares it, and this story's own plan asks for it —
+    and `doctor` is what holds it to both.
+    """
+    return _labelled_values(doc, registry.STORY_FIXTURES_HEADING, registry.STORY_FIXTURES_LABEL)
+
+
+def story_fixture_strays(doc: markdown.MarkdownDoc) -> list[str]:
+    """Bullets under ``## Fixtures`` that state something other than ``- Fixture:``."""
+    return _labelled_strays(doc, registry.STORY_FIXTURES_HEADING, registry.STORY_FIXTURES_LABEL)
+
+
+def story_dependency_strays(doc: markdown.MarkdownDoc) -> list[str]:
+    """Bullets under ``## Dependencies`` that state something other than ``- Blocked by:``."""
+    return _labelled_strays(doc, registry.STORY_DEPS_HEADING, registry.STORY_DEPS_LABEL)
 
 
 def _meta_from_bullets(section: markdown.Section) -> dict[str, str | list[str]]:
@@ -969,6 +1003,8 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
             story.dependencies = story_dependencies(doc)
             story.raw["dependencies"] = story.dependencies
             story.dependency_strays = story_dependency_strays(doc)
+            story.fixtures = story_fixtures(doc)
+            story.fixture_strays = story_fixture_strays(doc)
             problems = required_section_problems(doc, registry.STORY_SECTIONS)
             story.unwritten_sections = [s.heading for s, _ in problems]
             story.unwritten_detail = [f"{s.heading} ({why})" for s, why in problems]

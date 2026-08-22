@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from ostler import crud, doctor, select, todo
+from ostler import crud, doctor, markdown, select, todo
 from ostler.model import load
 
 from conftest import present
@@ -240,6 +240,51 @@ def test_update_story_rewrites_only_the_dependencies_section(tmp_path: Path):
     assert "## Dependencies\n\n(none)\n" in story_text
     assert "Blocked by" not in story_text
     assert present(load(tmp_path).find_story("editor"))[1].dependencies == []
+
+
+def test_update_story_states_its_fixtures_only_when_asked(tmp_path: Path):
+    """`--fixtures` is optional where `--depends` is not, and that asymmetry is deliberate.
+
+    Which arrangements a story needs is settled by its QA plan, which is written long after the
+    story is created — so an omitted flag leaves the section as it stands rather than clearing
+    it, and a story that has not reached its plan phase keeps the scaffolded `(none)`.
+    """
+    assert crud.create_epic(load(tmp_path), "accounts", "Accounts", prefix="t").ok
+    assert crud.create_story(load(tmp_path), "accounts", "editor", "Editor").ok
+    story_path = tmp_path / "docs/epics/0001-accounts/stories/editor/story.md"
+    assert "## Fixtures\n\n(none)\n" in story_path.read_text(encoding="utf-8")
+
+    def update(**kwargs):
+        return crud.update_story(load(tmp_path), "editor", title="Editor", covers=[],
+                                 depends=[], **kwargs)
+
+    assert update(fixtures=["seeded-accounts", "identity"]).ok
+    assert "## Fixtures\n\n- Fixture: seeded-accounts\n- Fixture: identity\n" in \
+        story_path.read_text(encoding="utf-8")
+    assert present(load(tmp_path).find_story("editor"))[1].fixtures == [
+        "seeded-accounts", "identity"]
+
+    assert update().ok          # omitted: the section is nobody's to clear by accident
+    assert present(load(tmp_path).find_story("editor"))[1].fixtures == [
+        "seeded-accounts", "identity"]
+
+    assert update(fixtures=[]).ok       # stated empty: the bare `(none)`, never a bullet
+    story_text = story_path.read_text(encoding="utf-8")
+    assert "## Fixtures\n\n(none)\n" in story_text
+    assert "Fixture:" not in story_text
+
+
+def test_ensure_fixtures_adds_the_section_to_a_story_written_before_it_existed(tmp_path: Path):
+    """The tolerant writer, for a migration. The section lands under `## Dependencies` — the
+    two machine-stated lists stay together — and the story's prose is untouched."""
+    doc = markdown.split(
+        "---\ntype: story\nslug: editor\n---\n"
+        "# Story: Editor\n\n## Dependencies\n\n(none)\n\n## Context\n\nWhy it matters.\n"
+    )
+    crud.ensure_fixtures(doc, ["identity"])
+    text = doc.render()
+    assert "## Dependencies\n\n(none)\n\n## Fixtures\n\n- Fixture: identity\n" in text
+    assert "Why it matters." in text
 
 
 def test_delete_epic_removes_its_milestone_reference(tmp_path: Path):

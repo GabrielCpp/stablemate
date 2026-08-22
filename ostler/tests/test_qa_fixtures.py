@@ -87,3 +87,36 @@ def test_a_declared_module_with_no_file_behind_it_is_a_preflight_error(tmp_path:
     (specs / fixtures.FIXTURES_DIRNAME).mkdir()
     (specs / fixtures.FIXTURES_DIRNAME / "claims.py").write_text("", encoding="utf-8")
     assert fixtures.preflight_errors(tmp_path, spec_root=specs) == []
+
+
+# ---------------------------------------------------------------------------
+# `referenced` — what one plan asks for, read off its AST
+# ---------------------------------------------------------------------------
+def test_a_plan_reference_is_read_off_the_ast(tmp_path: Path) -> None:
+    plan = tmp_path / "qa_plan.py"
+    plan.write_text(
+        "from _fixtures.identity import bearer\n"
+        "import _fixtures.claims\n"
+        "\n"
+        "def scenario(qa):\n"
+        "    qa.fixture('seeded-accounts')\n"
+        "    return bearer\n",
+        encoding="utf-8",
+    )
+    assert fixtures.referenced(plan) == ({"seeded-accounts"}, {"identity", "claims"})
+
+
+def test_a_computed_fixture_name_is_not_read_as_a_fragment(tmp_path: Path) -> None:
+    """A name built at runtime claims nothing a static check could verify — better none than
+    half of one, which is what a grep would have returned."""
+    plan = tmp_path / "qa_plan.py"
+    plan.write_text("def s(qa, env):\n    qa.fixture('seeded-' + env)\n", encoding="utf-8")
+    assert fixtures.referenced(plan) == (set(), set())
+
+
+def test_an_unparseable_plan_yields_nothing(tmp_path: Path) -> None:
+    """`ostler qa lint` and ruff both fail on it first; two vocabularies for one defect helps
+    nobody."""
+    plan = tmp_path / "qa_plan.py"
+    plan.write_text("def broken(:\n", encoding="utf-8")
+    assert fixtures.referenced(plan) == (set(), set())

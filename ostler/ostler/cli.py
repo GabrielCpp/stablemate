@@ -288,6 +288,12 @@ def _build_parser() -> argparse.ArgumentParser:
     upst.add_argument("--depends", required=True,
                       help="the story's complete blocker list, rewritten into its "
                            "`## Dependencies` section; pass '(none)' to clear it")
+    upst.add_argument("--fixtures",
+                      help="the story's complete declared-QA-fixture list, rewritten into its "
+                           "`## Fixtures` section; pass '(none)' to clear it. Omitted entirely, "
+                           "the section is left as it stands â€” which is how a story created "
+                           "before its QA plan exists keeps its `(none)` until the plan says "
+                           "otherwise")
 
     # ---- template-declared kinds: generic instance CRUD + hierarchy CRUD --
     gn = sub.add_parser("new", help="create an instance of a template-declared kind")
@@ -1510,6 +1516,7 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
                 title=args.title,
                 covers=[ids_mod.resolve(graph, seed) for seed in _split(args.covers)],
                 depends=_split(args.depends),
+                fixtures=_split(args.fixtures) if args.fixtures is not None else None,
             )
         )
     if c == "seed":

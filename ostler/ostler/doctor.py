@@ -19,6 +19,8 @@ from ostler.vet import placement as placement_mod
 from ostler import refs as refs_mod
 from ostler.refs import normalize_ref
 from ostler.model import Graph, Epic, read_doc, required_section_problems
+from ostler.path import specs_root_in
+from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.outcome import QaOutcome
 
 
@@ -126,6 +128,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
     all_story_slugs = graph.all_story_slugs()
 
     _check_milestones(graph, f)
+    _check_fixtures(graph, f)
 
     for epic in graph.epics:
         if epic_filter and not _epic_matches(epic, epic_filter):
@@ -301,6 +304,77 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
                              f"the mockup turn by default", epic.name, s.id,
                              suggestion=f"ostler seed add {epic.name} {s.id} --layer "
                                         f"<{'|'.join(registry.SEED_LAYERS)}>"))
+
+
+def _check_fixtures(graph: Graph, f: list[Finding]) -> None:
+    """Hold every story's ``## Fixtures`` to the repo's declarations and to its own plan.
+
+    A fixture is held to the bar a test is held to, and that bar is *named, declared, used*.
+    Three ways a name can be a lie, all checkable without running anything:
+
+    * The repo's declarations do not stand up at all — malformed, naming a tool nobody opted
+      into, or a module with no file. `preflight_errors` is the one implementation of that,
+      shared with the run's own preflight, so a repo cannot pass `doctor` and then fail to boot.
+    * A story names a fixture the repo does not declare. Nothing would arrange that state; the
+      scenario would reach for it after the app booted and be reported as blocked.
+    * A story's plan and its story.md disagree about which fixtures the story arranges with.
+      Both directions matter and they are not the same defect: an *undeclared* use is a story
+      whose arrangement is invisible to a reader deciding whether it is safe to change, while an
+      *unused* declaration is a story claiming an arrangement it no longer makes.
+
+    A story with no `qa_plan.py` yet is not in disagreement with anything — the plan phase has
+    not run — so only the repo-level half applies to it.
+    """
+    spec_root = specs_root_in(graph.root)
+    for message in fixtures_mod.preflight_errors(graph.root, spec_root=spec_root):
+        f.append(Finding("error", "qa-fixture-declaration", message))
+
+    specs, _errors = fixtures_mod.declared(graph.root)
+    known = set(specs) | fixtures_mod.declared_modules(graph.root)
+
+    for epic in graph.epics:
+        for story in epic.stories:
+            if story.story_md is None:
+                continue
+            rel = story.story_md.relative_to(graph.root).as_posix()
+            for stray in story.fixture_strays:
+                f.append(Finding(
+                    "error", "story-fixture-stray",
+                    f"story '{story.slug}' has a `## {registry.STORY_FIXTURES_HEADING}` bullet "
+                    f"that names no fixture: {stray!r} — write "
+                    f"`- {registry.STORY_FIXTURES_LABEL}: <name>`, or "
+                    f"`{registry.STORY_FIXTURES_NONE}` when the story arranges nothing",
+                    epic.name, story.slug, path=rel, line=1))
+            for name in story.fixtures:
+                if name not in known:
+                    f.append(Finding(
+                        "error", "unknown-story-fixture",
+                        f"story '{story.slug}' names fixture '{name}', which this repo does not "
+                        f"declare — add it to `qa: {{fixtures:}}` or `qa: {{fixture_modules:}}` "
+                        f"in agents.yml. Declared here: "
+                        f"{', '.join(sorted(known)) or '(none)'}",
+                        epic.name, name, path=rel, line=1))
+
+            plan = spec_root / story.slug / "qa_plan.py"
+            if not plan.is_file():
+                continue
+            names, modules = fixtures_mod.referenced(plan)
+            plan_rel = plan.relative_to(graph.root).as_posix()
+            stated = set(story.fixtures)
+            for name in sorted((names | modules) - stated):
+                f.append(Finding(
+                    "error", "undeclared-story-fixture",
+                    f"story '{story.slug}' arranges state with fixture '{name}' in its "
+                    f"qa_plan.py but does not say so — add "
+                    f"`- {registry.STORY_FIXTURES_LABEL}: {name}` under "
+                    f"`## {registry.STORY_FIXTURES_HEADING}`",
+                    epic.name, name, path=rel, line=1))
+            for name in sorted(stated - (names | modules)):
+                f.append(Finding(
+                    "warn", "unused-story-fixture",
+                    f"story '{story.slug}' names fixture '{name}' but its qa_plan.py never asks "
+                    f"for it ({plan_rel})",
+                    epic.name, name, path=rel, line=1))
 
 
 def _epic_ref(epic_name: str) -> str:

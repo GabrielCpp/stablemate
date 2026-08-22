@@ -88,7 +88,13 @@ def _stories_from_folders(edir: Path) -> list[dict]:
 
 
 def _write_story_deps(edir: Path, stories: list[dict]) -> None:
-    """Carry each story's `dependencies` out of the manifest and into its own story.md."""
+    """Carry each story's `dependencies` out of the manifest and into its own story.md.
+
+    The story's `## Fixtures` section is stated here too, as `(none)`. Nothing in the legacy
+    manifest knows which QA fixtures a story arranges with — the concept postdates it — so the
+    migration writes the honest empty answer and `doctor` is what asks for the real one once the
+    story has a qa_plan.py to read it off.
+    """
     for st in stories:
         slug = str(st.get("slug") or "")
         story_f = edir / "stories" / slug / "story.md"
@@ -96,6 +102,7 @@ def _write_story_deps(edir: Path, stories: list[dict]) -> None:
             continue
         doc = markdown.split(story_f.read_text(encoding="utf-8"))
         crud.ensure_dependencies(doc, [str(x) for x in (st.get("dependencies") or [])])
+        crud.ensure_fixtures(doc, [])
         story_f.write_text(doc.render(), encoding="utf-8")
 
 
