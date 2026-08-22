@@ -727,8 +727,12 @@ def _verify_http_status(observed: Any, args: Mapping[str, Any]) -> tuple[bool, A
 
 def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     resolved, value = _resolve_path(observed, args["path"])
-    if args.get("absent"):
-        return not resolved, {"present": resolved}, {"present": False}
+    if "absent" in args:
+        # `absent=false` is a presence assertion, not the absence of one: it goes red when the
+        # product omits the field, which is the whole of what a book that spells it that way
+        # claims. Reading it as "no comparison given" made every such bullet unprovable.
+        want_absent = bool(args["absent"])
+        return resolved is not want_absent, {"present": resolved}, {"present": not want_absent}
     if not resolved:
         return False, {"present": False}, {"path": args["path"]}
     if "equals" in args:

@@ -197,3 +197,17 @@ def test_omits_searches_a_plain_string_observation() -> None:
     )
     assert ok is False
     assert actual["found"] == ["/home/ci/.secrets"]
+
+
+def test_absent_false_is_a_presence_assertion_that_can_go_red() -> None:
+    """A book spelling `absent=false` claims the field is there. Reading it as "no comparison
+    was given" made the claim unprovable: green was impossible whatever the product answered."""
+    present, _, _ = harness.VERIFIERS["json_path"](
+        {"policies": [{"version": "1"}]}, {"path": "policies[0].version", "absent": False}
+    )
+    missing, actual, expected = harness.VERIFIERS["json_path"](
+        {"policies": [{}]}, {"path": "policies[0].version", "absent": False}
+    )
+    assert present is True
+    assert missing is False
+    assert actual == {"present": False} and expected == {"present": True}
