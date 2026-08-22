@@ -54,6 +54,11 @@ Route on `status` rather than judging it:
 - **`contradicted`** — the ledger and `qa-evidence.json` disagree, or a bound assertion
   failed under a published pass. Refute it and quote both sides from `why` and
   `failingLogRefs`; this is the one status that is never a judgement call.
+- **`insensitive`** — every declared check ran and passed, and `checksInsensitive` says no
+  observation of the product could have made any of them fail. A pass here proves the
+  assertion ran, not that the product does this. `evidence-defect`, and the repair is the
+  declaration — a `verify:` bullet that names what would be different if the claim were
+  false — never a refutation of the app on this ground alone.
 - **`unproven`** — the scenario that would have observed it did not run to completion, so
   nothing looked at the product. This is **not** a refutation and must never be filed as one:
   it is an `evidence-defect`, the repair is in the plan (a misspelled field, a step that
