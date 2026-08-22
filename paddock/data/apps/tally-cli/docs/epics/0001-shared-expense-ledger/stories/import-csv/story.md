@@ -10,6 +10,10 @@ status: Not started
 
 - Blocked by: ledger-init-add
 
+## Fixtures
+
+- Fixture: disk
+
 ## Context
 
 Nobody types a trip in one expense at a time. `tally import` takes the file the bank or the

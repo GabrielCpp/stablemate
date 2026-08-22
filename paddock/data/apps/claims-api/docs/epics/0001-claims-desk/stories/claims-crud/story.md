@@ -10,6 +10,11 @@ status: Not started
 
 (none)
 
+## Fixtures
+
+- Fixture: claims
+- Fixture: identity
+
 ## Context
 
 Nothing in the desk reads until something writes, so the first story is the write path end to

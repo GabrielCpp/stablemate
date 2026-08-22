@@ -10,6 +10,10 @@ status: Not started
 
 (none)
 
+## Fixtures
+
+- Fixture: disk
+
 ## Context
 
 The first story is the package, the file it keeps, and the two commands that create and grow

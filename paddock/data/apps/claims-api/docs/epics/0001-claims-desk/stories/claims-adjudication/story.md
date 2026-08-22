@@ -11,6 +11,10 @@ status: Not started
 - Blocked by: claims-crud
 - Blocked by: claims-tenancy
 
+## Fixtures
+
+- Fixture: identity
+
 ## Context
 
 The last story is the only one that changes a claim after it is filed, and it is the only one

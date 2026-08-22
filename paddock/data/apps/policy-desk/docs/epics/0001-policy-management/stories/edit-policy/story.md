@@ -11,6 +11,10 @@ status: Not started
 - Blocked by: create-policy
 - Blocked by: policy-list
 
+## Fixtures
+
+- Fixture: policies
+
 ## Context
 
 A policy on the books changes: the premium is re-rated, the term moves, the holder cancels. Both

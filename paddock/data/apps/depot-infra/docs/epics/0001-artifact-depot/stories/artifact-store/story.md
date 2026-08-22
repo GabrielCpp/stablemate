@@ -10,6 +10,14 @@ status: Not started
 
 (none)
 
+## Fixtures
+
+(none)
+
+<!-- The stack arranges itself: `make -C pulumi plan` selects the `dev` stack against a local
+file backend and writes the preview this story reads. What the run needs beforehand — the Go
+module cache and the `gcp` resource plugin — is warmed once with the stack, not per scenario. -->
+
 ## Context
 
 The first story is the program itself and the thing it exists to declare: the module, the

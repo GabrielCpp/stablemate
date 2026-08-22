@@ -10,6 +10,15 @@ status: Not started
 
 - Blocked by: seat-hold
 
+## Fixtures
+
+- Fixture: (none)
+
+<!-- The showing is arranged over the documented route — `DELETE /api/showing` puts every seat
+back to `free` — so a scenario reaches its starting state through the product rather than
+around it. There is nothing here for a fixture to set up that the API does not already
+expose. -->
+
 ## Context
 
 The transition the product exists for, and the only one with a concurrency contract:

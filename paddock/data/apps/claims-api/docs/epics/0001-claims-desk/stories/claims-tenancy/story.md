@@ -10,6 +10,11 @@ status: Not started
 
 - Blocked by: claims-crud
 
+## Fixtures
+
+- Fixture: claims
+- Fixture: identity
+
 ## Context
 
 The desk now takes claims and can say who filed them; this story is the first that has to act

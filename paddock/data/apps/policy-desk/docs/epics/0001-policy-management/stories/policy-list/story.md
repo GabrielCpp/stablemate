@@ -10,6 +10,10 @@ status: Not started
 
 - Blocked by: create-policy
 
+## Fixtures
+
+- Fixture: policies
+
 ## Context
 
 The register is the desk's front door: every policy on file, in policy-number order, each row a

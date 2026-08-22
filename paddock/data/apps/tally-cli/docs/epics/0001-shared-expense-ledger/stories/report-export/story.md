@@ -10,6 +10,10 @@ status: Not started
 
 - Blocked by: import-csv
 
+## Fixtures
+
+- Fixture: disk
+
 ## Context
 
 The last story is the reason for the first two: what the trip cost, and who put in what.
