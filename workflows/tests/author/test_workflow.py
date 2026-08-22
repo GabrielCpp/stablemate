@@ -229,6 +229,10 @@ _BODY = """# Story: {title}
 
 (none)
 
+## Fixtures
+
+(none)
+
 ## Context
 
 {title} is one of the account surfaces this epic covers. The screen exists in the web app
@@ -247,6 +251,10 @@ already, so this story adds behaviour to it rather than a new surface.
 _UNWRITTEN_BODY = """# Story: {title}
 
 ## Dependencies
+
+(none)
+
+## Fixtures
 
 (none)
 
