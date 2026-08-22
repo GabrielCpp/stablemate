@@ -95,6 +95,10 @@ type: story
 
 (none)
 
+## Fixtures
+
+(none)
+
 ## Context
 
 Users need a thing.
