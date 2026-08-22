@@ -696,6 +696,19 @@ def _env(tmp: Path, *, run_dir: Path | None = None) -> RunEnv:
     )
 
 
+def _latest_ask(text: str) -> str:
+    """The questions *this* block asked, not everything the gate file has accumulated.
+
+    A second `Await` on a path re-arms the file by appending, keeping the earlier blocks
+    and the operator's answers to them. So "which gate is this?" cannot be asked of the
+    whole file — the grill's questions are still in it long after the grill was answered,
+    and a test that searched the file for them skipped every later gate as if it were the
+    grill's.
+    """
+    marker = "## Questions from the agent"
+    return text.rsplit(marker, 1)[-1] if marker in text else text
+
+
 def _drive(
     env: RunEnv,
     agent: _Agent,
@@ -714,7 +727,7 @@ def _drive(
 
     def _wait_for_answer(path: Path, **kwargs: Any) -> Any:
         text = path.read_text(encoding="utf-8") if path.is_file() else ""
-        if "grill this backlog" in text:
+        if "grill this backlog" in _latest_ask(text):
             return None
         if wait_for_answer is not None:
             return wait_for_answer(path, **kwargs)
