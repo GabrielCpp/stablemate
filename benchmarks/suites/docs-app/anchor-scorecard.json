@@ -1,0 +1,247 @@
+{
+  "spec": "/mnt/data/worktrees/stablemate-optimize-full/benchmarks/suites/docs-app/benchmark.yaml",
+  "target": "/tmp/bench-docs-app",
+  "mode": "live",
+  "judged": true,
+  "set": {
+    "label": "",
+    "cli": "claude",
+    "power": {
+      "low": {
+        "claude": {
+          "model": "sonnet",
+          "effort": "low"
+        }
+      },
+      "medium": {
+        "claude": {
+          "model": "sonnet",
+          "effort": "low"
+        }
+      },
+      "high": {
+        "claude": {
+          "model": "sonnet",
+          "effort": "low"
+        }
+      }
+    },
+    "judge": {}
+  },
+  "design_satisfaction_pct": 58.3,
+  "max_level": 2,
+  "levels": {
+    "0": "absent",
+    "1": "mentioned",
+    "2": "covered",
+    "3": "operable"
+  },
+  "expectations": [
+    {
+      "id": "session-exit",
+      "invariant": "every entered state is exitable",
+      "rendering": "a signed-in user can sign out from any screen",
+      "level": 1,
+      "reason": "Epic journey says 'reload without signing out'; no story criterion requires a sign-out control on any screen.",
+      "evidence": [
+        "docs/epics/0001-sign-in-and-page-tree/epic.md:Stay signed in across a reload",
+        "docs/epics/0001-sign-in-and-page-tree/stories/stay-signed-in-across-reload/story.md:Acceptance Criteria"
+      ],
+      "capped": false,
+      "unverified_citations": []
+    },
+    {
+      "id": "page-delete",
+      "invariant": "every created thing is destroyable",
+      "rendering": "a user who can create a page can delete one, with confirmation",
+      "level": 1,
+      "reason": "Epic lists 'Deleting pages.' under Non-Goals; no story has acceptance criteria for deleting a page or confirming.",
+      "evidence": [
+        "docs/epics/0002-create-and-edit-pages/epic.md:Non-Goals"
+      ],
+      "capped": false,
+      "unverified_citations": []
+    },
+    {
+      "id": "screen-reachability",
+      "invariant": "every surface is reachable",
+      "rendering": "every screen is linked from the navigation or another screen; none requires typing a URL",
+      "level": 2,
+      "reason": "Criteria chain every screen by click: sign-in lands on tree, tree opens detail, tree/detail offer new-page, detail's Edit enters editing; only tree is built/tested.",
+      "evidence": [
+        "docs/epics/0002-create-and-edit-pages/stories/view-page-detail/story.md:Acceptance Criteria",
+        "docs/epics/0002-create-and-edit-pages/stories/create-page/story.md:Acceptance Criteria",
+        "docs/epics/0002-create-and-edit-pages/stories/edit-page/story.md:Acceptance Criteria",
+        "docs/epics/0001-sign-in-and-page-tree/stories/sign-in-and-land-on-tree/story.md:Acceptance Criteria"
+      ],
+      "capped": false,
+      "unverified_citations": []
+    },
+    {
+      "id": "locale-switch",
+      "invariant": "promised capabilities are operable",
+      "rendering": "the brief's two locales are switchable by the user, and the choice persists",
+      "level": 1,
+      "reason": "Switcher criteria exist, but persistence is explicitly excluded: reopening a page resets to English and no stored preference is kept.",
+      "evidence": [
+        "docs/epics/0003-bilingual-pages/stories/read-page-in-chosen-language/story.md:Acceptance Criteria",
+        "docs/epics/0003-bilingual-pages/epic.md:Guardrails"
+      ],
+      "capped": false,
+      "unverified_citations": []
+    },
+    {
+      "id": "label-coherence",
+      "invariant": "one name per concept",
+      "rendering": "a concept carries the same label on every screen that shows it",
+      "level": 0,
+      "reason": "No epic or story mentions consistent naming/labels of a concept across screens; only 'tree labels unaffected' by translation appears.",
+      "evidence": [],
+      "capped": false,
+      "unverified_citations": []
+    },
+    {
+      "id": "failure-surfacing",
+      "invariant": "every failure is surfaced",
+      "rendering": "a failed save or sign-in tells the user what happened and what to do",
+      "level": 2,
+      "reason": "Criteria require specific on-page sign-in errors and inline save errors with retry; no UI test exercises the error message and save flows are unbuilt.",
+      "evidence": [
+        "docs/epics/0001-sign-in-and-page-tree/stories/reject-bad-signin/story.md:Acceptance Criteria",
+        "docs/epics/0002-create-and-edit-pages/stories/edit-page/story.md:Acceptance Criteria",
+        "docs/epics/0002-create-and-edit-pages/stories/create-page/story.md:Acceptance Criteria",
+        "web/app/routes/sign-in-qa.spec.ts"
+      ],
+      "capped": false,
+      "unverified_citations": []
+    }
+  ],
+  "journeys": [],
+  "dead_ends_per_journey": null,
+  "entity_operations": [
+    {
+      "entity": "back",
+      "operations": [
+        "create"
+      ],
+      "missing": [
+        "delete",
+        "read",
+        "update"
+      ]
+    },
+    {
+      "entity": "child",
+      "operations": [
+        "create"
+      ],
+      "missing": [
+        "delete",
+        "read",
+        "update"
+      ]
+    },
+    {
+      "entity": "creation",
+      "operations": [
+        "create"
+      ],
+      "missing": [
+        "delete",
+        "read",
+        "update"
+      ]
+    },
+    {
+      "entity": "in-page",
+      "operations": [
+        "create"
+      ],
+      "missing": [
+        "delete",
+        "read",
+        "update"
+      ]
+    },
+    {
+      "entity": "request",
+      "operations": [
+        "create",
+        "update"
+      ],
+      "missing": [
+        "delete",
+        "read"
+      ]
+    },
+    {
+      "entity": "page",
+      "operations": [
+        "create",
+        "read",
+        "update"
+      ],
+      "missing": [
+        "delete"
+      ]
+    }
+  ],
+  "authored_documents": [
+    "docs/epics/0001-sign-in-and-page-tree/epic.md",
+    "docs/epics/0001-sign-in-and-page-tree/stories/reject-bad-signin/story.md",
+    "docs/epics/0001-sign-in-and-page-tree/stories/sign-in-and-land-on-tree/story.md",
+    "docs/epics/0001-sign-in-and-page-tree/stories/stay-signed-in-across-reload/story.md",
+    "docs/epics/0002-create-and-edit-pages/epic.md",
+    "docs/epics/0002-create-and-edit-pages/stories/create-page/story.md",
+    "docs/epics/0002-create-and-edit-pages/stories/edit-page/story.md",
+    "docs/epics/0002-create-and-edit-pages/stories/view-page-detail/story.md",
+    "docs/epics/0003-bilingual-pages/epic.md",
+    "docs/epics/0003-bilingual-pages/stories/read-page-in-chosen-language/story.md",
+    "docs/epics/0003-bilingual-pages/stories/show-missing-translation-placeholder/story.md",
+    "docs/epics/0003-bilingual-pages/stories/write-page-in-both-languages/story.md"
+  ],
+  "runs": [
+    {
+      "run": "author-pc026a10e",
+      "nodes": 267,
+      "repairs": [
+        "rework_story",
+        "rework_story",
+        "rework_story",
+        "rework_story",
+        "rework_story",
+        "rework_story",
+        "rework_story",
+        "rework_story",
+        "rework_story"
+      ],
+      "escalations": [],
+      "failed": false,
+      "stale": false
+    },
+    {
+      "run": "coder-p63d42f94",
+      "nodes": 10,
+      "repairs": [],
+      "escalations": [],
+      "failed": false,
+      "stale": false
+    },
+    {
+      "run": "coder-p95456d21",
+      "nodes": 12,
+      "repairs": [],
+      "escalations": [],
+      "failed": false,
+      "stale": false
+    },
+    {
+      "run": "coder-pec27df65",
+      "nodes": 44,
+      "repairs": [],
+      "escalations": [],
+      "failed": false,
+      "stale": false
+    }
+  ]
+}

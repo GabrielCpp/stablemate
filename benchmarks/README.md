@@ -200,9 +200,26 @@ uv run python benchmarks/bench.py --spec benchmarks/suites/docs-app/benchmark.ya
 ```
 
 Its only job is calibration. It writes `design-scorecard-live.json` beside the paper
-`design-scorecard.json` rather than over it, and prints the two side by side. If they
-diverge, the *instrument* is what is wrong, and it gets fixed before any more author work
-trusts the cheap number.
+`design-scorecard.json` rather than over it, and prints **three** columns — because two
+different questions hide in a two-column comparison:
+
+- **control** — the same documents re-judged on paper *in this same invocation*. A
+  disagreement here is a real **mode effect**: the built app moved a level the documents
+  alone would not have. That is the instrument being wrong, and it gets fixed before any
+  more author work trusts the cheap number.
+- **baseline** — the frozen paper scorecard from the author phase, hours or weeks earlier.
+  A disagreement with *that* is **drift** — an edited document, a re-judged rubric — and
+  says nothing about paper-versus-live.
+
+A control disagreement is sorted further, mechanically rather than by reading it: the
+paper pass is forbidden to cite anything outside `docs/`, so a disagreement resting
+entirely on planning documents is one the paper judge could have reached from its own
+corpus and did not. That is **judge variance**, and the anchor names it as such. Only a
+citation the paper pass could never have made proves the app moved the level.
+
+The docs-app anchor is written up in
+[`suites/docs-app/ANCHOR.md`](suites/docs-app/ANCHOR.md): no mode effect, ±1 variance on 2
+of 6 expectations, which is the precision the cheap number is good for.
 
 ### What this is not
 

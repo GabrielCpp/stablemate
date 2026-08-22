@@ -11,12 +11,18 @@ entity × operation     page: created, read, updated — never deleted
 
 | expectation | level | what the judge found |
 |---|---|---|
-| `session-exit` | 0 `absent` | no epic or story mentions signing out, ending a session, or any way to leave the signed-in state |
+| `session-exit` | 1 `mentioned` | epic 0001's journey says "reload the page *without signing out*"; no story's criteria put a sign-out control on any screen |
 | `page-delete` | 1 `mentioned` | epic 0002 lists "Deleting pages" under **Non-Goals**; no story's criteria delete a page |
-| `screen-reachability` | 2 `covered` | the criteria chain every screen: sign-in lands on the tree, a tree click opens detail, detail opens edit |
+| `screen-reachability` | 1-2 | the criteria chain every screen -- sign-in lands on the tree, a tree click opens detail, detail opens edit -- but no criterion requires a way *back*, and the judge splits on whether that is covered |
 | `locale-switch` | 1 `mentioned` | a switcher exists, but a criterion requires a fresh view to reset to English, so the choice does not hold |
 | `label-coherence` | 0 `absent` | no criterion requires a concept to carry one label across screens; no glossary |
 | `failure-surfacing` | 2 `covered` | specific on-page errors for bad credentials, an unreachable service, and an inline save failure |
+
+The two levels this table reports differently from the run first recorded here were both
+rubric holes the §5 anchor found, not new author work -- see [`ANCHOR.md`](ANCHOR.md). The
+headline is unchanged at 50%: `session-exit` rose out of `absent` once "naming a thing in
+order to exclude it" was ruled a `mention`, and `screen-reachability` fell out of `covered`
+in the same pass, which is the +/-1 judge noise the anchor measured.
 
 ## What this confirms
 
@@ -27,9 +33,9 @@ delete a page in, and cannot read in French for longer than one screen.
 
 Three findings are worth more than the number:
 
-- **The failure is not uniform.** `screen-reachability` and `failure-surfacing` came out
-  `covered` without being asked for, so `author` does carry *some* design instinct. The
-  gap is specific, which is what makes it a fixable one.
+- **The failure is not uniform.** `failure-surfacing` came out `covered` without being
+  asked for, and `screen-reachability` sits on the `covered` boundary, so `author` does
+  carry *some* design instinct. The gap is specific, which is what makes it a fixable one.
 - **The workflow wrote its own miss down.** Deletion is not an oversight here; epic 0002
   lists it under Non-Goals. `author` considered it and excluded it, which means the fix is
   about what justifies an exclusion, not about prompting harder for completeness.
@@ -51,7 +57,8 @@ uv run python bench.py --spec suites/docs-app/benchmark.yaml design-score
 ```
 
 `baseline-scorecard.json` beside this file is the frozen scorecard, so a later run can be
-diffed against it rather than against this prose. `author` is one agent run against a
+diffed against it rather than against this prose. It is the re-judged one, under the rubric
+the anchor corrected; the numbers above are that pass. `author` is one agent run against a
 five-bullet brief and one sample is one sample — a later run scoring 55% has not
 demonstrated an improvement, and the honest comparison is a level moving on a named
 expectation.
