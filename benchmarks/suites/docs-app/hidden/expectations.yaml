@@ -1,0 +1,41 @@
+# The held-out expectation pack for `docs-app`. NEVER copied into the target repo, never
+# named to a workflow, never paraphrased into `docs/backlog.md`. See README.md here.
+#
+# Every entry is an **invariant** plus a **rendering**. The invariant is the
+# type-independent symmetry — "every entered state is exitable" covers a logout button
+# today and a close-connection call in a future `http-api` suite. The rendering is what
+# that invariant means for an app of *this* shape, and the rendering is what the judge
+# scores. Keeping the two apart is what lets the suite family grow to other app classes
+# without inventing a new rubric language each time.
+#
+# The six below are not invented. They are the actual, observed misses from the `acme`
+# docs-app authoring run, neutralized to this suite's vocabulary — a historical failure
+# catalog is the highest-validity expectation set available, and scoring against it makes
+# this suite double as a regression gate for that exact incident.
+
+- id: session-exit
+  invariant: every entered state is exitable
+  rendering: a signed-in user can sign out from any screen
+
+- id: page-delete
+  invariant: every created thing is destroyable
+  rendering: a user who can create a page can delete one, with confirmation
+
+- id: screen-reachability
+  invariant: every surface is reachable
+  rendering: >-
+    every screen is linked from the navigation or another screen; none requires typing
+    a URL
+
+- id: locale-switch
+  invariant: promised capabilities are operable
+  rendering: >-
+    the brief's two locales are switchable by the user, and the choice persists
+
+- id: label-coherence
+  invariant: one name per concept
+  rendering: a concept carries the same label on every screen that shows it
+
+- id: failure-surfacing
+  invariant: every failure is surfaced
+  rendering: a failed save or sign-in tells the user what happened and what to do

@@ -1,0 +1,85 @@
+# The design task: a documentation app whose brief leaves out what a stakeholder assumes.
+#
+# Every other suite here asks "did the workflows satisfy the backlog". This one asks the
+# question that instrument cannot: did author *design* an app, or did it transcribe five
+# bullets. The `acme` docs-app run satisfied its backlog and produced a site with no way
+# to sign out, no way to delete a page, screens reachable only by typing a URL, and a
+# second locale nobody could switch to — and the scorecard scored it fine, because none
+# of those was ever a bullet.
+#
+# So the backlog here is deliberately underspecified, and the expectations it is graded
+# against are held out under `hidden/` where no phase of the run can read them. See
+# `hidden/README.md` for the leakage invariant that makes the number mean anything, and
+# `bench.py design-score` for the metric.
+
+target: /tmp/bench-docs-app
+backlog: docs/backlog.md
+
+# The held-out half: expectations + journeys. Never copied into `target`, never named to
+# a workflow. `bench.py` reads it only inside the judge, which runs after author is done.
+hidden: hidden
+
+# See suites/README.md for the vocabulary. `design` is the tag that selects the suites
+# whose verdict is a design-completeness score rather than a backlog-satisfaction one.
+tags: [design, api, web]
+
+# See link-shortener/benchmark.yaml: all tiers flattened onto one cheap setting so
+# wall-clock readings describe the nodes rather than the tier map.
+power:
+  low: {claude: {model: sonnet, effort: low}}
+  medium: {claude: {model: sonnet, effort: low}}
+  high: {claude: {model: sonnet, effort: low}}
+
+# Sized off `bookmarks`, the other two-surface task: genesis is network-bound (`npm create
+# react-router` fetches a package tree), and five bullets across two surfaces is a little
+# more decomposition than its four.
+#
+# `coder` is here only for the anchor run of §5 — the calibration pass that checks the
+# cheap paper score predicts what a user experiences. The headline metric never spends it.
+budget:
+  genesis: 1800
+  author: 1800
+  coder: 5400
+
+# The headline metric — `design-score` — is author-only and lands inside the hour on its
+# own. The coder budget above belongs to the anchor run, which is deliberately rare: once
+# per author redesign, to prove the paper score still predicts the live one.
+over_hour: >-
+  the design score is author-only and fits the hour; the coder budget is the rare
+  paper-vs-live calibration run, not part of the metric.
+
+checks:
+  - name: build
+    cmd: cd api && go build ./...
+    timeout: 300
+  - name: test
+    cmd: cd api && go test ./...
+    timeout: 600
+
+judge: {}
+
+repo:
+  docs_scaffold: shared-docs:docs
+  # Identical to every other task's, and derived in `suites/todo-app/benchmark.yaml` from
+  # the workflows' own reference call sites.
+  packs: product-planning,stablemate,infra
+
+surfaces:
+  - service: api
+    service_root: api
+    packs: go
+    scaffolds: go-service:api
+    init_cmd: go mod init example.com/docs-app/api
+    marker: go.mod
+    markers: go.mod,main.go
+
+  - service: web
+    service_root: web
+    # `ui` pairs with `react-router`, same as `bookmarks`: the react-router
+    # `-design-system` and `-a11y` skills are written on top of the framework-neutral
+    # contracts `ui` carries.
+    packs: react-router,ui
+    scaffolds: react-router-web:web
+    init_cmd: npm create react-router@latest . -- --yes --no-git-init --no-install
+    marker: package.json
+    markers: package.json

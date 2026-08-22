@@ -1,0 +1,43 @@
+# The held-out journey scripts. Same leakage invariant as `expectations.yaml` — see
+# README.md here.
+#
+# A fixed checklist catches what someone thought to list. The `acme` misses also included
+# incoherence no enumeration holds: links that existed nowhere, navigation that
+# contradicted itself, a screen whose only route in was the address bar. So the metric
+# next to the expectation score is **dead ends per journey**: a persona's scripted path,
+# walked on paper through the authored stories, counting the steps no story delivers.
+#
+# The grammar ports across app classes, which is why it is written as steps and not as
+# clicks: web = clickpath, CLI = shell session (install → run → pipe → misuse → recover),
+# HTTP API = client sequence (auth → create → list → bad input → delete), library = a
+# consumer writing a program. The metric is the same everywhere.
+
+- id: write-and-leave
+  persona: a technical writer with an account, on a laptop
+  steps:
+    - sign in with an email address and a password
+    - land somewhere that shows the site's pages without typing a URL
+    - open an existing page from the tree
+    - edit its text and save it
+    - see confirmation that the save succeeded
+    - sign out
+
+- id: reorganize-the-tree
+  persona: a documentation lead tidying up a stale section
+  steps:
+    - sign in
+    - create a new page and place it under an existing one
+    - open the page that has been superseded
+    - delete that page
+    - confirm the deletion before it happens
+    - see the tree afterwards without the deleted page in it
+
+- id: read-in-french
+  persona: a French-speaking reader who has an account
+  steps:
+    - sign in
+    - switch the interface to French
+    - open a page and read its French text
+    - navigate to another page and find the interface still in French
+    - reload the app and find the choice of French remembered
+    - return to English
