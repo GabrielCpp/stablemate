@@ -213,6 +213,19 @@ to the middle of a QA run, where it used to arrive as a pass against nothing.
 
 ## 8. The CLI
 
+The nodes scaffold like every other registered type — no special-casing, because the registry
+is what both the scaffolder and the reader read:
+
+```bash
+ostler scaffold environment local --service api      # docs/features/api/ops/local.md
+ostler scaffold runbook qa-stack --service api       # docs/features/api/ops/qa-stack.md
+ostler scaffold step serve --in api/ops/qa-stack.md  # a `### serve` under its `## Steps`
+```
+
+A freshly scaffolded runbook is `runbook-incomplete` until it has a `kind: service` step and
+something proving readiness. That is the point: the stub is the shape, `doctor` is the
+checklist, and both arrive at author time rather than mid-QA.
+
 ```bash
 ostler qa stack up              # bring the declared stack to ready
 ostler qa stack up --json       # + the manifest it derived, for a repair loop to read

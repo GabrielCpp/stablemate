@@ -1312,10 +1312,10 @@ def _is_non_production_path(path: str) -> bool:
     if name.endswith(".log"):
         return True
     # The agent toolchain's own footprint inside a client repo: farrier writes `agents.yml` and
-    # the `.agents/` tree, and the coder workflow's QA node writes `qa-stack.yml` (the
-    # `manifest_path` default in `coder/qa/nodes/qa.py`). These say how the repo is built and
-    # tested *by us* and never what it does for a user, so no feature Concept can own them —
-    # and unlike a Makefile they are not even the repo's own scaffolding, they are ours.
+    # the `.agents/` tree, and a coder run historically left a `qa-stack.yml` beside them. These
+    # say how the repo is built and tested *by us* and never what it does for a user, so no
+    # feature Concept can own them — and unlike a Makefile they are not even the repo's own
+    # scaffolding, they are ours.
     #
     # Left in, the ownership gate reports them as unmapped production units, and the only move
     # left to an agent that must clear the gate is to invent a contract node for them in the
@@ -1323,6 +1323,12 @@ def _is_non_production_path(path: str) -> bool:
     # to `docs/features/api/http/api.md` owning `qa-stack.yml` and friends, which cleared the
     # error and bought a permanent `missing-declared-check` warning in exchange — a contract
     # that can never declare an observation, because a stack manifest is not a product surface.
+    #
+    # `qa-stack.yml` stays listed though nothing writes one any more: the declaration moved
+    # into the book as an `ops`-context `runbook` node (`ostler/docs/okf-runbook.md`), which is
+    # precisely the shape the objection above points at — an ops node is not a product surface,
+    # so it never reaches this gate. A repo carrying the old file from before the move should
+    # still not be told to invent a contract node for it.
     #
     # Root-scoped on purpose: a nested `agents.yml` is somebody's product file, not ours.
     if len(parts) == 1 and name in {"agents.yml", "qa-stack.yml"}:
