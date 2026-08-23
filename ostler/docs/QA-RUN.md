@@ -547,6 +547,11 @@ qa.check("the app never logged the raw error",
          qa.diagnostics.console(level="warning", contains="SQLSTATE") == [])
 ```
 
+Two conditions need no assertion at all: an uncaught page error and a response of status
+500 or higher each fail the scenario on their own, recorded as a failing assertion bound to
+the scenario's `covers` — so the evidence map reports every obligation the scenario claimed
+as `contradicted`, not merely the scenario as red.
+
 Assert through `qa.diagnostics` rather than by reading the file: the diagnostics file is
 written *after* the scenario returns, so a scenario that reads it is reading the previous
 run's copy — and a scenario cannot fail itself on a 5xx it provoked any other way. The live
