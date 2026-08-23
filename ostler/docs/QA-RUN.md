@@ -332,20 +332,27 @@ plan(run_id="ACME-4352", story="04-publish-metadata")
 api = target("api", base_url="http://localhost:8080")
 web = target("web", driver="playwright", base_url="http://localhost:5173")
 
-# Started before the first scenario, killed at stop. `ready_url` is polled for HTTP 200;
-# `ready_cmd` + `ready_contains` is ready when the command exits 0 and its stdout carries
-# the needle — the only option for a service with no GET that answers 200 (an API whose
-# sole route is a POST). The check runs in the daemon's own cwd, which is the repo root.
-# `timeout` (default 30s) bounds the poll. A daemon that *exits* before its check passes
-# does not wait that out: ostler reports the exit code and the tail of
-# `qa/daemon-<name>.log` straight away, because "timed out" describes a slow service and
-# says nothing about one that never started (a taken port, a build error).
-background("api-server", cmd="cd api && go run ./cmd/server",
-           ready_cmd="curl -s -o /dev/null -w '%{http_code}' -X POST "
-                     "http://localhost:8080/links -d '{\"longUrl\":\"https://example.com\"}'",
-           ready_contains="201", timeout=60)
+# Started before the first scenario, killed at stop. `argv` is a program and its arguments
+# — there is no shell, so no `&&`, no pipeline, and a plan that wants two processes declares
+# two daemons; `cwd` is where it runs (root-relative, inside the repo; the root by default).
+# `ready_url` is polled for HTTP 200, or for `ready_method`/`ready_status` when the service's
+# only route is a POST that answers 201. `timeout` (default 30s) bounds the poll. A daemon
+# that *exits* before its probe passes does not wait that out: ostler reports the exit code
+# and the tail of `qa/daemon-<name>.log` straight away, because "timed out" describes a slow
+# service and says nothing about one that never started (a taken port, a build error).
+# `reset_paths` are unlinked once, before the first start — the previous run's state file,
+# not this run's.
+background("api-server", argv=["go", "run", "./cmd/server"], cwd="api",
+           ready_url="http://localhost:8080/links", ready_method="POST", ready_status=201,
+           timeout=60)
 
 ADMIN_TOKEN = secret("admin_token", from_env="QA_ADMIN_TOKEN")
+# A secret the trial wrote to a file before the run: root-relative, outside disposable
+# `qa/`, read once at start with one trailing newline stripped, redacted exactly like the
+# environment kind. Exactly one of from_env/from_file; a missing or empty file blocks.
+DB_PASSWORD = secret("db_password", from_file=".qa-secrets/db-password")
+# The environment variable names a scenario may set on `qa.tool(name).run(env=...)`.
+tool_env("TZ", "APP_HOME")
 PAYLOAD = input_file("payload", "qa-inputs/login-payload.json")
 
 
@@ -360,9 +367,25 @@ def create_records_the_real_author(qa: Qa) -> None:
                                            "author": "attacker"})
     qa.check("the request was accepted", created.status == 201,
              actual=created.status, expected=201)
-    stored = qa.http.get(f"/links/{created.json()['id']}").json()
+    qa.capture("link_id", created.json()["id"])
+    stored = qa.http.get(f"/links/{qa.get('link_id')}").json()
     qa.check("author is the token UID, not the request body",
              stored["author"] == uid, actual=stored["author"], expected=uid)
+
+
+# The restart seam: the runner stops `api-server` and starts its declaration again — same
+# argv, same cwd, same readiness probe — immediately before this scenario, and writes
+# `daemon_stop (restart)` / `daemon_restart` to the ledger. The read below observes that the
+# link survived the process, which a read through the session that wrote could never show.
+# `reset_paths` are not re-applied on a restart: the state is what it is there to keep.
+@scenario(target=api, mechanism="live", restart=["api-server"], covers=[
+    "okf:docs/features/links/http/links.md#create:persistence:1",
+])
+def a_link_survives_a_restart(qa: Qa) -> None:
+    """The link created above is still served after the process came back."""
+    stored = qa.http.get(f"/links/{qa.get('link_id')}")
+    qa.check("the link is still there", stored.status == 200, actual=stored.status,
+             expected=200, covers=["okf:docs/features/links/http/links.md#create:persistence:1"])
 ```
 
 ### What a scenario is given
@@ -379,13 +402,14 @@ explicit attribute here, and the two that used to cost the most are the first tw
 | `qa.require(label, condition, …)`  | record one claim and stop the scenario when it does not hold            |
 | `qa.step(label)`                   | a context manager grouping a phase's work under one step record         |
 | `qa.capture(key, value)` / `qa.get` | publish a value into the ledger so a later report can name it          |
-| `qa.artifact(path, kind=…)`        | register a file as evidence; a relative path resolves inside `qa.dir`   |
+| `qa.artifact(path, kind=…)`        | register a file as evidence; a relative path resolves inside `qa.dir`. A directory is filed file by file — one manifest row per file under it, each carrying `directory` — and an empty directory is a problem |
 | `qa.secret(name)`                  | the runtime value of a declared secret — redacted everywhere it is written |
+| `qa.eventually(label, callable, …)` / `qa.require_eventually` | the retrying forms of `check`/`require`: a lambda, a bound method or a nested function is re-evaluated until it holds or the timeout passes — the replacement for a bare `wait_for*` settle statement, which plan lint refuses |
 | `qa.page`, `qa.diagnostics`, `qa.by_role(…)`, `qa.goto(…)`, `qa.screenshot()` | the browser, for a `playwright` target |
 | `qa.maestro.run(flow)`             | a Maestro flow, for a `maestro` target                                  |
 | `qa.tesseract.ocr(image)`          | OCR text from an image, via the `tesseract` CLI                         |
 | `qa.convert.resize(image, w, h)`   | resize an image via ImageMagick's `convert`; returns the output path    |
-| `qa.tool(name).run(*args)`         | any other opted-in external command; returns a `ToolResult(stdout, stderr, exit_code)` |
+| `qa.tool(name).run(*args, cwd=…, env=…, timeout=…)` | any other opted-in external command; returns a `ToolResult(stdout, stderr, exit_code)`. `cwd` resolves against `qa.dir` and must stay inside it; `env` overlays the inherited environment and every key must be declared with `tool_env(...)`. Hand the result to `qa.verify("exit_status", result, code=0, covers=[…])` when the book declares the exit code |
 
 ### QA tools (`qa.tool`, `qa.tesseract`, `qa.convert`)
 
@@ -594,8 +618,17 @@ under the target's interpreter and reads the declarations back, so it catches:
   `qa.recordingExemptTargets` may do that.
 - an input file under the disposable `qa/` directory, which is deleted before the run
   starts, and any path escaping the spec directory.
-- a background daemon whose `ready_check` is neither an http(s) URL nor a runnable
-  `{cmd, assert_contains}` mapping, and duplicate daemon names.
+- a background daemon with an empty `argv`, a `cwd` outside the repo, a readiness probe
+  that is not an http(s) URL, and duplicate daemon names.
+- a `@scenario(restart=[...])` naming a daemon the plan did not declare, or any restart in
+  a plan with no `background` at all — the runner restarts from the declaration it started.
+- a `secret` with both sources or neither, a `from_file` outside the repo root or under
+  disposable `qa/`; a `tool_env` name that is not `UPPER_CASE`, is a `QA_*` runner
+  variable, or is a declared secret's variable.
+- a plan body that touches the filesystem or settles as a statement: `.mkdir`,
+  `.write_text`, `open(...)` and a bare `page.wait_for_*(...)` are refused by plan lint —
+  build files through an opted-in `qa.tool`, and wait with `qa.eventually(label, lambda: …)`.
+  A lambda is admitted (and its body is still linted).
 - a `qa-plan.yml`, rejected with the name of the module that replaces it.
 
 ---

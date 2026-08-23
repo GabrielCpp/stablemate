@@ -34,9 +34,11 @@ web = target("web", driver="playwright", base_url="http://localhost:3000", brows
 mobile = target("mobile", driver="maestro", app_id="com.example.app",
                 recording={"required": True, "mode": "device"})
 
-background("api-server", cmd="cd api && go run ./cmd/server", timeout=60,
-           ready_cmd="curl -sf http://localhost:8090/healthz", ready_contains="ok")
+background("api-server", argv=["go", "run", "./cmd/server"], cwd="api", timeout=60,
+           ready_url="http://localhost:8090/healthz")
 secret("ADMIN_TOKEN", from_env="QA_ADMIN_TOKEN")
+secret("DB_PASSWORD", from_file=".qa-secrets/db-password")   # a file the trial wrote
+tool_env("TZ", "APP_HOME")                                   # names qa.tool(...).run(env=) may set
 input_file("seed", "qa-inputs/seed.json")
 
 
@@ -75,10 +77,11 @@ evidence about the product. `driver` is execution (`python`,
 | --- | --- |
 | `plan(run_id=…, story=…)` | the run. Exactly one call per module. |
 | `target(name, driver=…, interpreter=…, base_url=…, app_id=…, browser=…, viewport=…, recording=…, permissions=…)` | where scenarios execute |
-| `background(name, cmd=…, ready_url=… \| ready_cmd=…+ready_contains=…, cwd=…, timeout=30)` | a daemon the runner starts before scenario 1 and stops after the last |
-| `secret(name, from_env=…)` | a value read from the environment at run time and redacted from the ledger |
+| `background(name, argv=[…], ready_url=…, ready_method=…, ready_status=…, cwd=…, reset_paths=…, timeout=30)` | a daemon the runner starts before scenario 1 and stops after the last. `argv` is a program and its arguments — there is no shell, so no `&&`, no pipeline; a plan that wants two processes declares two daemons |
+| `secret(name, from_env=…)` / `secret(name, from_file=…)` | a value read at run time — from the operator's environment, or from a root-relative file the trial wrote before the run (outside disposable `qa/`; one trailing newline stripped) — and redacted from the ledger. Exactly one source; a missing variable or an empty file blocks the run |
+| `tool_env("TZ", "APP_HOME", …)` | the environment variable names a scenario may set on `qa.tool(name).run(env=…)`; anything outside the list raises, and `QA_*`/a secret's variable are refused at validation |
 | `input_file(name, path)` | a static fixture; validation checks it exists and sits outside disposable `qa/` |
-| `@scenario(target=…, mechanism=…, covers=…, preconditions=…, checkpoints=…, forbid=…, timeout=…, id=…)` | one executable scenario |
+| `@scenario(target=…, mechanism=…, covers=…, preconditions=…, checkpoints=…, forbid=…, restart=…, timeout=…, id=…)` | one executable scenario. `restart=["api-server"]` has the runner stop and start that declared daemon again immediately before this scenario — the seam a persistence obligation needs; a daemon's `reset_paths` are *not* re-applied on a restart |
 
 `covers` is the machine-checkable link to the story's acceptance criteria and OKF obligations.
 `ostler qa validate` set-diffs it against the obligation packet and fails closed on anything
@@ -93,10 +96,17 @@ line proves each one. Collapsing them is what let a scenario keep `covers=["ac:4
 AC4 assertions were deleted, with the remaining unrelated check reporting AC4 proven.
 
 Readiness belongs on `background`, not in a scenario. A scenario that waits for its own stack
-turns a startup failure into a product failure. `ready_url` is fetched and must answer 200 — use
-it only when the service really has a `GET` that does; a service whose only route is a `POST`
-needs `ready_cmd` + `ready_contains`, which is ready when the command exits 0 and its stdout
-contains the needle.
+turns a startup failure into a product failure. `ready_url` is fetched and must answer 200; a
+service whose only route is a `POST` says so with `ready_method="POST", ready_status=201`. The
+probe is HTTP and nothing else — the retired `ready_cmd`/`ready_contains` was a `curl` spelling
+of the same thing. A daemon that *exits* before its probe passes is reported with its exit code
+and log tail straight away, not after the timeout.
+
+A **restart seam** is the runner's, for the same reason readiness is: it holds the PID and the
+probe. Write the value in one scenario, declare `@scenario(..., restart=["api-server"])` on the
+next, and read it back there — the process went away and came back between the two, so the read
+observes survival rather than process memory. A plan that reads through the session that wrote
+proves nothing about persistence, however many times it reads.
 
 The **heavyweight stack** — docker compose, emulators, the DB and its baseline seed — is not the
 plan's to start. It belongs to the workflow's `ensure_stack` step and the repo's `qa-stack.yml`,
@@ -112,8 +122,10 @@ working tree.
 | `qa.verify(check, observed, covers=…, **args)` | make the observation the book declares, and record it |
 | `with qa.step("label"):` | group a phase under a named step; the report lists each assertion and screenshot under the step it ran in |
 | `qa.capture(key, value)` / `qa.get(key)` | publish a value into the ledger and read it back |
-| `qa.artifact(path, kind=…)` | register a file as evidence; relative paths resolve inside `qa.dir` |
+| `qa.artifact(path, kind=…)` | register a file as evidence; relative paths resolve inside `qa.dir`. A directory is filed file by file (every file under it, one manifest row each, `directory` naming the root); an empty directory is a problem |
 | `qa.secret(name)` | a declared secret's value |
+| `qa.tool(name).run(*args, cwd=…, env=…, timeout=…)` | an opted-in external command; `cwd` must stay inside `qa.dir`, `env` keys must be declared with `tool_env(...)`; returns `ToolResult(stdout, stderr, exit_code)` |
+| `qa.eventually(label, lambda: …, covers=…)` / `qa.require_eventually(...)` | the retrying forms of `check`/`require`: hand them a callable — a lambda, a bound method, a nested function — and the sampler re-evaluates it until it holds or the timeout passes. A bare `wait_for*` statement is refused by plan lint |
 | `qa.http.get/post/put/patch/delete(path, json_body=…, headers=…, expect_status=…)` | HTTP bound to the target's `base_url` |
 | `qa.dir`, `qa.root`, `qa.spec_dir`, `qa.scenario_id`, `qa.covers` | the paths and identity, already resolved |
 | `qa.goto`, `qa.by_role/by_label/by_test_id/by_text/by_css`, `qa.screenshot`, `qa.page` | the browser |
@@ -130,9 +142,21 @@ fulfils it*, as a named check with arguments:
 
 ```markdown
 - verify: json_path(path="item.id", equals="abc")
+- verify: json_path(path="totals.cents", equals=8250)
 - verify: keys_unchanged(subject="pages")
 - verify: http_status(code=409, title="Manifest Conflict")
+- verify: exit_status(code=0)
 ```
+
+`json_path(equals=)` is a JSON scalar — a string, an int, a float or `true`/`false` — and it
+compares as one: `8250` is not `"8250"` and `true` is not `1`. The path language is the one
+every reader of a document shares: `a.b`, `a[0]` and `a.0` name a value; `[*]` and
+`[?(@.key==value)]` *select* — `people[?(@.who=='ana')].total_cents` is a list of selections,
+and `equals` against it holds when exactly one selection matches. Two matches and one claim is
+an ambiguous book, not a half-pass, and is reported as what was selected. `exit_status` observes
+a `qa.tool(...).run(...)` (or Maestro) result and is the declared form of "the command exited
+with this code" — a plan that only read the output of a command that failed is exactly what it
+excludes.
 
 Those calls arrive on the obligation row in `qa-okf-context.json` as `checksDeclared`, and
 `ostler qa validate` refuses a plan that claims the obligation without invoking each of them
