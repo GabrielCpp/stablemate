@@ -192,7 +192,8 @@ def _verification_setup(doc: dict[str, Any]) -> dict[str, Any]:
     """The story's `## Verification setup`, under either spelling.
 
     The field was `qa_stack` until it was renamed off its near-homograph with the
-    `qa-stack.yml` file, which names something else entirely. The old key is still read
+    then-`qa-stack.yml` file, which named something else entirely (the stack declaration,
+    since moved into the book's `runbook` node). The old key is still read
     because `plan-context.json` documents written before the rename are on disk in every
     run directory a resume might land in, and a resume that silently lost the fixture list
     would hand QA a story it could not stand up — the one failure this projection exists

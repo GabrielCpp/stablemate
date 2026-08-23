@@ -348,9 +348,6 @@ class Qa(Workflow):
     #: says nothing about the product, so ending on it would report a verdict about the
     #: harness.
     first_verdict: bool = False
-    #: Repo-relative stack manifest `ensure_stack` reads. Passed rather than assumed: a
-    #: fixer that authors it at the root while the run reads `<service>/qa-stack.yml` loops.
-    qa_stack_manifest: str = "qa-stack.yml"
     #: The parent's rescope budget, seeded in and handed back bumped. The one piece of loop
     #: state this isolated flow does not own.
     triage_scope_count: int = 0
@@ -1056,9 +1053,13 @@ class Qa(Workflow):
     def stack(self, loop: QaLoop) -> Continue | Await | Done:
         """Bring the durable QA stack up, or send its manifest to the repair loop.
 
-        `ensure_stack` + `decide_stack_ready`. `skip` — no manifest authored — is not a
-        failure and routes exactly where `yes` does, because a story with no stack to stand
-        up runs its QA the same way it always did.
+        `ensure_stack`. Two of its three answers go to the repair loop: `no` (the runbook
+        is there and would not come up) and `none` (the book declares no runbook at all).
+        The second used to be a silent pass, which is the defect this routing closes — a
+        greenfield repo ran its whole QA lane against a surface nobody had started, and the
+        first thing that noticed was the runner, dozens of turns later, reporting failures
+        no fixer could act on. Sending `none` here sends it *before* the planning turn, so
+        the stack is declared once and every later lap has something to stand up.
 
         This sits *before* the plan lane rather than after it, which is the point: with the
         surface already up, the authoring turn can execute a scenario it has just written
@@ -1078,7 +1079,15 @@ class Qa(Workflow):
         Which makes this an entry into the plan lane, bounded like every other one by
         `MAX_CONTEXT_REWORKS` — a rejoin costs a context rebuild, and those are counted.
         """
-        status = self.call(ensure_stack, self.qa_stack_manifest, self.docs_path)
+        status = self.call(ensure_stack, self.docs_path)
+        if status.ready == "none":
+            self.logger.info("the book declares no QA stack — routing to the setup fixer")
+            return self._guard_setup(
+                status,
+                loop.with_qa(QaResult(status="blocked", notes=status.notes)).update(
+                    blocked_problems=()
+                ),
+            )
         if status.ready == "no":
             self.logger.info("QA stack did not come up: %s", status.failed_step)
             # The failure becomes the running verdict, because `block_notes` — what the
@@ -1120,9 +1129,7 @@ class Qa(Workflow):
         set the next repair turn must dry-run before the suite is spent on it again.
         """
         self.logger.info("running the QA plan", extra={"activity": True})
-        result = self.call(
-            run_qa_plan, self.ctx.spec_dir, self.docs_path, manifest_path=self.qa_stack_manifest
-        )
+        result = self.call(run_qa_plan, self.ctx.spec_dir, self.docs_path)
         loop = loop.with_qa(result).update(
             blocked_problems=_blocked_problems(result),
             run_failures=_failure_signature(result),
@@ -1888,14 +1895,16 @@ class Qa(Workflow):
     # ── the setup-repair loop ─────────────────────────────────────────────────────────
 
     def setup_fix(self, loop: QaLoop) -> Continue | Await | Done:
-        """Repair the stack manifest that would not come up, then try it again.
+        """Repair the runbook that would not come up — or write the one nobody wrote.
 
-        `setup_fix` + `incr_setup` + `decide_setup`. `unfixable` — the YAML's default for a
-        fixer that produced nothing — escalates to the operator rather than looping.
+        `setup_fix` + `incr_setup` + `decide_setup`. `unfixable` — the default for a fixer
+        that produced nothing — escalates to the operator rather than looping.
 
-        `stack_manifest` is passed rather than assumed: this node's whole job is repairing it,
-        and a fixer that authors `qa-stack.yml` at the root while the run reads
-        `<service>/qa-stack.yml` loops forever on `skip`.
+        There is no manifest path to pass any more. The stack is declared as an OKF
+        `runbook` node in the book, ostler finds it, and the fixer repairs the node — which
+        is also what makes the `none` entry above tractable: a fixer told "author the
+        manifest" needed to be told *where*, and got it wrong often enough that a run could
+        loop on a file the reader never looked at. A node has one home the doctor agrees on.
 
         `qa_run_plan`/`verification_setup` come from the same `resolve_impl_context` the flow already
         read: the prompt lists the touched layers' QA skills from them, and each says how to
@@ -1923,7 +1932,6 @@ class Qa(Workflow):
                 "spec_dir": self.ctx.spec_dir,
                 "qa_dir": self.ctx.qa_dir,
                 "qa_notes": loop.block_notes,
-                "stack_manifest": self.qa_stack_manifest,
                 "qa_run_plan": impl.qa_run_plan,
                 "verification_setup": impl.verification_setup,
                 "fixtures": [f.model_dump() for f in impl.fixtures],

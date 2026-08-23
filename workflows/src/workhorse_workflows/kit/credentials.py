@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 import yaml
@@ -98,6 +98,23 @@ def scoped_env(name: str, value: str) -> Iterator[None]:
             os.environ.pop(name, None)
         else:
             os.environ[name] = previous
+
+
+@contextlib.contextmanager
+def scoped_envs(values: Mapping[str, str]) -> Iterator[None]:
+    """`scoped_env` over several names at once, restored in reverse on exit.
+
+    A repo rarely needs exactly one credential: an emulator token *and* an API key, a
+    tenant id *and* the secret scoped to it. Minting them one nested `scoped_env` deep
+    would work, but the caller would have to build the nesting by hand and would hit the
+    same-name reentrancy trap the moment two recipes named one variable. `ExitStack`
+    does the unwinding, so the same guarantee holds for a mapping of any size — including
+    an empty one, which is a plain no-op block rather than a special case at the call site.
+    """
+    with contextlib.ExitStack() as stack:
+        for name, value in values.items():
+            stack.enter_context(scoped_env(name, value))
+        yield
 
 
 def has_git_credential(name: str = GIT_CREDENTIAL_ENV) -> bool:
