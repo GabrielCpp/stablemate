@@ -75,6 +75,16 @@ def pid_alive(pid: int) -> bool:
     therefore its pid namespace. Signal 0 checks for existence without delivering
     anything; ``EPERM`` means the process is there and owned by someone else, which
     for this question is a yes.
+
+    Existence is not enough on its own, because a **zombie answers signal 0**: a
+    killed process keeps its pid until its parent reaps it, and the parent of a run
+    launched under a supervisor, a `nohup` shell or an agent harness may not reap for
+    a long time — or ever, while it lives. Signalling alone therefore reports the
+    SIGKILL/OOM death this function exists to catch as healthy, and the row stays
+    green until the 3-minute silence window expires, which is precisely the false
+    green :func:`groom.app._native_ending` was written to remove. ``/proc`` is asked
+    for the state so the answer is about *running*, not about existing; where there
+    is no procfs to read, existence is the best answer available and stands.
     """
     if pid <= 0:
         return False
@@ -86,7 +96,13 @@ def pid_alive(pid: int) -> bool:
         return True
     except OSError:
         return True
-    return True
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return True
+    # The comm field is parenthesised and may itself contain spaces or parens, so the
+    # state code is read from after the LAST ')' rather than by splitting the line.
+    return stat.rpartition(")")[2].split()[0] != "Z"
 
 
 def list_files(base: str, /, repo_dir: str = "") -> list[str]:

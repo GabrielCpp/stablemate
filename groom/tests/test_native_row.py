@@ -429,3 +429,71 @@ def test_native_pyflow_wait_materializes_and_answers_a_legacy_gate(tmp_path):
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+def test_a_zombie_pid_is_not_a_live_run():
+    """A killed process keeps its pid until its parent reaps it, and answers signal 0
+    the whole time. The parent of a run launched under a supervisor, a ``nohup`` shell
+    or an agent harness may not reap for a long time — so signalling alone reported the
+    SIGKILL/OOM death this check exists to catch as perfectly healthy, and the row
+    stayed green until the three-minute silence window ran out anyway."""
+    child = subprocess.Popen(["true"])
+    try:
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            stat = Path(f"/proc/{child.pid}/stat").read_text()
+            if stat.rpartition(")")[2].split()[0] == "Z":
+                break
+            time.sleep(0.01)
+        else:
+            raise AssertionError("child never became a zombie")
+        assert os.kill(child.pid, 0) is None  # the old check: still "alive"
+        assert localfs.pid_alive(child.pid) is False
+    finally:
+        child.wait()
+
+
+def test_a_vanished_pid_pages_rather_than_only_greying_the_row(tmp_path):
+    """The row turning grey is what an operator sees if they are looking. The whole
+    point of a page is that they are not — and this death is the one class whose root
+    span never exports, so ENDED structurally could not cover it."""
+    _reset()
+    run_dir = tmp_path / "coder-r20"
+    run_dir.mkdir()
+    dead = subprocess.Popen(["true"])
+    dead.wait()
+    alerts.ingest_metrics([_metric("R20", "workhorse.run.heartbeat", 1,
+                                   run_dir=str(run_dir), pid=dead.pid)])
+    run = state.RUNS["R20"]
+    fired: list[alerts.Alert] = []
+    groom_app._sync_native_row(run, fired)
+    assert [a.rule for a in fired] == ["DIED"]
+    assert str(dead.pid) in fired[0].message
+
+    # Once per run, not once per five-second tick.
+    again: list[alerts.Alert] = []
+    groom_app._sync_native_row(run, again)
+    assert again == []
+
+
+def test_a_terminal_read_off_disk_pages_in_the_slot_the_root_span_would_use(tmp_path):
+    """A run that wrote its ending but never flushed its exporter has an account of
+    itself, so it is ENDED news, not DIED news. Firing it under ENDED is also what
+    stops a late-arriving root span from paging a second time about one ending."""
+    _reset()
+    run_dir = tmp_path / "coder-r21"
+    run_dir.mkdir()
+    alerts.ingest_metrics([_metric("R21", "workhorse.run.heartbeat", 1,
+                                   run_dir=str(run_dir), pid=os.getpid())])
+    (run_dir / "run.json").write_text(json.dumps({"terminal": "fail"}))
+    run = state.RUNS["R21"]
+    fired: list[alerts.Alert] = []
+    groom_app._sync_native_row(run, fired)
+    assert [a.rule for a in fired] == ["ENDED"]
+
+    late = alerts.ingest_spans([{
+        "run_id": "R21", "name": "run:coder", "workflow": "coder",
+        "run_dir": str(run_dir), "end_ts": run.terminal_ts - 1,
+        "attrs": {"workhorse.terminal": "fail"},
+    }])
+    assert late == []

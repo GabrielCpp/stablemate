@@ -74,7 +74,8 @@ from groom.models import RunTelemetry
 @dataclass
 class Alert:
     run_id: str
-    rule: str  # STALL | STUCK | CHURN | WATCHDOG | GAVE-UP | ENDED | BLOCKED | WAITING
+    rule: str  # STALL | STUCK | CHURN | WATCHDOG | GAVE-UP | ENDED | DIED
+    #      | BLOCKED | WAITING
     message: str
 
 
@@ -243,6 +244,48 @@ def _ended_message(run: RunTelemetry, label: str, attrs: dict[str, Any]) -> str:
         f"on its own terms"
         + (f" (last in '{run.current_node}')" if run.current_node else "")
     )
+
+
+def note_native_ending(run: RunTelemetry, ending: str) -> list[Alert]:
+    """Page for a **native** run that stopped without its root span saying so.
+
+    Every other ending rule here is ingest-driven, and ENDED is the loudest of them —
+    but it hangs off the root span, and a root span only exports if the dying process
+    got its exporter flushed. The one class of death that never does is exactly the
+    one worth paging about: SIGKILL, the OOM killer, a segfaulting extension. So the
+    fleet event an operator most needs — the queue is idle because a run was killed —
+    was the single ending that reached nobody. The dashboard row already turned grey
+    (``groom.app._native_ending`` reads the same-host evidence), and then the run was
+    evicted 30 minutes later, all of it in silence.
+
+    Two endings, two rules, because they are different news. A terminal groom read out
+    of ``run.json`` is the run's own account of itself, so it pages as ENDED — the same
+    rule and the same dedupe slot the root span would use, which is what stops a
+    late-arriving export from paging twice about one ending. ``died`` has no account
+    behind it and gets its own rule, so a page that says the process vanished is never
+    confused with one that says the run finished badly.
+    """
+    alerts: list[Alert] = []
+    label = f"{run.workflow or 'run'} {run.run_id}"
+    where = f" in node '{run.current_node}'" if run.current_node else ""
+    if ending == "died":
+        _fire(
+            run,
+            "DIED",
+            f"{label}: process {run.pid or '?'} is gone{where} and left no terminal — "
+            "killed, OOM'd or crashed. Nothing is running for it now; it resumes from "
+            "its last checkpoint.",
+            alerts,
+        )
+    else:
+        _fire(
+            run,
+            "ENDED",
+            f"{label}: ended '{ending}'{where} — read from the run's own record, which "
+            "means its telemetry never got its last flush out.",
+            alerts,
+        )
+    return alerts
 
 
 def _activity(attrs: dict[str, Any]) -> str:

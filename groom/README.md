@@ -157,6 +157,7 @@ with `GROOM_NTFY_URL`) and/or `GROOM_WEBHOOK_URL` (JSON `{"title","message"}`):
 | WATCHDOG | a `watchdog_kill` span event arrives | — |
 | GAVE-UP | a give-up node's span arrives | `GROOM_GIVEUP_NODES` (qa_give_up,fix_give_up) |
 | ENDED | the run's root span arrives — the run is over, whatever the verdict, and nothing is executing for it now | — |
+| DIED | a **native** run's pid is gone and it left no terminal anywhere — killed, OOM'd, or crashed hard enough to lose both the checkpoint write and the telemetry flush | — |
 | BLOCKED | an operator gate opens — the run is parked until someone answers it. A cap wait does not count | — |
 | WAITING | that gate is still unanswered later | `GROOM_WAIT_MIN` (30) |
 
@@ -175,6 +176,15 @@ until it existed it was the only one that paged nobody. It fires on every ending
 naming the terminal and the error class, because from outside "it crashed" and
 "it succeeded" are the same silence. A resume reuses the run id and clears the
 fired set, so the next session's ending pages on its own.
+
+DIED is ENDED for the run that never got to say so. ENDED hangs off the root
+span, and a root span only exports if the dying process flushed its exporter —
+so the one class of death worth waking someone for (SIGKILL, the OOM killer, a
+segfaulting extension) was the single ending that reached nobody. The dashboard
+row already went grey on it, because a native run shares groom's host and its pid
+is directly observable; the row was just the only place it was ever said. It is
+native-only for that same reason: a containerized run's pid is in another
+namespace, and the sidecar reports its exit.
 
 BLOCKED and WAITING cover the mirror image: a run parked on an operator gate is
 behaving correctly, so no rule described it, and STUCK skips an open wait by

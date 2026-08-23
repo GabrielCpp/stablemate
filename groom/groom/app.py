@@ -289,7 +289,7 @@ def _native_ending(run: RunTelemetry) -> str:
     return ""
 
 
-def _sync_native_row(run: RunTelemetry) -> bool:
+def _sync_native_row(run: RunTelemetry, fired: list[alerts.Alert] | None = None) -> bool:
     """Project a run's telemetry hot-cache entry onto a dashboard row when the run
     is **native** — i.e. its dir exists on groom's own host, which is both the test
     for nativeness and exactly the capability the local-FS panels rely on.
@@ -319,6 +319,12 @@ def _sync_native_row(run: RunTelemetry) -> bool:
         if ending:
             run.terminal = ending
             run.terminal_ts = time.time()
+            # The row turning grey is only half of it. This verdict comes from reading
+            # the host, never from an ingest, so no alert rule sees it — and the death
+            # it reports is the SIGKILL/OOM class whose root span never exports, which
+            # is to say the one ending that otherwise pages nobody at all.
+            if fired is not None:
+                fired.extend(alerts.note_native_ending(run, ending))
     before = state.WORKFLOWS.get(run.run_id)
     prev = (
         (before.state, before.current_node, before.activity, tuple(before.gates))
@@ -376,16 +382,20 @@ async def _project_native_rows(records: list) -> None:
     run_ids = {r.get("run_id") for r in records if r.get("run_id")}
     changed = []
     newly_blocked = []
+    # A run whose telemetry just landed is rarely the one found dead, but it is the
+    # one that just wrote its own terminal — read here rather than left for the tick.
+    fired: list[alerts.Alert] = []
     for run_id in run_ids:
         run = state.RUNS.get(run_id)
         if run is None:
             continue
         existing = state.WORKFLOWS.get(run_id)
         was_blocked = existing is not None and existing.state == WorkflowState.BLOCKED
-        changed.append(_sync_native_row(run))
+        changed.append(_sync_native_row(run, fired))
         wf = state.WORKFLOWS.get(run_id)
         if wf is not None and wf.state == WorkflowState.BLOCKED and not was_blocked:
             newly_blocked.append(wf)
+    await _dispatch_alerts(fired)
     if any(changed):
         await _broadcast_shell()
         for run_id in run_ids:
@@ -1275,8 +1285,10 @@ async def _live_loop() -> None:
             # row — but "running" is a recency verdict that goes stale on the
             # clock. Re-project every native row here so a stopped run's state
             # stops claiming it is up, for the same reason the tick exists at all.
+            died: list[alerts.Alert] = []
             for run in list(state.RUNS.values()):
-                _sync_native_row(run)
+                _sync_native_row(run, died)
+            await _dispatch_alerts(died)
             await _broadcast_shell()
             await _push_watched()
         except Exception:  # noqa: BLE001
