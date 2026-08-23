@@ -37,8 +37,8 @@ packs:
 # out loud that the stack skill does not apply here.
 #
 # This repo names no skills directly: `stablemate/repo-docs`, which governs its
-# prose entry surface, ships in the `stablemate` pack above, and its own root
-# rules are a *policy* now rather than a skill — see localInstructions below.
+# prose entry surface, ships in the `stablemate` pack above, and its root rules are
+# *policies* rather than skills — see localInstructions below.
 
 # Direct single-item selection (no pack — see agents/packs/CLAUDE.md): the
 # /update-skill-from-conversation command that folds a session's learnings back
@@ -46,31 +46,89 @@ packs:
 prompts:
   - agent-library/update-skill-from-conversation
 
-# The root AGENTS.md is generated, not hand-written: house rules first, then the
-# one procedure every change lands under. The procedure is a library prompt, so the
-# text is written once and every repo that wants it always-loaded aggregates the
-# same file instead of maintaining its own copy of the cadence.
+# ---------------------------------------------------------------------------
+# template — the repo-specific values the shared policies above render with.
+# Each one has a `| default(...)` in the library source, so the same policy
+# installs in a repo that sets none of these.
+# ---------------------------------------------------------------------------
+template:
+  python_floor: "3.12"
+
+  # public-repo: where the untracked denylist comes from and what sweeps for it.
+  private_names_script: "scripts/private_names.py"
+  private_names_env: "STABLEMATE_PRIVATE_NAMES"
+  private_names_install: "make install"
+  check_public_command: "make check-public    # also runs as part of `make test`"
+
+  # python-lint-clean / commit-and-push: the one gate command.
+  lint_command: "make lint"
+  commit_gate: "make lint          # ruff + ty, every subproject in one pass, from the repo root"
+
+  # implement-plan-*: the gate a plan is measured against, and the bootstrap a
+  # fresh checkout needs before any of it runs.
+  repo_gate: "`make lint` from the root, plus the affected test package"
+  repo_gate_command: "make lint   # ruff + ty from the root; then the affected test package"
+  repo_bootstrap: "make install   # venv + hooks; see the root README"
+
+  # commit-and-push: the scope vocabulary `.githooks/commit-msg` accepts. The
+  # first list is derived from the tracked top-level directories, so a new
+  # workspace member needs no edit here either — it is written out only so the
+  # subject line can be got right without shelling out to check.
+  commit_scopes: "`core`, `workhorse`, `workflows`, `farrier`, `ostler`, `groom`, `saddlebag`, `base-library`, `paddock`, `docs`, `scripts`"
+  commit_extra_scopes: "`deps`, `release`, `ci`, `lint`, `hooks`"
+
+  # commit-and-push: the step that only stablemate has — a push does not reach a
+  # run that is already going.
+  commit_epilogue: |
+    ## 8. If the change touches code a live run is holding
+
+    A push does not reach a run that is already going. If you changed anything under
+    `workflows/` or `workhorse/` and a run is in flight, the commit is not the last
+    step — reload each run that holds the old copy, rather than restarting it. The
+    procedure is in the `workhorse-scripting` skill
+    (`references/reloading-a-live-run.md`).
+
+
+# The root AGENTS.md is generated, not hand-written: one policy per standing
+# concern, joined in the order below. Every one of them is generic — none names
+# this repo, and what is stablemate-specific comes from the `template:` block
+# above — so a second repo that wants the same constraint aggregates the same file
+# instead of maintaining a copy. There is no stablemate-only root policy left: what
+# the workspace contains is what the per-member READMEs are for, and the invariants
+# that really are this repo's alone are scoped to the directory they constrain.
 #
-# `stablemate-repo` is a policy, not a skill: its whole body is already resident
-# here, so installing it under .claude/skills/ as well would only add its name and
+# These are policies, not skills: the whole body is already resident here, so
+# installing one under .claude/skills/ as well would only add its name and
 # description to the skill index the agent carries every turn — advertising a skill
 # whose text is already above it in the window. A policy exists only through this
 # mapping, which is why no `policies:` key appears at the top of this file.
 #
-# Only `commit` is aggregated. `reload-runs` is a branch the commit procedure names
-# — a live run holding the code you just fixed — and inlining a branch most turns
-# never take spends every turn's context on it. It stays a `/stablemate-*` command,
-# reachable by name and by path under `.claude/commands/`.
+# `commit-and-push` is a policy rather than the aggregated prompt it used to be:
+# nothing invoked it by name once every turn already carried it, and the `/`-command
+# was a second copy of text that was never off-screen. Its one stablemate-specific
+# step is the `commit_epilogue` above, and the procedure it points at is in the
+# `workhorse-scripting` skill — reloading a live run is a branch of writing workflow
+# code, and that skill loads exactly when that code is being edited.
+#
+# The second mapping is why the root file no longer carries the workflow
+# invariants: they constrain a change under `workflows/` and nothing else, and a
+# directory-scoped AGENTS.md is loaded exactly when an agent is working there.
 #
 # The aggregated text lands in AGENTS.md — the name every harness reads — and
 # CLAUDE.md is generated beside it as the `@AGENTS.md` pointer. `includeReadme:
-# false` keeps the root README (an outward-facing overview) out of every
-# session's context.
+# false` keeps the READMEs (outward-facing overviews) out of every session's
+# context.
 localInstructions:
   - policies:
-      - stablemate-repo
-    prompts:
-      - stablemate-commit
+      - uv-workspace
+      - public-repo
+      - python-lint-clean
+      - commit-and-push
     paths:
       - "."
+    includeReadme: false
+  - policies:
+      - stablemate-workflows
+    paths:
+      - "workflows"
     includeReadme: false

@@ -22,7 +22,7 @@ groom status                                    # if groom is up: which runs are
 ```
 
 `<name>` is whichever workflow distribution owns this run (`coder`, `author`, …) — the
-same console script `reload-runs` assumes. If groom is down, read the
+same console script a reload uses. If groom is down, read the
 run dir directly: `<run-dir>/inbox.jsonl` and whichever gate file its checkpoint's
 `waiting_on` names.
 
@@ -83,9 +83,10 @@ failure the loop exists to prevent.
 
 ## 5. Reload and resume
 
-Once the fix is committed and pushed, reload the run in place — see the `reload-runs`
-command for the full procedure (`workhorse-<name> control reload --run <run-id>
---at-boundary`). This resumes the run from its checkpoint under the fixed code; no
+Once the fix is committed and pushed, reload the run in place (`workhorse-<name> control
+reload --run <run-id> --at-boundary`) — the full procedure, including how to check the
+run resolves your source tree rather than a wheel, is in the `workhorse-scripting`
+skill's `references/reloading-a-live-run.md`. This resumes the run from its checkpoint under the fixed code; no
 restart, no lost progress.
 
 ## 6. When you cannot diagnose or fix it, ask — don't decide alone

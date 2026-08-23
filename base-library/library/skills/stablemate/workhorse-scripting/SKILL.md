@@ -286,6 +286,19 @@ why a raise means unreadable while `[]` means empty, and the lazy-imported QA / 
 edit subsystems the coder's QA nodes route through. Read it when a node reads or mutates
 anything under `docs/`.
 
+## Changing code a live run is already holding
+
+A run imported the workflow package when it started; editing the file on disk changes
+nothing for it. Committing a fix is therefore not the last step — every run still in
+flight keeps executing the code you just replaced, for as long as it has left. Reload
+each one in place instead of restarting it: a restart costs the in-flight turn and opens
+a second run generation groom reads as a failure.
+
+**[references/reloading-a-live-run.md](references/reloading-a-live-run.md)** is the
+procedure — finding the live runs, checking the run resolves your source tree rather
+than a wheel (the way a reload silently succeeds over code it did not load), the
+`--at-boundary` and `--core` choices, and how to confirm the reload actually landed.
+
 ## Testing — substitute, don't patch
 
 The node index and the agent backend are **fields of the run**, so a test supplies its own

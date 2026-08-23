@@ -1,11 +1,6 @@
 ---
-description: "Take a plan as the goal, cut a git worktree for it under the machine's configured worktree directory, branch there, and start implementing — leaving the current checkout untouched"
+description: Take a plan as the goal, cut a git worktree for it under the machine's configured worktree directory, branch there, and start implementing — leaving the current checkout untouched
 argument-hint: "<path to the plan> [branch name]"
-metadata:
-  generated_by: farrier
-  source: library/prompts/stablemate/implement-plan.md
-  resolve: "farrier source .claude/commands/stablemate-implement-plan.md"
-  do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---
 
 # Implement a plan, on a branch, in its own worktree
@@ -23,8 +18,8 @@ that prose is the plan. Then, before touching git, write down for yourself:
 
 - **the goal** — one sentence saying what is true when this is done;
 - **the definition of done** — the checks that decide it: the tests that must pass, the
-  gate the repo runs (in stablemate, `make lint` plus the affected test package), and
-  any behaviour you must actually observe rather than infer;
+  gate this repo runs ({{ template.repo_gate | default("the command its README or Makefile names") }}),
+  and any behaviour you must actually observe rather than infer;
 - **the order** — the plan's steps as you will do them, with anything the plan left
   ambiguous called out now rather than discovered at step six.
 
@@ -64,8 +59,8 @@ git status --porcelain               # what is uncommitted here
 
 **Uncommitted work does not come with you.** A worktree is a fresh checkout of a commit,
 so anything dirty in the current tree stays behind. If the plan builds on those edits,
-commit them first (see the `commit` command) — do not stash, which hides them from the
-person who owns them.
+commit them first, the way this repo's commit rules say to — do not stash, which hides
+them from the person who owns them.
 
 Then cut it. One command creates the directory, the branch, and the checkout:
 
@@ -74,9 +69,9 @@ git worktree add -b <branch> "$(farrier config show worktree_dir)/<repo>-<slug>"
 ```
 
 - `<repo>-<slug>` — the repo name and a short kebab-case slug from the plan, e.g.
-  `stablemate-worktree-config`. The repo name is not decoration: one worktree directory
-  holds worktrees from every repo on the machine, and `refactor-auth` alone tells you
-  nothing six weeks later.
+  `acme-worktree-config`. The repo name is not decoration: one worktree directory holds
+  worktrees from every repo on the machine, and `refactor-auth` alone tells you nothing
+  six weeks later.
 - `<branch>` — the same slug, prefixed the way this repo prefixes branches if it does.
   `git worktree add -b` fails loudly if the branch already exists, which is the answer
   you want.
@@ -93,7 +88,7 @@ that needs any of it fails in a way that looks like your change broke something.
 
 ```bash
 cd <the new worktree>
-make install     # or whatever this repo's bootstrap is — read its README
+{{ template.repo_bootstrap | default("make install   # or whatever this repo's bootstrap is — read its README") }}
 ```
 
 Run the repo's gate once, now, on an unmodified tree. A green baseline is what makes the
@@ -109,14 +104,14 @@ warn you.
 
 Implement it step by step, in the order you wrote down. As each concern becomes
 complete, commit it on this branch — one concern per commit, staged by explicit path,
-subject in the repo's convention. That is the `commit` command, and it applies here
-unchanged.
+subject in the repo's convention. That is the commit procedure already resident in this
+repo's root instructions, and it applies here unchanged.
 
 Push the branch when the first commit lands, then keep pushing as you go. A branch that
 exists only in a worktree on one machine is invisible to review and to CI, and it dies
-with the machine. Push the way the `commit` command says to — over HTTPS with `gh`
-holding the credential, never the remote's `git@` URL, which is the human's SSH key and
-hangs on a passphrase prompt no agent can answer.
+with the machine. Push the way those instructions say to — over HTTPS with `gh` holding
+the credential, never the remote's `git@` URL, which is the human's SSH key and hangs on
+a passphrase prompt no agent can answer.
 
 Verify against the definition of done from step 1 — the real checks, not a plausible
 argument that it should work. When a step turns out to be blocked, finish everything

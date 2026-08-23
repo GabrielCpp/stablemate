@@ -148,12 +148,12 @@ exclude:
 # advertising as loadable something already above it in the window.
 # ─────────────────────────────────────────────────────────────────────────────
 localInstructions:
-  # A repo-root file whose house rules are a policy (no index cost) and whose
-  # commit procedure is a library prompt, so the cadence is written once.
+  # A repo-root file whose house rules and commit cadence are both policies (no
+  # index cost, and the text is written once for every repo that aggregates it).
+  # `commit-and-push` renders the repo-specific bits from the `template:` block.
   - policies:
       - house-rules
-    prompts:
-      - myrepo-commit
+      - commit-and-push
     paths:
       - "."
     includeReadme: false

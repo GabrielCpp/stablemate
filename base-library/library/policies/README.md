@@ -22,9 +22,13 @@ Write a policy when **all** of these hold:
 - Nothing would ever **invoke** it by name. A policy cannot be loaded on demand, linked
   to, or found by a tag query — if any of those is how you expect it to be reached, it is
   a skill.
-- It is **rules, not procedure**. A procedure a repo wants always loaded is still a
-  prompt: it stays reachable as `/`-command *and* aggregates, and the same text serves
-  both. Policies are the standing constraints the procedures run under.
+
+Most policies are **rules** — the standing constraints the procedures run under. A
+*procedure* can be one too, but only once the second bullet holds of it: a procedure
+that is resident every turn is never reached by name, and keeping it a `/`-command as
+well leaves a second copy of text that was never off-screen. `commit-and-push` is the
+worked example — every change ends there, every repo that had it aggregated it, and the
+command it used to be went unused. A procedure only *some* turns need is still a prompt.
 
 Everything else stays a skill or a prompt. A policy that a second repo wants is fine —
 it is library text like any other; layer shadowing and namespacing work the same way.
@@ -40,6 +44,12 @@ for humans and for farrier's error messages; both are stripped before aggregatio
 neither is emitted anywhere. No `applyTo` and no `tags` — a policy is not auto-loaded by
 glob and is not discoverable by query. The body renders through Jinja2 like any other
 library source.
+
+A policy that a second repo would want takes its repo-specific values from
+`{{ template.<key> | default("…") }}` and the consumer's `agents.yml` `template:` block,
+so the text stays installable in a repo that sets none of them. Groups sort the tree by
+concern, not by consumer: `git/`, `python/`, `repo/` hold text no repo is named in,
+`stablemate/` holds the ones that only make sense here.
 
 Referenced by **bare basename** (`stablemate-repo`), with no repo prefix ever added:
 there is no installed artifact for a prefix to disambiguate. The namespaced form

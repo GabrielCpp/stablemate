@@ -1,19 +1,12 @@
 ---
-description: "Commit the finished work on the current branch and push it — one concern per commit, staged by explicit path, with a Conventional Commits subject"
-argument-hint: "[what to commit, if the tree holds more than one concern]"
-metadata:
-  generated_by: farrier
-  source: library/prompts/stablemate/commit.md
-  resolve: "farrier source .claude/commands/stablemate-commit.md"
-  do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
+name: commit-and-push
+description: "The standing procedure every finished change lands under: one concern per commit, the gate before the commit, staged by explicit path never `-A`, a Conventional Commits subject release-please can read, and a push over HTTPS with `gh` holding the credential rather than the human's SSH key. The scope vocabulary and the gate command are templated per repo; a repo with a follow-on step adds it through `commit_epilogue`."
 ---
 
 # Commit and push
 
 Land the work that is finished right now. Not the session's whole diff — the
 concern that just became complete.
-
-$ARGUMENTS
 
 ## 1. Look at the tree before you touch it
 
@@ -38,10 +31,10 @@ Split first, then label.
 
 ## 3. Run the gate, before the commit
 
-Run the repo's gate, not just the test you were staring at. In stablemate:
+Run the repo's gate, not just the test you were staring at:
 
 ```bash
-make lint          # ruff + ty, every subproject in one pass, from the repo root
+{{ template.commit_gate | default("make lint") }}
 ```
 
 plus the affected test package. The gate belongs on the *near* side of the push,
@@ -75,16 +68,21 @@ someone else's half-finished work and makes it vanish from *their* `git status`.
 - **types**: `feat` `fix` `perf` `refactor` `docs` `test` `build` `ci` `chore`
   `revert`. Pick by what the change *is*, not how large it is — a rename, a move
   or an extraction is `refactor`, never `feat`.
-- **scope**: the *package* that gets released, not the module inside it —
-  `fix(workhorse):`, not `fix(runner):`. Omit the parentheses for a repo-wide
-  change.
+- **scope**: the *package* that gets released, not the module inside it. One
+  tracked top-level directory — {{ template.commit_scopes | default("the repo's tracked top-level directories") }} — or one of
+  {{ template.commit_extra_scopes | default("`deps`, `release`, `ci`") }}. Omit the parentheses
+  entirely for a repo-wide change.
 - Subject ≤ 72 characters, no capital first word, no trailing period.
 
 A repaired defect labelled `chore:` ships to nobody, and the omission surfaces
 weeks later as a bug report against a version that never contained the fix.
 
-The `commit-msg` hook rejects a subject that violates this. `--no-verify` is not
-a way to get a commit in; it is a way to get an unreleasable commit in.
+The `commit-msg` hook derives those scopes from the tracked top-level
+directories, so a new package needs no edit, and it rejects a subject that
+violates any of this. A generated message — an editor's *Generate commit
+message*, an agent's — only ever biases toward the format; the hook is what
+makes it hold. `--no-verify` is not a way to get a commit in; it is a way to get
+an unreleasable commit in.
 
 ## 6. Stay on the branch you are on
 
@@ -130,8 +128,4 @@ command above does. When it errors out rather than landing, leave the commit loc
 and say which transport you tried and how it failed. An unpushed commit the user
 knows about is recoverable; a silent hang nobody was told about is not.
 
-## 8. If the change touches code a live run is holding
-
-A push does not reach a run that is already going. If you changed anything under
-`workflows/` or `workhorse/` and a run is in flight, the commit is not the last
-step — reload each run that holds the old copy. See the `reload-runs` command.
+{{ template.commit_epilogue | default("") }}

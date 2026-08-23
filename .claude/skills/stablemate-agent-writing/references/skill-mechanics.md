@@ -31,9 +31,10 @@ context-load/cognitive-load trade in its concrete form:
 - Knowledge that applies *while doing a kind of work* — writing a node, reading a format,
   modelling a surface — is a **skill**. The agent must reach it on its own, because you will
   not be there to type anything.
-- A procedure invoked *at a moment* is a **prompt**. `commit` and `reload-runs` are the
-  library's two: the moment a change is finished never matched an `applyTo`, and a skill
-  loaded on file-glob would have fired at every wrong time and never at the right one.
+- A procedure invoked *at a moment* is a **prompt**. `grill` and `implement-plan-here` are
+  the shape: the moment a design is ready to interrogate, or a plan is ready to build,
+  never matched an `applyTo`, and a skill loaded on file-glob would have fired at every
+  wrong time and never at the right one.
 
 A prompt costs nothing on every turn it does not fire, which is the whole reason it exists.
 Reaching for a skill "so the agent can find it" spends permanent context on discoverability
