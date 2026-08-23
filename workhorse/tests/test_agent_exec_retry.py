@@ -176,7 +176,7 @@ def test_exhausted_retries_escalate_as_transient():
 def test_the_default_supervisor_waits_on_the_real_clock():
     """The seam is an override, not a requirement: built with no arguments, a supervisor
     holds the system clock, so production keeps the backoff it has always had."""
-    from workhorse.runner.clock import SYSTEM_CLOCK
+    from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK
 
     assert process.ProcessSupervisor().clock is SYSTEM_CLOCK
     assert process._supervisor.clock is SYSTEM_CLOCK

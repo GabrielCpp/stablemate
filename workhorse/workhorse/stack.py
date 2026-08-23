@@ -43,7 +43,7 @@ import subprocess
 import urllib.request
 from typing import Any
 
-from workhorse.runner.clock import SYSTEM_CLOCK, Clock
+from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 
 #: Manifest commands are **shell** recipes, not argv lists. The contract already asks for
 #: something only a shell can express — an *idempotent* bring-up command is written

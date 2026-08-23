@@ -37,7 +37,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
-from workhorse.runner.clock import Clock
+from workhorse._vendor.stablemate_core.clock import Clock
 
 #: The one verb answered by this module rather than by a consumer of it. `status` asks
 #: what the run is doing, which changes nothing about it — answering is delivery, not

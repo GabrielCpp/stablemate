@@ -69,7 +69,7 @@ while remaining > 0:
   session and prompt.
 - [`cap_delay_seconds`](cap-delay-seconds.md) — computes the `total_s` this function sleeps and the
   "resuming around" label `turn` prints alongside this function's periodic ticks.
-- `Clock` (`runner/clock.py`) — the `now`/`sleep` protocol; `SYSTEM_CLOCK` in production, a
+- `Clock` (`_vendor/stablemate_core/clock.py`) — the `now`/`sleep` protocol; `SYSTEM_CLOCK` in production, a
   `FakeClock` in the cap tests, which is what makes a multi-day wait testable.
 - [GUARDRAILS.md](../../../../workhorse/docs/GUARDRAILS.md) — documents `AGENT_CAP_TICK_S` from an
   operator's perspective.

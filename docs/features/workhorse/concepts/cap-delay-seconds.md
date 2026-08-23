@@ -97,7 +97,7 @@ explicit reason none could be computed, never a bare number.
   from the CLI's `rate_limit_event.resetsAt` (via [`rate_limit_info`](classify-turn.md#rate_limit_info)).
 - [`parse_reset_seconds`](parse-reset-seconds.md#algorithm) — the text-parsing fallback this
   function calls when `exc.reset_at` is unset.
-- `Clock` (`runner/clock.py`) — the `now`/`sleep` protocol; `SYSTEM_CLOCK` in production, a
+- `Clock` (`_vendor/stablemate_core/clock.py`) — the `now`/`sleep` protocol; `SYSTEM_CLOCK` in production, a
   `FakeClock` in the cap tests.
 - [GUARDRAILS.md](../../../../workhorse/docs/GUARDRAILS.md) — documents the three env vars behind
   the `resilience` fields this function reads (`AGENT_CAP_MAX_WAIT_S`, `AGENT_CAP_WAIT_MARGIN_S`,
