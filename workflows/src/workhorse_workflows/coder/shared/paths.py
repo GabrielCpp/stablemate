@@ -125,12 +125,20 @@ def operator_context_path(root: Path, gate: str, epic: str = "") -> Path:
     1. `docs/epics/<NNNN-epic>/<gate>-context.md` when that epic folder exists — the questions
        land next to the epic they are about, which is where the operator is already looking.
        The folder is resolved through ostler, so a bare slug finds its numbered directory;
-    2. `<root>/<gate>-context.<epic>.md` when it does not, so an epic with no folder still
-       gets a file of its own;
-    3. `<root>/<gate>-context.md` with no epic at all.
+    2. `<root>/.agents/operator/<gate>-context.<epic>.md` when it does not, so an epic with no
+       folder still gets a file of its own;
+    3. `<root>/.agents/operator/<gate>-context.md` with no epic at all.
 
     Rungs 1 and 2 are what keep two epics escalating in the same checkout from overwriting
     each other's questions. `gate` is `ci-operator` or `merge-operator`.
+
+    Rungs 2 and 3 land in :data:`OPERATOR_DIR` rather than at the repo root, which is what
+    farrier already gitignores for exactly this file and what the constant was declared
+    for. A gate's own question is not the repo's content: dropped at the root it shows up
+    in `git status` as an untracked file, in a story's diff if anything sweeps the tree,
+    and — for `dirty-tree-operator`, whose entire subject is uncommitted work — inside the
+    very listing the operator is being asked to settle. `is_gate_context` still excuses
+    these by name, because rung 1 puts one in the docs tree where nothing ignores it.
     """
     if epic:
         # ostler owns the folder rule, not this join: epic directories are numbered
@@ -139,8 +147,8 @@ def operator_context_path(root: Path, gate: str, epic: str = "") -> Path:
         epic_dir = okf_path.epic_dir_in(root, epic)
         if epic_dir.is_dir():
             return epic_dir / f"{gate}-context.md"
-        return root / f"{gate}-context.{epic}.md"
-    return root / f"{gate}-context.md"
+        return root / OPERATOR_DIR / f"{gate}-context.{epic}.md"
+    return root / OPERATOR_DIR / f"{gate}-context.md"
 
 
 def _rel(root: Path, target: Path) -> str:
@@ -219,7 +227,13 @@ def story_context_path(story_path: str, repo_dir: str | Path = "") -> Path:
 
 
 def decisions_dir(docs_root: Path) -> Path:
-    """Where the operator's standing decisions live: `<docs-root>/decisions/`.
+    """Where the operator's standing decisions live: `docs/decisions/` under *docs_root*.
+
+    Beside `docs/backlog.md` rather than at the checkout root, and derived from it so the
+    two travel together if ostler ever moves that convention. A decision record is a
+    document a person reads — it belongs with the other documents, not in the top-level
+    listing beside `README.md` and the service directories, where it reads as a stray
+    folder the workflow left behind.
 
     The place a resolver may answer *from*, and the place it writes to when it answers
     something no record covered yet. It is this workflow's own invention rather than one
@@ -231,7 +245,7 @@ def decisions_dir(docs_root: Path) -> Path:
     hit the same question reads the ruling instead of parking on it a second time. That
     accumulation is the whole point: a block answered once should cost a human once.
     """
-    return docs_root / "decisions"
+    return okf_path.backlog_path_in(docs_root).parent / "decisions"
 
 
 def is_gate_context(path: str | Path) -> bool:
