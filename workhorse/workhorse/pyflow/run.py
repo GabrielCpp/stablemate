@@ -38,7 +38,12 @@ from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.workflow import Workflow
 from workhorse.records import PyflowCheckpoint, parse_checkpoint
 from workhorse.references import format_missing, missing_references
-from workhorse.rundir import auto_resolve, derive_run_id, runtime_deadline
+from workhorse.rundir import (
+    auto_resolve,
+    derive_run_id,
+    resume_argv,
+    runtime_deadline,
+)
 from workhorse.runner import process as agent_process
 from workhorse.runner import transcript
 from workhorse.runner.failure import BackendInvocationError
@@ -506,10 +511,9 @@ def _exec_reload(name: str, run_dir: Path, *, cli: str = "", profile: str = "") 
     `os.execv` rather than an exit code the caller restarts on, because exec keeps the
     pid and needs no supervisor: the same call is what reloads the engine inside a
     container and on a laptop, which is the property the whole feature is judged by. The
-    argv is rebuilt rather than replayed — `run --resume-run <dir>` is the resume
-    spelling, and the original one's `--param`/`--params-file` are already in the
-    checkpoint, so replaying them would let a stale file win over what the run really
-    holds.
+    argv is rebuilt rather than replayed, by :func:`workhorse.rundir.resume_argv`, which
+    carries that argument and is shared with the launch record so the line this process
+    re-execs with and the line a supervisor would re-spawn it with cannot drift apart.
 
     Unlike the workflow-only reload this *is* a new process, so it opens a new root span
     and a new resume generation: a `--core` reload costs the seconds between the two
@@ -522,22 +526,13 @@ def _exec_reload(name: str, run_dir: Path, *, cli: str = "", profile: str = "") 
     image it is replacing); with no supervisor it is a nonzero exit over a run dir that
     is still resumable by hand.
     """
-    argv = [sys.argv[0], "run", "--resume-run", str(run_dir)]
-    if cli:
-        # The one thing that is not in the checkpoint, because the backend is chosen at
-        # this edge rather than held by the run. Passed explicitly rather than left to
-        # the inherited environment, which still names the CLI the run started on.
-        argv += ["--cli", cli]
-    if profile:
-        # Only when a live `switch-profile` moved the run: with no flag the resume reads
-        # the profile off `run.json`, which is the right answer for every other re-exec.
-        argv += ["--profile", profile]
-    config_path = os.environ.get(CONFIG_PATH_ENV)
-    if config_path:
-        # `execv` does carry the environment, so this is belt-and-braces — but the argv is
-        # printed and logged, and a re-exec that does not say which config file it is on is
-        # the one nobody can diagnose from the line they have.
-        argv += ["--config", config_path]
+    argv = resume_argv(
+        sys.argv[0],
+        run_dir,
+        cli=cli,
+        profile=profile,
+        config_path=os.environ.get(CONFIG_PATH_ENV) or "",
+    )
     executable = shutil.which(argv[0]) or argv[0]
     if executable.endswith(".py"):
         # `python -m workhorse...` / a script run by path: exec the interpreter, since

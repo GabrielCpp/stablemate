@@ -47,6 +47,47 @@ def derive_run_id(run_id: str | None, params: dict[str, Any] | None) -> str | No
     return "p" + hashlib.sha1(canon.encode()).hexdigest()[:8]
 
 
+def resume_argv(
+    program: str,
+    run_dir: Path,
+    *,
+    cli: str = "",
+    profile: str = "",
+    config_path: str = "",
+) -> list[str]:
+    """The argv that resumes ``run_dir`` — rebuilt, never the original one replayed.
+
+    Replaying the launch argv would be actively destructive. ``--no-cache`` deletes the
+    stable run dir before starting, which is the exact opposite of a resume and throws
+    away the work the resume exists to save; and the original ``--param`` /
+    ``--params-file`` are already in the checkpoint, so replaying them lets a stale file
+    win over what the run really holds. So the resume spelling is one canonical line —
+    ``<program> run --resume-run <dir>`` — and the only flags added to it are the ones
+    the checkpoint genuinely does not hold.
+
+    ``cli`` is resolved at the process edge rather than carried by the run, so a run
+    moved onto another backend has to say so. ``profile`` is passed only when a live
+    ``switch-profile`` moved the run off the one ``run.json`` records; with no flag a
+    resume reads that file, which is the right answer everywhere else. ``config_path``
+    is belt-and-braces where the environment is inherited anyway, and load-bearing where
+    it is not — a resume line that does not say which config it is on is the one nobody
+    can diagnose from the line they have.
+
+    Pure: it resolves nothing and reads nothing. Turning ``program`` into something
+    executable is the caller's business, because the callers want different answers —
+    :func:`workhorse.pyflow.run._exec_reload` needs a real executable to hand ``execv``,
+    while the launch record wants the unresolved name, which is what a human types.
+    """
+    argv = [program, "run", "--resume-run", str(run_dir)]
+    if cli:
+        argv += ["--cli", cli]
+    if profile:
+        argv += ["--profile", profile]
+    if config_path:
+        argv += ["--config", config_path]
+    return argv
+
+
 def auto_resolve(
     runs_dir: Path, workflow_name: str, run_id: str | None = None
 ) -> tuple[str, Path | None]:
