@@ -315,8 +315,9 @@ def owning_keys(node_type: str) -> tuple[str, ...]:
     `code:` owns on every type — a flow or a screen cites the code it is grounded in whether
     or not its profile lists the key, and always has — and the registry adds the keys whose
     value is a file under another name: `openapi:` on a server or endpoint, `file:` on a
-    format. `tests:` is deliberately not one — a test file is verification evidence, not the
-    node's subject — and neither is `binary:`, which names a program rather than a path.
+    format, `config:` on an environment or a format. `tests:` is deliberately not one — a
+    test file is verification evidence, not the node's subject — and neither is `binary:`,
+    which names a program rather than a path.
     """
     uitype = UI_TYPES_BY_NAME.get(node_type)
     own = () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.owns)
@@ -452,7 +453,16 @@ UI_TYPES: tuple[UINodeType, ...] = (
     ),
     UINodeType(
         name="format", kind="file", context="",
-        bullet_keys=(BulletKey("file", owns=True), BulletKey("code", link=True, owns=True)),
+        bullet_keys=(
+            BulletKey("file", owns=True),
+            # A configuration file this format describes — `config:` is an *owning* key that
+            # also punches the file through `qa context`'s non-production filter (a stack
+            # config, a `Pulumi.<stack>.yaml`, is dropped from the change surface by default),
+            # so the node it names is reachable when the file changes. Not a link and not a
+            # grounding key: a config file may be gitignored or env-local.
+            BulletKey("config", owns=True),
+            BulletKey("code", link=True, owns=True),
+        ),
     ),
     UINodeType(
         name="flow", kind="file", context="flows",
@@ -495,6 +505,11 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # environment's own files are `unmapped-change` errors on the first packet that
             # touches them, and the book has no lawful way to own them.
             BulletKey("code", link=True, owns=True),
+            # The configuration files the stack reads — one per file, `- config: pulumi/Pulumi.dev.yaml`.
+            # The same owning role as `code:`, with one more effect: a declared config path is a
+            # production unit even where the QA-context filter would drop it as stack config,
+            # so a change to it reaches this node instead of vanishing. Not a grounding key.
+            BulletKey("config", owns=True),
             # An environment states facts a plan can be held to — a pinned provider version, a
             # backend that is local, a service on the address the book gives — and until this key
             # existed it had no way to say what observing one looks like. `checksDeclared` was

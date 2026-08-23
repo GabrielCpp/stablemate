@@ -201,6 +201,70 @@ def test_a_format_file_bullet_owns_the_file(tmp_path: Path):
     assert reasons == [{"kind": "file-owner", "ref": "app/ledger.schema.json", "key": "file"}]
 
 
+def test_a_declared_config_path_is_a_production_unit(tmp_path: Path):
+    """A `Pulumi.<stack>.yaml` is dropped from the change surface by the non-production filter
+    — until an environment declares it under `config:`. Then the change reaches the node, and
+    the node is required: the config key owns like `code:` does."""
+    base = _owning_repo(
+        tmp_path,
+        "---\ntype: environment\ntitle: Dev stack\n---\n# Dev stack\n\n"
+        "- code: `infra/main.go`\n- config: `infra/Pulumi.dev.yaml`\n",
+        "infra/Pulumi.dev.yaml",
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["infra"]})
+
+    assert "unmapped-change" not in [f["kind"] for f in packet["healthFindings"]]
+    assert [node["reasons"] for node in packet["directNodes"]] == [
+        [{"kind": "file-owner", "ref": "infra/Pulumi.dev.yaml", "key": "config"}]
+    ]
+    assert [change["path"] for change in packet["changedCode"]] == ["infra/Pulumi.dev.yaml"]
+    assert validate_context(packet) == []
+
+
+def test_an_undeclared_stack_config_stays_filtered(tmp_path: Path):
+    """Without the declaration the filter keeps its default: the stack config is not a
+    production unit, so it is neither mapped nor an `unmapped-change`."""
+    base = _owning_repo(
+        tmp_path,
+        "---\ntype: environment\ntitle: Dev stack\n---\n# Dev stack\n\n"
+        "- code: `infra/main.go`\n",
+        "infra/Pulumi.dev.yaml",
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["infra"]})
+
+    assert packet["changedCode"] == []
+    assert packet["directNodes"] == []
+    assert "unmapped-change" not in [f["kind"] for f in packet["healthFindings"]]
+
+
+def test_a_config_file_shared_by_two_nodes_is_context_evidence(tmp_path: Path):
+    """The shared-file demotion applies to `config:` as to any bare-file citation: two nodes
+    naming one config file both stay in the packet, neither owed live evidence for it."""
+    base = _owning_repo(
+        tmp_path,
+        "---\ntype: environment\ntitle: Dev stack\n---\n# Dev stack\n\n"
+        "- code: `infra/main.go`\n- config: `infra/Pulumi.dev.yaml`\n",
+        "infra/Pulumi.dev.yaml",
+    )
+    (tmp_path / "docs/features/demo/other.md").write_text(
+        "---\ntype: environment\ntitle: Other stack\n---\n# Other stack\n\n"
+        "- code: `infra/other.go`\n- config: `infra/Pulumi.dev.yaml`\n",
+        encoding="utf-8",
+    )
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "second owner")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "infra/Pulumi.dev.yaml").write_text("again\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["infra"]})
+
+    assert len(packet["directNodes"]) == 2
+    assert packet["obligations"], "both nodes stay in the packet"
+    assert all(not item["required"] for item in packet["obligations"]), packet["obligations"]
+
+
 def test_one_path_cited_under_two_owning_keys_is_one_owner(tmp_path: Path):
     """Citing the schema under both `code:` and `openapi:` is one owner, not two — otherwise
     the shared-file demotion would read a single node's double citation as a shared file."""

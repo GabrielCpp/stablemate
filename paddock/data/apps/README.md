@@ -267,13 +267,17 @@ because the way it breaks is an ordinary refactor that touches neither the book 
 
 QA's obligation packet maps a changed path to the node that owns it through the book's **owning
 bullets** — `code:` on any node, plus the typed keys the registry flags as owning because their
-value *is* a file under another name: `openapi:` on a server or endpoint, `file:` on a format
-(`ostler.registry.owning_keys`). A path no owning bullet claims is an `unmapped-change` **error**
-in the packet, which is a block against the trial rather than a signal about the app — so a
-fixture's book has to own every file its stories add or change, including the ones that are
-nobody's source code: a compose file, an emulator config, a seed script, a stack config. The
-`environment` node is where those belong (`claims-api`'s does), and its `code:` key exists for
-exactly this.
+value *is* a file under another name: `openapi:` on a server or endpoint, `file:` on a format,
+`config:` on an environment or a format (`ostler.registry.owning_keys`). A path no owning bullet
+claims is an `unmapped-change` **error** in the packet, which is a block against the trial rather
+than a signal about the app — so a fixture's book has to own every file its stories add or
+change, including the ones that are nobody's source code: a compose file, an emulator config, a
+seed script, a stack config. The `environment` node is where those belong (`claims-api`'s does),
+and its `code:` key exists for exactly this. A *stack config* — `Pulumi.<stack>.yaml` and the
+like — is the one case `code:` cannot reach: the packet drops it from the change surface by
+default, so it goes under `config:` instead (`depot-infra`'s `depot-stack` does), which owns the
+file *and* keeps it a production unit. That is what lets a defect living entirely in the config
+file (depot-infra's D4, the token committed in the clear) reach the node documented against it.
 
 A contract file named by a typed owning bullet is therefore owned by that bullet alone: `- openapi:
 app/api/openapi.yml` both says what the document *is* and maps the path, and the packet's reason

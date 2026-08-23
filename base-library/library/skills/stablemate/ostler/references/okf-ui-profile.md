@@ -153,10 +153,15 @@ value — so `scaffold`'s stubs clear it. **`code:` / `tests:` bullets are code 
 
 **Owning keys.** `qa context` maps a story's changed files onto the book through the bullets whose
 value names a file the node is documented against: `code:` on every type, plus `openapi:` on a
-`server`/`endpoint` and `file:` on a `format` (`registry.owning_keys`, the `BulletKey.owns` flag).
-A changed file no owning bullet claims is an `unmapped-change` error in the packet; a file a typed
-bullet names needs no second `code:` citation, and citing one path under two keys is one owner,
-not two. `tests:` never owns — a test is evidence, not the node's subject.
+`server`/`endpoint`, `file:` on a `format`, and `config:` on an `environment` or a `format`
+(`registry.owning_keys`, the `BulletKey.owns` flag). A changed file no owning bullet claims is an
+`unmapped-change` error in the packet; a file a typed bullet names needs no second `code:`
+citation, and citing one path under two keys is one owner, not two. `tests:` never owns — a test
+is evidence, not the node's subject. `config:` does one thing more: the packet drops stack
+configuration (`Pulumi.<stack>.yaml`, build manifests) from the change surface by default, and a
+path declared under `config:` is a production unit regardless — one bullet per file
+(`- config: pulumi/Pulumi.dev.yaml`), beside the program's `code:`. It is not a grounding key; a
+config file may be gitignored or env-local.
 
 **`verify:` is not one of them.** It declares the *observation* that fulfils the node's
 obligations, as a named check with typed arguments from ostler's vocabulary — `http_status`,

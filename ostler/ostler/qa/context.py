@@ -190,6 +190,20 @@ def build_context(
         for path in current.doc_roots.values()
         if path.resolve().is_relative_to(root)
     }
+    base_nodes, base_edges, base_ends = _serialized_graph(base_graph)
+    head_nodes, head_edges, head_ends = _serialized_graph(head_graph)
+    nodes_by_id = _merge_snapshot_nodes(base_nodes, head_nodes)
+    # A path the book declares under `config:` is a production unit by declaration. The
+    # non-production and generated-unit filters below are heuristics over the path alone —
+    # a `Pulumi.<stack>.yaml` is dropped as stack config, which is the right default for a
+    # file nobody documented — and a node that names the file has overruled the heuristic
+    # for that file: the deploy token committed in the clear lives in exactly such a file,
+    # and the filter is what made it unreachable. The filters themselves stay pure.
+    declared_config = {
+        refs_mod.ref_path(item)
+        for node in nodes_by_id.values()
+        for item in refs_mod.code_refs(node.get("bullets", {}).get("config"))
+    }
     changes = [
         change
         for change in _changed_units(root, base, head, source_roots)
@@ -198,12 +212,14 @@ def build_context(
             change.path == prefix or change.path.startswith(prefix.rstrip("/") + "/")
             for prefix in excluded_doc_roots
         )
-        and not _is_non_production_path(change.path)
-        and not _is_generated_unit(root, change)
+        and (
+            change.path in declared_config
+            or (
+                not _is_non_production_path(change.path)
+                and not _is_generated_unit(root, change)
+            )
+        )
     ]
-    base_nodes, base_edges, base_ends = _serialized_graph(base_graph)
-    head_nodes, head_edges, head_ends = _serialized_graph(head_graph)
-    nodes_by_id = _merge_snapshot_nodes(base_nodes, head_nodes)
 
     direct_reasons: dict[str, list[dict[str, str]]] = {}
     health: list[dict[str, Any]] = []
@@ -236,7 +252,8 @@ def build_context(
         mapped = change.status == "deleted"
         for node_id, node in nodes_by_id.items():
             # Every owning key the node's type declares is read — `code:` everywhere it is
-            # declared, `openapi:` on a server or endpoint, `file:` on a format — so a node
+            # declared, `openapi:` on a server or endpoint, `file:` on a format, `config:` on
+            # an environment or a format — so a node
             # documented against a schema or a fixture file is reached when that file
             # changes, without a second `code:` citation repeating the path. Which keys own
             # is the registry's call (`BulletKey.owns`), not a list kept here.
