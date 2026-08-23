@@ -199,7 +199,7 @@ In `operator_mode="auto"` a block first buys a `resolve-operator` turn
 (`coder/shared/resolution.py`, `power="smart"`, no wall clock). It has two arms:
 
 * **`answered`** — it found the thing that already settles the question and quoted it: a
-  record under `<docs-root>/decisions/` (`shared/paths.py::decisions_dir`), a convention in
+  record under `<docs-root>/docs/decisions/` (`shared/paths.py::decisions_dir`), a convention in
   `AGENTS.md` or an installed skill, an acceptance criterion in the story's own spec. It
   writes the answer into the story's `context.md` exactly as a human would and the flow
   continues to the same `read_operator` state. Answering also *writes* a decision record, so

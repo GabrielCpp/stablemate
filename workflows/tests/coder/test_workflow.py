@@ -1264,8 +1264,11 @@ def test_a_settle_lap_that_blocks_parks_the_story_for_an_operator(
     assert _output(run_env, stamp_story_passed)["stamped"] is True
     # The only thing still dirty is the gate's own file, holding the answer that resolved
     # it — which is exactly the path `is_gate_context` excuses, and why the re-read is
-    # clean rather than parking the story a second time on the note it just wrote.
-    assert _dirty(repo) == "M dirty-tree-operator-context.STORY-1.md", _dirty(repo)
+    # clean rather than parking the story a second time on the note it just wrote. It sits
+    # under `.agents/operator/` because a gate asking about uncommitted work must not add
+    # to it; this fixture has no gitignore, so the file is visible here in a way it is not
+    # in a farrier-installed repo.
+    assert _dirty(repo) == "M .agents/operator/dirty-tree-operator-context.STORY-1.md", _dirty(repo)
 
 
 def test_a_settle_lap_that_claims_success_it_did_not_achieve_buys_a_reading_not_a_pass(

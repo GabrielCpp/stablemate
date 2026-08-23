@@ -92,7 +92,7 @@ those ten minutes anyway; it just spent them after the run had already moved on.
 The auto-resolver a block routes through (`prompts/resolve-operator.md`) **applies
 decisions; it does not make them.** It may write `STATUS: ANSWERED` and let the loop
 continue only when it can quote the thing that already settles the question — a record
-under `<docs-root>/decisions/`, a convention in `AGENTS.md` or an installed skill, an
+under `<docs-root>/docs/decisions/`, a convention in `AGENTS.md` or an installed skill, an
 acceptance criterion in the story's own spec — and it publishes that citation in the
 answer and in the run log. A question with a written answer costs a human nothing to be
 asked and teaches them nothing when they answer it the way the document already says.
@@ -104,7 +104,7 @@ its own QA `covers:`, stamps its own status, or edits its own evidence). "I am n
 an escalation too. The parking half of this rule is untouched — a block it cannot ground
 `Await`s, as many times as it takes, and never ends the run.
 
-The place decisions accumulate is `<docs-root>/decisions/`
+The place decisions accumulate is `<docs-root>/docs/decisions/`
 (`coder/shared/paths.py::decisions_dir`), and answering writes one, so the second run to
 hit the same question reads the ruling instead of parking on it again. Every lane caps the
 *resolver* rather than the block — `MAX_PLAN_BLOCKS`, `MAX_REVIEW_BLOCKS`, `MAX_QA_BLOCKS`
