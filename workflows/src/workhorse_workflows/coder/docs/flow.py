@@ -209,7 +209,7 @@ class Docs(Workflow):
         resolved to, so the parent can thread it into the next stage.
         """
         self.reset_session(self._chain)
-        result.session_id = self._require_engine().session_id(self._story_chain())
+        result.session_id = self.chain_session(self._story_chain())
         return Done(result)
 
     #: The two budgets, split because the grounding gate and the reviewer fail for

@@ -265,7 +265,7 @@ class Dev(Workflow):
         """
         for worklist in ("block-repair", "path-repair"):
             self.reset_session(self._chain(worklist))
-        result.session_id = self._require_engine().session_id(self._story_chain())
+        result.session_id = self.chain_session(self._story_chain())
         result.session_turns = session_turns
         return Done(result)
 

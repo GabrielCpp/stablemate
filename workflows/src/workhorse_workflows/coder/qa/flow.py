@@ -528,7 +528,7 @@ class Qa(Workflow):
         conversation about a plan and a diff that have both moved on since.
         """
         self._reset_chains()
-        result.session_id = self._require_engine().session_id(self._story_chain())
+        result.session_id = self.chain_session(self._story_chain())
         return Done(result)
 
     def _first_verdict_ends(self, loop: QaLoop) -> Done:
