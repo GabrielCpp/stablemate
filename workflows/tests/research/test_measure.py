@@ -271,3 +271,61 @@ def test_an_overrun_past_a_fresh_threshold_goes_to_triage_once(tmp_path):
 
     again = measure.watch_job(LOG, job_dir=str(directory), seen_multiple=first.overrun_multiple)
     assert again.action == "wait"
+
+
+def test_a_result_written_in_the_experiment_s_cwd_is_still_the_measurement(tmp_path):
+    """The runner executes the argv verbatim, so a relative `--out` lands in the
+    declared `cwd` and never in the job directory — which the command is not told
+    about. Demanding the job directory made the contract unsatisfiable, and handed the
+    engineer "no result.json was written" about a file sitting on disk."""
+    directory = _job_dir(tmp_path)
+    cwd = tmp_path / "repo" / "experiments"
+    cwd.mkdir(parents=True)
+    _finished(directory)
+    _write(cwd, "result.json", {
+        "status": "ok", "metrics": {"accuracy": 0.5}, "seeds": [0],
+        "controls": ["scratch"], "n_completed": 10, "n_planned": 10,
+    })
+
+    collected = measure.collect_job(LOG, job_dir=str(directory), cwd=str(cwd))
+
+    assert collected.outcome == "ok"
+    assert collected.metrics == {"accuracy": 0.5}
+    # And it is filed beside `runner.json`, so the pair the lead judges is in one place.
+    assert json.loads((directory / "result.json").read_text())["n_completed"] == 10
+
+
+def test_a_result_in_the_job_dir_wins_over_a_leftover_in_the_cwd(tmp_path):
+    directory = _job_dir(tmp_path)
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    _finished(directory)
+    _write(directory, "result.json", {
+        "status": "ok", "metrics": {"accuracy": 0.9}, "seeds": [0],
+        "controls": ["scratch"], "n_completed": 10, "n_planned": 10,
+    })
+    _write(cwd, "result.json", {"status": "ok", "metrics": {"accuracy": 0.1}})
+
+    collected = measure.collect_job(LOG, job_dir=str(directory), cwd=str(cwd))
+
+    assert collected.metrics == {"accuracy": 0.9}
+
+
+def test_a_resubmission_clears_the_previous_attempt_s_result_in_the_cwd(tmp_path):
+    """The cwd is a repo directory reused by every job and cleared by nobody. Left
+    there, the last attempt's result collects as this attempt's."""
+    directory = _job_dir(tmp_path)
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    _write(cwd, "result.json", {"status": "ok", "metrics": {"accuracy": 0.1}})
+
+    measure.submit_job(
+        LOG,
+        job_dir=str(directory),
+        command=["true"],
+        cwd=str(cwd),
+        estimate_s=1.0,
+        probe_units_timed=1,
+    )
+
+    assert not (cwd / "result.json").exists()

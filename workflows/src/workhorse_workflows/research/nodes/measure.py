@@ -229,6 +229,9 @@ def submit_job(
         # deleting its artifacts underneath it would be deleting the measurement.
         for stale in (result_file or "result.json", job.RUNNER_NAME):
             (directory / stale).unlink(missing_ok=True)
+        # And the copy in the experiment's own cwd, which is a repo directory reused by
+        # every job: left there, last attempt's result is read as this attempt's.
+        result_path(directory, cwd, result_file).unlink(missing_ok=True)
     manifest = _manifest(
         command=command,
         cwd=cwd,
@@ -294,6 +297,7 @@ def dry_run(
     directory = _prepare(job_dir)
     for stale in (result_file or "result.json", job.RUNNER_NAME, job.HANDLE_NAME):
         Path(directory / stale).unlink(missing_ok=True)
+    result_path(directory, cwd, result_file).unlink(missing_ok=True)
     manifest = _manifest(
         command=command,
         cwd=cwd,
@@ -327,7 +331,7 @@ def dry_run(
 
     runner = job.collect(directory)
     stderr_tail = _tail(directory / job.STDERR_NAME)
-    produced = (directory / (result_file or "result.json")).exists()
+    produced = result_path(directory, cwd, result_file).exists()
     if runner.exit_code == 0 and produced:
         logger.info("n=1 rehearsal passed through the runner", extra={"activity": True})
         return DryRun(ok=True, exit_code=0)
@@ -395,6 +399,48 @@ def watch_job(logger: logging.Logger, job_dir: str, seen_multiple: float = 0.0) 
 # ── collecting, and classifying ─────────────────────────────────────────────
 
 
+def result_path(job_dir: str | Path, cwd: str, result_file: str = "") -> Path:
+    """Where the experiment's `result.json` actually is.
+
+    Two directories have a claim on it and only one of them is reachable from inside
+    the experiment. The job directory is where the *supervisor* writes, and where a
+    reader naturally looks — `runner.json` is there, and an artifact belongs beside
+    the record of what it cost. But the experiment runs in the `cwd` the engineer
+    declared, with an argv the runner does not rewrite, so a relative `--out` lands
+    there and nowhere else; the job directory is not a path the command was ever told.
+
+    Demanding the job directory anyway makes the contract unsatisfiable — the
+    rehearsal fails, the engineer is handed "no result.json was written" about a file
+    it can see on disk, and a repair budget is spent on an instruction no repair can
+    follow. So both are accepted, job directory first, and `collect` files the winner
+    beside `runner.json` afterwards.
+    """
+    name = result_file or "result.json"
+    in_job = Path(job_dir) / name
+    if in_job.exists() or not cwd:
+        return in_job
+    beside = Path(cwd) / name
+    return beside if beside.exists() else in_job
+
+
+def _archive_result(
+    logger: logging.Logger, found: Path, job_dir: Path, result_file: str = ""
+) -> None:
+    """Copy a result written in the experiment's cwd into the job directory.
+
+    So the pair the lead judges — what it found, what it cost — sits in one place, and
+    so the next run of this gate cannot read the last one's file: the repo cwd is
+    reused across jobs and is not cleared before launch, while the job directory is.
+    """
+    target = job_dir / (result_file or "result.json")
+    if found == target or not found.exists():
+        return
+    try:
+        target.write_bytes(found.read_bytes())
+    except OSError as exc:  # the measurement is still valid; only the copy failed
+        logger.warning("could not file %s beside %s: %s", found, target, exc)
+
+
 def _read_result(path: Path) -> tuple[dict | None, str]:
     try:
         raw = path.read_text(encoding="utf-8")
@@ -417,6 +463,7 @@ def collect_job(
     logger: logging.Logger,
     job_dir: str,
     repo_dir: str = "",
+    cwd: str = "",
     result_file: str = "result.json",
     memory_mb: int = 0,
 ) -> Collected:
@@ -439,7 +486,9 @@ def collect_job(
     directory = Path(job_dir)
     runner = job.collect(directory)
     stderr_tail = _tail(directory / job.STDERR_NAME)
-    parsed, why = _read_result(directory / (result_file or "result.json"))
+    found = result_path(directory, cwd, result_file)
+    _archive_result(logger, found, directory, result_file)
+    parsed, why = _read_result(found)
     locus = classify_fault(stderr_tail, repo_dir)
 
     # What the *supervisor* recorded, which every outcome below carries unchanged —

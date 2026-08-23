@@ -801,6 +801,7 @@ class Research(Workflow):
             collect_job,
             job_dir=job_dir,
             repo_dir=self.ctx.repo_dir,
+            cwd=build.cwd or self.ctx.repo_dir,
             result_file=build.result_file,
             memory_mb=design.memory_mb,
         )

@@ -50,8 +50,12 @@ fails there.
 
 ## The result contract
 
-The command must write `{{ result_file | default('result.json') }}` in the job's working
-directory, at the end, atomically enough that a reader never sees half of it. Its core
+The command must write `{{ result_file | default('result.json') }}` in the `cwd` you
+declare below — a relative `--out` lands there, because the runner executes your argv
+verbatim and never tells the command where the job directory is. An absolute path into
+some third directory is the one thing that does not work: the collector looks in the job
+directory and in your `cwd`, and nowhere else. Write it at the end, atomically enough
+that a reader never sees half of it. Its core
 is fixed — a deterministic classifier reads it with no model call, so a missing key is a
 crash, not a nuance:
 
