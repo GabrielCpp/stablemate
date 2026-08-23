@@ -7,7 +7,7 @@ ran is not the plan that was reviewed.
 
 So the container keeps `localhost` meaning what the plan thinks it means, and the map
 from a loopback port to a real upstream — a compose service name, or the host gateway —
-is configuration the *repo* owns (`qa-stack.yml`), not something a scenario can widen.
+is configuration the *repo* owns, not something a scenario can widen.
 A port that is not in the map is not reachable, which is the whole permission model.
 
 Stdlib only, and deliberately: this runs in an image that must not need a package index.

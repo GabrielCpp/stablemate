@@ -510,16 +510,21 @@ def test_build_and_config_files_are_not_production_units(tmp_path: Path):
 
 
 def test_the_toolchains_own_footprint_is_not_a_production_unit(tmp_path: Path):
-    """farrier writes `agents.yml` and `.agents/`; the coder workflow's QA node writes
-    `qa-stack.yml`; the QA stack's Firebase emulator drops `*-debug.log` in the repo root. All
-    of them land in a story's diff, none of them is something a feature Concept can own.
+    """farrier writes `agents.yml` and `.agents/`; a coder run historically left a
+    `qa-stack.yml` beside them; the QA stack's Firebase emulator drops `*-debug.log` in the
+    repo root. All of them land in a story's diff, none of them is something a feature Concept
+    can own.
 
     Classified as production they fail the ownership gate, and the only move left to an agent
     that must clear it is to invent a contract for them in the product's own feature docs. A
     greenfield run did that — a `#tooling` node in `docs/features/api/http/api.md` owning
     `qa-stack.yml`, `agents.yml` and `.agents/agents.mk` — which cleared the error and left a
     permanent `missing-verification` warning behind, since a stack manifest has no test to
-    ground a verify reference on. The gate has to exclude them so it never asks."""
+    ground a verify reference on. The gate has to exclude them so it never asks.
+
+    `qa-stack.yml` stays on the list though nothing writes one any more — the declaration
+    moved into the book's `runbook` node (`ostler/docs/okf-runbook.md`) — because a repo
+    carrying the old file must not start failing the gate on it."""
     from ostler.qa.context import _is_non_production_path as np
 
     for path in (
