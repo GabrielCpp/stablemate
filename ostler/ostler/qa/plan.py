@@ -700,16 +700,6 @@ def check_runtime_requirements(
                 and shutil.which("Xvfb") is None
             ):
                 problems.append(f"target '{name}' requires Xvfb for window recording")
-            # The recorder films a display it starts itself rather than whatever `$DISPLAY`
-            # names, so Xvfb is a runtime requirement and not an optional fallback. Caught
-            # here so the run is refused up front instead of a scenario in.
-            if (
-                required
-                and mode == "window"
-                and not recording.get("display")
-                and shutil.which("Xvfb") is None
-            ):
-                problems.append(f"target '{name}' requires Xvfb for window recording")
             if required and shutil.which("ffprobe") is None:
                 problems.append(f"target '{name}' requires ffprobe to validate recording metadata")
         elif driver == "maestro":
