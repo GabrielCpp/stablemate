@@ -161,6 +161,51 @@ def test_json_path_equals_compares_a_json_scalar_by_type() -> None:
     assert verify({"id": "abc"}, {"path": "id", "equals": "abc"})[0] is True
 
 
+LEDGER = {
+    "people": [
+        {"who": "ana", "total_cents": 4200, "trips": [1, 2]},
+        {"who": "bo", "total_cents": 1300, "trips": [3]},
+        {"who": "cy", "total_cents": 1300, "trips": []},
+    ]
+}
+
+
+def test_a_filter_segment_selects_the_entry_by_what_it_holds_not_where_it_sits() -> None:
+    """`people[?(@.who=='ana')].total_cents` is a claim about ana, not about entry 0 — the
+    order the product writes its list in is not what the book claimed."""
+    verify = harness.VERIFIERS["json_path"]
+    args = {"path": "people[?(@.who=='ana')].total_cents", "equals": 4200}
+    assert verify(LEDGER, args)[0] is True
+    shuffled = {"people": list(reversed(LEDGER["people"]))}
+    assert verify(shuffled, args)[0] is True
+    ok, actual, expected = verify(LEDGER, {"path": "people[?(@.who=='zed')].total_cents", "equals": 1})
+    assert ok is False and actual == {"present": False}
+    assert verify(LEDGER, {"path": "people[?(@.who=='zed')]", "absent": True})[0] is True
+    assert verify(LEDGER, {"path": "people[?(@.who=='bo')]", "absent": True})[0] is False
+    assert verify(LEDGER, {"path": "people[?(@.total_cents==1300)].who", "matches": "^bo$"})[0] is False
+
+
+def test_a_selector_that_picks_out_two_values_is_an_ambiguous_claim_not_a_pass() -> None:
+    """Two selections and one `equals=` is a book that failed to single the entry out; the
+    verdict is red and reports what was selected so the author sees the ambiguity."""
+    verify = harness.VERIFIERS["json_path"]
+    ok, actual, expected = verify(LEDGER, {"path": "people[?(@.total_cents==1300)].who", "equals": "bo"})
+    assert ok is False
+    assert actual == {"selected": ["bo", "cy"]}
+    assert expected == {"selected": "exactly one"}
+    ok, actual, _ = verify(LEDGER, {"path": "people[*].who", "equals": "ana"})
+    assert ok is False and actual == {"selected": ["ana", "bo", "cy"]}
+
+
+def test_count_counts_what_a_wildcard_or_filter_selects() -> None:
+    count = harness.VERIFIERS["count"]
+    assert count(LEDGER, {"subject": "people[*]", "equals": 3})[0] is True
+    assert count(LEDGER, {"subject": "people[*].trips[*]", "equals": 3})[0] is True
+    assert count(LEDGER, {"subject": "people[?(@.total_cents==1300)]", "equals": 2})[0] is True
+    ok, actual, _ = count(LEDGER, {"subject": "people[?(@.who=='ana')].trips[*]", "equals": 2})
+    assert ok is True and actual == 2
+
+
 def test_json_path_without_a_comparison_is_red_not_green() -> None:
     """`ostler.checks` refuses this call where it is declared. Should one reach the harness
     anyway, an assertion that cannot fail must not report a pass."""

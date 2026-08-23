@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ostler.qa.harness_host import load_harness_module
 from ostler.qa.manifest import RunManifest
 
 QA_DIRNAME = "qa"
@@ -836,29 +837,34 @@ def _expand(
 
 
 def _extract_path(data: Any, path: str) -> str | None:
-    """Extract a value using a simple ``$.<key>`` or ``$.<key>.<key>`` path.
+    """Extract a capture's value by a document path, as the harness's `resolve_path` walks it.
 
     Named for what it does rather than for the tool it replaced. `jq` was never an ostler
     dependency — every `jq` expression in the corpus came from the retired YAML engine's
     shell heredocs — but the lesson it taught outlives it and is the reason this returns
     `None` rather than an empty string: a missing key has to be distinguishable from a key
     holding nothing, or an assertion agrees with a broken lookup and with a working one.
+
+    One grammar for every reader of a path: a capture may select with `[*]` or
+    `[?(@.key==value)]` exactly as a `json_path` check does, and a selector that picks out one
+    value captures that value rather than a one-element list.
     """
     if data is None:
         return None
-    path = path.lstrip("$").lstrip(".")
-    parts = path.split(".")
-    cur: Any = data
-    for part in parts:
-        if not part:
-            continue
-        if isinstance(cur, dict):
-            cur = cur.get(part)
-        else:
-            return None
-        if cur is None:
-            return None
-    return str(cur) if cur is not None else None
+    try:
+        resolved, value = _harness().resolve_path(data, path)
+    except ValueError:
+        return None
+    if not resolved or value is None:
+        return None
+    if _harness()._is_projection(path) and len(value) == 1:
+        value = value[0]
+    return str(value) if value is not None else None
+
+
+def _harness() -> Any:
+    """The harness module, loaded on first use — the path grammar lives there, once."""
+    return load_harness_module("ostler_qa")
 
 
 def _adoptable(out_file: Path, started_wall: float) -> bool:

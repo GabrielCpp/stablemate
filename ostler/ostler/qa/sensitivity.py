@@ -32,7 +32,8 @@ from ostler.model import Graph
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.harness_host import load_harness_module
 
-_VERIFIERS = load_harness_module("ostler_qa").VERIFIERS
+_harness = load_harness_module("ostler_qa")
+_VERIFIERS = _harness.VERIFIERS
 
 #: A value nothing in a book asks for, used where a mutation needs "something else".
 _OTHER = "∅ not what was claimed"
@@ -108,11 +109,29 @@ class ClaimReport:
 
 
 def _set_path(document: dict[str, Any], path: str, value: Any) -> dict[str, Any]:
-    """A document in which `path` resolves to `value`, built the way `_resolve_path` walks."""
+    """A document in which `path` resolves to `value`, built the way `resolve_path` walks.
+
+    A selector step is witnessed by the smallest document that satisfies it: `[*]` by a
+    one-element list, `[?(@.key==v)]` by a one-element list whose element carries `key: v`
+    beside whatever the rest of the path puts there.
+    """
     steps = _steps(path)
     cursor: Any = document
     for step, following in zip(steps, [*steps[1:], None], strict=True):
-        nxt: Any = [] if isinstance(following, int) else {}
+        nxt: Any = [] if isinstance(following, int | _harness._Wild | _harness.Filter) else {}
+        if isinstance(step, _harness._Wild | _harness.Filter):
+            # One element is the smallest list a selector is satisfied by; a filter's element
+            # carries the key it selects on beside whatever the rest of the path puts there.
+            if not cursor:
+                cursor.append(None)
+            if following is None:
+                cursor[0] = value if isinstance(step, _harness._Wild) else (value if isinstance(value, dict) else {})
+            elif cursor[0] is None:
+                cursor[0] = nxt
+            if isinstance(step, _harness.Filter) and isinstance(cursor[0], dict):
+                _set_path(cursor[0], step.key, step.value)
+            cursor = cursor[0]
+            continue
         if isinstance(step, int):
             while len(cursor) <= step:
                 cursor.append(None)
@@ -124,14 +143,27 @@ def _set_path(document: dict[str, Any], path: str, value: Any) -> dict[str, Any]
     return document
 
 
-def _steps(path: str) -> list[str | int]:
-    steps: list[str | int] = []
-    for part in path.lstrip("$").lstrip(".").split("."):
-        head, *indexes = part.replace("]", "").split("[")
-        if head:
-            steps.append(head)
-        steps += [int(index) for index in indexes if index.isdigit()]
-    return steps
+def _steps(path: str) -> list[Any]:
+    return _harness.path_steps(path)
+
+
+def _collection(subject: str, size: int) -> dict[str, Any]:
+    """A document in which `count(subject=)` finds `size` things.
+
+    A subject naming a collection holds a list of that many; a subject ending in a selector
+    (`people[*].trips[*]`, `people[?(@.active==true)]`) counts what the selector selects, so
+    the list sits where the selector reads it and each element satisfies it.
+    """
+    items: list[Any] = [{"i": i} for i in range(size)]
+    steps = _steps(subject)
+    last = steps[-1] if steps else None
+    if isinstance(last, _harness._Wild | _harness.Filter):
+        marker = "[*]" if isinstance(last, _harness._Wild) else "[?("
+        parent = subject[: subject.rfind(marker)]
+        if isinstance(last, _harness.Filter):
+            items = [_set_path(item, last.key, last.value) for item in items]
+        return _set_path({}, parent, items)
+    return _set_path({}, subject, items)
 
 
 def _drop_path(document: Any, path: str) -> Any:
@@ -139,9 +171,11 @@ def _drop_path(document: Any, path: str) -> Any:
     steps = _steps(path)
     cursor = document
     for step in steps[:-1]:
-        cursor = cursor[step] if not isinstance(step, int) else cursor[step]
+        cursor = cursor[0] if isinstance(step, _harness._Wild | _harness.Filter) else cursor[step]
     last = steps[-1]
-    if isinstance(last, int):
+    if isinstance(last, _harness._Wild | _harness.Filter):
+        cursor.clear()
+    elif isinstance(last, int):
         del cursor[last]
     else:
         cursor.pop(last, None)
@@ -153,7 +187,10 @@ def _int(value: Any) -> int:
     return int(str(value))
 
 
-_PATHLIKE = re.compile(r"^\$?\.?[A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*|\[\d+\])*$")
+_PATHLIKE = re.compile(
+    r"^\$?\.?[A-Za-z_][\w-]*"
+    r"(?:\.[A-Za-z_][\w-]*|\[\d+\]|\[\*\]|\[\?\(@\.[^=\s)]+\s*==\s*[^)]+\)\])*$"
+)
 
 
 def _matching(pattern: str) -> str | None:
@@ -323,11 +360,10 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
         want = _int(args["equals"])
         subject = str(args["subject"])
         if _PATHLIKE.match(subject):
-            witness = _set_path({}, subject, [{"i": i} for i in range(want)])
             return (
-                witness,
+                _collection(subject, want),
                 [
-                    ("the collection holds one more", _set_path({}, subject, [{"i": i} for i in range(want + 1)])),
+                    ("the collection holds one more", _collection(subject, want + 1)),
                     ("the collection is not in the answer", {}),
                 ],
                 "",

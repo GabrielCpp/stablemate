@@ -27,6 +27,11 @@ def _trial(text: str) -> sensitivity.Trial:
         'json_path(path="policy.status", matches="Draft|Active")',
         'json_path(path="errors.premium", absent=false)',
         'json_path(path="detail.token", absent=true)',
+        """json_path(path="people[?(@.who=='ana')].total_cents", equals=4200)""",
+        'json_path(path="people[*].id", absent=true)',
+        'json_path(path="items[*].kind", matches="^trip$")',
+        'count(subject="people[*].trips[*]", equals=3)',
+        'omits(subject="people[?(@.who==\'ana\')].note", text="secret")',
         'unchanged(subject="ledger", except_fields=["updated_at"])',
         'keys_unchanged(subject="ledger")',
         'count(subject="policies", equals=3)',
@@ -45,6 +50,17 @@ def test_every_check_in_the_vocabulary_has_a_witness_and_a_defect(call: str) -> 
     trial = _trial(call)
     assert trial.witnessed, trial.note
     assert trial.sensitive, f"no mutation of {call} went red"
+
+
+def test_a_filter_witness_is_the_smallest_document_the_selector_is_satisfied_by() -> None:
+    """The witness carries the key the filter selects on beside the value the claim reads, so
+    a mutation of that value is noticed through the selector and not around it."""
+    path = "people[?(@.who=='ana')].total_cents"
+    assert sensitivity._set_path({}, path, 4200) == {"people": [{"who": "ana", "total_cents": 4200}]}
+    assert sensitivity._collection("people[*].trips[*]", 2) == {"people": [{"trips": [{"i": 0}, {"i": 1}]}]}
+    trial = _trial(f'json_path(path="{path}", equals=4200)')
+    assert trial.witnessed
+    assert trial.flipped == ("the field holds something else", "the field is not there at all")
 
 
 def test_a_presence_assertion_is_not_asked_to_notice_a_changed_value() -> None:

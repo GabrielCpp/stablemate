@@ -52,6 +52,27 @@ def test_a_path_that_is_not_there_is_missing_rather_than_a_raise(path: str) -> N
     assert field(BODY, path) is MISSING
 
 
+LEDGER = {"people": [{"who": "ana", "n": 1}, {"who": "bo", "n": 2}, {"who": "cy", "n": 2}]}
+
+
+def test_a_selector_that_picks_out_one_value_reads_that_value() -> None:
+    """A claim about *the entry whose who is ana* compares against ana's value, not a
+    one-element list that equals nothing the plan would write."""
+    assert field(LEDGER, "people[?(@.who=='ana')].n") == 1
+    assert field(LEDGER, "$.people[?(@.who=='bo')]") == {"who": "bo", "n": 2}
+
+
+def test_a_selector_that_picks_out_several_values_reads_the_list() -> None:
+    assert field(LEDGER, "people[*].who") == ["ana", "bo", "cy"]
+    assert field(LEDGER, "people[?(@.n==2)].who") == ["bo", "cy"]
+
+
+def test_a_selector_that_picks_out_nothing_is_missing() -> None:
+    assert field(LEDGER, "people[?(@.who=='zed')].n") is MISSING
+    assert field(LEDGER, "people[?(@.who=='zed')]", default=None) is None
+    assert field(LEDGER, "people[?(@.who=='ana'", default="") == ""  # never raises, even unclosed
+
+
 def test_a_caller_may_name_its_own_default() -> None:
     assert field(BODY, "claim.holderUid", default="") == ""
 

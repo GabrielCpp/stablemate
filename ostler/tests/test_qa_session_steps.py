@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 
 from ostler.qa.run import cmd_start, cmd_step
-from ostler.qa.session import QaSession, scratch_dirname
+from ostler.qa.session import QaSession, _extract_path, scratch_dirname
 
 
 def _spec(tmp_path: Path) -> Path:
@@ -262,3 +262,17 @@ def test_a_trailing_write_out_code_still_beats_a_body_that_looks_like_headers(
 
     assert outcome.ok, outcome.message
     assert outcome.data["http_status"] == 200
+
+
+def test_a_capture_path_speaks_the_harness_grammar() -> None:
+    """One path language: a `captures:` path selects with `[*]` and `[?(@.k==v)]` exactly as a
+    `json_path` check does, a single selection is captured as the value, and a missing path is
+    `None` rather than an empty string."""
+    data = {"items": [{"id": "a", "n": 1}, {"id": "b", "n": 2}], "meta": {"total": 0}}
+    assert _extract_path(data, "$.meta.total") == "0"
+    assert _extract_path(data, "$.items[?(@.n==2)].id") == "b"
+    assert _extract_path(data, "$.items[1].id") == "b"
+    assert _extract_path(data, "$.items[*].id") == "['a', 'b']"
+    assert _extract_path(data, "$.items[?(@.n==9)].id") is None
+    assert _extract_path(data, "$.meta.missing") is None
+    assert _extract_path(None, "$.x") is None

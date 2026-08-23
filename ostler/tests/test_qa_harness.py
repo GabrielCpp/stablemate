@@ -552,6 +552,39 @@ def test_a_dollar_rooted_json_path_resolves_like_the_bare_one(tmp_path: Path) ->
     assert [record["passed"] for record in asserted] == [True, True, True, True]
 
 
+FILTER_PLAN = '''\
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-06-import", story="06-import")
+
+api = target("api")
+
+DOCUMENT = {"items": [{"id": "def"}, {"id": "ghi", "n": 2}]}
+
+
+@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#import:does:1"])
+def a_filter_selects_by_what_an_entry_holds(qa: Qa) -> None:
+    """A filter segment names the entry by a field it holds, not by its position."""
+    qa.verify("json_path", DOCUMENT, path="$.items[?(@.id=='ghi')].n", equals=2)
+    qa.verify("json_path", DOCUMENT, path="items[*].id", matches="ghi")
+    qa.check("read through a selector", qa.field(DOCUMENT, "items[?(@.n==2)].id") == "ghi")
+'''
+
+
+def test_a_filter_segment_selects_an_entry_by_a_field_it_holds(tmp_path: Path) -> None:
+    """`items[?(@.id=='ghi')].n` is a claim about the entry whose id is ghi — the order the
+    product writes its list in is not what the book claimed. `[*]` with a value claim is
+    refused as ambiguous unless it selects exactly one; `matches` against two ids is red too."""
+    code, records = _run(
+        _write(tmp_path, FILTER_PLAN), "a-filter-selects-by-what-an-entry-holds", tmp_path
+    )
+
+    assert code == 1
+    asserted = _asserts(records)
+    assert [record["passed"] for record in asserted] == [True, False, True]
+    assert asserted[1]["actual"] == {"selected": ["def", "ghi"]}
+
+
 def test_a_browser_problem_is_a_failing_assertion_bound_to_the_scenario_covers(
     tmp_path: Path,
 ) -> None:

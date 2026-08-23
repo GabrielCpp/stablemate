@@ -200,6 +200,18 @@ def test_json_path_equals_is_a_json_scalar(text: str, value: object) -> None:
     assert isinstance(bound, checks.CheckCall)
 
 
+def test_a_filter_segment_survives_the_declaration_gate_and_the_canonical_rendering() -> None:
+    """The quote and the `==` inside a filter live inside the quoted `path=` string, which the
+    `ast`-based parser reads as one literal — and the canonical text reads back as itself."""
+    text = """json_path(path="$.people[?(@.who=='ana')].total_cents", equals=4200)"""
+    declared = checks.parse_check(text)
+    assert isinstance(declared, checks.CheckCall), declared
+    assert declared.args["path"] == "people[?(@.who=='ana')].total_cents"
+    assert checks.parse_check(declared.text()) == declared
+    wild = checks.parse_check('count(subject="people[*].trips[*]", equals=3)')
+    assert isinstance(wild, checks.CheckCall), wild
+
+
 def test_a_path_argument_is_the_same_call_with_or_without_the_root_token() -> None:
     """`$` is not a key — every resolver in the harness drops it before walking. Identity
     between a declared check and an invoked one is textual, so leaving the sigil in would make

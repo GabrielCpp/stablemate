@@ -674,30 +674,161 @@ def _paths(value: Any, prefix: str = "") -> dict[str, Any]:
     return {prefix: value}
 
 
-def _resolve_path(document: Any, path: str) -> tuple[bool, Any]:
-    """Walk a dotted/indexed path. Returns whether it resolved, and to what.
+class _Wild:
+    """The `[*]` segment: every element of a list, every value of an object."""
 
-    A leading `$` is the JSONPath root token, not a key: `$.item.id` and `item.id` name the
-    same field. `ostler.qa.session._extract_path` has always stripped it, and the vocabulary's
-    own examples are written with it — without this the two resolvers disagree and a `$`-rooted
-    `json_path` fails as *absent* against a document that holds the value.
+    def __repr__(self) -> str:
+        return "[*]"
+
+
+WILD = _Wild()
+
+
+@dataclass(frozen=True)
+class Filter:
+    """The `[?(@.key==value)]` segment: the elements whose `key` holds `value`.
+
+    `key` may itself be dotted (`@.meta.who`); `value` is a JSON scalar compared the way
+    `json_path(equals=)` compares — `'ana'` is a string, `3` a number, `true` a bool.
     """
-    segments = re.findall(r"[^.\[\]]+", path)
-    if segments and segments[0] == "$":
-        segments = segments[1:]
-    current = document
-    for segment in segments:
-        if isinstance(current, dict):
-            if segment not in current:
-                return False, None
-            current = current[segment]
-        elif isinstance(current, (list, tuple)):
-            if not segment.isdigit() or int(segment) >= len(current):
-                return False, None
-            current = current[int(segment)]
+
+    key: str
+    value: Any
+
+    def __repr__(self) -> str:
+        return f"[?(@.{self.key}=={json.dumps(self.value)})]"
+
+
+PathStep = str | int | _Wild | Filter
+
+_FILTER = re.compile(
+    r"\[\?\(@\.(?P<key>[^=\s)]+)\s*==\s*"
+    r"(?P<value>'[^']*'|\"[^\"]*\"|-?\d+(?:\.\d+)?|true|false|null)\s*\)\]"
+)
+
+
+def path_steps(path: str) -> list[PathStep]:
+    """The segments of a path, in the one grammar every reader of a document path shares.
+
+    `a.b`, `a[0]`, `a.0` name keys and indices as they always did (a dotted all-digit
+    segment indexes a list when it meets one). Two segments select rather than name:
+    `[*]` takes every element, `[?(@.key==value)]` takes the elements whose `key` holds
+    `value`. Either turns the walk into a *projection* — a list of selections — that the
+    segments after it map over. A leading `$` is the JSONPath root token, not a key.
+    """
+    steps: list[PathStep] = []
+    text = path.strip()
+    if text.startswith("$"):
+        text = text[1:]
+    pos = 0
+    while pos < len(text):
+        char = text[pos]
+        if char == ".":
+            pos += 1
+            continue
+        if char == "[":
+            if text.startswith("[*]", pos):
+                steps.append(WILD)
+                pos += 3
+                continue
+            hit = _FILTER.match(text, pos)
+            if hit is not None:
+                steps.append(Filter(hit.group("key"), json.loads(hit.group("value").replace("'", '"'))))
+                pos = hit.end()
+                continue
+            close = text.find("]", pos)
+            if close == -1:
+                raise ValueError(f"json path {path!r}: '[' at {pos} is never closed")
+            inner = text[pos + 1 : close]
+            steps.append(int(inner) if inner.isdigit() else inner)
+            pos = close + 1
+            continue
+        nxt = len(text)
+        for stop in (".", "["):
+            found = text.find(stop, pos)
+            if found != -1:
+                nxt = min(nxt, found)
+        steps.append(text[pos:nxt])
+        pos = nxt
+    return steps
+
+
+def _step_into(current: Any, step: str | int) -> tuple[bool, Any]:
+    if isinstance(current, Mapping):
+        key = str(step) if isinstance(step, int) else step
+        return (True, current[key]) if key in current else (False, None)
+    if isinstance(current, (list, tuple)):
+        if isinstance(step, int):
+            index = step
+        elif step.isdigit():
+            index = int(step)
         else:
             return False, None
+        return (True, current[index]) if index < len(current) else (False, None)
+    return False, None
+
+
+def _selected(current: Any, step: _Wild | Filter) -> list[Any]:
+    if isinstance(current, Mapping):
+        candidates = list(current.values())
+    elif isinstance(current, (list, tuple)):
+        candidates = list(current)
+    else:
+        return []
+    if isinstance(step, _Wild):
+        return candidates
+    chosen = []
+    for item in candidates:
+        ok, held = resolve_path(item, step.key)
+        if ok and _scalar_equal(held, step.value):
+            chosen.append(item)
+    return chosen
+
+
+def resolve_path(document: Any, path: str) -> tuple[bool, Any]:
+    """Walk `path` into `document`: whether it resolved, and to what.
+
+    A path of keys and indices resolves to the one value it names, or not at all. A path with
+    a `[*]` or a `[?(...)]` segment resolves to a **list of selections** — possibly empty, and
+    `resolved` is then whether anything was selected — with the segments after the selector
+    applied to every selection (those it does not resolve in drop out). `a[*].id` is every id;
+    `people[?(@.who=='ana')].total_cents` is a one-element list when exactly one person is ana,
+    which is what a check against it wants to be told.
+    """
+    steps = path_steps(path)
+    current: Any = document
+    projected = False
+    for step in steps:
+        if isinstance(step, (_Wild, Filter)):
+            if projected:
+                current = [item for element in current for item in _selected(element, step)]
+            else:
+                current = _selected(current, step)
+                projected = True
+            continue
+        if projected:
+            kept = []
+            for element in current:
+                ok, value = _step_into(element, step)
+                if ok:
+                    kept.append(value)
+            current = kept
+            continue
+        ok, current = _step_into(current, step)
+        if not ok:
+            return False, None
+    if projected:
+        return bool(current), current
     return True, current
+
+
+def _resolve_path(document: Any, path: str) -> tuple[bool, Any]:
+    """`resolve_path`, under the name the verifiers grew up calling it."""
+    return resolve_path(document, path)
+
+
+def _is_projection(path: str) -> bool:
+    return any(isinstance(step, (_Wild, Filter)) for step in path_steps(path))
 
 
 def _verify_http_status(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
@@ -752,6 +883,13 @@ def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any
         return resolved is not want_absent, {"present": resolved}, {"present": not want_absent}
     if not resolved:
         return False, {"present": False}, {"path": args["path"]}
+    if _is_projection(args["path"]):
+        # A selector must single something out before a value claim is made about it. Two
+        # selections and one claim is an ambiguous book, not a half-pass — and it is reported
+        # as what was selected, so the author sees the ambiguity rather than a value mismatch.
+        if len(value) != 1:
+            return False, {"selected": value}, {"selected": "exactly one"}
+        value = value[0]
     if "equals" in args:
         return _scalar_equal(value, args["equals"]), value, args["equals"]
     if "matches" in args:
@@ -1203,27 +1341,28 @@ class Qa:
         come back `unproven` instead of red. A whole seeded field-casing defect went
         uncaught that way.
 
-        So walk the path instead. `path` is dotted; a segment that is all digits indexes a
-        sequence. Anything missing, of the wrong shape, or out of range yields `default`,
-        which is `MISSING` unless the caller names another — and `MISSING` is a value every
-        way of asking about it answers negatively, so it fails the check it is compared in
-        loudly, in the right place, with the rest of the scenario still to run.
+        So walk the path instead. `path` is the harness's one path grammar: dotted keys, a
+        segment that is all digits indexing a sequence, and the two selectors `[*]` and
+        `[?(@.key==value)]`. A selector yields a list of selections — except that exactly one
+        selection comes back as the value itself, which is what a claim about *the entry whose
+        who is ana* means — and no selection yields `default`. Anything missing, of the wrong
+        shape, or out of range yields `default`, which is `MISSING` unless the caller names
+        another — and `MISSING` is a value every way of asking about it answers negatively,
+        so it fails the check it is compared in loudly, in the right place, with the rest of
+        the scenario still to run.
 
             qa.check("attributed to the caller", qa.field(body, "claim.holder_uid") == uid, covers=[...])
+            qa.check("ana's total", qa.field(body, "people[?(@.who=='ana')].total_cents") == 4200, covers=[...])
         """
-        cursor = data
-        for segment in path.split("."):
-            if isinstance(cursor, Mapping):
-                if segment not in cursor:
-                    return default
-                cursor = cursor[segment]
-            elif isinstance(cursor, Sequence) and not isinstance(cursor, str | bytes):
-                if not segment.isdigit() or int(segment) >= len(cursor):
-                    return default
-                cursor = cursor[int(segment)]
-            else:
-                return default
-        return cursor
+        try:
+            resolved, value = resolve_path(data, path)
+        except ValueError:
+            return default
+        if not resolved:
+            return default
+        if _is_projection(path) and len(value) == 1:
+            return value[0]
+        return value
 
     def check(
         self,
