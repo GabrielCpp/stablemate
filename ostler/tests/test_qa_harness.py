@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from ostler.qa.harness_host import load_harness_module
+
 HARNESS_DIR = Path(__file__).resolve().parents[1] / "ostler" / "qa" / "harness"
 
 PLAN = '''\
@@ -549,3 +551,52 @@ def test_a_dollar_rooted_json_path_resolves_like_the_bare_one(tmp_path: Path) ->
     asserted = _asserts(records)
     assert len(asserted) == 4
     assert [record["passed"] for record in asserted] == [True, True, True, True]
+
+
+def test_a_browser_problem_is_a_failing_assertion_bound_to_the_scenario_covers(
+    tmp_path: Path,
+) -> None:
+    """An uncaught page error or a 5xx contradicts what the scenario set out to prove.
+
+    The browser's clean-gate used to ride only on the scenario record's `error`: the
+    scenario went red, but every assertion it had recorded stayed green, so the evidence
+    map scored its obligations *covered* off those checks while the page had thrown.
+    Each problem is now a failing assertion bound to the scenario's `covers`, which is the
+    reading that holds — the run observed the product under this scenario and it broke —
+    and the one the map turns into `contradicted`.
+    """
+    harness = load_harness_module("ostler_qa")
+
+    emitted: list[dict] = []
+    recorder = harness._Recorder(fd=-1)
+    recorder.emit = emitted.append  # type: ignore[method-assign]
+    qa = harness.Qa(
+        scenario_id="list-is-shown",
+        target=harness.Target("web", driver="playwright"),
+        root=tmp_path,
+        spec_dir=tmp_path,
+        qa_dir=tmp_path / "qa",
+        covers=["ac:1", "okf:docs/a.md#list:does:1"],
+        recorder=recorder,
+    )
+
+    problem = "1 uncaught page error(s) in the browser, first: locale is undefined"
+    returned = harness._bind_browser_unclean(qa, [problem])
+
+    assert returned == [problem]
+    assert qa.failures == 1
+    assert emitted == [
+        {
+            "type": "assert",
+            "id": "list-is-shown-1",
+            "label": "the browser stayed clean",
+            "passed": False,
+            "actual": problem,
+            "expected": harness.BROWSER_CLEAN_EXPECTED,
+            "covers": ["ac:1", "okf:docs/a.md#list:does:1"],
+            "origin": "browser",
+        }
+    ]
+    # Nothing to bind is nothing recorded: a clean browser adds no assertion of its own.
+    assert harness._bind_browser_unclean(qa, []) == []
+    assert qa.failures == 1

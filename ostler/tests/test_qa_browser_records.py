@@ -248,7 +248,7 @@ def test_an_uncaught_page_error_fails_the_scenario_without_the_plan_asking(
         SimpleNamespace(name="TypeError", message="locale is undefined", stack="")
     )
 
-    problems = browser._unclean()
+    problems = browser.unclean()
 
     assert len(problems) == 1
     assert "uncaught page error" in problems[0]
@@ -272,13 +272,13 @@ def test_a_5xx_fails_the_scenario_and_a_4xx_does_not(tmp_path: Path) -> None:
                 status=status,
             )
         )
-    assert browser._unclean() == []
+    assert browser.unclean() == []
 
     browser._on_response(
         _response(_request("http://127.0.0.1:8099/api/docs", method="POST"), status=503)
     )
 
-    problems = browser._unclean()
+    problems = browser.unclean()
     assert len(problems) == 1
     assert "503" in problems[0]
     assert "http://127.0.0.1:8099/api/docs" in problems[0]

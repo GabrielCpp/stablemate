@@ -204,10 +204,9 @@ class Browser:
             self.emit({"type": "artifact", "path": str(trace), "kind": "playwright-trace"})
         problems.extend(self._register_videos())
         self._write_diagnostics()
-        problems.extend(self._unclean())
         return problems
 
-    def _unclean(self) -> list[str]:
+    def unclean(self) -> list[str]:
         """The two browser conditions no scenario is allowed to pass over.
 
         A plan's own clean-gate is hand-written, and the corpus has one that reads console
@@ -221,6 +220,11 @@ class Browser:
         4xx. Console errors and cancelled requests stay assertable rather than fatal,
         because an app legitimately logs at error level and legitimately abandons an
         in-flight request on navigation.
+
+        Not folded into `close()`: the harness records each problem as a failing assertion
+        bound to the scenario's `covers` *before* closing, so the evidence map reads it as
+        a contradiction of the obligations the scenario set out to prove rather than as a
+        harness complaint that only reddens the scenario row.
         """
         problems: list[str] = []
         if self._page_errors:

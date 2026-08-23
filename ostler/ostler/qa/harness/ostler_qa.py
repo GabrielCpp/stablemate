@@ -2232,6 +2232,31 @@ def _open_browser(qa: Qa) -> Any:
     return browser
 
 
+BROWSER_CLEAN_EXPECTED = "no uncaught page error and no response of status 500 or higher"
+
+
+def _bind_browser_unclean(qa: Qa, problems: Sequence[str]) -> list[str]:
+    """Record each browser problem as a failing assertion bound to the scenario's covers.
+
+    The browser's clean-gate used to ride only on the scenario record's `error`, which
+    reddened the scenario while every assertion it had recorded stayed green — so a
+    scenario whose page threw was scored by the evidence map as *unproven* at worst and as
+    covered when its own checks passed. Binding the problem to `qa.covers` puts a failing
+    assertion under every obligation the scenario claimed, which is the only reading that
+    holds: the run observed the product under this scenario and the product broke.
+    """
+    for problem in problems:
+        qa._record(  # noqa: SLF001 - same module, the scenario-process side of the ledger
+            "the browser stayed clean",
+            False,
+            actual=problem,
+            expected=BROWSER_CLEAN_EXPECTED,
+            covers=list(qa.covers),
+            extra={"origin": "browser"},
+        )
+    return list(problems)
+
+
 def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
     _load(module_path)
     declared = next((s for s in REGISTRY.scenarios if s.id == scenario_id), None)
@@ -2269,10 +2294,14 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         # empty is what sends them to re-run the scenario by hand to see the exception.
         print(error, file=sys.stdout)
     if browser is not None:
+        # An uncaught page error or a 5xx is recorded as a failing assertion bound to the
+        # scenario's obligations before the browser closes, so the evidence map reads it as
+        # `contradicted` rather than as a harness complaint beside a green ledger.
+        unclean = _bind_browser_unclean(qa, browser.unclean())
         # Closing is what finalizes the trace and the video, so it happens before the
         # verdict is emitted — but its complaints are appended to the verdict, never
         # substituted for it.
-        problems = browser.close(failed=status != "passed")
+        problems = [*unclean, *browser.close(failed=status != "passed" or bool(unclean))]
         if problems:
             status = "failed" if status == "passed" else status
             error = "; ".join([part for part in [error, *problems] if part])
