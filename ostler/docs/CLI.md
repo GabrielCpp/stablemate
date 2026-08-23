@@ -268,7 +268,7 @@ ostler qa assert --id ID --label L --spec SPEC \
                  --check {cloudwatch_filter,event_present,field_equal,http_status,no_duplicate} \
                  [KEY=VALUE ...]
 ostler qa stop   --spec SPEC        # kill daemons, write the session_stop summary
-ostler qa report --spec SPEC        # render the action ledger for a human
+ostler qa report --spec SPEC [--out-dir LABEL] [--ledger]   # render qa-report.md for a human
 ostler qa replay --spec SPEC
 ```
 
@@ -278,6 +278,13 @@ quotes but never handed to one — `&&`, `|` and `$VAR` reach the program as lit
 and fail at `exec`. A daemon is therefore a server, not a command line, and
 `--daemon api:"go test ./..."` cannot be smuggled in as one. The full run contract is in
 [docs/QA-RUN.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/QA-RUN.md).
+
+**Report.** Every `qa run` ends by rendering `<spec>/qa-report.md` from the ledger — one
+section per acceptance criterion and per obligation with its verdict, the step each covering
+assertion ran in, observed and expected values, and the screenshots behind it, then every
+scenario step by step and a list of warnings (criteria nothing covers, assertions with no
+observed value, aborted scenarios). `qa report` re-renders it; `--out-dir LABEL` renders a dry
+run's to `qa/LABEL/report.md`; `--ledger` prints the flat listing instead.
 
 **Evidence.** After a run, `qa evidence-map` joins the obligation scope, the run ledger, the
 artifact manifest and the published verdict into one row per obligation:

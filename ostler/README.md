@@ -213,9 +213,17 @@ ostler qa context --base <rev> --head WORKTREE --spec docs/specs/<story> \
   --source-root web=web --source-root api=api --story-file docs/epics/.../story.md
 ostler qa validate docs/specs/<story>/qa-plan.yml --json
 ostler qa run      docs/specs/<story>/qa-plan.yml --json
+ostler qa report       --spec docs/specs/<story>
 ostler qa evidence-map --spec docs/specs/<story>
 ostler qa sensitivity
 ```
+
+Every run ends by rendering `<spec>/qa-report.md` from the ledger: one section per
+acceptance criterion and per obligation with its verdict, the step each covering assertion
+ran in, what it observed against what it expected, and the screenshots behind it — then every
+scenario step by step, then the warnings that would let a rubber stamp through (a criterion
+nothing covers, an assertion with no observed value, a scenario that stopped early). It is the
+one file a reviewer reads to decide whether the work is real, and `qa report` re-renders it.
 
 After the run, `qa evidence-map` joins those four artifacts — the obligation scope, the
 ledger, the manifest and the published verdict — into one row per obligation and a status:

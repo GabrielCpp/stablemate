@@ -258,11 +258,12 @@ ostler qa stop
     Kill all session daemons. Write daemon_stop records and session_stop summary.
     Print a one-line verdict: PASS (all asserts passed) or FAIL (≥1 assert failed).
 
-ostler qa report [--spec <spec-dir>]
-    Read qa-run.ndjson and render a human-readable action ledger to stdout:
-    one line per step (timestamp, mechanism tag, label, result),
-    followed by a per-assert summary table.
-    Designed to be pasted into a Jira comment as a verifiable trace.
+ostler qa report [--spec <spec-dir>] [--out-dir <label>] [--ledger]
+    Render `<spec-dir>/qa-report.md` from the ledger and print it: the per-criterion,
+    per-obligation account of the run a human reviews (see "The report" below).
+    `qa run` renders it itself at the end of every run, whatever the status; this
+    re-renders it. `--out-dir LABEL` renders a dry run's ledger to `qa/<LABEL>/report.md`.
+    `--ledger` prints the flat time-ordered STEP/ASSERT listing instead.
 
 ostler qa replay [--spec <spec-dir>]
     Read qa-run.ndjson and emit the exact shell commands from all step records,
@@ -546,11 +547,6 @@ qa.check("the app never logged the raw error",
          qa.diagnostics.console(level="warning", contains="SQLSTATE") == [])
 ```
 
-Two conditions need no assertion at all: an uncaught page error and a response of status
-500 or higher each fail the scenario on their own, recorded as a failing assertion bound to
-the scenario's `covers` — so the evidence map reports every obligation the scenario claimed
-as `contradicted`, not merely the scenario as red.
-
 Assert through `qa.diagnostics` rather than by reading the file: the diagnostics file is
 written *after* the scenario returns, so a scenario that reads it is reading the previous
 run's copy — and a scenario cannot fail itself on a 5xx it provoked any other way. The live
@@ -607,7 +603,7 @@ under the target's interpreter and reads the declarations back, so it catches:
 2. For each action: calling `ostler qa step` with the exact command, label, and mechanism.
 3. For each check: calling `ostler qa assert` with a check specification.
 4. Calling `ostler qa stop`.
-5. Calling `ostler qa report` and copying the output into the Jira comment.
+5. Reading `qa-report.md` — rendered by the run — and drawing the Jira comment from it.
 
 **The agent does NOT:**
 
@@ -618,6 +614,40 @@ under the target's interpreter and reads the declarations back, so it catches:
 - Interpret CloudWatch log output — it passes `--filter <token>` and ostler counts matches.
 
 ---
+
+## The report (`qa-report.md`)
+
+The ledger is the ground truth and nobody reads 50 KB of NDJSON. So every `qa run` ends by
+rendering `<spec-dir>/qa-report.md` from it — deterministic, typed `spec.qa-report`, no agent
+prose — and `ostler qa report` re-renders it on demand. It is the file a reviewer opens to
+decide whether the work was done, and it is written for that reader:
+
+1. **Header** — run id and status (also in an HTML comment, `<!-- run: ID status: S -->`,
+   which the workflow's evidence gate reads to refuse a pass whose report is from another
+   run), start/finish, assertion tally (sentinel failures counted and named), scenarios run /
+   passed / failed / aborted, the recording when there is one.
+2. **Summary** — one table row per acceptance criterion and per OKF obligation: verdict,
+   requirement, the scenarios that prove it, ✓/✗ counts.
+3. **Acceptance criteria** — `### ac:N — PASS|FAIL|UNPROVEN`, the requirement, then per
+   covering scenario and per *step* a table of the assertions bound to the criterion: label,
+   check, observed value, expected value, result, the assertion file; screenshots taken in
+   that step are embedded with the verdict of their `.vet.json`. A criterion is FAIL when a
+   bound assertion failed, PASS when one passed in a scenario that finished, and UNPROVEN
+   otherwise — with why: nothing covered it, or the scenario stopped before looking.
+4. **OKF obligations** — the same, with the status `qa evidence-map` computes (the report
+   calls it; the two never disagree) and the checks each `verify:` bullet declared.
+5. **Scenarios, step by step** — every step in order with ✓/✗ assertions, artifacts, the
+   trace, diagnostics and non-empty stdout.
+6. **Warnings** — what would let a rubber stamp through: UNPROVEN criteria, assertions with
+   no `covers` or no observed value, aborted scenarios, `covers` ids the context does not
+   know.
+
+Attribution is by the `step` stamp the python driver puts on every `assert` and artifact
+record it writes while a `qa.step()` is open; an assertion made outside any step is listed
+as such, and a ledger written before the stamp existed says so in its warnings instead of
+guessing from order. The report is not in the manifest (it is rendered after the manifest
+closes, and re-rendering it must not stale a hash); it is the one `qa` output meant to be
+committed with the story, and it links the artifacts under `qa/` that are not.
 
 ## Integration with `qa-evidence.json` and the workflow gate
 
