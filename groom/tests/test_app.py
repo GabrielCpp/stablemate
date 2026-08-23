@@ -534,6 +534,27 @@ def test_file_endpoint_swallows_unsafe_path():
     assert resp.json()["content"] == ""
 
 
+def test_file_endpoint_reads_a_native_runs_workspace_by_gate_path(tmp_path):
+    # The dashboard's gate disclosure asks for `/file/<run>?path=<gate.file_path>` with
+    # no repo: a native gate's path is already relative to the run's workspace, and
+    # that workspace is the volume `/file/` reads from.
+    _reset()
+    gate = tmp_path / "docs" / "context.md"
+    gate.parent.mkdir(parents=True)
+    gate.write_text("STATUS: AWAITING_OPERATOR\n\n## Findings\n\n- one\n")
+    state.WORKFLOWS["run-9"] = WorkflowContainer(
+        container_id="run-9", name="w", run_id="run-9", native=True, workspace_volume=str(tmp_path)
+    )
+
+    client = _hermetic_client()
+    try:
+        resp = client.get("/file/run-9", params={"path": "docs/context.md"})
+    finally:
+        client.__exit__(None, None, None)
+
+    assert resp.json() == {"path": "docs/context.md", "content": gate.read_text(), "lang": "markdown"}
+
+
 def test_diff_endpoint_passes_repo_through():
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")

@@ -52,9 +52,12 @@ a container has genuinely stopped.
   it clears itself on the next newer signal — a `--resume-run` re-writes `run.json`
   with a null terminal before it does anything, so a resumed run goes back to green.
   Gate questions render as Markdown (`marked`, sanitized with
-  `DOMPurify` before insertion since the content is LLM-authored) and each
-  workflow row can expand a `git diff` of its working tree (rendered with
-  `diff2html`). All front-end assets are vendored locally; nothing is loaded
+  `DOMPurify` before insertion since the content is LLM-authored); a *Full
+  context* disclosure under the question fetches the whole gate file through
+  `/file/` and renders it the same way, so the findings and earlier escalations
+  around the question are read in the dashboard rather than hunted for on disk;
+  and each workflow row can expand a `git diff` of its working tree (rendered
+  with `diff2html`). All front-end assets are vendored locally; nothing is loaded
   from a CDN at runtime.
 - On startup (or on-demand refresh), `groom` runs a one-shot `docker ps -a` +
   `docker inspect` reconciliation scan so workflows that were already

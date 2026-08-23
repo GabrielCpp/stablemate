@@ -147,6 +147,10 @@ body {
 .disclosure summary::before { content:"▸ "; color:var(--text-2); }
 .disclosure[open] summary::before { content:"▾ "; }
 .diff-wrap { margin-top:8px; font-size:12px; }
+.disclosure.context { margin-top:8px; border-top:none; padding-top:0; }
+.disclosure.context summary code { font-family:var(--mono); font-size:11px; color:var(--text-2); }
+.context-wrap { margin-top:8px; }
+.context-file { max-height:60vh; overflow:auto; font-size:12.5px; }
 .detail-empty { color:var(--text-2); padding:24px 12px; text-align:center; }
 
 /* ---- run detail: live sections (metrics + log trail), refreshed on a timer ---- */
