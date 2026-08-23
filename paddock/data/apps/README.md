@@ -214,6 +214,22 @@ its own: a fixture's own notes are about its answer key, and a file explaining w
 sabotaged would be sitting in the worktree QA is being scored on. Each app's notes live in
 [The apps](#the-apps) below instead — outside every tree a trial materializes.
 
+## The answer key's `caught_by` route is read, not just recorded
+
+Every row names the route the defect is expected to travel: `run` — a declared check the plan
+runs fails (or the lane repairs the defect) — or `audit` — no assertion fails and only the
+auditor reading the evidence against the clause sees it. A catch by either route counts, since
+which one fires is the plan's own choice; a catch that arrived by the other route is annotated
+`(expected run)` / `(expected audit)` beside the verdict so the surprise is legible.
+
+What the route gates is the *miss*. Every round runs the lane to its first verdict
+(`_frozenapp.FIRST_VERDICT`), which never enters `audit`, so an `audit` row on such a round is
+`inconclusive — no audit turn in this configuration` rather than `missed`: it is a question this
+configuration did not ask, and a miss there would grade the absence of a lane instead of the
+plan. The trial ledger records `audit_turn` per row so a re-score knows which configuration
+wrote it. Until an audit-on task exists, the audit arm of the scorer (`depot-infra`'s D7,
+`seat-booking`'s D9) is inconclusive by construction.
+
 ## The answer key's one non-obvious rule: an obligation is only scorable if the story owes it
 
 Every row of `defects.yml` names the obligation the seeded file makes false. That id has to be
@@ -391,7 +407,9 @@ the app is allowed to occupy, and the backlog is the one document every phase re
   **D7 is the row this evidence surface cannot see.** Deleting the program's `pulumi.Version` pin
   changes no step in the plan on any machine that already holds a plugin — the preview reports the
   version it resolved, not the version the program asked for — so it is filed `caught_by: audit`
-  and its trial's obligation comes back `covered`. It is in the key because the miss is the point.
+  and its trial's obligation comes back `covered`. It is in the key because the gap is the point:
+  on a first-verdict round it scores `inconclusive — no audit turn in this configuration`, and
+  only an audit-on task can turn it into a catch or a miss.
 
   **Where the claims live.** Every normative claim here is a `consistency:` bullet on a concept
   node, not a `### field` section: `consistency` is normative on every node type, and the field
@@ -435,8 +453,9 @@ the app is allowed to occupy, and the backlog is the one document every phase re
   exactly like a QA lane that never answered. `test_tally_cli_app.py` mints each story's packet
   the way QA mints it and asserts every row's obligation comes back owed.
 
-  All seven rows are `caught_by: run`. `claims-api`'s C9 and `depot-infra`'s D7 already cover the
-  audit-only arm of the scorer, and a third would buy nothing over them.
+  All seven rows are `caught_by: run`. `claims-api`'s C9 is `run` too since `omits` landed;
+  `depot-infra`'s D7 and `seat-booking`'s D9 are the audit arm of the scorer — inconclusive on
+  every first-verdict round — and a third would buy nothing over them.
 
   **The QA lane here has no service in it.** A plan may not import the package — `ostler.qa.lint`
   is an AST allowlist — so a scenario reaches the product the way it would reach a compiled

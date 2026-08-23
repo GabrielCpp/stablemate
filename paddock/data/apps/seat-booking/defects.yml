@@ -10,11 +10,13 @@
 # QA report. Every id here is minted by the book as it stands — `paddock/data/tests/` asserts
 # that, because an id that stops resolving turns a scored row into a permanent miss.
 #
-# `caught_by` is the route the defect is *expected* to travel, recorded so a surprise is
-# legible — it is not a scoring gate. Whether a given defect surfaces from a failing scenario
-# or from the auditor depends on the QA plan under measurement, and that plan is the thing
-# being measured; scoring on the route would grade the flow against one particular way of
-# finding the bug rather than against finding it.
+# `caught_by` is the route the defect is *expected* to travel. Whether a given defect
+# surfaces from a failing scenario or from the auditor depends on the QA plan under
+# measurement, so a catch by either route counts — but the scorer reads the route: a catch
+# that arrived by the other one is annotated `(expected run)` / `(expected audit)`, and an
+# `audit` row on a configuration that never gives the auditor a turn (every first-verdict
+# round) scores `inconclusive` rather than `missed`, since that would grade the absence of
+# a lane rather than the plan.
 #
 #   run    — a declared check the plan runs should assert this and fail
 #   audit  — no assertion fails; only the auditor reading evidence against the clause sees it

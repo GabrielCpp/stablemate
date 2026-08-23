@@ -475,7 +475,9 @@ def test_a_contradicted_obligation_is_a_catch() -> None:
 
 def test_an_audit_refutation_naming_the_obligation_is_a_catch() -> None:
     """The second route exists because which one fires is the plan's choice, not QA's bar."""
-    row = {"id": "D9", "obligation": "okf:a#b:contract", "expect": "contradicted"}
+    row = {
+        "id": "D9", "obligation": "okf:a#b:contract", "expect": "contradicted", "caught_by": "audit"
+    }
     audit = {"verdict": "refuted", "findings": [{"target": "okf:a#b:contract", "issue": "…"}]}
     verdict, because = frozen.classify(row, {"okf:a#b:contract": "covered"}, audit)
     assert (verdict, because) == ("caught", "audit refutation")
@@ -485,6 +487,62 @@ def test_a_covered_obligation_over_a_seeded_defect_is_a_miss() -> None:
     row = {"id": "D1", "obligation": "okf:a#b:contract", "expect": "contradicted"}
     verdict, _ = frozen.classify(row, {"okf:a#b:contract": "covered"}, {"verdict": "stands"})
     assert verdict == "missed"
+
+
+def test_an_audit_row_is_inconclusive_when_the_configuration_gave_the_auditor_no_turn() -> None:
+    """A first-verdict trial never enters `audit`, so a row only the auditor can see is a
+    question this configuration did not ask — scoring it `missed` would grade the absence of
+    a lane, not the plan. A run row in the same trial is still a miss: its route did run."""
+    audit_row = {
+        "id": "D9", "obligation": "okf:a#b:contract", "expect": "contradicted", "caught_by": "audit"
+    }
+    assert frozen.classify(audit_row, {"okf:a#b:contract": "covered"}, {}, audit_ran=False) == (
+        "inconclusive", "no audit turn in this configuration"
+    )
+    assert frozen.classify(audit_row, {"okf:a#b:contract": "covered"}, {}, audit_ran=True) == (
+        "missed", "covered"
+    )
+    run_row = {**audit_row, "caught_by": "run"}
+    assert frozen.classify(run_row, {"okf:a#b:contract": "covered"}, {}, audit_ran=False) == (
+        "missed", "covered"
+    )
+
+
+def test_a_catch_by_the_other_route_is_still_a_catch_and_says_so() -> None:
+    """Which route fires is the plan's choice, so the verdict is `caught` either way — but
+    the surprise is written next to it, in the column a reader already has open."""
+    audit_row = {
+        "id": "D9", "obligation": "okf:a#b:contract", "expect": "contradicted", "caught_by": "audit"
+    }
+    assert frozen.classify(audit_row, {"okf:a#b:contract": "contradicted"}, {}) == (
+        "caught", "contradicted (expected audit)"
+    )
+    assert frozen.classify(
+        audit_row, {"okf:a#b:contract": "covered"}, {}, survived=False
+    ) == ("caught", "defect repaired (expected audit)")
+    run_row = {**audit_row, "caught_by": "run"}
+    refutation = {"verdict": "refuted", "findings": [{"target": "okf:a#b:contract"}]}
+    assert frozen.classify(run_row, {"okf:a#b:contract": "covered"}, refutation) == (
+        "caught", "audit refutation (expected run)"
+    )
+
+
+def test_a_row_with_an_unknown_route_is_refused_at_load(tmp_path: Path) -> None:
+    app = tmp_path / "app"
+    app.mkdir()
+    (app / "defects.yml").write_text(
+        "defects:\n  - id: X1\n    story: s\n    path: a.py\n    obligation: okf:a#b:c\n"
+        "    expect: contradicted\n    caught_by: reviewer\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(frozen.TrialError, match="caught_by: 'reviewer'"):
+        frozen.load_defects(app)
+    (app / "defects.yml").write_text(
+        "defects:\n  - id: X1\n    story: s\n    path: a.py\n    obligation: okf:a#b:c\n"
+        "    expect: contradicted\n",
+        encoding="utf-8",
+    )
+    assert frozen.load_defects(app)[0]["caught_by"] == "run"
 
 
 def test_a_repaired_defect_is_a_catch_even_though_the_map_reads_covered() -> None:

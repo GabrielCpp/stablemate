@@ -197,6 +197,20 @@ def reset_stack_state(dest: Path) -> None:
 # ── the answer key ────────────────────────────────────────────────────────────────────
 
 
+#: The routes a row's `caught_by` may name. `run` is a declared check the plan runs failing
+#: (or the defect being repaired); `audit` is the auditor reading the evidence against the
+#: clause when no assertion fails. The route is load-bearing in `classify`: an `audit` row
+#: on a configuration that never turns the auditor on is `inconclusive`, not a miss.
+CATCH_ROUTES = frozenset({"run", "audit"})
+
+#: Every trial runs the QA lane to its *first verdict* — one plan, one suite run, no repair
+#: loop — which is what makes a seeded defect's first red comparable across rounds. Under it
+#: the lane never enters `audit`, so `audit_result` is empty for every trial and a row whose
+#: only route is the auditor cannot be scored by this configuration. Recorded per trial as
+#: `audit_turn` so a re-score of an old ledger knows which configuration wrote it.
+FIRST_VERDICT = True
+
+
 def load_defects(app: Path) -> list[dict[str, str]]:
     path = app / "defects.yml"
     if not path.is_file():
@@ -204,6 +218,13 @@ def load_defects(app: Path) -> list[dict[str, str]]:
     rows = list((yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("defects") or [])
     if not rows:
         raise TrialError(f"{path} lists no defects")
+    for row in rows:
+        route = str(row.setdefault("caught_by", "run"))
+        if route not in CATCH_ROUTES:
+            raise TrialError(
+                f"{path}: defect {row.get('id')!r} has caught_by: {route!r}; "
+                f"the routes are {', '.join(sorted(CATCH_ROUTES))}"
+            )
     return rows
 
 
@@ -327,6 +348,7 @@ def classify(
     audit: dict[str, Any],
     *,
     survived: bool = True,
+    audit_ran: bool = True,
 ) -> tuple[str, str]:
     """Score one trial against its row. Returns `(verdict, the status that decided it)`.
 
@@ -347,6 +369,13 @@ def classify(
     scope, a run that blocked before it asserted anything — is `inconclusive` rather than a
     catch or a miss, since scoring an infrastructure failure either way is a number about
     this machine.
+
+    The row's `caught_by` route is read, not merely recorded. A catch by either route still
+    counts — which route fires is the plan's choice — but a catch that arrived by the other
+    one is annotated `(expected run)` / `(expected audit)` so the surprise is legible in the
+    same column as the verdict. And a row filed `audit` can only be missed by a configuration
+    that gave the auditor a turn (`audit_ran`): under `FIRST_VERDICT` the lane never enters
+    audit, so scoring such a row `missed` would grade the absence of a lane, not the plan.
     """
     refuted = str(audit.get("verdict", "")) == "refuted"
     # `unproven` is deliberately not read anywhere below. On the clean control it is not a
@@ -362,14 +391,19 @@ def classify(
         return ("false", "audit refuted") if refuted else ("clean", "no contradiction")
 
     obligation = str(row["obligation"])
+    route = str(row.get("caught_by") or "run")
+    by_run = "" if route == "run" else " (expected audit)"
+    by_audit = "" if route == "audit" else " (expected run)"
     status = (statuses or {}).get(obligation, "")
     if status == str(row["expect"]):
-        return "caught", status
+        return "caught", status + by_run
     cited = obligation in json.dumps(audit)
     if refuted and cited:
-        return "caught", "audit refutation"
+        return "caught", "audit refutation" + by_audit
     if not survived:
-        return "caught", "defect repaired"
+        return "caught", "defect repaired" + by_run
+    if route == "audit" and not audit_ran:
+        return "inconclusive", "no audit turn in this configuration"
     if statuses is None:
         return "inconclusive", "no evidence map"
     if not status:
@@ -957,7 +991,7 @@ def run_round(run: Run, fixture: Fixture) -> None:
                 # toward green, so a seeded defect reports its first red without entering
                 # the fix loop and a clean control's pass costs no repair/refute turns.
                 "--params", json.dumps(
-                    {"story": story, "docs_path": str(repo), "first_verdict": True}
+                    {"story": story, "docs_path": str(repo), "first_verdict": FIRST_VERDICT}
                 ),
                 cwd=repo,
                 # Enforced by workhorse between states rather than by killing the process, so an
@@ -977,6 +1011,9 @@ def run_round(run: Run, fixture: Fixture) -> None:
                 "obligation": str(row["obligation"]) if row else "",
                 "path": str(row["path"]) if row else "",
                 "rc": result.returncode,
+                # Whether this configuration gave the auditor a turn at all — what separates
+                # an `audit` row's miss from a row this lane could never have caught.
+                "audit_turn": not FIRST_VERDICT,
                 "witness": str(witness.relative_to(run.stage)),
                 "timing": fx.timing_of(run_id, wall, since),
                 "laps": fx.laps_of(run_id, since),
@@ -1002,11 +1039,15 @@ def score_round(run: Run, fixture: Fixture) -> Score:
         row = by_id.get(str(entry["defect"]))
         witness = run.stage / str(entry["witness"])
         statuses = evidence_statuses(witness, str(entry["story"]))
+        audit = audit_result(run.stage.joinpath(*TRIALS) / "runs", str(entry["run_id"]))
         verdict, because = classify(
             row,
             statuses,
-            audit_result(run.stage.joinpath(*TRIALS) / "runs", str(entry["run_id"])),
+            audit,
             survived=defect_survived(app, row, witness) if row else True,
+            # A ledger written before `audit_turn` was recorded came from the same
+            # first-verdict configuration; an auditor verdict on disk is proof either way.
+            audit_ran=bool(audit) or bool(entry.get("audit_turn", not FIRST_VERDICT)),
         )
         trials.append({
             **entry,

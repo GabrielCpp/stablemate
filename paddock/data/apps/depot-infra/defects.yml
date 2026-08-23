@@ -11,8 +11,11 @@
 # QA report. Every id here is one the book mints *and owes* for that row's story, which
 # `tests/test_depot_infra_app.py` pins by minting each story's packet the way QA mints it.
 #
-# `caught_by` is the route the defect is *expected* to travel, recorded so a surprise is
-# legible — it is not a scoring gate:
+# `caught_by` is the route the defect is *expected* to travel. A catch by either route
+# counts — which one fires is the plan's choice — but the scorer reads it: a catch that
+# arrived by the other route is annotated `(expected run)` / `(expected audit)`, and an
+# `audit` row on a configuration that never gives the auditor a turn (every first-verdict
+# round) scores `inconclusive` rather than `missed`:
 #
 #   run    — a declared check the plan runs should assert this and fail
 #   audit  — no assertion fails; only the auditor reading evidence against the clause sees it
