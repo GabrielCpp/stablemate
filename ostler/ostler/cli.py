@@ -717,6 +717,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     qa_run.add_argument("--json", action="store_true")
 
+    qa_stack = qas.add_parser(
+        "stack", help="bring the stack the book declares up (or tear it down)"
+    )
+    qa_stack_ops = qa_stack.add_subparsers(dest="stack_op", required=True)
+    qa_stack_up = qa_stack_ops.add_parser("up", help="bring the declared stack to ready")
+    qa_stack_up.add_argument("--runbook", default="",
+                             help="which runbook, when the book carries more than one")
+    qa_stack_up.add_argument("--json", action="store_true")
+    qa_stack_down = qa_stack_ops.add_parser("down", help="run the declared teardown recipe")
+    qa_stack_down.add_argument("--runbook", default="")
+    qa_stack_down.add_argument("--json", action="store_true")
+
     qa_tools = qas.add_parser("tools", help="inspect this repo's opted-in QA tools")
     qa_tools_ops = qa_tools.add_subparsers(dest="tools_op", required=True)
     qa_tools_list = qa_tools_ops.add_parser("list", help="list opted-in tools and whether they resolve")
@@ -1296,6 +1308,17 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             root=root,
         )
         if getattr(args, "json", False):
+            _out(json.dumps(result.data, indent=2))
+        else:
+            _out(result.message)
+        return 0 if result.ok else 1
+
+    if op == "stack":
+        if args.stack_op == "up":
+            result = qa_mod.runbook.cmd_stack_up(root, name=args.runbook)
+        else:
+            result = qa_mod.runbook.cmd_stack_down(root, name=args.runbook)
+        if args.json:
             _out(json.dumps(result.data, indent=2))
         else:
             _out(result.message)

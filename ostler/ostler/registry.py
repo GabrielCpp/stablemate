@@ -445,7 +445,23 @@ UI_TYPES: tuple[UINodeType, ...] = (
     UINodeType(
         name="server", kind="file", context="http",
         required_sections=(SectionSpec("Endpoints"),),
-        bullet_keys=(BulletKey("code", link=True, owns=True), BulletKey("openapi", link=True, owns=True)),
+        bullet_keys=(
+            BulletKey("code", link=True, owns=True),
+            BulletKey("openapi", link=True, owns=True),
+            # The walkthrough launch contract. okf-builder has read these off a server node since
+            # it was written — the launch contract is documentation, not configuration, which is
+            # what lets the walk run standalone — but they were registered nowhere, so the doctor
+            # could not see them and no skill specified them. Registering an existing de-facto
+            # format, not inventing one. A `runbook` node supersedes this; it is the fallback.
+            BulletKey("launch"),                  # the bring-up command
+            BulletKey("entry-url"),               # base URL the app serves on
+            BulletKey("health-path"),             # readiness path under `entry-url` (default `/`)
+            BulletKey("working-directory"),       # cwd for `launch`, relative to the repo root
+            BulletKey("identity"),                # substring of the health body proving it is ours
+            BulletKey("stop"),                    # teardown recipe
+            BulletKey("boot-timeout"),            # seconds; ceiling on bring-up
+            BulletKey("walkthrough"),             # `true` on the one server the walk drives
+        ),
     ),
     UINodeType(
         name="concept", kind="file", context="concepts",
@@ -489,7 +505,24 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("environment", link=True),  # the `environment` node this boots (default local)
             BulletKey("cli", link=True),          # the dev-CLI `cli` node it drives with
             BulletKey("surfaces", link=True),     # screen/server/cli/format nodes it exposes
-            BulletKey("code", link=True, owns=True),         # launch entry point `path::symbol`
+            BulletKey("code", link=True, owns=True),  # launch entry point `path::symbol`
+            # The durable-stack contract: what a QA session needs to bring this runbook up and
+            # decide whether an already-serving one may be adopted. Read by `ostler.qa.runbook`,
+            # which folds these plus the `## Steps` sections into the manifest `ensure_stack`
+            # takes. They are scalars because the steps carry everything ordered.
+            BulletKey("entry-url"),               # base of the HTTP readiness probe
+            BulletKey("health-path"),             # joined onto `entry-url` (default `/`)
+            BulletKey("identity"),                # substring of the health *body* proving it is ours
+            BulletKey("reuse"),                   # if-fresh (default) | always | never
+            BulletKey("fresh"),                   # exit 0 ⇔ a serving stack reflects current code
+            BulletKey("boot-timeout"),            # seconds; ceiling on bring-up
+            BulletKey("health-timeout"),          # seconds; one window shared by all health gates
+            BulletKey("stop"),                    # teardown recipe; absent ⇒ leave it running
+            BulletKey("working-directory"),       # cwd for the launch and every step not overriding it
+            # `NAME: <shell that prints the secret>`, one child per credential. Minted per QA
+            # *run*, not per bring-up: a short-lived token issued while the stack booted is
+            # already stale by the lap that spends it, and a secret may never be checkpointed.
+            BulletKey("secrets", nested=True),
         ),
     ),
     UINodeType(
@@ -688,6 +721,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("kind", required=True),   # prepare|service|seed|run|health|verify|drive
             BulletKey("run"),                   # the exact bounded command
             BulletKey("working-directory"),     # cwd, when not the repo root
+            BulletKey("timeout"),               # seconds; this step's own ceiling
             BulletKey("env", nested=True),      # env-var wiring this step needs
             BulletKey("health"),                # service/health steps: the real readiness signal
             BulletKey("produces"),              # run steps: output artifact path(s)/glob(s)
