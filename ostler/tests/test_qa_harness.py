@@ -124,6 +124,28 @@ def test_describe_names_the_secret_without_reading_it(tmp_path: Path) -> None:
     assert described["secrets"] == {"ADMIN_TOKEN": {"from_env": "QA_ADMIN_TOKEN"}}
 
 
+FILE_SECRET_PLAN = PLAN.replace(
+    'secret("ADMIN_TOKEN", from_env="QA_ADMIN_TOKEN")',
+    'secret("ADMIN_TOKEN", from_env="QA_ADMIN_TOKEN")\n'
+    'secret("DB_PASSWORD", from_file=".qa-secrets/db-password")',
+)
+
+
+def test_describe_names_a_file_secrets_source_without_reading_it(tmp_path: Path) -> None:
+    """A secret the trial wrote to a file is declared by the path, never by the contents —
+    the file need not even exist at describe time, since the trial writes it later."""
+    described = _describe(_write(tmp_path, FILE_SECRET_PLAN))
+    assert described["secrets"]["DB_PASSWORD"] == {"from_file": ".qa-secrets/db-password"}
+
+
+def test_a_secret_declares_exactly_one_source() -> None:
+    harness = load_harness_module("ostler_qa")
+    with pytest.raises(ValueError, match="exactly one of from_env= or from_file="):
+        harness.secret("BOTH", from_env="X", from_file="y")
+    with pytest.raises(ValueError, match="exactly one of from_env= or from_file="):
+        harness.secret("NEITHER")
+
+
 def test_describe_carries_covers_and_the_docstring_objective(tmp_path: Path) -> None:
     described = _describe(_write(tmp_path))
     first = described["scenarios"][0]

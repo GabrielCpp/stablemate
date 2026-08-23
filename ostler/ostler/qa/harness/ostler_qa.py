@@ -148,22 +148,37 @@ class Target:
 
 @dataclass
 class Secret:
-    """A value the runner injects from its own environment and redacts from the ledger.
+    """A value the runner injects from its own side and redacts from the ledger.
 
-    Holding the *name* rather than the value is what keeps a secret out of the declaration
+    Holding the *source* rather than the value is what keeps a secret out of the declaration
     JSON that `describe` prints — `describe` runs during validation, and its output is
-    read by a reviewer and written to the run log.
+    read by a reviewer and written to the run log. The source is an environment variable
+    (`from_env`) or a file the trial wrote before the run (`from_file`, a path relative to
+    the repo root); the runner reads whichever one and hands the scenario the value under
+    the secret's own name.
     """
 
     name: str
-    from_env: str
+    from_env: str | None = None
+    from_file: str | None = None
+
+    @property
+    def source(self) -> str:
+        if self.from_env is not None:
+            return f"${self.from_env}"
+        return f"file {self.from_file}"
+
+    def as_json(self) -> dict[str, str]:
+        if self.from_env is not None:
+            return {"from_env": self.from_env}
+        return {"from_file": str(self.from_file)}
 
     def get(self) -> str:
         value = os.environ.get(self.name)
         if value is None:
             raise KeyError(
                 f"secret {self.name!r} is not set in the scenario environment; the runner "
-                f"injects it from ${self.from_env}"
+                f"injects it from {self.source}"
             )
         return value
 
@@ -219,7 +234,7 @@ class _Registry:
             "run_id": self.run_id,
             "story": self.story,
             "inputs": dict(self.inputs),
-            "secrets": {name: {"from_env": s.from_env} for name, s in self.secrets.items()},
+            "secrets": {name: s.as_json() for name, s in self.secrets.items()},
             "targets": {name: t.as_json() for name, t in self.targets.items()},
             "background": list(self.background),
             "tool_env": list(self.tool_env),
@@ -268,10 +283,19 @@ def target(
     return declared
 
 
-def secret(name: str, *, from_env: str) -> Secret:
+def secret(name: str, *, from_env: str | None = None, from_file: str | None = None) -> Secret:
+    """Declare a secret by its source — exactly one of `from_env` or `from_file`.
+
+    `from_env` names the variable the runner reads; `from_file` names a file, relative to
+    the repo root, that the trial writes before the run (a token minted by setup, a
+    password an infra step generated) — the runner reads it once, strips one trailing
+    newline, and never writes the value anywhere a reviewer reads.
+    """
     if name in REGISTRY.secrets:
         raise ValueError(f"duplicate secret {name!r}")
-    declared = Secret(name=name, from_env=from_env)
+    if (from_env is None) == (from_file is None):
+        raise ValueError(f"secret {name!r} needs exactly one of from_env= or from_file=")
+    declared = Secret(name=name, from_env=from_env, from_file=from_file)
     REGISTRY.secrets[name] = declared
     return declared
 

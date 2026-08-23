@@ -68,7 +68,7 @@ def run_plan(
         (spec_dir / REPORT_FILE).unlink(missing_ok=True)
 
     secret_values = {
-        name: os.environ[declaration["from_env"]]
+        name: _secret_value(declaration, root)
         for name, declaration in plan.get("secrets", {}).items()
     }
     variables = {
@@ -396,3 +396,15 @@ def _start_daemon(
         timeout=float(daemon.get("timeout", 30)),
         cwd=_daemon_cwd(session, daemon, variables, root),
     )
+
+
+def _secret_value(declaration: dict[str, Any], root: Path) -> str:
+    """The runtime value of one declared secret, from its environment variable or its file.
+
+    A file's one trailing newline is stripped — every tool that writes a token ends the
+    line, and a scenario that sends the value in a header would otherwise send the newline.
+    """
+    if "from_file" in declaration:
+        raw = (root / str(declaration["from_file"])).read_text(encoding="utf-8")
+        return raw[:-1] if raw.endswith("\n") else raw
+    return os.environ[declaration["from_env"]]

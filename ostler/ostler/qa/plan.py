@@ -165,10 +165,7 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
         problems.append("'secrets' must be a mapping")
         secrets = {}
     for name, declaration in secrets.items():
-        if not isinstance(declaration, dict) or set(declaration) != {"from_env"}:
-            problems.append(f"secret '{name}' must contain only 'from_env'")
-        elif not isinstance(declaration["from_env"], str) or not declaration["from_env"]:
-            problems.append(f"secret '{name}'.from_env must be non-empty")
+        problems.extend(_validate_secret(name, declaration, document.root, spec_dir))
 
     problems.extend(_validate_tool_env(plan.get("tool_env", []), secrets))
 
@@ -599,6 +596,31 @@ def _validate_background(background: Any, *, root: Path | None = None) -> list[s
     return problems
 
 
+def _validate_secret(name: str, declaration: Any, root: Path, spec_dir: Path) -> list[str]:
+    """One source per secret: the variable the runner reads, or the file the trial wrote.
+
+    A `from_file` path is root-relative, stays inside the repo, and is never under a spec's
+    disposable `qa/` — the runner empties that directory before the scenarios start, so a
+    secret kept there is gone by the time it is read. Whether the file exists is a runtime
+    question (`check_runtime_requirements`), since the trial writes it after the plan is
+    validated.
+    """
+    if not isinstance(declaration, dict) or not set(declaration) <= {"from_env", "from_file"}:
+        return [f"secret '{name}' must contain only 'from_env' or 'from_file'"]
+    if len(declaration) != 1:
+        return [f"secret '{name}' needs exactly one of 'from_env' or 'from_file'"]
+    (source, raw), = declaration.items()
+    if not isinstance(raw, str) or not raw:
+        return [f"secret '{name}'.{source} must be non-empty"]
+    if source == "from_file":
+        path = _contained_path(root, raw)
+        if path is None:
+            return [f"secret '{name}'.from_file escapes the repo root: {raw}"]
+        if path.is_relative_to((spec_dir / "qa").resolve()):
+            return [f"secret '{name}'.from_file is under disposable qa/: {raw}"]
+    return []
+
+
 #: An environment variable name a plan may hand to a tool: upper-case, the convention
 #: every tool reads. `QA_*` is the runner's own namespace, and a secret's variable is
 #: reachable only through `secret()`, so neither is declarable here.
@@ -617,9 +639,9 @@ def _validate_tool_env(declared: Any, secrets: Mapping[str, Any]) -> list[str]:
     problems: list[str] = []
     seen: set[str] = set()
     secret_envs = {
-        str(declaration.get("from_env"))
+        str(declaration["from_env"])
         for declaration in secrets.values()
-        if isinstance(declaration, Mapping)
+        if isinstance(declaration, Mapping) and "from_env" in declaration
     }
     for name in declared:
         if not isinstance(name, str) or not _TOOL_ENV_NAME.match(name):
@@ -757,7 +779,13 @@ def check_runtime_requirements(
             if required and shutil.which("ffprobe") is None:
                 problems.append(f"target '{name}' requires ffprobe to validate recording metadata")
     for name, declaration in document.data.get("secrets", {}).items():
-
+        if "from_file" in declaration:
+            path = document.root / str(declaration["from_file"])
+            if not path.is_file() or path.stat().st_size == 0:
+                problems.append(
+                    f"secret '{name}' requires a non-empty file {declaration['from_file']} under the repo root"
+                )
+            continue
         env_name = declaration.get("from_env", "")
         if env_name not in os.environ:
             problems.append(f"secret '{name}' requires environment variable {env_name}")

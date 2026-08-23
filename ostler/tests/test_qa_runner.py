@@ -410,6 +410,79 @@ def test_a_secret_is_runtime_only_and_redacted(tmp_path: Path, monkeypatch) -> N
     assert "authorizing with" in (spec / "qa/steps/api-contract-stdout.txt").read_text("utf-8")
 
 
+def _file_secret_plan(from_file: str) -> str:
+    return (
+        PLAN.replace(
+            "from ostler_qa import Qa, plan, scenario, target",
+            "from ostler_qa import Qa, plan, scenario, secret, target",
+        )
+        .replace('api = target("api")', f'api = target("api")\n\nsecret("db", from_file="{from_file}")')
+        .replace(
+            '    qa.check("the value is ok", True, actual="ok", expected="ok",'
+            ' covers=["{obligation}"])',
+            '    print("connecting with", qa.secret("db"))\n'
+            '    qa.check("the password was readable", bool(qa.secret("db")),\n'
+            '             covers=["{obligation}"])',
+        )
+    )
+
+
+def test_a_file_secret_is_runtime_only_and_redacted(tmp_path: Path) -> None:
+    """A secret the trial wrote to a file reaches the scenario like one from the environment:
+    read once at run start, one trailing newline stripped, and never in anything the run
+    leaves behind — the session file persists the name, the ledger the redaction."""
+    spec = _spec(tmp_path)
+    module = _plan(spec, _file_secret_plan(".qa-secrets/db-password"))
+    (tmp_path / ".qa-secrets").mkdir()
+    (tmp_path / ".qa-secrets/db-password").write_text("hunter2-from-file\n", encoding="utf-8")
+
+    outcome = cmd_run(module, root=tmp_path)
+
+    assert outcome.status == "passed", outcome.message
+    persisted = "\n".join(
+        path.read_text(encoding="utf-8", errors="replace")
+        for path in [
+            spec / "qa/qa-run.ndjson",
+            spec / "qa/qa-session.json",
+            spec / "qa/steps/api-contract-stdout.txt",
+        ]
+        if path.exists()
+    )
+    assert "hunter2-from-file" not in persisted
+    stdout = (spec / "qa/steps/api-contract-stdout.txt").read_text("utf-8")
+    # It really did reach the scenario, and the newline the writing tool left is not part
+    # of the value — otherwise the print would end in two.
+    assert "connecting with [REDACTED]\n" in stdout
+    assert "[REDACTED]\n\n" not in stdout
+
+
+def test_a_file_secret_must_name_one_contained_source(tmp_path: Path) -> None:
+    """Both sources, neither, a path that escapes the root, or one under the spec's
+    disposable qa/ (emptied before the scenarios start) are refused at validation."""
+    spec = _spec(tmp_path)
+    for from_file, expected in [
+        ("../outside", "escapes the repo root"),
+        ("docs/specs/story-1/qa/token", "under disposable qa/"),
+    ]:
+        module = _plan(spec, _file_secret_plan(from_file))
+        document, load_problems = load_plan(module, spec, tmp_path)
+        assert not load_problems and document is not None
+        problems = validate_v2(document)
+        assert any(expected in item for item in problems), (from_file, problems)
+
+
+def test_a_missing_secret_file_blocks_the_run(tmp_path: Path) -> None:
+    """The file is the trial's to write; a run that starts without it would fail every
+    scenario that reads the secret for a reason the plan cannot state, so it blocks first."""
+    spec = _spec(tmp_path)
+    module = _plan(spec, _file_secret_plan(".qa-secrets/db-password"))
+
+    outcome = cmd_run(module, root=tmp_path)
+
+    assert outcome.status == "blocked"
+    assert "secret 'db' requires a non-empty file .qa-secrets/db-password" in outcome.message
+
+
 # ---------------------------------------------------------------------------
 # validation of what surrounds the scenarios
 # ---------------------------------------------------------------------------
