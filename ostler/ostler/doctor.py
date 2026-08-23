@@ -11,6 +11,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse
 
 from ostler import (checks, dynamic_registry, freeze, inventory, links as links_mod, markdown,
                     registry, schemas, select)
@@ -19,6 +20,7 @@ from ostler.vet import placement as placement_mod
 from ostler import refs as refs_mod
 from ostler.refs import normalize_ref
 from ostler.model import Graph, Epic, read_doc, required_section_problems
+from ostler.qa import runbook as runbook_mod
 from ostler.qa.outcome import QaOutcome
 
 
@@ -109,6 +111,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
     resolver = links_mod.LinkResolver(graph)
 
     _check_ui(graph, f, resolver)
+    _check_runbook(graph, f)
     # One build, shared. Each of these needs the resolved node/edge dump, and on a large book a
     # rebuild costs more than every other check in this function put together.
     ui_data = _ui_graph(graph, resolver)
@@ -822,6 +825,139 @@ def _check_reachability(data: dict, f: list[Finding]) -> None:
                              f"from outside the app",
                              path=screen, line=node["line"] if node else 0, ref=screen,
                              suggestion="- leads-to: [<this screen>](<path>)"))
+
+
+def _check_runbook(graph: Graph, f: list[Finding]) -> None:
+    """The book must say how this system comes up, and say it in a shape QA can run.
+
+    A repo with no `runbook` node has no declared stack, and the way that used to surface was
+    a QA run that passed against nothing: the bring-up found no manifest, reported "nothing to
+    bring up", and the lane routed that identically to a healthy stack. Reporting it here moves
+    the discovery to author time, where the remedy is one node instead of a repair loop.
+
+    Warn rather than error for the missing case: a book that documents a library, a CLI, or a
+    surface nobody serves has nothing to bring up and is not broken. The shape checks below are
+    errors, because a runbook that exists and cannot be run is a promise the lane will believe.
+    """
+    runbooks = graph.ui_nodes_of_type("runbook")
+    if not runbooks:
+        server = runbook_mod.select_server(graph)
+        if server is None:
+            f.append(Finding("warn", "runbook-missing",
+                             "no `runbook` node: the book does not say how this system is "
+                             "brought up, so QA has no stack to run against",
+                             suggestion="ostler scaffold runbook qa-stack --service <service>"))
+        return
+
+    for node in runbooks:
+        rel = _rel_path(graph, node)
+        meta = node.meta
+        reuse = _bullet_value(meta, "reuse")
+        if reuse and reuse not in runbook_mod.REUSE_POLICIES:
+            f.append(Finding("error", "runbook-bad-reuse",
+                             f"{rel}: `reuse: {reuse}` is not an adoption policy",
+                             path=rel, line=node.line, ref=reuse,
+                             suggestion="- reuse: " + " | ".join(sorted(runbook_mod.REUSE_POLICIES))))
+
+        steps = runbook_mod.steps_of(graph, node)
+        services = []
+        for step in steps:
+            kind = _bullet_value(step.meta, "kind")
+            if kind and kind not in runbook_mod.STEP_KINDS:
+                f.append(Finding("error", "runbook-bad-kind",
+                                 f"{step.id}: `kind: {kind}` is not a boot-step kind",
+                                 path=rel, line=step.line, ref=kind,
+                                 suggestion="- kind: " + "|".join(sorted(runbook_mod.STEP_KINDS))))
+            if kind == "service":
+                services.append(step)
+
+        if not services:
+            f.append(Finding("error", "runbook-incomplete",
+                             f"{rel}: no `kind: service` step — nothing here starts the system",
+                             path=rel, line=node.line, ref=node.id,
+                             suggestion="### start\n- kind: service\n- run: <bring-up command>"))
+        elif len(services) > 1:
+            # The reader takes the first and keeps going, so this is a book to repair rather
+            # than a run to stop; it is an error because which one launched is otherwise luck.
+            f.append(Finding("error", "runbook-multi-service",
+                             f"{rel}: {len(services)} `kind: service` steps — a runbook brings "
+                             f"up one stack, so the rest belong in `kind: prepare`",
+                             path=rel, line=services[1].line, ref=node.id,
+                             suggestion="- kind: prepare"))
+        elif not _bullet_value(meta, "entry-url") and not _bullet_value(services[0].meta, "health"):
+            f.append(Finding("error", "runbook-incomplete",
+                             f"{rel}: nothing proves the stack is up — give the runbook an "
+                             f"`entry-url:` or the service step a `health:` gate",
+                             path=rel, line=node.line, ref=node.id,
+                             suggestion="- entry-url: http://localhost:<port>"))
+
+        _check_runbook_environment(graph, node, rel, f)
+
+
+def _check_runbook_environment(graph: Graph, node, rel: str, f: list[Finding]) -> None:
+    """A `local-only: true` environment must name only local services.
+
+    The bullet exists so a book can say "this recipe drops databases and reseeds fixtures; it
+    is for a laptop". Honouring it is cheap here and impossible later — by the time the recipe
+    runs it is already talking to whatever it was pointed at.
+
+    The evidence is the `services:` hosts, not the `selector:`: a selector is free prose (an
+    env-var assignment, a profile name, a sentence), so reading intent out of it would both
+    miss `prod-eu` and libel `GROOM_BIND=127.0.0.1`. A host is a fact.
+    """
+    for _text, href in node.links:
+        # Through `resolve_doc_ref`, because a runbook cites its environment the way every
+        # other doc cites: relative to itself. A raw `href` lookup only ever finds the
+        # citation that happened to be written as a node id.
+        target = graph.find_ui_node(graph.resolve_doc_ref(href, origin=node.path))
+        if target is None or target.type != "environment":
+            continue
+        if _bullet_value(target.meta, "local-only") not in ("true", "yes"):
+            continue
+        for service in _remote_services(target.meta):
+            f.append(Finding("error", "runbook-local-only",
+                             f"{rel}: boots `{target.id}`, which is `local-only: true`, but "
+                             f"that environment points at {service}",
+                             path=rel, line=node.line, ref=target.id,
+                             suggestion="point it at localhost, or drop `local-only: true`"))
+
+
+#: Hosts a `local-only: true` environment may name. `*.localhost` and `*.local` resolve on the
+#: machine too, so they are matched by suffix rather than listed.
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]", "host.docker.internal"})
+
+
+def _remote_services(meta: dict) -> list[str]:
+    """The `services:` children of an environment whose host is not this machine."""
+    children = meta.get("services") or []
+    if isinstance(children, str):
+        children = [children]
+    remote = []
+    for child in children:
+        url = str(child).partition(":")[2].strip().strip("`").strip()
+        host = urlparse(url).hostname if "://" in url else ""
+        if not host:
+            continue
+        if host in _LOCAL_HOSTS or host.endswith((".localhost", ".local")):
+            continue
+        remote.append(host)
+    return remote
+
+
+def _bullet_value(meta: dict, key: str) -> str:
+    """One bullet, read exactly as the runbook reader reads it, folded for comparison.
+
+    Shared rather than re-implemented so the doctor can never bless a spelling the reader
+    then refuses — `` - reuse: `never` `` has to be the same value to both.
+    """
+    return runbook_mod.bullet_value(meta, key).lower()
+
+
+def _rel_path(graph: Graph, node) -> str:
+    try:
+        return node.path.resolve().relative_to(graph.root.resolve()).as_posix()
+    except (ValueError, OSError):
+        return node.path.as_posix()
 
 
 def _check_locators(data: dict, f: list[Finding]) -> None:

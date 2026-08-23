@@ -21,7 +21,7 @@ from ostler.qa.run import DaemonSpec, QaOutcome, cmd_assert, cmd_report, cmd_rep
 from ostler.qa.lint import cmd_lint
 from ostler.qa.clean import cmd_clean, legacy_scratch_roots
 from ostler.qa.session import QA_DIRNAME, RESERVED_LABELS, ScratchLabelError, scratch_dirname
-from ostler.qa import tools
+from ostler.qa import runbook, tools
 from ostler.qa.evidence_map import (
     STATUSES,
     EvidenceMapError,
@@ -69,5 +69,6 @@ __all__ = [
     "EvidenceMapError",
     "build_evidence_map",
     "render_evidence_map",
+    "runbook",
     "tools",
 ]

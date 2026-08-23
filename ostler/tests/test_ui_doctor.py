@@ -569,10 +569,22 @@ LINKED_REPORT_JSON = """\
       "severity": "error",
       "suggestion": "",
       "waived": false
+    },
+    {
+      "code": "runbook-missing",
+      "epic": "",
+      "fixable": false,
+      "line": 0,
+      "message": "no `runbook` node: the book does not say how this system is brought up, so QA has no stack to run against",
+      "path": "",
+      "ref": "",
+      "severity": "warn",
+      "suggestion": "ostler scaffold runbook qa-stack --service <service>",
+      "waived": false
     }
   ],
   "profile": "exploration",
-  "warnings": 0
+  "warnings": 1
 }"""
 
 
