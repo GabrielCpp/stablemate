@@ -51,9 +51,11 @@ Three rules govern the content (profile §2, §8):
   `ostler graph --path 'concept:X / method:foo'` walks straight to it. Reserve prose for the summary,
   not the spec.
 - **One provable claim per normative bullet.** A bullet QA mints an obligation from — `does:`,
-  `when:`, `returns:`, `raises:`, `status:`, `error:`, `auth:`, `persistence:`, `emits:`,
-  `consumes:`, `concurrency:`, `idempotency:`, `required:`, `default:`, `semantics:` — is proved
-  by exactly one scenario. A bullet holding a paragraph is several requirements sharing one id,
+  `when:`, `returns:`, `raises:`, `status:`, `errors:`, `auth:`, a command's `exits:`,
+  `persistence:`, `emits:`, `consumes:`, `concurrency:`, `idempotency:`, `required:`,
+  `default:`, `semantics:` — is proved by exactly one scenario. Only on the types that declare
+  it: `doctor` warns `unknown-bullet` for a profile key on a type where it is inert (a `does:`
+  on a component, a `verify:` on a concept). A bullet holding a paragraph is several requirements sharing one id,
   and the scenario proves whichever clause the planner read; the rest ships claimed-as-covered
   and untested. Split on real seams — the success effect, each error case, what is persisted,
   what is emitted — by repeating the key. `doctor` errors past 700 characters of prose.

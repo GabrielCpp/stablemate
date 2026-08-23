@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ostler import doctor, fmt, links, scaffold
+from ostler import doctor, fmt, links, registry, scaffold
 from ostler.model import load
 
 from conftest import write
@@ -424,6 +424,46 @@ def test_a_type_that_carries_no_check_key_is_never_reported(repo: Path):
           "## Steps\n\n### Push\n- step: push the image\n"
           "- persistence: the tag is recorded in the registry\n")
     assert "undeclared-obligation" not in all_codes(_run(repo))
+
+
+def test_an_undeclared_bullet_key_is_a_warning(repo: Path):
+    """A `verify:` on a concept is read by nobody — `check_keys("concept")` is empty — while
+    the author who wrote it believes the claim above is observed. A warn, not an error: where
+    the observation belongs is the author's call."""
+    write(repo / "docs/features/groom/concepts/diff.md",
+          "---\ntype: concept\nslug: diff\ntitle: Diff\n---\n# Diff\n\n"
+          "- code: `groom/diff.py::Diff`\n- verify: absent(subject=\"the row\")\n"
+          "- meaning: the author's own word, which no type declares and nothing polices\n")
+    report = _run(repo)
+    hits = [f for f in report.findings if f.code == "unknown-bullet"]
+    assert [f.ref for f in hits] == ["docs/features/groom/concepts/diff.md#verify"]
+    assert hits[0].severity == "warn"
+    assert "concept declares" in hits[0].message
+
+
+def test_an_undeclared_bullet_on_an_untyped_section_is_not_asked(repo: Path):
+    write(repo / "docs/features/groom/concepts/diff.md",
+          "---\ntype: concept\nslug: diff\ntitle: Diff\n---\n# Diff\n\n"
+          "## Notes\n\n- verify: a word in prose, not a check\n")
+    assert "unknown-bullet" not in all_codes(_run(repo))
+
+
+def test_a_status_bullet_on_an_invocation_is_declared_and_formatted(repo: Path):
+    """The key was graded for as long as the mapper existed and declared only now: `fmt`
+    orders it between the effect and its grounding, and the `verify:` under it stays with
+    it (`registry.attributed_checks` binds a check to the nearest claim above)."""
+    write(repo / "docs/features/groom/cli/wh.md",
+          "---\ntype: cli\nslug: wh\ntitle: WH\n---\n# WH\n\n"
+          "## Invocations\n\n### run\n- on: [wh](#wh)\n- trigger: `wh run`\n"
+          "- does:\n  - state: runs\n- code: `wh/run.py::run`\n"
+          "- status: `0` on success\n- verify: exit_status(code=0)\n")
+    assert "unknown-bullet" not in all_codes(_run(repo))
+    fmt.run_fmt(load(repo), [])
+    text = (repo / "docs/features/groom/cli/wh.md").read_text()
+    assert text.index("- status:") < text.index("- verify:") < text.index("- code:")
+    inv = load(repo).ui_nodes_of_type("invocation")[0]
+    _, per_bullet = registry.attributed_checks(inv.type, inv.bullet_order)
+    assert per_bullet == {("status", 1): ["exit_status(code=0)"]}
 
 
 def test_all_ui_findings_are_errors(repo: Path):

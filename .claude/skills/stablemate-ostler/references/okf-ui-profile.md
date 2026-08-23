@@ -63,9 +63,12 @@ context it applies* (fresh start vs resume, which mode, its default), with inlin
 `concept`/`format`/command it touches. `- flags: --a, --b, --c` with no explanation is a smell.
 
 **One provable claim per normative bullet.** A normative bullet — `does:`, `when:`, `returns:`,
-`raises:`, `status:`, `error:`, `auth:`, `persistence:`, `emits:`, `consumes:`, `concurrency:`,
-`idempotency:`, `required:`, `default:`, `semantics:`, a flow's `start:`/`end:` — is minted as **one
-obligation** and proved by **one QA scenario**. So a bullet that carries a paragraph is several
+`raises:`, `status:`, `errors:`, `auth:`, a command's `errors:`/`exits:`, `persistence:`, `emits:`,
+`consumes:`, `concurrency:`, `idempotency:`, `required:`, `default:`, `semantics:`, a flow's
+`start:`/`end:` — is minted as **one obligation** and proved by **one QA scenario**. Which keys
+are normative on which type is a flag on the registry's bullet declaration
+(`registry.BulletKey.normative`), so a graded key is by construction one `fmt` orders and
+`doctor` recognizes. So a bullet that carries a paragraph is several
 requirements wearing one id, and the scenario covering it proves whichever clause the planner
 happened to read; the rest is documented, claimed as covered, and never tested. Split on the seams
 that are really separate: the success effect, each error case, what is persisted, what is emitted.
@@ -121,9 +124,9 @@ Unlike the draft profile's original "warns, never blocks" stance, UI conformance
 `doctor` gate**: every rule is `error`-severity, carries a `path:line` location, and has a
 mechanical fix, so a workflow node can gate on `ostler doctor` and always converge. The
 exceptions are `overlong-normative-bullet`, `compound-normative-bullet`,
-`undeclared-obligation`, `weak-check` and `unstated-precondition` (warns), whose remedy is a
-judgement about the *source*: only the code can say which clauses are separate requirements, and
-cutting the bullet on punctuation invents obligations nobody can prove.
+`undeclared-obligation`, `unknown-bullet`, `weak-check` and `unstated-precondition` (warns),
+whose remedy is a judgement about the *source*: only the code can say which clauses are separate
+requirements, and cutting the bullet on punctuation invents obligations nobody can prove.
 
 | Code | Means | Remedy |
 |---|---|---|
@@ -133,6 +136,7 @@ cutting the bullet on punctuation invents obligations nobody can prove.
 | `missing-required-bullet` | a node lacks a required **key** (e.g. `interaction` without `on:`/`does:`) | `ostler scaffold` stubs it (key presence, not value) |
 | `overlong-normative-bullet` | one obligation-minting bullet runs past 700 characters of prose | split it into one bullet per provable claim |
 | `compound-normative-bullet` (warn) | one bullet states several observations — enumerated status codes, several error names, semicolon-joined clauses | split it: one bullet is one obligation, proved by one scenario |
+| `unknown-bullet` (warn) | a profile key on a type that does not declare it — `verify:` on a concept, `does:` on a component, `exits:` on a method — so here it is inert: nothing orders, grades or grounds it, and no `verify:` binds to it. A key no type declares (`meaning:`) is the author's own and is not reported | move the claim under a key the type mints from, the observation onto the node that states the claim, or the bullet into prose |
 | `unparsed-check` | a `verify:` value is not a call from the check vocabulary (a test id, an unknown name, a bad argument) | rewrite it as `name(arg=…)`; a test citation belongs in `tests:` |
 | `undeclared-obligation` (warn) | the node mints obligations and declares no `verify:` at all — nothing says what observing them looks like | declare a check per observation; the node is the only place that knows what the behaviour promised |
 | `weak-check` (warn) | every check the node declares passes on the defect it is meant to catch — a field asserted by presence with no value, a `2xx` naming neither `path:` nor `title:` | name the value, the route or the title the claim turns on |

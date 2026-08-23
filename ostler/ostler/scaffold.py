@@ -32,8 +32,11 @@ def _bullet_stubs(uitype: registry.UINodeType) -> list[str]:
     written anywhere else is one the formatter moves the first time the file is touched.
     """
     normative = set(registry.normative_keys(uitype.name))
-    checks = [f"- {bk.key}:" for bk in uitype.bullet_keys if bk.check]
-    rest = [f"- {bk.key}:" for bk in uitype.bullet_keys if not bk.check]
+    # An alias is a second spelling of the key above it; stubbing both would ask the author
+    # to fill one and delete the other.
+    keys = [bk for bk in uitype.bullet_keys if not bk.alias]
+    checks = [f"- {bk.key}:" for bk in keys if bk.check]
+    rest = [f"- {bk.key}:" for bk in keys if not bk.check]
     claims = [i for i, stub in enumerate(rest) if stub[2:-1] in normative]
     at = claims[-1] + 1 if claims else len(rest)
     return rest[:at] + checks + rest[at:]

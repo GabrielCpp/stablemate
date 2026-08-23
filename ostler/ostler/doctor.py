@@ -1052,6 +1052,29 @@ def _check_ui(graph: Graph, f: list[Finding],
         if node.type == "component":
             _check_placement(node, rel, f)
 
+        # A profile key on a type that does not declare it is inert: a `verify:` on a concept is
+        # read by nobody, a `does:` on a component mints nothing, a `code:` on a field is never
+        # grounded — while the author, who knows what the key does elsewhere, believes otherwise.
+        # A `warn`, because the remedy is a judgment: the claim belongs under a key this type
+        # mints from, the observation belongs on the node that states the claim, or the bullet
+        # wanted to be prose. A key no type declares is left alone — it is the author's own
+        # vocabulary (`meaning:`, `constraints:`), and a claim hiding under one is
+        # `unminted-claim`'s to find, not a spelling to police.
+        if node.type != "untyped":
+            known = registry.declared_keys(node.type)
+            for key in node.meta:
+                if key in known or key not in registry.LOAD_BEARING_KEYS:
+                    continue
+                minted = ", ".join(f"`{k}:`" for k in registry.NORMATIVE_KEYS_BY_TYPE.get(
+                    node.type, ()))
+                f.append(Finding(
+                    "warn", "unknown-bullet",
+                    f"{node.id}: `{key}:` is not a bullet {node.type} declares, so here it is "
+                    f"inert — nothing orders it, grades it, grounds it or binds a `verify:` "
+                    f"to it; move the claim under a key {node.type} mints from "
+                    f"({minted or 'none — this type states no claims'}) or into prose",
+                    path=rel, line=node.line, ref=f"{node.id}#{key}"))
+
         normative = 0
         lifecycle: list[tuple[str, str]] = []
         for key in registry.normative_keys(node.type):

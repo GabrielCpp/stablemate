@@ -127,6 +127,44 @@ def test_every_type_that_states_claims_can_say_what_observing_one_looks_like() -
     assert registry.check_keys("environment") == ("verify",)
 
 
+def test_every_graded_key_is_a_declared_bullet() -> None:
+    """The drift this closes: `status:`/`errors:`/`auth:` were graded on an endpoint for as
+    long as the mapper existed and declared nowhere, so `fmt` could not place them and a
+    `verify:` written under one bound to the `does:` above. A graded key is a bullet key."""
+    for node_type, keys in registry.NORMATIVE_KEYS_BY_TYPE.items():
+        declared = registry.UI_TYPES_BY_NAME[node_type].bullet_by_key
+        for key in keys:
+            assert key in declared, (node_type, key)
+            assert declared[key].normative, (node_type, key)
+
+
+def test_normative_table_is_derived_from_the_registry() -> None:
+    """One flag, not two tables: every `normative=True` bullet is graded, nothing else is."""
+    for uitype in registry.UI_TYPES:
+        flagged = tuple(b.key for b in uitype.bullet_keys if b.normative)
+        assert registry.NORMATIVE_KEYS_BY_TYPE.get(uitype.name, ()) == flagged, uitype.name
+        assert set(registry.normative_keys(uitype.name)) == (
+            set(flagged) | set(registry.SHARED_NORMATIVE_KEYS))
+        assert set(flagged) <= registry.declared_keys(uitype.name)
+    # The keys that drove the change, declared where they are graded.
+    for node_type in ("endpoint", "invocation"):
+        assert {"status", "errors", "auth"} <= set(registry.NORMATIVE_KEYS_BY_TYPE[node_type])
+    assert {"errors", "exits"} <= set(registry.NORMATIVE_KEYS_BY_TYPE["command"])
+
+
+def test_a_load_bearing_key_is_one_some_type_instruments() -> None:
+    """`verify:` and `code:` are the keys an author expects machinery behind; `meaning:` is
+    nobody's, and `parent:` is resolved on every type alike, so neither is in the set."""
+    assert {"verify", "code", "does", "status", "fixture"} <= registry.LOAD_BEARING_KEYS
+    assert not {"meaning", "parent", "detail", "on"} & registry.LOAD_BEARING_KEYS
+
+
+def test_an_alias_is_declared_but_never_stubbed() -> None:
+    endpoint = registry.UI_TYPES_BY_NAME["endpoint"].bullet_by_key
+    assert endpoint["statuses"].alias and endpoint["statuses"].normative
+    assert not endpoint["status"].alias
+
+
 def test_a_runbook_step_verify_stays_a_reference() -> None:
     """Same word, different job: a boot step's `verify:` says how to tell the *step* ran."""
     assert registry.check_keys("step") == ()

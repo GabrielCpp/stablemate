@@ -240,6 +240,14 @@ class BulletKey:
                            # reaches the state the claim above it is about. The counterpart of
                            # ``check``: one says what observing the claim looks like, the other
                            # says how to get to where it can be observed.
+    normative: bool = False  # value is a *claim* QA mints an obligation from — one per value,
+                             # which a scenario then has to prove. A flag rather than a table
+                             # beside the types, so "graded" and "declared" cannot drift: a key
+                             # the mapper grades is by construction one ``fmt`` orders and
+                             # ``doctor`` recognizes.
+    alias: bool = False      # a second accepted spelling of the key declared just above it
+                             # (``statuses`` for ``status``): recognized and ordered like the
+                             # primary, never stubbed by ``scaffold``.
 
 
 @dataclass(frozen=True)
@@ -273,22 +281,6 @@ RELATION_KEYS = ("on", "parent", "extends", "steps", "presents", "detail",
                  "environment", "cli", "surfaces", "requires", "params", "leads-to",
                  "exclusive-with")
 
-# The bullets QA mints an obligation from — one per value, which a scenario then has to prove.
-# They live here rather than beside the minting because two readers need the same answer: the
-# obligation mapper, and the doctor rule that refuses a normative bullet too long to prove. A
-# vocabulary those two disagree about produces a bullet that is graded but never linted, or
-# linted for a claim nothing grades.
-NORMATIVE_KEYS_BY_TYPE: dict[str, tuple[str, ...]] = {
-    "flow": ("start", "end"),
-    "component": ("role", "name", "keyboard", "states"),
-    "command": ("does",),
-    "endpoint": ("does", "status", "statuses", "error", "errors", "auth", "authorization"),
-    "interaction": ("when", "does", "keyboard"),
-    "invocation": ("when", "does", "status", "statuses", "error", "errors", "auth",
-                   "authorization"),
-    "method": ("returns", "raises"),
-    "field": ("required", "default", "semantics"),
-}
 # Normative on every node type, whatever it is.
 SHARED_NORMATIVE_KEYS = ("consistency", "consistency rule", "consistency group", "persistence",
                          "emits", "consumes", "concurrency", "idempotency")
@@ -297,6 +289,15 @@ SHARED_NORMATIVE_KEYS = ("consistency", "consistency rule", "consistency group",
 def normative_keys(node_type: str) -> tuple[str, ...]:
     """Every bullet key on `node_type` that becomes an obligation."""
     return SHARED_NORMATIVE_KEYS + NORMATIVE_KEYS_BY_TYPE.get(node_type, ())
+
+
+def declared_keys(node_type: str) -> frozenset[str]:
+    """Every bullet key `node_type` recognizes: its own declared bullets plus the keys that are
+    normative on every type. A key outside this set is one `fmt` cannot place and no reader
+    grades — which is what `doctor`'s `unknown-bullet` tells the author."""
+    uitype = UI_TYPES_BY_NAME.get(node_type)
+    own = () if uitype is None else uitype.bullet_keys
+    return frozenset(b.key for b in own) | frozenset(SHARED_NORMATIVE_KEYS)
 
 
 def check_keys(node_type: str) -> tuple[str, ...]:
@@ -433,9 +434,9 @@ UI_TYPES: tuple[UINodeType, ...] = (
     UINodeType(
         name="flow", kind="file", context="flows",
         bullet_keys=(
-            BulletKey("start"),
+            BulletKey("start", normative=True),
             BulletKey("steps", nested=True, link=True),
-            BulletKey("end"),
+            BulletKey("end", normative=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
             # The test files covering this node, as `path` or `path::name`. Not an obligation
@@ -490,15 +491,15 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # reader announces, and the `getByRole(role, {name})` a test locates by. `none` is a
             # legitimate value — a decorative or purely presentational element has no accessible
             # name — but it has to be *stated*, so "no name" and "nobody looked" stay distinguishable.
-            BulletKey("role", required=True),
-            BulletKey("name", required=True),
+            BulletKey("role", required=True, normative=True),
+            BulletKey("name", required=True, normative=True),
             # Where the component lands on the screen, as bands of the viewport
             # (`width 60-100%, x 0-20%`). Screen-relative on purpose: no `sidebar`/`main-column`
             # vocabulary, nothing that assumes the page has a grid. It is the one documented
             # fact a role+name assertion cannot check — `getByRole` finds an element whether the
             # page lays it out across the window or crushes it into a column against one margin.
             BulletKey("placement"),
-            BulletKey("keyboard"),   # how it's reached/operated by keyboard
+            BulletKey("keyboard", normative=True),   # how it's reached/operated by keyboard
             BulletKey("extends", link=True),
             BulletKey("parent", link=True),
             # Sibling(s) this control can never be in the DOM at the same time as. It is the runtime
@@ -506,7 +507,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # co-render are not ambiguous. A *claim*, grounded in source (mutually-exclusive states,
             # variant switch) — not a way to silence a real same-screen collision.
             BulletKey("exclusive-with", link=True),
-            BulletKey("states"),
+            BulletKey("states", normative=True),
             BulletKey("code", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
@@ -519,7 +520,12 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("parent", link=True),
             BulletKey("flags"),
             BulletKey("args"),
-            BulletKey("does", nested=True),
+            BulletKey("does", nested=True, normative=True),
+            # The refusal arm of a command, as an endpoint's `errors:`/`status:` are of a route:
+            # what it prints and the code it leaves with. Both were graded before they were
+            # declared here, which is the drift `BulletKey.normative` closes.
+            BulletKey("errors", normative=True),
+            BulletKey("exits", normative=True),
             BulletKey("code", link=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
@@ -533,9 +539,20 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("path"),
             BulletKey("channel"),
             BulletKey("message"),
-            BulletKey("does", nested=True),
+            BulletKey("does", nested=True, normative=True),
             BulletKey("emits"),
             BulletKey("consumes"),
+            # The route's outcomes, one claim per value — declared here so `fmt` can order them
+            # between the effect and its grounding (`does → status → errors → auth → code →
+            # verify`) and so a `verify:` written under one binds to it. `statuses`, `error` and
+            # `authorization` are accepted spellings of the key above each, kept for the books
+            # that wrote them; `scaffold` stubs only the primary.
+            BulletKey("status", normative=True),
+            BulletKey("statuses", normative=True, alias=True),
+            BulletKey("errors", normative=True),
+            BulletKey("error", normative=True, alias=True),
+            BulletKey("auth", normative=True),
+            BulletKey("authorization", normative=True, alias=True),
             BulletKey("code", link=True),
             BulletKey("openapi", link=True),
             BulletKey("detail", link=True),
@@ -559,10 +576,10 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # blank to leave empty.
             BulletKey("role", required=True),
             BulletKey("name", required=True),
-            BulletKey("keyboard", required=True),
-            BulletKey("when"),
+            BulletKey("keyboard", required=True, normative=True),
+            BulletKey("when", normative=True),
             BulletKey("exclusive-with", link=True),
-            BulletKey("does", required=True, nested=True),
+            BulletKey("does", required=True, nested=True, normative=True),
             BulletKey("code", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
@@ -574,10 +591,21 @@ UI_TYPES: tuple[UINodeType, ...] = (
         bullet_keys=(
             BulletKey("on", required=True, link=True),
             BulletKey("trigger", required=True),
-            BulletKey("when"),
-            BulletKey("does", required=True, nested=True),
+            BulletKey("when", normative=True),
+            BulletKey("does", required=True, nested=True, normative=True),
             BulletKey("emits"),
             BulletKey("consumes"),
+            # The invocation's outcomes, one claim per value — declared here so `fmt` can order them
+            # between the effect and its grounding (`does → status → errors → auth → code →
+            # verify`) and so a `verify:` written under one binds to it. `statuses`, `error` and
+            # `authorization` are accepted spellings of the key above each, kept for the books
+            # that wrote them; `scaffold` stubs only the primary.
+            BulletKey("status", normative=True),
+            BulletKey("statuses", normative=True, alias=True),
+            BulletKey("errors", normative=True),
+            BulletKey("error", normative=True, alias=True),
+            BulletKey("auth", normative=True),
+            BulletKey("authorization", normative=True, alias=True),
             BulletKey("code", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
@@ -591,8 +619,9 @@ UI_TYPES: tuple[UINodeType, ...] = (
         bullet_keys=(
             BulletKey("sig"),
             BulletKey("abstract"),
-            BulletKey("raises"),
-            BulletKey("returns"),
+            BulletKey("does", normative=True),
+            BulletKey("raises", normative=True),
+            BulletKey("returns", normative=True),
             BulletKey("code", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
@@ -606,9 +635,10 @@ UI_TYPES: tuple[UINodeType, ...] = (
         name="field", kind="section", heading="Fields", literal_id=True,
         bullet_keys=(
             BulletKey("type"),
-            BulletKey("default"),
-            BulletKey("required"),
-            BulletKey("semantics"),
+            BulletKey("default", normative=True),
+            BulletKey("required", normative=True),
+            BulletKey("semantics", normative=True),
+            BulletKey("code", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
         ),
@@ -638,6 +668,24 @@ UI_TYPES: tuple[UINodeType, ...] = (
 )
 
 UI_TYPES_BY_NAME: dict[str, UINodeType] = {t.name: t for t in UI_TYPES}
+# The bullets QA mints an obligation from, per type — one per value, which a scenario then has
+# to prove. Derived from the `normative=True` flags rather than written beside them, so the two
+# readers that need the same answer — the obligation mapper, and the doctor rule that refuses a
+# normative bullet too long to prove — cannot disagree: a vocabulary they disagreed about
+# produced a bullet that was graded but never linted, or linted for a claim nothing graded.
+NORMATIVE_KEYS_BY_TYPE: dict[str, tuple[str, ...]] = {
+    t.name: tuple(b.key for b in t.bullet_keys if b.normative)
+    for t in UI_TYPES if any(b.normative for b in t.bullet_keys)}
+# Every key that, on *some* type, drives machinery — minted as an obligation, parsed as a check,
+# grounded as a code ref, resolved as a fixture, followed as a link — minus the relations the
+# linter resolves on every type alike. On a type that does not declare it, such a key is
+# inert: a `verify:` on a concept is read by nobody, a `does:` on a component mints nothing, a
+# `code:` on a field is never grounded. That is the mismatch `doctor`'s `unknown-bullet` names
+# — and the only one it names, because a key no type declares (`meaning:`, `constraints:`)
+# is the author's own vocabulary, and a claim hiding under it is `unminted-claim`'s to find.
+LOAD_BEARING_KEYS: frozenset[str] = frozenset(
+    b.key for t in UI_TYPES for b in t.bullet_keys
+    if b.normative or b.check or b.link or b.arrange) - frozenset(RELATION_KEYS)
 # ``## Heading`` → the section-node type it contains (profile §4's implicit-type table).
 UI_HEADING_TO_TYPE: dict[str, str] = {
     t.heading: t.name for t in UI_TYPES if t.kind == "section" and t.heading}
