@@ -15,7 +15,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from ostler.qa.drivers import DisplayRecorder
+from ostler.qa import drivers
+from ostler.qa.drivers import DisplayRecorder, _is_static
 
 
 def _atoms(path: Path) -> list[str]:
@@ -73,3 +74,67 @@ def test_a_recording_is_playable_before_it_is_fully_downloaded(tmp_path: Path) -
     assert order.index("moov") < order.index("mdat"), (
         f"the video will not stream: {order}"
     )
+
+
+def test_the_recorder_never_films_whatever_screen_display_happens_to_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The defect this pair of tests exists for: evidence that was somebody's desktop.
+
+    `$DISPLAY` on a developer's machine is their own screen, and ffmpeg crops the grab to
+    the requested viewport — so the filed artifact was a valid 1440x900 mp4 of a terminal,
+    passing every geometry check in `_finalize`. The recorder owns its display now, and a
+    target that really has one of its own says so in `recording.display`.
+    """
+    monkeypatch.setenv("DISPLAY", ":0")
+    assert _recorder(tmp_path).display == ""
+
+    session = SimpleNamespace(qa_dir=tmp_path, offset_ms=lambda: 0, append=lambda record: None)
+    declared = DisplayRecorder(
+        session,  # ty: ignore[invalid-argument-type]
+        "web",
+        width=320,
+        height=240,
+        fps=5,
+        display=":99",
+    )
+    assert declared.display == ":99"
+    assert ":99.0" in declared.argv()
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is not installed")
+def test_a_recording_of_a_display_nothing_was_drawn_on_is_not_evidence(tmp_path: Path) -> None:
+    """The failure that survives owning the display: Xvfb comes up and the browser never paints.
+
+    Filmed for real, both ways, because the claim is about the bytes: an unchanging capture
+    is refused, and anything with motion in it is not. The moving case is the one that
+    matters — a guard that fires on a real session would block runs that worked.
+    """
+    static = tmp_path / "static.mp4"
+    moving = tmp_path / "moving.mp4"
+    for path, source in ((static, "color=c=gray:s=320x240:r=5:d=4"), (moving, "testsrc=s=320x240:r=5:d=4")):
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", source,
+             "-c:v", "libx264", "-pix_fmt", "yuv420p", str(path)],
+            check=True,
+            timeout=120,
+        )
+
+    assert _is_static(static, 4.0)
+    assert not _is_static(moving, 4.0)
+
+
+def test_window_mode_is_refused_where_it_cannot_work_rather_than_filmed_wrong(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The mode grabs an X display, and macOS has none — so it says so instead of guessing.
+
+    The tempting substitute on macOS is avfoundation's screen capture, which films the
+    physical desktop. That is precisely the artifact this whole change exists to stop
+    shipping, so the answer is a block naming the portable mode, not a second way to film
+    the wrong thing.
+    """
+    monkeypatch.setattr(drivers.sys, "platform", "darwin")
+    driver = SimpleNamespace(target={}, launcher=None)
+    with pytest.raises(drivers.DriverBlocked, match="Linux-only"):
+        drivers.PythonDriver._start_window_recorder(driver, {"required": True, "mode": "window"})  # ty: ignore[invalid-argument-type]
