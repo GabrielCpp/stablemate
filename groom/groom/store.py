@@ -8,24 +8,34 @@ remains the append-only record-of-truth — SQLite exists for cross-run search
 (slowest nodes, error spans, cost per run, who cap-waited), not as the primary
 record. Spans older than the retention window are pruned to bound growth.
 
-groom is single-process/single-event-loop and writes are single-statement
-inserts, so a plain module-level connection with autocommit is enough — no
-pool, no locks (WAL mode keeps concurrent CLI reads from blocking the server).
+One process-wide connection, and it is *not* free of locks or of failure. Reads
+run inline on the event loop while every write goes to an ``asyncio.to_thread``
+worker, so a connection — which has exactly one transaction and one snapshot — is
+shared across threads: :class:`_Store` therefore holds it behind an ``RLock``, opens
+it in real autocommit (``isolation_level=None``) so no failure path can strand an
+open transaction, and wraps multi-statement writes in an explicit ``BEGIN IMMEDIATE``.
+When a statement fails anyway the connection is recycled and the call retried once
+(:func:`_resilient`), because a collector meant to run for weeks cannot answer a
+wedged handle with a 500 forever. :func:`health` is what that looks like from outside.
 """
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import os
 import re
 import sqlite3
 import tempfile
+import threading
 import time
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, ParamSpec, TypeVar
 
 from platformdirs import user_data_dir
 
@@ -138,9 +148,6 @@ CREATE TABLE IF NOT EXISTS turns (
 CREATE INDEX IF NOT EXISTS turns_visit ON turns(run_id, node, generation, seq);
 CREATE INDEX IF NOT EXISTS turns_session ON turns(session_id);
 """
-
-_conn: sqlite3.Connection | None = None
-
 
 def db_path() -> Path:
     """``$GROOM_DB`` (tests point it at a temp file), else the platform data
@@ -272,81 +279,315 @@ def _migrate(conn: sqlite3.Connection) -> None:
         for column, decl in added:
             if column not in existing:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")  # noqa: S608
-    conn.commit()
 
 
-def _connection() -> sqlite3.Connection:
-    global _conn
-    if _conn is None:
-        path = db_path()
+_P = ParamSpec("_P")
+_T = TypeVar("_T")
+
+# How long after recycling the connection a further failure is answered by raising
+# rather than by reopening again. A wedged handle heals on the first reopen; a broken
+# *file* (disk full, corruption) would otherwise close-and-open on every request.
+REOPEN_COOLDOWN_S = 5.0
+
+
+@dataclass(frozen=True, slots=True)
+class StoreHealth:
+    """What the store would say if asked whether it is still storing.
+
+    ``ok`` is not "the last call succeeded" but "nothing has failed since the last
+    successful reopen" — the distinction that matters after a two-week serve, where
+    a single healed blip and an hour of dropped batches look identical in a counter.
+    """
+
+    ok: bool
+    path: str
+    last_ok_ts: float
+    reopens: int
+    failures: int
+    last_error: str
+    last_error_ts: float
+    last_write_ts: float
+    last_prune_ts: float
+    wal_bytes: int
+    last_checkpoint_busy: int
+
+
+class _Store:
+    """The process's one SQLite handle, and the discipline that keeps it usable.
+
+    Three things are load-bearing and each of them was learned from a serve that had
+    silently stopped storing 13 hours earlier:
+
+    * ``isolation_level=None``. Under Python's legacy implicit-transaction mode, any
+      exception between the implicit ``BEGIN`` and the ``commit()`` leaves the
+      connection inside a transaction; every later ``SELECT`` joins it and re-pins the
+      read snapshot, and every later write dies of ``SQLITE_BUSY_SNAPSHOT`` — forever,
+      because nothing reopened. Autocommit removes the failure mode rather than
+      handling it.
+    * one ``RLock`` around every statement. ``check_same_thread=False`` buys memory
+      safety from SQLite's serialized mode and nothing at the transaction level, and a
+      connection has exactly one transaction: without the lock a worker thread's write
+      and the event loop's inline read are the same transaction. It is also what makes
+      :meth:`recycle` safe — closing a handle another thread is mid-``executemany`` on
+      is not a recovery.
+    * :meth:`recycle`. The handle is disposable; the file is not.
+    """
+
+    def __init__(self, monotonic: Callable[[], float] = time.monotonic) -> None:
+        # Injected so the reopen cooldown is testable without a real sleep.
+        self.monotonic = monotonic
+        self.lock = threading.RLock()
+        self._conn: sqlite3.Connection | None = None
+        self._path: Path | None = None
+        self._reopens = 0
+        self._failures = 0
+        self._last_error = ""
+        self._last_error_ts = 0.0
+        self._last_reopen_at = 0.0
+        self._last_ok_ts = 0.0
+        self._last_write_ts = 0.0
+        self._last_prune_ts = 0.0
+        self._last_checkpoint_busy = 0
+
+    def connect(self) -> sqlite3.Connection:
+        """The open connection, opening (or reopening) it if there isn't one."""
+        with self.lock:
+            path = db_path()
+            if self._conn is not None and self._path != path:
+                # `db_path()` is read per call so a test's `$GROOM_DB` takes effect;
+                # honour that here too rather than answering the old file.
+                self._close_quietly()
+            if self._conn is None:
+                self._conn = self._open(path)
+                self._path = path
+            return self._conn
+
+    def _open(self, path: Path) -> sqlite3.Connection:
         path.parent.mkdir(parents=True, exist_ok=True)
-        _conn = sqlite3.connect(path, check_same_thread=False)
-        _conn.row_factory = sqlite3.Row
-        _conn.execute("PRAGMA journal_mode=WAL")
+        conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
         # An fsync per commit is the wrong trade for this file. Every OTLP batch is one
         # commit, so `FULL` costs a disk sync per export of every live run — and what it
         # buys is durability of the last few commits across a power cut, over a table
         # that is explicitly not the record of truth (each run's `events.jsonl` is).
         # `NORMAL` under WAL cannot corrupt the database; it can only lose commits newer
         # than the last checkpoint, which the next export replaces anyway.
-        _conn.execute("PRAGMA synchronous=NORMAL")
-        _conn.executescript(_SCHEMA)
-        _migrate(_conn)
-    return _conn
+        conn.execute("PRAGMA synchronous=NORMAL")
+        # The CLI, `groom export` and the test suite are separate processes on this same
+        # file; without a busy timeout a concurrent writer is an instant "database is
+        # locked" rather than a wait of a few milliseconds.
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.executescript(_SCHEMA)
+        _migrate(conn)
+        return conn
+
+    @contextmanager
+    def writing(self) -> Iterator[sqlite3.Connection]:
+        """One atomic write. `BEGIN IMMEDIATE`, and `ROLLBACK` on any exception.
+
+        ``IMMEDIATE`` rather than a deferred ``BEGIN``: the write lock is taken up
+        front, so a transaction cannot fail half-way through on a snapshot upgrade —
+        which is the shape that used to strand one.
+        """
+        with self.lock:
+            conn = self.connect()
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                yield conn
+            except BaseException:
+                with suppress(sqlite3.Error):
+                    conn.rollback()
+                raise
+            conn.commit()
+            self._last_write_ts = time.time()
+
+    def recycle(self, exc: BaseException, where: str) -> None:
+        """Throw the handle away so the next call opens a fresh one.
+
+        Raises the original exception instead when it is called again inside
+        ``REOPEN_COOLDOWN_S``: one reopen fixes a wedged connection, and a second
+        one this soon means the file itself is the problem, which reopening will
+        not fix and thrashing will only obscure.
+        """
+        with self.lock:
+            self._failures += 1
+            self._last_error = f"{type(exc).__name__}: {exc}"
+            self._last_error_ts = time.time()
+            now = self.monotonic()
+            if self._reopens and now - self._last_reopen_at < REOPEN_COOLDOWN_S:
+                logger.error("groom.store: %s failed again while cooling down: %s", where, exc)
+                raise exc
+            self._close_quietly()
+            self._reopens += 1
+            self._last_reopen_at = now
+            logger.error("groom.store: recycling the connection after %s in %s", exc, where)
+
+    def reset(self) -> None:
+        """Close the connection and forget every failure with it (tests switch
+        ``$GROOM_DB`` between cases, and a counter that survived would be another
+        case's)."""
+        with self.lock:
+            self._close_quietly()
+            self._path = None
+            self._reopens = 0
+            self._failures = 0
+            self._last_error = ""
+            self._last_error_ts = 0.0
+            self._last_reopen_at = 0.0
+            self._last_ok_ts = 0.0
+            self._last_write_ts = 0.0
+            self._last_prune_ts = 0.0
+            self._last_checkpoint_busy = 0
+
+    def _close_quietly(self) -> None:
+        if self._conn is not None:
+            with suppress(sqlite3.Error):
+                self._conn.rollback()
+            with suppress(sqlite3.Error):
+                self._conn.close()
+        self._conn = None
+
+    def note_ok(self) -> None:
+        """Stamp a statement that ran. What :attr:`StoreHealth.ok` is measured against:
+        a failure older than the last good call has been healed, one newer has not."""
+        self._last_ok_ts = time.time()
+
+    def note_prune(self, ts: float | None = None) -> None:
+        self._last_prune_ts = ts if ts is not None else time.time()
+
+    def note_checkpoint(self, busy: int) -> None:
+        self._last_checkpoint_busy = busy
+
+    def health(self) -> StoreHealth:
+        path = db_path()
+        wal = path.with_name(path.name + "-wal")
+        wal_bytes = wal.stat().st_size if wal.exists() else 0
+        return StoreHealth(
+            # A failure older than the last statement that ran is history; one newer
+            # than it is the store being down right now.
+            ok=self._last_error_ts <= self._last_ok_ts,
+            path=str(path),
+            last_ok_ts=self._last_ok_ts,
+            reopens=self._reopens,
+            failures=self._failures,
+            last_error=self._last_error,
+            last_error_ts=self._last_error_ts,
+            last_write_ts=self._last_write_ts,
+            last_prune_ts=self._last_prune_ts,
+            wal_bytes=wal_bytes,
+            last_checkpoint_busy=self._last_checkpoint_busy,
+        )
+
+
+_STORE = _Store()
+
+
+def _resilient(fn: Callable[_P, _T]) -> Callable[_P, _T]:
+    """Serialize a store call, and heal the connection under it exactly once.
+
+    The retry calls the *undecorated* body, so depth is bounded at two by
+    construction rather than by a counter. Decorate leaf functions only: a decorated
+    function that calls another one multiplies attempts.
+    """
+
+    # Read once, and defensively: `Callable` is not necessarily a function, and the
+    # name is only ever a label in a log line.
+    name = getattr(fn, "__name__", "store call")
+
+    @functools.wraps(fn)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+        with _STORE.lock:
+            try:
+                result = fn(*args, **kwargs)
+            except sqlite3.Error as exc:
+                # `sqlite3.Error`, the base, deliberately: the wedge arrives as
+                # OperationalError and a recycled handle as ProgrammingError, and
+                # sorting "recoverable" from the rest by message or errno is a guess.
+                # A genuine IntegrityError fails the same way on the retry and
+                # propagates, costing one reopen.
+                _STORE.recycle(exc, name)
+            else:
+                _STORE.note_ok()
+                return result
+            result = fn(*args, **kwargs)
+            _STORE.note_ok()
+            return result
+
+    return wrapper
+
+
+def _connection() -> sqlite3.Connection:
+    return _STORE.connect()
 
 
 def reset() -> None:
     """Close the module connection so the next call reopens (tests switch
     GROOM_DB between cases)."""
-    global _conn
-    if _conn is not None:
-        _conn.close()
-        _conn = None
+    _STORE.reset()
 
 
+def health() -> StoreHealth:
+    """Whether the collector is still storing what it is told, and since when."""
+    return _STORE.health()
+
+
+def health_dict() -> dict[str, Any]:
+    """:func:`health` as JSON for the dashboard state payload."""
+    return asdict(_STORE.health())
+
+
+@_resilient
 def insert_spans(spans: list[dict[str, Any]]) -> None:
     """Upsert decoded spans (see groom.otlp.parse_traces). INSERT OR REPLACE:
     an exporter retry re-sending a batch must not error or duplicate."""
     if not spans:
         return
-    conn = _connection()
-    promoted = ", ".join(_SPAN_VALUE_COLUMNS)
-    placeholders = ", ".join("?" * len(_SPAN_VALUE_COLUMNS))
-    conn.executemany(
-        "INSERT OR REPLACE INTO spans (span_id, trace_id, parent_id, run_id, workflow,"
-        " repo, branch, node, name, run_dir, start_ts, end_ts, status, attrs_json,"
-        f" {promoted})"
-        f" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {placeholders})",
-        [
-            (
-                s["span_id"], s["trace_id"], s.get("parent_id", ""), s.get("run_id", ""),
-                s.get("workflow", ""), s.get("repo", ""), s.get("branch", ""),
-                s.get("node", ""), s.get("name", ""), s.get("run_dir", ""),
-                s.get("start_ts", 0.0), s.get("end_ts", 0.0), s.get("status", "UNSET"),
-                json.dumps(s.get("attrs") or {}),
-                *_promoted(s, s.get("attrs") or {}),
-            )
-            for s in spans
-        ],
-    )
-    conn.commit()
+    with _STORE.writing() as conn:
+        promoted = ", ".join(_SPAN_VALUE_COLUMNS)
+        placeholders = ", ".join("?" * len(_SPAN_VALUE_COLUMNS))
+        conn.executemany(
+            "INSERT OR REPLACE INTO spans (span_id, trace_id, parent_id, run_id, workflow,"
+            " repo, branch, node, name, run_dir, start_ts, end_ts, status, attrs_json,"
+            f" {promoted})"
+            f" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {placeholders})",
+            [
+                (
+                    s["span_id"], s["trace_id"], s.get("parent_id", ""), s.get("run_id", ""),
+                    s.get("workflow", ""), s.get("repo", ""), s.get("branch", ""),
+                    s.get("node", ""), s.get("name", ""), s.get("run_dir", ""),
+                    s.get("start_ts", 0.0), s.get("end_ts", 0.0), s.get("status", "UNSET"),
+                    json.dumps(s.get("attrs") or {}),
+                    *_promoted(s, s.get("attrs") or {}),
+                )
+                for s in spans
+            ],
+        )
 
 
+@_resilient
 def insert_metrics(points: list[dict[str, Any]]) -> None:
+    """Append decoded metric points (see groom.otlp.parse_metrics).
+
+    Plain INSERT, and a point has no id to key on, so a batch the receiver answered
+    503 to and the exporter re-sent can land twice. That is the trade the 503 buys:
+    every reader of this table asks it by recency or by aggregate, where a duplicate
+    is cosmetic, and the alternative on the other side of the choice is a batch the
+    exporter drops for good.
+    """
     if not points:
         return
-    conn = _connection()
-    conn.executemany(
-        "INSERT INTO metrics (run_id, name, ts, value, attrs_json) VALUES (?, ?, ?, ?, ?)",
-        [
-            (
-                p.get("run_id", ""), p["name"], p.get("ts", 0.0),
-                float(p.get("value", 0.0)), json.dumps(p.get("attrs") or {}),
-            )
-            for p in points
-        ],
-    )
-    conn.commit()
+    with _STORE.writing() as conn:
+        conn.executemany(
+            "INSERT INTO metrics (run_id, name, ts, value, attrs_json) VALUES (?, ?, ?, ?, ?)",
+            [
+                (
+                    p.get("run_id", ""), p["name"], p.get("ts", 0.0),
+                    float(p.get("value", 0.0)), json.dumps(p.get("attrs") or {}),
+                )
+                for p in points
+            ],
+        )
 
 
 def _log_head(attrs: dict[str, Any]) -> str | None:
@@ -356,37 +597,40 @@ def _log_head(attrs: dict[str, Any]) -> str | None:
     return raw if isinstance(raw, str) and raw else None
 
 
+@_resilient
 def insert_logs(records: list[dict[str, Any]]) -> None:
     """Append decoded log records (see groom.otlp.parse_logs).
 
-    Plain INSERT, unlike spans: a log record has no id to key on, and the SDK's
-    BatchLogRecordProcessor does not retry a delivered batch, so there is nothing
-    to deduplicate against and no natural primary key to invent.
+    Plain INSERT, unlike spans: a log record has no id to key on and there is no
+    natural primary key to invent. The exporter *does* retry a 5xx, so a batch this
+    store refused can arrive twice — accepted deliberately (see
+    :func:`insert_metrics`) rather than paid for with a synthetic dedup key and the
+    schema migration one would need.
     """
     if not records:
         return
-    conn = _connection()
-    conn.executemany(
-        "INSERT INTO logs (run_id, workflow, run_dir, node, logger, severity, body,"
-        " ts, trace_id, attrs_json, head) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [
-            (
-                r.get("run_id", ""), r.get("workflow", ""), r.get("run_dir", ""),
-                r.get("node", ""), r.get("logger", ""), r.get("severity", "INFO"),
-                r.get("body", ""), r.get("ts", 0.0), r.get("trace_id", ""),
-                json.dumps(r.get("attrs") or {}),
-                _log_head(r.get("attrs") or {}),
-            )
-            for r in records
-        ],
-    )
-    conn.commit()
+    with _STORE.writing() as conn:
+        conn.executemany(
+            "INSERT INTO logs (run_id, workflow, run_dir, node, logger, severity, body,"
+            " ts, trace_id, attrs_json, head) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    r.get("run_id", ""), r.get("workflow", ""), r.get("run_dir", ""),
+                    r.get("node", ""), r.get("logger", ""), r.get("severity", "INFO"),
+                    r.get("body", ""), r.get("ts", 0.0), r.get("trace_id", ""),
+                    json.dumps(r.get("attrs") or {}),
+                    _log_head(r.get("attrs") or {}),
+                )
+                for r in records
+            ],
+        )
 
 
 # Ordered loudest-first; an index into this is "at least this severe".
 _SEVERITY_ORDER = ("FATAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE")
 
 
+@_resilient
 def query_logs(
     run: str = "",
     node: str = "",
@@ -469,6 +713,7 @@ _ESTIMABLE = (
 )
 
 
+@_resilient
 def unpriced_models(run: str = "") -> dict[str, int]:
     """Models with turns the rate card cannot price, and how many turns each has.
 
@@ -538,6 +783,7 @@ def reprice(run: str = "", missing_only: bool = True) -> dict[str, Any]:
     }
 
 
+@_resilient
 def _estimable_turns(clauses: list[str], params: list[Any]) -> list[sqlite3.Row]:
     """Turns matching `clauses`, with everything pricing one needs already coalesced."""
     return (
@@ -556,6 +802,7 @@ def _estimable_turns(clauses: list[str], params: list[Any]) -> list[sqlite3.Row]
     )
 
 
+@_resilient
 def unpriceable_turns(run: str = "") -> list[dict[str, Any]]:
     """Turns with tokens, no estimate, and a model no rate covers.
 
@@ -574,20 +821,21 @@ def unpriceable_turns(run: str = "") -> list[dict[str, Any]]:
     ]
 
 
+@_resilient
 def apply_estimates(updates: list[tuple[float, str, str]]) -> int:
     """Write `(est_cost_usd, priced_model, span_id)` triples; rows touched.
 
     The model is written with the estimate and never separately: a stored estimate whose
     rate cannot be named is one no later pass can recompute or disprove.
     """
-    conn = _connection()
-    conn.executemany(
-        "UPDATE spans SET est_cost_usd = ?, priced_model = ? WHERE span_id = ?", updates
-    )
-    conn.commit()
+    with _STORE.writing() as conn:
+        conn.executemany(
+            "UPDATE spans SET est_cost_usd = ?, priced_model = ? WHERE span_id = ?", updates
+        )
     return len(updates)
 
 
+@_resilient
 def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
     """Per-node agent spend for a run: where the money and the rework went.
 
@@ -691,6 +939,7 @@ class Lap:
     est: float | None
 
 
+@_resilient
 def loop_convergence(
     run: str = "",
     workflow: str = "",
@@ -1054,6 +1303,7 @@ def _profile_time_partition(
     }
 
 
+@_resilient
 def run_profile(run: str) -> dict[str, Any] | None:
     """Partition one run's retained wall time and aggregate its agent rework.
 
@@ -1109,6 +1359,7 @@ _SPAN_COLUMNS = (
 )
 
 
+@_resilient
 def query_spans(
     run: str = "",
     node: str = "",
@@ -1151,6 +1402,7 @@ def query_spans(
     return [dict(row) for row in rows]
 
 
+@_resilient
 def run_summaries(
     limit: int = 50, now: float | None = None, run: str = ""
 ) -> list[dict[str, Any]]:
@@ -1207,6 +1459,7 @@ _LIVE_METRICS = (
 LIVE_AFTER_S = float(os.environ.get("GROOM_LIVE_AFTER_S", "180"))
 
 
+@_resilient
 def live_status(run: str = "", now: float | None = None) -> list[dict[str, Any]]:
     """Where each run is *right now*, newest heartbeat first.
 
@@ -1374,7 +1627,8 @@ def is_scratch_run_dir(run_dir: str) -> bool:
     return False
 
 
-def test_run_ids() -> set[str]:
+@_resilient
+def _test_run_ids() -> set[str]:
     """The run ids whose run dir says they were throwaway (:func:`is_scratch_run_dir`).
 
     Classified in Python rather than SQL because the predicate is a path
@@ -1394,11 +1648,18 @@ def test_run_ids() -> set[str]:
     return {run_id for run_id, run_dir in pairs if run_id and is_scratch_run_dir(run_dir)}
 
 
+@_resilient
+def test_run_ids() -> set[str]:
+    """:func:`_test_run_ids`, with the store's heal-and-retry around it."""
+    return _test_run_ids()
+
+
 # Bound on ids per DELETE, so a store holding thousands of test runs does not
 # build one statement with thousands of parameters (SQLite caps them).
 _PURGE_CHUNK = 500
 
 
+@_resilient
 def purge_test_runs(dry_run: bool = False, vacuum: bool = True) -> dict[str, int]:
     """Delete every span/metric/log belonging to a test run.
 
@@ -1409,24 +1670,34 @@ def purge_test_runs(dry_run: bool = False, vacuum: bool = True) -> dict[str, int
     so a store where test runs were most of the rows stays its old size on disk
     until it is vacuumed, which is the visible half of the problem this solves.
     """
-    conn = _connection()
-    run_ids = sorted(test_run_ids())
+    run_ids = sorted(_test_run_ids())
     counts = {"runs": len(run_ids), "spans": 0, "metrics": 0, "logs": 0, "turns": 0}
-    for start in range(0, len(run_ids), _PURGE_CHUNK):
-        chunk = run_ids[start : start + _PURGE_CHUNK]
-        marks = ",".join("?" * len(chunk))
-        for table in ("spans", "metrics", "logs", "turns"):
-            verb = "SELECT COUNT(*) AS n FROM" if dry_run else "DELETE FROM"
-            cursor = conn.execute(f"{verb} {table} WHERE run_id IN ({marks})", chunk)  # noqa: S608 - literal table name, bound values
-            counts[table] += cursor.fetchone()["n"] if dry_run else cursor.rowcount
+
+    def sweep(conn: sqlite3.Connection) -> None:
+        for start in range(0, len(run_ids), _PURGE_CHUNK):
+            chunk = run_ids[start : start + _PURGE_CHUNK]
+            marks = ",".join("?" * len(chunk))
+            for table in ("spans", "metrics", "logs", "turns"):
+                verb = "SELECT COUNT(*) AS n FROM" if dry_run else "DELETE FROM"
+                cursor = conn.execute(f"{verb} {table} WHERE run_id IN ({marks})", chunk)  # noqa: S608 - literal table name, bound values
+                counts[table] += cursor.fetchone()["n"] if dry_run else cursor.rowcount
+
     if dry_run:
+        # Counting only: a `BEGIN IMMEDIATE` here would take the write lock to
+        # answer a question that writes nothing.
+        sweep(_connection())
         return counts
-    conn.commit()
+    with _STORE.writing() as conn:
+        sweep(conn)
     if vacuum and counts["runs"]:
-        conn.execute("VACUUM")
+        # Outside the transaction — VACUUM cannot run inside one — but still under
+        # the store lock, so it cannot rewrite the file under another thread's read.
+        with _STORE.lock:
+            _connection().execute("VACUUM")
     return counts
 
 
+@_resilient
 def insert_turns(rows: list[dict[str, Any]]) -> int:
     """Index archived turn records; how many rows the index gained or replaced.
 
@@ -1437,26 +1708,26 @@ def insert_turns(rows: list[dict[str, Any]]) -> int:
     """
     if not rows:
         return 0
-    conn = _connection()
-    conn.executemany(
-        "INSERT OR REPLACE INTO turns (run_id, workflow, flow, node, session_id,"
-        " generation, seq, ts, backend, source, path, bytes, sha256, head)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [
-            (
-                r.get("run_id", ""), r.get("workflow", ""), r.get("flow", ""),
-                r.get("node", ""), r.get("session_id", ""), r.get("generation"),
-                r.get("seq"), float(r.get("ts") or 0.0), r.get("backend", ""),
-                r.get("source", ""), r.get("path", ""), int(r.get("bytes") or 0),
-                r.get("sha256", ""), r.get("head") or None,
-            )
-            for r in rows
-        ],
-    )
-    conn.commit()
+    with _STORE.writing() as conn:
+        conn.executemany(
+            "INSERT OR REPLACE INTO turns (run_id, workflow, flow, node, session_id,"
+            " generation, seq, ts, backend, source, path, bytes, sha256, head)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    r.get("run_id", ""), r.get("workflow", ""), r.get("flow", ""),
+                    r.get("node", ""), r.get("session_id", ""), r.get("generation"),
+                    r.get("seq"), float(r.get("ts") or 0.0), r.get("backend", ""),
+                    r.get("source", ""), r.get("path", ""), int(r.get("bytes") or 0),
+                    r.get("sha256", ""), r.get("head") or None,
+                )
+                for r in rows
+            ],
+        )
     return len(rows)
 
 
+@_resilient
 def query_turns(
     run: str = "",
     node: str = "",
@@ -1489,6 +1760,7 @@ def query_turns(
     return [dict(row) for row in rows]
 
 
+@_resilient
 def run_directories() -> list[dict[str, Any]]:
     """Every run telemetry has seen a directory for: run_id, run_dir, workflow.
 
@@ -1504,6 +1776,7 @@ def run_directories() -> list[dict[str, Any]]:
     ]
 
 
+@_resilient
 def turns_before(cutoff: float) -> list[dict[str, Any]]:
     """Index rows for archived turns older than ``cutoff``. ``ts`` of 0 means the turn
     never recorded one, and an unstamped record is never aged out on a guess."""
@@ -1517,14 +1790,15 @@ def turns_before(cutoff: float) -> list[dict[str, Any]]:
     ]
 
 
+@_resilient
 def delete_turns(cutoff: float) -> int:
     """Drop the index rows :func:`turns_before` returned; rows removed."""
-    conn = _connection()
-    removed = conn.execute("DELETE FROM turns WHERE ts > 0 AND ts < ?", (cutoff,)).rowcount
-    conn.commit()
+    with _STORE.writing() as conn:
+        removed = conn.execute("DELETE FROM turns WHERE ts > 0 AND ts < ?", (cutoff,)).rowcount
     return removed
 
 
+@_resilient
 def prune(retention_days: float = RETENTION_DAYS, now: float | None = None) -> int:
     """Drop spans/metrics/logs older than the retention window; rows removed.
 
@@ -1544,26 +1818,26 @@ def prune(retention_days: float = RETENTION_DAYS, now: float | None = None) -> i
     """
     stamp = now if now is not None else time.time()
     cutoff = stamp - retention_days * 86400
-    conn = _connection()
-    removed = conn.execute("DELETE FROM spans WHERE end_ts < ?", (cutoff,)).rowcount
-    removed += conn.execute("DELETE FROM metrics WHERE ts < ?", (cutoff,)).rowcount
-    # Never longer than the table-wide window: a liveness setting above it would
-    # otherwise read as "keep these longer", which the DELETE above cannot honour.
-    liveness_cutoff = stamp - min(LIVENESS_RETENTION_DAYS, retention_days) * 86400
-    placeholders = ",".join("?" * len(_LIVENESS_METRICS))
-    removed += conn.execute(
-        f"DELETE FROM metrics WHERE ts < ? AND name IN ({placeholders})",  # noqa: S608
-        (liveness_cutoff, *_LIVENESS_METRICS),
-    ).rowcount
-    removed += conn.execute(
-        "DELETE FROM logs WHERE ts < ?", (stamp - LOG_RETENTION_DAYS * 86400,)
-    ).rowcount
-    conn.commit()
-    checkpoint()
+    with _STORE.writing() as conn:
+        removed = conn.execute("DELETE FROM spans WHERE end_ts < ?", (cutoff,)).rowcount
+        removed += conn.execute("DELETE FROM metrics WHERE ts < ?", (cutoff,)).rowcount
+        # Never longer than the table-wide window: a liveness setting above it would
+        # otherwise read as "keep these longer", which the DELETE above cannot honour.
+        liveness_cutoff = stamp - min(LIVENESS_RETENTION_DAYS, retention_days) * 86400
+        placeholders = ",".join("?" * len(_LIVENESS_METRICS))
+        removed += conn.execute(
+            f"DELETE FROM metrics WHERE ts < ? AND name IN ({placeholders})",  # noqa: S608
+            (liveness_cutoff, *_LIVENESS_METRICS),
+        ).rowcount
+        removed += conn.execute(
+            "DELETE FROM logs WHERE ts < ?", (stamp - LOG_RETENTION_DAYS * 86400,)
+        ).rowcount
+    _checkpoint()
+    _STORE.note_prune()
     return removed
 
 
-def checkpoint() -> None:
+def _checkpoint() -> None:
     """Fold the write-ahead log back into the database file, and truncate it.
 
     SQLite checkpoints on its own, but only when a writer finds no reader in the way —
@@ -1579,8 +1853,27 @@ def checkpoint() -> None:
     this tick and not the next one.
     """
     try:
-        _connection().execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    except sqlite3.OperationalError as exc:
+        with _STORE.lock:
+            row = _connection().execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+    except sqlite3.Error as exc:
         # Never worth failing the prune over: the WAL being large is a disk-space
         # question, and the rows are already gone.
         logger.warning("groom: WAL checkpoint declined: %s", exc)
+        return
+    # The row is `(busy, log_frames, checkpointed)` and it is the only place SQLite
+    # says a checkpoint did nothing. Discarding it is how a WAL grows for weeks with
+    # no error anywhere: `busy == 1` means a reader was in the way and the file was
+    # left alone. Recorded rather than merely logged so `/api/state` can show it.
+    busy = int(row[0]) if row else 0
+    _STORE.note_checkpoint(busy)
+    if busy:
+        logger.info(
+            "groom: WAL checkpoint found a reader in the way; %s frames left in place",
+            row[1] if row else "?",
+        )
+
+
+@_resilient
+def checkpoint() -> None:
+    """:func:`_checkpoint`, healing the connection if the PRAGMA itself cannot run."""
+    _checkpoint()

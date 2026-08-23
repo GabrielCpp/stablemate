@@ -2,7 +2,12 @@
 
 `groom serve` is a collector as well as a dashboard: every span, metric and log record a
 run emits lands in one local SQLite file, and the commands here are the questions worth
-asking of it after the fact. `groom status` and `groom logs` answer *where a run is* and
+asking of it after the fact. (Every record the exporter delivers, at least — and it is
+the exporter that decides, since a batch groom refuses is retried and then dropped. The
+receivers answer `503`/`Retry-After` rather than `500` so a refusal is at least
+temporary, at the cost of a possible duplicate row in `metrics` or `logs`, which have no
+key to absorb a re-send. `store` in `GET /api/state` says whether the collector has been
+refusing anything.) `groom status` and `groom logs` answer *where a run is* and
 *what it said* — those stay in [README.md](../README.md). This document is the analysis
 half: what a run cost, what it would have cost elsewhere, which loops converge, what a
 node actually said, where the wall clock went, and the schema underneath all of it.

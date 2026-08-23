@@ -302,6 +302,11 @@ def state_message(
         "scanning": bool(state.SCANNING),
         "runs": fleet_rows(workflows, query, now),
         "status": status_bar(workflows),
+        # Sibling of "status", not part of it: the fleet counts describe the runs and
+        # this describes the collector holding them. A serve whose store has wedged
+        # answers every read route 200 with a plausible-looking fleet, so "is groom
+        # still storing what it is told" has to be asked separately or not at all.
+        "store": store.health_dict(),
     }
 
 

@@ -118,6 +118,17 @@ from the dashboard's *Telemetry* pane, via `GET /traces?run=…&node=…&status=
 slower_than=…`, or with raw `sqlite3` queries. Rows older than
 `GROOM_RETENTION_DAYS` (14) are pruned at startup and on a periodic tick.
 
+A batch the store cannot take is answered `503` with a `Retry-After`, not `500`: the
+exporter re-sends it, where an unhandled error would have said "stored" by omission.
+That is a deliberate trade of duplicates for losses — `spans` and `turns` are keyed and
+absorb a re-send, `metrics` and `logs` are plain appends and a retried batch can land
+twice. Duplicate rows are cosmetic in tables read by recency; a dropped batch is gone.
+The connection behind it recycles itself on a SQLite error and retries once, so a
+wedged handle heals on the next request instead of at the next restart. Whether any of
+that has happened is in `GET /api/state` under `store` — `reopens`, `failures`,
+`last_error`, and `ok`, which is false only while a failure is *newer* than the last
+statement that worked.
+
 The liveness counters — `workhorse.run.heartbeat`, `workhorse.turn.heartbeat`,
 `workhorse.cap_wait.heartbeat` — expire much sooner
 (`GROOM_LIVENESS_RETENTION_DAYS`, 1). They tick every ~10s for every open node, so

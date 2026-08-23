@@ -1905,6 +1905,193 @@ def test_logs_prune_on_their_own_shorter_window():
         assert [r["body"] for r in store.query_logs()] == ["new"]
 
 
+# --------------------------------------------------------------------------- #
+# the store connection heals instead of wedging
+# --------------------------------------------------------------------------- #
+def test_a_closed_connection_heals_on_the_next_write():
+    """The handle is disposable and the file is not. Before the store recycled,
+    anything that killed the one process-wide connection killed ingest until the
+    process was restarted — `reset()` was reachable from tests only."""
+    with _TelemetryEnv():
+        store.insert_spans(otlp.parse_traces(_trace_request([{"name": "first"}])))
+        # Exactly what a wedged serve looks like from the caller's side: the next
+        # statement on this handle raises rather than returning.
+        store._connection().close()  # noqa: SLF001 - simulating the failure under test
+        store.insert_spans(otlp.parse_traces(_trace_request([{"name": "second"}])))
+        assert {row["name"] for row in store.query_spans()} == {"first", "second"}
+        assert store.health().reopens == 1
+
+
+def test_a_pinned_read_snapshot_does_not_wedge_writes():
+    """The incident itself, with no mocks.
+
+    A serve ran 13h and then answered every OTLP post with a 500 while its read
+    routes stayed 200: one stranded transaction pinned the connection's snapshot, so
+    another process's committed row was invisible and every write died of
+    BUSY_SNAPSHOT forever. Under autocommit a bare SELECT cannot pin anything past
+    its own statement, and `BEGIN IMMEDIATE` cannot leave a transaction half-open.
+    """
+    with _TelemetryEnv():
+        store.insert_spans(otlp.parse_traces(_trace_request([{"name": "before"}])))
+        store.query_spans()          # a read on the live connection
+        assert store._connection().in_transaction is False  # noqa: SLF001 - the invariant
+
+        outside = sqlite3.connect(store.db_path())
+        try:
+            outside.execute(
+                "INSERT INTO metrics (run_id, name, ts, value, attrs_json)"
+                " VALUES ('run-other', 'other.count', 1.0, 1.0, '{}')"
+            )
+            outside.commit()
+        finally:
+            outside.close()
+
+        store.insert_metrics(otlp.parse_metrics(_metrics_request("heartbeat")))
+        names = {
+            row["name"]
+            for row in store._connection().execute("SELECT name FROM metrics")  # noqa: SLF001
+        }
+        # Both halves matter: the write landed, and the other process's commit is
+        # visible rather than hidden behind a snapshot taken minutes ago.
+        assert {"other.count", "heartbeat"} <= names
+
+
+def test_a_failed_write_leaves_no_open_transaction():
+    """A write that raises mid-transaction is the thing that used to strand one."""
+    with _TelemetryEnv():
+        try:
+            with store._STORE.writing() as conn:  # noqa: SLF001 - the unit under test
+                conn.execute(
+                    "INSERT INTO metrics (run_id, name, ts, value, attrs_json)"
+                    " VALUES ('run-1', 'doomed', 1.0, 1.0, '{}')"
+                )
+                raise RuntimeError("boom")
+        except RuntimeError:
+            pass
+        assert store._connection().in_transaction is False  # noqa: SLF001 - the invariant
+        store.insert_metrics(otlp.parse_metrics(_metrics_request("after")))
+        outside = sqlite3.connect(store.db_path())
+        try:
+            names = {row[0] for row in outside.execute("SELECT name FROM metrics")}
+        finally:
+            outside.close()
+        # Rolled back, not merely uncommitted-so-far, and visible to another process.
+        assert names == {"after"}
+
+
+def test_writes_and_reads_interleave_across_threads():
+    """`check_same_thread=False` buys memory safety and nothing at the transaction
+    level: the receivers write from `asyncio.to_thread` workers while the event loop
+    reads inline, and one connection has exactly one transaction."""
+    with _TelemetryEnv():
+        import threading
+
+        errors: list[BaseException] = []
+
+        def writer(index: int) -> None:
+            try:
+                for i in range(10):
+                    store.insert_logs(
+                        otlp.parse_logs(_logs_request([{"body": f"{index}-{i}"}]))
+                    )
+            except BaseException as exc:  # noqa: BLE001 - reported, not swallowed
+                errors.append(exc)
+
+        threads = [threading.Thread(target=writer, args=(n,)) for n in range(4)]
+        for thread in threads:
+            thread.start()
+        while any(thread.is_alive() for thread in threads):
+            store.query_logs()
+        for thread in threads:
+            thread.join()
+
+        assert errors == []
+        assert len(store.query_logs(limit=1000)) == 40
+
+
+def test_reopen_is_rate_limited():
+    """One reopen fixes a wedged connection; a second one straight after means the
+    file is the problem, which reopening will not fix and thrashing will obscure."""
+    with _TelemetryEnv():
+        clock = iter([0.0, 1.0, 2.0, 3.0])
+        holder = store._Store(monotonic=lambda: next(clock))  # noqa: SLF001 - the unit under test
+        try:
+            holder.recycle(sqlite3.OperationalError("database is locked"), "insert_spans")
+            assert holder.health().reopens == 1
+            # Inside the cooldown: the failure is recorded and re-raised instead.
+            try:
+                holder.recycle(sqlite3.OperationalError("still locked"), "insert_spans")
+            except sqlite3.OperationalError:
+                pass
+            else:
+                raise AssertionError("a second reopen inside the cooldown must raise")
+            health = holder.health()
+            assert health.reopens == 1
+            assert health.failures == 2
+            assert health.ok is False
+        finally:
+            holder.reset()
+
+
+def test_a_blocked_checkpoint_is_reported_and_never_poisons():
+    """`busy == 1` is SQLite's only word for "a reader was in the way and I left the
+    WAL alone" — and it arrives in a result row, which is easy to discard and then
+    wonder for weeks why a 293 MB database carries a 376 MB WAL."""
+    with _TelemetryEnv():
+        store.insert_spans(otlp.parse_traces(_trace_request([{"name": "kept"}])))
+        reader = sqlite3.connect(store.db_path())
+        try:
+            reader.execute("BEGIN")
+            reader.execute("SELECT COUNT(*) FROM spans").fetchall()
+            store.checkpoint()          # must not raise
+            assert store.health().last_checkpoint_busy == 1
+        finally:
+            reader.close()
+        store.insert_spans(otlp.parse_traces(_trace_request([{"name": "later"}])))
+        assert len(store.query_spans()) == 2
+
+
+def test_the_receivers_answer_503_when_the_store_is_unavailable():
+    """A 500 says "your batch was malformed or I am broken"; a 503 with Retry-After
+    says "come back in five seconds", which is the true statement and the one that
+    stops the receiver from running alerts off rows it did not store."""
+    payloads = {
+        "/v1/traces": ("insert_spans", _trace_request([{"name": "node"}])),
+        "/v1/metrics": ("insert_metrics", _metrics_request("heartbeat")),
+        "/v1/logs": ("insert_logs", _logs_request([{"body": "hello"}])),
+    }
+    with _TelemetryEnv():
+        client = _hermetic_client()
+        try:
+            for route, (writer, body) in payloads.items():
+                with patch.object(
+                    store, writer, side_effect=sqlite3.OperationalError("database is locked")
+                ):
+                    response = client.post(route, content=body)
+                assert response.status_code == 503, route
+                assert response.headers["Retry-After"] == "5", route
+                # And the same batch succeeds once the store is back.
+                assert client.post(route, content=body).status_code == 200, route
+        finally:
+            client.__exit__(None, None, None)
+
+
+def test_store_health_rides_the_state_payload():
+    """13 hours of dropped telemetry produced a healthy-looking dashboard, because
+    every read route answered 200 off a store that had stopped accepting writes.
+    `/api/state` carries the collector's own health beside the fleet's."""
+    with _TelemetryEnv():
+        store.insert_spans(otlp.parse_traces(_trace_request([{"name": "first"}])))
+        store._connection().close()  # noqa: SLF001 - simulating the failure under test
+        store.insert_spans(otlp.parse_traces(_trace_request([{"name": "second"}])))
+
+        health = projection.state_message([])["store"]
+        assert health["reopens"] == 1
+        assert health["last_error"]          # what went wrong is kept, not just a count
+        assert health["ok"] is True          # ...and it healed, which is the difference
+        assert health["path"] == str(store.db_path())
+
+
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-q"]))

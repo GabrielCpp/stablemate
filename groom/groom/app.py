@@ -17,6 +17,7 @@ import asyncio
 import json
 import os
 import re
+import sqlite3
 import time
 import uuid
 from datetime import UTC, datetime
@@ -795,6 +796,23 @@ def _truthy(value: str) -> bool:
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
+# OTLP/HTTP has no "try again" body — the status is the whole channel — so a store
+# that cannot take this batch answers 503 with a Retry-After rather than the bare 500
+# an unhandled exception produces. The exporter retries all of 5xx, so this is not
+# about *whether* it comes back; it is about saying how soon and not lying about the
+# batch having landed. The empty body is a valid Export*ServiceResponse.
+_RETRY_AFTER_S = "5"
+
+
+def _store_unavailable() -> Response:
+    return Response(
+        content=b"",
+        status_code=503,
+        media_type="application/x-protobuf",
+        headers={"Retry-After": _RETRY_AFTER_S},
+    )
+
+
 @post("/v1/traces", include_in_schema=False)
 async def otlp_traces(request: Request) -> Response:
     """Standard OTLP/HTTP trace receiver — parse → store → eval rules →
@@ -811,7 +829,13 @@ async def otlp_traces(request: Request) -> Response:
         spans = _real_runs(otlp.parse_traces(await request.body()))
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
-    await asyncio.to_thread(store.insert_spans, spans)
+    try:
+        await asyncio.to_thread(store.insert_spans, spans)
+    except sqlite3.Error:
+        # Returning early on purpose: nothing was stored, so evaluating alerts
+        # or projecting rows off this batch would publish a state the store
+        # does not have, and the exporter is about to send it again.
+        return _store_unavailable()
     await _dispatch_alerts(alerts.ingest_spans(spans))
     await _project_native_rows(spans)
     # An empty ExportTraceServiceResponse serializes to zero bytes; OTLP/HTTP
@@ -828,7 +852,13 @@ async def otlp_metrics(request: Request) -> Response:
         points = _real_runs(otlp.parse_metrics(await request.body()))
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
-    await asyncio.to_thread(store.insert_metrics, points)
+    try:
+        await asyncio.to_thread(store.insert_metrics, points)
+    except sqlite3.Error:
+        # Returning early on purpose: nothing was stored, so evaluating alerts
+        # or projecting rows off this batch would publish a state the store
+        # does not have, and the exporter is about to send it again.
+        return _store_unavailable()
     await _dispatch_alerts(alerts.ingest_metrics(points))
     await _project_native_rows(points)
     return Response(content=b"", media_type="application/x-protobuf", status_code=200)
@@ -852,7 +882,13 @@ async def otlp_logs(request: Request) -> Response:
         records = _real_runs(otlp.parse_logs(await request.body()))
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
         return Response(content=b"", status_code=400, media_type="application/x-protobuf")
-    await asyncio.to_thread(store.insert_logs, records)
+    try:
+        await asyncio.to_thread(store.insert_logs, records)
+    except sqlite3.Error:
+        # Returning early on purpose: nothing was stored, so evaluating alerts
+        # or projecting rows off this batch would publish a state the store
+        # does not have, and the exporter is about to send it again.
+        return _store_unavailable()
     return Response(content=b"", media_type="application/x-protobuf", status_code=200)
 
 
