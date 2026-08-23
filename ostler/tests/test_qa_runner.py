@@ -917,6 +917,32 @@ def test_a_daemon_honours_its_declared_cwd(tmp_path: Path) -> None:
     assert not (tmp_path / "started-here.json").exists()
 
 
+def test_tool_env_names_are_validated_against_the_runner_and_the_secrets(tmp_path: Path) -> None:
+    """The declared list is what `ostler qa validate` reads, so what a scenario body cannot
+    reach — the runner's `QA_*`, a secret's variable, a lower-case typo — is refused here."""
+    spec = _spec(tmp_path)
+    module = _plan(
+        spec,
+        PLAN.replace(
+            "from ostler_qa import Qa, plan, scenario, target",
+            "from ostler_qa import Qa, plan, scenario, secret, target, tool_env",
+        ).replace(
+            'api = target("api")',
+            'api = target("api")\n'
+            'TOKEN = secret("TOKEN", from_env="API_TOKEN")\n'
+            'tool_env("TZ", "QA_SECRET", "API_TOKEN")',
+        ),
+    )
+    document, load_problems = load_plan(module, spec, tmp_path)
+    assert not load_problems and document is not None
+
+    problems = validate_v2(document)
+
+    assert "tool_env name 'QA_SECRET' is in the runner's QA_ namespace" in problems
+    assert "tool_env name 'API_TOKEN' is a secret's from_env; reach it through secret()" in problems
+    assert not any("'TZ'" in item for item in problems), problems
+
+
 def test_a_daemon_cwd_outside_the_root_is_a_plan_problem(tmp_path: Path) -> None:
     """The daemon is the product and the product lives in the repo; a cwd that escapes it
     is refused by name at validation, where the plan agent can read it, not at start."""

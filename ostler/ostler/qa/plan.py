@@ -170,6 +170,8 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
         elif not isinstance(declaration["from_env"], str) or not declaration["from_env"]:
             problems.append(f"secret '{name}'.from_env must be non-empty")
 
+    problems.extend(_validate_tool_env(plan.get("tool_env", []), secrets))
+
     targets = plan.get("targets")
     if not isinstance(targets, dict) or not targets:
         problems.append("'targets' must be a non-empty mapping")
@@ -594,6 +596,42 @@ def _validate_background(background: Any, *, root: Path | None = None) -> list[s
             problems.append(f"{label}.timeout must be positive")
         problems.extend(_validate_daemon_cwd(label, daemon.get("cwd"), root))
         problems.extend(_validate_ready_check(label, daemon.get("ready_check")))
+    return problems
+
+
+#: An environment variable name a plan may hand to a tool: upper-case, the convention
+#: every tool reads. `QA_*` is the runner's own namespace, and a secret's variable is
+#: reachable only through `secret()`, so neither is declarable here.
+_TOOL_ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+
+
+def _validate_tool_env(declared: Any, secrets: Mapping[str, Any]) -> list[str]:
+    """The names a scenario may set on `qa.tool(name).run(env=...)`.
+
+    Declared once at the top of the plan rather than free on the call, because this is
+    the list `ostler qa validate` reads: a scenario body cannot quietly reach `PATH`, the
+    runner's own `QA_*`, or the variable a secret is injected through.
+    """
+    if not isinstance(declared, list):
+        return ["'tool_env' must be a list of environment variable names"]
+    problems: list[str] = []
+    seen: set[str] = set()
+    secret_envs = {
+        str(declaration.get("from_env"))
+        for declaration in secrets.values()
+        if isinstance(declaration, Mapping)
+    }
+    for name in declared:
+        if not isinstance(name, str) or not _TOOL_ENV_NAME.match(name):
+            problems.append(f"tool_env name {name!r} must match [A-Z_][A-Z0-9_]*")
+            continue
+        if name in seen:
+            problems.append(f"duplicate tool_env name '{name}'")
+        seen.add(name)
+        if name.startswith("QA_"):
+            problems.append(f"tool_env name '{name}' is in the runner's QA_ namespace")
+        if name in secret_envs:
+            problems.append(f"tool_env name '{name}' is a secret's from_env; reach it through secret()")
     return problems
 
 

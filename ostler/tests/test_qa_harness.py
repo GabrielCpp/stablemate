@@ -632,3 +632,81 @@ def test_a_browser_problem_is_a_failing_assertion_bound_to_the_scenario_covers(
     # Nothing to bind is nothing recorded: a clean browser adds no assertion of its own.
     assert harness._bind_browser_unclean(qa, []) == []
     assert qa.failures == 1
+
+
+TOOL_ENV_PLAN = '''\
+from ostler_qa import Qa, plan, scenario, target, tool_env
+
+plan(run_id="qa-tool-env", story="tool-env")
+api = target("api")
+tool_env("TALLY_HOME", "TZ")
+
+
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def the_tool_runs_where_and_how_the_scenario_says(qa: Qa) -> None:
+    """A tool observed under the scenario's own cwd and env, not the runner's."""
+    tool = qa.tool("sh")
+    # pwd inside the run's scratch space, created on demand; env overlaid by declared name.
+    done = tool.run("-c", 'pwd; printf %s "$TALLY_HOME"', cwd="home-a", env={"TALLY_HOME": "/h"})
+    qa.check("ran in qa.dir/home-a", done.stdout.splitlines()[0].endswith("/qa/home-a"), actual=done.stdout)
+    qa.check("env overlaid", done.stdout.splitlines()[1] == "/h", actual=done.stdout)
+    # The default is still the repo root, with the inherited environment.
+    plain = tool.run("-c", "pwd")
+    qa.check("default cwd is the root", plain.stdout.strip() == qa.root.as_posix(), actual=plain.stdout)
+    try:
+        tool.run("-c", "true", cwd="../escaped")
+    except ValueError as exc:
+        qa.check("an escaping cwd is refused", "qa directory" in str(exc), actual=str(exc))
+    else:
+        qa.check("an escaping cwd is refused", False)
+    try:
+        tool.run("-c", "true", env={"PATH": "/nowhere"})
+    except ValueError as exc:
+        qa.check("an undeclared env name is refused", "tool_env" in str(exc), actual=str(exc))
+    else:
+        qa.check("an undeclared env name is refused", False)
+'''
+
+
+def test_a_tool_runs_with_a_contained_cwd_and_a_declared_env(tmp_path: Path) -> None:
+    """`Tool.run` was `cwd=root` with the runner's environment and no way to say otherwise —
+    for a product whose contract is what it does to the directory it was run in, the one
+    axis the scenario most needed. cwd stays inside `qa.dir`; env names must be declared."""
+    module = _write(tmp_path, TOOL_ENV_PLAN)
+    assert _describe(module)["tool_env"] == ["TALLY_HOME", "TZ"]
+    context = json.dumps(
+        {
+            "root": str(tmp_path),
+            "spec_dir": str(tmp_path),
+            "qa_dir": str(tmp_path / "qa"),
+            "tools": {"sh": "sh"},
+        }
+    )
+    code, stdout, records = _harness(
+        "run", str(module), "the-tool-runs-where-and-how-the-scenario-says", context,
+        records_to=tmp_path / "records.jsonl",
+    )
+    checks = [r for r in records if r["type"] == "assert"]
+    assert code == 0, (stdout, records)
+    assert [c["label"] for c in checks] == [
+        "ran in qa.dir/home-a",
+        "env overlaid",
+        "default cwd is the root",
+        "an escaping cwd is refused",
+        "an undeclared env name is refused",
+    ]
+    assert all(c["passed"] for c in checks), checks
+    assert (tmp_path / "qa/home-a").is_dir()
+    assert not (tmp_path / "escaped").exists()
+
+
+def test_tool_env_refuses_a_name_it_cannot_safely_hand_out() -> None:
+    """The declaration is the validation surface, so a bad name fails at import."""
+    harness = load_harness_module("ostler_qa")
+    harness.REGISTRY.tool_env.clear()
+    with pytest.raises(ValueError, match=r"\[A-Z_\]"):
+        harness.tool_env("lower")
+    harness.tool_env("TZ")
+    with pytest.raises(ValueError, match="duplicate"):
+        harness.tool_env("TZ")
+    harness.REGISTRY.tool_env.clear()

@@ -59,6 +59,7 @@ __all__ = [
     "scenario",
     "secret",
     "target",
+    "tool_env",
 ]
 
 #: The fd the record stream goes to. Not stdout: a scenario's own `print` is useful
@@ -209,6 +210,7 @@ class _Registry:
     secrets: dict[str, Secret] = field(default_factory=dict)
     inputs: dict[str, str] = field(default_factory=dict)
     background: list[dict[str, Any]] = field(default_factory=list)
+    tool_env: list[str] = field(default_factory=list)
     scenarios: list[ScenarioDecl] = field(default_factory=list)
 
     def as_json(self) -> dict[str, Any]:
@@ -220,6 +222,7 @@ class _Registry:
             "secrets": {name: {"from_env": s.from_env} for name, s in self.secrets.items()},
             "targets": {name: t.as_json() for name, t in self.targets.items()},
             "background": list(self.background),
+            "tool_env": list(self.tool_env),
             "scenarios": [s.as_json() for s in self.scenarios],
         }
 
@@ -271,6 +274,32 @@ def secret(name: str, *, from_env: str) -> Secret:
     declared = Secret(name=name, from_env=from_env)
     REGISTRY.secrets[name] = declared
     return declared
+
+
+#: The shape of an environment variable name a plan may hand to a tool. Upper-case on
+#: purpose: it is the convention every tool reads, and a lower-case name is almost always
+#: a typo for one.
+_ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+
+
+def tool_env(*names: str) -> None:
+    """Declare the environment variable names a scenario may set on a `qa.tool(...).run`.
+
+    The environment a tool inherits is the runner's, and a scenario cannot change it — a
+    product that reads `TZ`, `LANG`, `NO_COLOR` or its own `FOO_HOME` was being observed
+    under whatever the operator's shell had, and an obligation about locale-, timezone- or
+    directory-dependent behaviour was unwritable. This declares, once per plan, the names a
+    scenario is allowed to state; `run(env={...})` with a name outside the list raises.
+    It is a declaration rather than a free `env=` because the declared set is what
+    `ostler qa validate` reads: a plan cannot quietly reach `PATH`, `LD_PRELOAD` or a
+    secret's variable from inside a scenario body.
+    """
+    for name in names:
+        if not isinstance(name, str) or not _ENV_NAME.match(name):
+            raise ValueError(f"tool_env name {name!r} must match [A-Z_][A-Z0-9_]*")
+        if name in REGISTRY.tool_env:
+            raise ValueError(f"duplicate tool_env name {name!r}")
+        REGISTRY.tool_env.append(name)
 
 
 def input_file(name: str, path: str) -> str:
@@ -1212,6 +1241,7 @@ class Qa:
         offset_base_ms: int = 0,
         tools: Mapping[str, str] | None = None,
         fixtures: Mapping[str, Mapping[str, Any]] | None = None,
+        tool_env: Sequence[str] = (),
     ) -> None:
         self.scenario_id = scenario_id
         self.target = target
@@ -1230,6 +1260,9 @@ class Qa:
         #: entry is one named invocation of a tool already in `_tool_commands`, which is
         #: why `fixture()` below runs through `tool()` rather than around it.
         self._fixtures = {name: dict(spec) for name, spec in (fixtures or {}).items()}
+        #: The environment variable names the plan declared through `tool_env(...)` — the
+        #: only ones `qa.tool(name).run(env=...)` may set.
+        self._tool_env_allowed = frozenset(tool_env)
         self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
@@ -1893,16 +1926,40 @@ class Tool:
         self.name = name
         self._command = command
 
-    def run(self, *args: str, timeout: float = 60.0) -> ToolResult:
+    def run(
+        self,
+        *args: str,
+        timeout: float = 60.0,
+        cwd: str | Path | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> ToolResult:
+        """Run the tool once, from the repo root unless *cwd* says where, with *env* overlaid.
+
+        For a product whose contract is what it does to the directory it was run in, the
+        working directory is the one fact the scenario most needs to state. *cwd* is
+        resolved against `qa.dir` and must stay inside it — the run's own scratch space,
+        created on demand — so a scenario can observe "the default file lands beside the
+        caller" without ever pointing a tool at the repo. *env* overlays the inherited
+        environment with names the plan declared through `tool_env(...)`; an undeclared
+        name raises here, on the line that wrote it.
+        """
         if shutil.which(self._command) is None:
             raise RuntimeError(
                 f"qa tool {self.name!r} names command {self._command!r}, which is not "
                 "on PATH — `ostler qa validate` should have caught this before the run"
             )
         argv = [self._command, *args]
+        where = self._qa.root if cwd is None else self._cwd(cwd)
+        overlay = None if env is None else {**os.environ, **self._env(env)}
         try:
             done = subprocess.run(  # noqa: S603 - argv built from a config-declared command
-                argv, cwd=self._qa.root, capture_output=True, text=True, timeout=timeout, check=False
+                argv,
+                cwd=where,
+                env=overlay,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
             )
             return ToolResult(command=argv, stdout=done.stdout, stderr=done.stderr, exit_code=done.returncode)
         except subprocess.TimeoutExpired as exc:
@@ -1912,6 +1969,27 @@ class Tool:
                 stderr=str(exc.stderr) if exc.stderr else "",
                 exit_code=124,
             )
+
+    def _cwd(self, cwd: str | Path) -> Path:
+        base = self._qa.dir.resolve()
+        candidate = Path(cwd)
+        resolved = (candidate if candidate.is_absolute() else base / candidate).resolve()
+        if not resolved.is_relative_to(base):
+            raise ValueError(
+                f"qa tool {self.name!r}: cwd {str(cwd)!r} must stay inside the run's qa "
+                f"directory ({base})"
+            )
+        resolved.mkdir(parents=True, exist_ok=True)
+        return resolved
+
+    def _env(self, env: Mapping[str, str]) -> dict[str, str]:
+        undeclared = sorted(name for name in env if name not in self._qa._tool_env_allowed)
+        if undeclared:
+            raise ValueError(
+                f"qa tool {self.name!r}: env name(s) {', '.join(undeclared)} are not declared "
+                "— add them to the plan's tool_env(...) so validation can see them"
+            )
+        return {name: str(value) for name, value in env.items()}
 
 
 class Tesseract:
@@ -2446,6 +2524,7 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         offset_base_ms=int(context.get("offset_ms", 0)),
         tools=context.get("tools", {}),
         fixtures=context.get("fixtures", {}),
+        tool_env=REGISTRY.tool_env,
     )
     browser = None
     status, error = "passed", None
