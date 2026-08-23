@@ -121,7 +121,7 @@ observes survival rather than process memory. A plan that reads through the sess
 proves nothing about persistence, however many times it reads.
 
 The **heavyweight stack** — docker compose, emulators, the DB and its baseline seed — is not the
-plan's to start. It belongs to the workflow's `ensure_stack` step and the repo's `qa-stack.yml`,
+plan's to start. It belongs to the workflow's `ensure_stack` step and the book's `runbook` node,
 is up before the plan runs, and stays up. `background` is for per-run services pinned to the
 working tree.
 
