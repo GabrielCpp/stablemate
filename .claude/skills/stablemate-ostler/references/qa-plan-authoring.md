@@ -110,7 +110,7 @@ needs `ready_cmd` + `ready_contains`, which is ready when the command exits 0 an
 contains the needle.
 
 The **heavyweight stack** — docker compose, emulators, the DB and its baseline seed — is not the
-plan's to start. It belongs to the workflow's `ensure_stack` step and the repo's `qa-stack.yml`,
+plan's to start. It belongs to the workflow's `ensure_stack` step and the book's `runbook` node,
 is up before the plan runs, and stays up. `background` is for per-run services pinned to the
 working tree.
 

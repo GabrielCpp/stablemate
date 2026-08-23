@@ -96,6 +96,12 @@ Both faces drive the same functional core, and neither is a wrapper over the oth
 
 A third reference is neither face — it is the format ostler *executes*:
 
+- **[references/okf-runbook.md](references/okf-runbook.md)** — the `ops`-context
+  `runbook`/`environment`/`step` triple that declares how a system is brought up: the bullets,
+  the `kind:` vocabulary, `secrets:`, the scaffold→doctor→`ostler qa stack up` loop and the
+  `runbook-*` findings. Read it when a repo has no declared QA stack, or the one it has will
+  not come up.
+
 - **[references/qa-plan-authoring.md](references/qa-plan-authoring.md)** — a story's
   `qa_plan.py`: the `plan`/`target`/`background`/`secret`/`input_file` declarations, the `@scenario`
   decorator, everything a scenario reaches through `qa`, and the rules validation enforces. Read

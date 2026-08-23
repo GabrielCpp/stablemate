@@ -38,7 +38,6 @@ state parameter or `self.output(node)`.
 | `epic` | `""` | Optional: override which epic to run, skips the queue pick |
 | `operator_mode` | `"auto"` | `"auto"` = the `resolve-operator` agent stands in; `"human"` = escalate to a human. The shipped legacy value `"operator"` remains an alias for `"human"`. Does not reach the CI gate, which is always human |
 | `target_env` | `"local"` | `"local"` = localhost QA; `"dev"` = shared DEV environment |
-| `qa_stack_manifest` | `"qa-stack.yml"` | The stack manifest `qa` reads to bring services up |
 
 The rework caps are **`ClassVar` constants, not inputs** — `MAX_CI_REWORKS` (3),
 `MAX_MERGE_REWORKS` (2), `MAX_ZERO_DIFF_COMMITS` (3), plus each flow's own. They were YAML
@@ -240,7 +239,6 @@ def qa(self, epic: str = "", triage: int = 0) -> Continue:
         epic=self._story_epic(epic),
         operator_mode=self.operator_mode,
         target_env=self.target_env,
-        qa_stack_manifest=self.qa_stack_manifest,
         triage_scope_count=triage,
     )
 ```
