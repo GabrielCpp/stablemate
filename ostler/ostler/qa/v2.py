@@ -11,6 +11,7 @@ from typing import Any
 from ostler.qa.drivers import DriverBlocked, QaDriver, ScenarioResult, create_driver
 from ostler.qa.plan import PlanDocument, check_runtime_requirements
 from ostler.qa.session import QA_DIRNAME, QaSession
+from ostler.qa.report import REPORT_FILE, ReportError, write_report
 
 
 def run_plan(
@@ -62,6 +63,8 @@ def run_plan(
     qa_dir.mkdir(parents=True)
     if scored:
         (spec_dir / "qa-evidence.json").unlink(missing_ok=True)
+        # A report left over from the last run would describe a run that is not this one.
+        (spec_dir / REPORT_FILE).unlink(missing_ok=True)
 
     secret_values = {
         name: os.environ[declaration["from_env"]]
@@ -209,6 +212,16 @@ def run_plan(
             session.register_artifact(evidence, kind="qa-evidence")
         summary = session.close(status=status)
         session.finalize_log_artifact()
+        # Rendered after the session is closed so the report carries the summary record, and
+        # on every run — blocked, failed or dry — because a failed run is exactly when someone
+        # needs to read what happened. It is not registered in the manifest: the manifest's
+        # hashes pin the run's evidence, and the report is a rendering of that evidence that
+        # `ostler qa report` may regenerate at any time.
+        try:
+            report = write_report(spec_dir, qa_dirname=qa_dirname)
+        except (ReportError, OSError) as exc:
+            report = None
+            runner_errors.append(f"qa report not written: {exc}")
 
     summary.update(
         {
@@ -216,6 +229,7 @@ def run_plan(
             "runId": document.run_id,
             "qa_run_log": f"{qa_dirname}/qa-run.ndjson",
             "manifest": f"{qa_dirname}/run-manifest.json",
+            **({"report": str(report.relative_to(spec_dir))} if report else {}),
             "scenarios": {
                 name: {
                     "status": result.status,
@@ -342,6 +356,7 @@ def _write_evidence(
     data = {
         "runId": document.run_id,
         "qa_run_log": "qa/qa-run.ndjson",
+        "report": REPORT_FILE,
         "overall": {
             "passed": "Pass",
             "failed": "Fail",

@@ -13,6 +13,7 @@ from typing import Any
 
 from ostler.qa.session import QA_DIRNAME, QaSession, RUN_LOG, ScratchLabelError, scratch_dirname
 from ostler.qa.plan import load_plan, resolve_spec_dir, validate_v2
+from ostler.qa.report import ReportError, build_report, write_report
 from ostler.qa.v2 import run_plan as run_v2_plan
 from ostler.qa import lint as lint_mod
 from ostler.qa import tools as tools_mod
@@ -191,9 +192,30 @@ def cmd_stop(spec_dir: Path) -> QaOutcome:
 # ---------------------------------------------------------------------------
 
 
-def cmd_report(spec_dir: Path) -> QaOutcome:
-    """Render a human-readable action ledger from qa-run.ndjson."""
-    log_path = spec_dir / "qa" / RUN_LOG
+def cmd_report(spec_dir: Path, *, label: str | None = None, ledger: bool = False) -> QaOutcome:
+    """Render the run for a reader.
+
+    The default is the per-criterion report (:mod:`ostler.qa.report`): it is rewritten to
+    ``<spec>/qa-report.md`` — or ``<spec>/qa/<label>/report.md`` for the dry run ``label``
+    names — and printed, so a stale copy never outlives a re-render. ``ledger`` prints the
+    flat time-ordered STEP/ASSERT listing of the raw ledger instead and writes nothing.
+    """
+    if not ledger:
+        try:
+            path = write_report(spec_dir, label=label)
+        except (ReportError, ScratchLabelError, OSError) as exc:
+            return QaOutcome(ok=False, message=f"qa report: {exc}")
+        report = path.read_text(encoding="utf-8")
+        print(report)
+        data = build_report(spec_dir, label=label)
+        return QaOutcome(
+            ok=True,
+            message=f"wrote {path}",
+            data={"report": report, "path": str(path), "status": data["status"], "warnings": data["warnings"]},
+        )
+
+    qa_dirname = QA_DIRNAME if label is None else scratch_dirname(label)
+    log_path = spec_dir / qa_dirname / RUN_LOG
     if not log_path.is_file():
         return QaOutcome(ok=False, message=f"run log not found: {log_path}")
 

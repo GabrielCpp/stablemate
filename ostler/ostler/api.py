@@ -74,6 +74,7 @@ from ostler.qa import (
     cmd_context,
     cmd_context_validate,
     cmd_lint,
+    cmd_report,
     cmd_run,
     cmd_validate,
     tools as qa_tools_mod,
@@ -782,6 +783,16 @@ class Ostler:
 
         return cmd_run(Path(plan_file), self._resolve(spec) if spec else None,
                        stop_on_fail=stop_on_fail, label=label, root=self.root)
+
+    def qa_report(self, spec: str | Path, *, label: str | None = None,
+                  ledger: bool = False) -> QaOutcome:
+        """Render a run per acceptance criterion and obligation (``ostler qa report``).
+
+        Rewrites ``<spec>/qa-report.md`` — or ``<spec>/qa/<label>/report.md`` for the dry
+        run ``label`` names — and returns the markdown in ``data["report"]``. ``ledger``
+        returns the flat time-ordered ledger listing instead and writes nothing."""
+
+        return cmd_report(self._resolve(spec), label=label, ledger=ledger)
 
     def qa_tools_catalog(self) -> QaOutcome:
         """This repo's opted-in QA tools, resolved against the machine's stablemate

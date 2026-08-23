@@ -62,7 +62,7 @@ class EvidenceMapError(RuntimeError):
     """An input is missing or unreadable — the join cannot be computed, only reported."""
 
 
-def _read_json(path: Path, *, what: str) -> Any:
+def read_json(path: Path, *, what: str) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
@@ -71,7 +71,7 @@ def _read_json(path: Path, *, what: str) -> Any:
         raise EvidenceMapError(f"{what} at {path} is unreadable: {exc}") from exc
 
 
-def _read_log(path: Path) -> list[dict[str, Any]]:
+def read_log(path: Path) -> list[dict[str, Any]]:
     """The run ledger, one record per line.
 
     A malformed line is fatal rather than skipped. This file is the ground truth every
@@ -150,11 +150,11 @@ def build_evidence_map(spec_dir: Path, *, label: str | None = None) -> dict[str,
     ledger.
     """
     qa_dir = spec_dir / (QA_DIRNAME if label is None else scratch_dirname(label))
-    context = _read_json(spec_dir / "qa-okf-context.json", what="the context packet")
-    log = _read_log(qa_dir / "qa-run.ndjson")
-    manifest = _read_json(qa_dir / "run-manifest.json", what="the run manifest")
+    context = read_json(spec_dir / "qa-okf-context.json", what="the context packet")
+    log = read_log(qa_dir / "qa-run.ndjson")
+    manifest = read_json(qa_dir / "run-manifest.json", what="the run manifest")
     evidence_path = spec_dir / "qa-evidence.json"
-    evidence = _read_json(evidence_path, what="the evidence artifact") if evidence_path.exists() else {}
+    evidence = read_json(evidence_path, what="the evidence artifact") if evidence_path.exists() else {}
 
     artifacts = _artifacts_by_scenario(manifest)
     published = _published(evidence)

@@ -612,8 +612,27 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_stop = qas.add_parser("stop", help="kill daemons and write session_stop summary")
     qa_stop.add_argument("--spec", required=True, type=Path)
 
-    qa_report = qas.add_parser("report", help="render a human-readable action ledger")
-    qa_report.add_argument("--spec", required=True, type=Path)
+    qa_report = qas.add_parser(
+        "report",
+        help="render the run per acceptance criterion and obligation — what was done, "
+             "what was asserted, what was observed, what backs it — and rewrite "
+             "<spec>/qa-report.md",
+    )
+    qa_report.add_argument("--spec", default=None, type=Path)
+    qa_report.add_argument(
+        "--out-dir",
+        default=None,
+        dest="out_dir",
+        metavar="LABEL",
+        help="render the dry run at <spec>/qa/LABEL/ (to <spec>/qa/LABEL/report.md) "
+             "instead of the scored one; must be the label that run was given",
+    )
+    qa_report.add_argument(
+        "--ledger",
+        action="store_true",
+        help="print the flat, time-ordered STEP/ASSERT listing of the raw ledger instead "
+             "and write nothing",
+    )
 
     qa_replay = qas.add_parser(
         "replay", help="emit a replay shell script from the run log"
@@ -1177,7 +1196,9 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
 
     if op == "report":
         spec_dir = _resolve_spec(args.spec)
-        result = qa_mod.cmd_report(spec_dir)
+        result = qa_mod.cmd_report(spec_dir, label=args.out_dir, ledger=args.ledger)
+        if not result.ok:
+            _out(f"error: {result.message}")
         return 0 if result.ok else 1
 
     if op == "replay":

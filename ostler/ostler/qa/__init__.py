@@ -7,7 +7,7 @@ Commands:
   ostler qa step    --id I --label L --mechanism M --cmd CMD [--capture k=$.path] [--out PATH]
   ostler qa assert  --id I --label L --check TYPE [check-specific flags]
   ostler qa stop
-  ostler qa report  [--spec DIR]
+  ostler qa report  [--spec DIR] [--out-dir LABEL] [--ledger]
   ostler qa replay  [--spec DIR]
   ostler qa run     <plan-file> [--spec DIR] [--stop-on-fail]
   ostler qa lint    <plan-file>
@@ -26,6 +26,15 @@ from ostler.qa.sensitivity import cmd_sensitivity
 from ostler.qa.clean import cmd_clean, legacy_scratch_roots
 from ostler.qa.session import QA_DIRNAME, RESERVED_LABELS, ScratchLabelError, scratch_dirname
 from ostler.qa import tools
+from ostler.qa.report import (
+    REPORT_FILE,
+    ReportError,
+    build_report,
+    render_report,
+    report_path,
+    run_id_of,
+    write_report,
+)
 from ostler.qa.evidence_map import (
     STATUSES,
     EvidenceMapError,
@@ -76,5 +85,12 @@ __all__ = [
     "EvidenceMapError",
     "build_evidence_map",
     "render_evidence_map",
+    "REPORT_FILE",
+    "ReportError",
+    "build_report",
+    "render_report",
+    "report_path",
+    "run_id_of",
+    "write_report",
     "tools",
 ]
