@@ -16,9 +16,15 @@ QA ran against the DEV environment and found failures. This code is owned by ano
 
 Read:
 
+- `{{ workhorse_var('spec_dir') }}/qa-report.md` — the runner's per-AC account of the run:
+  each criterion's verdict, the step every covering assertion ran in, its check, observed and
+  expected values, and the files behind it. A failed assertion's row already carries the
+  observed value and the expected one; an UNPROVEN criterion says why nothing looked at it
 - `{{ workhorse_var('spec_dir') }}/qa-plan.md` — the runbook that was executed
+- `{{ workhorse_var('spec_dir') }}/qa.md` — the assessment of the run, when present
 - `{{ workhorse_var('spec_dir') }}/qa-evidence.json` — captured evidence (if present)
-- Any files under `{{ workhorse_var('qa_dir') }}` — screenshots, command output, etc.
+- Any files under `{{ workhorse_var('qa_dir') }}` the report links — screenshots, assertion
+  files, command output
 - `{{ workhorse_var('story_path') }}` — to confirm the acceptance criteria
 
 Produce one file: `{{ workhorse_var('qa_dir') }}/jira-comment.md`

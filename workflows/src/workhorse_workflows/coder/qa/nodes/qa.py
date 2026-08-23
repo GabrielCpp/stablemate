@@ -62,7 +62,7 @@ QA_SCRATCH_DIRNAME = "qa"
 
 @blueprint.node
 def clear_qa_evidence(logger: logging.Logger, spec_dir: str = "") -> QaCleared:
-    """Delete last pass's `qa/` outputs and root verdict, and make sure the spec dir exists.
+    """Delete last pass's `qa/` outputs, verdict and report, and make sure the spec dir exists.
 
     Deliberately does not recreate `qa/`: the ostler runner owns that directory, its log,
     its manifest and its evidence, and a node that pre-created it would be authoring an
@@ -82,10 +82,11 @@ def clear_qa_evidence(logger: logging.Logger, spec_dir: str = "") -> QaCleared:
     if stale.exists():
         shutil.rmtree(stale)
         logger.info("removed stale qa dir %s", stale)
-    evidence = root / "qa-evidence.json"
-    if evidence.exists():
-        evidence.unlink()
-        logger.info("removed stale evidence file %s", evidence)
+    for name in ("qa-evidence.json", "qa-report.md"):
+        stale_file = root / name
+        if stale_file.exists():
+            stale_file.unlink()
+            logger.info("removed stale %s", stale_file)
     return QaCleared(cleared=True)
 
 

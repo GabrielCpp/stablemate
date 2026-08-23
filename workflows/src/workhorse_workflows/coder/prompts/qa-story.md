@@ -18,10 +18,19 @@ the run meaningfully exercised the objective it claimed to test.
 
 Read all of:
 
+- `qa-report.md` **first** — the runner renders it at the end of every run, whatever the
+  status: one section per acceptance criterion and per OKF obligation with its verdict
+  (PASS / FAIL / UNPROVEN), the step each covering assertion ran in, the assertion's check,
+  observed and expected values, and the screenshots and files behind it; then every scenario
+  step by step; then a `## Warnings` list of what would let a pass slip through (criteria no
+  assertion covers, assertions with no `covers`, assertions with no observed value, aborted
+  scenarios). It is the joined view of the ledger — read the raw ledger to go deeper, not to
+  redo the join;
 - `qa-okf-context.json`;
 - `qa_plan.py` as the executable plan that already ran;
 - `qa-plan.md` as the planner's rationale and AC/obligation map;
-- `qa/qa-run.ndjson`, `qa/run-manifest.json`, and `qa-evidence.json` when present; and
+- `qa/qa-run.ndjson`, `qa/run-manifest.json`, and `qa-evidence.json` when present, for
+  anything the report points at that you need to see in full; and
 - `docs/qa/lessons.md` under the docs root (`docs_path` when non-empty) when present, as read-only
   cross-run memory.
 
@@ -66,15 +75,49 @@ and replayable evidence for each omitted category; if a category is inventoried 
 assertion never executed or only checks suite success/page presence, name that category in
 the finding.
 
-Write or update `<spec_dir>/qa.md` as a concise execution assessment with runner status,
-objective/checkpoint findings, scenario/assertion references, affected AC/obligation ids, and
-artifact paths already registered by the runner.
+## `qa.md` — the current state, not a log
+
+Write `<spec_dir>/qa.md` as a short **current-state** assessment of *this* run. It is what a
+peer opens to decide whether to trust the story, and `qa-report.md` beside it is the
+per-criterion evidence — so `qa.md` does not re-narrate the criteria, it judges the run and
+points at the report. **Rewrite it on every pass; never append.** A reviewer who has to scroll
+past three stale assessments to find the live one reads none of them.
 
 Create it through `ostler` first — `timeout 30 ostler create spec <story-name> qa.md`, where
 `<story-name>` is the folder name of `<spec_dir>` — which stamps the `type: spec.qa` frontmatter
 that makes it an OKF Concept, and leaves an existing typed doc untouched. Write your content
 **below the `---` frontmatter block and leave that block in place**, whether creating or updating
 — a doc with no `type:` is an `okf-missing-type` error against the graph.
+
+Below the frontmatter, exactly this skeleton, about 80 lines all told:
+
+```markdown
+# QA — <story-name>
+
+## Verdict
+
+Runner status, run id and date, your disposition and `objective_reached`, one sentence on why.
+Point at `qa-report.md` for the per-criterion tables.
+
+## Assessment
+
+The findings of *this* run only: which criteria / obligations the report shows proven, which
+are UNPROVEN or FAIL and why that is (product, plan, environment, evidence), what the
+report's `## Warnings` say and whether each one matters, and the scenario / assertion ids
+and artifact paths a reader needs to check your reasoning. Cite the report's sections
+(`qa-report.md`, "ac:3") instead of restating their tables.
+
+## Independent Audit
+
+Leave this heading in place when it is already there and written by the auditor; write
+"_not yet audited_" when it is not. Never write the audit yourself.
+
+## History
+
+One line per earlier run, oldest first: `<date> — <runner status> — <one-phrase outcome>`.
+Carry the existing History forward unchanged and add the line for the run before this one;
+drop every other section of the previous document.
+```
 
 ## Boundaries
 

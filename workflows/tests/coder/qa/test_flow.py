@@ -208,8 +208,8 @@ class _Ostler:
 
     Every knob is a count of *leading* calls that misbehave, so a test says "the packet is
     unmappable twice" rather than scripting a whole sequence. `qa_run` writes the four files
-    a real runner writes — the evidence, the run log, the run manifest — because the evidence
-    gate below it is real and reads all of them.
+    a real runner writes — the evidence, the run log, the run manifest, the report — because
+    the evidence gate below it is real and reads all of them.
     """
 
     def __init__(
@@ -307,6 +307,9 @@ class _Ostler:
                 }
             ),
             encoding="utf-8",
+        )
+        (spec / "qa-report.md").write_text(
+            f"# QA report\n\n<!-- run: {run_id} status: {status} -->\n", encoding="utf-8"
         )
 
     def _assert_records(self, status: str) -> list[dict[str, Any]]:

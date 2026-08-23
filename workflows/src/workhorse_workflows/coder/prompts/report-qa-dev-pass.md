@@ -16,10 +16,15 @@ QA ran against the DEV environment and all acceptance criteria passed. Write a c
 
 Read:
 
+- `{{ workhorse_var('spec_dir') }}/qa-report.md` — the runner's per-AC account of the run:
+  each criterion's verdict, the step every covering assertion ran in, its check, observed and
+  expected values, and the screenshots and files behind it. This is where the per-AC content
+  of the comment comes from; its assertion tables already hold the observed values
 - `{{ workhorse_var('spec_dir') }}/qa-plan.md` — the runbook that was executed
-- `{{ workhorse_var('spec_dir') }}/qa.md` — the QA report with per-AC verdicts and evidence
+- `{{ workhorse_var('spec_dir') }}/qa.md` — the assessment and audit of the run
 - `{{ workhorse_var('spec_dir') }}/qa-evidence.json` — captured evidence (if present)
-- Any files under `{{ workhorse_var('qa_dir') }}` — screenshots, command output, etc.
+- Any files under `{{ workhorse_var('qa_dir') }}` the report links — screenshots, assertion
+  files, command output
 - `{{ workhorse_var('story_path') }}` — to confirm the acceptance criteria
 
 Produce one file: `{{ workhorse_var('qa_dir') }}/jira-comment.md`
@@ -50,7 +55,7 @@ acceptance criterion. Be specific: name the field, value, event, or screen that 
 <key content reproduced inline — truncate to the most relevant 10–20 lines if output is large>
 ```
 
-![<descriptive alt text>](acN-<slug>/<key-screenshot>.png)
+![<descriptive alt text>](screenshots/<key-screenshot>.png)
 
 ### AC<n+1> — <criterion title> | ✅ PASS
 
@@ -65,8 +70,9 @@ Rules:
   behavior (field name, event type, screen name, API response) — not the code that implements it.
 - After the rationale, include the key evidence as a labelled fenced code block. Reproduce the most
   relevant content inline — a reader must be able to verify the claim without opening local files.
-- If a screenshot exists for the AC, include it on its own line (blank lines above and below) using
-  `![alt](acN-<slug>/filename.png)` with a path relative to the `qa/` directory.
+- If a screenshot exists for the AC — the report embeds them under the step that took them —
+  include it on its own line (blank lines above and below) using the path the report gives,
+  relative to the `qa/` directory (`![alt](screenshots/<name>.png)`).
 - Do not reference local absolute file paths in prose.
 - If any AC was deferred (e.g. device unavailable for a Maestro step), note it clearly:
   `**Note:** Device step deferred — <reason>. Code-pattern check substituted per runbook.`

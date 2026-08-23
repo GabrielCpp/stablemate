@@ -166,7 +166,8 @@ def stamp_specs(
 
     The coder's process artifacts (plan.md, qa.md, review.md, executive.md) are written as
     free-form markdown by agents, so the frontmatter that makes them Concepts is only as
-    reliable as the model's memory. The prompts ask for `ostler create spec` up front; this
+    reliable as the model's memory. (`qa-report.md` is the exception: the runner renders it
+    and stamps its type itself, so the idempotent pass below just leaves it alone.) The prompts ask for `ostler create spec` up front; this
     is the backstop that makes the guarantee model-independent. `create_spec` is idempotent
     — an already-typed doc is left untouched and a typed body is never rewritten — so
     running it after every writer phase is free.

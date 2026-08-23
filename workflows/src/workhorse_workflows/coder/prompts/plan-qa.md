@@ -165,7 +165,8 @@ def publish_records_the_real_author(qa: Qa) -> None:
     qa.check("author is the token uid, not the request body",
              qa.field(stored, "metadata.author") == uid,
              actual=qa.field(stored, "metadata.author"), expected=uid)
-    qa.check("message is verbatim", qa.field(stored, "metadata.message") == "hello")
+    qa.check("message is verbatim", qa.field(stored, "metadata.message") == "hello",
+             actual=qa.field(stored, "metadata.message"), expected="hello")
     json.dump(stored, qa.artifact("steps/publish-stored.json", kind="json").open("w"))
 ```
 
@@ -205,6 +206,19 @@ dashes, so the function name is the id — no separate uniqueness bookkeeping to
 - A value used by two scenarios is generated **inside one scenario** and asserted there.
   Module-level randomness or `time.time()` is a module-level side effect; a helper function
   the scenario calls is not.
+- **Write for the person who reads `qa-report.md`.** The runner renders that file at the
+  end of every run from the ledger: one section per acceptance criterion and per obligation,
+  and under each the *step* every covering assertion ran in, the assertion's label, its
+  observed and expected values and the screenshots behind it. Every string you pass becomes a
+  line a peer reads to decide whether the work is real, so: phrase `qa.step("…")` as what a
+  person would do (`"sign in with the seeded editor"`, not `"step 2"`); phrase an assertion
+  label as the claim it proves (`"the tree lists the two nested pages"`, not `"check count"`);
+  **always pass `actual=`** to `qa.check` / `qa.require` / `qa.eventually` — an assertion with
+  no observed value renders as a claim nobody can check and is listed under the report's
+  `## Warnings`; and put in `covers=` exactly the ids *this* assertion proves, one assertion
+  per claim, so a criterion's table holds the assertions that prove it and nothing else. Wrap
+  the work of a scenario in `qa.step()` blocks — an assertion outside any step is attributed
+  to none, and a screenshot taken inside one is embedded under it.
 
 ### The `qa` object
 
@@ -214,7 +228,7 @@ dashes, so the function name is the id — no separate uniqueness bookkeeping to
 | `qa.check(label, condition, actual=…, expected=…, covers=…)` | record one claim; returns the verdict, never raises |
 | `qa.require(label, condition, …)` | record one claim and stop the scenario if it fails |
 | `qa.verify(check, observed, covers=…, **args)` | make an observation the book *declared*; ostler owns the comparison |
-| `with qa.step("label"):` | group a phase under a named step in the ledger |
+| `with qa.step("label"):` | group a phase under a named step; the report lists each assertion and screenshot under the step it ran in |
 | `qa.capture(key, value)` / `qa.get(key)` | publish a value into the ledger and read it back |
 | `qa.artifact(path, kind="…")` | register a file as evidence; a relative path resolves inside `qa.dir` |
 | `qa.secret("NAME")` | a declared secret's value, redacted from the ledger |

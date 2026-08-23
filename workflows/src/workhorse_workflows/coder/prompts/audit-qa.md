@@ -18,6 +18,13 @@ plan, request exploration, or author replacement evidence.
 
 Read all of:
 
+- `qa-report.md` **first** — the runner's own per-criterion, per-obligation account of this
+  run: each acceptance criterion with its verdict, the step every covering assertion ran in,
+  its check, observed and expected values, and the screenshots (with their `vet` verdict) and
+  files behind it; every scenario step by step; and a `## Warnings` list. Its `## Warnings`
+  and every `UNPROVEN` row are where a refutation starts: a criterion no assertion covers, an
+  assertion with no observed value, a scenario that stopped early. Confirm its run marker
+  (`<!-- run: … -->`) names the run in `qa-evidence.json`;
 - `qa_plan.py`;
 - `qa/qa-run.ndjson`;
 - `qa/run-manifest.json`;
@@ -182,9 +189,22 @@ Return `stands` only when no concrete refutation survives. A refutation must be 
 The auditor never repairs or extends QA. It may not upgrade any result or turn a plan/evidence
 defect into a product claim.
 
-Append `## Independent Audit` to `<spec_dir>/qa.md`, naming the obligations and evidence
-sampled plus any concrete refutation. Append below the existing content and leave the `---`
-frontmatter block intact — it carries the `type:` that makes the doc an OKF Concept.
+## Record the audit in `qa.md`
+
+`<spec_dir>/qa.md` is a short current-state document — `## Verdict`, `## Assessment`,
+`## Independent Audit`, `## History` — and `qa-report.md` beside it carries the evidence.
+**Replace** the `## Independent Audit` section in place (one audit: this one), naming the
+criteria, obligations and evidence you sampled, the report warnings you weighed, and any
+concrete refutation. Do not append a second audit below an old one, and do not touch the
+other sections except to add one line to `## History` for this run when the section exists.
+
+A green run often reaches you before anyone has written `qa.md` at all. When it is absent,
+create it through `ostler` — `timeout 30 ostler create spec <story-name> qa.md`, where
+`<story-name>` is the folder name of `<spec_dir>` — which stamps the `type: spec.qa`
+frontmatter that makes it an OKF Concept. Write below the `---` block and leave it intact:
+`# QA — <story-name>`, a `## Verdict` of one or two lines (runner status, run id, date,
+pointer to `qa-report.md`), `## Assessment` reading "_confirmed by the runner; see
+qa-report.md_", your `## Independent Audit`, and an empty `## History`.
 
 ## Commit What You Wrote
 

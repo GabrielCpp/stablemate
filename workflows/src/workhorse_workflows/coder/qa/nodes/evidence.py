@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler import Ostler
+from ostler.qa import REPORT_FILE, run_id_of
 from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.qa_support import (
@@ -43,6 +44,11 @@ from workhorse_workflows.coder.shared.schemas.qa import QaResult
 
 #: The runner-written proof, relative to the story's spec dir.
 EVIDENCE_FILE = "qa-evidence.json"
+
+#: The runner-rendered, reviewer-facing account of the same run, beside the evidence. It is
+#: what a person reads instead of the ledger, so a pass that ships without it — or with one
+#: rendered from some other run — is a pass nobody can check by hand.
+REPORT = REPORT_FILE
 
 #: The three machine statuses that are preserved verbatim. Anything else claimed —
 #: including nothing at all — is `invalid`, because an unstated verdict is not a verdict.
@@ -413,6 +419,31 @@ def _visual_fidelity_problems(
     return problems, vet_notes
 
 
+def _report_problems(spec_dir: Path, data: dict) -> list[str]:
+    """`qa-report.md` exists and was rendered from the run the evidence claims.
+
+    The report is the per-criterion, per-obligation account a reviewer reads; the evidence
+    is the machine's. The runner writes both at the end of the same run and stamps the run
+    id into each, so the only legitimate state is "both present, same id". A missing report
+    means the run never finished its bookkeeping (or someone deleted it); a different id
+    means the report describes an earlier run than the one being passed.
+    """
+    report_path = spec_dir / REPORT
+    if not report_path.is_file():
+        return [f"{REPORT} is missing — the runner writes it after every run; re-run QA."]
+    run_id = str(data.get("runId", "")).strip()
+    report_run_id = run_id_of(report_path)
+    if report_run_id is None:
+        return [f"{REPORT} carries no run marker — it was not rendered by `ostler qa report`."]
+    if run_id and report_run_id != run_id:
+        return [
+            f"{REPORT} was rendered from run '{report_run_id}', not from the run the "
+            f"evidence claims ('{run_id}') — the report and the evidence must come from "
+            f"the same execution."
+        ]
+    return []
+
+
 def _run_id_problems(data: dict, manifest: dict, criteria: list) -> list[str]:
     """Every Pass cites at least one artifact this execution actually produced.
 
@@ -580,6 +611,7 @@ def verify_qa_evidence(
     fidelity_problems, vet_notes = _visual_fidelity_problems(data, root, spec_path)
     problems.extend(fidelity_problems)
     problems.extend(_run_id_problems(data, manifest, criteria))
+    problems.extend(_report_problems(spec_path, data))
 
     if problems:
         logger.warning("QA evidence gate invalidated this pass — %d problem(s)", len(problems))
