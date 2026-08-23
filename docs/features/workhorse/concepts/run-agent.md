@@ -243,5 +243,5 @@ into, each in its own module under `workhorse/workhorse/runner/`:
   other two prompt-mutation strategies (a same-session output-retry nudge, and a budget-overrun
   warning fired from inside [`turn`](agent-turn.md) before a failure ever reaches this ladder).
   All three live in `runner/reframe.py`, which holds no fallback *output* by design.
-- `Clock` / `SYSTEM_CLOCK` (`runner/clock.py`) — the two-method protocol (`now`, `sleep`) the
+- `Clock` / `SYSTEM_CLOCK` (`_vendor/stablemate_core/clock.py`) — the two-method protocol (`now`, `sleep`) the
   ladder and the cap-wait helpers are handed instead of importing `time`.

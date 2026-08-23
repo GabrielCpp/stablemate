@@ -84,5 +84,5 @@ CLI supplies one and this parser is only the fallback.
 - [`BackendInvocationError`](classify-turn.md#backendinvocationerror) — `str(exc)` is the `text`
   this function searches; its structured `reset_at` field (when present) bypasses this parser
   entirely.
-- `Clock` (`runner/clock.py`) — where the caller's `now` comes from; this module imports it only
+- `Clock` (`_vendor/stablemate_core/clock.py`) — where the caller's `now` comes from; this module imports it only
   for the type of `cap_delay_seconds`' parameter, never to read it here.

@@ -41,7 +41,7 @@ from workhorse.pyflow.errors import (
 from workhorse.pyflow.names import NameIndex
 from workhorse.pyflow.registry import registry_of
 from workhorse.pyflow.workflow import Workflow
-from workhorse.runner.clock import SYSTEM_CLOCK, Clock
+from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.failure import BackendInvocationError
 from workhorse.runner.ladder import AgentRunner
 

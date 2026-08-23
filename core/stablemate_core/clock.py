@@ -1,4 +1,4 @@
-"""Wall-clock time and waiting, as a dependency the ladder is handed."""
+"""Wall-clock time and waiting, as a dependency rather than an ambient call."""
 
 from __future__ import annotations
 
@@ -8,20 +8,20 @@ from typing import Protocol
 
 
 class Clock(Protocol):
-    """The passage of time, as the recovery ladder and the streaming loop need it.
+    """The passage of time, as anything that waits on it needs it.
 
-    Three operations, because between them they do exactly three things with time.
-    The ladder asks what time it is (to say when a cap window reopens) and waits
-    (for the cap, for a backoff, for the pause before a reframe); a run that sleeps
-    through an eight-hour cap is then a test that costs microseconds, with nothing
-    patched. The streaming loop asks how long the turn has been running.
+    Three operations, because between them they do exactly three things with time:
+    ask what time it is (to say when a window reopens), wait (for a cap, a backoff,
+    a health poll), and ask how long something has been running. Handing those in
+    rather than calling `time` directly is what makes a test of an eight-hour wait
+    cost microseconds with nothing patched.
 
     ``monotonic`` is separate from ``now`` rather than derived from it because a
-    turn's deadline must not move when the wall clock does. ``now`` is a date an
-    operator reads ("resuming around 11:30am") and is allowed to jump under NTP;
+    deadline must not move when the wall clock does. ``now`` is a date an operator
+    reads ("resuming around 11:30am") and is allowed to jump under NTP;
     ``monotonic`` is a duration a timeout is measured against and never goes
-    backwards. Collapsing the two would make an NTP correction mid-turn either
-    expire a healthy turn or extend a wedged one.
+    backwards. Collapsing the two would make an NTP correction mid-wait either
+    expire a healthy deadline or extend a wedged one.
     """
 
     def now(self) -> datetime: ...

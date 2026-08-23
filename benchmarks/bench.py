@@ -101,7 +101,7 @@ from workhorse.runner import extract as wh_extract
 from workhorse.runner import failure as wh_failure
 from workhorse.runner.backends import AgentBackend
 from workhorse.runner.backends.registry import get_backend
-from workhorse.runner.clock import SYSTEM_CLOCK, Clock
+from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 
 HERE = Path(__file__).resolve().parent
 STABLEMATE = HERE.parent

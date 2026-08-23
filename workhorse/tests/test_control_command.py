@@ -35,7 +35,7 @@ from workhorse.cli import control as control_cmd  # noqa: E402
 from workhorse.cli import main as cli_main  # noqa: E402
 from workhorse.pyflow.registry import Registry  # noqa: E402
 from workhorse.records import PyflowCheckpoint, RunRecord  # noqa: E402
-from workhorse.runner.clock import SYSTEM_CLOCK  # noqa: E402
+from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK  # noqa: E402
 
 
 def _run_dir(runs: Path, name: str = "demo-t", *, terminal: str | None = None) -> Path:

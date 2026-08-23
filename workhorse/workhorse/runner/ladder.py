@@ -19,7 +19,7 @@ from workhorse import control, otel, reload
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
 from workhorse.runner.caps import cap_delay_seconds, sleep_with_notice
-from workhorse.runner.clock import SYSTEM_CLOCK, Clock
+from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.extract import extract_outputs
 from workhorse.runner.failure import (
     BackendInvocationError,

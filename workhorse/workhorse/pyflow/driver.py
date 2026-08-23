@@ -31,7 +31,7 @@ from workhorse.pyflow.transitions import Await, Continue, Done
 from workhorse.pyflow.workflow import Workflow
 from workhorse.records import Checkpoint, PyflowCheckpoint, parse_checkpoint
 from workhorse.runner import ladder
-from workhorse.runner.clock import SYSTEM_CLOCK, Clock
+from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 
 logger = logging.getLogger("workhorse.engine")
 

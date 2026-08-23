@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from workhorse import otel
 from workhorse.config_run import AgentResilience
 from workhorse.control import NULL_CHANNEL, ControlChannel, Request, wait_until
-from workhorse.runner.clock import Clock
+from workhorse._vendor.stablemate_core.clock import Clock
 from workhorse.runner.failure import BackendInvocationError
 
 

@@ -17,7 +17,7 @@ from typing import Any
 
 from workhorse import control, otel, reload
 from workhorse.config_run import AgentResilience
-from workhorse.runner.clock import SYSTEM_CLOCK, Clock
+from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.failure import BackendInvocationError
 from workhorse.runner.waits import RecoveryWaitBudget, active_recovery_wait_budget
 from workhorse.runner.redact import SecretRedactor
