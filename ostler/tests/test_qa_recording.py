@@ -73,3 +73,33 @@ def test_a_recording_is_playable_before_it_is_fully_downloaded(tmp_path: Path) -
     assert order.index("moov") < order.index("mdat"), (
         f"the video will not stream: {order}"
     )
+
+
+def test_recording_uses_a_private_display_even_when_one_is_inherited(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The headed browser must never land on the operator's desktop.
+
+    With DISPLAY set, the old recorder filmed that display — the browser popped up on the
+    operator's screen and the video captured whatever else was there. Xvfb installed means
+    a private display, inherited DISPLAY or not.
+    """
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr("ostler.qa.drivers.time.sleep", lambda seconds: None)
+    spawned: list[list[str]] = []
+
+    class _Proc:
+        def __init__(self, argv: list[str], **kwargs: object) -> None:
+            spawned.append(argv)
+            self.stdin = None
+
+        def poll(self) -> None:
+            return None
+
+    monkeypatch.setattr("ostler.qa.drivers.subprocess.Popen", _Proc)
+    recorder = _recorder(tmp_path)
+    env = recorder.start()
+    assert spawned[0][0] == "Xvfb"
+    assert env["DISPLAY"] == spawned[0][1] != ":0"
+    assert recorder.argv()[recorder.argv().index("-i") + 1] == f"{env['DISPLAY']}.0"

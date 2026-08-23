@@ -747,7 +747,7 @@ class DisplayRecorder:
         self.width = width
         self.height = height
         self.fps = fps
-        self.display = os.environ.get("DISPLAY", "")
+        self.display = ""
         self._xvfb: subprocess.Popen[bytes] | None = None
         self._ffmpeg: subprocess.Popen[bytes] | None = None
         self.path = session.qa_dir / "videos" / f"{target}.mp4"
@@ -770,9 +770,11 @@ class DisplayRecorder:
         if shutil.which("ffmpeg") is None:
             raise DriverBlocked("ffmpeg is required for browser-window recording")
         env = dict(os.environ)
-        if not self.display:
-            if shutil.which("Xvfb") is None:
-                raise DriverBlocked("window recording requires DISPLAY or Xvfb")
+        # The browser runs on a private X display whenever Xvfb is installed — never on the
+        # desktop this process inherited. A headed window popping up on the operator's screen
+        # is a nuisance, and a recording of it is evidence of whatever else was on that screen.
+        # The inherited DISPLAY is the fallback only where Xvfb is absent.
+        if shutil.which("Xvfb") is not None:
             self.display = f":{90 + os.getpid() % 100}"
             self._xvfb = subprocess.Popen(
                 ["Xvfb", self.display, "-screen", "0", f"{self.width}x{self.height}x24", "-nolisten", "tcp"],
@@ -780,6 +782,10 @@ class DisplayRecorder:
                 stderr=subprocess.DEVNULL,
             )
             time.sleep(0.5)
+        else:
+            self.display = os.environ.get("DISPLAY", "")
+            if not self.display:
+                raise DriverBlocked("window recording requires Xvfb (or a DISPLAY to fall back to)")
         env["DISPLAY"] = self.display
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._ffmpeg = subprocess.Popen(

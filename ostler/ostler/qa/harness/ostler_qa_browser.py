@@ -162,8 +162,9 @@ class Browser:
         browser_type = getattr(self._playwright, name, None)
         if browser_type is None:
             raise ValueError(f"unknown Playwright browser {name!r}")
-        # Headed only for window recording, which is ostler's ffmpeg grabbing the X display
-        # this process was handed. Every other mode is headless.
+        # Headed only for window recording, which is ostler's ffmpeg grabbing a private X
+        # display the runner starts (DisplayRecorder) — not the operator's desktop. Every
+        # other mode is headless.
         self._browser = browser_type.launch(headless=not (self.required and self.mode == "window"))
         options: dict[str, Any] = {"viewport": self.viewport}
         permissions = self.permissions()
