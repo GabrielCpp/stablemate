@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from farrier import cli
 from farrier.hook_managers import (
     FENCE_END,
     FENCE_START,
@@ -253,6 +254,46 @@ def test_a_repo_whose_skills_declare_nothing_still_gets_a_runner():
 
     assert text.startswith("#!/bin/sh")
     assert "exit 0" in text
+
+
+# ---------------------------------------------------------------------------
+# `farrier hooks` — the wiring without the render
+# ---------------------------------------------------------------------------
+
+
+def test_the_hooks_command_wires_a_repo_whose_packs_do_not_resolve(repo: Path):
+    """The clone most likely to trip a guard is the one that cannot render.
+
+    A public contributor has no overlay, so `farrier install` raises on the first pack
+    it cannot resolve and never reaches the wiring at the end of it. `farrier hooks`
+    reads `agents.yml` for the manager name and nothing else, so the hook still gets
+    installed on the machine that has no library to install from.
+    """
+    (repo / "agents.yml").write_text(
+        "packs:\n  - a-pack-that-is-not-anywhere\nhooks:\n  manager: githooks\n",
+        encoding="utf-8",
+    )
+
+    assert cli.main(["hooks", "--repo", str(repo)]) == 0
+
+    hook = repo / ".githooks" / "pre-commit"
+    assert HOOK_COMMAND in hook.read_text(encoding="utf-8")
+    assert hook.stat().st_mode & 0o111
+    assert fence_drift(repo, "githooks") == []
+    configured = subprocess.run(
+        ["git", "config", "core.hooksPath"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert configured == ".githooks"
+
+
+def test_the_hooks_command_falls_back_to_detection_with_no_agents_yml(repo: Path):
+    assert cli.main(["hooks", "--repo", str(repo)]) == 0
+
+    assert HOOK_COMMAND in (repo / ".githooks" / "pre-commit").read_text(encoding="utf-8")
 
 
 if __name__ == "__main__":
