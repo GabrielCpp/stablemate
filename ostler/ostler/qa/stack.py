@@ -169,7 +169,13 @@ def boot_app(
     health_path = health_path or "/"
     app_cwd = app_cwd or "."
     repo_root = repo_root or app_cwd
-    health_url = entry_url.rstrip("/") + "/" + health_path.lstrip("/")
+    # No entry URL means there is no HTTP readiness probe — not a probe of "/". A runbook
+    # whose readiness proof is a `service` step's `health:` gate declares no `entry-url:`
+    # at all (`ostler/docs/okf-runbook.md` §7 only calls a runbook incomplete when it has
+    # *neither*), and joining an empty base onto the default path yielded the bare string
+    # "/", which urlopen rejects as "unknown url type" on every poll until the boot window
+    # ran out. Every stack of that shape was therefore unbootable, slowly.
+    health_url = entry_url.rstrip("/") + "/" + health_path.lstrip("/") if entry_url else ""
 
     if not launch_cmd:
         logger.warning("no launch command supplied — cannot boot the app under test")
@@ -180,14 +186,18 @@ def boot_app(
     # Idempotent reuse: something already serving here → adopt it, own nothing. Safe
     # only with an identity marker; without one, start the documented command and prove
     # that owned process became healthy instead of adopting an arbitrary listener.
-    if adopt and app_identity and not health_probe(health_url, app_identity):
+    if adopt and app_identity and health_url and not health_probe(health_url, app_identity):
         logger.info("adopting the app already serving %s (identity %r matched); "
                     "teardown will not reap it", health_url, app_identity)
         return {"boot_ok": "yes", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
                 "reason": ""}
 
-    logger.info("booting app: %s (cwd %s), waiting up to %.0fs for %s",
-                launch_cmd, app_cwd, timeout_s, health_url)
+    if health_url:
+        logger.info("booting app: %s (cwd %s), waiting up to %.0fs for %s",
+                    launch_cmd, app_cwd, timeout_s, health_url)
+    else:
+        logger.info("booting app: %s (cwd %s) — no entry url, so readiness is whatever "
+                    "the manifest's health gates assert", launch_cmd, app_cwd)
     try:
         proc = subprocess.Popen(  # noqa: S603 (documented recipe, loopback stack)
             _shell_argv(launch_cmd), cwd=app_cwd,
@@ -205,6 +215,9 @@ def boot_app(
     # Why the last probe said no. Kept so the give-up below reports the reason and not
     # merely the symptom — see :func:`health_probe`.
     why = ""
+    if not health_url:
+        return _boot_without_probe(proc, pgid, entry_url, logger=logger, clock=clock)
+
     deadline = clock.monotonic() + timeout_s
     while clock.monotonic() < deadline:
         # Health first: a bring-up command can exit the instant the stack is serving, so
@@ -246,6 +259,38 @@ def boot_app(
     _killpg(pgid, signal.SIGKILL)
     return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
             "reason": why}
+
+
+def _boot_without_probe(
+    proc: subprocess.Popen[bytes], pgid: int, entry_url: str, *,
+    logger: logging.Logger, clock: Clock,
+) -> dict[str, str]:
+    """Decide bring-up for a stack that declares no HTTP readiness probe.
+
+    There is nothing to poll here, so the launch command's own behaviour is the whole
+    signal, and it comes in two shapes. A blocking bring-up (``docker compose up --wait``,
+    a migration, a script) exits: 0 is a successful hand-off to something this run does not
+    own, nonzero is a failure worth reporting as one. A foreground daemon never exits, and
+    waiting on it would spend the entire boot window before returning the same verdict — so
+    one poll interval is all it gets, and readiness passes to :func:`ensure_stack`'s health
+    gates, which retry against their own window. That is exactly the proof the runbook spec
+    accepts in place of an ``entry-url:``.
+    """
+    clock.sleep(POLL_INTERVAL_S)
+    code = proc.poll()
+    if code is None:
+        logger.info("launch command is still running (pid %d, pgid %d) — treating it as "
+                    "the service itself; health gates decide readiness", proc.pid, pgid)
+        return {"boot_ok": "yes", "entry_url": entry_url, "reason": "",
+                "app_pid": str(proc.pid), "app_pgid": str(pgid)}
+    if code != 0:
+        logger.warning("launch command exited with code %s", code)
+        return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
+                "reason": f"the launch command exited with code {code} during startup"}
+    logger.info("launch command completed (exit 0) — this run owns no process to reap; "
+                "health gates decide readiness")
+    return {"boot_ok": "yes", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
+            "reason": ""}
 
 
 def teardown_app(

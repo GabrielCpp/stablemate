@@ -588,3 +588,74 @@ if __name__ == "__main__":
     import sys
 
     raise SystemExit(subprocess.call([sys.executable, "-m", "pytest", "-q", __file__]))
+
+
+def test_boot_without_an_entry_url_never_probes_a_bare_path(monkeypatch) -> None:
+    """A runbook proving readiness with a `health:` gate declares no `entry-url:`.
+
+    Joining an empty base onto the default health path used to yield the bare string
+    `"/"`, which urlopen rejects as an unknown url type — once per poll, for the whole
+    boot window, before failing every such stack. There is nothing to probe here, so
+    nothing may be probed.
+    """
+    class Exited:
+        pid = 4242
+        returncode = 0
+
+        def poll(self) -> int:
+            return 0
+
+    monkeypatch.setattr(
+        stack, "health_probe",
+        lambda *_a, **_kw: pytest.fail("probed a stack that declares no entry url"),
+    )
+    monkeypatch.setattr(stack.subprocess, "Popen", lambda *_a, **_kw: Exited())
+    monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
+
+    out = stack.boot_app(
+        "docker compose up -d --wait", "", "", ".", ".", "", 60,
+        logger=LOG, clock=FakeClock(),
+    )
+    assert out["boot_ok"] == "yes"
+    assert out["reason"] == ""
+    # A command that has already exited leaves this run nothing to reap.
+    assert out["app_pgid"] == ""
+
+
+def test_boot_without_an_entry_url_owns_a_launch_that_keeps_running(monkeypatch) -> None:
+    """A foreground daemon is the service itself: hand its pgid back for teardown."""
+    class Serving:
+        pid = 4242
+        returncode = None
+
+        def poll(self) -> None:
+            return None
+
+    monkeypatch.setattr(stack.subprocess, "Popen", lambda *_a, **_kw: Serving())
+    monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 77)
+
+    out = stack.boot_app(
+        "npm run dev", "", "", ".", ".", "", 60, logger=LOG, clock=FakeClock(),
+    )
+    assert out["boot_ok"] == "yes"
+    assert (out["app_pid"], out["app_pgid"]) == ("4242", "77")
+
+
+def test_boot_without_an_entry_url_still_reports_a_launch_that_died(monkeypatch) -> None:
+    """Absent probe or not, a nonzero exit is a failure and must be named as one."""
+    class Died:
+        pid = 4242
+        returncode = 2
+
+        def poll(self) -> int:
+            return 2
+
+    monkeypatch.setattr(stack.subprocess, "Popen", lambda *_a, **_kw: Died())
+    monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
+
+    out = stack.boot_app(
+        "docker compose up -d --wait", "", "", ".", ".", "", 60,
+        logger=LOG, clock=FakeClock(),
+    )
+    assert out["boot_ok"] == "no"
+    assert "code 2" in out["reason"]
