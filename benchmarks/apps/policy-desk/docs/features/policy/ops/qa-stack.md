@@ -10,7 +10,7 @@ title: QA stack
 - code: app/api/service.go
 - entry-url: http://localhost:18084
 - health-path: /healthz
-- identity: `"status": "ok"` — a substring of the health *body*, not a host:port
+- identity: `"status":"ok"` — a substring of the health *body*, exactly as served
 - reuse: never
 - boot-timeout: 120
 
