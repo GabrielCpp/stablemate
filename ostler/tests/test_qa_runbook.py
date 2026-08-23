@@ -264,9 +264,23 @@ def codes(root: Path) -> list[str]:
 def test_doctor_warns_once_when_no_stack_is_declared(tmp_path: Path) -> None:
     # The finding that moves the greenfield hole from turn 61 to author time.
     (tmp_path / ".git").mkdir()
-    write(tmp_path / "docs" / "features" / "app" / "home.md",
-          "---\ntype: feature\nslug: home\n---\n\n# Home\n\nprose\n")
+    write(tmp_path / "docs" / "features" / "app" / "gui" / "screens" / "home.md",
+          "---\ntype: screen\nslug: home\n---\n\n# Home\n\nprose\n")
     assert codes(tmp_path).count("runbook-missing") == 1
+
+
+def test_doctor_asks_for_no_stack_from_a_book_with_nothing_to_serve(tmp_path: Path) -> None:
+    """A CLI, a library and an infrastructure program have nothing to bring up.
+
+    The warning is about a surface that cannot be reached until a process answers — a
+    `screen` or a `server`. Asking a book with neither to declare a stack would be asking
+    it to declare a stack for nothing, and a repo whose doctor is red for being what it is
+    teaches its authors to stop reading the doctor.
+    """
+    (tmp_path / ".git").mkdir()
+    write(tmp_path / "docs" / "features" / "tally" / "tally.md",
+          "---\ntype: cli\nslug: tally\n---\n\n# tally\n\nprose\n")
+    assert "runbook-missing" not in codes(tmp_path)
 
 
 def test_doctor_stays_quiet_when_a_walkthrough_server_declares_it(tmp_path: Path) -> None:
@@ -307,8 +321,11 @@ def test_doctor_holds_only_stack_runbooks_to_the_stack_shape(tmp_path: Path) -> 
     book *does* still get told is that nothing here declares a stack.
     """
     (tmp_path / ".git").mkdir()
+    write(tmp_path / "docs" / "features" / "app" / "gui" / "screens" / "home.md",
+          "---\ntype: screen\nslug: home\n---\n\n# Home\n\nprose\n")
     make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# Rotate the keys\n\n- driver: cli\n"
-                 "\n## Steps\n\n### rotate\n\n- kind: run\n- run: ./rotate.sh\n")
+                 "\n## Steps\n\n### rotate\n\n- kind: run\n- run: ./rotate.sh\n",
+                 name="rotate-the-keys")
     found = codes(tmp_path)
     assert "runbook-incomplete" not in found
     assert found.count("runbook-missing") == 1

@@ -93,12 +93,13 @@ short-lived token minted while the stack booted is already stale by the lap that
 
 ## What `doctor` says
 
-`runbook-missing` (warn) — no runbook declares a stack · `runbook-incomplete` — a stack runbook
+`runbook-missing` (warn) — the book has a `screen` or a `server` and no runbook declares a stack · `runbook-incomplete` — a stack runbook
 with no `kind: service` step, or nothing proving readiness · `runbook-multi-service` · `runbook-bad-kind` ·
 `runbook-bad-reuse` · `runbook-local-only` — boots a `local-only: true` environment whose
 `services:` point off this machine.
 
-`runbook-missing` is a warning because a library or a CLI has nothing to bring up. Its job is to
+`runbook-missing` is a warning, and it only fires against a book with something served — a
+`screen` or a `server`. A library's book or a CLI's has nothing to bring up. Its job is to
 surface an *undeclared* stack at author time, where the remedy is one node — instead of in the
 middle of a QA run, where it used to arrive as a pass against nothing.
 

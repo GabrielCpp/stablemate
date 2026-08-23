@@ -661,7 +661,7 @@ LINKED_REPORT_JSON = """\
       "epic": "",
       "fixable": false,
       "line": 0,
-      "message": "no `runbook` node brings a system up: the book does not say how this system starts, so QA has no stack to run against",
+      "message": "no `runbook` node brings a system up: the book describes a surface that has to be served and never says how it starts, so QA has no stack to run against",
       "path": "",
       "ref": "",
       "severity": "warn",

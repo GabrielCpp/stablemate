@@ -206,17 +206,20 @@ and a book carrying only procedures still gets `runbook-missing`.
 
 | code | severity | when |
 | --- | --- | --- |
-| `runbook-missing` | warn | no runbook brings a system up and there is no walkthrough server: the book does not say how this system comes up |
+| `runbook-missing` | warn | the book has a `screen` or a `server`, and no runbook or walkthrough server says how it comes up |
 | `runbook-bad-kind` | error | a `kind:` outside §4.1 |
 | `runbook-bad-reuse` | error | a `reuse:` outside `if-fresh`/`always`/`never` |
 | `runbook-incomplete` | error | a stack runbook with no `kind: service` step, or nothing proving readiness (neither `entry-url:` nor a service `health:`) |
 | `runbook-multi-service` | error | more than one `kind: service` step — the reader takes the first, so which one launched is otherwise luck |
 | `runbook-local-only` | error | boots a `local-only: true` environment whose `services:` point off this machine |
 
-`runbook-missing` is a warning, not an error: a book that documents a library, a CLI, or a
-surface nobody serves has nothing to bring up and is not broken. Its job is to move the
-discovery of an *undeclared* stack to author time, where the remedy is one node — instead of
-to the middle of a QA run, where it used to arrive as a pass against nothing.
+`runbook-missing` is a warning, not an error, and it only fires against a book that has
+something *served*: a `screen` or a `server`, neither of which can be driven until a process
+answers. A CLI's book, a library's, an infrastructure program's describes behaviour a lane
+invokes directly, and asking those to declare a stack would be asking them to declare a stack
+for nothing. Where it does fire, its job is to move the discovery of an *undeclared* stack to
+author time, where the remedy is one node — instead of to the middle of a QA run, where it
+used to arrive as a pass against nothing.
 
 ## 8. The CLI
 
