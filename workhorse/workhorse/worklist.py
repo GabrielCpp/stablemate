@@ -2,8 +2,7 @@
 working through*, instead of every workflow re-deriving "select next / mark / prune /
 how many remain" against its own bespoke store.
 
-Like :mod:`workhorse.stack`, this is a **parameterised primitive that learns no
-workflow's schema**: an item is a :class:`WorkItem` — ``id``, ``status``, ``kind``,
+This is a **parameterised primitive that learns no workflow's schema**: an item is a :class:`WorkItem` — ``id``, ``status``, ``kind``,
 ``order``, ``payload``, plus whatever else the workflow's own file carries — and nothing
 here knows a "story" from an "epic" from a "unit". A workflow names its own statuses
 (via :class:`Scheme`) and its own category key; the primitive only sequences, counts,

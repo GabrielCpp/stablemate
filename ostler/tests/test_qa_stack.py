@@ -1,4 +1,4 @@
-"""Tests for the durable stack supervisor (:mod:`workhorse.stack`).
+"""Tests for the durable stack supervisor (:mod:`ostler.qa.stack`).
 
 The boot/teardown cases were ported from okf-builder's boot-app white-box tests when
 the logic moved here; they now drive the library functions directly (which return
@@ -11,7 +11,7 @@ import logging
 import pytest
 
 from _fakes import FakeClock
-from workhorse import stack
+from ostler.qa import stack
 
 LOG = logging.getLogger("test-stack")
 

@@ -6,7 +6,7 @@ the regression fix. What is worth testing is which arm each verdict takes, what 
 loop terminate, and — above all — that the evidence gate cannot be talked past.
 
 **Five seams, all of them a process boundary.** `ostler qa context|validate|run`, `ostler
-artifact vet`, `workhorse.stack.ensure_stack` (docker) and the regression suite's
+artifact vet`, `ostler.qa.stack.ensure_stack` (docker) and the regression suite's
 `subprocess.run` are the only things patched, because they are the only things that leave
 the filesystem. Everything else is the real node: `clear_qa_evidence` really deletes last
 pass's `qa/`, `resolve_impl_context` really decodes the plan against a real workspace,
@@ -27,7 +27,7 @@ from unittest.mock import patch
 
 import pytest
 from workhorse import inbox
-from workhorse import stack as workhorse_stack
+from ostler.qa import stack as qa_stack
 from workhorse.artifacts import ArtifactWriter
 from workhorse.cli.inbox import INBOX_FILE
 from workhorse.pyflow import WorkflowFailed
@@ -1578,7 +1578,7 @@ def test_the_stack_is_standing_before_the_plan_is_written(
         turns_before.append(len(agent.calls))
         return {"ready": "yes", "entry_url": "http://x"}
 
-    monkeypatch.setattr(workhorse_stack, "ensure_stack", _up)
+    monkeypatch.setattr(qa_stack, "ensure_stack", _up)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
@@ -1608,7 +1608,7 @@ def test_a_setup_repair_mid_run_returns_to_the_runner_not_to_a_second_plan(
     okf = ostler(block_runs=1)
     write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
     monkeypatch.setattr(
-        workhorse_stack, "ensure_stack", lambda *a, **k: {"ready": "yes", "entry_url": "http://x"}
+        qa_stack, "ensure_stack", lambda *a, **k: {"ready": "yes", "entry_url": "http://x"}
     )
     agent = _Agent(docs, setup="fixed")
 
@@ -1633,7 +1633,7 @@ def test_a_stack_that_will_not_come_up_is_repaired_and_retried(
     ostler()
     write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
     results = [{"ready": "no", "failed_step": "health"}, {"ready": "yes", "entry_url": "http://x"}]
-    monkeypatch.setattr(workhorse_stack, "ensure_stack", lambda *a, **k: results.pop(0))
+    monkeypatch.setattr(qa_stack, "ensure_stack", lambda *a, **k: results.pop(0))
     agent = _Agent(docs, setup="fixed")
 
     result = drive_flow(Qa(story=STORY), env(), agent)
@@ -1666,7 +1666,7 @@ def test_the_setup_fixer_is_briefed_with_why_the_stack_would_not_come_up(
         {"ready": "no", "failed_step": "health[0]", "error": "api-test container is not running"},
         {"ready": "yes", "entry_url": "http://x"},
     ]
-    monkeypatch.setattr(workhorse_stack, "ensure_stack", lambda *a, **k: results.pop(0))
+    monkeypatch.setattr(qa_stack, "ensure_stack", lambda *a, **k: results.pop(0))
     agent = _Agent(docs, setup="fixed")
 
     result = drive_flow(Qa(story=STORY), env(), agent)
@@ -1698,7 +1698,7 @@ def test_a_stack_nobody_can_repair_gives_up_instead_of_spinning(
     ostler()
     write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
     monkeypatch.setattr(
-        workhorse_stack, "ensure_stack", lambda *a, **k: {"ready": "no", "failed_step": "health"}
+        qa_stack, "ensure_stack", lambda *a, **k: {"ready": "no", "failed_step": "health"}
     )
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
     agent = _Agent(docs, setup="unfixable")
@@ -2980,7 +2980,7 @@ def test_the_lane_runs_standalone_with_no_plan_context(
     ostler()
     write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
     monkeypatch.setattr(
-        workhorse_stack, "ensure_stack", lambda *a, **k: {"ready": "yes", "entry_url": "http://x"}
+        qa_stack, "ensure_stack", lambda *a, **k: {"ready": "yes", "entry_url": "http://x"}
     )
     agent = _Agent(docs)
 

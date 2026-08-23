@@ -26,7 +26,7 @@ from typing import Any
 
 import yaml
 from ostler import Ostler
-from workhorse import stack
+from ostler.qa import stack
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.credentials import scoped_env
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -115,7 +115,7 @@ def ensure_stack(
     """Bring the durable QA stack up (or adopt one already serving) before the runner.
 
     A long-running stack has to start *outside* any agent turn, or the turn's teardown
-    kills it mid-build. The lifecycle itself is `workhorse.stack.ensure_stack`, shared with
+    kills it mid-build. The lifecycle itself is `ostler.qa.stack.ensure_stack`, shared with
     the okf-builder; this node is the manifest's reader and the outcome's translator.
 
     A missing manifest is `skip`, not a failure — a repo that has not authored one runs QA

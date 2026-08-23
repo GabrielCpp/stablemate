@@ -124,7 +124,7 @@ class StackStatus(CoderResult):
     `ready` is three-state on purpose. `skip` (no manifest authored) is not a failure and
     routes exactly where `yes` does; only `no` reaches the setup-repair loop.
 
-    The pids are strings because `workhorse.stack.ensure_stack` returns them that way —
+    The pids are strings because `ostler.qa.stack.ensure_stack` returns them that way —
     they are recorded for a human killing a leaked stack, never arithmetic.
     """
 
