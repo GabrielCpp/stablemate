@@ -314,8 +314,25 @@ looping node overwrote, `sessions.jsonl` mapping each turn to its agent-CLI sess
 on one host and is pruned whenever it likes.
 
 ```
-runs/<workflow>-<run-id>/{run.json,context.json,sessions.jsonl,turns/,transcripts/,<step-id>/}
+runs/<workflow>-<run-id>/{run.json,launch.json,context.json,sessions.jsonl,turns/,transcripts/,<step-id>/}
 ```
+
+`launch.json` is the one written for whoever outlives the process. A run killed outright —
+OOM, a sweep, a hard crash — cannot report its own death, so something outside has to notice
+and act, and until this file the directory said everything about the run except how to start
+it again. It holds **two** argvs, and the difference is load-bearing:
+
+- `resume_argv` is the command. Run it from the recorded `cwd`. Because a resume lands on the
+  stable run dir in place, that is the whole of what a supervisor has to do.
+- `argv` is forensics — what this process was actually exec'd with — and must **never** be
+  executed. It can carry `--no-cache`, which deletes the run directory before starting, and a
+  `--params-file` that has since moved on from what the checkpoint holds. Replaying it is not
+  a resume; it is how the run gets lost.
+
+`container: true` means every path in the record is namespace-local, so a host-side reader
+must refuse it rather than re-spawn coordinates that mean something else outside. The
+environment is deliberately not recorded: it is read at the process boundary and would put
+secrets on disk.
 
 The full tree, what `prompt.md` does and does not capture, how a transcript capture records
 which of its two sources it came from, and the `WORKHORSE_CAPTURE_TRANSCRIPTS` /

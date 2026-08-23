@@ -186,6 +186,13 @@ is directly observable; the row was just the only place it was ever said. It is
 native-only for that same reason: a containerized run's pid is in another
 namespace, and the sidecar reports its exit.
 
+The alert names a run directory that now also holds the command to bring it back:
+workhorse writes a `launch.json` beside `run.json` whose `resume_argv`, run from the
+recorded `cwd`, resumes the run in place off its last checkpoint. groom does not run
+it — deciding *whether* a killed run should be restarted is a policy question, and an
+OOM-killed run restarted on the same box gets OOM-killed again — but the page and the
+command are now in the same place.
+
 BLOCKED and WAITING cover the mirror image: a run parked on an operator gate is
 behaving correctly, so no rule described it, and STUCK skips an open wait by
 design. Yet it is the only alert whose subject can end it — the human reading the
