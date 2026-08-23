@@ -21,6 +21,7 @@ title: The depot stack
 - code: pulumi/go.mod
 - code: pulumi/go.sum
 - code: pulumi/.gitignore
+- config: pulumi/Pulumi.dev.yaml
 - verify: json_path("inputs.version", equals="8.16.0")
 
 Nothing in this stack runs, and that is the shape rather than an omission. There is no container,
