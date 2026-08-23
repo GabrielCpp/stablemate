@@ -151,6 +151,34 @@ def _stamped_log() -> list[dict[str, Any]]:
     ]
 
 
+def _video(target: str = "web", *, start_ms: int = 8000, duration: float = 20.0) -> dict[str, Any]:
+    return {
+        "kind": "video",
+        "path": f"qa/videos/{target}.mp4",
+        "target": target,
+        "mode": "window",
+        "actionStartOffsetMs": start_ms,
+        "actionEndOffsetMs": start_ms + int(duration * 1000),
+        "durationSeconds": duration,
+        "width": 1440,
+        "height": 900,
+        "fps": 30.0,
+    }
+
+
+def _recorded_log() -> list[dict[str, Any]]:
+    return [
+        _start(),
+        _scenario_start("s", "ac:1", target="web"),
+        _step("s", *STEP_ONE, started_offset_ms=10_400, ended_offset_ms=12_900),
+        _assert("s", 1, "the landing page shows the tree", "ac:1", step=STEP_TWO),
+        _step("s", *STEP_TWO, started_offset_ms=12_900, ended_offset_ms=13_250),
+        _scenario_stop("s", assertions=1, failures=0),
+        _video(),
+        _stop(),
+    ]
+
+
 # ----------------------------------------------------------------------------- verdicts
 
 
@@ -457,3 +485,52 @@ def test_a_screenshot_s_vet_verdict_is_read_off_its_sidecar(tmp_path: Path) -> N
 def test_rendering_is_deterministic(tmp_path: Path) -> None:
     spec = _spec(tmp_path, log=_stamped_log(), criteria=[_criterion("ac:1", "Sign in works.")])
     assert write_report(spec).read_text() == write_report(spec).read_text()
+
+
+# ----------------------------------------------------------------------------- recordings
+
+
+def test_a_stamped_step_is_placed_in_the_recording_of_its_target(tmp_path: Path) -> None:
+    spec = _spec(tmp_path, log=_recorded_log(), criteria=[_criterion("ac:1", "Tree loads.")])
+    data = build_report(spec)
+    steps = data["scenarios"][0]["steps"]
+    # (started − actionStart)/1000: the step's own clock minus the recording's first frame.
+    assert steps[0]["video"] == {"path": "qa/videos/web.mp4", "at": 2.4, "until": 4.9}
+    assert steps[1]["video"] == {"path": "qa/videos/web.mp4", "at": 4.9, "until": 5.25}
+    assert data["recordings"][0]["actionStartOffsetMs"] == 8000
+
+    text = render_report(data, spec_dir=spec)
+    # The reader sees the player's clock, a seekable link, and the command that pulls the frames.
+    assert "1. **sign in with the provisioned account** — ok — recording [0:02.4–0:04.9](qa/videos/web.mp4#t=2.4)" in text
+    assert "`ostler qa frames --spec " in text
+    assert "--step s-step-1`" in text
+    ac1 = text.split("### ac:1 — PASS", 1)[1]
+    assert "_Step: fetch the page tree_ — recording [0:04.9–0:05.2](qa/videos/web.mp4#t=4.9)" in ac1
+    assert "| Frames |" in text
+
+
+def test_a_step_is_not_placed_in_a_recording_it_is_outside_of(tmp_path: Path) -> None:
+    log = _recorded_log()
+    # Before the first frame entirely, and after the last one entirely.
+    log[2]["started_offset_ms"], log[2]["ended_offset_ms"] = 1_000, 2_000
+    log[4]["started_offset_ms"], log[4]["ended_offset_ms"] = 40_000, 41_000
+    data = build_report(_spec(tmp_path, log=log))
+    assert [step["video"] for step in data["scenarios"][0]["steps"]] == [None, None]
+    assert " — recording " not in render_report(data)
+
+
+def test_a_step_straddling_the_first_frame_is_clamped_to_it(tmp_path: Path) -> None:
+    log = _recorded_log()
+    log[2]["started_offset_ms"], log[2]["ended_offset_ms"] = 7_000, 9_000
+    data = build_report(_spec(tmp_path, log=log))
+    assert data["scenarios"][0]["steps"][0]["video"] == {"path": "qa/videos/web.mp4", "at": 0.0, "until": 1.0}
+
+
+def test_an_unstamped_step_or_an_unrecorded_target_has_no_place(tmp_path: Path) -> None:
+    # Older ledgers carry no step timestamps; an api scenario has no recording to sit in.
+    log = [*_stamped_log()[:-1], _video(), _stop()]
+    data = build_report(_spec(tmp_path, log=log))
+    assert all(step["video"] is None for step in data["scenarios"][0]["steps"])
+    assert "| Frames |" in render_report(data)  # the recording exists, the hint still shows
+    data = build_report(_spec(tmp_path, log=_stamped_log()))
+    assert "| Frames |" not in render_report(data)

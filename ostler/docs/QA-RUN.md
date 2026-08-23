@@ -259,6 +259,7 @@ ostler qa stop
     Print a one-line verdict: PASS (all asserts passed) or FAIL (≥1 assert failed).
 
 ostler qa report [--spec <spec-dir>] [--out-dir <label>] [--ledger]
+ostler qa frames --spec <spec-dir> (--step STEP-ID | --at SECONDS [--target T]) [--around S] [--fps N] [--out-dir <label>]
     Render `<spec-dir>/qa-report.md` from the ledger and print it: the per-criterion,
     per-obligation account of the run a human reviews (see "The report" below).
     `qa run` renders it itself at the end of every run, whatever the status; this
@@ -675,7 +676,9 @@ decide whether the work was done, and it is written for that reader:
 4. **OKF obligations** — the same, with the status `qa evidence-map` computes (the report
    calls it; the two never disagree) and the checks each `verify:` bullet declared.
 5. **Scenarios, step by step** — every step in order with ✓/✗ assertions, artifacts, the
-   trace, diagnostics and non-empty stdout.
+   trace, diagnostics and non-empty stdout. When the target was recorded, each step also
+   says where it sits in the video — `recording 0:14.9–0:16.8`, a link that seeks a browser
+   player there — and carries the `ostler qa frames` command that pulls the frames around it.
 6. **Warnings** — what would let a rubber stamp through: UNPROVEN criteria, assertions with
    no `covers` or no observed value, aborted scenarios, `covers` ids the context does not
    know.
@@ -686,6 +689,30 @@ as such, and a ledger written before the stamp existed says so in its warnings i
 guessing from order. The report is not in the manifest (it is rendered after the manifest
 closes, and re-rendering it must not stale a hash); it is the one `qa` output meant to be
 committed with the story, and it links the artifacts under `qa/` that are not.
+
+### Where a step sits in the recording, and the frames around it
+
+The harness stamps every `qa.step()` with the run's clock as it opens and closes
+(`started_offset_ms` / `ended_offset_ms` on the ledger's `step` record). The driver cannot:
+it grades the scenario's stream after the scenario exits, so the session's own offsets on
+those records all fall at the end. A recording's `actionStartOffsetMs` is on the same clock,
+and the subtraction is the step's position in the file — the report prints it as the
+player's `m:ss.t` so a reader can seek by eye, or not seek at all:
+
+```bash
+ostler qa frames --spec docs/specs/<story> --step <step-id>          # the id the report shows
+ostler qa frames --spec docs/specs/<story> --step "submit and observe"   # or a unique label fragment
+ostler qa frames --spec docs/specs/<story> --at 15.5 --around 0.5 --fps 4
+```
+
+writes one PNG per `1/fps` seconds (default 10) of the window `[start − around, end +
+around]` (default one second either side, clamped to the file) to
+`<spec>/qa/frames/<step-id>/`, each named by its position in the recording (`0015.474s.png`),
+with an `index.md` that lists them in order and marks the ones inside the step's own span.
+The directory is emptied first, so a narrower re-run never shows last time's frames. ffmpeg
+decodes — the recorder needed it too, so a run that has a video has the decoder. A step with
+no stamp (an older harness) or one that ran before the recorder started is refused by name
+rather than guessed at.
 
 ## Integration with `qa-evidence.json` and the workflow gate
 

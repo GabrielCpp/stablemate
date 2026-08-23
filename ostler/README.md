@@ -214,6 +214,7 @@ ostler qa context --base <rev> --head WORKTREE --spec docs/specs/<story> \
 ostler qa validate docs/specs/<story>/qa-plan.yml --json
 ostler qa run      docs/specs/<story>/qa-plan.yml --json
 ostler qa report       --spec docs/specs/<story>
+ostler qa frames       --spec docs/specs/<story> --step <step-id>
 ostler qa evidence-map --spec docs/specs/<story>
 ostler qa sensitivity
 ```
@@ -224,6 +225,8 @@ ran in, what it observed against what it expected, and the screenshots behind it
 scenario step by step, then the warnings that would let a rubber stamp through (a criterion
 nothing covers, an assertion with no observed value, a scenario that stopped early). It is the
 one file a reviewer reads to decide whether the work is real, and `qa report` re-renders it.
+When the target was recorded, every step in it says where it sits in the video, and
+`qa frames --step <step-id>` writes the frames around that moment as PNGs with an index.
 
 After the run, `qa evidence-map` joins those four artifacts — the obligation scope, the
 ledger, the manifest and the published verdict — into one row per obligation and a status:

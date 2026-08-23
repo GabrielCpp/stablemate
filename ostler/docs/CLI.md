@@ -269,6 +269,7 @@ ostler qa assert --id ID --label L --spec SPEC \
                  [KEY=VALUE ...]
 ostler qa stop   --spec SPEC        # kill daemons, write the session_stop summary
 ostler qa report --spec SPEC [--out-dir LABEL] [--ledger]   # render qa-report.md for a human
+ostler qa frames --spec SPEC (--step ID | --at SECONDS [--target T]) [--around S] [--fps N] [--out-dir LABEL]
 ostler qa replay --spec SPEC
 ```
 
@@ -284,7 +285,18 @@ section per acceptance criterion and per obligation with its verdict, the step e
 assertion ran in, observed and expected values, and the screenshots behind it, then every
 scenario step by step and a list of warnings (criteria nothing covers, assertions with no
 observed value, aborted scenarios). `qa report` re-renders it; `--out-dir LABEL` renders a dry
-run's to `qa/LABEL/report.md`; `--ledger` prints the flat listing instead.
+run's to `qa/LABEL/report.md`; `--ledger` prints the flat listing instead. When the run
+recorded its target, each step in the report says where it sits in the video
+(`recording 0:14.9–0:16.8`, a link that seeks there) and carries the `qa frames` command
+for it.
+
+**Frames.** `qa frames` pulls the frames around a step out of the recording: `--step` takes
+the step id the report shows (or a unique fragment of its label), `--at SECONDS` a position
+instead (`--target` names which recording when several targets were recorded). One PNG per
+`1/--fps` seconds (default 10) of the step widened by `--around` seconds either side
+(default 1.0) lands in `<spec>/qa/frames/<step-id>/`, each named by its position in the
+recording (`0015.474s.png`), with an `index.md` listing them in order and marking the ones
+inside the step's own span. Needs ffmpeg, the same binary the recorder used.
 
 **Evidence.** After a run, `qa evidence-map` joins the obligation scope, the run ledger, the
 artifact manifest and the published verdict into one row per obligation:

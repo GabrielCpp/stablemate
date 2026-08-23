@@ -1684,15 +1684,29 @@ class Qa:
         """Group the work of one phase under a named step record in the ledger."""
         self._index += 1
         step_id = f"{self.scenario_id}-step-{self._index}"
-        self._recorder.emit({"type": "step_start", "id": step_id, "label": label})
+        # Stamped on the run's clock here, not when the driver grades the stream: grading
+        # happens after the scenario exits, so the ledger's own offsets all cluster at the
+        # end. These are what place a step inside the recording.
+        self._recorder.emit(
+            {"type": "step_start", "id": step_id, "label": label, "offset_ms": self.offset_ms()}
+        )
         try:
             yield
         except BaseException as exc:
             self._recorder.emit(
-                {"type": "step_end", "id": step_id, "label": label, "failed": True, "error": repr(exc)}
+                {
+                    "type": "step_end",
+                    "id": step_id,
+                    "label": label,
+                    "failed": True,
+                    "error": repr(exc),
+                    "offset_ms": self.offset_ms(),
+                }
             )
             raise
-        self._recorder.emit({"type": "step_end", "id": step_id, "label": label, "failed": False})
+        self._recorder.emit(
+            {"type": "step_end", "id": step_id, "label": label, "failed": False, "offset_ms": self.offset_ms()}
+        )
 
     # -- evidence ----------------------------------------------------------------------
 

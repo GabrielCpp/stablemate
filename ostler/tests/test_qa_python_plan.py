@@ -951,6 +951,13 @@ def test_every_record_inside_a_step_carries_the_step_it_ran_in(tmp_path: Path) -
     assert asserts["the item was read"]["step_label"] == "read the emitted item"
     assert asserts["the item is the one requested"]["step"] == steps[1]["id"]
     assert "step" not in asserts["tidy-up"]
+    # Each step says when it ran, on the same clock as the session's offsets and a
+    # recording's `actionStartOffsetMs` — that is what places it in a video.
+    for step in steps:
+        assert isinstance(step["started_offset_ms"], int)
+        assert isinstance(step["ended_offset_ms"], int)
+        assert 0 <= step["started_offset_ms"] <= step["ended_offset_ms"]
+    assert steps[0]["ended_offset_ms"] <= steps[1]["started_offset_ms"]
     # The report is written at the end of every run, and says the same thing.
     assert outcome.data["report"] == "qa-report.md"
     report = (spec / "qa-report.md").read_text(encoding="utf-8")

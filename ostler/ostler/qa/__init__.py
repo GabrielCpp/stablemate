@@ -19,7 +19,19 @@ Commands:
   ostler qa clean   --spec DIR [--yes]
 """
 
-from ostler.qa.run import DaemonSpec, QaOutcome, cmd_assert, cmd_report, cmd_replay, cmd_run, cmd_start, cmd_step, cmd_stop, cmd_validate
+from ostler.qa.run import (
+    DaemonSpec,
+    QaOutcome,
+    cmd_assert,
+    cmd_frames,
+    cmd_report,
+    cmd_replay,
+    cmd_run,
+    cmd_start,
+    cmd_step,
+    cmd_stop,
+    cmd_validate,
+)
 from ostler.qa.compile import cmd_compile_plan, compile_plan
 from ostler.qa.lint import cmd_lint
 from ostler.qa.sensitivity import cmd_sensitivity
@@ -59,6 +71,7 @@ __all__ = [
     "cmd_step",
     "cmd_assert",
     "cmd_stop",
+    "cmd_frames",
     "cmd_report",
     "cmd_replay",
     "cmd_run",

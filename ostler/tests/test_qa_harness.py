@@ -238,6 +238,11 @@ def test_run_streams_records_and_passes(tmp_path: Path) -> None:
     assert code == 0
     kinds = [record["type"] for record in records]
     assert kinds == ["capture", "step_start", "assert", "step_end", "assert", "scenario"]
+    # A step is stamped on the run's clock when it opens and closes — the driver grades
+    # the stream after the scenario has exited, so only the harness can say when it ran.
+    opened, closed = records[1], records[3]
+    assert isinstance(opened["offset_ms"], int) and isinstance(closed["offset_ms"], int)
+    assert 0 <= opened["offset_ms"] <= closed["offset_ms"]
     asserted = [record for record in records if record["type"] == "assert"]
     assert asserted[0]["label"] == "author is the token uid"
     assert asserted[0]["passed"] is True

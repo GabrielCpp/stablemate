@@ -13,7 +13,8 @@ from typing import Any
 
 from ostler.qa.session import QA_DIRNAME, QaSession, RUN_LOG, ScratchLabelError, scratch_dirname
 from ostler.qa.plan import load_plan, resolve_spec_dir, validate_v2
-from ostler.qa.report import ReportError, build_report, write_report
+from ostler.qa.report import ReportError, build_report, video_clock, write_report
+from ostler.qa.frames import FramesError, extract_frames
 from ostler.qa.v2 import run_plan as run_v2_plan
 from ostler.qa import lint as lint_mod
 from ostler.qa import tools as tools_mod
@@ -285,6 +286,53 @@ def cmd_report(spec_dir: Path, *, label: str | None = None, ledger: bool = False
 # ---------------------------------------------------------------------------
 # replay
 # ---------------------------------------------------------------------------
+
+
+def cmd_frames(
+    spec_dir: Path,
+    *,
+    step: str | None = None,
+    at: float | None = None,
+    target: str | None = None,
+    around: float = 1.0,
+    fps: float = 10.0,
+    label: str | None = None,
+) -> QaOutcome:
+    """Write the frames of the run's recording around a step (``ostler qa frames``).
+
+    ``step`` is a step id from the report (or a unique fragment of its label); ``at`` a
+    position in seconds instead. The frames land under ``<spec>/qa/frames/<step>/`` with
+    an ``index.md``; ``data`` carries the window and every frame's path.
+    """
+    try:
+        result = extract_frames(
+            spec_dir, step=step, at=at, target=target, around=around, fps=fps, label=label
+        )
+    except FramesError as exc:
+        return QaOutcome(ok=False, message=f"qa frames: {exc}")
+    where = f"step {result.step_id}" if result.step_id else f"{video_clock(result.at)}"
+    span = f"{video_clock(result.frames[0].seconds)}–{video_clock(result.frames[-1].seconds)}"
+    print(f"{len(result.frames)} frame(s) around {where} ({span} of {result.video}) -> {result.out_dir}")
+    for frame in result.frames:
+        print(f"  {video_clock(frame.seconds)}  {frame.path}")
+    print(f"index: {result.index}")
+    return QaOutcome(
+        ok=True,
+        message=f"wrote {len(result.frames)} frame(s) to {result.out_dir}",
+        data={
+            "video": result.video,
+            "step": result.step_id,
+            "label": result.step_label,
+            "scenario": result.scenario,
+            "at": result.at,
+            "until": result.until,
+            "start": result.start,
+            "end": result.end,
+            "dir": str(result.out_dir),
+            "index": str(result.index),
+            "frames": [{"seconds": f.seconds, "path": str(f.path)} for f in result.frames],
+        },
+    )
 
 
 def cmd_replay(spec_dir: Path) -> QaOutcome:

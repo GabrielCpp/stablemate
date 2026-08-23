@@ -74,6 +74,7 @@ from ostler.qa import (
     cmd_context,
     cmd_context_validate,
     cmd_lint,
+    cmd_frames,
     cmd_report,
     cmd_run,
     cmd_validate,
@@ -793,6 +794,18 @@ class Ostler:
         returns the flat time-ordered ledger listing instead and writes nothing."""
 
         return cmd_report(self._resolve(spec), label=label, ledger=ledger)
+
+    def qa_frames(self, spec: str | Path, *, step: str | None = None,
+                  at: float | None = None, target: str | None = None,
+                  around: float = 1.0, fps: float = 10.0,
+                  label: str | None = None) -> QaOutcome:
+        """Write the frames of a run's recording around ``step`` — a step id from the
+        report, or a unique fragment of its label — or around the position ``at``
+        (``ostler qa frames``). ``data["frames"]`` lists them in order with their
+        position in the recording."""
+
+        return cmd_frames(self._resolve(spec), step=step, at=at, target=target,
+                          around=around, fps=fps, label=label)
 
     def qa_tools_catalog(self) -> QaOutcome:
         """This repo's opted-in QA tools, resolved against the machine's stablemate

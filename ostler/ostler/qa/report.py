@@ -128,6 +128,22 @@ def build_report(spec_dir: Path, *, label: str | None = None, qa_dirname: str | 
     status = str(stop.get("status") or "incomplete")
 
     scenarios = _scenarios(log)
+    recordings = [
+        {
+            "target": str(record.get("target", "")),
+            "path": str(record.get("path", "")),
+            "durationSeconds": record.get("durationSeconds"),
+            "width": record.get("width"),
+            "height": record.get("height"),
+            # The run-clock offset of the recording's first and last frame: what turns a
+            # step's ``started_offset_ms`` into a time inside the file.
+            "actionStartOffsetMs": record.get("actionStartOffsetMs"),
+            "actionEndOffsetMs": record.get("actionEndOffsetMs"),
+        }
+        for record in log
+        if record.get("kind") == "video" and record.get("path")
+    ]
+    _place_in_recordings(scenarios, recordings)
     asserts = [record for record in log if record.get("kind") == "assert"]
     aborted = {scenario["id"] for scenario in scenarios if scenario["aborted"]}
 
@@ -180,17 +196,6 @@ def build_report(spec_dir: Path, *, label: str | None = None, qa_dirname: str | 
         for item in context.get("obligations", []) or []
         if is_mapping(item) and item.get("id")
     }
-    recordings = [
-        {
-            "target": str(record.get("target", "")),
-            "path": str(record.get("path", "")),
-            "durationSeconds": record.get("durationSeconds"),
-            "width": record.get("width"),
-            "height": record.get("height"),
-        }
-        for record in log
-        if record.get("kind") == "video" and record.get("path")
-    ]
     runner_errors = [
         str(record.get("message", ""))
         + (": " + "; ".join(str(item) for item in record.get("problems", [])) if record.get("problems") else "")
@@ -286,6 +291,8 @@ def _scenarios(log: list[dict[str, Any]]) -> list[dict[str, Any]]:
             step["exit_code"] = record.get("exit_code")
             step["unfinished"] = bool(record.get("unfinished"))
             step["error"] = str(record.get("error", "") or "")
+            step["startedOffsetMs"] = record.get("started_offset_ms")
+            step["endedOffsetMs"] = record.get("ended_offset_ms")
             step["closed"] = True
         elif kind in _HOUSEKEEPING_KINDS or kind == "scenario_start":
             continue
@@ -312,6 +319,48 @@ def _scenarios(log: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return scenarios
 
 
+def _place_in_recordings(scenarios: list[dict[str, Any]], recordings: list[dict[str, Any]]) -> None:
+    """Give every step the recording knows about a ``video`` placement.
+
+    A step's ``started_offset_ms``/``ended_offset_ms`` and the recording's
+    ``actionStartOffsetMs`` are on the same clock (the run's), so the step's place in the
+    file is a subtraction. The placement is ``{"path", "at", "until"}`` in seconds into the
+    recording of the scenario's target, clamped to the file; ``None`` when the step has no
+    stamp, the target was not recorded, or the step lies wholly outside the recording.
+    """
+    by_target = {r["target"]: r for r in recordings if r.get("actionStartOffsetMs") is not None}
+    for scenario in scenarios:
+        recording = by_target.get(scenario["target"])
+        for step in scenario["steps"]:
+            step["video"] = _video_placement(step, recording) if recording else None
+
+
+def _video_placement(step: Mapping[str, Any], recording: Mapping[str, Any]) -> dict[str, Any] | None:
+    started = step.get("startedOffsetMs")
+    if started is None:
+        return None
+    origin = int(recording["actionStartOffsetMs"])
+    duration = recording.get("durationSeconds")
+    if duration is None:
+        end_offset = recording.get("actionEndOffsetMs")
+        duration = (int(end_offset) - origin) / 1000 if end_offset is not None else None
+    ended = step.get("endedOffsetMs")
+    at = (int(started) - origin) / 1000
+    until = (int(ended) - origin) / 1000 if ended is not None else at
+    if until < 0 or (duration is not None and at > duration):
+        return None
+    at = max(at, 0.0)
+    if duration is not None:
+        until = min(until, float(duration))
+    return {"path": recording["path"], "at": round(at, 3), "until": round(max(until, at), 3)}
+
+
+def video_clock(seconds: float) -> str:
+    """``m:ss.t`` — how a player shows the position, so a reader can seek by eye."""
+    minutes, rest = divmod(max(seconds, 0.0), 60)
+    return f"{int(minutes)}:{rest:04.1f}"
+
+
 def _place(scenario: dict[str, Any], bucket: str, view: dict[str, Any]) -> None:
     if view["step"]:
         _step_of(scenario, view["step"], view["stepLabel"])[bucket].append(view)
@@ -322,7 +371,18 @@ def _place(scenario: dict[str, Any], bucket: str, view: dict[str, Any]) -> None:
 def _step_of(scenario: dict[str, Any], step_id: str, label: str) -> dict[str, Any]:
     step = scenario["_steps"].get(step_id)
     if step is None:
-        step = {"id": step_id, "label": label, "exit_code": None, "unfinished": False, "error": "", "asserts": [], "artifacts": []}
+        step = {
+            "id": step_id,
+            "label": label,
+            "exit_code": None,
+            "unfinished": False,
+            "error": "",
+            "startedOffsetMs": None,
+            "endedOffsetMs": None,
+            "video": None,
+            "asserts": [],
+            "artifacts": [],
+        }
         scenario["_steps"][step_id] = step
         scenario["steps"].append(step)
     elif label and not step["label"]:
@@ -402,7 +462,14 @@ def _subject(
         for step in scenario["steps"]:
             hits = [view for view in step["asserts"] if view["id"] in mine]
             if hits:
-                steps.append({"id": step["id"], "label": step["label"], "unfinished": step["unfinished"], "asserts": hits, "artifacts": list(step["artifacts"])})
+                steps.append({
+                    "id": step["id"],
+                    "label": step["label"],
+                    "unfinished": step["unfinished"],
+                    "video": step.get("video"),
+                    "asserts": hits,
+                    "artifacts": list(step["artifacts"]),
+                })
         outside = [view for view in scenario["outside"]["asserts"] if view["id"] in mine]
         groups.append({
             "scenario": scenario["id"],
@@ -529,6 +596,12 @@ def render_report(data: Mapping[str, Any], *, spec_dir: Path | None = None) -> s
         duration = f"{recording['durationSeconds']:.0f}s" if recording.get("durationSeconds") else ""
         detail = " ".join(part for part in (dims, duration) if part)
         lines.append(f"| Recording (`{recording['target']}`) | [{recording['path']}]({recording['path']}) {detail} |")
+    if data["recordings"]:
+        lines.append(
+            f"| Frames | each recorded step below says where it sits in the recording; "
+            f"`ostler qa frames --spec {_spec_arg(spec_dir)} --step STEP-ID` writes the frames "
+            f"around it (`--around`/`--fps` widen or thicken the window) |"
+        )
     lines.append("")
     lines.append(
         "Rendered by `ostler qa report` from the run ledger; nothing here is written by hand. "
@@ -640,7 +713,7 @@ def _render_subject(subject: Mapping[str, Any], spec_dir: Path | None, *, headin
             lines.append("")
         for step in group["steps"]:
             suffix = " — **did not finish**" if step["unfinished"] else ""
-            lines.append(f"_Step: {step['label'] or step['id']}_{suffix}")
+            lines.append(f"_Step: {step['label'] or step['id']}_{suffix}{_video_note(step, spec_dir)}")
             lines.append("")
             lines.extend(_assert_table(step["asserts"]))
             lines.extend(_artifact_lines(step["artifacts"], spec_dir))
@@ -649,6 +722,29 @@ def _render_subject(subject: Mapping[str, Any], spec_dir: Path | None, *, headin
             lines.append("")
             lines.extend(_assert_table(group["outside"]))
     return lines
+
+
+def _video_note(step: Mapping[str, Any], spec_dir: Path | None) -> str:
+    """`` — recording 0:06.4–0:06.9 · `ostler qa frames …` `` for a step the recording covers."""
+    video = step.get("video")
+    if not video:
+        return ""
+    span = video_clock(video["at"])
+    if video["until"] > video["at"]:
+        span += f"–{video_clock(video['until'])}"
+    link = f"[{span}]({video['path']}#t={video['at']})"
+    return f" — recording {link} · `ostler qa frames --spec {_spec_arg(spec_dir)} --step {step['id']}`"
+
+
+def _spec_arg(spec_dir: Path | None) -> str:
+    """The ``--spec`` a reader types: the spec dir relative to the working directory when
+    it is under it (the usual ``docs/specs/<story>``), the absolute path otherwise."""
+    if spec_dir is None:
+        return "SPEC"
+    try:
+        return str(spec_dir.resolve().relative_to(Path.cwd().resolve()))
+    except ValueError:
+        return str(spec_dir)
 
 
 def _assert_table(views: list[dict[str, Any]]) -> list[str]:
@@ -698,7 +794,7 @@ def _render_scenario(scenario: Mapping[str, Any], spec_dir: Path | None) -> list
         outcome = "did not finish" if step["unfinished"] else ("failed" if step["exit_code"] else "ok")
         if step["error"]:
             outcome += f" — {_code(_cell(step['error']))}"
-        lines.append(f"{number}. **{step['label'] or step['id']}** — {outcome}")
+        lines.append(f"{number}. **{step['label'] or step['id']}** — {outcome}{_video_note(step, spec_dir)}")
         lines.extend(_step_items(step["asserts"], step["artifacts"], spec_dir))
     if scenario["outside"]["asserts"] or scenario["outside"]["artifacts"]:
         lines.append("- _Outside any step_" if scenario["stamped"] or not scenario["steps"] else "- _Assertions (this ledger does not say which step each ran in)_")

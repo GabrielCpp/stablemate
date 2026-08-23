@@ -280,6 +280,9 @@ class PythonDriver(QaDriver):
         # scenario records while one is open is stamped with it, so the report can say
         # "inside *this* step" rather than reading it off the order of the ledger.
         open_steps: list[tuple[str, str]] = []
+        # When each open step began, on the run's clock — the harness stamps it, since by
+        # the time this loop runs the scenario is over and the session clock says nothing.
+        step_started: dict[str, int] = {}
         for record in records:
             kind = record.get("type")
             step = open_steps[-1] if open_steps else None
@@ -319,13 +322,24 @@ class PythonDriver(QaDriver):
                 if not passed:
                     failures += 1
             elif kind == "step_start":
-                open_steps.append((str(record.get("id", "")), str(record.get("label", ""))))
+                step_id = str(record.get("id", ""))
+                open_steps.append((step_id, str(record.get("label", ""))))
+                if record.get("offset_ms") is not None:
+                    step_started[step_id] = int(record["offset_ms"])
             elif kind == "step_end":
                 step_id = str(record.get("id", ""))
                 open_steps[:] = [entry for entry in open_steps if entry[0] != step_id]
-                self._step_record(scenario_id, step_id, str(record.get("label", "")),
-                                  failed=bool(record.get("failed")),
-                                  error=record.get("error"))
+                self._step_record(
+                    scenario_id,
+                    step_id,
+                    str(record.get("label", "")),
+                    failed=bool(record.get("failed")),
+                    error=record.get("error"),
+                    started_offset_ms=step_started.get(step_id),
+                    ended_offset_ms=(
+                        int(record["offset_ms"]) if record.get("offset_ms") is not None else None
+                    ),
+                )
             elif kind == "capture":
                 self.session.set_capture(str(record["key"]), str(record["value"]))
             elif kind == "artifact":
@@ -368,7 +382,14 @@ class PythonDriver(QaDriver):
         # `step_end`, so nothing else would put it on the ledger, and it is exactly the
         # step a reader of a failed run wants named.
         for step_id, label in reversed(open_steps):
-            self._step_record(scenario_id, step_id, label, failed=True, unfinished=True)
+            self._step_record(
+                scenario_id,
+                step_id,
+                label,
+                failed=True,
+                unfinished=True,
+                started_offset_ms=step_started.get(step_id),
+            )
 
         message = ""
         if timed_out:
@@ -459,6 +480,8 @@ class PythonDriver(QaDriver):
         failed: bool,
         unfinished: bool = False,
         error: object = None,
+        started_offset_ms: int | None = None,
+        ended_offset_ms: int | None = None,
     ) -> None:
         record: dict[str, Any] = {
             "kind": "step",
@@ -473,6 +496,13 @@ class PythonDriver(QaDriver):
             record["unfinished"] = True
         if error:
             record["error"] = str(error)
+        # Where the step sits on the run's clock — the same scale the recording's
+        # `actionStartOffsetMs` uses, so a reader can seek to it. Absent for a step the
+        # harness did not stamp (an older harness) and for the end of one that never closed.
+        if started_offset_ms is not None:
+            record["started_offset_ms"] = started_offset_ms
+        if ended_offset_ms is not None:
+            record["ended_offset_ms"] = ended_offset_ms
         self.session.append(record)
 
     def _register(

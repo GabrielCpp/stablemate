@@ -634,6 +634,38 @@ def _build_parser() -> argparse.ArgumentParser:
              "and write nothing",
     )
 
+    qa_frames = qas.add_parser(
+        "frames",
+        help="write the frames of the run's recording around a step (or a position) to "
+             "<spec>/qa/frames/<step>/, one PNG per 1/fps seconds, with an index.md",
+    )
+    qa_frames.add_argument("--spec", default=None, type=Path)
+    which = qa_frames.add_mutually_exclusive_group(required=True)
+    which.add_argument(
+        "--step", default=None,
+        help="a step id from qa-report.md, or a unique fragment of its label",
+    )
+    which.add_argument(
+        "--at", default=None, type=float, metavar="SECONDS",
+        help="a position in the recording instead of a step",
+    )
+    qa_frames.add_argument(
+        "--target", default=None,
+        help="which recording --at refers to, when several targets were recorded",
+    )
+    qa_frames.add_argument(
+        "--around", default=1.0, type=float, metavar="SECONDS",
+        help="how far before the step starts and after it ends to reach (default 1.0)",
+    )
+    qa_frames.add_argument(
+        "--fps", default=10.0, type=float,
+        help="frames per second of recording to write (default 10)",
+    )
+    qa_frames.add_argument(
+        "--out-dir", default=None, dest="out_dir", metavar="LABEL",
+        help="read the dry run at <spec>/qa/LABEL/ instead of the scored one",
+    )
+
     qa_replay = qas.add_parser(
         "replay", help="emit a replay shell script from the run log"
     )
@@ -1197,6 +1229,21 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
     if op == "report":
         spec_dir = _resolve_spec(args.spec)
         result = qa_mod.cmd_report(spec_dir, label=args.out_dir, ledger=args.ledger)
+        if not result.ok:
+            _out(f"error: {result.message}")
+        return 0 if result.ok else 1
+
+    if op == "frames":
+        spec_dir = _resolve_spec(args.spec)
+        result = qa_mod.cmd_frames(
+            spec_dir,
+            step=args.step,
+            at=args.at,
+            target=args.target,
+            around=args.around,
+            fps=args.fps,
+            label=args.out_dir,
+        )
         if not result.ok:
             _out(f"error: {result.message}")
         return 0 if result.ok else 1
