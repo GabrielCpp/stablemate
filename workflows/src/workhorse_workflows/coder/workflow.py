@@ -75,6 +75,7 @@ from workhorse_workflows.coder.fix import BLOCKED_NOTE, Fix
 from workhorse_workflows.coder.fix_ci import FixCi
 from workhorse_workflows.coder.genesis import Genesis
 from workhorse_workflows.coder.qa import Qa
+from workhorse_workflows.coder.qa.nodes import teardown_stack
 from workhorse_workflows.coder.review import Review
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.backlog import (
@@ -203,8 +204,6 @@ class Coder(Workflow):
     operator_mode: str = "auto"
     #: Which environment QA runs against, passed through to `dev`, `docs` and `qa`.
     target_env: str = "local"
-    #: The QA stack manifest `qa` reads to bring services up.
-    qa_stack_manifest: str = "qa-stack.yml"
     #: How long a story's QA lane is *expected* to spend inside agent turns, and how much of
     #: that the plan lane is expected to take. Advisory — crossing one is logged, never
     #: terminal. Restated here — as `target_env` and `operator_mode` are — only so an operator
@@ -295,6 +294,11 @@ class Coder(Workflow):
         pick = self.call(select_epic, self.docs_path, str(self.run_dir))
         if not pick.has_epic:
             self.logger.info("no epic to work: %s", pick.reason)
+            # The QA stack outlives every story on purpose (see the reuse policy), which
+            # leaves exactly one place responsible for reaping it: the state where there is
+            # no next story to serve. Nothing called this before, so a finished run left its
+            # compose project and emulators holding their ports indefinitely.
+            self.call(teardown_stack, self.docs_path)
             return Done(pick)
         base = self.output(init_base).base_branch
         self.call(branch_epic, pick.epic, base, str(self.run_dir))
@@ -542,7 +546,6 @@ class Coder(Workflow):
             epic=self._story_epic(epic),
             operator_mode=self.operator_mode,
             target_env=self.target_env,
-            qa_stack_manifest=self.qa_stack_manifest,
             qa_lane_budget_s=self.qa_lane_budget_s,
             plan_lane_budget_s=self.plan_lane_budget_s,
             triage_scope_count=triage,
@@ -961,6 +964,7 @@ class Coder(Workflow):
         story = self._story
         branch = self.output(branch_story)
         self.call(commit_story, "", story.story_slug, story.spec_dir, story.story_path)
+        self.call(teardown_stack, self.docs_path)
         return Done(
             self.call(
                 open_story_pr,

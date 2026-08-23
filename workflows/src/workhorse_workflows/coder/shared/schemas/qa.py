@@ -119,10 +119,14 @@ class QaCleared(CoderResult):
 
 
 class StackStatus(CoderResult):
-    """`ensure-stack.py` — the durable QA stack is up, adopted, absent, or broken.
+    """`ensure-stack.py` — the durable QA stack is up, adopted, undeclared, or broken.
 
-    `ready` is three-state on purpose. `skip` (no manifest authored) is not a failure and
-    routes exactly where `yes` does; only `no` reaches the setup-repair loop.
+    `ready` is three-state on purpose, and the third state is the one this schema was
+    wrong about for a year. `none` means the book declares no stack at all — no `runbook`
+    node, no walkthrough `server`. That is not a pass: it used to be spelled `skip` and
+    routed exactly where `yes` did, so a repo that had never authored a runbook ran its
+    QA against nothing and found out only once the runner failed for reasons no fixer
+    could read. `none` and `no` both reach the setup-repair loop; only `yes` runs QA.
 
     The pids are strings because `ostler.qa.stack.ensure_stack` returns them that way —
     they are recorded for a human killing a leaked stack, never arithmetic.
@@ -133,6 +137,19 @@ class StackStatus(CoderResult):
     app_pgid: str = ""
     entry_url: str = ""
     failed_step: str = ""
+    notes: str = ""
+
+
+class StackTornDown(CoderResult):
+    """`teardown_stack` — the run is over, so the stack it started need not outlive it.
+
+    `torn_down` is `yes`, `no` or `skipped`; none of them fails the run. A stack is an
+    expensive thing to have running and a cheap thing to have left running, so a runbook
+    that declares no `stop:` recipe is honoured rather than second-guessed — that is the
+    `skipped` case, and it is the leave-it-up policy the reuse doctrine already states.
+    """
+
+    torn_down: str = "no"
     notes: str = ""
 
 

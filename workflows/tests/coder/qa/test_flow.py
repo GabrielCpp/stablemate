@@ -66,7 +66,7 @@ ESCALATION_NOTE = (
 #: What that resolver reports it ruled out, which the composed gate publishes verbatim.
 RESOLVER_TRIED = (
     "ran `ostler qa run --scenario SC-1` twice — identical connection refused",
-    "checked the emulator port in qa-stack.yml against the container — they match",
+    "checked the emulator port in the runbook against the container — they match",
 )
 
 #: The epic index ostler parses to learn the story exists — same shape the `dev` suite uses.
@@ -151,6 +151,32 @@ def the_thing_exists(qa: Qa) -> None:
 # --------------------------------------------------------------------------- fixtures
 
 
+RUNBOOK_REL = "docs/features/app/ops/qa-stack.md"
+
+#: The smallest runbook `load_stack` returns a manifest for: a driver and one `service` step
+#: whose health gate proves it. Deliberately **no** `entry-url:` — a test that reaches the real
+#: `ensure_stack` would then open an HTTP readiness probe against a host that does not resolve
+#: and poll it until the boot timeout, once per test. `run: true`/`health: true` are the two
+#: cheapest possible recipes, which is what keeps this fixture runnable as well as readable.
+RUNBOOK_MD = """---
+type: runbook
+title: QA stack
+---
+
+# QA stack
+
+- driver: web
+
+## Steps
+
+### serve
+
+- kind: service
+- run: true
+- health: true
+"""
+
+
 @pytest.fixture
 def docs(
     repo: Path,
@@ -160,6 +186,9 @@ def docs(
     """The docs repo: one epic, one built story, and the plan the dev phase left behind."""
     write(repo / "docs" / "epics" / EPIC / "epic.md", EPIC_MD)
     write(repo / STORY_REL / "story.md", STORY_MD)
+    # Every repo that reaches QA declares how its stack comes up; a repo that does not is
+    # the `ready="none"` case, which has its own test and deletes this node to reach it.
+    write(repo / RUNBOOK_REL, RUNBOOK_MD)
     write_json(
         repo / SPEC_REL / "plan-context.json", {"story": STORY, "services": [API_SERVICE]}
     )
@@ -780,6 +809,12 @@ class _Agent:
         and what the human must supply — the thing the escalated `Await` must not overwrite.
         """
         (self.docs / CONTEXT_REL).write_text(ESCALATION_NOTE, encoding="utf-8")
+
+
+
+#: Where the QA stack is declared now that it is a book node rather than a root YAML file.
+#: `ostler.qa.runbook.load_stack` globs `docs/features/**/*.md`, so the `ops/` directory is
+#: not decoration — a runbook written anywhere else is one the reader never sees.
 
 
 def _answers(seen: list[str], *, scope: str = "story") -> Callable[..., None]:
@@ -1569,7 +1604,6 @@ def test_the_stack_is_standing_before_the_plan_is_written(
     executable at all, so the ordering is the contract, not an optimisation.
     """
     ostler()
-    write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
     agent = _Agent(docs)
     #: How many agent turns had been taken when the stack came up. Zero is the assertion.
     turns_before: list[int] = []
@@ -1606,7 +1640,6 @@ def test_a_setup_repair_mid_run_returns_to_the_runner_not_to_a_second_plan(
     `build_context`, which is where the diff's obligations can actually have changed.
     """
     okf = ostler(block_runs=1)
-    write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
     monkeypatch.setattr(
         qa_stack, "ensure_stack", lambda *a, **k: {"ready": "yes", "entry_url": "http://x"}
     )
@@ -1631,7 +1664,6 @@ def test_a_stack_that_will_not_come_up_is_repaired_and_retried(
 ) -> None:
     """`ensure_stack` reaches docker, so docker is the seam and the manifest is real."""
     ostler()
-    write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
     results = [{"ready": "no", "failed_step": "health"}, {"ready": "yes", "entry_url": "http://x"}]
     monkeypatch.setattr(qa_stack, "ensure_stack", lambda *a, **k: results.pop(0))
     agent = _Agent(docs, setup="fixed")
@@ -1642,8 +1674,10 @@ def test_a_stack_that_will_not_come_up_is_repaired_and_retried(
     assert result.docs_recheck_required is True
     assert agent.counts()["setup-fix"] == 1, agent.counts()
     assert results == [], "the stack was never brought up a second time"
-    # The fixer is told which manifest to repair, or it authors one the run never reads.
-    assert agent.args_for("setup-fix")[0]["stack_manifest"] == "qa-stack.yml"
+    # There is no manifest path to pass any more: the fixer repairs the book's runbook node,
+    # which ostler finds for itself. Passing one was how a fixer could author a file the run
+    # never read — the failure mode the node's single home removes.
+    assert "stack_manifest" not in agent.args_for("setup-fix")[0]
 
 
 def test_the_setup_fixer_is_briefed_with_why_the_stack_would_not_come_up(
@@ -1661,7 +1695,6 @@ def test_the_setup_fixer_is_briefed_with_why_the_stack_would_not_come_up(
     broke, and spent its turn rediscovering a line the stack supervisor already had.
     """
     ostler()
-    write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
     results = [
         {"ready": "no", "failed_step": "health[0]", "error": "api-test container is not running"},
         {"ready": "yes", "entry_url": "http://x"},
@@ -1696,7 +1729,6 @@ def test_a_stack_nobody_can_repair_gives_up_instead_of_spinning(
     the escalation count below is what proves the repeat, not a single park.
     """
     ostler()
-    write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
     monkeypatch.setattr(
         qa_stack, "ensure_stack", lambda *a, **k: {"ready": "no", "failed_step": "health"}
     )
@@ -2978,7 +3010,6 @@ def test_the_lane_runs_standalone_with_no_plan_context(
     """
     (docs / SPEC_REL / "plan-context.json").unlink()
     ostler()
-    write(docs / "qa-stack.yml", "app_cwd: .\nhealth:\n  - run: true\n")
     monkeypatch.setattr(
         qa_stack, "ensure_stack", lambda *a, **k: {"ready": "yes", "entry_url": "http://x"}
     )

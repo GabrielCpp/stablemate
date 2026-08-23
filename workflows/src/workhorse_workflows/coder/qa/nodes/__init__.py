@@ -23,6 +23,7 @@ from workhorse_workflows.coder.qa.nodes.qa import (
     clear_qa_evidence,
     ensure_stack,
     run_qa_plan,
+    teardown_stack,
     validate_qa_plan,
 )
 from workhorse_workflows.coder.qa.nodes.regression import (
@@ -38,6 +39,7 @@ __all__ = [
     "flush_root_screenshots",
     "run_qa_plan",
     "run_regression_suite",
+    "teardown_stack",
     "validate_qa_plan",
     "verify_qa_evidence",
 ]

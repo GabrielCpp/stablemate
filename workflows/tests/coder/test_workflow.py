@@ -226,7 +226,6 @@ class _StubFlow(Workflow):
     preexisting: tuple[str, ...] = ()
     operator_mode: str = ""
     target_env: str = ""
-    qa_stack_manifest: str = ""
     sandbox: bool = False
     qa_lane_budget_s: int = 0
     plan_lane_budget_s: int = 0

@@ -17,18 +17,15 @@ see would have nothing to blank.
 """
 from __future__ import annotations
 
-import contextlib
 import logging
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any
 
-import yaml
 from ostler import Ostler
-from ostler.qa import stack
+from ostler.qa import runbook, stack
 from workhorse_workflows.kit import find_docs_root
-from workhorse_workflows.kit.credentials import scoped_env
+from workhorse_workflows.kit.credentials import scoped_envs
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.qa_support import (
     QA_PLAN_FILE,
@@ -43,11 +40,17 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     QaRunResult,
     QaToolCatalog,
     StackStatus,
+    StackTornDown,
 )
 
 #: The four states `ostler qa run` is allowed to report. Anything else is `invalid` —
 #: a runner that answered something unrecognized has not established a verdict.
 RUN_STATUSES = frozenset({"passed", "failed", "blocked", "invalid"})
+
+#: How long one `secrets:` mint recipe may take. Generous because a recipe may lease a
+#: password or sign in against an emulator, and short enough that a recipe waiting on a
+#: prompt nobody will answer fails the pass instead of hanging the run.
+SECRET_MINT_TIMEOUT_S = 60.0
 
 #: Where a plan turn's dry runs land — `ostler qa run --scenario ID --out-dir ID`, which
 #: ostler resolves to `<spec_dir>/qa/<ID>/`. Spec-relative, and *inside* `qa/` on purpose:
@@ -89,69 +92,34 @@ def clear_qa_evidence(logger: logging.Logger, spec_dir: str = "") -> QaCleared:
     return QaCleared(cleared=True)
 
 
-def _absolutize(manifest: dict[str, Any], root: Path) -> dict[str, Any]:
-    """Resolve the manifest's working directories against the repo root.
-
-    The manifest is written repo-relative because that is what a human authoring it means.
-    Nothing in the engine resolves it for us: `ensure_stack` runs the steps with whatever
-    `working-directory` they carry, so an unresolved `.` would launch the stack from the
-    engine's cwd instead of the repo.
-    """
-    manifest["app_cwd"] = str((root / (manifest.get("app_cwd") or ".")).resolve())
-    for key in ("prepare", "seed", "health"):
-        for step in manifest.get(key) or []:
-            if isinstance(step, dict) and step.get("working-directory"):
-                step["working-directory"] = str((root / step["working-directory"]).resolve())
-    return manifest
-
-
 @blueprint.node
 def ensure_stack(
     logger: logging.Logger,
-    manifest_path: str = "qa-stack.yml",
     docs_path: str = "",
     repo_dir: str = "",
 ) -> StackStatus:
     """Bring the durable QA stack up (or adopt one already serving) before the runner.
 
-    A long-running stack has to start *outside* any agent turn, or the turn's teardown
-    kills it mid-build. The lifecycle itself is `ostler.qa.stack.ensure_stack`, shared with
-    the okf-builder; this node is the manifest's reader and the outcome's translator.
+    A long-running stack has to start *outside* any agent turn, or the turn's teardown kills
+    it mid-build. The lifecycle is `ostler.qa.stack.ensure_stack` and the recipe is
+    `ostler.qa.runbook.load_stack`, which reads it off the book's `runbook` node — this node
+    is only the outcome's translator.
 
-    A missing manifest is `skip`, not a failure — a repo that has not authored one runs QA
-    exactly as it did before the manifest existed.
+    `none` means the book declares no stack, and unlike the `skip` it replaces it is not a
+    pass: a repo that never authored a runbook used to run QA against nothing and say so
+    only in a log line, which is how one story spent an entire run's budget discovering it.
     """
     root = find_docs_root(docs_path, repo_dir)
-    manifest_rel = manifest_path or "qa-stack.yml"
-    path = root / manifest_rel
-
-    if not path.is_file():
-        logger.info(
-            "no stack manifest at %s — skipping durable bring-up (QA-plan `background:` "
-            "services still apply)",
-            path,
-        )
+    manifest = runbook.load_stack(root, logger=logger)
+    if not manifest:
         return StackStatus(
-            ready="skip", notes=f"No stack manifest at {manifest_rel}; nothing to bring up."
+            ready="none",
+            notes=("The book declares no `runbook` node and no `walkthrough: true` server, "
+                   "so there is no stack to bring up. Author the runbook before QA runs "
+                   "against nothing — `ostler doctor` reports this as `runbook-missing`."),
         )
 
-    try:
-        manifest = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError) as exc:
-        logger.warning("stack manifest %s could not be read: %s", path, exc)
-        return StackStatus(failed_step="manifest", notes=f"Unreadable stack manifest: {exc}")
-    if not isinstance(manifest, dict):
-        return StackStatus(failed_step="manifest", notes="Stack manifest is not a mapping.")
-    if "sandbox" in manifest:
-        return StackStatus(
-            failed_step="manifest",
-            notes=(
-                f"{manifest_rel} has a top-level `sandbox:` key, which no longer does "
-                "anything — QA's container sandbox was removed. Delete the key."
-            ),
-        )
-
-    result = stack.ensure_stack(_absolutize(manifest, root), repo_root=str(root), logger=logger)
+    result = stack.ensure_stack(manifest, repo_root=str(root), logger=logger)
     common = {
         "app_pid": result.get("app_pid", ""),
         "app_pgid": result.get("app_pgid", ""),
@@ -172,8 +140,8 @@ def ensure_stack(
         notes=(
             f"Stack bring-up failed at step '{step}'"
             + (f": {error}" if error else "")
-            + ". Repair the manifest or its seed recipe (never background the stack in "
-            "the agent shell)."
+            + f". Repair the runbook at `{manifest.get('source', '')}` or its seed recipe "
+            "(never background the stack in the agent shell)."
         ),
         **common,
     )
@@ -339,80 +307,78 @@ def verify_qa_dry_run(
 
 
 @blueprint.node
-def _read_manifest(path: Path, logger: logging.Logger) -> dict[str, Any]:
-    """The stack manifest as a mapping, or ``{}`` if it is absent or unreadable.
+def teardown_stack(
+    logger: logging.Logger,
+    docs_path: str = "",
+    repo_dir: str = "",
+) -> StackTornDown:
+    """Run the runbook's `stop:` recipe now that the run is finished.
 
-    Silent rather than a `StackStatus` failure: `run_qa_plan` only reads this for the
-    optional `refresh_env` block, and a repo with no manifest (or one `ensure_stack`
-    already validated) must run QA exactly as it did before this existed.
+    Called on the run's terminal paths, not between stories: the whole point of the reuse
+    policy is that a stack survives the laps that follow, and a teardown per story would
+    pay the bring-up cost again for every one of them. Before this existed nothing called
+    `teardown_stack` at all, so a completed run left its compose project, its emulators and
+    its dev server serving until somebody noticed the ports.
+
+    Never fatal. A run that produced its verdict has produced it; failing it here would
+    throw that away over a cleanup, and the stack it could not reap is a leak an operator
+    can see, not a result they can lose.
     """
-    if not path.is_file():
-        return {}
-    try:
-        manifest = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError) as exc:
-        logger.warning("stack manifest %s could not be read for refresh_env: %s", path, exc)
-        return {}
-    return manifest if isinstance(manifest, dict) else {}
+    root = find_docs_root(docs_path, repo_dir)
+    outcome = runbook.cmd_stack_down(root, logger=logger)
+    torn = str(outcome.data.get("torn_down") or outcome.status or "no")
+    logger.info("QA stack teardown: %s", torn)
+    return StackTornDown(torn_down=torn, notes=outcome.message)
 
 
-def _mint_qa_secret(
-    manifest: dict[str, Any], root: Path, logger: logging.Logger
-) -> tuple[str, str, str]:
-    """Run this repo's declared `refresh_env` recipe; return ``(var, token, error)``.
+def _mint_qa_secrets(
+    secrets: dict[str, str], root: Path, logger: logging.Logger
+) -> tuple[dict[str, str], str]:
+    """Run the runbook's `secrets:` recipes; return ``({NAME: token}, error)``.
 
-    A short-lived credential (a Firebase ID token minted against a local auth emulator,
-    say) goes stale between QA-plan authoring and the run that actually consumes it —
-    minutes to hours apart in this flow. `ensure_stack`'s `seed`/`health` steps run once
-    per stack bring-up, not once per plan execution, so they cannot be the freshening
-    point; this runs immediately before the one call that spends the token.
+    A short-lived credential (a token signed against a local auth emulator, say) goes
+    stale between QA-plan authoring and the run that spends it — minutes to hours apart
+    in this flow. The runbook's `prepare`/`seed`/`health` steps run once per stack
+    bring-up, not once per plan execution, so they cannot be the freshening point; this
+    runs immediately before the one call that spends the token.
 
-    `manifest["refresh_env"]` is `{var: ENV_NAME, mint: "<shell recipe>"}` — `mint` is a
-    repo-owned shell command (never interpreted here) that resolves whatever the repo
-    needs (a saddlebag-leased password, an emulator sign-in call, ...) and prints the
-    fresh token to stdout and nothing else. This module knows none of that shape; it
-    only runs the recipe and reads its last line back. `working-directory` and `timeout`
-    are optional, matching the other manifest step kinds.
+    Each recipe is a repo-owned shell command (never interpreted here) that resolves
+    whatever the repo needs and prints the fresh secret to stdout and nothing else. This
+    module knows none of that shape; it runs the recipe and reads its output back.
 
-    Returns ``("", "", "")`` when no `refresh_env` is declared — nothing to do, and the
-    caller runs the plan exactly as it always has. A non-empty `error` means the plan
-    must not run this pass: a stale or absent secret would only fail with a confusing
-    401 deep inside the runner, not at the boundary that actually knows what broke.
+    A non-empty `error` means the plan must not run this pass: a stale or absent secret
+    would only fail with a confusing 401 deep inside the runner, not at the boundary
+    that actually knows what broke. The first failure stops the loop, because a partial
+    set is a run that fails later for a reason the caller has already been told.
 
-    The token is returned to the caller's local scope only, never logged, and never
-    part of a node's return value — see `workhorse_workflows.kit.credentials.scoped_env`,
-    which is the only place it is allowed to touch `os.environ`.
+    The tokens are returned to the caller's local scope only, never logged, and never
+    part of a node's return value — see `workhorse_workflows.kit.credentials.scoped_envs`,
+    which is the only place they are allowed to touch `os.environ`.
     """
-    refresh = manifest.get("refresh_env")
-    if not refresh:
-        return "", "", ""
-    if not isinstance(refresh, dict):
-        return "", "", "refresh_env must be a mapping with `var` and `mint`"
-    var = str(refresh.get("var") or "").strip()
-    mint_cmd = str(refresh.get("mint") or "").strip()
-    if not var or not mint_cmd:
-        return "", "", "refresh_env is declared but is missing `var` or `mint`"
-    cwd = str((root / str(refresh.get("working-directory") or ".")).resolve())
-    try:
-        timeout = float(refresh.get("timeout") or 60)
-    except (TypeError, ValueError):
-        timeout = 60.0
-    try:
-        result = subprocess.run(  # noqa: S602 (documented repo-owned recipe, loopback stack)
-            mint_cmd, shell=True, cwd=cwd, capture_output=True, text=True,
-            timeout=timeout, check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return var, "", f"mint command for {var} could not be run: {exc}"
-    if result.returncode != 0:
-        return var, "", (
-            f"mint command for {var} exited {result.returncode}: "
-            f"{result.stderr.strip()[:500]}"
-        )
-    token = result.stdout.strip()
-    if not token:
-        return var, "", f"mint command for {var} produced no output"
-    return var, token, ""
+    minted: dict[str, str] = {}
+    cwd = str(root.resolve())
+    for name, recipe in secrets.items():
+        if not name or not recipe:
+            return {}, f"secret `{name or '(unnamed)'}` declares no mint recipe"
+        try:
+            result = subprocess.run(  # noqa: S602 (documented repo-owned recipe)
+                recipe, shell=True, cwd=cwd, capture_output=True, text=True,
+                timeout=SECRET_MINT_TIMEOUT_S, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {}, f"mint command for {name} could not be run: {exc}"
+        if result.returncode != 0:
+            return {}, (
+                f"mint command for {name} exited {result.returncode}: "
+                f"{result.stderr.strip()[:500]}"
+            )
+        token = result.stdout.strip()
+        if not token:
+            return {}, f"mint command for {name} produced no output"
+        minted[name] = token
+    if minted:
+        logger.info("minted fresh QA secrets for %s", ", ".join(minted))
+    return minted, ""
 
 
 @blueprint.node
@@ -421,7 +387,6 @@ def run_qa_plan(
     spec_dir: str = "",
     docs_path: str = "",
     repo_dir: str = "",
-    manifest_path: str = "qa-stack.yml",
 ) -> QaRunResult:
     """Execute the QA plan through ostler and normalize its four-state outcome.
 
@@ -429,22 +394,20 @@ def run_qa_plan(
     is *supposed* to give, and both exit non-zero. The status comes off the payload, and
     only an unrecognized one becomes `invalid`.
 
-    Before the run, `manifest_path`'s `refresh_env` block (if any) is minted and set in
-    the process environment for the duration of `Ostler(...).qa_run` only — see
-    `_mint_qa_secret`. `qa_run` executes the plan **in this process**, so a `secret(...,
+    Before the run, the book's runbook `secrets:` (if any) are minted and set in the
+    process environment for the duration of `Ostler(...).qa_run` only — see
+    `_mint_qa_secrets`. `qa_run` executes the plan **in this process**, so a `secret(...,
     from_env=...)` in the plan reads whatever this scope just set; nothing shells out for
     the plan itself, so there is no other boundary to cross the value at.
     """
     docs_root = find_docs_root(docs_path, repo_dir)
     plan = str(Path(spec_dir) / QA_PLAN_FILE)
-    manifest = _read_manifest(docs_root / (manifest_path or "qa-stack.yml"), logger)
-    var, token, error = _mint_qa_secret(manifest, docs_root, logger)
+    manifest = runbook.load_stack(docs_root, logger=logger)
+    minted, error = _mint_qa_secrets(manifest.get("secrets") or {}, docs_root, logger)
     if error:
         logger.warning("QA secret refresh failed: %s", error)
         return QaRunResult(status="blocked", notes=f"QA secret refresh failed: {error}")
-    if var:
-        logger.info("minted a fresh QA secret for %s", var)
-    with scoped_env(var, token) if var else contextlib.nullcontext():
+    with scoped_envs(minted):
         outcome = Ostler(docs_root).qa_run(plan, spec=spec_dir)
     status = outcome.status.lower()
     if status not in RUN_STATUSES:
@@ -460,6 +423,7 @@ __all__ = [
     "lint_qa_plan",
     "qa_tools_catalog",
     "run_qa_plan",
+    "teardown_stack",
     "validate_qa_plan",
     "verify_qa_dry_run",
 ]
