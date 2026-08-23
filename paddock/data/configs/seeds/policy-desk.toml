@@ -1,11 +1,11 @@
 name = "policy-desk"
 repo_dir = "policy-desk"
-sha256 = "fbaf55660722472f203fb873e8c5d5a833324820c833d9088e8df14a059a170c"
-bytes = 123107
-head = "8152c6961ced817b212ef4efff9f48ff31135624"
+sha256 = "f218d8445d5ef58529b8cd3479e6114ac311558dfb553b2e4eda78533ff38087"
+bytes = 123965
+head = "1f7b976df8afc51caf24190da1d6d9d3060cebe0"
 dirty = true
 url = ""
 note = ""
 source = "apps/policy-desk"
-tree_sha256 = "f044fffde76e245642f6e9d8f00e4fc6f7e77db2860dc3ff680e25b3634105ad"
+tree_sha256 = "061a4cf9820878b9b275e88a6baa6e669249aff5ef6f4f93e77a9f18f6d94b22"
 excludes = []
