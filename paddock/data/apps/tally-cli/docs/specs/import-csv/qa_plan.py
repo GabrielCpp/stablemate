@@ -139,11 +139,11 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
     )
 
     imported = run(qa, ledger, "import", str(rows))
-    qa.check(
-        "`tally import` on a file whose every row parses exits 0",
-        imported.exit_code == 0,
-        actual=imported.exit_code,
-        expected=0,
+    qa.verify(
+        "exit_status",
+        imported,
+        code=0,
+        label="`tally import` on a file whose every row parses exits 0",
         covers=[
             "ac:1",
             "okf:docs/features/tally/tally.md#import:contract",
@@ -168,11 +168,11 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
     # indistinguishable from a correct one up to this line: same exit code, same message
     # shape, same ledger. What separates them is how many entries are in the file after.
     again = run(qa, ledger, "import", str(rows))
-    qa.check(
-        "importing the same file a second time exits 0",
-        again.exit_code == 0,
-        actual=again.exit_code,
-        expected=0,
+    qa.verify(
+        "exit_status",
+        again,
+        code=0,
+        label="importing the same file a second time exits 0",
         covers=["ac:2", "okf:docs/features/tally/tally.md#import-a-csv:consistency:1"],
     )
 
@@ -292,11 +292,11 @@ def a_malformed_row_refuses_the_whole_file_and_leaves_the_ledger_alone(qa: Qa) -
     refused = run(qa, ledger, "import", str(rows))
     after = read(qa, ledger)
 
-    qa.check(
-        "`tally import` on a file with a row that is not an expense exits 2",
-        refused.exit_code == 2,
-        actual=refused.exit_code,
-        expected=2,
+    qa.verify(
+        "exit_status",
+        refused,
+        code=2,
+        label="`tally import` on a file with a row that is not an expense exits 2",
         covers=["ac:3", "okf:docs/features/tally/tally.md#import-a-malformed-row:status:1"],
     )
     qa.check(
@@ -370,11 +370,11 @@ def a_file_under_the_wrong_header_is_refused_whole(qa: Qa) -> None:
     refused = run(qa, ledger, "import", str(rows))
     after = read(qa, ledger)
 
-    qa.check(
-        "`tally import` on a file whose header is not the documented one exits 2",
-        refused.exit_code == 2,
-        actual=refused.exit_code,
-        expected=2,
+    qa.verify(
+        "exit_status",
+        refused,
+        code=2,
+        label="`tally import` on a file whose header is not the documented one exits 2",
         covers=["ac:4", "okf:docs/features/tally/tally.md#import-a-malformed-row:status:1"],
     )
     qa.check(
@@ -442,11 +442,11 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
     previewed = run(qa, ledger, "import", str(rows), "--dry-run")
     after = census(qa, ledger)
 
-    qa.check(
-        "`import --dry-run` exits 0",
-        previewed.exit_code == 0,
-        actual=previewed.exit_code,
-        expected=0,
+    qa.verify(
+        "exit_status",
+        previewed,
+        code=0,
+        label="`import --dry-run` exits 0",
         covers=[
             "ac:5",
             "okf:docs/features/tally/tally.md#dry-run:contract",
@@ -539,11 +539,11 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
 
     untouched = read(qa, there)
     imported = run(qa, here, "import", str(rows))
-    qa.check(
-        "an import names the ledger it acts on and exits 0",
-        imported.exit_code == 0,
-        actual=imported.exit_code,
-        expected=0,
+    qa.verify(
+        "exit_status",
+        imported,
+        code=0,
+        label="an import names the ledger it acts on and exits 0",
         covers=["okf:docs/features/tally/tally.md#file:contract"],
     )
     qa.check(

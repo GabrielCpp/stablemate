@@ -69,7 +69,9 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - verify: created(subject="tally.json")
 - verify: unchanged(subject="tally.json")
 - status: `0` when the ledger was created.
+- verify: exit_status(code=0)
 - status: `1` when a ledger was already there.
+- verify: exit_status(code=1)
 
 ### add-an-expense
 - on: [add](#add)
@@ -80,7 +82,9 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - verify: count(subject="entries in the ledger", equals=1)
 - verify: unchanged(subject="tally.json")
 - status: `0` when the expense was recorded.
+- verify: exit_status(code=0)
 - status: `2` when the expense was refused.
+- verify: exit_status(code=2)
 - errors:
   - An amount that is not a positive whole number of cents is refused, and the ledger is left
     unchanged.

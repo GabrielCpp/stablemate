@@ -12,9 +12,9 @@ transport to the product: `ostler_qa.DRIVERS` is `("python", "playwright", "maes
 there is no separate driver for "a command". A plan that reaches its product over a process
 boundary and one that reaches it over HTTP are both `python` here; what differs is the body.
 
-`qa.tool` runs at the repo root and cannot be handed a working directory, which is why every
-invocation here names its ledger with `--file`: each scenario owns a directory under the
-evidence dir, and no two of them race for one `tally.json`.
+`qa.tool` runs at the repo root unless `.run(cwd=)` hands it a directory under the evidence
+dir; this plan keeps the root and names its ledger with `--file` instead: each scenario owns
+a directory under the evidence dir, and no two of them race for one `tally.json`.
 
 Reading a file is the same process boundary. There is no `open()` in a plan and nothing here
 leans on `pathlib` to touch the disk; a snippet handed to `python3` reads the bytes and prints
@@ -99,11 +99,11 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
     )
 
     created = run(qa, ledger, "init", "--currency", "EUR")
-    qa.check(
-        "`tally init` in a directory with no ledger exits 0",
-        created.exit_code == 0,
-        actual=created.exit_code,
-        expected=0,
+    qa.verify(
+        "exit_status",
+        created,
+        code=0,
+        label="`tally init` in a directory with no ledger exits 0",
         covers=[
             "ac:1",
             "okf:docs/features/tally/tally.md:contract",
@@ -168,11 +168,11 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
     held = read(qa, ledger)
 
     refused = run(qa, ledger, "init", "--currency", "USD")
-    qa.check(
-        "`tally init` where a ledger is already there exits 1",
-        refused.exit_code == 1,
-        actual=refused.exit_code,
-        expected=1,
+    qa.verify(
+        "exit_status",
+        refused,
+        code=1,
+        label="`tally init` where a ledger is already there exits 1",
         covers=[
             "ac:2",
             "okf:docs/features/tally/tally.md:contract",
@@ -345,11 +345,11 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
     )
 
     recorded = run(qa, ledger, "add", "ana", "dinner", "4200", "2026-03-03")
-    qa.check(
-        "`tally add` exits 0 when the expense was recorded",
-        recorded.exit_code == 0,
-        actual=recorded.exit_code,
-        expected=0,
+    qa.verify(
+        "exit_status",
+        recorded,
+        code=0,
+        label="`tally add` exits 0 when the expense was recorded",
         covers=[
             "ac:3",
             "okf:docs/features/tally/tally.md:contract",
@@ -389,11 +389,11 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
     # `-1200` is not a positive whole number of cents, and reaches the ledger's rule rather
     # than the parser's: `AMOUNT_CENTS` is a positional string, so argparse hands it over.
     refused = run(qa, ledger, "add", "bo", "refund", "-1200", "2026-03-04")
-    qa.check(
-        "an amount that is not money exits 2",
-        refused.exit_code == 2,
-        actual=refused.exit_code,
-        expected=2,
+    qa.verify(
+        "exit_status",
+        refused,
+        code=2,
+        label="an amount that is not money exits 2",
         covers=[
             "ac:4",
             "okf:docs/features/tally/tally.md:contract",
@@ -488,11 +488,11 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
     previewed = run(qa, ledger, "add", "bo", "train", "3300", "2026-03-06", "--dry-run")
     after = census(qa, directory)
 
-    qa.check(
-        "a dry run still exits 0",
-        previewed.exit_code == 0,
-        actual=previewed.exit_code,
-        expected=0,
+    qa.verify(
+        "exit_status",
+        previewed,
+        code=0,
+        label="a dry run still exits 0",
         covers=[
             "ac:5",
             "okf:docs/features/tally/tally.md#dry-run:contract",

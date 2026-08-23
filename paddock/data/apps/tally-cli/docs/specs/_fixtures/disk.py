@@ -64,9 +64,10 @@ path.write_text(sys.argv[2], encoding="utf-8")
 def run(qa: Qa, ledger, *argv, timeout: float = 120.0):
     """One invocation of the product, on the ledger this scenario owns.
 
-    `qa.tool` runs at the repo root and cannot be handed a working directory, which is why
-    every invocation names its ledger with `--file`: each scenario owns a directory under the
-    evidence dir, and no two of them race for one `tally.json`.
+    `qa.tool` runs at the repo root unless `.run(cwd=)` hands it a directory under the
+    evidence dir; this plan keeps the root and names its ledger with `--file` instead: each
+    scenario owns a directory under the evidence dir, and no two of them race for one
+    `tally.json`.
     """
     return qa.tool("python3").run("-m", "tally", "--file", str(ledger), *argv, timeout=timeout)
 

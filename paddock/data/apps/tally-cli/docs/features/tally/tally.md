@@ -113,7 +113,9 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - verify: unchanged(subject="tally.json")
 - code: tally/ledger.py::create
 - status: `0` when the ledger was created.
+- verify: exit_status(code=0)
 - status: `1` when a ledger was already there.
+- verify: exit_status(code=1)
 
 ### add-an-expense
 - on: [add](#add)
@@ -124,7 +126,9 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - verify: unchanged(subject="tally.json")
 - code: tally/ledger.py::add_entry
 - status: `0` when the expense was recorded.
+- verify: exit_status(code=0)
 - status: `2` when the expense was refused.
+- verify: exit_status(code=2)
 - errors:
   - An amount that is not a positive whole number of cents is refused, and the ledger is left
     unchanged.
@@ -148,6 +152,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - verify: unchanged(subject="tally.json")
 - code: tally/ledger.py::parse_rows
 - status: `2`.
+- verify: exit_status(code=2)
 - errors:
   - The message names the 1-based line number of the offending row.
 
