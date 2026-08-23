@@ -896,3 +896,108 @@ def test_the_declared_call_bound_to_the_wrong_obligation_asks_for_a_wider_covers
     assert reported
     assert f"already invokes that exact call, bound to '{SIBLING}'" in reported[0]
     assert "widen that call's covers=" in reported[0]
+
+
+# ---------------------------------------------------------------------------------------------
+# What the ledger says about steps — the account `ostler qa report` renders per criterion.
+# ---------------------------------------------------------------------------------------------
+
+STEPPED_PLAN = '''\
+import json
+
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-story-1", story="story-1")
+
+api = target("api")
+
+
+@scenario(target=api, mechanism="live", covers=["{obligation}"])
+def item_is_emitted(qa: Qa) -> None:
+    """Two steps, one check in each, and a third check outside any step."""
+    with qa.step("read the emitted item"):
+        payload = json.load((qa.root / "out.json").open(encoding="utf-8"))
+        qa.check("the item was read", True, actual=True, expected=True, covers=["{obligation}"])
+    with qa.step("compare it to the request"):
+        qa.check("the item is the one requested", qa.field(payload, "item.id") == "abc",
+                 actual=qa.field(payload, "item.id"), expected="abc", covers=["{obligation}"])
+    qa.check("tidy-up", True, actual="ok", expected="ok", covers=["{obligation}"])
+'''
+
+
+def _ledger(spec: Path) -> list[dict[str, Any]]:
+    return [
+        json.loads(line)
+        for line in (spec / "qa" / "qa-run.ndjson").read_text(encoding="utf-8").splitlines()
+    ]
+
+
+def test_every_record_inside_a_step_carries_the_step_it_ran_in(tmp_path: Path) -> None:
+    """The step record lands when the step closes — after its assertions — so order alone
+    cannot attribute them; the stamp is what the report groups on."""
+    spec = _spec(tmp_path)
+    module = _plan(spec, STEPPED_PLAN)
+    (tmp_path / "out.json").write_text(json.dumps({"item": {"id": "abc"}}), encoding="utf-8")
+
+    outcome = cmd_run(module, spec, root=tmp_path)
+    assert outcome.ok, outcome.message
+
+    records = _ledger(spec)
+    asserts = {r["label"]: r for r in records if r.get("kind") == "assert"}
+    steps = [r for r in records if r.get("kind") == "step"]
+    assert [s["label"] for s in steps] == ["read the emitted item", "compare it to the request"]
+    assert all(s["exit_code"] == 0 and "unfinished" not in s for s in steps)
+    assert asserts["the item was read"]["step"] == steps[0]["id"]
+    assert asserts["the item was read"]["step_label"] == "read the emitted item"
+    assert asserts["the item is the one requested"]["step"] == steps[1]["id"]
+    assert "step" not in asserts["tidy-up"]
+    # The report is written at the end of every run, and says the same thing.
+    assert outcome.data["report"] == "qa-report.md"
+    report = (spec / "qa-report.md").read_text(encoding="utf-8")
+    assert "<!-- run: qa-story-1 status: passed -->" in report
+    assert "1. **read the emitted item** — ok" in report
+    assert "   - ✓ the item was read — actual `true` (covers `" + OBLIGATION + "`)" in report
+    assert "- _Outside any step_" in report
+    evidence = json.loads((spec / "qa-evidence.json").read_text(encoding="utf-8"))
+    assert evidence["report"] == "qa-report.md"
+
+
+def test_a_step_the_scenario_raises_inside_is_recorded_failed_with_its_error(tmp_path: Path) -> None:
+    # No `out.json`: the first step raises. The harness closes it as failed on the way out;
+    # only a process that dies mid-step leaves one `unfinished`.
+    spec = _spec(tmp_path)
+    module = _plan(spec, STEPPED_PLAN)
+    outcome = cmd_run(module, spec, root=tmp_path)
+    assert not outcome.ok
+
+    steps = [r for r in _ledger(spec) if r.get("kind") == "step"]
+    assert len(steps) == 1
+    assert steps[0]["label"] == "read the emitted item"
+    assert steps[0]["exit_code"] == 1
+    assert "unfinished" not in steps[0]
+    assert "FileNotFoundError" in steps[0]["error"]
+    report = (spec / "qa-report.md").read_text(encoding="utf-8")
+    assert "**read the emitted item** — failed" in report
+    assert "FileNotFoundError" in report
+
+
+def test_a_scenario_that_printed_nothing_leaves_no_stdout_sidecar(tmp_path: Path) -> None:
+    """An empty `qa/steps/<scenario>-stdout.txt` told a reviewer nothing and was registered
+    as evidence anyway; a scenario that said nothing now writes nothing."""
+    spec = _spec(tmp_path)
+    module = _plan(spec)
+    (tmp_path / "out.json").write_text(json.dumps({"item": {"id": "abc"}}), encoding="utf-8")
+    outcome = cmd_run(module, spec, root=tmp_path)
+    assert outcome.ok, outcome.message
+    assert not (spec / "qa" / "steps" / "item-is-emitted-stdout.txt").exists()
+    assert not any(r.get("kind") == "command-output" for r in _ledger(spec))
+
+
+def test_a_stale_report_does_not_outlive_the_run_that_wrote_it(tmp_path: Path) -> None:
+    spec = _spec(tmp_path)
+    module = _plan(spec)
+    (spec / "qa-report.md").write_text("<!-- run: old status: passed -->\n", encoding="utf-8")
+    (tmp_path / "out.json").write_text(json.dumps({"item": {"id": "abc"}}), encoding="utf-8")
+    outcome = cmd_run(module, spec, root=tmp_path)
+    assert outcome.ok, outcome.message
+    assert "<!-- run: qa-story-1 status: passed -->" in (spec / "qa-report.md").read_text(encoding="utf-8")

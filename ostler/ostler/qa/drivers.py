@@ -244,7 +244,15 @@ class PythonDriver(QaDriver):
         return self.launcher.execute(self, scenario_id, timeout, context)
 
     def _write_output(self, scenario_id: str, output: str) -> None:
-        """Keep the scenario's own stdout — this is where a traceback lands."""
+        """Keep the scenario's own stdout — this is where a traceback lands.
+
+        Only when there is some. A quiet scenario used to leave a zero-byte sidecar behind,
+        registered as evidence, and a reviewer opening `qa/steps/` found a directory of
+        empty files and nothing that said what was tested — which reads as a run that
+        recorded nothing, not as a run that had nothing to say.
+        """
+        if not output.strip():
+            return
         path = self.session.qa_dir / "steps" / f"{scenario_id}-stdout.txt"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(output, encoding="utf-8")
@@ -268,8 +276,13 @@ class PythonDriver(QaDriver):
         action = 0
         terminal: dict[str, Any] | None = None
         problems: list[str] = []
+        # The steps currently open, innermost last. Every assertion and artifact the
+        # scenario records while one is open is stamped with it, so the report can say
+        # "inside *this* step" rather than reading it off the order of the ledger.
+        open_steps: list[tuple[str, str]] = []
         for record in records:
             kind = record.get("type")
+            step = open_steps[-1] if open_steps else None
             if kind == "assert":
                 action += 1
                 assertions += 1
@@ -301,28 +314,25 @@ class PythonDriver(QaDriver):
                     # unasserted` — a whole run's worth of green assertions crediting
                     # nothing.
                     declared=_declared(record),
+                    step=step,
                 )
                 if not passed:
                     failures += 1
+            elif kind == "step_start":
+                open_steps.append((str(record.get("id", "")), str(record.get("label", ""))))
             elif kind == "step_end":
-                self.session.append(
-                    {
-                        "kind": "step",
-                        "id": str(record.get("id", "")),
-                        "label": str(record.get("label", "")),
-                        "cmd": "",
-                        "exit_code": 1 if record.get("failed") else 0,
-                        "driver": "python",
-                        "scenario": scenario_id,
-                    }
-                )
+                step_id = str(record.get("id", ""))
+                open_steps[:] = [entry for entry in open_steps if entry[0] != step_id]
+                self._step_record(scenario_id, step_id, str(record.get("label", "")),
+                                  failed=bool(record.get("failed")),
+                                  error=record.get("error"))
             elif kind == "capture":
                 self.session.set_capture(str(record["key"]), str(record["value"]))
             elif kind == "artifact":
-                problems.extend(self._register(scenario_id, record))
+                problems.extend(self._register(scenario_id, record, step=step))
             elif kind == "vet":
                 try:
-                    verdicts, trouble = self._vet(scenario_id, record)
+                    verdicts, trouble = self._vet(scenario_id, record, step=step)
                 except ValueError as exc:
                     # A path the registration cannot place under the spec directory. It used
                     # to propagate to the runner's bare `except`, which turned one bad
@@ -347,11 +357,18 @@ class PythonDriver(QaDriver):
                         driver="python",
                         action=action,
                         covers=covers,
+                        step=step,
                     )
                     if not passed:
                         failures += 1
             elif kind == "scenario":
                 terminal = record
+
+        # A step still open here is the one the scenario died in: it never reached its
+        # `step_end`, so nothing else would put it on the ledger, and it is exactly the
+        # step a reader of a failed run wants named.
+        for step_id, label in reversed(open_steps):
+            self._step_record(scenario_id, step_id, label, failed=True, unfinished=True)
 
         message = ""
         if timed_out:
@@ -433,7 +450,34 @@ class PythonDriver(QaDriver):
             aborted=aborted,
         )
 
-    def _register(self, scenario_id: str, record: dict[str, Any]) -> list[str]:
+    def _step_record(
+        self,
+        scenario_id: str,
+        step_id: str,
+        label: str,
+        *,
+        failed: bool,
+        unfinished: bool = False,
+        error: object = None,
+    ) -> None:
+        record: dict[str, Any] = {
+            "kind": "step",
+            "id": step_id,
+            "label": label,
+            "cmd": "",
+            "exit_code": 1 if failed else 0,
+            "driver": "python",
+            "scenario": scenario_id,
+        }
+        if unfinished:
+            record["unfinished"] = True
+        if error:
+            record["error"] = str(error)
+        self.session.append(record)
+
+    def _register(
+        self, scenario_id: str, record: dict[str, Any], *, step: tuple[str, str] | None = None
+    ) -> list[str]:
         """File one artifact the scenario produced, holding a recording to the target's shape.
 
         The scenario knows *when* it filmed and ostler knows *what a recording must be*: the
@@ -446,6 +490,8 @@ class PythonDriver(QaDriver):
         kind = str(record.get("kind", "evidence"))
         metadata = record.get("metadata")
         metadata = dict(metadata) if isinstance(metadata, dict) else {}
+        if step:
+            metadata["step"], metadata["step_label"] = step
         problems: list[str] = []
         if kind == "video" and path.is_file():
             measured = _probe_media(path)
@@ -487,7 +533,7 @@ class PythonDriver(QaDriver):
         return self._screens
 
     def _vet(
-        self, scenario_id: str, record: dict[str, Any]
+        self, scenario_id: str, record: dict[str, Any], *, step: tuple[str, str] | None = None
     ) -> tuple[list[placement.ComponentVerdict], list[str]]:
         """Register one photographed screen against the screen the book documents.
 
@@ -540,7 +586,11 @@ class PythonDriver(QaDriver):
         report_path = shot.with_suffix(".vet.json")
         report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         self.session.register_artifact(
-            report_path, kind="vet", scenario=scenario_id, target=self.target_id
+            report_path,
+            kind="vet",
+            scenario=scenario_id,
+            target=self.target_id,
+            **({"metadata": {"step": step[0], "step_label": step[1]}} if step else {}),
         )
         return verdicts, []
 

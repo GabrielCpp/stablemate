@@ -613,6 +613,7 @@ class QaSession:
         covers: list[str] | None = None,
         declared: tuple[str, Mapping[str, Any]] | None = None,
         sentinel: bool = False,
+        step: tuple[str, str] | None = None,
     ) -> tuple[bool, dict[str, Any]]:
         """Execute a named check, write raw result, append assert record.
 
@@ -633,6 +634,12 @@ class QaSession:
         `scenario_check`, which a real `qa.verify()` transcription uses too. Downstream, a
         failing sentinel means the run never got to look, which is a different verdict from
         a run that looked and disagreed — see :func:`ostler.qa.evidence_map._classify`.
+
+        `step` is the ``(id, label)`` of the plan step the assertion ran inside, when the
+        driver knows it. The ledger otherwise only carries the step's *end* record, written
+        after the step's assertions, so which assertion belonged to which step was a matter
+        of reading order — and the per-criterion report groups on it, so it is stamped on
+        the record rather than inferred from its neighbours.
 
         Returns (passed, record).
         """
@@ -677,6 +684,8 @@ class QaSession:
             record["covers"] = covers
         if sentinel:
             record["sentinel"] = True
+        if step:
+            record["step"], record["step_label"] = step
         if declared:
             record["check_args"] = dict(declared[1])
         # Attach summary fields from raw result
