@@ -17,6 +17,20 @@ from workhorse_workflows.research.schemas import Ledger, Program
 #: Keys `program.yml` must carry for the gate loop to have anything to run.
 REQUIRED = ["code_root"]
 
+#: The machine a measurement is allowed to ask for, and the containment floor it is
+#: trusted under. Declared by the program rather than read off the host: a run resumed
+#: on a bigger box must not silently accept a job the program was never sized for, and
+#: a design that overshoots is rescoped by the scientist rather than escalated to a
+#: person. Zero means "unbounded on this axis" — the check only ever refuses a
+#: *declared* limit it can compare against.
+ENVELOPE_DEFAULTS = {
+    "min_containment": "premium",
+    "envelope_ram_gb": 0,
+    "envelope_cpus": 0,
+    "envelope_gpu": "none",
+    "envelope_disk_gb": 0,
+}
+
 #: The program-scoped counter file, beside `program.yml` and committed with it.
 #: Separate from the manifest because the manifest is written by a human and this is
 #: written by the loop — an operator resetting a program deletes this, not that.
@@ -48,6 +62,17 @@ def parse_flat_yaml(text: str, source: str) -> dict[str, str]:
         key, value = line.split(":", 1)
         out[key.strip()] = value.strip().strip('"').strip("'")
     return out
+
+
+def _int(cfg: dict[str, str], key: str) -> int:
+    """A flat manifest holds strings; an envelope bound is a number or it is nothing."""
+    raw = (cfg.get(key) or "").strip()
+    if not raw:
+        return int(ENVELOPE_DEFAULTS[key])
+    try:
+        return int(float(raw))
+    except ValueError as exc:
+        raise WorkflowFailed(f"program.yml: {key} must be a number, got {raw!r}") from exc
 
 
 def slug(program_dir: str) -> str:
@@ -300,6 +325,13 @@ def load_program(
         result_branch=cfg.get("result_branch") or f"{slug(program_dir)}/auto",
         # Empty → the leads read the README's "North star" section instead.
         goal=cfg.get("goal", ""),
+        min_containment=cfg.get("min_containment") or str(
+            ENVELOPE_DEFAULTS["min_containment"]
+        ),
+        envelope_ram_gb=_int(cfg, "envelope_ram_gb"),
+        envelope_cpus=_int(cfg, "envelope_cpus"),
+        envelope_gpu=cfg.get("envelope_gpu") or str(ENVELOPE_DEFAULTS["envelope_gpu"]),
+        envelope_disk_gb=_int(cfg, "envelope_disk_gb"),
         extensions_spent=ledger.extensions,
         lead_reviews_spent=ledger.lead_reviews,
         # Reauthorizing does not un-conclude the program on disk; the loop writes the
@@ -310,4 +342,4 @@ def load_program(
 
 
 
-__all__ = ["load_program", "read_ledger", "record_spend"]
+__all__ = ["ENVELOPE_DEFAULTS", "load_program", "read_ledger", "record_spend"]

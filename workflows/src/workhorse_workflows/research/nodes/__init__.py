@@ -6,6 +6,9 @@ name `workflow.py` needs from here. The submodules are the subjects, one each:
 * `setup` — get a working tree (`clone_repo`)
 * `program` — which program, what its manifest says, and what its budget ledger has
   already spent (`load_program`, `record_spend`)
+* `measure` — run the experiment outside the agent turn and classify what came back,
+  with no model calls (`check_envelope`, `submit_job`, `dry_run`, `watch_job`,
+  `collect_job`, `kill_job`)
 * `publish` — get the gate's work off this machine (`publish_results`)
 
 Ported from `base-library/workflows/research/scripts/{setup,load_config,publish}.py`.
@@ -28,8 +31,32 @@ land in the checkpoint. See the rule in `workflows/README.md`.
 from __future__ import annotations
 
 from workhorse_workflows.research.nodes._blueprint import blueprint
+from workhorse_workflows.research.nodes.measure import (
+    check_envelope,
+    classify_fault,
+    collect_job,
+    dry_run,
+    job_dir_for,
+    kill_job,
+    submit_job,
+    watch_job,
+)
 from workhorse_workflows.research.nodes.program import load_program, record_spend
 from workhorse_workflows.research.nodes.publish import publish_results
 from workhorse_workflows.research.nodes.setup import clone_repo
 
-__all__ = ["blueprint", "clone_repo", "load_program", "publish_results", "record_spend"]
+__all__ = [
+    "blueprint",
+    "check_envelope",
+    "classify_fault",
+    "clone_repo",
+    "collect_job",
+    "dry_run",
+    "job_dir_for",
+    "kill_job",
+    "load_program",
+    "publish_results",
+    "record_spend",
+    "submit_job",
+    "watch_job",
+]

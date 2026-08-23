@@ -88,6 +88,24 @@ class Program(ResearchResult):
     #: `active`, or one of the terminal statuses a prior run banked/recorded.
     status: str = "active"
 
+    # ── the machine envelope, and the floor a measurement is trusted under ────
+    #
+    # An experiment that asks for more than the machine has is not a science
+    # failure and not an operator's problem: it is a protocol that has to be
+    # rescoped. `submit` compares the design's declared resources against these
+    # and routes back to `design` when they do not fit, so the numbers have to be
+    # in the program's own configuration rather than read off the host — a run
+    # resumed on a bigger machine must not silently accept a job the program was
+    # never sized for.
+
+    #: The containment tier a measurement is refused below (`workhorse.job.TIERS`).
+    min_containment: str = "premium"
+    envelope_ram_gb: int = 0
+    envelope_cpus: int = 0
+    #: `none` unless the program declares a GPU it may ask for.
+    envelope_gpu: str = "none"
+    envelope_disk_gb: int = 0
+
 
 class Ledger(ResearchResult):
     """What `record_spend` wrote — the program-scoped counters, on disk."""
@@ -119,18 +137,6 @@ class GateSelection(ResearchResult):
     depends_on_satisfied: bool = False
     program_killed: bool = False
     rationale: str = ""
-
-
-class ImplResult(ResearchResult):
-    """`prompts/implement-experiment.md` and `prompts/rework-experiment.md`."""
-
-    status: str = ""
-    spec_files: list[str] = Field(default_factory=list)
-    code_files: list[str] = Field(default_factory=list)
-    test_files: list[str] = Field(default_factory=list)
-    commands_run: list[str] = Field(default_factory=list)
-    metrics: dict[str, str] = Field(default_factory=dict)
-    notes: str = ""
 
 
 class FailedCriterion(ResearchResult):
@@ -253,6 +259,181 @@ class ExtendResult(ResearchResult):
     moves_closer: str = ""
 
 
+class Probe(ResearchResult):
+    """The calibration probe an estimate is allowed to stand on.
+
+    An estimate with no probe behind it is a feeling, and a feeling sets the overrun
+    thresholds the whole mid-flight triage is derived from. `submit` refuses a job
+    whose probe timed nothing.
+    """
+
+    #: Units (epochs, seeds, examples…) the full run will do.
+    units_total: int = 0
+    #: Units actually timed to produce `seconds` — zero means there was no probe.
+    units_timed: int = 0
+    #: Wall seconds those `units_timed` took.
+    seconds: float = 0.0
+    #: Peak RSS the probe reached, in MB.
+    peak_rss_mb: float = 0.0
+
+
+class Design(ResearchResult):
+    """`prompts/design-experiment.md` — the scientist's half of a gate.
+
+    Protocol, declared resources and the calibration probe. It never runs the
+    experiment and never repairs code: what it produces is what the engineer then
+    has to make runnable.
+    """
+
+    status: str = ""
+    hypothesis: str = ""
+    protocol: str = ""
+    spec_files: list[str] = Field(default_factory=list)
+    #: Declared resources, checked against the program's envelope before submission.
+    memory_mb: int = 0
+    cpus: int = 0
+    gpu: str = "none"
+    disk_gb: int = 0
+    #: Seconds the full run is expected to take, derived from `probe`.
+    estimate_s: float = 0.0
+    probe: Probe = Field(default_factory=Probe)
+    #: On a scientific rework: what changed in the protocol, and why. The hypothesis
+    #: and the frozen target are not the scientist's to change.
+    protocol_change: str = ""
+    notes: str = ""
+
+
+class Build(ResearchResult):
+    """`prompts/build-experiment.md` — the engineer's half of a gate.
+
+    Two commands, because shrinking a run is not something a caller can guess: the
+    real measurement, and an `n=1` version of it that proves the handoff works.
+    """
+
+    status: str = ""
+    #: argv, not a shell string — a measurement is not a recipe.
+    command: list[str] = Field(default_factory=list)
+    #: The same experiment at `n=1`, run through the real runner before submission.
+    dry_run_command: list[str] = Field(default_factory=list)
+    cwd: str = ""
+    result_file: str = "result.json"
+    code_files: list[str] = Field(default_factory=list)
+    #: The engineer's escape hatch, and only where a deterministic classifier has
+    #: nothing to read: `status: "tooling"` with `component` naming what is broken
+    #: (workhorse, ostler, the workflow, the machine) routes to an operator. Naming
+    #: the component is the price of using it — an engineer that can call any hard
+    #: problem "tooling" has every reason to.
+    fault_locus: str = ""
+    component: str = ""
+    notes: str = ""
+
+
+class DryRun(ResearchResult):
+    """What the `n=1` rehearsal through the real runner found.
+
+    It runs through `workhorse.job`, not the engineer's shell, because the handoff is
+    the part that breaks: a command that works when typed and dies under the runner
+    has failed the only test that matters here.
+    """
+
+    ok: bool = False
+    exit_code: int | None = None
+    #: `repo`, `tooling` or `unknown` — decided from the traceback, not by an agent.
+    fault_locus: str = ""
+    stderr_tail: str = ""
+    reason: str = ""
+
+
+class EnvelopeCheck(ResearchResult):
+    """Does the design fit the machine the program declared?"""
+
+    fits: bool = False
+    reason: str = ""
+
+
+class Job(ResearchResult):
+    """The handle `submit_job` left behind, as a state parameter can carry it.
+
+    A submission that never happened is still a `Job`: `error` says why, and
+    `fault_locus` says whose problem it is. "This machine is too weak" and "that
+    command would not start" are different repairs and route to different people.
+    """
+
+    submitted: bool = False
+    error: str = ""
+    fault_locus: str = ""
+    job_dir: str = ""
+    wake_path: str = ""
+    pid: int = 0
+    pgid: int = 0
+    tier: str = ""
+    started_at: float = 0.0
+    estimate_s: float = 0.0
+
+
+class JobWatch(ResearchResult):
+    """What the watcher found when it looked, and what to do about it.
+
+    `action` is `collect` (the job is over, one way or another), `triage` (it is still
+    running and has crossed a new overrun threshold) or `wait` (park on `wake_path`).
+    """
+
+    action: str = ""
+    wake_path: str = ""
+    state: str = ""
+    overrun_multiple: float = 0.0
+    elapsed_s: float = 0.0
+    estimate_s: float = 0.0
+
+
+class Collected(ResearchResult):
+    """The classification `collect_job` reached with **zero model calls**.
+
+    `outcome` is one of `ok` (a result file and a clean exit), `crash` (no usable
+    measurement), `invalid` (a result file that does not parse or is missing its core)
+    or `over_resource` (killed for memory, or an exit under a cgroup ceiling). The two
+    artifacts are what make this decidable: the command says what it found, the
+    supervisor says what it cost, and the command cannot write the second one.
+    """
+
+    outcome: str = ""
+    #: For `crash`/`invalid`: `repo`, `tooling` or `unknown`.
+    fault_locus: str = ""
+    exit_code: int | None = None
+    peak_rss_mb: float = 0.0
+    wall_s: float = 0.0
+    kill_reason: str = ""
+    tier: str = ""
+    #: The experiment's own artifact, as a path and as its parsed core.
+    result_path: str = ""
+    result_status: str = ""
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    seeds: list[Any] = Field(default_factory=list)
+    controls: list[Any] = Field(default_factory=list)
+    n_completed: int = 0
+    n_planned: int = 0
+    stderr_tail: str = ""
+    reason: str = ""
+
+
+class TriageResult(ResearchResult):
+    """`prompts/triage-overrun.md` — the engineer, mid-flight, on a job running long.
+
+    `decision` is `keep_going` or `kill_and_fix`. Keeping going is unbounded on
+    purpose: the thresholds double, so the wakeups get rarer exactly as fast as the
+    job gets less likely to be worth waiting for.
+    """
+
+    decision: str = ""
+    diagnosis: str = ""
+    #: Only consulted when there is no stack to classify. An engineer that can route
+    #: its own hard problems to a human by calling them "tooling" has every reason to,
+    #: so declaring `tooling` also requires naming `component`.
+    fault_locus: str = ""
+    component: str = ""
+    fix_hint: str = ""
+
+
 # ── a state parameter ───────────────────────────────────────────────────────
 
 
@@ -278,20 +459,56 @@ class Budget(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    #: Re-check attempts on the gate currently in flight. Per-gate, not per-run:
-    #: `implement` clears it, which is where the YAML's `reset_rework` node stood.
+    #: Scientific reworks on the gate currently in flight — the experiment measured
+    #: something and missed. Per-gate, not per-run: `start` clears it.
     reworks: int = 0
+    #: Engineering repairs on the gate currently in flight — the experiment produced
+    #: no measurement. A different failure with a different fix, so a different count.
+    build_fixes: int = 0
+    #: Rescopes after a design asked for more than the machine has. Per-gate.
+    rescopes: int = 0
     #: Research-lead reviews of a killed gate, across the whole run.
     lead_reviews: int = 0
     #: Program self-extensions, across the whole run.
     extensions: int = 0
 
+    # ── what an operator authorized, after a cap was hit ─────────────────────
+    #
+    # A cap that is hit escalates to an operator rather than ending the run, and the
+    # operator's answer *is* the authorization to keep going. Without somewhere to
+    # record that, the resume re-enters the capped state, re-reads the same count and
+    # blocks again — a loop with a human in it, which is worse than the give-up it
+    # replaced. Each grant raises the ceiling by one, so the next block is a real one.
+
+    #: Extra lead reviews an operator has authorized past `MAX_LEAD_REVIEWS`.
+    lead_review_grants: int = 0
+    #: Extra extensions an operator has authorized past `MAX_EXTENSIONS`.
+    extension_grants: int = 0
+
     def fresh_gate(self) -> Budget:
-        """Entering a new gate's experiment: its rework attempts start over."""
-        return self.model_copy(update={"reworks": 0})
+        """Entering a gate: every per-gate counter starts over.
+
+        `start` is where this happens, and it has to be: both a rework and a rescope
+        route back to `design`, so clearing there would reset the counters being spent.
+        """
+        return self.model_copy(update={"reworks": 0, "build_fixes": 0, "rescopes": 0})
 
     def reworked(self) -> Budget:
         return self.model_copy(update={"reworks": self.reworks + 1})
+
+    def built(self) -> Budget:
+        return self.model_copy(update={"build_fixes": self.build_fixes + 1})
+
+    def rescoped(self) -> Budget:
+        return self.model_copy(update={"rescopes": self.rescopes + 1})
+
+    def granted_review(self) -> Budget:
+        """An operator answered the lead-review block: one more lap is authorized."""
+        return self.model_copy(update={"lead_review_grants": self.lead_review_grants + 1})
+
+    def granted_extension(self) -> Budget:
+        """An operator answered the extension block: one more extension is authorized."""
+        return self.model_copy(update={"extension_grants": self.extension_grants + 1})
 
     def reviewed(self) -> Budget:
         return self.model_copy(update={"lead_reviews": self.lead_reviews + 1})
@@ -303,19 +520,27 @@ class Budget(BaseModel):
 __all__ = [
     "AntiShortcutFlags",
     "Budget",
+    "Build",
+    "Collected",
+    "Design",
+    "DryRun",
+    "EnvelopeCheck",
     "ExtendResult",
     "FailedCriterion",
     "GateCheck",
     "GateSelection",
     "GoalReview",
-    "ImplResult",
+    "Job",
+    "JobWatch",
     "LeadReview",
     "Ledger",
     "NewDirectionResult",
+    "Probe",
     "Program",
     "PublishResult",
     "RecordResult",
     "RepoSetup",
     "ResearchResult",
     "ReviveResult",
+    "TriageResult",
 ]
