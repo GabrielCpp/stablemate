@@ -31,7 +31,12 @@ task(
 #: A Go JSON API generated from an OpenAPI contract, with bearer identity minted by a
 #: Firebase Auth emulator beside it — so a trial reaches an authenticated obligation with
 #: no credential anywhere in the tree, and the round stays runnable on a clean machine.
-FIXTURE = pd.Fixture(app="apps/claims-api", repo_dir="claims-api")
+FIXTURE = pd.Fixture(
+    app="apps/claims-api",
+    repo_dir="claims-api",
+    # No screen: nothing to enter, nothing to deep-link through, no role to address.
+    leverage=("obligations", "journeys", "sensitivity"),
+)
 
 
 @step()

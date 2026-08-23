@@ -37,7 +37,12 @@ task(
 #: A Pulumi/Go infrastructure program planned against the pinned GCP provider plugin. No
 #: port, no stack state and no credential: a preview resolves against the plugin rather
 #: than the cloud, so the round stays runnable on a clean, offline machine.
-FIXTURE = pd.Fixture(app="apps/depot-infra", repo_dir="depot-infra")
+FIXTURE = pd.Fixture(
+    app="apps/depot-infra",
+    repo_dir="depot-infra",
+    # No screen and no process: the plan document is the only thing a scenario reads.
+    leverage=("obligations", "journeys", "sensitivity"),
+)
 
 
 @step()

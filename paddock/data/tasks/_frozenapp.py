@@ -863,9 +863,17 @@ def pool_leverage(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return pooled
 
 
-def leverage_line(metrics: dict[str, Any]) -> str:
+def leverage_line(metrics: dict[str, Any], keys: tuple[str, ...] = LEVERAGE_KEYS) -> str:
+    """Print the metrics the fixture declared it can own, and say how many it left out.
+
+    A fixture with no screen has no entry point to enter and no link to deep-link through:
+    `claims-api` prints `entry –  deep-links –  roles –` on every round, and three blanks
+    out of six read as three metrics that failed to compute rather than three that do not
+    apply. The fixture says which keys its book can own; the others are not printed, and
+    the line ends with `(of 6 metrics)` so the omission is visible rather than silent.
+    """
     parts = []
-    for key in LEVERAGE_KEYS:
+    for key in keys:
         value = metrics.get(key)
         if value is None:
             shown = BLANK
@@ -874,7 +882,10 @@ def leverage_line(metrics: dict[str, Any]) -> str:
         else:
             shown = str(value)
         parts.append(f"{LEVERAGE_LABELS[key]} {shown}")
-    return "leverage: " + "  ".join(parts)
+    line = "leverage: " + "  ".join(parts)
+    if len(keys) < len(LEVERAGE_KEYS):
+        line += f"  ({len(keys)} of {len(LEVERAGE_KEYS)} metrics)"
+    return line
 
 
 # ── the round, rendered ───────────────────────────────────────────────────────────────
@@ -894,7 +905,7 @@ def headline(trials: list[dict[str, Any]]) -> str:
     return line
 
 
-def detail(trials: list[dict[str, Any]]) -> list[str]:
+def detail(trials: list[dict[str, Any]], leverage: tuple[str, ...] = LEVERAGE_KEYS) -> list[str]:
     lines: list[str] = []
     for trial in trials:
         timing = trial.get("timing") or {}
@@ -904,7 +915,7 @@ def detail(trials: list[dict[str, Any]]) -> list[str]:
         )
         lines.append(f"    {trial['obligation'] or '(control)'}")
     lines.append("")
-    lines.append("  " + leverage_line(pool_leverage(trials)))
+    lines.append("  " + leverage_line(pool_leverage(trials), leverage))
     if (leveraged := fx.time_leverage(trials)):
         lines.append("  " + leveraged)
     lines.append("")
@@ -936,6 +947,19 @@ class Fixture:
     #: between states, so an over-budget trial stops at a node boundary with its telemetry
     #: intact and still reports a partial lap count — a budget death is a measurement.
     budget_s: float = 2400.0
+    #: The leverage metrics this fixture's book can own, in `LEVERAGE_KEYS` order. A
+    #: fixture with no screen declares the three a contract can carry and its scorecard
+    #: prints those, with `(3 of 6 metrics)` after them, instead of three blanks that read
+    #: as metrics that failed to compute. Every key must be one of `LEVERAGE_KEYS`.
+    leverage: tuple[str, ...] = LEVERAGE_KEYS
+
+    def __post_init__(self) -> None:
+        unknown = [key for key in self.leverage if key not in LEVERAGE_KEYS]
+        if unknown or not self.leverage:
+            raise ValueError(
+                f"{self.app}: leverage must name one or more of {', '.join(LEVERAGE_KEYS)}; "
+                f"got {self.leverage!r}"
+            )
 
 
 #: Where a round's own ledger lives inside the stage. Named explicitly rather than via
@@ -1105,6 +1129,6 @@ def score_round(run: Run, fixture: Fixture) -> Score:
 
     return Score(
         headline=headline(trials),
-        detail=tuple(detail(trials)),
+        detail=tuple(detail(trials, fixture.leverage)),
         data={"trials": trials, "leverage": pool_leverage(trials)},
     )

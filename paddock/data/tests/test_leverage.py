@@ -4,7 +4,7 @@ Detection alone is gameable in a direction nobody notices. A plan that opens eve
 by its URL, asserts on rendered strings and never walks a documented journey can still
 catch a seeded defect — and scores identically to one that enters each flow where the book
 says it starts, moves between screens by clicking, and addresses the UI by role. These
-tests pin the five metrics that tell those two apart, and the rule that keeps the number
+tests pin the six metrics that tell those two apart, and the rule that keeps the number
 honest: an input that is not there prints `–`, never `0`.
 
 Everything here is literal — a book dict, a context packet, a plan module written as a
@@ -247,6 +247,29 @@ def test_the_line_reads_the_way_the_headline_promises() -> None:
         "obligations": [22, 24], "journeys": [2, 3], "sensitivity": [20, 22],
     }) == ("leverage: entry 3/3  deep-links 1  roles 14/15  obligations 22/24  "
            "journeys 2/3  sensitivity 20/22")
+
+
+def test_the_line_prints_only_the_metrics_the_fixture_declared() -> None:
+    """A fixture with no screen owns three of the six; the other three are not printed as
+    blanks that read like failures, and the line says how many it left out."""
+    line = frozen.leverage_line(
+        {"entry": None, "deep_links": None, "roles": None,
+         "obligations": [22, 24], "journeys": [2, 3], "sensitivity": [20, 22]},
+        ("obligations", "journeys", "sensitivity"),
+    )
+    assert line == "leverage: obligations 22/24  journeys 2/3  sensitivity 20/22  (3 of 6 metrics)"
+    assert frozen.BLANK not in line
+
+
+def test_a_declared_metric_with_no_inputs_still_prints_blank() -> None:
+    line = frozen.leverage_line({"obligations": [22, 24]}, ("obligations", "journeys"))
+    assert line == f"leverage: obligations 22/24  journeys {frozen.BLANK}  (2 of 6 metrics)"
+
+
+def test_a_fixture_refuses_a_leverage_key_it_does_not_have() -> None:
+    with pytest.raises(ValueError, match="leverage must name one or more of"):
+        frozen.Fixture(app="apps/x", repo_dir="x", leverage=("obligations", "clicks"))
+    assert frozen.Fixture(app="apps/x", repo_dir="x").leverage == frozen.LEVERAGE_KEYS
 
 
 # ── pooling across a scored round ─────────────────────────────────────────────────────

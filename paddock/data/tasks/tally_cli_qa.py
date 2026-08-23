@@ -41,7 +41,12 @@ task(
 
 #: A stdlib-only Python CLI. No dependency to install, no port to bind and no state outside
 #: the one JSON file the product writes, so a trial runs on a clean, offline machine.
-FIXTURE = pd.Fixture(app="apps/tally-cli", repo_dir="tally-cli")
+FIXTURE = pd.Fixture(
+    app="apps/tally-cli",
+    repo_dir="tally-cli",
+    # A CLI: reached over a process, never a screen, so the GUI metrics do not apply.
+    leverage=("obligations", "journeys", "sensitivity"),
+)
 
 
 @step()
