@@ -167,8 +167,10 @@ you are writing checks in bulk rather than reading one.
 `undeclared-obligation`. It is a warning rather than an error only because books written before the
 rule are full of them — treat it as queued work, not as noise. It follows that when you merge into
 a node that already exists and its `does:`/`raises:`/`states:` bullets carry no `verify:`, declaring
-them is part of the merge, not optional polish. The rule table and the full vocabulary are in
-[[ostler]] → "The OKF UI profile".
+them is part of the merge, not optional polish. Its mirror image is `unminted-claim`: a node that
+mints nothing but states a status code, an error name or a `must` under a key its type does not
+declare — a requirement no plan will ever be asked to prove; move it under a normative key or
+into prose. The rule table and the full vocabulary are in [[ostler]] → "The OKF UI profile".
 
 ---
 

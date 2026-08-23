@@ -124,7 +124,8 @@ Unlike the draft profile's original "warns, never blocks" stance, UI conformance
 `doctor` gate**: every rule is `error`-severity, carries a `path:line` location, and has a
 mechanical fix, so a workflow node can gate on `ostler doctor` and always converge. The
 exceptions are `overlong-normative-bullet`, `compound-normative-bullet`,
-`undeclared-obligation`, `unknown-bullet`, `weak-check` and `unstated-precondition` (warns),
+`undeclared-obligation`, `unknown-bullet`, `unminted-claim`, `weak-check` and
+`unstated-precondition` (warns),
 whose remedy is a judgement about the *source*: only the code can say which clauses are separate
 requirements, and cutting the bullet on punctuation invents obligations nobody can prove.
 
@@ -137,6 +138,7 @@ requirements, and cutting the bullet on punctuation invents obligations nobody c
 | `overlong-normative-bullet` | one obligation-minting bullet runs past 700 characters of prose | split it into one bullet per provable claim |
 | `compound-normative-bullet` (warn) | one bullet states several observations — enumerated status codes, several error names, semicolon-joined clauses | split it: one bullet is one obligation, proved by one scenario |
 | `unknown-bullet` (warn) | a profile key on a type that does not declare it — `verify:` on a concept, `does:` on a component, `exits:` on a method — so here it is inert: nothing orders, grades or grounds it, and no `verify:` binds to it. A key no type declares (`meaning:`) is the author's own and is not reported | move the claim under a key the type mints from, the observation onto the node that states the claim, or the bullet into prose |
+| `unminted-claim` (warn) | a node that mints no obligation at all, yet one of its bullets reads like a claim — a status code, an error name, a lifecycle verb, a `must`/`returns`/`rejects` — under a key the type does not declare (`errors:` on a concept, `outcome:` in an untyped section, an author's own `rules:`). Nothing will ever ask a plan to prove it. Reported once per node, at the first such bullet; a node that mints even one obligation is never asked | move the claim under a normative key of that type (the message lists them), or onto the node that states it, or rewrite it as prose if it was description all along |
 | `unparsed-check` | a `verify:` value is not a call from the check vocabulary (a test id, an unknown name, a bad argument) | rewrite it as `name(arg=…)`; a test citation belongs in `tests:` |
 | `undeclared-obligation` (warn) | the node mints obligations and declares no `verify:` at all — nothing says what observing them looks like | declare a check per observation; the node is the only place that knows what the behaviour promised |
 | `weak-check` (warn) | every check the node declares passes on the defect it is meant to catch — a field asserted by presence with no value, a `2xx` naming neither `path:` nor `title:` | name the value, the route or the title the claim turns on |

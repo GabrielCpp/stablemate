@@ -426,6 +426,48 @@ def test_a_type_that_carries_no_check_key_is_never_reported(repo: Path):
     assert "undeclared-obligation" not in all_codes(_run(repo))
 
 
+def test_a_claim_under_a_non_normative_key_is_reported(repo: Path):
+    """A concept that mints nothing, stating a status code under its own `errors:` key: no
+    obligation will ever carry it, so no plan is asked to prove it. A warn — the remedy is
+    authoring judgment — and reported once per node, at the first such bullet."""
+    write(repo / "docs/features/groom/concepts/lease.md",
+          "---\ntype: concept\nslug: lease\ntitle: Lease\n---\n# Lease\n\n"
+          "- meaning: a lock over one path\n"
+          "- errors: `409` when the lease is held by another worker\n"
+          "- rules: the owner must renew before the deadline\n")
+    report = _run(repo)
+    hits = [f for f in report.findings if f.code == "unminted-claim"]
+    assert [f.ref for f in hits] == ["docs/features/groom/concepts/lease.md#errors"]
+    assert hits[0].severity == "warn"
+    assert "names status 409" in hits[0].message
+    assert "concept mints no obligation" in hits[0].message
+
+
+def test_a_trigger_only_interaction_is_not_reported(repo: Path):
+    # The descriptive half of the book: an interaction recorded by its trigger states nothing.
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+          "## Interactions\n\n### click\n- on: [S](#s)\n- trigger: click\n")
+    assert "unminted-claim" not in all_codes(_run(repo))
+
+
+def test_a_node_that_mints_is_not_asked_about_its_prose(repo: Path):
+    # Once a node mints one obligation it is in QA's sight; its other bullets are context.
+    write(repo / "docs/features/groom/concepts/lease.md",
+          "---\ntype: concept\nslug: lease\ntitle: Lease\n---\n# Lease\n\n"
+          "- persistence: the lease row is written once\n"
+          "- errors: `409` when the lease is held by another worker\n")
+    assert "unminted-claim" not in all_codes(_run(repo))
+
+
+def test_an_untyped_section_with_a_status_bullet_is_reported(repo: Path):
+    write(repo / "docs/features/groom/concepts/lease.md",
+          "---\ntype: concept\nslug: lease\ntitle: Lease\n---\n# Lease\n\n"
+          "## Notes\n\n### Renewal\n- outcome: `409` when the lease is held by another worker\n")
+    hits = [f for f in _run(repo).findings if f.code == "unminted-claim"]
+    assert [f.ref for f in hits] == ["docs/features/groom/concepts/lease.md#renewal#outcome"]
+
+
 def test_an_undeclared_bullet_key_is_a_warning(repo: Path):
     """A `verify:` on a concept is read by nobody — `check_keys("concept")` is empty — while
     the author who wrote it believes the claim above is observed. A warn, not an error: where

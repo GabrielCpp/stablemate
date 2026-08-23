@@ -776,6 +776,11 @@ MAX_NORMATIVE_PROSE = 700
 #: Read off the *raw* value, not `_prose`: statuses and error names are normally written in
 #: backticks, and `_prose` deletes code spans, so measuring the prose would blind this to
 #: exactly the signal it exists to find.
+#: Every key some type reads as a check (`verify:` today). An observation is not a claim, so
+#: `unminted-claim` never reads one — wherever it sits, `unknown-bullet` is the rule for a
+#: check on a type that declares none.
+_OBSERVATION_KEYS: frozenset[str] = frozenset(
+    b.key for t in registry.UI_TYPES for b in t.bullet_keys if b.check)
 _STATUS_CODE = re.compile(r"(?<![\w.])[1-5]\d{2}(?![\w.])")
 _ERROR_NAME = re.compile(r"\b[A-Z][A-Za-z0-9]*(?:Error|Exception|Conflict|Failure|Denied)\b")
 #: A semicolon with a real clause after it. `;` inside a code span or ending a bullet is not a
@@ -856,6 +861,36 @@ def _states_a_lifecycle_claim(value: str) -> str:
     for word in _WORD.findall(_prose(value)):
         if word.lower() in LIFECYCLE_VERBS:
             return word.lower()
+    return ""
+
+
+#: The modal and outcome verbs that make a sentence read as a requirement rather than a
+#: description. Narrow on purpose: "returns" and "rejects" are how a claim about behaviour is
+#: written in this profile; "is", "has" and "shows" are how a description is, and a rule that
+#: fired on those would fire on every `meaning:` in the book.
+_MODAL = re.compile(r"\b(must|shall|never|always|rejects?|returns?|exits? with)\b", re.I)
+
+
+def _sounds_normative(value: str) -> str:
+    """Why this bullet reads like a claim — one short phrase naming the signal — or "".
+
+    The same three readers `compound-normative-bullet` and the lifecycle rule use, plus the
+    modal verbs: a status code, an error name, a lifecycle verb, a `must`/`returns`/`rejects`.
+    Read off the raw value for the reason `_STATUS_CODE` gives — codes and names live in
+    backticks, and `_prose` would delete exactly the evidence this is looking for.
+    """
+    statuses = _STATUS_CODE.findall(value)
+    if statuses:
+        return f"names status {statuses[0]}"
+    names = _ERROR_NAME.findall(value)
+    if names:
+        return f"names `{names[0]}`"
+    verb = _states_a_lifecycle_claim(value)
+    if verb:
+        return f"states a lifecycle change, `{verb}`"
+    modal = _MODAL.search(_prose(value))
+    if modal:
+        return f"says `{modal.group(0)}`"
     return ""
 
 
@@ -1120,6 +1155,41 @@ def _check_ui(graph: Graph, f: list[Finding],
                         f"one scenario, so the clauses that share it are covered by whichever "
                         f"one the planner read; split it into one bullet per observation",
                         path=rel, line=node.line, ref=f"{node.id}#{key}"))
+
+        # The other half of `undeclared-obligation`: a node that mints nothing at all, yet one
+        # of its bullets reads like a claim — a status code, an error name, a lifecycle verb, a
+        # `must` — under a key this type never grades (`meaning:`, `behaviour:`, an `errors:` on
+        # a concept). Nothing will ever ask a plan to prove it, and the author, who wrote a
+        # requirement, believes something does. Only asked of a node that mints *nothing*: one
+        # that mints at least one obligation is already in QA's sight, and its prose is the
+        # descriptive half of the book. Bullets only — `UINode` carries no prose, so a paragraph
+        # is not read.
+        # A `warn`, for the usual reason: where the claim belongs is the author's call.
+        if not normative:
+            instrumented = (frozenset(registry.normative_keys(node.type))
+                            | frozenset(registry.RELATION_KEYS)
+                            | frozenset(registry.check_keys(node.type))
+                            | frozenset(registry.arrange_keys(node.type))
+                            | _OBSERVATION_KEYS)
+            # Every key the type declares is exempt, the descriptive ones included: `backing:`
+            # on an environment or `trigger:` on an interaction holds description because the
+            # profile says so. What is left is the author's own vocabulary and the keys of an
+            # untyped section — the places a requirement hides with nothing reading it.
+            instrumented |= registry.declared_keys(node.type)
+            minted = ", ".join(f"`{k}:`" for k in registry.normative_keys(node.type))
+            for key, value, _line in node.bullet_order:
+                if key in instrumented:
+                    continue
+                signal = next((s for v in _bullet_values(value) if (s := _sounds_normative(v))), "")
+                if not signal:
+                    continue
+                f.append(Finding(
+                    "warn", "unminted-claim",
+                    f"{node.id}: `{key}:` reads like a claim ({signal}) but {node.type} mints no "
+                    f"obligation from it — nothing will ask a QA plan to prove it; move it under "
+                    f"a normative key ({minted}) or into prose",
+                    path=rel, line=node.line, ref=f"{node.id}#{key}"))
+                break
 
         check_keys = registry.check_keys(node.type)
         declared = 0
