@@ -58,6 +58,7 @@ def publish_records_the_real_author(qa: Qa) -> None:
              actual=stored["metadata"]["author"], expected=uid,
              covers=["ac:1"])
     qa.check("message is verbatim", stored["metadata"]["message"] == "hello",
+             actual=stored["metadata"]["message"], expected="hello",
              covers=["okf:docs/features/demo/http/api.md#publish:does:1"])
     json.dump(stored, qa.artifact("steps/publish-stored.json", kind="json").open("w"))
 ```
@@ -109,7 +110,7 @@ working tree.
 | `qa.check(label, condition, actual=…, expected=…, covers=…)` | record one claim; returns the verdict, never raises |
 | `qa.require(label, condition, …)` | record one claim and stop the scenario if it fails |
 | `qa.verify(check, observed, covers=…, **args)` | make the observation the book declares, and record it |
-| `with qa.step("label"):` | group a phase under a named step in the ledger |
+| `with qa.step("label"):` | group a phase under a named step; the report lists each assertion and screenshot under the step it ran in |
 | `qa.capture(key, value)` / `qa.get(key)` | publish a value into the ledger and read it back |
 | `qa.artifact(path, kind=…)` | register a file as evidence; relative paths resolve inside `qa.dir` |
 | `qa.secret(name)` | a declared secret's value |
@@ -217,6 +218,31 @@ remember to ask for, made the default.
   assertion per id.
 - **`input_file` paths must exist and stay out of `qa/`**, which the runner deletes and
   recreates each run.
+
+## What a reviewer reads
+
+A run ends with `ostler` rendering `<spec-dir>/qa-report.md` from the ledger — no agent prose
+in it. For every acceptance criterion and every OKF obligation it gives a verdict (PASS,
+FAIL, or UNPROVEN when nothing looked), and under it the step each covering assertion ran
+in, the assertion's label, check, observed and expected values, the assertion file, and the
+screenshots taken in that step with their `vet` verdict; then every scenario step by step;
+then a `## Warnings` list naming what would let a rubber stamp through — a criterion no
+assertion covers, an assertion with no observed value, a scenario that stopped early. That
+file is what a peer reads to decide whether the work is real, and every string in the plan
+ends up in it. So:
+
+- phrase `qa.step("…")` as what a person does — `"sign in with the seeded editor"`, not
+  `"step 2"` — and wrap the scenario's work in steps: an assertion outside any step is
+  attributed to none, and a screenshot taken inside one is embedded under it;
+- phrase an assertion label as the claim it proves — `"the tree lists the two nested
+  pages"`, not `"check count"`;
+- **always pass `actual=`** — an assertion with no observed value is a claim nobody can check,
+  and the report lists it under `## Warnings`;
+- put in `covers=` exactly the ids *this* assertion proves, one assertion per claim, so a
+  criterion's table holds the assertions that prove it and nothing else.
+
+`ostler qa report --spec <spec-dir>` re-renders the file from the ledger at any time;
+`--out-dir LABEL` renders a dry run's to `qa/<LABEL>/report.md`.
 
 ## Doctrine
 
