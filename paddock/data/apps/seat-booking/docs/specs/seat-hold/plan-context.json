@@ -19,7 +19,7 @@
     "seat-booking-ostler"
   ],
   "qa_stack": {
-    "profile": "bring the stack up with `docker compose -f compose.yml up -d --wait` and drive it over http://localhost:18083; sandboxed runs reach the same URL through the forwarded port declared in qa-stack.yml",
+    "profile": "bring the stack up with `docker compose -f compose.yml up -d --wait` and drive it over http://localhost:18083; sandboxed runs reach the same URL through the forwarded port declared in the book's runbook node (`docs/features/booking/ops/qa-stack.md`)",
     "fixtures": [
       "a seat already held (POST /api/seats/A1/hold) to exercise the unavailable and release paths"
     ],

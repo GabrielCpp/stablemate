@@ -29,7 +29,7 @@
     "policy-desk-ostler"
   ],
   "qa_stack": {
-    "profile": "bring the stack up with `docker compose -f compose.yml up -d --build --wait` and drive it over http://localhost:18084; sandboxed runs reach the same URL through the forwarded port declared in qa-stack.yml",
+    "profile": "bring the stack up with `docker compose -f compose.yml up -d --build --wait` and drive it over http://localhost:18084; sandboxed runs reach the same URL through the forwarded port declared in the book's runbook node (`docs/features/policy/ops/qa-stack.md`)",
     "fixtures": [
       "an empty register (DELETE /api/policies) so a duplicate-policy-number scenario decides what is already on file",
       "an auto policy for one holder (POST /api/policies) to exercise the umbrella prerequisite"

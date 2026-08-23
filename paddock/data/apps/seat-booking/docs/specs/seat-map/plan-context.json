@@ -19,7 +19,7 @@
     "seat-booking-ostler"
   ],
   "qa_stack": {
-    "profile": "bring the stack up with `docker compose -f compose.yml up -d --wait` and drive it over http://localhost:18083; sandboxed runs reach the same URL through the forwarded port declared in qa-stack.yml",
+    "profile": "bring the stack up with `docker compose -f compose.yml up -d --wait` and drive it over http://localhost:18083; sandboxed runs reach the same URL through the forwarded port declared in the book's runbook node (`docs/features/booking/ops/qa-stack.md`)",
     "fixtures": [
       "none \u2014 a fresh ledger is an empty showing, which is exactly this story's subject"
     ],

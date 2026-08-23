@@ -6,7 +6,7 @@ producing a worktree diff, an answer-key row whose obligation is no longer owed,
 that stops differing or stops building — against a fixture where nothing runs at all. Three
 things about this app change how they present:
 
-* **There is no product to start.** No `compose.yml`, no port, no `qa-stack.yml`: the whole
+* **There is no product to start.** No `compose.yml`, no port, no stack runbook: the whole
   observable behaviour of this repo is the document `pulumi preview --json` writes. So the
   premise test below is not "no screen" but "no server either", and the toolchain-gated
   extra is a preview rather than a build of a running image.
@@ -138,7 +138,13 @@ def test_the_book_describes_nothing_that_runs() -> None:
     contexts = {path.parent.name for path in features.rglob("*.md")}
     assert contexts == {"concepts", "ops"}, sorted(contexts)
     assert not (APP / "compose.yml").exists(), "a stackless fixture may not ship a stack"
-    assert not (APP / "qa-stack.yml").exists(), "this fixture exercises `ensure_stack`'s skip arm"
+    from ostler.api import Ostler  # noqa: PLC0415
+    from ostler.qa import runbook  # noqa: PLC0415
+
+    assert not runbook.stack_runbooks(Ostler(APP).graph), (
+        "this fixture exercises the bring-up's `none` arm — its runbook runs a procedure, "
+        "and a `kind: service` step here would give QA a stack to boot"
+    )
 
 
 def test_the_fixture_ships_the_stories_it_claims() -> None:

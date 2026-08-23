@@ -29,7 +29,7 @@
     "policy-desk-ostler"
   ],
   "qa_stack": {
-    "profile": "bring the stack up with `docker compose -f compose.yml up -d --build --wait` and drive it over http://localhost:18084; sandboxed runs reach the same URL through the forwarded port declared in qa-stack.yml",
+    "profile": "bring the stack up with `docker compose -f compose.yml up -d --build --wait` and drive it over http://localhost:18084; sandboxed runs reach the same URL through the forwarded port declared in the book's runbook node (`docs/features/policy/ops/qa-stack.md`)",
     "fixtures": [
       "a policy on file at a known version (POST /api/policies) to amend, to cancel, and to replay a stale write against"
     ],

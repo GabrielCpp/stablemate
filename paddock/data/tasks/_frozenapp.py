@@ -211,7 +211,7 @@ def materialize(
 def reset_stack_state(dest: Path) -> None:
     """Drop the trial's compose volumes, once, before the run starts.
 
-    The app's `qa-stack.yml` deliberately does not do this in its `launch` line: a bring-up
+    The app's `runbook` node deliberately does not do this in its service step: a bring-up
     happens at the head of every plan lane, so a `down -v` there can land in the middle of a
     story proving a record survives a restart, and empty the ledger under it. Here there is
     no run in flight yet, which makes this the one safe moment to reset.

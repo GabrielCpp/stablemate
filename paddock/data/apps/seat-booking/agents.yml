@@ -30,7 +30,7 @@ packs:
 # to one command on PATH (`ostler.qa.tools`), and a wrapper script committed here would
 # have to be found by a path that differs in every trial's checkout. A scenario reaches it
 # as `qa.tool("docker").run("compose", "-f", "compose.yml", "restart")`, from the repo root
-# — the same compose file `qa-stack.yml` boots the app with.
+# — the same compose file the book's `runbook` node boots the app with.
 #
 # Its definition is machine-side, in the config a task pins (`paddock/data/configs/`), which
 # is the opt-in/definition split the tool registry is built around: this file says which
