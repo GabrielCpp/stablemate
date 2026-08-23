@@ -343,15 +343,15 @@ the app is allowed to occupy, and the backlog is the one document every phase re
   page load, a route change the client owns rather than the server, a conditional field rule that
   only exists for one coverage type, and an optimistic-concurrency token carried through a form.
 
-  Its eleven-row key is built around those cases rather than around detection alone. **P1 is
-  expected to be missed by today's QA**: the register's "New policy" link renders with the right
-  role and the right name and does not navigate, while the form stays reachable by its address,
-  so a plan that opens screens by URL proves the whole form and never touches the broken thing.
-  Nothing gates that — the `entry` bullet is consumed by no check — and a missed P1 printed
-  beside a non-zero `deep-links` count is the fixture working. **P9–P11** are catchable only
-  through the auditor's reading of the evidence: a refusal in the wrong shape carrying the right
-  sentence, a route change that throws into the console while the screen recovers, and a failed
-  re-read swallowed behind rows that still look current. No declared check fails in any of them.
+  Its eleven-row key is built around those cases rather than around detection alone, and every
+  row is `caught_by: run`. **P1** was written as a deep-linking canary — the register's "New
+  policy" link renders with the right role and name and does not navigate, while the form stays
+  reachable by its address — but the frozen `policy-list` plan follows the link with the keyboard,
+  so P1 is an ordinary catch and the deep-links gap it was meant to expose is simply unmeasured:
+  nothing gates it and no row probes it. **P9 and P11** each fail an assertion the plan writes (the
+  refusal's exact sentence as the error's text; a `visible` on the register's error alert). **P10** throws off the render path so no plan-written
+  assertion fails; the harness's browser gate catches it by binding the uncaught page error to
+  the scenario's `covers` — a `missed` P10 after that gate landed is a harness regression.
 
 - **[`claims-api/`](claims-api/)** — an insurance claims desk: a Go JSON API generated from an
   OpenAPI contract, with bearer identity minted by a Firebase Auth emulator running beside it.

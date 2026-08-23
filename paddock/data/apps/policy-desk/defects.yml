@@ -29,20 +29,25 @@
 # What this fixture is for, and what it is expected to expose
 # ----------------------------------------------------------
 # Where seat-booking asks whether QA notices a wrong answer, policy-desk asks whether QA
-# *worked the product*. Four rows carry that question:
+# *worked the product*. Four rows carry that question, and every one of them travels the `run`
+# route — all eleven rows here are `caught_by: run`; the audit arm of the scorer lives in
+# depot-infra's D7 and seat-booking's D9:
 #
-#   P1 is expected to be MISSED by today's QA. The register's "New policy" action renders
-#   with the right role and the right name and does not navigate; the form is still reachable
-#   by its URL. A plan that opens each screen by address rather than by clicking the link the
-#   book documents as its entry proves every obligation on the form and never touches the one
-#   that is broken. Nothing gates that today — the `entry` bullet is consumed by no check —
-#   so a missed P1 printed on the same line as `leverage: deep-links ≥ 1` is the fixture
-#   working, not the fixture failing. That pair of numbers is the whole point of the app.
+#   P1 was written as a canary for deep-linking — a plan that opens the form by its URL would
+#   prove every obligation on it and never touch the broken link. The frozen plan for
+#   `policy-list` reaches the link directly and follows it with the keyboard
+#   (`docs/specs/policy-list/qa_plan.py`), so P1 is an ordinary run row and has been caught
+#   since the first settled round. The deep-links gap it was meant to measure is unmeasured:
+#   nothing gates it (the `entry` bullet is consumed by no check) and no row here probes it.
 #
-#   P9, P10 and P11 are catchable only by the auditor's perception of the evidence: a
-#   refusal rendered in the wrong shape while carrying the right sentence, a route change
-#   that throws into the console while the screen recovers, and a re-read that fails and is
-#   swallowed behind rows that look current. No declared check fails in any of the three.
+#   P9 and P11 each fail an assertion the plan writes — a check that the refusal's exact
+#   sentence is the error's text, which a JSON blob is not, and a `visible` on the register's
+#   error alert, which a swallowed `404` never raises — and both came back `contradicted` in
+#   settle1. P10's uncaught `TypeError` is off the render path, so
+#   no plan-written assertion fails; it is caught by the harness's own browser gate, which
+#   binds an uncaught page error to the scenario's `covers` as a failing assertion. It scored
+#   `missed covered` in settle1 and settle2, before that gate bound its problems to
+#   obligations; from settle3 on a `missed` P10 is a harness regression, not plan debt.
 #
 # The remaining seven (P2–P8) are ordinary contradictions, present so the leverage numbers
 # are read against a detection rate that is not zero.
@@ -57,8 +62,9 @@ defects:
     why: >
       the register's "New policy" action is an anchor whose click handler only prevents the
       default, so the link is present, focusable and correctly named — and goes nowhere. Every
-      screen it leads to is still reachable by its address, which is what makes this the
-      canary: a plan that navigates by URL proves the whole form and never sees this.
+      screen it leads to is still reachable by its address, so a plan that navigated by URL
+      would prove the whole form and never see this; the frozen plan follows the link, so the
+      `contract` check on `new-policy-link` fails and the row is caught.
 
   - id: P2
     story: create-policy
@@ -144,33 +150,38 @@ defects:
     path: app/web/src/FieldError.tsx
     obligation: okf:docs/features/policy/gui/screens/new-policy.md#field-error-message:contract
     expect: contradicted
-    caught_by: audit
+    caught_by: run
     why: >
       the field's refusal renders the service's payload rather than the sentence pulled out of
       it — `{"message":"End date must be after the start date."}` beside the input. The span,
-      its class, its place beside the field and the service's own words are all still there,
-      so a check looking for that text still matches; what a reader gets is a JSON blob.
+      its class, its place beside the field and the service's own words are all still there.
+      A substring match on the sentence would still pass; the frozen plan checks that the
+      sentence *is* the error's text, which a JSON blob is not, and the row came back
+      `contradicted` in settle1.
 
   - id: P10
     story: edit-policy
     path: app/web/src/PolicyDetail.tsx
     obligation: okf:docs/features/policy/gui/screens/policy-detail.md#policy-summary:contract
     expect: contradicted
-    caught_by: audit
+    caught_by: run
     why: >
       every route change into the detail screen schedules a usage-counter call through a global
       the page never installs, so each navigation throws an uncaught `TypeError`. It is thrown
-      off the render path, so the summary loads and reads correctly and no assertion fails —
-      the console slice in the diagnostics is the only place it exists.
+      off the render path, so the summary loads and reads correctly and no plan-written
+      assertion fails — the harness's browser gate is what catches it, recording the uncaught
+      page error as a failing assertion bound to the scenario's `covers`.
 
   - id: P11
     story: policy-list
     path: app/web/src/PolicyList.tsx
     obligation: okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:contract
     expect: contradicted
-    caught_by: audit
+    caught_by: run
     why: >
       the register's periodic re-read goes to an endpoint no route claims, gets a `404` and
       swallows it, leaving the rows from the first load on screen with no alert beside them.
       The table is correct at the moment it is drawn and stale from then on, and the polling
       interval is short enough that a run's network evidence carries several of the failures.
+      The frozen plan asserts the register's error alert is `visible` after the failed
+      re-read, which it never is, and the row came back `contradicted` in settle1.
