@@ -245,12 +245,32 @@ def _from_server(graph: Graph, server: UINode) -> dict[str, Any]:
     return manifest
 
 
+def is_stack_runbook(graph: Graph, node: UINode) -> bool:
+    """Whether this runbook brings a system up, as opposed to merely running a procedure.
+
+    `runbook` is the ops vocabulary's general shape: "preview the plan", "rotate the keys"
+    and "restore last night's dump" are runbooks too, and none of them has a stack to bring
+    up. A runbook is *this repo's stack* only when it says so — a `kind: service` step, or
+    the launch scalars that imply one. Anything else is a procedure, which QA never boots
+    and the doctor never asks to be bootable.
+    """
+    if bullet_value(node.meta, "entry-url") or bullet_value(node.meta, "launch"):
+        return True
+    return any(bullet_value(step.meta, "kind") == "service" for step in steps_of(graph, node))
+
+
+def stack_runbooks(graph: Graph) -> list[UINode]:
+    """Every runbook that claims to bring a system up, in document order."""
+    return [n for n in graph.ui_nodes_of_type("runbook") if is_stack_runbook(graph, n)]
+
+
 def select_runbook(graph: Graph, name: str = "") -> UINode | None:
     """The runbook this repo's QA stack comes from, or None.
 
-    With `name`, the runbook whose slug/id matches it. Without, the sole runbook — a book
-    carrying several and naming none is ambiguous, and guessing would silently bring the
-    wrong stack up.
+    With `name`, the runbook whose slug/id matches it — named explicitly, so a procedure
+    runbook is the caller's business. Without, the sole *stack* runbook: a book carrying
+    several and naming none is ambiguous, and guessing would silently bring the wrong
+    stack up.
     """
     runbooks = graph.ui_nodes_of_type("runbook")
     if not runbooks:
@@ -260,7 +280,8 @@ def select_runbook(graph: Graph, name: str = "") -> UINode | None:
             if name in (node.id, node.path.stem, node.title):
                 return node
         return None
-    return runbooks[0] if len(runbooks) == 1 else None
+    stacks = stack_runbooks(graph)
+    return stacks[0] if len(stacks) == 1 else None
 
 
 def select_server(graph: Graph) -> UINode | None:
@@ -370,8 +391,10 @@ __all__ = [
     "bullet_value",
     "cmd_stack_down",
     "cmd_stack_up",
+    "is_stack_runbook",
     "load_stack",
     "select_runbook",
-    "steps_of",
     "select_server",
+    "stack_runbooks",
+    "steps_of",
 ]

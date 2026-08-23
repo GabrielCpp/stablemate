@@ -26,6 +26,11 @@ ostler qa stack down
 
 Required: `driver:` and a `## Steps` section holding **exactly one** `kind: service` step.
 
+That service step (or an `entry-url:`/`launch:` scalar) is also what makes this runbook *the
+stack*. `runbook` is the general ops type, so a procedure that starts nothing — "rotate the
+keys", "preview the plan" — is a perfectly good runbook that the checks below never touch
+and `ostler qa stack up` never picks.
+
 ```markdown
 ---
 type: runbook
@@ -80,8 +85,8 @@ short-lived token minted while the stack booted is already stale by the lap that
 
 ## What `doctor` says
 
-`runbook-missing` (warn) — nothing declares a stack · `runbook-incomplete` — no `kind: service`
-step, or nothing proving readiness · `runbook-multi-service` · `runbook-bad-kind` ·
+`runbook-missing` (warn) — no runbook declares a stack · `runbook-incomplete` — a stack runbook
+with no `kind: service` step, or nothing proving readiness · `runbook-multi-service` · `runbook-bad-kind` ·
 `runbook-bad-reuse` · `runbook-local-only` — boots a `local-only: true` environment whose
 `services:` point off this machine.
 

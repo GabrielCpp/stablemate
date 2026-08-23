@@ -288,11 +288,30 @@ def test_doctor_rejects_a_kind_and_a_reuse_outside_the_vocabulary(tmp_path: Path
     assert "runbook-bad-kind" in found
 
 
-def test_doctor_reports_a_runbook_that_starts_nothing(tmp_path: Path) -> None:
+def test_doctor_reports_a_runbook_that_declares_a_launch_but_starts_nothing(
+    tmp_path: Path,
+) -> None:
     (tmp_path / ".git").mkdir()
-    make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n\n## Steps\n\n"
+    make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n"
+                 "- entry-url: http://localhost:1\n\n## Steps\n\n"
                  "### build\n\n- kind: prepare\n- run: make\n")
     assert "runbook-incomplete" in codes(tmp_path)
+
+
+def test_doctor_holds_only_stack_runbooks_to_the_stack_shape(tmp_path: Path) -> None:
+    """A runbook that starts nothing is a procedure, not a broken stack.
+
+    `runbook` is the general ops type — "preview the plan", "rotate the keys", "restore last
+    night's dump". None of those has a system to bring up, and demanding a `kind: service`
+    step of them would make the doctor red for writing ops documentation correctly. What the
+    book *does* still get told is that nothing here declares a stack.
+    """
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# Rotate the keys\n\n- driver: cli\n"
+                 "\n## Steps\n\n### rotate\n\n- kind: run\n- run: ./rotate.sh\n")
+    found = codes(tmp_path)
+    assert "runbook-incomplete" not in found
+    assert found.count("runbook-missing") == 1
 
 
 def test_doctor_reports_a_runbook_nothing_proves_the_readiness_of(tmp_path: Path) -> None:

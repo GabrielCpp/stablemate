@@ -987,16 +987,21 @@ def _check_runbook(graph: Graph, f: list[Finding]) -> None:
     Warn rather than error for the missing case: a book that documents a library, a CLI, or a
     surface nobody serves has nothing to bring up and is not broken. The shape checks below are
     errors, because a runbook that exists and cannot be run is a promise the lane will believe.
+
+    Only *stack* runbooks are held to that shape. `runbook` is the general ops type — "preview
+    the plan", "rotate the keys" — and a procedure that starts nothing is not an incomplete
+    stack, it is a different document. `is_stack_runbook` draws that line, and a book carrying
+    only procedures still gets the missing-stack warning.
     """
     runbooks = graph.ui_nodes_of_type("runbook")
-    if not runbooks:
+    stacks = {n.id for n in runbook_mod.stack_runbooks(graph)}
+    if not stacks:
         server = runbook_mod.select_server(graph)
         if server is None:
             f.append(Finding("warn", "runbook-missing",
-                             "no `runbook` node: the book does not say how this system is "
-                             "brought up, so QA has no stack to run against",
+                             "no `runbook` node brings a system up: the book does not say how "
+                             "this system starts, so QA has no stack to run against",
                              suggestion="ostler scaffold runbook qa-stack --service <service>"))
-        return
 
     for node in runbooks:
         rel = _rel_path(graph, node)
@@ -1020,9 +1025,16 @@ def _check_runbook(graph: Graph, f: list[Finding]) -> None:
             if kind == "service":
                 services.append(step)
 
+        if node.id not in stacks:
+            # A procedure runbook: its steps and its environment are still checked above and
+            # below, but nothing here is supposed to start a system.
+            _check_runbook_environment(graph, node, rel, f)
+            continue
+
         if not services:
             f.append(Finding("error", "runbook-incomplete",
-                             f"{rel}: no `kind: service` step — nothing here starts the system",
+                             f"{rel}: declares a launch but has no `kind: service` step — "
+                             f"nothing here starts the system",
                              path=rel, line=node.line, ref=node.id,
                              suggestion="### start\n- kind: service\n- run: <bring-up command>"))
         elif len(services) > 1:

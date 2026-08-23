@@ -195,14 +195,21 @@ runbook still yields a stack, and the walk and the QA lane share one derivation.
 than one server resolves to *no* contract rather than an arbitrary pick — a walk against the
 wrong service is worse than a walk that says it has nowhere to go.
 
+Not every runbook is a stack. `runbook` is the general ops type — "preview the plan",
+"rotate the keys", "restore last night's dump" — and a procedure that starts nothing is a
+different document, not a broken stack. A runbook is *this repo's stack* when it says so:
+a `kind: service` step, or the `entry-url:`/`launch:` scalars that imply one. The shape
+checks in §7 apply to those and to nothing else, `ostler qa stack up` picks among those,
+and a book carrying only procedures still gets `runbook-missing`.
+
 ## 7. What `doctor` reports
 
 | code | severity | when |
 | --- | --- | --- |
-| `runbook-missing` | warn | no runbook and no walkthrough server: the book does not say how this system comes up |
+| `runbook-missing` | warn | no runbook brings a system up and there is no walkthrough server: the book does not say how this system comes up |
 | `runbook-bad-kind` | error | a `kind:` outside §4.1 |
 | `runbook-bad-reuse` | error | a `reuse:` outside `if-fresh`/`always`/`never` |
-| `runbook-incomplete` | error | no `kind: service` step, or nothing proving readiness (neither `entry-url:` nor a service `health:`) |
+| `runbook-incomplete` | error | a stack runbook with no `kind: service` step, or nothing proving readiness (neither `entry-url:` nor a service `health:`) |
 | `runbook-multi-service` | error | more than one `kind: service` step — the reader takes the first, so which one launched is otherwise luck |
 | `runbook-local-only` | error | boots a `local-only: true` environment whose `services:` point off this machine |
 
