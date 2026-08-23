@@ -455,6 +455,24 @@ def _alive(directory: Path, handle: dict) -> bool:
     return _age(heartbeat) < HEARTBEAT_STALE_S
 
 
+def arm(job_dir: Path | str) -> Path:
+    """Clear the wake file, so the supervisor's next event is a fresh edge.
+
+    A watcher that blocks on `wake`'s *existence* has to remove it before it waits, or
+    the wakeup it already consumed answers the next wait immediately. Arming first and
+    then reading authoritative state (`poll`) loses nothing either way round: an event
+    that landed before the delete is visible in `poll`, and an event after it re-creates
+    the file.
+
+    Returns the path, so a caller can hand it straight to whatever it waits with.
+    """
+    directory = _paths(job_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    wake = directory / WAKE_NAME
+    wake.unlink(missing_ok=True)
+    return wake
+
+
 def poll(job_dir: Path | str) -> JobStatus:
     """Where the job is now — from the filesystem and the clock, with no model call."""
     directory = _paths(job_dir)

@@ -236,6 +236,37 @@ def test_a_job_whose_supervisor_vanished_collects_as_lost(tmp_path: Path):
     assert job.collect(directory).kill_reason == "lost"
 
 
+def test_arming_clears_a_consumed_wakeup_and_loses_no_state(tmp_path: Path):
+    """The edge-vs-level bug this exists to prevent.
+
+    A watcher blocks on `wake` *existing*, so the wakeup it already acted on answers its
+    next wait instantly and the poll loop spins. Arming deletes the file before the wait,
+    and it is safe to do first because `poll` reads the job's real state from `runner.json`
+    rather than from the flag: the wakeup can be thrown away, the fact cannot.
+    """
+    directory = tmp_path / "arm"
+    job.submit({**FAST, "command": _python("pass")}, job_dir=directory, logger=LOG)
+    _finish(directory)
+    wake = directory / job.WAKE_NAME
+    assert wake.exists(), "a finished job wakes whoever was waiting on it"
+
+    armed = job.arm(directory)
+
+    assert armed == wake
+    assert not armed.exists()
+    # The state survived the flag: a watcher that armed and then looked still sees the
+    # job it would otherwise have waited forever for.
+    assert job.poll(directory).state == "finished"
+
+
+def test_arming_a_job_directory_that_does_not_exist_yet_is_not_an_error(tmp_path: Path):
+    """A watcher arms before it looks, which on the first lap can be before submit."""
+    armed = job.arm(tmp_path / "unborn")
+
+    assert armed.name == job.WAKE_NAME
+    assert not armed.exists()
+
+
 def _await_running(job_dir: Path, timeout: float = 20.0) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:

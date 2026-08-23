@@ -127,6 +127,20 @@ status = job.poll(job_dir)   # no model call, no subprocess of its own beyond `p
 here). `result_ready` says whether the command's own file exists yet;
 `overrun_multiple` is the largest threshold crossed so far.
 
+A watcher that parks on the `wake` file has to **arm before it waits**:
+
+```python
+wake = job.arm(job_dir)      # drop the wakeup already consumed
+status = job.poll(job_dir)   # …then read authoritative state
+if status.result_ready or not status.alive or status.overrun_multiple > seen:
+    ...                      # act now; do not park
+else:
+    ...                      # park on `wake`
+```
+
+Nothing is lost either way round: an event that landed before the delete is visible in
+`poll`, and an event after it re-creates the file.
+
 **Liveness is two facts, not one.** `kill -0` on the pgid answers "is *some* process group
 by that number alive", which after a reboot and pid reuse is a different question from the
 one being asked. So a job counts as alive only when the pgid answers **and** the heartbeat
