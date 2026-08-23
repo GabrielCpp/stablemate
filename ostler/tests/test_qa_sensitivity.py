@@ -43,6 +43,8 @@ def _trial(text: str) -> sensitivity.Trial:
         'emitted(event="policy.created", count=1)',
         'omits(subject="detail", matches="eyJ[A-Za-z0-9_-]{6,}")',
         'conflict_on_stale(subject="the policy")',
+        'exit_status(code=0)',
+        'exit_status(code=2)',
     ],
 )
 def test_every_check_in_the_vocabulary_has_a_witness_and_a_defect(call: str) -> None:

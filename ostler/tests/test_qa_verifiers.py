@@ -7,6 +7,7 @@ run around it would prove the driver works, not that a no-op is caught.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -311,3 +312,17 @@ def test_visible_still_fails_on_text_neither_reading_carries() -> None:
     element = _StyledLocator(rendered="A1\nFREE", dom="A1free")
     ok, _actual, _expected = harness.VERIFIERS["visible"](element, {"text": "booked"})
     assert ok is False
+
+
+def test_exit_status_reads_exit_code_and_refuses_other_subjects() -> None:
+    """The check observes the one thing a command's output never carries — how the process
+    ended — and a plan that hands it a response or a document has mis-wired the claim."""
+    verify = harness.VERIFIERS["exit_status"]
+    assert verify(SimpleNamespace(exit_code=0), {"code": 0}) == (True, 0, 0)
+    ok, actual, expected = verify(SimpleNamespace(exit_code=2), {"code": 0})
+    assert (ok, actual, expected) == (False, 2, 0)
+    assert verify(harness.ToolResult(command=["tally"], stdout="", stderr="", exit_code=3), {"code": 3})[0]
+    with pytest.raises(TypeError, match="exit_code"):
+        verify(_Response(200, {}, "http://x/"), {"code": 0})
+    with pytest.raises(TypeError, match="exit_code"):
+        verify({"exit_code": 0}, {"code": 0})

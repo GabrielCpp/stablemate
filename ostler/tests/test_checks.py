@@ -178,6 +178,17 @@ def test_omits_is_the_vocabularys_one_negative_observation() -> None:
     assert "credential it rejected" in checks.CHECK_BY_NAME["omits"].excludes
 
 
+def test_exit_status_binds_the_code_a_command_ends_with() -> None:
+    """A tool's output is not its verdict: `created` and `json_path` can read what a process
+    printed and never notice it printed it on the way to a non-zero exit."""
+    call = checks.parse_check("exit_status(code=0)")
+    assert isinstance(call, checks.CheckCall)
+    assert call.args == {"code": 0}
+    assert call.text() == "exit_status(code=0)"
+    assert "only read its output" in checks.CHECK_BY_NAME["exit_status"].excludes
+    assert isinstance(checks.parse_check("exit_status()"), str)
+
+
 @pytest.mark.parametrize(
     ("text", "value"),
     [

@@ -25,6 +25,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from ostler import checks, model, registry
@@ -411,6 +412,11 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
                 ("the subject carries what it may not", _set_path({}, subject, f"… {leak} …")),
             ], ""
         return clean, [("the observation carries what it may not", f"… {leak} …")], ""
+    if name == "exit_status":
+        code = _int(args["code"])
+        return SimpleNamespace(exit_code=code), [
+            ("the process exited differently", SimpleNamespace(exit_code=code + 1 if code == 0 else 0)),
+        ], ""
     if name == "conflict_on_stale":
         url = "http://witness/subject"
         return _Response(409, {}, url), [("the stale write was accepted", _Response(200, {}, url))], ""

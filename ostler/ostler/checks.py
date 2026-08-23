@@ -195,6 +195,13 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "no positive form",
     ),
     CheckSpec(
+        name="exit_status",
+        params=(CheckParam("code", "int", required=True),),
+        excludes="a command that failed, or succeeded for the wrong reason, and the plan only "
+                 "read its output — a tool result asserted by what it printed passes identically "
+                 "when the process printed it on the way to a non-zero exit",
+    ),
+    CheckSpec(
         name="conflict_on_stale",
         params=(
             CheckParam("subject", "str", required=True),

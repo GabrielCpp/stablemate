@@ -1077,6 +1077,23 @@ def _rendered(document: Any) -> str:
         return str(document)
 
 
+def _verify_exit_status(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    """The process ended the way the book says it does.
+
+    Observes a `ToolResult` or a `MaestroResult` — anything carrying an integer `exit_code`.
+    A plan that only read the output of a command cannot tell a success from a failure that
+    printed on the way out; this reads the one thing the output does not carry. Handing it
+    a response or a document is a plan defect, not a failure, so it raises.
+    """
+    code = getattr(observed, "exit_code", None)
+    if isinstance(code, bool) or not isinstance(code, int):
+        raise TypeError(
+            "exit_status observes a tool or maestro result (something with an exit_code), "
+            f"got {type(observed).__name__}"
+        )
+    return code == args["code"], code, args["code"]
+
+
 def _verify_conflict_on_stale(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     status, _ = _observed_status(observed)
     # Any refusal counts, 409 is what the contract usually says. What must not pass is a 2xx:
@@ -1106,6 +1123,7 @@ VERIFIERS: dict[str, Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]] 
     "persists": _verify_persists,
     "emitted": _verify_emitted,
     "omits": _verify_omits,
+    "exit_status": _verify_exit_status,
     "conflict_on_stale": _verify_conflict_on_stale,
 }
 
