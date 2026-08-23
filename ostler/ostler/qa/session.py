@@ -424,19 +424,37 @@ class QaSession:
             )
         return pid
 
+    def stop_daemon(self, name: str, *, reason: str | None = None) -> int | None:
+        """Kill the running daemon called *name*, drop it from the session, write
+        `daemon_stop`.
+
+        *reason* is recorded when given — `restart` is the one the runner writes before
+        it starts the same declaration again on a scenario's behalf, so a reader of the
+        ledger can tell a restart seam from the end-of-run teardown. Returns the exit code
+        `_kill_pid` observed.
+        """
+        daemons = self._data.get("daemons", [])
+        index = next((i for i, d in enumerate(daemons) if d["name"] == name), None)
+        if index is None:
+            raise ValueError(f"no running daemon named {name!r}")
+        entry = daemons.pop(index)
+        exit_code = _kill_pid(entry["pid"])
+        self._save()
+        record: dict[str, Any] = {
+            "kind": "daemon_stop",
+            "name": name,
+            "pid": entry["pid"],
+            "exit_code": exit_code,
+        }
+        if reason:
+            record["reason"] = reason
+        self._append(record)
+        return exit_code
+
     def stop_all_daemons(self) -> None:
         """Kill all running daemons and write daemon_stop records."""
-        for d in self._data.get("daemons", []):
-            pid, name = d["pid"], d["name"]
-            exit_code = _kill_pid(pid)
-            self._append(
-                {
-                    "kind": "daemon_stop",
-                    "name": name,
-                    "pid": pid,
-                    "exit_code": exit_code,
-                }
-            )
+        for d in list(self._data.get("daemons", [])):
+            self.stop_daemon(d["name"])
         self._data["daemons"] = []
         self._save()
 

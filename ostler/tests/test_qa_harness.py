@@ -146,6 +146,17 @@ def test_a_secret_declares_exactly_one_source() -> None:
         harness.secret("NEITHER")
 
 
+def test_describe_carries_the_daemons_a_scenario_restarts(tmp_path: Path) -> None:
+    """`restart=[...]` is a declaration the runner acts on before the body runs, so it
+    rides the describe record like `covers` — validated against `background` before start."""
+    source = PLAN.replace(
+        'checkpoints=["the banner shows"]', 'checkpoints=["the banner shows"], restart=["stack"]'
+    )
+    described = _describe(_write(tmp_path, source))
+    assert described["scenarios"][1]["restart"] == ["stack"]
+    assert "restart" not in described["scenarios"][0]
+
+
 def test_describe_carries_covers_and_the_docstring_objective(tmp_path: Path) -> None:
     described = _describe(_write(tmp_path))
     first = described["scenarios"][0]

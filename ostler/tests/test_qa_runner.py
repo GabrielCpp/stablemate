@@ -1058,6 +1058,84 @@ def test_reset_paths_clear_stale_daemon_state_before_it_starts(tmp_path: Path) -
     assert stale.read_text(encoding="utf-8") == ""
 
 
+#: `_STATEFUL`, except that every start appends the process id to the state file — so the
+#: file is the daemon's own account of how many times it came up, and with which PIDs.
+_RESTARTABLE = _STATEFUL.replace("import sys, threading", "import os, sys, threading").replace(
+    "open(state, 'a').close()", "open(state, 'a').write(str(os.getpid()) + chr(10))"
+)
+
+
+def _restart_plan(spec: Path, port: int, restart: str) -> Path:
+    """Two scenarios against one daemon; the second declares *restart* between them."""
+    source = (
+        _with_background(
+            'background("api-server",\n'
+            f"           {_argv(_RESTARTABLE, '{{qa_dir}}/../pids.txt', port)},\n"
+            f'           ready_url="http://127.0.0.1:{port}/health", timeout=10)'
+        )
+        + "\n\n"
+        + f'@scenario(target=api, mechanism="live", covers=["{{obligation}}"], {restart})\n'
+        + "def api_survives_a_restart(qa: Qa) -> None:\n"
+        + '    """The value is still there after the process came back."""\n'
+        + '    qa.check("still ok", True, actual="ok", expected="ok", covers=["{obligation}"])\n'
+    ).replace("{obligation}", OBLIGATION)
+    module = spec / "qa_plan.py"
+    module.write_text(source, encoding="utf-8")
+    return module
+
+
+def test_a_scenario_can_restart_a_daemon_before_it_runs(tmp_path: Path) -> None:
+    """The persistence seam: a write in one scenario and a read in the next prove nothing
+    about survival unless the process went away in between. `restart=["api-server"]` has
+    the runner — which holds the PID and the readiness probe — stop and start the
+    declaration again before the scenario, and say so in the ledger."""
+    spec = _spec(tmp_path)
+    port = _free_port()
+    module = _restart_plan(spec, port, 'restart=["api-server"]')
+
+    outcome = cmd_run(module, root=tmp_path)
+
+    assert outcome.status == "passed", outcome.message
+    pids = (spec / "pids.txt").read_text(encoding="utf-8").split()
+    assert len(pids) == 2 and pids[0] != pids[1], pids
+    records = _records(spec)
+    starts = [r["pid"] for r in records if r.get("kind") == "daemon_start"]
+    assert [str(p) for p in starts] == pids
+    stops = [r for r in records if r.get("kind") == "daemon_stop"]
+    assert [s.get("reason") for s in stops] == ["restart", None]
+    assert stops[0]["pid"] == starts[0]
+    restart = next(r for r in records if r.get("kind") == "daemon_restart")
+    assert restart["name"] == "api-server"
+    assert restart["scenario"] == "api-survives-a-restart"
+    assert restart["pid"] == starts[1]
+    kinds = [r.get("kind") for r in records]
+    assert kinds.index("daemon_restart") < kinds.index("scenario_start", kinds.index("scenario_stop"))
+
+
+def test_restart_names_a_declared_daemon(tmp_path: Path) -> None:
+    """A name the runner could not find would surface as an exception on the scenario's
+    turn, after everything before it had run — so validate refuses it, and refuses a
+    restart in a plan with no daemon at all."""
+    spec = _spec(tmp_path)
+    module = _restart_plan(spec, _free_port(), 'restart=["db"]')
+    document, load_problems = load_plan(module, spec, tmp_path)
+    assert not load_problems and document is not None
+    problems = validate_v2(document)
+    assert any("restarts unknown daemon 'db'" in item for item in problems), problems
+
+    module = _plan(
+        spec,
+        PLAN.replace(
+            'covers=["{obligation}"])\ndef api_contract',
+            'covers=["{obligation}"], restart=["api-server"])\ndef api_contract',
+        ),
+    )
+    document, load_problems = load_plan(module, spec, tmp_path)
+    assert not load_problems and document is not None
+    problems = validate_v2(document)
+    assert any("declares no background daemon" in item for item in problems), problems
+
+
 def _directory_artifact_plan(body: str) -> str:
     return PLAN.replace(
         '    qa.check("the value is ok", True, actual="ok", expected="ok", covers=["{obligation}"])',

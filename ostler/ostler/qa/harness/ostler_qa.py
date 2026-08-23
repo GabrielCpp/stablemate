@@ -194,6 +194,7 @@ class ScenarioDecl:
     preconditions: list[str] = field(default_factory=list)
     checkpoints: list[str] = field(default_factory=list)
     forbid: list[str] = field(default_factory=list)
+    restart: list[str] = field(default_factory=list)
     timeout: float | None = None
     line: int = 0
     func: Callable[..., None] | None = None
@@ -208,7 +209,7 @@ class ScenarioDecl:
             "objective": self.objective,
             "line": self.line,
         }
-        for key in ("preconditions", "checkpoints", "forbid"):
+        for key in ("preconditions", "checkpoints", "forbid", "restart"):
             value = getattr(self, key)
             if value:
                 data[key] = list(value)
@@ -385,6 +386,7 @@ def scenario(
     preconditions: Sequence[str] = (),
     checkpoints: Sequence[str] = (),
     forbid: Sequence[str] = (),
+    restart: Sequence[str] = (),
     timeout: float | None = None,
 ) -> Callable[[FunctionType], FunctionType]:
     """Register a scenario function.
@@ -393,6 +395,15 @@ def scenario(
     this scenario proves; `ostler qa validate` set-diffs it against the story's obligation
     packet and fails closed on anything uncovered. It is the one declaration that cannot
     move into the body — validation happens before anything runs.
+
+    `restart` names declared `background` daemons the runner stops and starts again
+    immediately before this scenario runs — the seam a persistence obligation needs. A
+    write in one scenario and a read in the next, with a restart declared between them,
+    observes that the value survived the process; without it every read is
+    request-scoped and a product that keeps its state in memory passes. The runner owns
+    the restart (it holds the PID and the readiness probe), so the scenario body stays a
+    sequence of requests and a `reset_paths` the daemon declares is *not* re-applied —
+    a restart keeps the state, which is the point.
     """
     if mechanism not in MECHANISMS:
         raise ValueError(f"mechanism must be one of {MECHANISMS}, got {mechanism!r}")
@@ -413,6 +424,7 @@ def scenario(
                 preconditions=list(preconditions),
                 checkpoints=list(checkpoints),
                 forbid=list(forbid),
+                restart=list(restart),
                 timeout=timeout,
                 line=_definition_line(func),
                 func=func,

@@ -472,6 +472,8 @@ def _validate_python_scenarios(
                     "leaves the obligation credited to whatever unrelated check still passes"
                 )
             asserted_coverage.update(claimed_ids & set(covers))
+        if "restart" in scenario:
+            problems.extend(_validate_restart(scenario_id, scenario["restart"], document))
         # `describe` recovers the locators from the parsed body, so the book check reads the
         # same structure it read off a YAML action list — see `extract_locators`.
         driver = targets[scenario["target"]].get("driver")
@@ -545,6 +547,44 @@ def _validate_vets(scenario_id: str, vetted: list[Any], documented: set[str]) ->
                 f"scenario '{scenario_id}' vets '{screen}', which this story's OKF packet "
                 f"does not name — vetted screens come from {sorted(documented)}"
             )
+    return problems
+
+
+def _validate_restart(scenario_id: str, restart: Any, document: PlanDocument) -> list[str]:
+    """`@scenario(restart=[...])` names daemons the plan declared, or it names nothing.
+
+    The runner restarts by name, from the `background` declaration it started the daemon
+    from — so a name with no declaration behind it would surface as a runner exception on
+    the scenario's turn, after every scenario before it had already run. The refusal
+    belongs here, where `validate` reads both halves of the plan before anything starts.
+    """
+    if not isinstance(restart, list) or not all(
+        isinstance(name, str) and name.strip() for name in restart
+    ):
+        return [f"scenario '{scenario_id}'.restart must be a list of background daemon names"]
+    background = document.data.get("background")
+    declared = (
+        [str(daemon.get("name")) for daemon in background if is_mapping(daemon)]
+        if isinstance(background, list)
+        else []
+    )
+    if restart and not declared:
+        return [
+            f"scenario '{scenario_id}' restarts {restart} but the plan declares no "
+            "background daemon — declare the process with background(...) so the runner "
+            "owns the PID it is asked to restart"
+        ]
+    problems: list[str] = []
+    seen: set[str] = set()
+    for name in restart:
+        if name not in declared:
+            problems.append(
+                f"scenario '{scenario_id}' restarts unknown daemon '{name}' — declared: "
+                f"{sorted(declared)}"
+            )
+        elif name in seen:
+            problems.append(f"scenario '{scenario_id}' restarts '{name}' twice")
+        seen.add(name)
     return problems
 
 

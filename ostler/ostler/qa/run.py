@@ -250,8 +250,14 @@ def cmd_report(spec_dir: Path, *, label: str | None = None, ledger: bool = False
                 f"{rec.get('label', '')}"
             )
         elif kind == "daemon_stop":
+            reason = f"  ({rec['reason']})" if rec.get("reason") else ""
             lines.append(
-                f"[{ts}] DAEMON STOP    {rec.get('name', '')}  pid={rec.get('pid', '')}"
+                f"[{ts}] DAEMON STOP    {rec.get('name', '')}  pid={rec.get('pid', '')}{reason}"
+            )
+        elif kind == "daemon_restart":
+            lines.append(
+                f"[{ts}] DAEMON RESTART {rec.get('name', '')}  pid={rec.get('pid', '')}  "
+                f"before={rec.get('scenario', '')}"
             )
         elif kind == "session_stop":
             p, f = rec.get("pass_count", 0), rec.get("fail_count", 0)

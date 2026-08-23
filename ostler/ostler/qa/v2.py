@@ -127,6 +127,8 @@ def run_plan(
         for scenario in selected:
             scenario_id = str(scenario["id"])
             target_id = str(scenario["target"])
+            for name in scenario.get("restart", []):
+                _restart_daemon(session, plan, str(name), variables, root, scenario_id)
             session.append(
                 {
                     "kind": "scenario_start",
@@ -395,6 +397,30 @@ def _start_daemon(
         ready_check=daemon.get("ready_check"),
         timeout=float(daemon.get("timeout", 30)),
         cwd=_daemon_cwd(session, daemon, variables, root),
+    )
+
+
+def _restart_daemon(
+    session: QaSession,
+    plan: Mapping[str, Any],
+    name: str,
+    variables: dict[str, str],
+    root: Path,
+    scenario_id: str,
+) -> None:
+    """Stop the named daemon and start its declaration again, on a scenario's behalf.
+
+    This is the restart seam a persistence obligation needs: the process goes away and
+    comes back between the write and the read, and `ready_check` is polled again so the
+    scenario inherits the same guarantee scenario 1 did. The declaration's `reset_paths`
+    are deliberately *not* re-applied — they clear the last *run's* state before the first
+    start; a restart inside the run keeps the state, which is what it is there to observe.
+    """
+    declaration = next(d for d in plan.get("background", []) if str(d["name"]) == name)
+    session.stop_daemon(name, reason="restart")
+    pid = _start_daemon(session, declaration, variables, root)
+    session.append(
+        {"kind": "daemon_restart", "name": name, "pid": pid, "scenario": scenario_id}
     )
 
 
