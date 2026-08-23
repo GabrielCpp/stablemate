@@ -178,6 +178,28 @@ def test_omits_is_the_vocabularys_one_negative_observation() -> None:
     assert "credential it rejected" in checks.CHECK_BY_NAME["omits"].excludes
 
 
+@pytest.mark.parametrize(
+    ("text", "value"),
+    [
+        ('json_path(path="claim.amount_cents", equals=8250)', 8250),
+        ('json_path(path="claim.paid", equals=true)', True),
+        ('json_path(path="claim.ratio", equals=0.5)', 0.5),
+        ('json_path(path="claim.id", equals="abc")', "abc"),
+    ],
+)
+def test_json_path_equals_is_a_json_scalar(text: str, value: object) -> None:
+    """The declared value keeps its JSON type through parse, bind and the canonical
+    rendering, so a book's `equals=8250` reaches the harness as a number and reads back as
+    the same bullet."""
+    declared = checks.parse_check(text)
+    assert isinstance(declared, checks.CheckCall), declared
+    assert declared.args["equals"] == value
+    assert type(declared.args["equals"]) is type(value)
+    assert checks.parse_check(declared.text()) == declared
+    bound = checks.bind("json_path", {"path": "claim.x", "equals": value})
+    assert isinstance(bound, checks.CheckCall)
+
+
 def test_a_path_argument_is_the_same_call_with_or_without_the_root_token() -> None:
     """`$` is not a key — every resolver in the harness drops it before walking. Identity
     between a declared check and an invoked one is textual, so leaving the sigil in would make

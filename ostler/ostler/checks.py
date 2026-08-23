@@ -32,14 +32,17 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-CheckValue = str | int | bool | list[str]
+CheckValue = str | int | float | bool | list[str]
 
-#: What an argument may hold. Deliberately four scalar-ish shapes and no nesting — an
+#: What an argument may hold. Deliberately a few scalar-ish shapes and no nesting — an
 #: argument complex enough to need a structure is a check that should have been two.
+#: `scalar` is any JSON scalar: a `json_path(equals=)` compares against what the document
+#: holds, and a document holds numbers and booleans as well as strings.
 _TYPES: dict[str, tuple[type, ...]] = {
     "str": (str,),
     "int": (int,),
     "bool": (bool,),
+    "scalar": (str, int, float, bool),
     "str[]": (list,),
 }
 
@@ -102,7 +105,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         name="json_path",
         params=(
             CheckParam("path", "str", required=True, path=True),
-            CheckParam("equals", "str"),
+            CheckParam("equals", "scalar"),
             CheckParam("matches", "str"),
             CheckParam("absent", "bool"),
         ),
@@ -246,6 +249,9 @@ def literal(value: CheckValue) -> str:
         return "[" + ", ".join(literal(item) for item in value) + "]"
     if isinstance(value, int):
         return str(value)
+    if isinstance(value, float):
+        # `repr` is the shortest round-tripping spelling, so `equals=0.5` reads back as 0.5.
+        return repr(value)
     return '"' + value.replace('"', '\\"') + '"'
 
 
@@ -377,8 +383,8 @@ def bind(name: str, args: Mapping[str, Any]) -> CheckCall | str:
 
 def _typed(value: CheckValue, declared: str) -> bool:
     # `bool` before `int`: a bool *is* an int in Python, so `count(equals=true)` would type
-    # as an integer and reach the harness as 1.
-    if declared != "bool" and isinstance(value, bool):
+    # as an integer and reach the harness as 1. A `scalar` keeps its bool as a bool.
+    if declared not in ("bool", "scalar") and isinstance(value, bool):
         return False
     if not isinstance(value, _TYPES[declared]):
         return False

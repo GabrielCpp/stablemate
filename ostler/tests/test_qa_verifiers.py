@@ -145,6 +145,22 @@ def test_count_leaves_an_already_extracted_collection_alone() -> None:
     assert actual == 3
 
 
+def test_json_path_equals_compares_a_json_scalar_by_type() -> None:
+    """`equals=8250` is a number, not the string "8250": a product that serialises an
+    amount as text is a different product, and `true` is not `1`."""
+    verify = harness.VERIFIERS["json_path"]
+    assert verify({"amount": 8250}, {"path": "amount", "equals": 8250})[0] is True
+    assert verify({"amount": 8250}, {"path": "amount", "equals": 8250.0})[0] is True
+    ok, actual, expected = verify({"amount": "8250"}, {"path": "amount", "equals": 8250})
+    assert ok is False and actual == "8250" and expected == 8250
+    assert verify({"amount": 8250}, {"path": "amount", "equals": "8250"})[0] is False
+    assert verify({"paid": True}, {"path": "paid", "equals": True})[0] is True
+    assert verify({"paid": 1}, {"path": "paid", "equals": True})[0] is False
+    assert verify({"paid": True}, {"path": "paid", "equals": 1})[0] is False
+    assert verify({"tags": ["a"]}, {"path": "tags", "equals": "a"})[0] is False
+    assert verify({"id": "abc"}, {"path": "id", "equals": "abc"})[0] is True
+
+
 def test_json_path_without_a_comparison_is_red_not_green() -> None:
     """`ostler.checks` refuses this call where it is declared. Should one reach the harness
     anyway, an assertion that cannot fail must not report a pass."""

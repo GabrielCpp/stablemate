@@ -22,6 +22,8 @@ def _trial(text: str) -> sensitivity.Trial:
         'http_status(code=200, path="/policies")',
         'http_status(code=401, title="Unauthorized")',
         'json_path(path="claim.amount_cents", equals="125000")',
+        'json_path(path="claim.amount_cents", equals=125000)',
+        'json_path(path="claim.paid", equals=true)',
         'json_path(path="policy.status", matches="Draft|Active")',
         'json_path(path="errors.premium", absent=false)',
         'json_path(path="detail.token", absent=true)',

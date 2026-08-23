@@ -725,6 +725,23 @@ def _verify_http_status(observed: Any, args: Mapping[str, Any]) -> tuple[bool, A
     return passed, actual, expected
 
 
+def _scalar_equal(observed: Any, expected: Any) -> bool:
+    """`json_path(equals=)` against what the document holds, typed the way JSON types it.
+
+    A bool matches only a bool (`true` is not `1`); an int and a float compare numerically
+    (`8250` is `8250.0`); a string matches the same string exactly — `"8250"` is not `8250`,
+    because a product that serialises a number as a string is a different product. A list
+    or an object at the path never equals a scalar, and is reported as what was found.
+    """
+    if isinstance(expected, bool) or isinstance(observed, bool):
+        return isinstance(observed, bool) and isinstance(expected, bool) and observed is expected
+    if isinstance(expected, (int, float)):
+        return isinstance(observed, (int, float)) and observed == expected
+    if isinstance(expected, str):
+        return isinstance(observed, str) and observed == expected
+    return False
+
+
 def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     resolved, value = _resolve_path(observed, args["path"])
     if "absent" in args:
@@ -736,7 +753,7 @@ def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any
     if not resolved:
         return False, {"present": False}, {"path": args["path"]}
     if "equals" in args:
-        return str(value) == args["equals"], value, args["equals"]
+        return _scalar_equal(value, args["equals"]), value, args["equals"]
     if "matches" in args:
         return re.search(args["matches"], str(value)) is not None, value, f"~ {args['matches']}"
     # Unreachable through `ostler.checks.bind`, which refuses a `json_path` with no
