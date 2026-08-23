@@ -372,12 +372,11 @@ def test_an_already_evaluated_condition_is_refused_and_names_a_repair_lint_accep
     assert records[-1]["status"] == "errored"
     error = records[-1]["error"]
     assert "bool" in error
-    # The repair it names has to be one plan lint will accept. `lambda` is the obvious
-    # spelling and the allowlist refuses it, so a message that recommended one would send
-    # the author from a `TypeError` to a lint failure.
+    # The repair it names has to be one plan lint will accept, and the obvious spelling —
+    # wrap the expression in a lambda — is admitted, so it leads.
+    assert "lambda" in error
     assert "bound method" in error
     assert "named nested function" in error
-    assert "Not a lambda" in error
 
 
 def test_a_defect_in_the_condition_surfaces_instead_of_burning_the_deadline(

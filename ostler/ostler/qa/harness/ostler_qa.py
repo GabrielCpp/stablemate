@@ -1261,18 +1261,15 @@ class Qa:
 
         So hand over the sampler, not its result::
 
-            qa.eventually("badge shown", badge.is_visible, covers=["ac:2"])
+            qa.eventually("badge shown", lambda: page.text("#badge"), covers=["ac:2"])
 
-        A bound method, or — when the claim is an expression rather than one read — a named
-        nested function::
+        A lambda, a bound method (`badge.is_visible`), or — when the claim is several
+        statements — a named nested function::
 
             def badge_is_up() -> bool:
                 return badge.count() > 0
 
             qa.eventually("badge shown", badge_is_up, covers=["ac:2"])
-
-        Not a lambda, even though a lambda is the obvious spelling: plan lint's allowlist
-        does not admit `ast.Lambda`, so a plan written that way is refused before it runs.
 
         The condition is evaluated once before any sleep, so an already-true claim costs
         nothing and records `settled_ms: 0`. `actual` may be a callable too, and is then
@@ -1284,9 +1281,9 @@ class Qa:
                 f"qa.eventually({label!r}, …) needs a callable to re-sample, and was handed "
                 f"an already-evaluated {type(condition).__name__}. Python collapsed the read "
                 "before this harness saw it, so there is nothing left to retry — hand over "
-                "the sampler instead: a bound method (`badge.is_visible`), or a named nested "
-                "function returning the expression you just wrote. Not a lambda — plan lint "
-                "refuses those."
+                "the sampler instead: wrap the expression you just wrote in a lambda "
+                "(`lambda: page.text(\"#badge\")`), or pass a bound method "
+                "(`badge.is_visible`) or a named nested function."
             )
         passed, polls, settled_ms = self._poll(condition, timeout, interval)
         return self._record(

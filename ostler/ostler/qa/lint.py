@@ -51,10 +51,12 @@ ALLOWED_BUILTIN_CALLS = frozenset({
     "sum", "abs", "round", "isinstance", "print", "format",
 })
 
-#: The full set of AST node types a `qa_plan.py` may contain. Anything else — `ast.Lambda`,
-#: `ast.Global`, `ast.Nonlocal`, and every node type this set does not name — is rejected by
+#: The full set of AST node types a `qa_plan.py` may contain. Anything else — `ast.Global`,
+#: `ast.Nonlocal`, `ast.Yield`, and every node type this set does not name — is rejected by
 #: simply not appearing here, the same "allow, don't blocklist" posture as the import and
-#: builtin-call checks above.
+#: builtin-call checks above. `ast.Lambda` is admitted: a lambda is an expression with no
+#: statement body, so `generic_visit` lints whatever it wraps exactly as it would inline, and
+#: it is the spelling `qa.eventually` wants for its sampler.
 ALLOWED_NODE_TYPES = frozenset({
     ast.Module,
     ast.Import, ast.ImportFrom, ast.alias,
@@ -75,14 +77,15 @@ ALLOWED_NODE_TYPES = frozenset({
     ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.Is, ast.IsNot,
     ast.In, ast.NotIn,
     ast.IfExp,
+    ast.Lambda,
 })
 
 
 class PlanLintVisitor(ast.NodeVisitor):
     """Walks a `qa_plan.py`'s AST and collects every construct outside the allowlist.
 
-    Every `visit_*` here rejects; there is deliberately no `visit_Lambda` or
-    `visit_Global` that raises a specific message, because the node-type allowlist already
+    Every `visit_*` here rejects; there is deliberately no `visit_Global` or
+    `visit_Yield` that raises a specific message, because the node-type allowlist already
     rejects them through `generic_visit` — special-casing a banned node type is exactly the
     blocklist habit this module exists to avoid.
     """
@@ -162,8 +165,8 @@ class PlanLintVisitor(ast.NodeVisitor):
                 f"Settle, read, then return evidence: `qa.eventually(\"...\", "
                 f"locator.is_visible, covers=[...])` polls the same condition and records "
                 f"the same timeout as a failed check. `qa.eventually` needs a callable to "
-                f"re-sample and lambdas are not allowed here, so hand it a bound method or "
-                f"a named nested function"
+                f"re-sample — a lambda (`lambda: page.text(\"#badge\")`), a bound method "
+                f"or a named nested function"
             )
             return
         self.generic_visit(node)
@@ -251,9 +254,8 @@ _FILESYSTEM_METHODS = frozenset({
 #: covers=[...])` polls the same condition and records a pass or a fail, so the same timeout
 #: that used to end the trial now names itself in the evidence map. `covers=` is optional, so
 #: even a pure readiness gate is expressible — and strictly more legible than a traceback.
-#: `ast.Lambda` is not in `ALLOWED_NODE_TYPES`, so the callable is a bound method
-#: (`locator.is_visible`) or a named nested function — `eventually`'s own docstring spells the
-#: idiom with a lambda, which this pass rejects.
+#: The callable is a lambda, a bound method (`locator.is_visible`) or a named nested function
+#: — `ast.Lambda` is in `ALLOWED_NODE_TYPES`, and its body is linted like any expression.
 #:
 #: Two deliberate widenings, both for the same reason `_FILESYSTEM_METHODS` does not examine
 #: its receiver. **Position**: any settle statement is flagged, not only a terminal one. The

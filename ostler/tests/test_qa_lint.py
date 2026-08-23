@@ -58,7 +58,6 @@ BANNED_CASES = {
     "dunder_import": '__import__("os")\n',
     "class_escape": "().__class__\n",
     "getattr_dunder": 'getattr(str, "__globals__")\n',
-    "lambda_expr": "f = lambda: 1\n",
     "import_pathlib": "import pathlib\n",
     "from_pathlib": "from pathlib import Path\n",
     "read_text_method": 'qa.root.read_text(encoding="utf-8")\n',
@@ -93,9 +92,11 @@ def test_dunder_attribute_names_the_attribute() -> None:
     assert ".__class__" in problems[0]
 
 
-def test_lambda_is_rejected_by_node_type() -> None:
-    problems = lint_source(BANNED_CASES["lambda_expr"])
-    assert "Lambda" in problems[0]
+def test_lambda_is_admitted_and_its_body_is_still_linted() -> None:
+    """A lambda is the sampler `eventually` wants; what it wraps is linted like inline code."""
+    assert lint_source('qa.eventually("badge", lambda: page.text("#badge"), covers=["ac:1"])\n') == []
+    problems = lint_source('f = lambda: open("x")\n')
+    assert problems and "open" in problems[0]
 
 
 def test_pathlib_is_not_importable() -> None:
@@ -154,8 +155,8 @@ def test_a_settle_statement_names_the_verb_and_the_repair() -> None:
     problems = lint_source(BANNED_CASES["bare_wait_for"])
     assert "`wait_for(...)`" in problems[0]
     assert "qa.eventually" in problems[0]
-    # `eventually`'s own docstring spells the callable as a lambda, which this pass rejects
-    # by node type — so the message has to point somewhere a plan can actually go.
+    # The callable it asks for has to be one the allowlist admits, and the obvious spelling is
+    # the lambda `eventually`'s own docstring uses.
     assert "lambda" in problems[0]
 
 
@@ -189,7 +190,7 @@ def test_a_settle_used_as_a_value_is_left_alone() -> None:
 
 
 def test_the_settle_that_reads_is_what_the_rule_leaves_standing() -> None:
-    """A bound method satisfies `eventually`'s callable without a lambda."""
+    """A bound method satisfies `eventually`'s callable as well as a lambda does."""
     assert lint_source('qa.eventually("the row lands", row.is_visible, covers=["ac:1"])\n') == []
 
 
