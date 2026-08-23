@@ -361,7 +361,7 @@ class Workflow(BaseModel):
             session=session,
         )
 
-    def session_id(self, key: str) -> str:
+    def chain_session(self, key: str) -> str:
         """The session id chain `key` is on, or `""` before its first turn.
 
         Read it to hold a conversation in checkpointed state — a state's parameters are

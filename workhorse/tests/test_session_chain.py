@@ -230,10 +230,10 @@ def test_the_id_a_chain_is_on_is_readable_so_a_state_can_checkpoint_it():
         class Asks(Workflow):
             def start(self) -> Transition:
                 # Nothing has run on it yet, and an empty answer is the honest one.
-                held.append(self.session_id("docs:S-1"))
+                held.append(self.chain_session("docs:S-1"))
                 self.agent("prompts/repair.md", returns=Payload, session="docs:S-1")
-                held.append(self.session_id("docs:S-1"))
-                held.append(self.session_id("docs:S-2"))
+                held.append(self.chain_session("docs:S-1"))
+                held.append(self.chain_session("docs:S-2"))
                 return Done(None)
 
         drive(Asks(), env)
@@ -275,7 +275,7 @@ def test_a_repair_lap_resumes_its_own_session_after_the_run_dies_and_restarts():
                 self.agent("prompts/apply-qa-fixes.md", returns=Payload, session=key)
                 # Read out of the chain file while it is still reachable, and carry it in
                 # the transition — the one place a resume is guaranteed to find it.
-                return Continue(None, self.lap_two, held=self.session_id(key))
+                return Continue(None, self.lap_two, held=self.chain_session(key))
 
             def lap_two(self, held: str = "") -> Transition:
                 self.agent("prompts/apply-qa-fixes.md", returns=Payload, session=held)

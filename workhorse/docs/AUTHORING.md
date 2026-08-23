@@ -319,7 +319,7 @@ key does not reach, or to hand it to a turn several states away — read it and 
 back:
 
 ```python
-sid = self.session_id(f"docs-repair:{story.slug}")   # "" before the first lap
+sid = self.chain_session(f"docs-repair:{story.slug}")   # "" before the first lap
 ...
 self.agent("prompts/repair.md", returns=Repair, session=sid)
 ```
