@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any
 
 from ostler.qa.drivers import DriverBlocked, QaDriver, ScenarioResult, create_driver
@@ -103,13 +104,7 @@ def run_plan(
         for daemon in plan.get("background", []):
             for reset_path in daemon.get("reset_paths", []):
                 Path(session.expand(str(reset_path), variables)).unlink(missing_ok=True)
-            session.start_daemon(
-                str(daemon["name"]),
-                [session.expand(str(part), variables) for part in daemon["argv"]],
-                ready_check=daemon.get("ready_check"),
-                timeout=float(daemon.get("timeout", 30)),
-                cwd=root,
-            )
+            _start_daemon(session, daemon, variables, root)
         for target_id, target in plan["targets"].items():
             if target_id not in wanted_targets:
                 continue
@@ -369,3 +364,35 @@ def _write_evidence(
     path = document.spec_dir / "qa-evidence.json"
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     return path
+
+
+def _daemon_cwd(session: QaSession, daemon: Mapping[str, Any], variables: dict[str, str], root: Path) -> Path:
+    """The directory a daemon starts in: its declared `cwd` under the root, else the root.
+
+    Declared and then dropped is what this used to be — `background(cwd=)` landed in the
+    plan and the runner passed `root` regardless. Relative to the root, and refused when it
+    resolves outside it, because the daemon is the product and the product is in the repo.
+    """
+    raw = daemon.get("cwd")
+    if not raw:
+        return root
+    candidate = Path(session.expand(str(raw), variables))
+    cwd = (candidate if candidate.is_absolute() else root / candidate).resolve()
+    if not cwd.is_relative_to(root.resolve()):
+        raise RuntimeError(f"background daemon '{daemon.get('name')}': cwd {raw} resolves outside the repo root")
+    if not cwd.is_dir():
+        raise RuntimeError(f"background daemon '{daemon.get('name')}': cwd {raw} is not a directory")
+    return cwd
+
+
+def _start_daemon(
+    session: QaSession, daemon: Mapping[str, Any], variables: dict[str, str], root: Path
+) -> int:
+    """Start one declared daemon, expanding its argv and cwd the way the plan wrote them."""
+    return session.start_daemon(
+        str(daemon["name"]),
+        [session.expand(str(part), variables) for part in daemon["argv"]],
+        ready_check=daemon.get("ready_check"),
+        timeout=float(daemon.get("timeout", 30)),
+        cwd=_daemon_cwd(session, daemon, variables, root),
+    )

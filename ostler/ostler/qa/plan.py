@@ -199,7 +199,7 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
         if driver == "maestro" and not target.get("app_id"):
             problems.append(f"target '{name}' requires app_id")
 
-    problems.extend(_validate_background(plan.get("background", [])))
+    problems.extend(_validate_background(plan.get("background", []), root=document.root))
 
     scenario_problems, asserted_coverage = _validate_python_scenarios(document, targets)
     problems.extend(scenario_problems)
@@ -549,7 +549,7 @@ def _validate_vets(scenario_id: str, vetted: list[Any], documented: set[str]) ->
     return problems
 
 
-def _validate_background(background: Any) -> list[str]:
+def _validate_background(background: Any, *, root: Path | None = None) -> list[str]:
     """Check the daemons a plan starts before its scenarios run.
 
     `background` was the one top-level block nobody validated, and it is the block whose
@@ -592,8 +592,28 @@ def _validate_background(background: Any) -> list[str]:
         timeout = daemon.get("timeout")
         if timeout is not None and (not isinstance(timeout, (int, float)) or timeout <= 0):
             problems.append(f"{label}.timeout must be positive")
+        problems.extend(_validate_daemon_cwd(label, daemon.get("cwd"), root))
         problems.extend(_validate_ready_check(label, daemon.get("ready_check")))
     return problems
+
+
+def _validate_daemon_cwd(label: str, cwd: Any, root: Path | None) -> list[str]:
+    """Where the daemon starts, when the plan says somewhere other than the repo root.
+
+    `background(cwd=)` was accepted and recorded and then never read — the runner started
+    every daemon at the root regardless, so a plan whose server had to run from its own
+    package directory passed validation and failed readiness with no field named. A
+    relative cwd resolves against the root and must stay inside it: a daemon is the
+    product under test, and the product lives in the repo. One carrying `{{…}}` is
+    expanded at run time and is checked there.
+    """
+    if cwd is None:
+        return []
+    if not isinstance(cwd, str) or not cwd.strip():
+        return [f"{label}.cwd must be a non-empty string"]
+    if root is not None and "{{" not in cwd and _contained_path(root, cwd) is None:
+        return [f"{label}.cwd must stay inside the repo root ({cwd})"]
+    return []
 
 
 def _validate_daemon_argv(label: str, daemon: Mapping[str, Any]) -> list[str]:

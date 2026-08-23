@@ -888,6 +888,54 @@ def test_a_daemon_can_be_pointed_at_the_runs_own_qa_directory(tmp_path: Path) ->
     assert outcome.status == "passed", outcome.message
     assert (spec / "qa/links.json").is_file()
     assert not list(tmp_path.rglob("*qa_dir*"))
+
+
+def test_a_daemon_honours_its_declared_cwd(tmp_path: Path) -> None:
+    """`background(cwd=)` was declared, recorded, and then started at the root anyway.
+
+    A server that must run from its own package directory — a relative config path, a
+    `go run .` — passed validation and failed readiness, with no field named. The daemon
+    below writes its state file relative to where it was started, so where the file lands
+    is where the daemon ran.
+    """
+    spec = _spec(tmp_path)
+    (tmp_path / "services/api").mkdir(parents=True)
+    port = _free_port()
+    source = _with_background(
+        'background("api-server",\n'
+        f"           {_argv(_STATEFUL, 'started-here.json', port)},\n"
+        '           cwd="services/api",\n'
+        f'           ready_url="http://127.0.0.1:{port}/health", timeout=10)'
+    ).replace("{obligation}", OBLIGATION)
+    module = spec / "qa_plan.py"
+    module.write_text(source, encoding="utf-8")
+
+    outcome = cmd_run(module, root=tmp_path)
+
+    assert outcome.status == "passed", outcome.message
+    assert (tmp_path / "services/api/started-here.json").is_file()
+    assert not (tmp_path / "started-here.json").exists()
+
+
+def test_a_daemon_cwd_outside_the_root_is_a_plan_problem(tmp_path: Path) -> None:
+    """The daemon is the product and the product lives in the repo; a cwd that escapes it
+    is refused by name at validation, where the plan agent can read it, not at start."""
+    problems = _validate_background(
+        [
+            {"name": "api", "argv": ["x"], "cwd": "../elsewhere", "ready_check": "http://127.0.0.1:1/"},
+            {"name": "web", "argv": ["x"], "cwd": "  ", "ready_check": "http://127.0.0.1:1/"},
+            {"name": "ok", "argv": ["x"], "cwd": "services/api", "ready_check": "http://127.0.0.1:1/"},
+            {"name": "late", "argv": ["x"], "cwd": "{{qa_dir}}/srv", "ready_check": "http://127.0.0.1:1/"},
+        ],
+        root=tmp_path,
+    )
+
+    assert problems == [
+        "background daemon 'api'.cwd must stay inside the repo root (../elsewhere)",
+        "background daemon 'web'.cwd must be a non-empty string",
+    ]
+
+
 def test_reset_paths_clear_stale_daemon_state_before_it_starts(tmp_path: Path) -> None:
     """State the last run left behind is the last run's answer, replayed into this one.
 
