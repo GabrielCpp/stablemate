@@ -258,7 +258,11 @@ ends up in it. So:
   criterion's table holds the assertions that prove it and nothing else.
 
 `ostler qa report --spec <spec-dir>` re-renders the file from the ledger at any time;
-`--out-dir LABEL` renders a dry run's to `qa/<LABEL>/report.md`.
+`--out-dir LABEL` renders a dry run's to `qa/<LABEL>/report.md`. When the target was
+recorded, each step in the report says where it sits in the video, and
+`ostler qa frames --spec <spec-dir> --step <step-id>` writes the frames around it to
+`qa/frames/<step-id>/` (`--around`, `--fps` widen or thicken the window) — a step phrased as
+what a person does is also the step a reviewer can find in the footage.
 
 ## Doctrine
 
