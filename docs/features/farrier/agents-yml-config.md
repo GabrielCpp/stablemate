@@ -196,8 +196,12 @@ The command itself always runs the generated-file check; a skill can append its 
 
 ```yaml
 hooks:
-  manager: pre-commit
+  manager: githooks
 ```
+
+`farrier install` does this wiring at the end of a render. `farrier hooks` does it alone —
+same fence, same `core.hooksPath`, no library resolution — for the clone whose `packs:` do
+not resolve, where the render raises before the hook it would have installed exists.
 
 ### workflow
 - type: `mapping` — required: no — default: `{}`

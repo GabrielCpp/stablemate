@@ -225,9 +225,10 @@ make -C <pkg> test                   # one package (core, workhorse, workflows, 
 
 `make install` is `sync` plus `browsers` (the Playwright Chromium some suites drive —
 expect a one-time download) plus `hooks`, because git carries no hook configuration: a
-fresh clone runs `pre-commit install` for nobody, so the private-name guard, the
+fresh clone points `core.hooksPath` nowhere, so the private-name guard, the
 Conventional Commits check and the generated-file gate are all silently off until
-something installs them.
+something installs them. `make hooks` is `farrier hooks`, which reads the `hooks:`
+block in `agents.yml` and wires `.githooks/` in.
 
 `make sync` runs `uv sync --all-packages` so every member is installed. (Plain
 `uv sync` targets the workspace root, which is an intentionally non-packaged
