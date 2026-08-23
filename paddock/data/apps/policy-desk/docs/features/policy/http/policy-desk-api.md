@@ -87,7 +87,6 @@ The journeys that stitch these routes together are
 - verify: json_path("policy.status", equals="Draft")
 - verify: json_path("policy.version", equals="1")
 - verify: json_path("policy.id", equals="pn-1001")
-- code: app/api/create.go
 - errors: `422` with an `errors` object keyed by field name for every rule
   [`Validate`](../concepts/policy.md#validate) decides — a blank policy number, a malformed holder
   email, a coverage type outside the enum, a missing VIN on auto coverage, a missing address on home
@@ -103,6 +102,7 @@ The journeys that stitch these routes together are
   the ledger as it was.
 - verify: http_status(409, title="Duplicate Policy Number", path="/api/policies")
 - verify: count(subject="policies", equals=1)
+- code: app/api/create.go
 - persistence: policy-record — an accepted policy is written through the ledger before the response is sent, and is
   still on the books after the service restarts.
 - verify: persists(subject="policy pn-1001")
@@ -125,9 +125,9 @@ The journeys that stitch these routes together are
   - returns the one policy the id names, with the version an edit has to quote.
 - verify: http_status(200, path="/api/policies/pn-1001")
 - verify: json_path("policy.policy_number", equals="PN-1001")
-- code: app/api/service.go
 - errors: `404 Unknown Policy` for an id that is not on the books.
 - verify: http_status(404, title="Unknown Policy", path="/api/policies/missing")
+- code: app/api/service.go
 - route: `GET /api/policies/{id}`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
@@ -152,12 +152,6 @@ The journeys that stitch these routes together are
   - touches the edited policy and no other — every other record keeps its fields, its status and its version.
 - verify: unchanged(subject="policy pn-1002", except_fields=[])
 - verify: keys_unchanged(subject="policies")
-- code: app/api/update.go
-- concurrency: policy-record — refuses a request quoting a version other than the policy's current one with
-  `409 Stale Policy`, so an editor who opened the form, went away, and came back with the number
-  they were given does not overwrite the edit that landed meanwhile.
-- verify: conflict_on_stale(subject="policy pn-1001", token="version")
-- verify: http_status(409, title="Stale Policy", path="/api/policies/pn-1001")
 - errors: `400 Version Required` when the body carries no integer `version`, so an edit that simply
   omits the token is refused rather than treated as a fresh write.
 - verify: http_status(400, title="Version Required", path="/api/policies/pn-1001")
@@ -167,6 +161,12 @@ The journeys that stitch these routes together are
 - verify: json_path("errors.premium", absent=false)
 - errors: `404 Unknown Policy` for an id that is not on the books.
 - verify: http_status(404, title="Unknown Policy", path="/api/policies/missing")
+- code: app/api/update.go
+- concurrency: policy-record — refuses a request quoting a version other than the policy's current one with
+  `409 Stale Policy`, so an editor who opened the form, went away, and came back with the number
+  they were given does not overwrite the edit that landed meanwhile.
+- verify: conflict_on_stale(subject="policy pn-1001", token="version")
+- verify: http_status(409, title="Stale Policy", path="/api/policies/pn-1001")
 - route: `PUT /api/policies/{id}`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
@@ -189,7 +189,6 @@ The journeys that stitch these routes together are
 - verify: json_path("policy.status", equals="Cancelled")
 - does:
   - keeps the cancelled policy on the books rather than dropping it: `GET /api/policies` still lists it, with status `Cancelled`, so the register keeps its shape as policies are cancelled.
-- code: app/api/cancel.go
 - errors: `422` with `errors.confirm` when the body's `confirm` is not the policy's own number, so a
   cancellation is typed out rather than clicked through.
 - verify: http_status(422, path="/api/policies/pn-1001/cancel")
@@ -198,6 +197,7 @@ The journeys that stitch these routes together are
 - errors: `409 Stale Policy` when the quoted version is not the policy's current one.
 - verify: http_status(409, title="Stale Policy", path="/api/policies/pn-1001/cancel")
 - errors: `404 Unknown Policy` for an id that is not on the books.
+- code: app/api/cancel.go
 - route: `POST /api/policies/{id}/cancel`
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)

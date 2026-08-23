@@ -58,25 +58,11 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### submit-claim
 
-- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - does:
   - writes an acceptable claim to the ledger at version `1` with status `Submitted`, attributes it to the calling holder, and answers `201` with the stored record.
 - verify: http_status(201, path="/api/claims")
 - verify: json_path("claim.status", equals="Submitted")
 - verify: json_path("claim.version", equals="1")
-- code: app/api/submit.go
-- auth: requires a bearer token minted by the configured Firebase project. A request with no
-  `Authorization` header, or one carrying a token issued for any other project, is refused `401`
-  and writes nothing — a well-formed JWT is not a verified one.
-- verify: http_status(401, title="Unauthorized", path="/api/claims")
-- auth: a token past its expiry is refused `401` on the same terms as a missing one, so a session
-  that was legitimate an hour ago does not keep filing claims.
-- verify: http_status(401, title="Unauthorized", path="/api/claims")
-- consistency: claim-record — the stored claim comes back under exactly the field names `openapi.yml` declares —
-  `policy_number`, `holder_uid`, `incident_date`, `amount_cents` — because the response is a
-  conversion into the generated type rather than an object built by hand beside it.
-- verify: json_path("claim.amount_cents", equals="125000")
-- verify: json_path("claim.incident_date", equals="2099-03-14")
 - errors: `422` with an `errors` object keyed by field name for every rule the submission is
   refused by — a blank policy number, an incident date that is not a calendar date, an amount that
   is not a positive number of cents, and a blank description.
@@ -92,6 +78,20 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
   request. Nothing taken out of the rejected credential appears in either, on any path.
 - verify: http_status(401, title="Unauthorized", path="/api/claims")
 - verify: omits(subject="detail", matches="eyJ[A-Za-z0-9_-]{6,}")
+- auth: requires a bearer token minted by the configured Firebase project. A request with no
+  `Authorization` header, or one carrying a token issued for any other project, is refused `401`
+  and writes nothing — a well-formed JWT is not a verified one.
+- verify: http_status(401, title="Unauthorized", path="/api/claims")
+- auth: a token past its expiry is refused `401` on the same terms as a missing one, so a session
+  that was legitimate an hour ago does not keep filing claims.
+- verify: http_status(401, title="Unauthorized", path="/api/claims")
+- code: app/api/submit.go
+- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
+- consistency: claim-record — the stored claim comes back under exactly the field names `openapi.yml` declares —
+  `policy_number`, `holder_uid`, `incident_date`, `amount_cents` — because the response is a
+  conversion into the generated type rather than an object built by hand beside it.
+- verify: json_path("claim.amount_cents", equals="125000")
+- verify: json_path("claim.incident_date", equals="2099-03-14")
 - persistence: claim-record — an accepted claim is written through the ledger before the response that announces
   it, and is still on file after the service restarts.
 - verify: persists(subject="claim cl-1001")
@@ -110,13 +110,11 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### list-claims
 
-- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - does:
   - returns the claims the caller is entitled to read, each with its `id`, `status` and `version`, so a register can be rendered and a decision prepared without a second request.
 - verify: http_status(200, path="/api/claims")
 - verify: json_path("claims[0].version", absent=false)
 - verify: json_path("claims[0].status", matches="Submitted|Approved|Denied")
-- code: app/api/list.go
 - authorization: a holder reads only the claims whose `holder_uid` is the subject of their own
   token. The list is scoped by the verified identity rather than by a query parameter, so there is
   no way to ask for someone else's.
@@ -124,6 +122,8 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - verify: json_path("claims[0].holder_uid", absent=false)
 - authorization: an adjuster reads every claim on file, whoever filed it.
 - verify: count(subject="claims", equals=2)
+- code: app/api/list.go
+- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - route: `GET /api/claims`
 - parent: [Claims API](#claims-api)
 - refs: [claim tenancy](../concepts/claim-tenancy.md)
@@ -139,18 +139,18 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### get-claim
 
-- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - does:
   - returns the one claim the id names, with the version a decision has to quote.
 - verify: http_status(200, path="/api/claims/cl-1001")
 - verify: json_path("claim.id", equals="cl-1001")
-- code: app/api/get.go
+- errors: `404 No Such Claim` for an id that is not on the books.
+- verify: http_status(404, title="No Such Claim", path="/api/claims/cl-9999")
 - authorization: `403 Not Your Claim` when the claim is on file and belongs to another holder.
   The refusal is decided after the lookup, so an id that exists and an id that does not answer
   differently only to whoever is entitled to the difference.
 - verify: http_status(403, title="Not Your Claim", path="/api/claims/cl-1002")
-- errors: `404 No Such Claim` for an id that is not on the books.
-- verify: http_status(404, title="No Such Claim", path="/api/claims/cl-9999")
+- code: app/api/get.go
+- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - route: `GET /api/claims/{id}`
 - parent: [Claims API](#claims-api)
 - refs: [claim tenancy](../concepts/claim-tenancy.md)
@@ -167,16 +167,22 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### decide-claim
 
-- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - does:
   - moves the named claim to `Approved` or `Denied`, keeps the adjuster's note on the record, increments its version, and answers `200` with the stored claim.
 - verify: http_status(200, path="/api/claims/cl-1001/decision")
 - verify: json_path("claim.status", equals="Approved")
 - verify: json_path("claim.version", equals="2")
-- code: app/api/decide.go
+- errors: `422` with `errors.decision` for a decision outside `approve`/`deny`, and
+  `errors.version` when no positive integer version is quoted.
+- verify: http_status(422, path="/api/claims/cl-1001/decision")
+- verify: json_path("errors.decision", absent=false)
+- errors: `404 No Such Claim` for an id that is not on the books.
+- verify: http_status(404, title="No Such Claim", path="/api/claims/cl-9999/decision")
 - authorization: `403 Adjusters Only` unless the token carries the `adjuster` role. The role is
   read before the claim is looked up, so a holder learns nothing about a claim they may not decide.
 - verify: http_status(403, title="Adjusters Only", path="/api/claims/cl-9999/decision")
+- code: app/api/decide.go
+- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - concurrency: claim-record — refuses a decision quoting a version other than the claim's current one with
   `409 Stale Decision`, so an adjuster who read the claim, went away and came back does not
   overwrite the decision that landed meanwhile.
@@ -185,12 +191,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - persistence: claim-record — a decision is written through the ledger before the response that announces it, and
   the claim is still `Approved`, at the version the decision returned, after the service restarts.
 - verify: persists(subject="claim cl-1001")
-- errors: `422` with `errors.decision` for a decision outside `approve`/`deny`, and
-  `errors.version` when no positive integer version is quoted.
-- verify: http_status(422, path="/api/claims/cl-1001/decision")
-- verify: json_path("errors.decision", absent=false)
-- errors: `404 No Such Claim` for an id that is not on the books.
-- verify: http_status(404, title="No Such Claim", path="/api/claims/cl-9999/decision")
 - route: `POST /api/claims/{id}/decision`
 - parent: [Claims API](#claims-api)
 - refs: [claim ledger](../concepts/claim-ledger.md)
@@ -207,15 +207,15 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 
 ### reset-claims
 
-- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - does:
   - empties the ledger — every claim dropped, numbering back to `cl-1001` — and answers `204` with no body.
 - verify: http_status(204, path="/api/claims")
 - verify: count(subject="claims", equals=0)
-- code: app/api/reset.go
 - authorization: `403 Adjusters Only` unless the token carries the `adjuster` role, so the one
   destructive route is the one route whose role gate is provable from both sides.
 - verify: http_status(403, title="Adjusters Only", path="/api/claims")
+- code: app/api/reset.go
+- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - route: `DELETE /api/claims`
 - parent: [Claims API](#claims-api)
 - refs: [claim ledger](../concepts/claim-ledger.md)

@@ -111,11 +111,11 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
   - Refuses when there is one already, and leaves that file byte-for-byte unchanged.
 - verify: created(subject="tally.json")
 - verify: unchanged(subject="tally.json")
-- code: tally/ledger.py::create
 - status: `0` when the ledger was created.
 - verify: exit_status(code=0)
 - status: `1` when a ledger was already there.
 - verify: exit_status(code=1)
+- code: tally/ledger.py::create
 
 ### add-an-expense
 - on: [add](#add)
@@ -124,7 +124,6 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
   - Appends the expense and rewrites the ledger.
 - verify: count(subject="entries in the ledger", equals=1)
 - verify: unchanged(subject="tally.json")
-- code: tally/ledger.py::add_entry
 - status: `0` when the expense was recorded.
 - verify: exit_status(code=0)
 - status: `2` when the expense was refused.
@@ -132,6 +131,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - errors:
   - An amount that is not a positive whole number of cents is refused, and the ledger is left
     unchanged.
+- code: tally/ledger.py::add_entry
 
 ### import-a-csv
 - on: [import](#import)
@@ -150,11 +150,11 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - does:
   - Refuses the whole file, so the ledger ends the invocation exactly as it began it.
 - verify: unchanged(subject="tally.json")
-- code: tally/ledger.py::parse_rows
 - status: `2`.
 - verify: exit_status(code=2)
 - errors:
   - The message names the 1-based line number of the offending row.
+- code: tally/ledger.py::parse_rows
 
 ### report-as-json
 - on: [report](#report)
