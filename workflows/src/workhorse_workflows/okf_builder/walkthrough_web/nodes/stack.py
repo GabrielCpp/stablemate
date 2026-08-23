@@ -7,7 +7,7 @@ would have duplicated the module. A node is a function, so the sentinel is gone 
 script becomes two nodes — `boot_app`/`teardown_app`, `boot_browser`/`teardown_browser` —
 with the boot half typed as a boot (`AppBoot`, `BrowserBoot`) and the teardown half as a
 teardown (`TornDown`). Nothing else about either changes; the app half remains a thin
-wrapper over `workhorse.stack`, which the coder QA flow shares.
+wrapper over `ostler.qa.stack`, which the coder QA flow shares.
 
 The YAML's mandatory-teardown tail (every exit from the walk routed through `teardown_app`
 → `teardown_browser` → `wt_done`) survives as `walkthrough_web/flow.py`'s `_finish`, which
@@ -26,7 +26,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from workhorse import stack
+from ostler.qa import stack
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared import stubs
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
@@ -51,7 +51,7 @@ def boot_app(
 ) -> AppBoot:
     """Start the app under walk and wait for it to answer its health path.
 
-    The durable start logic lives in `workhorse.stack` so this walk and the coder QA flow
+    The durable start logic lives in `ostler.qa.stack` so this walk and the coder QA flow
     share one implementation — including the identity check that keeps an unrelated process
     already holding the port from being mistaken for this service.
     """

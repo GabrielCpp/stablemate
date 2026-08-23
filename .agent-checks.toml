@@ -63,11 +63,11 @@ tier1 = [
 "workhorse/workhorse/runner/process.py" = """
 tier 2 — spawns each agent-CLI turn in its own process group so a wedged turn can be killed as a \
 tree. Windows has no process groups to kill."""
-"workhorse/workhorse/stack.py" = """
+"ostler/ostler/qa/stack.py" = """
 tier 2 — owns a long-lived dev stack across nodes; bringing one up detached and reaping it later \
 is killpg by construction."""
 "workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/stack.py" = """
-tier 2 — the walkthrough's browser/server stack, same lifecycle as workhorse.stack."""
+tier 2 — the walkthrough's browser/server stack, same lifecycle as ostler.qa.stack."""
 "ostler/ostler/qa/session.py" = """
 tier 2 — QA daemons are spawned detached and torn down by group; this is the module whose \
 Linux/macOS killpg difference the portability skill uses as its example."""

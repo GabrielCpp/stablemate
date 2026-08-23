@@ -50,9 +50,10 @@ docs go, conventions — is [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Read tha
   args.
 
   If workhorse genuinely needs a new capability, add a **parameterised primitive** that
-  knows no workflow's schema. `workhorse/stack.py` is the model: `ensure_stack` /
-  `teardown_stack` own a long-lived stack across nodes, and the workflow hands them a
-  manifest dict rather than workhorse knowing what a stack of *theirs* looks like. Litmus
+  knows no workflow's schema. `ostler/qa/stack.py` is the model, and it lived here until
+  it grew a durable home in ostler: `ensure_stack` / `teardown_stack` own a long-lived
+  stack across nodes, and the workflow hands them a manifest dict rather than the
+  primitive knowing what a stack of *theirs* looks like. Litmus
   test: *would a different workflow want this unchanged?* If not, it belongs in the
   workflow.
 

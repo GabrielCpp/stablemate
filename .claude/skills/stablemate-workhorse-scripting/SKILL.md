@@ -146,7 +146,7 @@ losing the checkpoint write a raised exception would have gone through. Raise; d
 
 A process a node **backgrounds** is owned by nothing and is reaped when the node ends. A
 process that must outlive its node has to be started detached and owned explicitly —
-`workhorse.stack`'s `ensure_stack` / `teardown_stack` is the parameterised primitive for it.
+`ostler.qa.stack`'s `ensure_stack` / `teardown_stack` is the parameterised primitive for it.
 
 ## No environment — arguments and workflow parameters only
 

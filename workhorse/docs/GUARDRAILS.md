@@ -205,14 +205,17 @@ real runs a stack that vanished between "bring it up" and "use it".
 A process that must **outlive the node that starts it** has to be started detached
 (`start_new_session=True`, its own process group) and owned explicitly — brought up,
 health-gated, and later reaped (or deliberately left up) by a step outside any agent
-turn. `workhorse.stack` is the parameterised primitive for this: `ensure_stack`
-brings a stack up from a manifest (or adopts one already serving) and
-`teardown_stack` reaps it or leaves an expensive shared stack running. It knows no
-workflow's schema — a workflow hands it a manifest dict — so any workflow that must
-own a long-lived stack across nodes uses the same lifecycle. (This is what
-okf-builder's walkthrough launcher and the coder QA flow both call; a workflow's own
-node function is where the manifest is read.) The manifest keys and the return shape
-are in [AUTHORING.md](AUTHORING.md#a-stack-that-outlives-the-turn-workhorsestack).
+turn. Workhorse ships no such primitive — the stacks that need one are the ones QA
+drives, so it lives in ostler as `ostler.qa.stack`: `ensure_stack` brings a stack up
+from a manifest (or adopts one already serving) and `teardown_stack` reaps it or
+leaves an expensive shared stack running. It knows no workflow's schema — a workflow
+hands it a manifest dict — so any workflow that must own a long-lived stack across
+nodes uses the same lifecycle. (This is what okf-builder's walkthrough launcher and
+the coder QA flow both call; a workflow's own node function is where the manifest is
+read.) The manifest keys and the return shape are in
+[ostler's QA-RUN.md](../../ostler/docs/QA-RUN.md#the-durable-stack-ostlerqastack);
+what stays a workhorse concern is *where* you call it from — a `script` node, never
+inside an agent turn.
 
 ### Telemetry
 

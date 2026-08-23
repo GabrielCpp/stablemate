@@ -634,6 +634,71 @@ under the target's interpreter and reads the declarations back, so it catches:
 
 ---
 
+## The durable stack (`ostler.qa.stack`)
+
+`background()` above owns a daemon for the length of **one** `ostler qa run`: started
+before the first scenario, stopped after the last. Some stacks cannot live there — an
+emulator or a compose stack that takes minutes to build is brought up once and reused
+across the plan-authoring turn, the dry run and the suite run, all of which are separate
+processes. That is what this is for, and it is called by a workflow's own script node
+rather than by the runner.
+
+A process an agent turn backgrounds is dead by the next state — the runner reaps the
+turn's process tree. Anything that must survive across states (a dev server, a compose
+stack, an emulator) is therefore brought up by a `script` node calling
+`ostler.qa.stack.ensure_stack`, and reaped by `teardown_stack`. Both take a **manifest
+dict** the workflow supplies, so the primitive stays workflow-agnostic:
+
+```python
+status = ensure_stack(manifest, repo_root=self.ctx.repo_root, logger=log)
+```
+
+| Key | What it does |
+|---|---|
+| `entry_url` / `health_path` | the HTTP readiness probe (path defaults to `/`) |
+| `identity` | a substring expected in the served **response body** — the readiness signal, and a precondition for reuse |
+| `reuse` | when adopting an already-serving stack is safe: `if-fresh` (default), `always`, `never` |
+| `fresh` | a probe command (exit 0 ⇔ the running stack reflects current code) that gates `if-fresh` adoption |
+| `app_cwd` / `repo_root` / `boot_timeout` | launch context, and the ceiling on boot |
+| `launch` / `stop` | the **idempotent** bring-up command, and the teardown recipe (absent ⇒ leave an expensive stack up) |
+| `prepare` / `seed` / `health` | ordered steps run before launch / after it serves / last |
+| `health_timeout` | the window in seconds the `health` gates get to converge (default 120) |
+
+**Every command in the manifest is a shell recipe**, run through `bash -c` (`/bin/sh -c`
+only where there is no bash) — `launch`, `stop`, and each `prepare`/`seed`/`health` step.
+Pipes, `&&`/`||` guards, redirection and `&` all mean what they say, which is what makes
+the *idempotent* launch above expressible at all: "start it unless it is already serving"
+is written `<probe> || <start>`, and a bring-up command that hands the stack off writes
+`nohup … & disown`. bash rather than `sh` because `sh` is dash on Debian/Ubuntu and dash
+has no `disown`.
+
+**`identity` is matched against the response body — not the URL, host or port.** It is
+the one manifest key whose mistakes are invisible to the obvious hand-check: `curl -sf -o
+/dev/null <url>` discards the body, so a URL that answers 200 to every manual probe still
+fails the gate when the marker is not in what it served. Pick something the page really
+says (a `<title>`, a health endpoint's `"status":"ok"`), or omit the key — omitted means
+"any 2xx/3xx is ready", which also disables adoption, since adopting an arbitrary listener
+on that port is exactly what the marker exists to prevent. Setting it to a host:port is
+the recurring mistake; that string is in the *request*, never the response.
+
+**Health gates retry inside that window.** Booting proves only that the entry URL
+answers, and a gate typically asserts on a *slower sibling* — a migration, a queue, a
+second container. A gate that fails is re-attempted every few seconds until
+`health_timeout` expires, so a multi-service stack is not failed for coming up in the
+order it always comes up in.
+
+`ensure_stack` returns `{ready, adopted, entry_url, app_pid, app_pgid}`, plus
+`failed_step` and **`error`** when it could not get there. `error` is the failing step's
+own message, and it is there because a caller's usual next move is to hand the failure
+to whoever repairs it: the step name alone ("the health gate") says which thing broke,
+not what to fix. Log lines don't cross the node boundary — the return value does. For
+`failed_step: "launch"` that message is bring-up's *own* verdict — nothing answering, a
+recipe that would not spawn, a nonzero exit, or the `identity` mismatch above — and not a
+single sentence blaming the launch command for all four.
+
+Nothing here raises. A stack that will not come up returns `ready: "no"`, which is what
+lets the workflow decide between repairing, re-planning and asking an operator.
+
 ## What the agent does (and does not do)
 
 **The agent's role is reduced to:**
