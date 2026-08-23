@@ -363,20 +363,6 @@ def test_every_defect_obligation_resolves(row: dict[str, str]) -> None:
 
 
 @pytest.mark.parametrize("row", defects(), ids=defect_ids())
-def test_every_defect_lands_in_its_story(row: dict[str, str]) -> None:
-    """The seeded file has to be one the story actually touches.
-
-    QA obligates on the diff. A defect in a file outside `diff.yml` is committed as part of
-    the *before* tree, so nothing in the run under measurement is asked about it — the defect
-    is real, present, and out of scope, which scores as a miss against QA for a fixture bug.
-    """
-    diff = manifest(row["story"])
-    assert row["path"] in {*diff["changed"], *diff["added"]}, (
-        f"{row['id']}: {row['path']} is not in {row['story']}'s diff"
-    )
-
-
-@pytest.mark.parametrize("row", defects(), ids=defect_ids())
 def test_every_defect_actually_changes_the_story_image(row: dict[str, str]) -> None:
     """The variant must differ from what the story would otherwise ship — and only there."""
     correct = frozen.story_image(APP, row["story"], row["path"], phase="post").read_bytes()

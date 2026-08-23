@@ -305,16 +305,6 @@ def test_every_defect_variant_exists_on_both_sides(row: dict[str, str]) -> None:
 
 
 @pytest.mark.parametrize("row", defects(), ids=defect_ids())
-def test_every_defect_lands_in_its_story(row: dict[str, str]) -> None:
-    """A defect in a file outside `diff.yml` is committed as part of the *before* tree:
-    real, present, and out of scope, which scores as a miss against QA for a fixture bug."""
-    diff = manifest(row["story"])
-    assert row["path"] in {*diff["changed"], *diff["added"]}, (
-        f"{row['id']}: {row['path']} is not in {row['story']}'s diff"
-    )
-
-
-@pytest.mark.parametrize("row", defects(), ids=defect_ids())
 def test_every_defect_actually_changes_the_story_image(row: dict[str, str]) -> None:
     """The variant must differ from the file the story would otherwise ship.
 

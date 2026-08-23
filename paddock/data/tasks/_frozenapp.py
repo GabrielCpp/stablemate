@@ -228,6 +228,41 @@ def load_defects(app: Path) -> list[dict[str, str]]:
     return rows
 
 
+def validate_defects(app: Path) -> list[str]:
+    """Every way an answer-key row can be wrong *without* failing a trial, named at once.
+
+    A defect whose `path` is outside its story's `diff.yml` is the silent one: `seed_defect`
+    overwrites it all the same, but the path is committed as part of the *before* tree, so
+    nothing in the run under measurement is asked about it — the defect is real, present
+    and out of scope, and the row scores as a miss against QA for a fixture bug. Worse,
+    the overwrite adds a path to `HEAD..WORKTREE` the control trial never had, so the two
+    are no longer the same measurement. A row naming an unknown story or a variant that
+    does not exist fails louder, but just as late; `plan_round` asks here first so a bad
+    key costs nothing.
+    """
+    problems: list[str] = []
+    stories = {p.name for p in (app / "stories").glob("*") if p.is_dir()}
+    diffs: dict[str, set[str]] = {}
+    for row in load_defects(app):
+        rid, story, path = str(row.get("id")), str(row.get("story")), str(row.get("path"))
+        if story not in stories:
+            problems.append(f"{rid}: story {story!r} is not one of {', '.join(sorted(stories))}")
+            continue
+        if story not in diffs:
+            diff = story_diff(app, story)
+            diffs[story] = {*diff["changed"], *diff["added"]}
+        if path not in diffs[story]:
+            problems.append(
+                f"{rid}: {path} is not in {story}'s diff — the defect would be committed in "
+                "the before tree and no obligation would be minted for it"
+            )
+        if not variant_path(app, row).is_file():
+            problems.append(f"{rid}: no variant at {variant_path(app, row)}")
+        if str(row.get("expect")) != "contradicted":
+            problems.append(f"{rid}: expect must be 'contradicted', not {row.get('expect')!r}")
+    return problems
+
+
 def select_defects(app: Path, wanted: tuple[str, ...]) -> list[dict[str, str]]:
     rows = load_defects(app)
     if not wanted:
@@ -255,6 +290,12 @@ def seed_defect(app: Path, row: dict[str, str], repo: Path) -> None:
     variant = variant_path(app, row)
     if not variant.is_file():
         raise TrialError(f"defect {row['id']}: no variant at {variant}")
+    diff = story_diff(app, str(row["story"]))
+    if str(row["path"]) not in {*diff["changed"], *diff["added"]}:
+        raise TrialError(
+            f"defect {row['id']}: {row['path']} is not in {row['story']}'s diff — seeding it "
+            "would plant a defect in the before tree, outside what the trial is measured on"
+        )
     target = repo / str(row["path"])
     if not target.is_file():
         raise TrialError(f"defect {row['id']}: {row['path']} is not in the materialized tree")
@@ -932,6 +973,9 @@ def plan_round(run: Run, app: Path) -> list[tuple[str, dict[str, str] | None]]:
     a lane that refuted everything would score every defect caught, and only a trial with
     nothing wrong in it tells the two apart.
     """
+    problems = validate_defects(app)
+    if problems:
+        raise TrialError(f"{app / 'defects.yml'} cannot be scored:\n  " + "\n  ".join(problems))
     rows = select_defects(app, run.param_list("defects"))
     stories = sorted({str(row["story"]) for row in rows})
     control: list[tuple[str, dict[str, str] | None]] = (
