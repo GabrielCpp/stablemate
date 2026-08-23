@@ -122,6 +122,10 @@ docs/features OKF nodes     ->  code:/links:/reachability/coverage obligations
 
 Open questions and missing behavioral coverage belong in `docs/features/` as OKF nodes, links, and
 coverage/reachability obligations, or in the epic/story planning graph as seeds and stories.
+`ostler qa context` then maps a story's diff back onto those nodes through their owning bullets
+(`code:` everywhere, `openapi:` on a server/endpoint, `file:` on a format) — a changed production
+file no node owns is an `unmapped-change` error in the packet, so every file a story touches needs
+an owner in the book.
 `ostler doctor` checks OKF conformance (every Concept has a non-empty `type`) plus the typed
 referential-integrity contract:
 

@@ -248,6 +248,14 @@ class BulletKey:
     alias: bool = False      # a second accepted spelling of the key declared just above it
                              # (``statuses`` for ``status``): recognized and ordered like the
                              # primary, never stubbed by ``scaffold``.
+    owns: bool = False       # value names a file (or ``path::symbol``) the node is documented
+                             # *against*, so a change to that file reaches the node — what
+                             # ``qa context`` reads when it maps a diff onto the book. Distinct
+                             # from ``link``: ``openapi: none; …`` is a citation the reader does
+                             # not resolve yet still an ownership claim; and from
+                             # ``CODE_GROUNDING_KEYS``: owning a file is not being grounded in
+                             # a symbol, so ``doctor`` asks nothing of an owning key it does
+                             # not also ground.
 
 
 @dataclass(frozen=True)
@@ -298,6 +306,21 @@ def declared_keys(node_type: str) -> frozenset[str]:
     uitype = UI_TYPES_BY_NAME.get(node_type)
     own = () if uitype is None else uitype.bullet_keys
     return frozenset(b.key for b in own) | frozenset(SHARED_NORMATIVE_KEYS)
+
+
+def owning_keys(node_type: str) -> tuple[str, ...]:
+    """Every bullet key on `node_type` whose value names a file the node is documented against.
+
+    `qa context` reads these, and only these, to decide which nodes a changed file reaches.
+    `code:` owns on every type — a flow or a screen cites the code it is grounded in whether
+    or not its profile lists the key, and always has — and the registry adds the keys whose
+    value is a file under another name: `openapi:` on a server or endpoint, `file:` on a
+    format. `tests:` is deliberately not one — a test file is verification evidence, not the
+    node's subject — and neither is `binary:`, which names a program rather than a path.
+    """
+    uitype = UI_TYPES_BY_NAME.get(node_type)
+    own = () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.owns)
+    return tuple(dict.fromkeys(tuple(sorted(CODE_GROUNDING_KEYS)) + own))
 
 
 def check_keys(node_type: str) -> tuple[str, ...]:
@@ -416,20 +439,20 @@ UI_TYPES: tuple[UINodeType, ...] = (
     UINodeType(
         name="cli", kind="file", context="",
         required_sections=(SectionSpec("Commands"),),
-        bullet_keys=(BulletKey("binary"), BulletKey("code", link=True)),
+        bullet_keys=(BulletKey("binary"), BulletKey("code", link=True, owns=True)),
     ),
     UINodeType(
         name="server", kind="file", context="http",
         required_sections=(SectionSpec("Endpoints"),),
-        bullet_keys=(BulletKey("code", link=True), BulletKey("openapi", link=True)),
+        bullet_keys=(BulletKey("code", link=True, owns=True), BulletKey("openapi", link=True, owns=True)),
     ),
     UINodeType(
         name="concept", kind="file", context="concepts",
-        bullet_keys=(BulletKey("code", link=True), BulletKey("extends", link=True)),
+        bullet_keys=(BulletKey("code", link=True, owns=True), BulletKey("extends", link=True)),
     ),
     UINodeType(
         name="format", kind="file", context="",
-        bullet_keys=(BulletKey("file"), BulletKey("code", link=True)),
+        bullet_keys=(BulletKey("file", owns=True), BulletKey("code", link=True, owns=True)),
     ),
     UINodeType(
         name="flow", kind="file", context="flows",
@@ -456,7 +479,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("environment", link=True),  # the `environment` node this boots (default local)
             BulletKey("cli", link=True),          # the dev-CLI `cli` node it drives with
             BulletKey("surfaces", link=True),     # screen/server/cli/format nodes it exposes
-            BulletKey("code", link=True),         # launch entry point `path::symbol`
+            BulletKey("code", link=True, owns=True),         # launch entry point `path::symbol`
         ),
     ),
     UINodeType(
@@ -471,7 +494,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # `code:` on every node type to find a changed path's owner, so without it an
             # environment's own files are `unmapped-change` errors on the first packet that
             # touches them, and the book has no lawful way to own them.
-            BulletKey("code", link=True),
+            BulletKey("code", link=True, owns=True),
             # An environment states facts a plan can be held to — a pinned provider version, a
             # backend that is local, a service on the address the book gives — and until this key
             # existed it had no way to say what observing one looks like. `checksDeclared` was
@@ -508,7 +531,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # variant switch) — not a way to silence a real same-screen collision.
             BulletKey("exclusive-with", link=True),
             BulletKey("states", normative=True),
-            BulletKey("code", link=True),
+            BulletKey("code", link=True, owns=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
         ),
@@ -526,7 +549,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # declared here, which is the drift `BulletKey.normative` closes.
             BulletKey("errors", normative=True),
             BulletKey("exits", normative=True),
-            BulletKey("code", link=True),
+            BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
@@ -553,8 +576,8 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("error", normative=True, alias=True),
             BulletKey("auth", normative=True),
             BulletKey("authorization", normative=True, alias=True),
-            BulletKey("code", link=True),
-            BulletKey("openapi", link=True),
+            BulletKey("code", link=True, owns=True),
+            BulletKey("openapi", link=True, owns=True),
             BulletKey("detail", link=True),
             # As on `interaction`/`invocation`/`method`, and for the same reason: the bullets
             # above are claims, and a claim with no declared observation is covered by whatever
@@ -580,7 +603,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("when", normative=True),
             BulletKey("exclusive-with", link=True),
             BulletKey("does", required=True, nested=True, normative=True),
-            BulletKey("code", link=True),
+            BulletKey("code", link=True, owns=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
             BulletKey("tests", link=True),
@@ -606,7 +629,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("error", normative=True, alias=True),
             BulletKey("auth", normative=True),
             BulletKey("authorization", normative=True, alias=True),
-            BulletKey("code", link=True),
+            BulletKey("code", link=True, owns=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
             BulletKey("tests", link=True),
@@ -622,7 +645,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("does", normative=True),
             BulletKey("raises", normative=True),
             BulletKey("returns", normative=True),
-            BulletKey("code", link=True),
+            BulletKey("code", link=True, owns=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
             BulletKey("tests", link=True),
@@ -638,7 +661,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("default", normative=True),
             BulletKey("required", normative=True),
             BulletKey("semantics", normative=True),
-            BulletKey("code", link=True),
+            BulletKey("code", link=True, owns=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
         ),

@@ -235,24 +235,33 @@ def build_context(
         )
         mapped = change.status == "deleted"
         for node_id, node in nodes_by_id.items():
-            cited = refs_mod.code_refs(node.get("bullets", {}).get("code"))
-            exact = sorted(refs.intersection(cited))
-            file_owned = [
-                item
-                for item in cited
-                if refs_mod.ref_path(item) in {change.base_path, change.head_path}
-            ]
-            if exact:
-                mapped = True
-                for ref in exact:
+            # Every owning key the node's type declares is read — `code:` everywhere it is
+            # declared, `openapi:` on a server or endpoint, `file:` on a format — so a node
+            # documented against a schema or a fixture file is reached when that file
+            # changes, without a second `code:` citation repeating the path. Which keys own
+            # is the registry's call (`BulletKey.owns`), not a list kept here.
+            bullets = node.get("bullets", {})
+            owned_file = False
+            for key in registry.owning_keys(str(node.get("type", ""))):
+                cited = refs_mod.code_refs(bullets.get(key))
+                exact = sorted(refs.intersection(cited))
+                if exact:
+                    mapped = True
+                    for ref in exact:
+                        direct_reasons.setdefault(node_id, []).append(
+                            {"kind": "changed-code", "ref": ref, "key": key}
+                        )
+                elif not owned_file and any(
+                    refs_mod.ref_path(item) in {change.base_path, change.head_path}
+                    for item in cited
+                ):
+                    # One file-owner reason per node and change, whichever key cited it
+                    # first: citing the same path under `code:` and `openapi:` is one
+                    # owner, not two, so the shared-file count below stays honest.
+                    mapped = owned_file = True
                     direct_reasons.setdefault(node_id, []).append(
-                        {"kind": "changed-code", "ref": ref}
+                        {"kind": "file-owner", "ref": change.path, "key": key}
                     )
-            elif file_owned:
-                mapped = True
-                direct_reasons.setdefault(node_id, []).append(
-                    {"kind": "file-owner", "ref": change.path}
-                )
         if not mapped:
             surface = _surface_owner(change.path, source_roots)
             surface_nodes = [
@@ -295,6 +304,8 @@ def build_context(
     # can break either.
     file_owners: dict[str, set[str]] = {}
     symbol_owners: dict[str, set[str]] = {}
+    # Owners are counted per node whatever key cited the path, so a node naming one file
+    # under two owning keys is one owner.
     for node_id, reasons in direct_reasons.items():
         for reason in reasons:
             if reason["kind"] == "file-owner":

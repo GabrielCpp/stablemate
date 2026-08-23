@@ -159,6 +159,13 @@ value — so `scaffold`'s stubs clear it. **`code:` / `tests:` bullets are code 
 (`path::symbol`), grounded at a *later* QA gate, never at author time** — doctor deliberately does
 *not* flag them as dangling links.
 
+**Owning keys.** `qa context` maps a story's changed files onto the book through the bullets whose
+value names a file the node is documented against: `code:` on every type, plus `openapi:` on a
+`server`/`endpoint` and `file:` on a `format` (`registry.owning_keys`, the `BulletKey.owns` flag).
+A changed file no owning bullet claims is an `unmapped-change` error in the packet; a file a typed
+bullet names needs no second `code:` citation, and citing one path under two keys is one owner,
+not two. `tests:` never owns — a test is evidence, not the node's subject.
+
 **`verify:` is not one of them.** It declares the *observation* that fulfils the node's
 obligations, as a named check with typed arguments from ostler's vocabulary — `http_status`,
 `json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `created`, `removed`, `visible`,

@@ -61,7 +61,10 @@ Three rules govern the content (profile §2, §8):
   what is emitted — by repeating the key. `doctor` errors past 700 characters of prose.
 - **Spec, not implementation** — document *what* the code does; the *how* (patterns, idioms,
   libraries, structure) is owned by the stack skills, never the book. `code:` anchors the impl; the
-  prose never prescribes a technique.
+  prose never prescribes a technique. It is also how a diff finds its way back to the node: `qa
+  context` maps each changed file onto the nodes whose owning bullets name it (`code:`, or `openapi:`
+  / `file:` where the type has one), and a changed production file no node owns is an
+  `unmapped-change` error in the QA packet.
 - **The book, not a changelog** — model the current reality in full; when a later story changes it,
   its delta is merged into these nodes (that is [[documentation]]'s job).
 

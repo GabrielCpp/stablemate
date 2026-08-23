@@ -148,7 +148,73 @@ def test_one_code_bullet_citing_two_files_owns_both(tmp_path: Path):
     assert owners, "the node citing the changed file must own it"
     # The ref proves the parse: undecorated, and the first of the two the bullet cites.
     assert [r for reasons in owners.values() for r in reasons] == [
-        {"kind": "file-owner", "ref": "app/config.ts"},
+        {"kind": "file-owner", "ref": "app/config.ts", "key": "code"},
+    ]
+
+
+def _owning_repo(tmp_path: Path, book: str, cited: str, *, node_file: str = "node.md") -> str:
+    """A repo with one book file and one cited file, committed; returns the base sha."""
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/features/demo" / node_file).write_text(book, encoding="utf-8")
+    target = tmp_path / cited
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("before\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    target.write_text("after\n", encoding="utf-8")
+    return base
+
+
+def test_an_openapi_bullet_owns_the_document_it_names(tmp_path: Path):
+    """A server documented against its schema is reached when the schema changes, with no
+    second `code:` citation repeating the path — the registry says `openapi:` owns."""
+    base = _owning_repo(
+        tmp_path,
+        "---\ntype: server\ntitle: API\n---\n# API\n\n"
+        "- code: `app/main.py`\n- openapi: `app/openapi.yaml`\n",
+        "app/openapi.yaml",
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    assert "unmapped-change" not in [f["kind"] for f in packet["healthFindings"]]
+    reasons = [r for node in packet["directNodes"] for r in node["reasons"]]
+    assert reasons == [{"kind": "file-owner", "ref": "app/openapi.yaml", "key": "openapi"}]
+    assert validate_context(packet) == []
+
+
+def test_a_format_file_bullet_owns_the_file(tmp_path: Path):
+    base = _owning_repo(
+        tmp_path,
+        "---\ntype: format\ntitle: Ledger file\n---\n# Ledger file\n\n"
+        "- file: `app/ledger.schema.json`\n",
+        "app/ledger.schema.json",
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    reasons = [r for node in packet["directNodes"] for r in node["reasons"]]
+    assert reasons == [{"kind": "file-owner", "ref": "app/ledger.schema.json", "key": "file"}]
+
+
+def test_one_path_cited_under_two_owning_keys_is_one_owner(tmp_path: Path):
+    """Citing the schema under both `code:` and `openapi:` is one owner, not two — otherwise
+    the shared-file demotion would read a single node's double citation as a shared file."""
+    base = _owning_repo(
+        tmp_path,
+        "---\ntype: server\ntitle: API\n---\n# API\n\n"
+        "- code: `app/openapi.yaml`\n- openapi: `app/openapi.yaml`\n",
+        "app/openapi.yaml",
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    assert [node["reasons"] for node in packet["directNodes"]] == [
+        [{"kind": "file-owner", "ref": "app/openapi.yaml", "key": "code"}]
     ]
 
 

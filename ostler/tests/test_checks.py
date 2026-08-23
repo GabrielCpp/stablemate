@@ -276,3 +276,21 @@ def test_a_prose_argument_keeps_a_leading_sigil() -> None:
     call = checks.bind("count", {"subject": "$ spent", "equals": 2})
     assert isinstance(call, checks.CheckCall)
     assert call.args["subject"] == "$ spent"
+
+
+def test_owning_keys_include_code_on_every_type_and_only_the_flagged_others() -> None:
+    """`qa context` maps a diff through `owning_keys`; `code:` owns everywhere (a flow cites
+    the code it is grounded in whether or not its profile lists the key), and the only other
+    owners are the bullets the registry flags — a schema or a fixture file under its own
+    name. `tests:` and `binary:` never own."""
+    for uitype in registry.UI_TYPES:
+        keys = registry.owning_keys(uitype.name)
+        assert keys[0] == "code", uitype.name
+        flagged = {b.key for b in uitype.bullet_keys if b.owns}
+        assert set(keys) == flagged | {"code"}, uitype.name
+        assert not {"tests", "binary"} & set(keys), uitype.name
+    assert "openapi" in registry.owning_keys("endpoint")
+    assert "openapi" in registry.owning_keys("server")
+    assert "file" in registry.owning_keys("format")
+    assert registry.owning_keys("untyped") == ("code",)
+

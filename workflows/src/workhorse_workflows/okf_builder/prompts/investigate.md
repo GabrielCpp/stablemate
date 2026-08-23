@@ -124,7 +124,9 @@ missing rather than re-reading the whole tree.
     `backing:` (DBs/buckets/emulators), `local-only: true` when tooling must refuse it without an
     override, and one `code:` per stack file the environment materializes (compose file, emulator
     config, seed script) — those files have no other owner in the book, and a change to one is an
-    `unmapped-change` error in the QA packet until this node claims it.
+    `unmapped-change` error in the QA packet until this node claims it. A file a typed bullet
+    already names — `openapi:` on a server or endpoint, `file:` on a format — is owned by that
+    bullet; do not list it a second time under `code:`.
     Derive ports/hosts from the config loader + compose/scripts; never invent them.
   - **`runbook`** — its `driver:` (web/mobile/http/cli/artifact/iac/none), `environment:` link,
     `cli:`/`surfaces:` links to the nodes it exposes, `code:` launch entry point, and the ordered
