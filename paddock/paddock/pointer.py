@@ -56,6 +56,12 @@ class Pointer(BaseModel):
     #: book — see `sha256` for the question it does *not* answer.
     tree_sha256: str = ""
 
+    #: The `--exclude` globs the capture was taken with. `tree_sha256` was computed with
+    #: them, so a verification that forgot them would hash a tree the capture never saw
+    #: and report drift nobody introduced; recording them is what makes the digest
+    #: reproducible from the pointer alone. Empty for a capture that excluded nothing.
+    excludes: tuple[str, ...] = ()
+
     @classmethod
     def load(cls, path: Path) -> Self:
         try:
@@ -84,13 +90,14 @@ class Pointer(BaseModel):
         """
         if not self.tree_sha256:
             raise PointerError(f"pointer '{self.name}' records no tree_sha256; re-capture it")
-        actual = digest_tree(source)
+        actual = digest_tree(source, self.excludes)
         if actual != self.tree_sha256:
+            flags = "".join(f" --exclude {glob}" for glob in self.excludes)
             raise PointerError(
                 f"{source}: tree has changed since seed '{self.name}' was captured "
                 f"({actual[:12]} != {self.tree_sha256[:12]}). The trials materialize from the "
                 f"zip, not from this tree, so the change is invisible to a round until you "
-                f"re-capture:\n  uv run paddock seed capture {source} --name {self.name} --force"
+                f"re-capture:\n  uv run paddock seed capture {source} --name {self.name} --force{flags}"
             )
 
     def verify(self, zip_path: Path) -> None:

@@ -6,7 +6,8 @@ Two tiers, deliberately split by who owns the values:
 - **Opt-in** — this repo's `agents.yml`/`.agents.yml`/`ostler.yml`/`ostler.yaml`'s
   `qa: {tools: [...]}` — is per-repo and lives in version control: which tools *this*
   QA plan may reach for.
-- **Definition** — `~/.config/stablemate/config.toml`'s `[qa_tools.<name>]` — is
+- **Definition** — the stablemate config's `[qa_tools.<name>]` (`config_path()`:
+  `$STABLEMATE_CONFIG`, else `~/.config/stablemate/config.toml`) — is
   per-machine: CI's `tesseract` is a container binary, a laptop's is Homebrew's, and a
   repo-committed path would be wrong on one of them the day it was written.
 
@@ -31,7 +32,7 @@ from typing import Any
 
 import yaml
 
-from ostler._vendor.stablemate_core.config import load_config
+from ostler._vendor.stablemate_core.config import config_path, load_config
 from ostler.qa.outcome import QaOutcome
 
 #: Tools the harness ships a typed wrapper for (`qa.tesseract`, `qa.convert`). Their
@@ -108,7 +109,7 @@ def catalog(root: Path, *, cfg: dict[str, Any] | None = None) -> tuple[dict[str,
             if not isinstance(command, str) or not command:
                 errors.append(
                     f"qa tool {name!r} is opted into via agents.yml but its "
-                    f"[qa_tools.{name}] table in the stablemate config has no `command`"
+                    f"[qa_tools.{name}] table in {config_path()} has no `command`"
                 )
                 continue
             specs[name] = ToolSpec(
@@ -124,8 +125,7 @@ def catalog(root: Path, *, cfg: dict[str, Any] | None = None) -> tuple[dict[str,
         else:
             errors.append(
                 f"qa tool {name!r} is opted into via agents.yml's `qa: {{tools: [...]}}` "
-                f"but is not a built-in and has no [qa_tools.{name}] table in "
-                "~/.config/stablemate/config.toml"
+                f"but is not a built-in and has no [qa_tools.{name}] table in {config_path()}"
             )
     return specs, errors
 

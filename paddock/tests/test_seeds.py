@@ -38,6 +38,7 @@ def test_capture_accepts_junk_that_is_explicitly_excluded(
     (repo / ".venv").mkdir()
     captured = capture(repo, data_dir, store, excludes=(".venv",))
     assert captured.zip_path.exists()
+    assert Pointer.load(captured.pointer_path).excludes == (".venv",)
 
 
 def test_capture_refuses_to_replace_a_seed_without_force(
@@ -68,6 +69,25 @@ def test_a_re_capture_keeps_the_url_and_note_nobody_retyped(
     said = capture(repo, data_dir, store, force=True, note="now with a defect").pointer
     assert said.note == "now with a defect"
     assert said.url == "https://example.com/acme.zip"
+
+
+def test_a_re_capture_keeps_the_recorded_excludes_unless_new_ones_are_named(
+    repo: Path, data_dir: Path, store: Path
+) -> None:
+    """The `--exclude` globs travel with the pointer like `url` and `note` do.
+
+    They shaped `tree_sha256`, so a bare `--force` that dropped them would either refuse the
+    tree it accepted last time or record a digest the next verify_tree cannot reproduce.
+    """
+    (repo / ".venv").mkdir()
+    capture(repo, data_dir, store, excludes=(".venv",))
+
+    kept = capture(repo, data_dir, store, force=True).pointer
+    assert kept.excludes == (".venv",)
+
+    (repo / "build").mkdir()
+    said = capture(repo, data_dir, store, force=True, excludes=(".venv", "build")).pointer
+    assert said.excludes == (".venv", "build")
 
 
 def test_verify_rejects_a_zip_that_drifted(repo: Path, data_dir: Path, store: Path) -> None:
@@ -148,6 +168,32 @@ def test_verify_tree_rejects_a_source_that_moved_after_capture(
     pointer = seeds.capture(inside, name="acme", data_dir=data_dir, store=store).pointer
     (inside / "README.md").write_text("acme, repaired\n", encoding="utf-8")
     with pytest.raises(PointerError, match="paddock seed capture"):
+        pointer.verify_tree(inside)
+
+
+def test_verify_tree_honours_the_recorded_excludes(
+    repo: Path, data_dir: Path, store: Path
+) -> None:
+    """A tree captured around a local environment verifies around it too.
+
+    The digest was taken with the globs, so a verification without them hashes content the
+    capture never saw and reports a drift nobody introduced — which is the F5 finding: a
+    pointer whose freshness guard could not be reproduced from the pointer.
+    """
+    inside = data_dir / "apps" / "acme-api"
+    shutil.copytree(repo, inside, symlinks=True)
+    (inside / ".venv").mkdir()
+    (inside / ".venv" / "pyvenv.cfg").write_text("home = /usr\n", encoding="utf-8")
+    pointer = seeds.capture(
+        inside, name="acme", data_dir=data_dir, store=store, excludes=(".venv",)
+    ).pointer
+    pointer.verify_tree(inside)
+    # The excluded tree may churn freely; only what the capture saw is measured.
+    (inside / ".venv" / "pyvenv.cfg").write_text("home = /opt\n", encoding="utf-8")
+    pointer.verify_tree(inside)
+    # And a real edit is still caught, with the flags the re-capture needs in the message.
+    (inside / "README.md").write_text("acme, repaired\n", encoding="utf-8")
+    with pytest.raises(PointerError, match=r"--force --exclude \.venv"):
         pointer.verify_tree(inside)
 
 

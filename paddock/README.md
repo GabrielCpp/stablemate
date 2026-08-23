@@ -52,6 +52,7 @@ dirty = false
 url = "https://…"            # optional; the first fetch backend is a plain HTTPS GET
 source = "apps/policy-desk"  # where the captured tree lives, when it lives in this repo
 tree_sha256 = "…"            # that directory's content hash at capture time
+excludes = [".venv"]         # the --exclude globs the capture (and so the hash) was taken with
 ```
 
 The sha256 makes the fixture reproducible and its integrity independent of transport, and
@@ -237,7 +238,9 @@ comparison against a full run nobody would have made on purpose.
 
 Seeds are born by `capture`, not by hand: hand-zipping is what lets a `.venv` into a
 fixture, and the command is the contract's enforcement point — it refuses build output and
-local environments anywhere in the tree (`--exclude GLOB` permits one deliberately), warns
+local environments anywhere in the tree (`--exclude GLOB` permits one deliberately, and the
+pointer records the globs so the freshness check hashes the same tree the capture did — a
+bare `--force` re-capture inherits them, an explicit `--exclude` replaces them), warns
 when farrier was never run, and records HEAD.
 
 `unpack` re-runs `farrier install` against the extracted tree, because the machine-local

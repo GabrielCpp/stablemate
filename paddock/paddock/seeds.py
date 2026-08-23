@@ -90,23 +90,28 @@ def in_tree_source(repo: Path, data_dir: Path) -> str:
         return ""
 
 
-def _carried_over(pointer_path: Path, *, url: str, note: str) -> tuple[str, str]:
-    """Inherit `url` and `note` from the pointer being replaced, unless this call names them.
+def _carried_over(
+    pointer_path: Path, *, url: str, note: str, excludes: tuple[str, ...]
+) -> tuple[str, str, tuple[str, ...]]:
+    """Inherit `url`, `note` and `excludes` from the pointer being replaced, unless named here.
 
-    A re-capture re-measures the tree; it does not re-decide where the zip is served from or
-    what the seed is. Those two fields are the only ones a person typed rather than a hash
-    computed, so a `--force` that silently blanks them costs a fixture its fetch story and
-    its one line of prose — and the usual reason to re-capture is that a file in the tree
-    moved, which is exactly when nobody is thinking about the pointer's prose.
+    A re-capture re-measures the tree; it does not re-decide where the zip is served from,
+    what the seed is, or which globs the tree is measured without. Those are the fields a
+    person typed rather than a hash computed, so a `--force` that silently blanks them costs
+    a fixture its fetch story, its one line of prose, or its reproducible digest — and the
+    usual reason to re-capture is that a file in the tree moved, which is exactly when
+    nobody is thinking about the pointer's flags.
 
     Empty means inherit, so clearing one is an edit to the TOML rather than a flag. That is
     the right way round: dropping a url by omission is the failure this exists to stop, and
-    a re-capture is not where you would deliberately go to do it.
+    a re-capture is not where you would deliberately go to do it. An explicit `--exclude`
+    replaces the recorded set rather than adding to it, so the flags on the command line are
+    the whole answer when they are given at all.
     """
-    if not pointer_path.exists() or (url and note):
-        return url, note
+    if not pointer_path.exists():
+        return url, note, excludes
     previous = Pointer.load(pointer_path)
-    return url or previous.url, note or previous.note
+    return url or previous.url, note or previous.note, excludes or previous.excludes
 
 
 def capture(
@@ -126,7 +131,7 @@ def capture(
     pointer_path = paths.seed_pointer(data_dir, name)
     if pointer_path.exists() and not force:
         raise SeedError(f"{pointer_path}: seed '{name}' already exists (pass --force to replace)")
-    url, note = _carried_over(pointer_path, url=url, note=note)
+    url, note, excludes = _carried_over(pointer_path, url=url, note=note, excludes=excludes)
 
     junk = archive.junk_in(repo, excludes)
     if junk:
@@ -155,6 +160,7 @@ def capture(
         note=note,
         source=in_tree_source(repo, data_dir),
         tree_sha256=archive.tree_digest(repo, excludes),
+        excludes=tuple(excludes),
     )
     pointer.write(pointer_path)
     return Captured(pointer=pointer, zip_path=zip_path, pointer_path=pointer_path)

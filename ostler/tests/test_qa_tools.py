@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ostler.qa import tools
 
 
@@ -59,13 +61,23 @@ def test_catalog_resolves_a_user_declared_tool(tmp_path: Path) -> None:
     assert specs["ocr-diff"].builtin is False
 
 
-def test_catalog_errors_on_opted_in_name_with_no_definition(tmp_path: Path) -> None:
+def test_catalog_errors_on_opted_in_name_with_no_definition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The message names the config the preflight actually read, not the default path.
+
+    An operator pointed elsewhere by `STABLEMATE_CONFIG` who is told to edit
+    `~/.config/stablemate/config.toml` edits a file nothing reads.
+    """
+    resolved = tmp_path / "elsewhere" / "config.toml"
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(resolved))
     _write_agents_yml(tmp_path, ["ocr-diff"])
     specs, errors = tools.catalog(tmp_path, cfg={})
     assert specs == {}
     assert len(errors) == 1
     assert "ocr-diff" in errors[0]
-    assert "no [qa_tools.ocr-diff] table" in errors[0]
+    assert f"no [qa_tools.ocr-diff] table in {resolved}" in errors[0]
+    assert "~/.config" not in errors[0]
 
 
 def test_catalog_errors_on_qa_tools_entry_missing_command(tmp_path: Path) -> None:
