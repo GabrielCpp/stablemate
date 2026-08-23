@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from _fixtures import APPS, DATA, load_task
+from _fixtures import APPS, APPS_DIR, DATA, load_task
 
 frozen = load_task("_frozenapp_keys", DATA / "tasks" / "_frozenapp.py")
 
@@ -62,3 +62,50 @@ def test_an_unknown_story_and_a_missing_variant_are_named(tmp_path: Path) -> Non
     key["defects"][0]["story"] = "s9"
     (app / "defects.yml").write_text(yaml.safe_dump(key), encoding="utf-8")
     assert frozen.validate_defects(app) == ["X1: story 's9' is not one of s1"]
+
+
+# ── story manifests ───────────────────────────────────────────────────────────────────
+
+ALL_STORIES = [
+    pytest.param(app, story.name, id=f"{app.name}/{story.name}")
+    for app in sorted(APPS_DIR.iterdir())
+    if (app / "stories").is_dir()
+    for story in sorted((app / "stories").iterdir())
+    if (story / "diff.yml").is_file()
+]
+
+
+@pytest.mark.parametrize(("app", "story"), ALL_STORIES)
+def test_every_story_manifest_is_well_formed(app: Path, story: str) -> None:
+    """Each path in exactly one of `changed:`/`added:`/`pinned:`, every image the lists
+    promise present, every path the app tree holds (a pinned path too — it is the finished
+    image the pin overrides, and materialize copies the tree first)."""
+    diff = frozen.story_diff(app, story)
+    listed = [rel for kind in frozen.DIFF_KINDS for rel in diff[kind]]
+    assert len(listed) == len(set(listed)), f"{app.name}/{story}: a path is listed twice"
+    for rel in listed:
+        assert (app / rel).is_file(), f"{app.name}/{story}: {rel} is not in the app tree"
+    for rel in diff["changed"]:
+        frozen.story_image(app, story, rel, phase="pre")
+    for rel in diff["pinned"]:
+        frozen.story_image(app, story, rel, phase="pinned")
+
+
+def test_a_path_in_two_lists_is_refused(tmp_path: Path) -> None:
+    app = _write_app(
+        tmp_path / "two-lists",
+        path="a.py",
+        story_diff={"changed": ["a.py"], "added": [], "pinned": ["a.py"]},
+    )
+    with pytest.raises(frozen.TrialError, match="listed under both changed: and pinned:"):
+        frozen.story_diff(app, "s1")
+
+
+def test_a_pinned_path_without_an_image_is_refused(tmp_path: Path) -> None:
+    app = _write_app(
+        tmp_path / "no-pin",
+        path="a.py",
+        story_diff={"changed": ["a.py"], "added": [], "pinned": ["b.py"]},
+    )
+    with pytest.raises(frozen.TrialError, match="pins b.py but has no pinned/ image"):
+        frozen.story_image(app, "s1", "b.py", phase="pinned")

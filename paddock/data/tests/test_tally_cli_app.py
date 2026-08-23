@@ -12,8 +12,9 @@ running. Three things about this app change how they present:
 * **The book is versioned per story.** Symbol grounding is exactly what makes an authored book
   anachronistic in an earlier image: a `code:` bullet naming `tally/report.py::summarize` in
   story 1's worktree is a dangling citation, and the packet says so at error severity. Each
-  story therefore ships its own trimmed copy of the book, identical in `pre/` and `post/`, and
-  two tests below pin both halves of that — the identity, and the image holding up on its own.
+  story therefore `pinned:`s its own trimmed copy of the book — one image, committed with the
+  before tree and never touched after — and two tests below pin both halves of that: the image
+  being identical in HEAD and the worktree, and the image holding up on its own.
 * **The plans are frozen and shipped.** `docs/specs/<story>/qa_plan.py` is authored here rather
   than by the agent under measurement, so `ostler.qa.lint`'s allowlist and the plan validator's
   vocabulary are load-bearing for this fixture in a way they are not for one whose plans are
@@ -78,13 +79,6 @@ STORIES = ("ledger-init-add", "import-csv", "report-export")
 
 EPIC = "0001-shared-expense-ledger"
 
-#: The book pages the stories keep re-cutting. Every story but the last ships its own image
-#: of these, and the images are what the anachronism tests below read.
-BOOK = (
-    "docs/features/tally/tally.md",
-    "docs/features/tally/flows/track-a-trip.md",
-)
-
 #: The module every story edits — the reason this fixture exists at all.
 SHARED_SOURCE = "tally/cli.py"
 
@@ -93,7 +87,7 @@ _CODE_BULLET = re.compile(r"^- code: (\S+)", re.MULTILINE)
 
 def manifest(story: str) -> dict[str, list[str]]:
     data = yaml.safe_load((APP / "stories" / story / "diff.yml").read_text(encoding="utf-8"))
-    return {"changed": list(data.get("changed") or []), "added": list(data.get("added") or [])}
+    return {kind: list(data.get(kind) or []) for kind in ("changed", "added", "pinned")}
 
 
 def defects() -> list[dict[str, str]]:
@@ -220,11 +214,25 @@ def test_changed_paths_have_a_pre_image_and_added_paths_do_not(story: str) -> No
 
 
 @pytest.mark.parametrize("story", STORIES)
-def test_no_image_names_a_path_the_manifest_does_not(story: str) -> None:
-    """A stale `pre/` or `post/` file is dead weight that reads as coverage."""
+def test_pinned_paths_have_a_pinned_image_and_no_other(story: str) -> None:
+    """A `pinned:` path has exactly one image. A `pre/` or `post/` copy beside it is the old
+    duplicate arrangement creeping back — two files that have to be kept byte-identical by a
+    test, where one file is identical by construction."""
     diff = manifest(story)
-    declared = {*diff["changed"], *diff["added"]}
-    for phase in ("pre", "post"):
+    for rel in diff["pinned"]:
+        assert (APP / "stories" / story / "pinned" / rel).is_file(), f"{story}: no pinned/ for {rel}"
+        for phase in ("pre", "post"):
+            assert not (APP / "stories" / story / phase / rel).exists(), (
+                f"{story}: {rel} is pinned but also has a {phase}/ image"
+            )
+
+
+@pytest.mark.parametrize("story", STORIES)
+def test_no_image_names_a_path_the_manifest_does_not(story: str) -> None:
+    """A stale `pre/`, `post/` or `pinned/` file is dead weight that reads as coverage."""
+    diff = manifest(story)
+    declared = {*diff["changed"], *diff["added"], *diff["pinned"]}
+    for phase in ("pre", "post", "pinned"):
         root = APP / "stories" / story / phase
         if not root.is_dir():
             continue
@@ -255,12 +263,6 @@ def test_each_story_starts_where_the_previous_one_ended() -> None:
     """
     for index, later in enumerate(STORIES[1:], start=1):
         for rel in manifest(later)["changed"]:
-            if rel in BOOK:
-                # The book is the one `changed:` path that is deliberately *not* chained. Its
-                # `pre/` is the story's own image rather than the previous story's, which is
-                # what keeps it out of `HEAD..WORKTREE`; chaining it would put the book edits
-                # into the story's diff and demand a `code:` owner for a page.
-                continue
             declaring = [
                 story
                 for story in STORIES[:index]
@@ -277,32 +279,39 @@ def test_each_story_starts_where_the_previous_one_ended() -> None:
 
 
 @pytest.mark.parametrize("story", STORIES[:-1])
-def test_the_book_is_pinned_identically_on_both_sides_of_every_early_story(story: str) -> None:
-    """The per-story book rule, asserted in the shape the materializer reads it.
-
-    Every story but the last carries its own trimmed book, and the two images have to be the
-    *same bytes*: `pre/` puts it in the before-commit and `post/` restores it into the
-    worktree, so identical halves mean the book is current in the trial and contributes no
-    line to `HEAD..WORKTREE`. Halves that differ would make the book part of the story's own
-    diff — a changed path needing a `code:` owner of its own, which no book has.
-
-    Omitting `post/` is the quiet failure: `story_image` falls back to the app tree, which is
-    the *finished* book, and the anachronism the whole arrangement exists to remove is back.
-    """
-    changed = set(manifest(story)["changed"])
-    for rel in BOOK:
-        assert rel in changed, f"{story} must version {rel}"
-        before = APP / "stories" / story / "pre" / rel
-        after = APP / "stories" / story / "post" / rel
-        assert after.is_file(), f"{story}: no post/ for {rel} — the app tree would be restored"
-        assert before.read_bytes() == after.read_bytes(), (
-            f"{story}: pre/ and post/ images of {rel} must be the same trimmed copy"
+def test_every_early_story_pins_its_own_book(story: str) -> None:
+    """Every story but the last carries its own trimmed book under `pinned:`, and the image
+    is not the finished one: a pinned copy identical to the app tree would be the anachronism
+    with extra steps."""
+    pinned = set(manifest(story)["pinned"])
+    for rel in ("docs/features/tally/tally.md", "docs/features/tally/flows/track-a-trip.md"):
+        assert rel in pinned, f"{story} must pin {rel}"
+        image = APP / "stories" / story / "pinned" / rel
+        assert image.read_bytes() != (APP / rel).read_bytes(), (
+            f"{story}: pinned {rel} is the finished book — nothing was trimmed"
         )
 
 
-def test_the_last_story_ships_the_book_the_app_tree_holds() -> None:
-    """The one story whose image the app tree already is — which is why it versions nothing."""
-    assert not (set(manifest(STORIES[-1])["changed"]) & set(BOOK))
+def test_the_last_story_pins_nothing() -> None:
+    """The one story whose image the app tree already is — which is why it pins nothing."""
+    assert manifest(STORIES[-1])["pinned"] == []
+
+
+@pytest.mark.parametrize("story", STORIES[:-1])
+def test_a_pinned_path_is_identical_in_head_and_worktree_after_materialize(
+    story: str, tmp_path: Path
+) -> None:
+    """The property `pinned:` exists to hold by construction: the pinned image is what HEAD
+    holds, what the worktree holds, and what the fixture ships — so the book is present and
+    current in the trial and contributes no line to `HEAD..WORKTREE`."""
+    dest = frozen.materialize(APP, story, tmp_path / "tally-cli")
+    for rel in manifest(story)["pinned"]:
+        shipped = (APP / "stories" / story / "pinned" / rel).read_bytes()
+        committed = subprocess.run(
+            ["git", "show", f"HEAD:{rel}"], cwd=dest, capture_output=True, check=True
+        ).stdout
+        assert committed == shipped, f"{story}: HEAD:{rel} is not the pinned image"
+        assert (dest / rel).read_bytes() == shipped, f"{story}: worktree {rel} is not the pinned image"
 
 
 # ── materialization ───────────────────────────────────────────────────────────────────
@@ -319,9 +328,9 @@ def test_materialize_leaves_exactly_this_story_uncommitted(story: str, tmp_path:
     ).stdout.splitlines()
     dirty = {line[3:]: line[:2].strip() for line in porcelain}
 
-    # The book is `changed:` with identical images, so it is committed at the content the
-    # worktree already holds and never shows up as dirty. That is the point of it.
-    assert set(dirty) == {*diff["changed"], *diff["added"]} - set(BOOK)
+    # A `pinned:` path is committed at the content the worktree holds and never shows up as
+    # dirty. That is the point of it.
+    assert set(dirty) == {*diff["changed"], *diff["added"]}
     for rel in diff["added"]:
         assert dirty[rel] == "??"
 

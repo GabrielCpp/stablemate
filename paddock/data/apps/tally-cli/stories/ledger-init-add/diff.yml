@@ -10,9 +10,10 @@
 # it stands after the *last* story; grounded at symbol level, that book is anachronistic in
 # every earlier image — it documents `cmd_import`, `merge` and `summarize` against a worktree
 # that has none of them, and the packet mints a blocking `dangling-grounding` for each. So the
-# book is `changed:` with the same trimmed copy in `pre/` and `post/`: pinned identically on
-# both sides, it is byte-identical in base and head and contributes nothing to HEAD..WORKTREE,
-# while the story's obligations are exactly the ones a book written at this point would owe.
+# book is `pinned:` — one trimmed copy under `pinned/`, committed with the before tree and
+# never touched after, so it is byte-identical in HEAD and the worktree and contributes nothing
+# to HEAD..WORKTREE, while the story's obligations are exactly the ones a book written at this
+# point would owe.
 story: ledger-init-add
 added:
   - pyproject.toml
@@ -21,5 +22,6 @@ added:
   - tally/cli.py
   - tally/ledger.py
 changed:
+pinned:
   - docs/features/tally/tally.md
   - docs/features/tally/flows/track-a-trip.md

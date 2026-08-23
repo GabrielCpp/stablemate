@@ -71,14 +71,39 @@ QA_OUTPUTS = (
 CLEAN = "clean"
 
 
+#: The three lists a story manifest may carry. A path belongs to exactly one of them.
+DIFF_KINDS = ("changed", "added", "pinned")
+
+
 def story_diff(app: Path, story: str) -> dict[str, list[str]]:
-    """The `changed:`/`added:` manifest for one story, validated against the tree."""
+    """The `changed:`/`added:`/`pinned:` manifest for one story, validated against the tree.
+
+    `changed:` and `added:` are the story's implementation diff — what `HEAD..WORKTREE` holds
+    once the trial is materialized. `pinned:` is the third kind: a path the trial needs at a
+    *story-specific* image on **both** sides of HEAD, so it is present and current in the
+    worktree and contributes no line to the diff. The per-story book is the case that forced
+    it: a book authored against the finished app cites symbols an earlier story has not
+    written, and the trimmed copy that fixes it is not a change the story makes, it is the
+    state the story is read against. One image, at `stories/<story>/pinned/<rel>`, written
+    before the before-commit and never touched after — identical in HEAD and the worktree by
+    construction rather than by a test that compares two copies.
+    """
     manifest = app / "stories" / story / "diff.yml"
     if not manifest.is_file():
         known = ", ".join(sorted(p.name for p in (app / "stories").glob("*"))) or "none"
         raise TrialError(f"no diff manifest at {manifest} (stories: {known})")
     data = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
-    return {"changed": list(data.get("changed") or []), "added": list(data.get("added") or [])}
+    diff = {kind: [str(rel) for rel in data.get(kind) or []] for kind in DIFF_KINDS}
+    seen: dict[str, str] = {}
+    for kind in DIFF_KINDS:
+        for rel in diff[kind]:
+            if rel in seen:
+                raise TrialError(
+                    f"{manifest}: {rel} is listed under both {seen[rel]}: and {kind}: — "
+                    "a path is exactly one of changed, added or pinned"
+                )
+            seen[rel] = kind
+    return diff
 
 
 def story_image(app: Path, story: str, rel: str, *, phase: str) -> Path:
@@ -94,6 +119,10 @@ def story_image(app: Path, story: str, rel: str, *, phase: str) -> Path:
         return image
     if phase == "pre":
         raise TrialError(f"story {story!r} lists {rel} as changed but has no pre/ image at {image}")
+    if phase == "pinned":
+        # No fallback either: the app tree is the *finished* image, and a pinned path exists
+        # precisely because the finished image is wrong for this story.
+        raise TrialError(f"story {story!r} pins {rel} but has no pinned/ image at {image}")
     return app / rel
 
 
@@ -108,9 +137,10 @@ def materialize(
 
       1. copy the app tree, minus the answer key;
       2. commit a *before* tree — each `changed:` path replaced by its `pre/` image, each
-         `added:` path deleted;
-      3. restore this story's files into the worktree, uncommitted, from `post/` where that
-         exists and from the app tree otherwise.
+         `added:` path deleted, each `pinned:` path replaced by its `pinned/` image;
+      3. restore this story's `changed:`/`added:` files into the worktree, uncommitted, from
+         `post/` where that exists and from the app tree otherwise. A pinned path is not
+         touched again: committed once, it is identical in HEAD and the worktree.
 
     `HEAD..WORKTREE` is then exactly this story's implementation diff, while the book, the
     specs and every other story's code sit at their authored state.
@@ -144,6 +174,10 @@ def materialize(
         (dest / rel).unlink(missing_ok=True)
     for rel in diff["changed"]:
         (dest / rel).write_bytes(story_image(app, story, rel, phase="pre").read_bytes())
+    for rel in diff["pinned"]:
+        target = dest / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(story_image(app, story, rel, phase="pinned").read_bytes())
 
     git("init", "--quiet", "--initial-branch", "main", cwd=dest)
     # Identity on the repo rather than the machine: a trial must not depend on whether the
@@ -252,8 +286,9 @@ def validate_defects(app: Path) -> list[str]:
             diff = story_diff(app, story)
             diffs[story] = {*diff["changed"], *diff["added"]}
         if path not in diffs[story]:
+            where = "pinned by" if path in story_diff(app, story)["pinned"] else "not in"
             problems.append(
-                f"{rid}: {path} is not in {story}'s diff — the defect would be committed in "
+                f"{rid}: {path} is {where} {story}'s diff — the defect would be committed in "
                 "the before tree and no obligation would be minted for it"
             )
         if not variant_path(app, row).is_file():

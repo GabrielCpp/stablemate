@@ -186,16 +186,18 @@ against it reaches for them: a QA plan for `tally-cli`'s first story that calls 
 crashes on a trial, because `report` arrives two stories later. The book is not a fixed backdrop the
 stories move against — it is one of the files the stories change, and it materializes like any other.
 
-So a story lists the book pages it is described on in its `diff.yml` `changed:` list, and ships
-**the same trimmed bytes in both `pre/` and `post/`** — the book as of that story, describing what
-exists by the end of it and nothing later. Identical halves are the point, not an oversight: `pre/`
-puts that image in the *before* commit and `post/` puts it in the worktree, so the book is present
-and current in the trial while contributing no line to `HEAD..WORKTREE`. A book that differed
-across the two would be a changed path in the story's own diff, and would then need a `code:` owner
-of its own to avoid an `unmapped-change` error. Omitting `post/` is worse than wrong-looking: the
-materializer falls back to the app tree, which restores the *finished* book and puts the
-anachronism straight back. The last story is the one exception, for the same reason it needs no
-`post/` at all: the app tree already holds its image of the book.
+But it is not a file the story *changes*, either: the trimmed book is the state the story is read
+against, not work the story does, and it must not appear in `HEAD..WORKTREE` — a changed book would
+need a `code:` owner of its own to avoid an `unmapped-change` error, which no page has. That is the
+third kind of path a `diff.yml` carries, **`pinned:`**, next to `changed:` and `added:`. A story
+lists the book pages it is described on under `pinned:` and ships one image of each at
+`stories/<story>/pinned/<rel>` — the book as of that story, describing what exists by the end of it
+and nothing later. The materializer writes that image into the *before* commit and never touches the
+path again, so it is identical in HEAD and the worktree by construction: present and current in the
+trial, contributing no line to the diff. A path is in exactly one of the three lists, and a pinned
+path with no `pinned/` image is a `TrialError` rather than a fallback — the app tree is the
+*finished* image, and the pin exists precisely because the finished image is wrong here. The last
+story pins nothing, for the same reason it needs no `post/`: the app tree already holds its image.
 
 Two corollaries worth having in front of you before you author the next fixture:
 
