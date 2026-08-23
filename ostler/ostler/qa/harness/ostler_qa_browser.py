@@ -123,7 +123,10 @@ class Browser:
         self.emit = emit
         self.recording: dict[str, Any] = dict(target.recording or {"required": True})
         self.viewport: dict[str, Any] = dict(target.viewport or DEFAULT_VIEWPORT)
-        self.mode = str(self.recording.get("mode", "window"))
+        #: `viewport` — Playwright filming its own page — is the default because it is the
+        #: only recording that exists on every platform. `window` grabs an X display, which
+        #: ostler starts around this process, and is Linux-only and opt-in.
+        self.mode = str(self.recording.get("mode", "viewport"))
         self.required = bool(self.recording.get("required", True))
         self.video_dir = qa_dir / "videos" / scenario_id
         self.page: Any = None
@@ -163,8 +166,10 @@ class Browser:
         if browser_type is None:
             raise ValueError(f"unknown Playwright browser {name!r}")
         # Headed only for window recording, which is ostler's ffmpeg grabbing a private X
-        # display the runner starts (DisplayRecorder) — not the operator's desktop. Every
-        # other mode is headless.
+        # display the runner starts (DisplayRecorder) — not the operator's desktop — and
+        # which is opt-in and Linux-only. Every other mode is headless, including the
+        # default `viewport`: Playwright's own recorder films the page whether or not
+        # there is a screen to draw it on.
         self._browser = browser_type.launch(headless=not (self.required and self.mode == "window"))
         options: dict[str, Any] = {"viewport": self.viewport}
         permissions = self.permissions()

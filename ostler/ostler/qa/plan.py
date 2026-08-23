@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -799,14 +800,42 @@ def check_runtime_requirements(
         driver = target.get("driver")
         recording = target.get("recording", {"required": True})
         required = recording.get("required", True)
-        mode = recording.get("mode", "window" if driver == "playwright" else "device")
+        mode = recording.get("mode", "viewport" if driver == "playwright" else "device")
         if driver == "playwright":
             try:
                 import playwright.sync_api  # noqa: F401
             except ImportError:
                 problems.append(f"target '{name}' requires the Playwright Python package")
-            if required and mode == "window" and shutil.which("ffmpeg") is None:
-                problems.append(f"target '{name}' requires ffmpeg for window recording")
+            # ffmpeg for both modes: `window` films with it, and every mode is held to
+            # "the recording is not one frozen frame", which is a decode.
+            if required and shutil.which("ffmpeg") is None:
+                problems.append(f"target '{name}' requires ffmpeg to record and check evidence")
+            # `window` grabs an X display the recorder starts itself, so Xvfb is a runtime
+            # requirement rather than a fallback, and the whole mode is Linux-only. Both are
+            # caught here so the run is refused up front instead of a scenario in.
+            if required and mode == "window" and sys.platform != "linux":
+                problems.append(
+                    f"target '{name}' asks for `recording.mode: window`, which films an X "
+                    f"display and is Linux-only; this is {sys.platform} — use the default "
+                    "`viewport` mode"
+                )
+            if (
+                required
+                and mode == "window"
+                and not recording.get("display")
+                and shutil.which("Xvfb") is None
+            ):
+                problems.append(f"target '{name}' requires Xvfb for window recording")
+            # The recorder films a display it starts itself rather than whatever `$DISPLAY`
+            # names, so Xvfb is a runtime requirement and not an optional fallback. Caught
+            # here so the run is refused up front instead of a scenario in.
+            if (
+                required
+                and mode == "window"
+                and not recording.get("display")
+                and shutil.which("Xvfb") is None
+            ):
+                problems.append(f"target '{name}' requires Xvfb for window recording")
             if required and shutil.which("ffprobe") is None:
                 problems.append(f"target '{name}' requires ffprobe to validate recording metadata")
         elif driver == "maestro":

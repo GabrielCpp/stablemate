@@ -12,6 +12,7 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Mapping
@@ -132,8 +133,24 @@ class PythonDriver(QaDriver):
             self._start_device(recording)
 
     def _start_window_recorder(self, recording: dict[str, Any]) -> None:
-        if not recording.get("required", True) or recording.get("mode", "window") != "window":
+        """Only for `mode: window` — the opt-in one. `viewport` films inside the scenario.
+
+        The default moved to `viewport` because this recorder cannot exist on every machine
+        the suite runs on. It grabs an X display, which is Linux and nothing else: there is
+        no Xvfb on macOS, `x11grab` is not a format ffmpeg has there, and the only thing
+        avfoundation offers instead is the whole physical desktop — which is the failure
+        this mode already produced on Linux, promoted to the only behavior available.
+        `viewport` asks Playwright to film its own page, so it needs no display, works
+        headless, and is the same evidence on every platform.
+        """
+        if not recording.get("required", True) or recording.get("mode", "viewport") != "window":
             return
+        if sys.platform != "linux":
+            raise DriverBlocked(
+                f"`recording.mode: window` films an X display and is Linux-only; this is "
+                f"{sys.platform}. Use the default `viewport` mode, which records the page "
+                "through Playwright on every platform."
+            )
         viewport = self.target.get("viewport", {"width": 1440, "height": 900})
         # The launcher chooses the recorder because the two have to agree about which
         # machine the browser is drawn on: filming the host's X display while the browser
@@ -143,6 +160,9 @@ class PythonDriver(QaDriver):
             width=int(viewport.get("width", 1440)),
             height=int(viewport.get("height", 900)),
             fps=int(recording.get("fps", 30)),
+            # Declared, or none: an ambient `$DISPLAY` is not an answer to "which screen is
+            # the app on". See `DisplayRecorder`.
+            display=str(recording.get("display", "")),
         )
         # The whole environment, including the DISPLAY the browser must be launched onto —
         # which is the one thing the scenario process cannot work out for itself.
@@ -553,6 +573,14 @@ class PythonDriver(QaDriver):
                     f"{measured.get('width')}x{measured.get('height')}, "
                     f"not the target's {width}x{height}"
                 )
+            if _is_static(path, measured.get("durationSeconds", 0)):
+                # The same guard the window recorder applies to itself, for the same reason:
+                # geometry cannot tell a filmed app from a filmed blank. Here it means the
+                # page never painted — the scenario drove a context that rendered nothing.
+                problems.append(
+                    f"scenario '{scenario_id}' recording never changes — the page under test "
+                    "painted nothing for the whole recording"
+                )
         problems.extend(self._file(scenario_id, path, kind=kind, metadata=metadata))
         return problems
 
@@ -664,7 +692,7 @@ class Launcher:
         return None
 
     def window_recorder(
-        self, driver: PythonDriver, *, width: int, height: int, fps: int
+        self, driver: PythonDriver, *, width: int, height: int, fps: int, display: str = ""
     ) -> DisplayRecorder:
         raise NotImplementedError
 
@@ -698,10 +726,15 @@ class LocalLauncher(Launcher):
             )
 
     def window_recorder(
-        self, driver: PythonDriver, *, width: int, height: int, fps: int
+        self, driver: PythonDriver, *, width: int, height: int, fps: int, display: str = ""
     ) -> DisplayRecorder:
         return DisplayRecorder(
-            driver.session, driver.target_id, width=width, height=height, fps=fps
+            driver.session,
+            driver.target_id,
+            width=width,
+            height=height,
+            fps=fps,
+            display=display,
         )
 
     def execute(
@@ -771,13 +804,40 @@ def _kill_group(process: subprocess.Popen[bytes]) -> None:
 
 
 class DisplayRecorder:
-    def __init__(self, session: QaSession, target: str, *, width: int, height: int, fps: int) -> None:
+    """Film the X display the browser is drawn on — one this recorder owns.
+
+    It owns it because the alternative is what shipped: inheriting `$DISPLAY` and grabbing
+    the top-left `width`x`height` of whatever screen the run happened to be started from.
+    On CI that is an empty root window; on a developer's machine it is their desktop, and
+    the evidence filed under `qa/videos/` is a perfectly valid mp4 of somebody's terminal.
+    Every guard in :meth:`_finalize` passes on that file — ffmpeg crops the grab to the
+    requested geometry, so the size matches, the frame rate matches and the duration
+    matches. Nothing about the recording says it is not the app.
+
+    So the display is not inherited. A fresh Xvfb is started at exactly the viewport size,
+    the browser is launched onto it through the env :meth:`start` returns, and the capture
+    region is that screen and nothing else. A target that really does have a display of its
+    own — a container image that runs one as a service — names it in its `recording` block,
+    where it is a written choice that shows up in the ledger, rather than an ambient
+    variable that decides silently.
+    """
+
+    def __init__(
+        self,
+        session: QaSession,
+        target: str,
+        *,
+        width: int,
+        height: int,
+        fps: int,
+        display: str = "",
+    ) -> None:
         self.session = session
         self.target = target
         self.width = width
         self.height = height
         self.fps = fps
-        self.display = ""
+        self.display = display
         self._xvfb: subprocess.Popen[bytes] | None = None
         self._ffmpeg: subprocess.Popen[bytes] | None = None
         self.path = session.qa_dir / "videos" / f"{target}.mp4"
@@ -800,11 +860,17 @@ class DisplayRecorder:
         if shutil.which("ffmpeg") is None:
             raise DriverBlocked("ffmpeg is required for browser-window recording")
         env = dict(os.environ)
-        # The browser runs on a private X display whenever Xvfb is installed — never on the
-        # desktop this process inherited. A headed window popping up on the operator's screen
-        # is a nuisance, and a recording of it is evidence of whatever else was on that screen.
-        # The inherited DISPLAY is the fallback only where Xvfb is absent.
-        if shutil.which("Xvfb") is not None:
+        # The browser runs on a private X display of its own — never on the desktop this
+        # process inherited. A headed window popping up on the operator's screen is a
+        # nuisance, and a recording of it is evidence of whatever else was on that screen.
+        # An existing display is filmed only where the target asked for one by name.
+        if not self.display:
+            if shutil.which("Xvfb") is None:
+                raise DriverBlocked(
+                    "window recording requires Xvfb — it films a display of its own rather "
+                    "than whatever screen $DISPLAY happens to name; declare "
+                    "`recording.display` on the target to point it at an existing one"
+                )
             self.display = f":{90 + os.getpid() % 100}"
             self._xvfb = subprocess.Popen(
                 ["Xvfb", self.display, "-screen", "0", f"{self.width}x{self.height}x24", "-nolisten", "tcp"],
@@ -812,10 +878,6 @@ class DisplayRecorder:
                 stderr=subprocess.DEVNULL,
             )
             time.sleep(0.5)
-        else:
-            self.display = os.environ.get("DISPLAY", "")
-            if not self.display:
-                raise DriverBlocked("window recording requires Xvfb (or a DISPLAY to fall back to)")
         env["DISPLAY"] = self.display
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._ffmpeg = subprocess.Popen(
@@ -869,6 +931,11 @@ class DisplayRecorder:
             raise RuntimeError("browser-window recording dimensions do not match the target")
         if abs(float(metadata.get("fps", 0)) - self.fps) > 2:
             raise RuntimeError("browser-window recording frame rate does not match the target")
+        if _is_static(self.path, metadata.get("durationSeconds", 0)):
+            raise RuntimeError(
+                "browser-window recording never changes — the display was filmed but nothing "
+                "was drawn on it; the browser did not open headed onto it"
+            )
         entry = self.session.register_artifact(
             self.path,
             kind="video",
@@ -1046,6 +1113,37 @@ def create_driver(
     on the target is a label for the report, not a dispatch.
     """
     return PythonDriver(session, target_id, target, root=root, variables=variables)
+
+
+def _is_static(path: Path, duration: float) -> bool:
+    """Is the whole recording one unchanging frame?
+
+    The geometry checks above cannot tell a filmed browser from a filmed empty desktop, and
+    that is the shape the failure takes once the recorder owns its display: Xvfb comes up,
+    ffmpeg films it faithfully, and the browser never draws — it launched headless, or died
+    before its first paint. The result is a valid mp4 of a blank root window filed as proof
+    the scenario ran.
+
+    The threshold is deliberately at the edge of "not one pixel moved" and the freeze has to
+    span the entire recording, so this cannot fire on a real session. A browser drawing a
+    caret is already too much motion for it.
+    """
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError("ffmpeg is required to check a recording is not one frozen frame")
+    if duration <= 0:
+        return False
+    probe = subprocess.run(  # noqa: S603 — fixed argv
+        [
+            "ffmpeg", "-v", "info", "-nostats", "-i", str(path),
+            "-vf", f"freezedetect=n=-70dB:d={max(duration - 0.5, 0.5):.3f}",
+            "-map", "0:v", "-f", "null", "-",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    return "freeze_start" in probe.stderr
 
 
 def _probe_media(path: Path) -> dict[str, Any]:
