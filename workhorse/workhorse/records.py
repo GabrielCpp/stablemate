@@ -149,6 +149,63 @@ class RunRecord(BaseModel):
     profile_config: dict[str, Any] = Field(default_factory=dict)
 
 
+class LaunchRecord(BaseModel):
+    """`launch.json` — what started *this process*, for whoever outlives it.
+
+    Separate from :class:`RunRecord` because the two answer different questions over
+    different lifetimes. `run.json` is about the run and is rewritten on every profile
+    record, interrupt and terminal; this is about one process, written once when it opens
+    the directory and read after it is dead. A resume overwrites it rather than carrying
+    it forward the way `started_at` and `repo_start` are carried, because the next
+    process really was launched differently.
+
+    It exists because a SIGKILL'd run cannot report its own death, so a supervisor has to
+    notice from outside — and until now the run directory said everything about the run
+    except the one thing needed to restart it.
+
+    Every field carries a default for the same reason `RunRecord`'s do: the reader meets
+    whatever the last process left, and a record with nothing in it is a legitimate parse.
+    """
+
+    #: Verbatim, as this process was actually exec'd. **Forensics — never execute it.**
+    #: It may carry `--no-cache`, which deletes the run directory before starting, and
+    #: `--param`/`--params-file` pointing at files that have since moved on from what the
+    #: checkpoint holds. Re-running it is not a resume; it is the way to lose the run.
+    argv: list[str] = Field(default_factory=list)
+    #: The line that *does* resume this run, from `workhorse.rundir.resume_argv`. Run it
+    #: from `cwd` below. Because `--auto` resumes a stable run dir in place, this is the
+    #: whole of what a supervisor has to do.
+    resume_argv: list[str] = Field(default_factory=list)
+    #: The working directory the process was launched from. Both argvs mean what they say
+    #: only from here — a relative `--runs-dir` or `--config` resolves against it.
+    cwd: str = ""
+    #: `sys.argv[0]`, called out because it is what `resume_argv[0]` is: the name that was
+    #: typed, not a resolved executable. A caller that needs to `exec` it resolves it.
+    program: str = ""
+    #: The process that wrote this record. `run.json` also holds a pid, and after a crash
+    #: the two are the same one — which is the pid a watcher probes and finds gone.
+    pid: int | None = None
+    #: When this process opened the directory, which is not when the run began.
+    started_at: str = ""
+    #: How many times this directory has been started, matching the
+    #: `workhorse.resume_generation` attribute on this process's telemetry. The natural
+    #: budget key for anything that resumes automatically: a run that is killed the
+    #: moment it starts must not be restarted forever.
+    resume_generation: int = 0
+    #: True when these are container coordinates. `argv[0]`, `--config`, `--runs-dir` and
+    #: `cwd` are then namespace-local paths that mean nothing on the host, so a host-side
+    #: consumer must refuse this record rather than re-spawn nonsense from it.
+    container: bool = False
+
+
+def parse_launch_record(text: str) -> LaunchRecord:
+    """Parse a `launch.json` body. Raises `ValidationError` on anything that is not one,
+    matching :func:`parse_run_record` — a consumer deciding whether it can re-spawn a
+    dead run is better served by a refusal than by a record of empty defaults that reads
+    as a runnable command."""
+    return LaunchRecord.model_validate_json(text)
+
+
 def parse_run_record(text: str) -> RunRecord:
     """Parse a `run.json` body. Raises `ValidationError` on anything that is not one —
     the callers are all deciding whether a directory is resumable, and a directory

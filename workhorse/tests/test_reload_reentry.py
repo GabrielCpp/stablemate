@@ -428,6 +428,33 @@ def test_moving_a_run_onto_another_cli_re_execs_naming_it():
     ], calls
 
 
+def test_a_re_exec_builds_its_argv_with_the_same_function_the_launch_record_does():
+    """The two are the same claim about the same run — this process's re-exec line and
+    the line a supervisor re-spawns off `launch.json` — and they were one copy-paste
+    away from disagreeing. A second builder is how a resume ends up landing on the wrong
+    profile, or on a `--no-cache` that deletes the run it was resuming."""
+    calls: list[tuple] = []
+
+    def fake_builder(program, run_dir, **kwargs):
+        calls.append((program, run_dir, kwargs))
+        return [program, "run", "--resume-run", str(run_dir)]
+
+    def fake_execv(path: str, argv: list[str]) -> None:
+        raise OSError("no such image")
+
+    script = "/nonexistent/bin/workhorse-stub"
+    with (
+        patch.object(run_mod, "resume_argv", fake_builder),
+        patch.object(run_mod.os, "execv", fake_execv),
+        patch.object(run_mod.sys, "argv", [script, "run"]),
+        _no_config_env(),
+    ):
+        run_mod._exec_reload("stub", Path("/runs/stub-t"), cli="claude", profile="cheap")
+
+    assert calls == [(script, Path("/runs/stub-t"),
+                      {"cli": "claude", "profile": "cheap", "config_path": ""})], calls
+
+
 def test_a_re_exec_carries_the_live_profile_and_the_config_file_it_is_reading():
     """Two things the resume would otherwise get wrong. The profile, because
     `switch-profile` applies in-process and `run.json` still names the one the run was

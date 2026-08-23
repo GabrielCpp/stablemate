@@ -19,7 +19,12 @@ from unittest.mock import patch
 
 from _fakes import present
 from workhorse.pyflow import Registry
-from workhorse.rundir import auto_resolve, derive_run_id, find_latest_resumable
+from workhorse.rundir import (
+    auto_resolve,
+    derive_run_id,
+    find_latest_resumable,
+    resume_argv,
+)
 
 cli_mod = importlib.import_module("workhorse.cli")
 run_cmd = importlib.import_module("workhorse.cli.run")
@@ -201,6 +206,75 @@ def test_resume_latest_still_errors_when_none():
                 exit_code = e.code
     assert called["run"] is False, "the driver should not be entered with nothing to resume"
     assert exit_code == 1
+
+
+def _invocation(argv: list[str]):
+    """Drive the CLI as far as the `RunInvocation` and stop, returning it."""
+    seen = {}
+
+    def fake_run_pyflow(invocation, *a, **k):
+        seen["it"] = invocation
+        return 0
+
+    with patch.object(run_cmd, "run_pyflow", fake_run_pyflow):
+        try:
+            _main(argv)
+        except SystemExit as e:
+            assert e.code == 0, e.code
+    return seen["it"]
+
+
+def test_the_recorded_resume_command_parses_back_onto_the_same_run():
+    """The only way this feature fails silently. A launch record is written by one
+    process and read by another after the first is dead — nothing checks the line in
+    between, so a command that no longer parses looks exactly like a command that does
+    until the day something tries to resume with it.
+
+    Deliberately launched with `--no-cache`, which is the flag that makes replaying the
+    original argv destructive rather than merely wrong: it deletes the run directory
+    before starting, so a supervisor that replayed it would destroy the checkpoint it
+    was trying to save. The resume line is built, not replayed, and this pins that.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        launched = _invocation([
+            "run", "--runs-dir", str(runs), "--run-id", "shakedown", "--no-cache",
+            "--params", json.dumps({"topic": "acme"}),
+        ])
+        assert launched.no_cache is True
+        run_dir = runs / f"research-{launched.run_id}"
+        run_dir.mkdir(parents=True)
+        (run_dir / "checkpoint.json").write_text(json.dumps({"state": "s", "params": {}}))
+
+        resumed = _invocation(resume_argv("workhorse-research", run_dir)[1:])
+
+        assert resumed.resume_run_dir == run_dir, resumed.resume_run_dir
+        assert resumed.no_cache is False, "a resume must never delete the dir it resumes"
+
+
+def test_the_recorded_resume_command_carries_what_the_checkpoint_does_not_hold():
+    """The backend and the config file are resolved at the process edge rather than held
+    by the run, and a supervisor re-spawning this line hours later is a fresh process
+    with a fresh environment — so what the environment would have said has to be in the
+    argv. The params are the other way round: they are in the checkpoint, and replaying
+    a `--params-file` would let a stale file win over what the run really holds."""
+    with tempfile.TemporaryDirectory() as tmp:
+        run_dir = Path(tmp) / "runs" / "research-shakedown"
+        cfg = Path(tmp) / "stablemate.toml"
+        cfg.write_text('[profiles.cheap.default.claude]\nmodel = "haiku"\n')
+        argv = resume_argv(
+            "workhorse-research", run_dir,
+            cli="claude", profile="cheap", config_path=str(cfg),
+        )
+        assert argv[:4] == ["workhorse-research", "run", "--resume-run", str(run_dir)]
+        assert "--params" not in argv and "--params-file" not in argv
+
+        run_dir.mkdir(parents=True)
+        (run_dir / "checkpoint.json").write_text(json.dumps({"state": "s", "params": {}}))
+        resumed = _invocation(argv[1:])
+
+        assert resumed.config.backend.name == "claude"
+        assert resumed.config.profile == "cheap"
 
 
 if __name__ == "__main__":

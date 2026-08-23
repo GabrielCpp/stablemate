@@ -14,13 +14,15 @@ Run: uv run python tests/test_artifacts_fresh.py   (or via pytest)
 """
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 import workhorse.artifacts as artifacts
+from workhorse import turnkey
 from workhorse.artifacts import ArtifactWriter
-from workhorse.records import parse_run_record
+from workhorse.records import parse_launch_record, parse_run_record
 
 
 def _leftovers(run_dir: Path, node_id: str = "flag_qa_failure") -> None:
@@ -167,6 +169,82 @@ def test_a_resume_carries_the_recorded_profile_rather_than_clearing_it():
         # …and a run that finishes keeps it, rather than dropping it at the terminal.
         resumed.finish(terminal="done")
         assert _recorded(resumed.run_dir).profile == "cheap"
+
+
+def _launched(run_dir: Path):
+    return parse_launch_record((run_dir / "launch.json").read_text())
+
+
+def test_the_run_dir_records_the_command_that_would_resume_it():
+    """The record a watcher needs after the process it describes is gone. A SIGKILL'd run
+    leaves a live checkpoint and a dead pid, and until this file the directory said
+    everything about the run except how to start it again."""
+    with tempfile.TemporaryDirectory() as tmp:
+        writer = ArtifactWriter("coder", Path(tmp) / "runs", run_id="pdeadbeef")
+
+        writer.record_launch(
+            ["/venv/bin/python3", "/venv/bin/workhorse-coder", "run", "qa", "--no-cache"],
+            ["/venv/bin/workhorse-coder", "run", "--resume-run", str(writer.run_dir)],
+            "/work/acme",
+        )
+
+        record = _launched(writer.run_dir)
+        assert record.cwd == "/work/acme"
+        assert record.program == "/venv/bin/workhorse-coder"
+        assert record.pid == os.getpid()
+        # The whole reason the two argvs are separate fields: replaying the launch line
+        # would delete the run directory this record exists to help someone save.
+        assert "--no-cache" in record.argv
+        assert "--no-cache" not in record.resume_argv
+        assert record.resume_argv[-2:] == ["--resume-run", str(writer.run_dir)]
+
+
+def test_a_resume_overwrites_the_launch_record_but_not_the_runs_own_start():
+    """The two files answer different questions. `run.json` is about the run and carries
+    its original start across resumes; `launch.json` is about one process, and the next
+    process really was launched differently — a watcher that read a stale pid out of it
+    would probe a pid that died two resumes ago and call the run healthy."""
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        writer = ArtifactWriter("coder", runs, run_id="pdeadbeef")
+        writer.record_launch(["first"], ["first", "run"], "/work/acme")
+        (writer.run_dir / ArtifactWriter.CHECKPOINT_FILE).write_text('{"state": "s"}')
+        (writer.run_dir / turnkey.GENERATION_FILE).write_text("2")
+        started = _recorded(writer.run_dir).started_at
+
+        resumed = ArtifactWriter.resume(writer.run_dir)
+        resumed.record_launch(["second"], ["second", "run"], "/work/globex")
+
+        assert _launched(resumed.run_dir).argv == ["second"]
+        assert _launched(resumed.run_dir).cwd == "/work/globex"
+        # …and it carries the generation, which is what any bounded auto-resume spends.
+        assert _launched(resumed.run_dir).resume_generation == 2
+        assert _recorded(resumed.run_dir).started_at == started
+
+
+def test_a_nested_flow_scope_records_no_launch_of_its_own():
+    """`at()`/`subscope()` open a writer for a flow scope inside a run — `<run>/qa/_flow`,
+    once per story. A scope is not a process, so a launch record under one would be a
+    claim that something started there, and a consumer walking run dirs would find
+    several commands where there is one run."""
+    with tempfile.TemporaryDirectory() as tmp:
+        writer = ArtifactWriter("coder", Path(tmp) / "runs", run_id="pdeadbeef")
+        writer.record_launch(["x"], ["x", "run"], "/work/acme")
+
+        scope = writer.subscope("qa", "qa_flow")
+
+        assert (writer.run_dir / "launch.json").exists()
+        assert not (scope.run_dir / "launch.json").exists()
+
+
+def test_an_unwritable_run_dir_does_not_take_the_run_down_with_it():
+    """Best-effort, like every other record here. Keeping notes about a run must never be
+    the thing that stops one."""
+    with tempfile.TemporaryDirectory() as tmp:
+        writer = ArtifactWriter("coder", Path(tmp) / "runs", run_id="pdeadbeef")
+        with patch.object(Path, "write_text", side_effect=OSError("read-only")):
+            writer.record_launch(["x"], ["x", "run"], "/work/acme")
+        assert not (writer.run_dir / "launch.json").exists()
 
 
 if __name__ == "__main__":

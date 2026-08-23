@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from workhorse import gitstate, otel, turnkey
 from workhorse.records import (
     Checkpoint,
+    LaunchRecord,
     NodeEvent,
     NodePhase,
     PyflowCheckpoint,
@@ -503,6 +504,41 @@ class ArtifactWriter:
         self._profile = profile
         self._profile_config = dict(tables or {})
         self._write_run_json(terminal=None)
+
+    def record_launch(self, argv: list[str], resume_argv: list[str], cwd: str) -> None:
+        """Record how *this process* was launched, in ``launch.json`` beside ``run.json``.
+
+        A run that is SIGKILL'd — OOM, a harness sweep, a hard crash — cannot report its
+        own death, so it is noticed from outside by something that outlives it. That
+        watcher could already tell the run was dead and that the checkpoint was intact;
+        what the directory never said was the command. This is the command.
+
+        Its own file rather than a ``run.json`` field because the two have different
+        lifetimes: ``run.json`` is rewritten on every profile record, interrupt and
+        terminal, while this is written once per process and read after that process is
+        gone. Keeping it out of the churn means the record a watcher needs is not being
+        rewritten at the moment the run dies.
+
+        Best-effort, like every other record here: a directory that cannot be written is
+        a run that is worse off unwatched, not a run that should stop.
+        """
+        record = LaunchRecord(
+            argv=list(argv),
+            resume_argv=list(resume_argv),
+            cwd=cwd,
+            program=resume_argv[0] if resume_argv else "",
+            pid=os.getpid(),
+            started_at=datetime.now(timezone.utc).isoformat(),
+            resume_generation=turnkey.read_generation(self.run_dir),
+            # The one fact a host-side reader cannot recover from the record itself: in a
+            # container every path in it is namespace-local and re-spawning it on the host
+            # runs something else, or nothing.
+            container=Path("/.dockerenv").exists(),
+        )
+        try:
+            (self.run_dir / "launch.json").write_text(record.model_dump_json(indent=2))
+        except OSError:
+            pass
 
     def finish(self, terminal: str) -> None:
         (self.run_dir / "context.json").write_text("{}")  # overwritten by controller

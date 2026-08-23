@@ -242,6 +242,33 @@ def run_pyflow(invocation: RunInvocation) -> int:
     # the invocation, like every other setting.
     otel.install(invocation.telemetry)
     otel.start_run(name, writer.run_id, str(writer.run_dir))
+    # What launched this process, for whoever outlives it. Written after `start_run`
+    # rather than beside `record_profile` above, because that call is what advances the
+    # resume generation — recording it a few lines earlier would stamp the previous
+    # process's number onto this one's record, and the number is what a bounded
+    # auto-resume would spend. Here it names the same generation the telemetry does.
+    #
+    # This is the one point where `sys.argv` still means something *and* there is a run
+    # dir to write it into, and `_open_run` returns a writer for the fresh, `--auto` and
+    # explicit `--resume-run` paths alike, so one call covers all three. Deliberately not
+    # in the writer's constructors: `at`/`subscope` open one for a nested flow scope,
+    # which is not a process, and a launch record there would be a lie.
+    writer.record_launch(
+        [sys.executable, *sys.argv],
+        resume_argv(
+            sys.argv[0],
+            writer.run_dir,
+            # Named explicitly, unlike the reload's re-exec: `execv` carries the
+            # environment, so a `--core` reload can let `AGENT_CLI` speak for itself, but
+            # a supervisor re-spawning this line hours later is a fresh process with a
+            # fresh environment, and a resume that silently lands on a different backend
+            # than the run has been on is the failure nobody reads back off the record.
+            cli=config.backend.name if config.backend.name != "none" else "",
+            profile=config.profile,
+            config_path=os.environ.get(CONFIG_PATH_ENV) or "",
+        ),
+        os.getcwd(),
+    )
     if config.profile:
         # The axis every cross-run comparison groups by — "did this profile finish
         # cheaper, and did it finish at all" is a question about runs, so it belongs on
