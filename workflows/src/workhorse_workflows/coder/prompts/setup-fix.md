@@ -11,10 +11,9 @@ and QA can drive the running app.
 
 **You do not start services and leave them running.** A long-running stack the workflow does not own
 dies at node teardown — that exact pattern is what burned three QA attempts on a real run. The
-workflow owns stack lifecycle through a declarative **stack manifest**
-(`{{ workhorse_var('stack_manifest') }}`); your job is to make that manifest and the things it needs
-correct, then hand back. Concretely, the fixable problems
-are: a missing or wrong manifest, a bring-up/seed/health command in it that fails, missing
+workflow owns stack lifecycle through a declarative **`runbook` node in the book**; your job is to
+make that node and the things it needs correct, then hand back. Concretely, the fixable problems
+are: a missing or wrong runbook, a bring-up/seed/health command in it that fails, missing
 tooling or dependencies it calls, or a broken local config file one of its steps needs. Only a blocker
 that genuinely needs a human (a real secret/credential that cannot be generated locally, a
 deployed/preview environment, or hardware) is `unfixable` → report that and the workflow escalates to
@@ -37,17 +36,22 @@ The blocking QA notes (read them — they name what could not run):
 
 Read, then act:
 
-- `{{ workhorse_var('stack_manifest') }}` (repo-relative; if present) — the **stack manifest** the
-  workflow's `ensure_stack` step runs. **This exact path is the one it reads**, so author or repair it
-  here — a manifest written anywhere else is invisible and the stack stays down. It declares `entry_url`/`health_path`, `launch` (the bring-up or foreground command),
-  ordered `prepare`/`seed`/`health` steps, and an optional `stop`. This is the artifact you repair; if
-  it is absent and the stack needs standing up, **author it** from the repo's documented commands.
+- **The book's `runbook` node** — `docs/features/<service>/ops/qa-stack.md`, the artifact
+  `ensure_stack` reads through `ostler qa stack up`. Run `ostler doctor` to see whether one exists
+  and what it is missing; `runbook-missing` means nobody has written it yet. Its bullets are
+  `driver`, `entry-url`, `health-path`, `identity`, `reuse`/`fresh`, `boot-timeout`,
+  `health-timeout` and an optional `stop`, and its `## Steps` section carries the ordered boot
+  steps — each a `### <id>` with `kind: prepare | service | seed | health` and a `run:`. The full
+  spec is `ostler/docs/okf-runbook.md` and the ostler skill's runbook reference. **This is the
+  artifact you repair**; if it is absent, `ostler scaffold runbook qa-stack --service <service>`
+  writes the stub and you fill it in from the repo's documented commands. A recipe recorded
+  anywhere else is invisible to the workflow and the stack stays down.
 - `{{ workhorse_var('spec_dir') }}/qa-plan.md` — the QA runbook. Its **pre-flight** names the stack,
   services, tools, fixtures and sign-in the ACs need. That pre-flight is your checklist of what the
-  manifest must bring up.
+  runbook must bring up.
 - `AGENTS.md` and the project's **developer / local-stack runbook** — the documented way to stand up
   this repo's environment (the `make` targets, compose profiles, emulator/devstack start commands,
-  seed/fixture commands, tool installs). These are what the manifest's steps should call. **Prefer
+  seed/fixture commands, tool installs). These are what the runbook's steps should call. **Prefer
   these documented commands over improvising.**
 - the touched layers' QA skills (resolved for this story) — each says how to bring its layer up and
   which tool drives it:
@@ -65,17 +69,17 @@ Read, then act:
 
 ## What you may do (make the stack bring-up-able)
 
-Make the manifest correct and give it everything its steps need, e.g.:
+Make the runbook correct and give it everything its steps need, e.g.:
 
-- **Author or repair `{{ workhorse_var('stack_manifest') }}`** so the workflow can stand the stack up
-  from cold: point `launch`
+- **Author or repair the `runbook` node** so the workflow can stand the stack up
+  from cold: point its `kind: service` step's `run:`
   at an **idempotent, self-freshening** bring-up command — whichever one this repo documents, and
   the variant of it that *rebuilds* — set a real `entry_url`/`health_path` readiness probe, and
-  list the `prepare` (deps/build/migrations) and `seed` (baseline fixtures, the Auth-emulator test
-  user) steps as ordered commands. Add a `stop` recipe only if the stack should be torn down; omitting
+  list the `kind: prepare` (deps/build/migrations) and `kind: seed` (baseline fixtures, the
+  Auth-emulator test user) steps in execution order. Add a `stop` recipe only if the stack should be torn down; omitting
   it leaves an expensive stack up for reuse.
 - **Do not let QA run against a stale build.** An image or bundle built from the code under test goes
-  out of date the moment a story changes that code. So the manifest's `launch` must *rebuild* — a
+  out of date the moment a story changes that code. So the `service` step must *rebuild* — a
   bring-up that reuses a previously built artifact is the bug — and adoption is governed by `reuse`:
   the default `if-fresh` with no `fresh` probe never adopts a serving stack — it re-runs `launch`.
   Only mark a stack `reuse: always` when it is **code-independent** (a stock DB/emulator with
@@ -90,7 +94,7 @@ Make the manifest correct and give it everything its steps need, e.g.:
 - **Fix broken local config**: a wrong/missing local env file (`.env.local`, backend URL, emulator
   host/port), a stale generated client, a port collision, an un-run migration a bring-up step needs.
   Regenerate generated artifacts the stack needs.
-- **Seed the baseline** as idempotent `seed` steps in the manifest — including the **test user** in the
+- **Seed the baseline** as idempotent `kind: seed` steps in the runbook — including the **test user** in the
   Auth emulator for sign-in — so the stack comes up with something to observe, deterministically.
 
 ### When the block names a *runner* requirement, repair the copy the runner actually uses
@@ -126,7 +130,7 @@ your shell and not as a `launch` you leave running.
 
 - **Never background a long-lived process in your own shell.** A service you start and leave running is
   killed at node teardown — the workflow owns stack lifecycle, not you. Durable services go in the
-  stack manifest (heavyweight bring-up, run by `ensure_stack`); foreground in-QA services go in the QA
+  runbook node (heavyweight bring-up, run by `ensure_stack`); foreground in-QA services go in the QA
   plan's `background:` block (run by ostler). You may run a bring-up/seed command **to completion,
   bounded by a wall-clock timeout,** to prove the recipe works — a bring-up command exits 0 once its
   stack serves — but never depend on a process still alive after this node returns.
@@ -134,7 +138,7 @@ your shell and not as a `launch` you leave running.
   correcting a label, building a missing surface or its required data binding is the **code-fix** loop's
   job (`apply-qa-fixes`), not yours. If the real problem is that the feature is broken or missing, that
   is **not** a setup problem — say so in your notes and return `ready` (so QA re-runs and routes it to
-  the code-fix loop). Touch only the stack manifest, dev-environment config, tooling, and stack fixtures.
+  the code-fix loop). Touch only the runbook node, dev-environment config, tooling, and stack fixtures.
 - **Do NOT disrupt unrelated services or destroy data.** Other projects' containers/emulators may be
   running on this machine. Bring up only this repo's stack; never run a machine-wide prune, wipe
   volumes, kill unrelated processes, or delete data to "clean up". Resolve a port collision by configuring this
@@ -143,12 +147,13 @@ your shell and not as a `launch` you leave running.
 
 ## Verify before you claim ready
 
-Don't just edit the manifest — **prove its recipe works**: run the `prepare`/`seed`/`launch` commands
-to completion (bounded by a timeout) and confirm the stack answers its `health` probe — the dev server
-responds, the emulators are reachable, the API health endpoint returns, the test user can sign in.
-Capture the proof (command output / health responses) in your report. Leave the stack however its
-`stop` policy dictates; `ensure_stack` will adopt it if it is still serving, or bring it up from cold
-if not — either way the manifest must be able to stand it up without you.
+Don't just edit the node — **prove its recipe works**. `ostler qa stack up` runs exactly what the
+workflow will run, off exactly the node you just wrote, so that one command is the check: it either
+reports the stack serving or names the step that failed. Run `ostler doctor` too — a runbook it still
+has findings on is one `ensure_stack` may read differently than you meant. Capture both outputs in
+your report. Leave the stack however its `stop` policy dictates; `ensure_stack` will adopt it if it is
+still serving, or bring it up from cold if not — either way the node must be able to stand it up
+without you.
 
 ## Commit What You Wrote
 
@@ -168,7 +173,7 @@ what you wrote:
 {% endif %}{% if workhorse_var('story_slug') %}   Story: {{ workhorse_var('story_slug') }}
 {% endif %}   ```
 
-   `<type>` is `fix` for the stack manifest and the scripts it names, and `docs` for the
+   `<type>` is `fix` for the runbook node and the scripts it names, and `docs` for the
    report — two commits when you wrote both. Subject ≤ 72 characters, no capital first word, no
    trailing period. Keep the trailers exactly as spelled — they are how the run record ties a
    commit back to its story.

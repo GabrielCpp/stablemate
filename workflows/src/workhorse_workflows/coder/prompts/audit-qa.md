@@ -192,8 +192,8 @@ The question the scope answers is **where the repair lives**:
 - `plan` — the repair is an edit inside `qa_plan.py` / `qa-plan.md`. Sent to the plan author.
 - `product-test` — the repair is an assertion, fixture or fix in product code or a committed
   test the plan only cites. Sent to the fix loop, which edits the code.
-- `stack` — the repair is in `qa-stack.yml` and the workflow's `ensure_stack` step: a service,
-  emulator, database, seed or aggregate command that must be up before the plan runs.
+- `stack` — the repair is in the book's `runbook` node and the workflow's `ensure_stack` step: a
+  service, emulator, database, seed or aggregate command that must be up before the plan runs.
 
 Name the scope by where the repair lands, not by which gate found it. An evidence defect
 whose real repair is a missing test assertion is `product-test`, not `plan`: filed as `plan`
