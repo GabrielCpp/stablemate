@@ -344,8 +344,8 @@ a static count of the `qa.check`/`qa.require` calls in its body, and again at ru
   and the scenario must not. It is for **foreground in-QA services** scoped to the run (a dev
   server pinned to branch source, an event tail). The **heavyweight stack** (containers,
   emulators, the DB + baseline seed) is NOT declared here — it is owned by the workflow's
-  `ensure_stack` step via the repo's `qa-stack.yml` manifest, brought up before the plan runs
-  and left up for reuse. Assume it is already serving.
+  `ensure_stack` step, which reads it off the book's `runbook` node; it is brought up before the
+  plan runs and left up for reuse. Assume it is already serving.
 - Readiness is the runner's to poll, not the scenario's: give `background` either
   `ready_url=` (fetched, must answer HTTP 200 — only when the service really has a `GET` that
   does) or `ready_cmd=` with `ready_contains=` (ready when the command exits 0 and its stdout
