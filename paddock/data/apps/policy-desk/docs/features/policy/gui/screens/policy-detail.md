@@ -37,8 +37,9 @@ the second policy is shown under the first one's record.
 - verify: visible(locator="text=Draft")
 - verify: visible(locator="text=1HGCM82633A004352")
 - code: app/web/src/PolicyDetail.tsx
-- does: states the policy's status, holder, coverage, term and premium, and the conditional field
-  its coverage type carries.
+
+States the policy's status, holder, coverage, term and premium, and the conditional field its
+coverage type carries.
 
 ### edit-policy-link
 
@@ -50,7 +51,8 @@ the second policy is shown under the first one's record.
 - verify: visible(locator="link:Edit policy")
 - parent: [Policy detail](#policy-detail)
 - code: app/web/src/PolicyActions.tsx
-- does: opens [the edit form](edit-policy.md) for this policy as a client route.
+
+Opens [the edit form](edit-policy.md) for this policy as a client route.
 
 ### cancel-policy-form
 
@@ -64,8 +66,9 @@ the second policy is shown under the first one's record.
   to cancel it again.
 - verify: visible(locator="form:Cancel policy")
 - code: app/web/src/PolicyActions.tsx
-- does: makes a cancellation something typed out — the policy's own number — rather than a button
-  a stray click can hit.
+
+Makes a cancellation something typed out — the policy's own number — rather than a button a stray
+click can hit.
 
 ## Interactions
 

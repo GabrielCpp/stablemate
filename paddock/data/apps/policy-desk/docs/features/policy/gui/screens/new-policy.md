@@ -34,8 +34,9 @@ one rule (the umbrella prerequisite) depends on a record that is not on this scr
 - verify: visible(locator="form:New policy")
 - parent: [New policy form](#new-policy-form)
 - code: app/web/src/NewPolicy.tsx
-- does: collects the policy number, holder email, coverage type, term and premium, plus whichever
-  conditional field the coverage type calls for.
+
+Collects the policy number, holder email, coverage type, term and premium, plus whichever
+conditional field the coverage type calls for.
 
 ### coverage-type-select
 
@@ -49,8 +50,8 @@ one rule (the umbrella prerequisite) depends on a record that is not on this scr
 - states: offers exactly the three coverage types the service accepts.
 - verify: visible(locator="combobox:Coverage type")
 - code: app/web/src/NewPolicy.tsx
-- does: decides which conditional field the form shows and which premium band the entry is judged
-  against.
+
+Decides which conditional field the form shows and which premium band the entry is judged against.
 
 ### vehicle-vin-field
 
@@ -64,8 +65,9 @@ one rule (the umbrella prerequisite) depends on a record that is not on this scr
 - states: present only while the coverage type is `auto`.
 - verify: visible(locator="textbox:Vehicle VIN")
 - code: app/web/src/NewPolicy.tsx
-- does: carries the VIN the auto policy covers, and carries the service's `vehicle_vin` message
-  when the field is refused.
+
+Carries the VIN the auto policy covers, and carries the service's `vehicle_vin` message when the
+field is refused.
 
 ### property-address-field
 
@@ -79,8 +81,9 @@ one rule (the umbrella prerequisite) depends on a record that is not on this scr
 - states: present only while the coverage type is `home`.
 - verify: visible(locator="textbox:Property address")
 - code: app/web/src/NewPolicy.tsx
-- does: carries the address the home policy covers, and carries the service's `property_address`
-  message when the field is refused.
+
+Carries the address the home policy covers, and carries the service's `property_address` message
+when the field is refused.
 
 ### field-error-message
 
@@ -93,7 +96,8 @@ one rule (the umbrella prerequisite) depends on a record that is not on this scr
 - states: present only beside a field the service refused.
 - verify: visible(locator="text=End date must be after the start date.")
 - code: app/web/src/FieldError.tsx
-- does: shows the refusal for one field, next to that field, in the words the service used.
+
+Shows the refusal for one field, next to that field, in the words the service used.
 
 ### duplicate-policy-alert
 
@@ -106,8 +110,9 @@ one rule (the umbrella prerequisite) depends on a record that is not on this scr
 - states: present only after a refusal that belongs to no single field.
 - verify: visible(locator="alert", text="Duplicate Policy Number")
 - code: app/web/src/NewPolicy.tsx
-- does: reports a refusal that belongs to no single field — a duplicate policy number above all —
-  at the top of the form.
+
+Reports a refusal that belongs to no single field — a duplicate policy number above all — at the top
+of the form.
 
 ### create-policy-button
 
@@ -119,8 +124,9 @@ one rule (the umbrella prerequisite) depends on a record that is not on this scr
 - verify: visible(locator="button:Create policy")
 - parent: [New policy form](#new-policy-form)
 - code: app/web/src/NewPolicy.tsx
-- does: submits the form, and stays disabled while the request is in flight so the same policy
-  number is not sent twice.
+
+Submits the form, and stays disabled while the request is in flight so the same policy number is not
+sent twice.
 
 ## Interactions
 

@@ -85,13 +85,13 @@ confirming a hold has to quote the number the caller was given.
   - moves a free seat to `held`, bumps its version, and returns the hold id together with the version the caller must quote to confirm.
 - verify: http_status(201, path="/api/seats/A1/hold")
 - verify: json_path("hold.version", equals="1")
+- errors: `409 Seat Unavailable` when the seat is already held or already booked, and leaves the
+  ledger as it was.
 - verify: http_status(409, title="Seat Unavailable", path="/api/seats/A1/hold")
 - verify: unchanged(subject="seat A1", except_fields=[])
+- errors: `404 No Such Seat` for an id outside the showing's seat map.
 - verify: http_status(404, title="No Such Seat", path="/api/seats/Z9/hold")
 - code: app/hold.py::hold
-- raises: `409 Seat Unavailable` when the seat is already held or already booked; the ledger is left
-  as it was.
-- raises: `404 No Such Seat` for an id outside the showing's seat map.
 - route: `POST /api/seats/{seat}/hold`
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat](../concepts/seat.md)
@@ -118,10 +118,10 @@ confirming a hold has to quote the number the caller was given.
   - touches the released seat and no other — every other seat keeps its state, its version and its booking.
 - verify: unchanged(subject="seats", except_fields=["A1.state", "A1.version", "A1.hold"])
 - verify: keys_unchanged(subject="seats")
+- errors: `409 Seat Not Held` when the seat is free or already booked, so a release cannot undo a
+  confirmed booking.
 - verify: http_status(409, title="Seat Not Held", path="/api/seats/B1/hold")
 - code: app/hold.py::release
-- raises: `409 Seat Not Held` when the seat is free or already booked, so a release cannot undo a
-  confirmed booking.
 - route: `DELETE /api/seats/{seat}/hold`
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat](../concepts/seat.md)
@@ -143,6 +143,14 @@ confirming a hold has to quote the number the caller was given.
   - turns a held seat into a booking under the given name, bumps its version, and returns the booking id.
 - verify: http_status(201, path="/api/seats/A1/booking")
 - verify: json_path("booking.name", equals="Dana Okonkwo")
+- errors: `400 Version Required` when the body carries no integer `version`.
+- verify: http_status(400, title="Version Required", path="/api/seats/A1/booking")
+- errors: `400 Name Required` when the body carries no non-blank `name`.
+- verify: http_status(400, title="Name Required", path="/api/seats/A1/booking")
+- errors: `409 Seat Not Held` when a request quoting the seat's current version names a seat that was
+  never held, so a booking cannot be conjured out of a free seat. Quoting any other version is the
+  stale-hold refusal above, not this one — the version is compared first.
+- verify: http_status(409, title="Seat Not Held", path="/api/seats/C4/booking")
 - code: app/confirm.py::confirm
 - concurrency: seat-record — refuses a request quoting a version other than the seat's current one with
   `409 Stale Hold`, so a caller who lost the seat and came back with the number it was given does
@@ -154,14 +162,6 @@ confirming a hold has to quote the number the caller was given.
   — after the service restarts.
 - verify: persists(subject="seat A1 booking")
 - verify: json_path("seats[0].booking.name", absent=false)
-- verify: http_status(400, title="Version Required", path="/api/seats/A1/booking")
-- verify: http_status(400, title="Name Required", path="/api/seats/A1/booking")
-- verify: http_status(409, title="Seat Not Held", path="/api/seats/C4/booking")
-- raises: `400 Version Required` when the body carries no integer `version`.
-- raises: `400 Name Required` when the body carries no non-blank `name`.
-- raises: `409 Seat Not Held` when a request quoting the seat's current version names a seat that was
-  never held, so a booking cannot be conjured out of a free seat. Quoting any other version is the
-  stale-hold refusal above, not this one — the version is compared first.
 - route: `POST /api/seats/{seat}/booking`
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat](../concepts/seat.md)

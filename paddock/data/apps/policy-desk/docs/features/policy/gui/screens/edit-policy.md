@@ -35,7 +35,8 @@ walkthrough can produce.
 - states: opens filled from the stored record — the holder, the term and the premium as they stand.
 - verify: visible(locator="form:Edit policy")
 - code: app/web/src/EditPolicy.tsx
-- does: offers the fields an edit may change, and neither shows nor sends the policy number.
+
+Offers the fields an edit may change, and neither shows nor sends the policy number.
 
 ### stale-policy-alert
 
@@ -48,8 +49,9 @@ walkthrough can produce.
 - states: present only after a stale save is refused.
 - verify: visible(locator="alert", text="Stale Policy")
 - code: app/web/src/EditPolicy.tsx
-- does: reports that the policy moved under the form, and says to reload — rather than letting the
-  save look as though it landed.
+
+Reports that the policy moved under the form, and says to reload — rather than letting the save look
+as though it landed.
 
 ### save-policy-button
 
@@ -61,7 +63,8 @@ walkthrough can produce.
 - verify: visible(locator="button:Save policy")
 - parent: [Edit policy form](#edit-policy-form)
 - code: app/web/src/EditPolicy.tsx
-- does: submits the edit together with the version the form was opened at.
+
+Submits the edit together with the version the form was opened at.
 
 ## Interactions
 

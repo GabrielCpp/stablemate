@@ -35,9 +35,9 @@ that looks current is the one failure mode a register must not have.
 - keyboard: reachable by `Tab` from the document start, with no shortcut of its own.
 - parent: [Policy register](#policy-register)
 - code: app/web/src/PolicyList.tsx
-- does: renders one row per policy on the books, with its number, holder, coverage, premium and
-  status.
-- does: names each row by its policy number, as a link to that policy's detail screen.
+
+Renders one row per policy on the books, with its number, holder, coverage, premium and status.
+Names each row by its policy number, as a link to that policy's detail screen.
 
 ### empty-register-notice
 
@@ -50,7 +50,8 @@ that looks current is the one failure mode a register must not have.
 - parent: [Policy register](#policy-register)
 - exclusive-with: [policy-table](#policy-table)
 - code: app/web/src/PolicyList.tsx
-- does: stands in for the table when the books are empty, and points at the way to start one.
+
+Stands in for the table when the books are empty, and points at the way to start one.
 
 ### register-error-alert
 
@@ -63,8 +64,9 @@ that looks current is the one failure mode a register must not have.
 - states: present only after a register read fails.
 - verify: visible(locator="alert")
 - code: app/web/src/RegisterError.tsx
-- does: says so when the register cannot be re-read, rather than leaving the previous table on
-  screen looking current.
+
+Says so when the register cannot be re-read, rather than leaving the previous table on screen
+looking current.
 
 ### new-policy-link
 
@@ -76,8 +78,8 @@ that looks current is the one failure mode a register must not have.
 - keyboard: `Tab` to the link, `Enter` to follow it.
 - parent: [Policy register](#policy-register)
 - code: app/web/src/Nav.tsx
-- does: opens [the new policy form](new-policy.md) as a client route, without reloading the
-  document.
+
+Opens [the new policy form](new-policy.md) as a client route, without reloading the document.
 
 ## Interactions
 

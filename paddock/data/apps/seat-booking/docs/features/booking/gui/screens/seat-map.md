@@ -37,7 +37,8 @@ server wrote, and every locator the book names is addressable the moment the pag
 - keyboard: reachable by `Tab` from the document start, with no shortcut of its own.
 - parent: [Seat map](#seat-map)
 - code: app/page.py::render
-- does: holds every seat button for the showing and nothing else.
+
+Holds every seat button for the showing and nothing else.
 
 ### seat-button
 
@@ -55,10 +56,10 @@ server wrote, and every locator the book names is addressable the moment the pag
 - states: a seat that is not free is rendered `disabled`, so a sold seat cannot be clicked at all.
 - verify: visible(locator="button[data-state='booked'][disabled]")
 - code: app/page.py::_seat_button
-- does: renders one button per seat in the showing — twelve, in three rows of four.
-- does: names the button by its seat id alone, so the name a scenario addresses does not change when
-  the seat does.
 - refs: [seat](../../concepts/seat.md)
+
+Renders one button per seat in the showing — twelve, in three rows of four. Names the button by its
+seat id alone, so the name a scenario addresses does not change when the seat does.
 
 ### free-seat-summary
 
@@ -72,5 +73,6 @@ server wrote, and every locator the book names is addressable the moment the pag
 - keyboard: none, because it is announced rather than operated.
 - parent: [Seat map](#seat-map)
 - code: app/page.py::render
-- does: states how many of the showing's seats are still free, out of the total.
-- does: counts only seats in state `free`, so a held seat reads as taken while somebody is deciding.
+
+States how many of the showing's seats are still free, out of the total. Counts only seats in state
+`free`, so a held seat reads as taken while somebody is deciding.
