@@ -64,8 +64,6 @@ standard usage/error path.
   - Passes the selected host and port unchanged to the server startup layer; the
     command does not rewrite invalid bind names, reserve the port, or add
     authentication before startup.
-- code: groom/groom/cli.py::serve
-- detail: [groom server](http/groom.md)
 - errors:
   - Missing command, unknown flags, invalid `--port` values, or extra
     positional arguments are parser errors; argparse writes usage/error text and
@@ -81,6 +79,8 @@ standard usage/error path.
   - Parser failures exit with status 2 before the command handler runs; uncaught
     server startup/runtime exceptions leave the process through Python's normal
     unhandled-exception path.
+- code: groom/groom/cli.py::serve
+- detail: [groom server](http/groom.md)
 
 ### purge-tests
 - usage: `groom purge-tests [--dry-run] [--no-vacuum]`
@@ -112,10 +112,10 @@ standard usage/error path.
     run id some span or log record identified.
   - Prints the run/span/metric/log counts removed, or `no test-run telemetry
     found.` when the store is already clean.
-- code: groom/groom/cli.py::purge_tests
 - errors:
   - none specific: a store with nothing to purge is a successful no-op, and a
     second pass over an already-purged store removes zero rows.
+- code: groom/groom/cli.py::purge_tests
 
 ### profile
 - usage: `groom profile --run RUN [--json]`
@@ -154,8 +154,6 @@ standard usage/error path.
     coverage totals for each group.
   - Prints `no telemetry found for that run.` in text mode, or JSON `null` in
     JSON mode, when neither spans nor metrics exist for the selected run.
-- code: groom/groom/cli.py::profile
-- detail: [retained-run profiler](../../../groom/docs/STORE.md#what-occupied-the-wall-clock-groom-profile)
 - errors:
   - Missing `--run`, unknown flags, extra positional arguments, and malformed
     command lines are parser errors; argparse writes usage/error text and exits
@@ -166,6 +164,8 @@ standard usage/error path.
   - A found profile and the no-telemetry result both return normally and exit
     with status 0 when output succeeds.
   - Parser failures exit with status 2 before the command handler runs.
+- code: groom/groom/cli.py::profile
+- detail: [retained-run profiler](../../../groom/docs/STORE.md#what-occupied-the-wall-clock-groom-profile)
 
 ### transcript
 - usage: `groom transcript {ls|show|harvest|export|backfill} [...]`
@@ -207,13 +207,13 @@ standard usage/error path.
     transcript — in memory, and duplicates nothing in the archive. Workflow and node
     names are sanitized into single path components, so neither can write outside
     `--by-node`.
-- code: groom/groom/cli.py::transcript_ls
-- detail: [the turn record](../../../groom/docs/STORE.md#what-the-node-actually-said-groom-transcript)
 - errors:
   - Unknown verbs, unknown flags and a missing `--session` on `show` are parser
     errors; argparse writes usage text and exits with status 2.
   - A record whose bodies were removed under the index reports its files as empty
     rather than raising.
+- code: groom/groom/cli.py::transcript_ls
+- detail: [the turn record](../../../groom/docs/STORE.md#what-the-node-actually-said-groom-transcript)
 
 ## Invocations
 
@@ -259,12 +259,12 @@ standard usage/error path.
   - `port` integer from `--port`, default `8787`.
   - `allow_non_loopback` boolean from `--allow-non-loopback`, default `false`.
   - [groom server](http/groom.md) application produced for this invocation.
-- code: groom/groom/cli.py::serve
 - errors:
   - Parser errors exit before this invocation starts.
   - Server app construction, bind, startup, and runtime failures propagate from
     the server startup path; the invocation does not wrap them in a
     command-specific error result.
+- code: groom/groom/cli.py::serve
 - exits:
   - Returns normally after the server runner stops, producing the console
     process's normal success status when no outer exception is raised.

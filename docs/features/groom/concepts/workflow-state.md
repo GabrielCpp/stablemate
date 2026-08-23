@@ -154,8 +154,8 @@ Workflow state is the lifecycle enum stored on each [workflow container](workflo
 - type: enum member
 - default: not the enum default
 - required: true
-- value: `running`
 - code: groom/groom/models.py::WorkflowState.RUNNING
+- value: `running`
 - meaning: the workflow is active, connected without open gates, progressing through a node, or has just resumed after its last open gate was answered.
 - sources: Docker discovery for running containers, progress push handling, sidecar progress frames, sidecar hello snapshots without terminal or gates, and successful last-gate answer handling.
 - displays: contributes to running status-bar count, sorts after blocked and before idle, renders a `running` state dot/text, appears in repository-picker order, and is omitted from the operator inbox unless open gates still exist.
@@ -165,8 +165,8 @@ Workflow state is the lifecycle enum stored on each [workflow container](workflo
 - type: enum member
 - default: not the enum default
 - required: true
-- value: `blocked`
 - code: groom/groom/models.py::WorkflowState.BLOCKED
+- value: `blocked`
 - meaning: the workflow has at least one open operator gate that can be shown in the operator inbox and answered from the dashboard.
 - sources: blocked push handling, sidecar blocked frames, sidecar hello snapshots with gates, sidecar query snapshots with gates, and workspace-volume gate reconstruction.
 - displays: contributes to blocked status-bar count, sorts before every other state, appears in the operator inbox when gates are open, adds blocked row styling and question preview when the selected gate has a question, and remains unchanged after a failed answer attempt.
@@ -176,8 +176,8 @@ Workflow state is the lifecycle enum stored on each [workflow container](workflo
 - type: enum member
 - default: `WorkflowState.IDLE`
 - required: true
-- value: `idle`
 - code: groom/groom/models.py::WorkflowState.IDLE
+- value: `idle`
 - meaning: the workflow has a record but no active, blocked, or terminal evidence has been supplied yet.
 - sources: dataclass default, registry upsert default for a newly seen workflow without supplied state, and Docker discovery for stopped containers before run-volume or gate-volume evidence refines the record.
 - displays: contributes to idle status-bar count, sorts after running and before finished, renders an `idle` state dot/text, appears in repository-picker order, and is omitted from the operator inbox unless open gates still exist.
@@ -187,8 +187,8 @@ Workflow state is the lifecycle enum stored on each [workflow container](workflo
 - type: enum member
 - default: not the enum default
 - required: true
-- value: `finished`
 - code: groom/groom/models.py::WorkflowState.FINISHED
+- value: `finished`
 - meaning: the workflow process has ended and cannot act on an answer.
 - sources: exited push handling, sidecar hello snapshots with a terminal marker, sidecar query snapshots with a terminal marker, and run-volume reconstruction with a terminal marker.
 - displays: contributes to finished status-bar count, sorts last, renders a `finished` state dot/text, appears after live workers in repository-picker order, may show an exit-code hint when `WorkflowContainer.exit_code` is known, and is omitted from the operator inbox unless a stale gate map is still present.
