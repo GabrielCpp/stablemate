@@ -36,7 +36,7 @@ from farrier.frontmatter import (
     mapping_skill_names,
     read_yaml,
 )
-from farrier.hook_managers import configured_manager
+from farrier.hook_managers import configured_manager, install_manager
 from farrier.init import default_config
 from farrier.layers import (
     LAYERS,
@@ -659,9 +659,41 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Repository root to diagnose (default: cwd)",
     )
 
+    # hooks
+    hooks_p = sub.add_parser(
+        "hooks",
+        help="Wire this repo's git hooks through the manager agents.yml names",
+    )
+    hooks_p.add_argument(
+        "--repo",
+        type=Path,
+        default=Path.cwd(),
+        help="Repository root to wire hooks for (default: cwd)",
+    )
+
     sub.add_parser("version", help="Print the installed farrier version")
 
     return parser
+
+
+def _run_hooks(args: argparse.Namespace) -> int:
+    """`farrier hooks` — the wiring half of an install, and nothing else.
+
+    `farrier install` already does this at the end of a render, which is enough for a
+    repo whose every selection resolves. It is not enough for the clone that has no
+    overlay: the render raises there, and hooks that a contributor cannot install are
+    hooks that never run for the contributor most likely to trip one. So the wiring is
+    reachable on its own — no library resolution, no rendering, just the fence, the mode
+    bit and `core.hooksPath`.
+    """
+    repo = args.repo.resolve()
+    config_path = repo / "agents.yml"
+    config = read_yaml(config_path) if config_path.is_file() else {}
+    manager = configured_manager(config, repo)
+    for line in install_manager(repo, manager):
+        print(line)
+    print(f"hooks wired through: {manager}")
+    return 0
 
 
 def _run_library(args: argparse.Namespace) -> int:
@@ -758,6 +790,7 @@ def main(argv: list[str] | None = None) -> int:
         "workflows",
         "library",
         "doctor",
+        "hooks",
     }
     if not argv or argv[0] in ("-h", "--help"):
         parser.print_help()
@@ -788,6 +821,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "library":
         return _run_library(args)
+
+    if args.command == "hooks":
+        return _run_hooks(args)
 
     if args.command == "doctor":
         return doctor.report(args.repo)

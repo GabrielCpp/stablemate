@@ -5,7 +5,7 @@
 # $STABLEMATE_PRIVATE_NAMES or $GIT_DIR/private-names, neither of which is
 # tracked. With no list configured this hook is a no-op.
 #
-# /bin/sh, and one `exec` into Python. The previous version was bash and used
+# /bin/sh, and one call into Python. The previous version was bash and used
 # `mapfile`, which arrived in bash 4.0 — so on macOS, where /bin/bash is still
 # 3.2, it died on an unbound array before it read a single name. A guard that
 # fails on the platform its maintainer commits from is not a guard.
@@ -21,6 +21,10 @@
 # `git ls-files` reads the index, so a file `git add`ed for this very commit is
 # already in the scan set.
 #
+# Farrier appends its own fenced region below this script and `farrier install`
+# rewrites it, so nothing here may `exec`: the sweep runs as a plain command and the
+# fence runs after it. `set -eu` is what stops on a failure.
+#
 # Enable:  make hooks     (sets core.hooksPath to .githooks)
 # Bypass:  git commit --no-verify
 set -eu
@@ -30,4 +34,7 @@ repo_root=$(git rev-parse --show-toplevel)
 # No `|| true` anywhere: a missing python3, an unreadable resolver or a crash must
 # block the commit. The failure mode this repo cannot afford is a guard that passes
 # because it never ran.
-exec python3 "$repo_root/scripts/check_public.py" --names-only
+python3 "$repo_root/scripts/check_public.py" --names-only
+# >>> farrier: hooks (generated) >>>
+make farrier-run-hook
+# <<< farrier: hooks <<<

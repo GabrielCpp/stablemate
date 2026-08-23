@@ -3,14 +3,18 @@ agents:
   codex: false
   copilot: false
 
-# The hook manager farrier splices its one entry into. `pre-commit` rather than the
-# `githooks` this repo used, because `core.hooksPath` and pre-commit are mutually
-# exclusive — it refuses to install while that config is set — and the two guards
-# under `.githooks/` are worth more as `repo: local` entries than as the only thing
-# git will run. Farrier owns a fenced region of `.pre-commit-config.yaml` and nothing
-# outside it; see docs/features/farrier/agents-yml-config.md.
+# The hook manager farrier splices its one entry into. `githooks` — git's own
+# `core.hooksPath`, pointed at `.githooks/`, with no runner in front of it. The
+# pre-commit framework was the other option and it cost more than it carried: its
+# generated `.git/hooks/pre-commit` bakes the absolute interpreter path of whatever
+# venv installed it, so a clone made in a worktree that later went away fails every
+# commit with "`pre-commit` not found" and no hook runs at all. The two guards under
+# `.githooks/` are already standalone scripts that read the index themselves, so the
+# framework was wiring around scripts that needed none. Farrier owns a fenced region
+# at the end of `.githooks/pre-commit` and nothing outside it, and `farrier install`
+# is what sets `core.hooksPath`; see docs/features/farrier/agents-yml-config.md.
 hooks:
-  manager: pre-commit
+  manager: githooks
 
 packs:
   - python-workflow

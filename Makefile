@@ -32,11 +32,18 @@ browsers: ## Download the Chromium `playwright` drives (separate from the pip pa
 
 .PHONY: hooks
 hooks: ## Install the git hooks (private names, Conventional Commits, generated files)
-	# `pre-commit`, not `core.hooksPath`: they are mutually exclusive — pre-commit
-	# refuses outright while that config is set — and only one of them can carry a
-	# third guard farrier installs on its own schedule. The two scripts under
-	# .githooks/ did not move; .pre-commit-config.yaml is now what runs them.
-	uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
+	# farrier wires this, from the `hooks:` block in agents.yml — one place decides
+	# which manager a repo uses, and the fenced region it owns is installed by the
+	# same command that renders every other generated file. `githooks` here, so git
+	# runs .githooks/{pre-commit,commit-msg} directly through core.hooksPath. The
+	# pre-commit framework used to sit in front of them and was removed: its
+	# generated .git/hooks/pre-commit bakes the absolute python path of the venv that
+	# installed it, so a clone whose venv later moved fails every commit with
+	# "`pre-commit` not found" — and a hook that cannot run is a guard that is off.
+	#
+	# `farrier hooks` is the wiring alone: no render, no library resolution, so it
+	# still works on a clone that has no private overlay to resolve packs from.
+	uv run farrier hooks --repo $(CURDIR)
 	@echo "hooks installed:"
 	@echo "  private-names         blocks private overlay names. They come from"
 	@echo "                        \$$STABLEMATE_PRIVATE_NAMES or \$$GIT_DIR/private-names"

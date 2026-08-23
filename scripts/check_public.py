@@ -15,7 +15,8 @@ configured and shadows everything:
    who has no overlay at all.
 
 3. **The guards are actually wired.** ``core.hooksPath`` is unset in a fresh clone, so
-   the hooks are off until someone runs ``make hooks``, and nothing announces it.
+   the hooks are off until someone runs ``make hooks`` — which is farrier's job, from
+   the ``hooks:`` block in ``agents.yml`` — and nothing announces it.
 
 The git pre-commit hook (.githooks/pre-commit) runs check (1) from here, via
 ``--names-only`` — the same sweep over the same files, so what blocks a commit and what
@@ -68,7 +69,13 @@ RESOLVER = REPO / "scripts" / "private_names.py"
 #: scripts themselves still live in `.githooks/` and are still runnable by hand; what
 #: moved is only which of them git runs, and on whose say-so.
 HOOK_NAME = "hooks/pre-commit"
-PRE_COMMIT_MARKER = "pre-commit"
+
+#: What the wired hook has to contain to be this repo's. Two markers, because the hook
+#: has two halves and losing either one is silent: the private-name sweep this script
+#: owns, and the fenced line farrier splices in after it. Substrings of the *script*,
+#: not of the manager that used to sit in front of it — a marker that named the runner
+#: went stale the moment the runner did.
+HOOK_MARKERS = ("scripts/check_public.py", "make farrier-run-hook")
 
 # Git's own heuristic: a NUL byte in the first 8 kB means binary. This replaced a
 # suffix allowlist (.md/.yml/.py/.sh/.json/.toml/.txt) that had a hole exactly where a
@@ -296,9 +303,11 @@ def check_hooks_installed() -> list[str]:
     private name reached a test fixture and survived several commits, not because the
     hook missed it but because the hook was never running.
 
-    The probe is the installed file rather than ``core.hooksPath``, because that config
-    is now the state that means hooks are *broken*: ``pre-commit install`` refuses while
-    it is set, so a clone carrying it has the old wiring and none of the new one.
+    The probe is the installed file rather than ``core.hooksPath``, because the config
+    being set says only that git will look in ``.githooks/`` — not that the two guards
+    are in the file it finds there. ``farrier hooks`` sets the config and splices its
+    own fenced region in one step, so a repo can be half-wired by nothing worse than an
+    interrupted install.
 
     *Which* file that is, git decides — see :func:`_installed_hook`. Reading it off
     ``<repo>/.git/hooks/`` fails a linked worktree, where ``.git`` is a file and the hook
@@ -313,11 +322,12 @@ def check_hooks_installed() -> list[str]:
         return []
     installed = _installed_hook()
     text = installed.read_text(encoding="utf-8", errors="replace") if installed.is_file() else ""
-    if PRE_COMMIT_MARKER not in text:
+    missing = [marker for marker in HOOK_MARKERS if marker not in text]
+    if missing:
+        detail = "absent" if not text else "missing " + ", ".join(repr(m) for m in missing)
         return [
-            f"{installed} is {'not pre-commit\'s' if text else 'absent'} — the "
-            "private-name, commit-message and generated-file guards are not running on "
-            "this clone. Fix: make hooks"
+            f"{installed} is {detail} — the private-name, commit-message and "
+            "generated-file guards are not running on this clone. Fix: make hooks"
         ]
     print(f"ok: git hooks resolve through {installed}")
     return []

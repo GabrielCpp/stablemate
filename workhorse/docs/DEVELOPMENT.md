@@ -192,7 +192,7 @@ carries the artifact assertions (`assert_file`, `assert_file_contains`,
   the power→model config, profiles), `RELOAD.md` (the control channel into a live run),
   `TELEMETRY.md` (enabling telemetry, what is emitted, and how to read it),
   `CHECKING.md` (`--dry-run` and `dot`), `RUNS.md` (run identity, resume, artifacts),
-  `AUTHORING.md` (writing a workflow),
+  `AUTHORING.md` (writing a workflow), `JOBS.md` (the detached job runner),
   `DEVELOPMENT.md` (this file), `DOCKER.md` (the harness). Add new reference and design
   docs here, not at the root, and leave a one- or two-sentence summary in the README
   beside the link.

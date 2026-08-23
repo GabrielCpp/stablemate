@@ -205,8 +205,22 @@ real runs a stack that vanished between "bring it up" and "use it".
 A process that must **outlive the node that starts it** has to be started detached
 (`start_new_session=True`, its own process group) and owned explicitly — brought up,
 health-gated, and later reaped (or deliberately left up) by a step outside any agent
-turn. Workhorse ships no such primitive — the stacks that need one are the ones QA
-drives, so it lives in ostler as `ostler.qa.stack`: `ensure_stack` brings a stack up
+turn. Which primitive owns it depends on what it is.
+
+A **measurement** — a benchmark, a training run, an evaluation sweep — is
+`workhorse.job`: `submit` launches one command detached under a supervisor that outlives
+the node, and `poll` / `collect` / `kill` are how a later state reads it. What it adds
+over backgrounding is the artifact the command cannot write — exit code, peak RSS, wall
+time, kill reason, containment tier — which is what lets a classifier tell "measured and
+missed" from "produced no measurement" without asking a model. Memory is bounded (hard,
+where the machine's systemd delegation allows it); time deliberately is not, because a
+command that runs long is carrying information and killing it destroys that information
+along with the work. See [JOBS.md](JOBS.md).
+
+A **service** a later node talks to — a dev server, a stack, an emulator — wants
+health-gating and adoption instead, which a measurement neither needs nor wants. Workhorse
+ships no such primitive; the stacks that need one are the ones QA drives, so it lives in
+ostler as `ostler.qa.stack`: `ensure_stack` brings a stack up
 from a manifest (or adopts one already serving) and `teardown_stack` reaps it or
 leaves an expensive shared stack running. It knows no workflow's schema — a workflow
 hands it a manifest dict — so any workflow that must own a long-lived stack across

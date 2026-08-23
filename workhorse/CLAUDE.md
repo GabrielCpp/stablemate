@@ -12,7 +12,8 @@ What an editor of the engine needs, before the rules below: paths here are relat
 this directory, so the package is `workhorse/` — inside it, `pyflow/` holds the
 state-machine driver (`workflow.py`
 declares states, `driver.py` is the state loop and checkpoint, `engine.py` provides
-`self.call` / `self.agent` / `self.output`) and `runner/` holding the agent-CLI side
+`self.call` / `self.agent` / `self.output`) `job.py` runs one long command detached under a bounded supervisor, for the measurements an
+agent turn is the wrong container for ([docs/JOBS.md](docs/JOBS.md)), and `runner/` holds the agent-CLI side
 (`ladder.py` holds the `AgentRunner` service — the recovery ladder over `failure.py` /
 `process.py` / `caps.py` / `reframe.py` / `extract.py`, driven with an injected `Clock`
 from `clock.py` — and `backends/` the agent-CLI port and one adapter module per CLI). `make help` lists

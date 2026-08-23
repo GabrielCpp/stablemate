@@ -423,6 +423,20 @@ that tests substitute through instead of patching, and the `labels()` that tell 
 collector what a run is working on — is in
 [docs/AUTHORING.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md).
 
+### Measuring something outside an agent turn
+
+A benchmark, a training run, an evaluation sweep — anything whose value is a *number* —
+does not belong inside an agent turn, whose budget is a budget for thinking and which
+kills and re-enters a command that outruns it. `workhorse.job` submits such a command
+detached, under a supervisor that outlives the node, and records what it cost in a file
+the command itself cannot write: exit code, peak RSS, wall time, kill reason, and the
+containment tier the machine actually delivered. The workflow parks on an `Await` and a
+later state classifies the two artifacts with no model call.
+
+The manifest keys, the three containment tiers, why time is advisory while memory is hard,
+and how a job is polled, adopted on resume and killed are in
+[docs/JOBS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/JOBS.md).
+
 ## Development
 
 Working on the controller itself — not on a workflow — starts from a clone of the
