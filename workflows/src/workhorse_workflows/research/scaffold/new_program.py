@@ -13,7 +13,8 @@ the workflow consumes, run once by a human before the first run:
   python -m workhorse_workflows.research.scaffold.new_program \\
       --repo <repo> --dir specs/my-program --code-root src/mypkg \\
       [--name "Foo Program"] [--gate G0] [--progress <repo-rel path>] \\
-      [--result-branch <branch>] [--set-default] [--force]
+      [--result-branch <branch>] [--ram-gb 64 --cpus 16 --gpu "1x A100" --disk-gb 500] \\
+      [--min-containment premium] [--set-default] [--force]
 
 Writes under <repo>/<dir>:
   program.yml · README.md · PROGRESS.md (at --progress if given) · <gate>_program.md · findings/
@@ -58,6 +59,16 @@ def main(logger: logging.Logger) -> None:
     ap.add_argument("--gate", default="G0", help="first gate id (default: G0)")
     ap.add_argument("--progress", default="", help="override progress_path (repo-relative)")
     ap.add_argument("--result-branch", default="", help="override result_branch")
+    ap.add_argument("--ram-gb", type=int, default=0, help="machine envelope: usable RAM")
+    ap.add_argument("--cpus", type=int, default=0, help="machine envelope: usable cores")
+    ap.add_argument("--gpu", default="none", help="machine envelope: the GPU, or 'none'")
+    ap.add_argument("--disk-gb", type=int, default=0, help="machine envelope: usable scratch")
+    ap.add_argument(
+        "--min-containment",
+        default="premium",
+        choices=("premium", "best_effort", "advisory"),
+        help="the weakest resource containment a measurement here may be trusted under",
+    )
     ap.add_argument("--set-default", action="store_true", help="point <repo>/.agents/program at this program")
     ap.add_argument("--force", action="store_true")
     args = ap.parse_args()
@@ -81,12 +92,34 @@ def main(logger: logging.Logger) -> None:
     }
 
     # program.yml is generated directly (tiny) so overrides land uncommented.
-    manifest = [f"# {name} — research program manifest (read by load_config). 1 folder = 1 program.",
+    manifest = [f"# {name} — research program manifest (read by load_program). 1 folder = 1 program.",
                 f"code_root: {args.code_root.strip('/')}"]
     if args.progress:
         manifest.append(f"progress_path: {progress_path}")
     if args.result_branch:
         manifest.append(f"result_branch: {result_branch}")
+
+    # The machine envelope. A design is checked against these *before* anything is
+    # built, and one that does not fit is rescoped by the scientist rather than
+    # launched and killed hours later — so the numbers here are what stops an
+    # experiment nobody's hardware can run from being written at all.
+    #
+    # An axis left at 0 (or `none`) declares no bound and is not checked. That is the
+    # honest default for a machine nobody has measured, and it is also the setting
+    # under which over-envelope never fires: fill them in.
+    manifest += [
+        "",
+        "# The machine this program's experiments must fit. 0 / none = no bound declared.",
+        f"envelope_ram_gb: {args.ram_gb}",
+        f"envelope_cpus: {args.cpus}",
+        f"envelope_gpu: {args.gpu}",
+        f"envelope_disk_gb: {args.disk_gb}",
+        "",
+        "# The weakest containment a measurement here may be trusted under. Under",
+        "# `premium` the runner enforces the declared RAM as a hard bound, so a result",
+        "# that came back is a result that stayed inside what it declared.",
+        f"min_containment: {args.min_containment}",
+    ]
 
     logger.info("scaffolding %s (repo=%s)", program_dir, repo)
     write(abs_dir / "program.yml", "\n".join(manifest) + "\n", args.force)
@@ -109,8 +142,9 @@ def main(logger: logging.Logger) -> None:
 
     logger.info(
         "done. Next: fill the README's Frozen target table (metric/split/threshold/"
-        "deadline — the goal review reads it to decide `reached`), the ladder, and %s's "
-        "thresholds, then\n"
+        "deadline — the goal review reads it to decide `reached`), the ladder, %s's "
+        "thresholds, and program.yml's envelope_* lines (0 declares no bound, so an "
+        "experiment too big for this machine is only found out by running it), then\n"
         "  workhorse-research run%s",
         gate,
         "" if args.set_default else f" --params '{{\"program\":\"{program_dir}\"}}'",
