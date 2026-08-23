@@ -493,6 +493,23 @@ class PythonDriver(QaDriver):
         if step:
             metadata["step"], metadata["step_label"] = step
         problems: list[str] = []
+        if path.is_dir():
+            # A directory is registered file by file, the way `Maestro.run` files its
+            # screenshots: the manifest hashes files, the evidence map reads files, and a
+            # tree that arrived as one opaque row would be neither hashed nor readable.
+            files = sorted(child for child in path.rglob("*") if child.is_file())
+            if not files:
+                return [f"scenario '{scenario_id}' artifact directory is empty: {path}"]
+            for child in files:
+                problems.extend(
+                    self._file(
+                        scenario_id,
+                        child,
+                        kind=kind,
+                        metadata={**metadata, "directory": str(path)},
+                    )
+                )
+            return problems
         if kind == "video" and path.is_file():
             measured = _probe_media(path)
             metadata.update(measured)
@@ -506,6 +523,13 @@ class PythonDriver(QaDriver):
                     f"{measured.get('width')}x{measured.get('height')}, "
                     f"not the target's {width}x{height}"
                 )
+        problems.extend(self._file(scenario_id, path, kind=kind, metadata=metadata))
+        return problems
+
+    def _file(
+        self, scenario_id: str, path: Path, *, kind: str, metadata: dict[str, Any]
+    ) -> list[str]:
+        """One manifest row, or the reason the file could not be one."""
         try:
             self.session.register_artifact(
                 path,
@@ -515,8 +539,8 @@ class PythonDriver(QaDriver):
                 **({"metadata": metadata} if metadata else {}),
             )
         except ValueError as exc:
-            problems.append(f"scenario '{scenario_id}' produced an unusable artifact: {exc}")
-        return problems
+            return [f"scenario '{scenario_id}' produced an unusable artifact: {exc}"]
+        return []
 
     # -- vetting -----------------------------------------------------------------------
 

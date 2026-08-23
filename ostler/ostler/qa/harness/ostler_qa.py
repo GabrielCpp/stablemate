@@ -1669,12 +1669,23 @@ class Qa:
         return self._captures[key]
 
     def artifact(self, path: str | Path, *, kind: str) -> Path:
-        """Register a file as evidence. Relative paths resolve inside `qa.dir`."""
+        """Register a file — or a directory of files — as evidence.
+
+        Relative paths resolve inside `qa.dir`. The runner reads the path once the scenario
+        has finished, so the usual shape is to register first and write after, and what it
+        finds there decides the rest: a file is one manifest entry; a directory is one entry
+        per file under it (a CLI that writes a report tree, a browser that films a folder of
+        frames), each carrying the directory it came from; a directory with nothing in it is
+        a problem, because an artifact that says nothing is not evidence of anything.
+        """
         resolved = Path(path)
         if not resolved.is_absolute():
             resolved = self.dir / resolved
         resolved.parent.mkdir(parents=True, exist_ok=True)
-        self._recorder.emit({"type": "artifact", "path": str(resolved), "kind": kind})
+        record: dict[str, Any] = {"type": "artifact", "path": str(resolved), "kind": kind}
+        if resolved.is_dir():
+            record["directory"] = True
+        self._recorder.emit(record)
         return resolved
 
     def secret(self, name: str) -> str:

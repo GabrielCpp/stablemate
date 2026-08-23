@@ -9,6 +9,7 @@ is the reason it stays.
 
 from __future__ import annotations
 
+import pytest
 import hashlib
 import json
 import os
@@ -982,3 +983,67 @@ def test_reset_paths_clear_stale_daemon_state_before_it_starts(tmp_path: Path) -
     assert outcome.status == "passed", outcome.message
     # Touched fresh by the daemon after the unlink, so "exists" is not the assertion.
     assert stale.read_text(encoding="utf-8") == ""
+
+
+def _directory_artifact_plan(body: str) -> str:
+    return PLAN.replace(
+        '    qa.check("the value is ok", True, actual="ok", expected="ok", covers=["{obligation}"])',
+        body + '\n    qa.check("the value is ok", True, actual="ok", expected="ok", covers=["{obligation}"])',
+    )
+
+
+def _shell_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Opt the tmp repo into an `sh` QA tool — plan code may not touch the filesystem
+    itself, so a plan builds an artifact tree the way a real one does: through a tool."""
+    (tmp_path / "agents.yml").write_text("qa:\n  tools: [sh]\n", encoding="utf-8")
+    config = tmp_path / "config.toml"
+    config.write_text('[qa_tools.sh]\ncommand = "/bin/sh"\n', encoding="utf-8")
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
+
+
+def test_a_directory_artifact_is_one_manifest_row_per_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The manifest hashes files and the evidence map reads files, so a directory arrives
+    as its files — each carrying the directory it came from — never as one opaque row."""
+    _shell_tool(tmp_path, monkeypatch)
+    spec = _spec(tmp_path)
+    module = _plan(
+        spec,
+        _directory_artifact_plan(
+            '    qa.tool("sh").run("-c", "echo a > a.txt; mkdir nested; echo b > nested/b.txt", cwd="report")\n'
+            '    qa.artifact("report", kind="log")'
+        ),
+    )
+
+    outcome = cmd_run(module, root=tmp_path)
+
+    assert outcome.status == "passed", outcome.message
+    manifest = json.loads((spec / "qa/run-manifest.json").read_text(encoding="utf-8"))
+    filed = sorted((row["path"], row["directory"]) for row in manifest["artifacts"] if "directory" in row)
+    assert filed == [
+        ("qa/report/a.txt", str(spec / "qa/report")),
+        ("qa/report/nested/b.txt", str(spec / "qa/report")),
+    ]
+    assert all(row["kind"] == "log" for row in manifest["artifacts"] if "report/" in row["path"])
+
+
+def test_an_empty_artifact_directory_is_a_problem(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An artifact that says nothing is not evidence of anything, and the scenario that
+    produced it aborts like one that handed over a missing file."""
+    _shell_tool(tmp_path, monkeypatch)
+    spec = _spec(tmp_path)
+    module = _plan(
+        spec,
+        _directory_artifact_plan(
+            '    qa.tool("sh").run("-c", "true", cwd="report")\n    qa.artifact("report", kind="log")'
+        ),
+    )
+
+    outcome = cmd_run(module, root=tmp_path)
+
+    assert outcome.status != "passed"
+    ends = [row for row in _records(spec) if row.get("kind") == "scenario_stop"]
+    assert "artifact directory is empty" in ends[0].get("message", ""), ends

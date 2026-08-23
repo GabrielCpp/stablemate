@@ -710,3 +710,36 @@ def test_tool_env_refuses_a_name_it_cannot_safely_hand_out() -> None:
     with pytest.raises(ValueError, match="duplicate"):
         harness.tool_env("TZ")
     harness.REGISTRY.tool_env.clear()
+
+
+DIRECTORY_ARTIFACT_PLAN = '''\
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-dir-artifact", story="dir-artifact")
+api = target("api")
+
+
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def a_report_tree_is_filed(qa: Qa) -> None:
+    """A directory is evidence too."""
+    report = qa.dir / "report"
+    report.mkdir(parents=True)
+    (report / "a.txt").write_text("a")
+    qa.artifact("report", kind="log")
+    qa.artifact("single.txt", kind="log").write_text("one")
+    qa.check("filed", True)
+'''
+
+
+def test_artifact_marks_a_directory_so_the_runner_files_it_file_by_file(tmp_path: Path) -> None:
+    """`qa.artifact` was a file, full stop — a CLI whose contract is the tree it writes had no
+    way to hand that tree over. The harness only marks the shape; the runner reads the tree
+    once the scenario is done and files each file under it."""
+    module = _write(tmp_path, DIRECTORY_ARTIFACT_PLAN)
+    code, records = _run(module, "a-report-tree-is-filed", tmp_path)
+    assert code == 0, records
+    artifacts = [r for r in records if r["type"] == "artifact"]
+    assert [(Path(a["path"]).name, a.get("directory")) for a in artifacts] == [
+        ("report", True),
+        ("single.txt", None),
+    ]
