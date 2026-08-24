@@ -190,6 +190,7 @@ def wait_for_answer(
     channel: ControlChannel = NULL_CHANNEL,
     log: logging.Logger | None = None,
     deadline: float | None = None,
+    kind: str = "operator",
 ) -> Request | None:
     """Block until the gate at `path` is answered, or a control request arrives.
 
@@ -230,9 +231,16 @@ def wait_for_answer(
         if waited % HEARTBEAT_S < interval:
             # Names the condition, not just the file: an operator who edited the gate
             # without flipping its status is the one case this wait will not end on its
-            # own, and this line is where they find that out.
+            # own, and this line is where they find that out. On a `machine` wait there
+            # is no such case and no such person — nobody is ever going to write STATUS:
+            # ANSWERED in a supervisor's wake file — so asking for one reads as a run
+            # begging for input it does not want.
+            condition = (
+                "STATUS: ANSWERED in" if kind == "operator" else "the job to finish in"
+            )
             log.info(
-                "[workhorse] await  → still waiting for STATUS: ANSWERED in %s (%ds)",
+                "[workhorse] await  → still waiting for %s %s (%ds)",
+                condition,
                 path,
                 int(waited),
             )
@@ -449,6 +457,7 @@ def drive(
                     clock=env.clock,
                     log=env.log,
                     deadline=env.deadline,
+                    kind=outcome.kind,
                 )
         state, params = outcome.state, outcome.params
 
