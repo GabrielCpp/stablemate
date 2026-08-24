@@ -25,6 +25,12 @@ origin.
 
 Always the literal string `farrier`; marks the file as tool-generated rather than hand-authored.
 
+It is also what makes the file *deletable*: install removes only files carrying this mark, so a
+hand-written skill kept next to the generated ones survives, and a path farrier wants to write that
+holds an unmarked file aborts the install instead of overwriting it. See
+[ownership](farrier.md#ownership) — and note that a generated `SKILL.md` covers its bundled
+`references/`/`scripts/` too, which carry no front matter of their own.
+
 ### source    <!-- required -->
 - type: `string` — required: yes — default: none
 

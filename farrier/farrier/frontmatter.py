@@ -271,3 +271,15 @@ def first_heading(body: str, fallback: str) -> str:
         if tok.type == "heading_open" and tok.tag == "h1":
             return tokens[i + 1].content.strip() if i + 1 < len(tokens) else fallback
     return fallback
+
+
+def front_matter_end(content: str) -> int:
+    """The line index where the document proper begins — ``0`` when there is no fence.
+
+    Lets a caller splice a banner *after* a source's own front matter instead of above
+    it, which would push the fence off line 1 and turn parsed metadata into prose.
+    """
+    tokens = _tokens(content)
+    if not tokens or tokens[0].type != "front_matter":
+        return 0
+    return tokens[0].map[1]
