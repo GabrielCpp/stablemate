@@ -10,7 +10,7 @@ Thirty-five nodes become twelve states. Six of the thirty-five are `type: branch
 that read a value the node directly above them had just produced, so each folds into the
 `if` at the end of the state that produced it; five more are `type: call fn: seed/incr`
 counter nodes, which disappear entirely, because a counter is a state parameter now. What is
-left is the work: four agent turns (two of them the same prompt at three call sites), five
+left is the work: four agent turns (two of them the same prompt at two call sites), five
 deterministic nodes, and the operator gate.
 
 `implement` used to route between a classic single turn and a tests/red-gate/code split —
@@ -54,9 +54,9 @@ Divergences from the YAML, all deliberate:
   `validate` would not be a state at all: no error, no warning, just a transition to a
   target nothing dispatches. It is the one reserved name any of the four workflows came
   close to taking, and it is recorded in the progress ledger.
-* the three `refine-plan.md` call sites share one node id (the driver ids an agent node by
-  its prompt stem), where the YAML had three. Nothing reads that output by node name, and
-  each site's *next* state is what distinguished them.
+* the `refine-plan.md` call sites share one node id (the driver ids an agent node by its
+  prompt stem), where the YAML had three. Nothing reads that output by node name, and each
+  site's *next* state is what distinguished them.
 * **`plan_blocks` bounds the *resolver*, not the block.** It counts trips through
   `_gate_plan` that actually invoked `resolve_plan`, and is the only counter that
   survives an operator answer. Once it reaches `MAX_PLAN_BLOCKS`, `_gate_plan` stops
@@ -301,9 +301,9 @@ class Dev(Workflow):
                 "markers": self.call(declared_markers).text,
             },
         )
-        # The plan agent writes plan.md / plan-<svc>.md / executive.md as free-form
-        # markdown, so the frontmatter that makes them OKF Concepts is only as reliable as
-        # the model's memory. Stamp it mechanically instead of trusting the prompt.
+        # The plan agent writes plan.md / plan-<svc>.md as free-form markdown, so the
+        # frontmatter that makes them OKF Concepts is only as reliable as the model's
+        # memory. Stamp it mechanically instead of trusting the prompt.
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         if result.status == "blocked":
             return self._gate_plan(result, result.summary, 0)
@@ -466,6 +466,10 @@ class Dev(Workflow):
             review_notes=f"Service path validation failed: {result.errors}",
             operator_context="",
             worklist="path-repair",
+            # low: the design already passed the gate; what failed is a path, a repo name or
+            # a marker in the machine-readable reply. Billing that as a high-power re-plan is
+            # what made one of these laps cost 203 s (`shared/dev.py:106`).
+            power="low",
         )
         return Continue(
             refined,
@@ -960,22 +964,26 @@ class Dev(Workflow):
 
     # --- shared -------------------------------------------------------------
 
-    def _refine(self, *, review_notes: str, operator_context: str, worklist: str) -> PlanResult:
-        """The `refine-plan.md` turn, shared by the three states that re-plan.
+    def _refine(
+        self, *, review_notes: str, operator_context: str, worklist: str, power: str = "high"
+    ) -> PlanResult:
+        """The `refine-plan.md` turn, shared by the two states that re-plan.
 
-        One helper rather than three copies of the same call: what distinguished the YAML's
-        three refine nodes was their `review_notes` and where they went next, and both of
-        those are the caller's. So is `worklist`, and for the same reason — the three loops
-        lap on three unrelated things, so each resumes its own conversation and none of them
-        inherits another's.
+        One helper rather than two copies of the same call: what distinguished the YAML's
+        refine nodes was their `review_notes` and where they went next, and both of those
+        are the caller's. So is `worklist`, and for the same reason — the loops lap on
+        unrelated things, so each resumes its own conversation and neither inherits the
+        other's. `power` is the caller's too: re-planning around an operator's answer is
+        high-stakes work, repairing a rejected service path is a string edit.
         """
         turn = roles.turn("refine-plan", self.repo_dir, self.library_dirs)
         return self.agent(
             turn.prompt,
             returns=PlanResult,
-            # high: re-plans high-stakes prod work, and must absorb an operator's answer
-            # about a dangerous operation without re-raising a block that was resolved.
-            power="high",
+            # The caller's, and it defaults high: a re-plan around an operator's answer
+            # must absorb a decision about a dangerous operation without re-raising a block
+            # that was resolved.
+            power=power,
             add_dirs=self._dirs(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
