@@ -17,7 +17,9 @@ from farrier.install import main
 
 def make_library(tmp_path: Path) -> Path:
     library = tmp_path / "agents"
-    skills = library / "library" / "skills" / "demo"
+    # Top of the tree on purpose: a source with no parent folder takes no group
+    # prefix, so what these tests assert is the repo prefix and nothing else.
+    skills = library / "library" / "skills"
     skills.mkdir(parents=True)
     (skills / "db.md").write_text(
         "---\nname: db\ndescription: A skill.\n---\n\nBody.\n", encoding="utf-8"
@@ -33,7 +35,7 @@ def install(repo: Path, library: Path, config: str) -> int:
     return main(["install", "--repo", str(repo), "--library", str(library)])
 
 
-AGENTS = "agents:\n  claude: true\nskills:\n  - demo/db\n"
+AGENTS = "agents:\n  claude: true\nskills:\n  - db\n"
 
 
 def test_the_prefix_is_the_repo_directory_name(tmp_path: Path) -> None:
@@ -68,7 +70,7 @@ def test_agents_yml_cannot_override_the_prefix(tmp_path: Path, key: str) -> None
 def test_other_repo_keys_still_reach_the_template_context(tmp_path: Path) -> None:
     """Only `name`/`prefix`/`root` are reserved; `repo:` is still a passthrough."""
     library = make_library(tmp_path)
-    (library / "library" / "skills" / "demo" / "db.md").write_text(
+    (library / "library" / "skills" / "db.md").write_text(
         "---\nname: db\ndescription: A skill.\n---\n\nMail {{ repo.support_email }}.\n",
         encoding="utf-8",
     )

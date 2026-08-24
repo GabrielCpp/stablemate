@@ -19,8 +19,20 @@ def kebab(value: str) -> str:
 
 
 def compose_name(prefix: str, base: str) -> str:
-    """Join a repo's install prefix onto a skill's base name, without doubling it."""
-    if base == prefix or base.startswith(f"{prefix}-"):
+    """Join a prefix onto a base name, collapsing an adjacent duplicate segment.
+
+    Used twice on the way to an installed name: once for the library group (the
+    source's immediate parent folder) and once for the repo. Both need the same
+    collapse, for the same reason — a segment that is already the leading word of
+    what follows it says nothing when repeated. ``flutter/flutter-api`` is
+    ``flutter-api``, not ``flutter-flutter-api``; ``stablemate/ostler`` in the
+    stablemate repo is ``stablemate-ostler``, not ``stablemate-stablemate-ostler``,
+    which would read as "about stablemate" when the skill is about ostler.
+
+    An empty *prefix* composes to *base* unchanged, so a source with no group
+    (a flat file at the top of the tree) is not given a leading dash.
+    """
+    if not prefix or base == prefix or base.startswith(f"{prefix}-"):
         return base
     return f"{prefix}-{base}"
 

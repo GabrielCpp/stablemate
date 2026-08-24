@@ -239,3 +239,32 @@ def test_errors_print_before_warnings_so_a_truncated_terminal_shows_what_fails(t
 
 def test_a_clean_library_says_so_rather_than_printing_nothing():
     assert format_findings([], 12) == "ok: 12 library sources, all front matter parses"
+
+
+def test_a_stuttering_basename_warns_and_names_the_installed_name(tmp_path):
+    """Never an error: both spellings install identically, so the source is fine."""
+    skill = tmp_path / "library" / "skills" / "flutter" / "flutter-api" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text(
+        "---\nname: flutter-api\ndescription: x\ntags: [a]\n---\n\nBody.\n",
+        encoding="utf-8",
+    )
+
+    findings, _ = check_library([tmp_path / "library"])
+
+    stutter = [f for f in findings if f.code == "group-stutter"]
+    assert [f.level for f in stutter] == ["warning"]
+    assert "'flutter-api'" in stutter[0].message
+
+
+def test_a_basename_that_merely_starts_like_its_folder_is_not_a_stutter(tmp_path):
+    """`go/gopls` is not `go/go-pls`: the collapse keys on a segment boundary."""
+    skill = tmp_path / "library" / "skills" / "go" / "gopls" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text(
+        "---\nname: gopls\ndescription: x\ntags: [a]\n---\n\nBody.\n", encoding="utf-8"
+    )
+
+    findings, _ = check_library([tmp_path / "library"])
+
+    assert [f for f in findings if f.code == "group-stutter"] == []

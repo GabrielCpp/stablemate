@@ -55,11 +55,35 @@ def library_source_path(source: Source) -> str:
 
 
 def public_id(source: Source) -> str:
+    """The source's bare basename — its name with neither group nor repo prefix.
+
+    Still the addressable form for a *policy* (``localInstructions`` names one the
+    way an author writes it) and one of the aliases selection accepts. It is no
+    longer the installed name: see ``group_id``.
+    """
     return kebab(Path(source.id).name)
 
 
+def group_id(source: Source) -> str:
+    """``<group>-<basename>`` — the installed name before any repo prefix.
+
+    *group* is the source's **immediate** parent folder, so a nested tree names the
+    leaf group and not the path to it: ``stacks/flutter/api`` installs as
+    ``flutter-api``, never ``stacks-flutter-api``. A source with no parent folder
+    keeps its basename.
+
+    The group is part of the name because user-scope skills carry no repo prefix and
+    land in one directory shared by every project on the machine — a bare ``api``
+    there says nothing about which stack it belongs to, and collides with the next
+    one.
+    """
+    parts = Path(source.id).parts
+    group = kebab(parts[-2]) if len(parts) > 1 else ""
+    return compose_name(group, public_id(source))
+
+
 def public_name(prefix: str, source: Source) -> str:
-    return compose_name(prefix, public_id(source))
+    return compose_name(prefix, group_id(source))
 
 
 #: Directories a skill may bundle beside its SKILL.md, shipped with it rather than
@@ -272,6 +296,7 @@ def matches(source: Source, patterns: set[str]) -> bool:
     candidates = {
         source.id,
         public_id(source),
+        group_id(source),
         source.rel,
         source.rel.removesuffix(".md"),
         source.rel.removesuffix(".prompt.md"),
@@ -337,6 +362,7 @@ def build_lookup(sources: list[Source], prefix: str) -> dict[str, Source]:
         keys = {
             source.id,
             public_id(source),
+            group_id(source),
             public_name(prefix, source),
             source.rel,
             source.rel.removesuffix(".md"),

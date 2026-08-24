@@ -174,7 +174,7 @@ def test_reference_installs_next_to_the_skill_under_every_adapter(tmp_path):
     )
 
     for adapter in (".claude/skills", ".agents/skills", ".github/skills"):
-        path = tmp_path / adapter / "demo-go-service" / "references" / "examples.md"
+        path = tmp_path / adapter / "demo-stack-go-service" / "references" / "examples.md"
         assert path in outputs, f"reference missing from {adapter}"
         assert "A service looks like" in outputs[path]
 
@@ -192,7 +192,7 @@ def test_a_reference_keeps_the_path_the_library_author_wrote(tmp_path):
     renderer = _renderer(tmp_path, root, ["go"])
 
     outputs = renderer.render(agents={"claude": True}, roots=set())
-    skill_path = tmp_path / ".claude" / "skills" / "demo-go" / "SKILL.md"
+    skill_path = tmp_path / ".claude" / "skills" / "demo-stack-go" / "SKILL.md"
     linked = skill_path.parent / "references" / "examples.md"
 
     assert "references/examples.md" in outputs[skill_path]
@@ -208,11 +208,11 @@ def test_markdown_references_are_templated_from_their_own_location(tmp_path):
 
     outputs = renderer.render(agents={"claude": True}, roots=set())
     rendered = outputs[
-        tmp_path / ".claude" / "skills" / "demo-go" / "references" / "x.md"
+        tmp_path / ".claude" / "skills" / "demo-stack-go" / "references" / "x.md"
     ]
 
     # Relative to the reference's own directory, not the skill's — one level deeper.
-    assert "../../demo-testing/SKILL.md" in rendered
+    assert "../../demo-stack-testing/SKILL.md" in rendered
 
 
 def test_a_markdown_reference_carries_resolvable_provenance(tmp_path):
@@ -224,13 +224,13 @@ def test_a_markdown_reference_carries_resolvable_provenance(tmp_path):
 
     outputs = renderer.render(agents={"claude": True}, roots=set())
     rendered = outputs[
-        tmp_path / ".claude" / "skills" / "demo-go" / "references" / "x.md"
+        tmp_path / ".claude" / "skills" / "demo-stack-go" / "references" / "x.md"
     ]
 
     assert rendered.startswith("<!--")
     assert "DO NOT EDIT" in rendered
     assert "library/skills/stack/go/references/x.md" in rendered
-    assert "farrier source .claude/skills/demo-go/references/x.md" in rendered
+    assert "farrier source .claude/skills/demo-stack-go/references/x.md" in rendered
 
 
 def test_scripts_and_non_markdown_references_are_copied_untouched(tmp_path):
@@ -242,7 +242,7 @@ def test_scripts_and_non_markdown_references_are_copied_untouched(tmp_path):
     renderer = _renderer(tmp_path, root, ["qa"])
 
     outputs = renderer.render(agents={"claude": True}, roots=set())
-    base = tmp_path / ".claude" / "skills" / "demo-qa"
+    base = tmp_path / ".claude" / "skills" / "demo-stack-qa"
 
     assert outputs[base / "scripts" / "check.sh"] == '#!/bin/sh\necho "{{ not_a_template }}"\n\n'
     assert outputs[base / "references" / "fixture.json"] == '{"a": 1}\n\n'
@@ -271,7 +271,7 @@ def test_an_installed_script_is_executable_and_byte_faithful(tmp_path):
     outputs = renderer.render(agents={"claude": True}, roots=set())
 
     install_outputs(tmp_path, outputs)
-    installed = tmp_path / ".claude" / "skills" / "demo-qa" / "scripts" / "check.sh"
+    installed = tmp_path / ".claude" / "skills" / "demo-stack-qa" / "scripts" / "check.sh"
 
     assert installed.read_text(encoding="utf-8") == "#!/bin/sh\nexit 0\n\n"
     assert installed.stat().st_mode & 0o111, "script installed without the +x bit"
@@ -298,7 +298,7 @@ def test_check_flags_a_script_that_lost_its_executable_bit(tmp_path):
     outputs = renderer.render(agents={"claude": True}, roots=set())
     install_outputs(tmp_path, outputs)
 
-    installed = tmp_path / ".claude" / "skills" / "demo-qa" / "scripts" / "check.sh"
+    installed = tmp_path / ".claude" / "skills" / "demo-stack-qa" / "scripts" / "check.sh"
     installed.chmod(0o644)
 
     assert check_outputs(tmp_path, outputs) == 1
@@ -318,7 +318,7 @@ def test_a_removed_reference_is_reported_as_extra(tmp_path, capsys):
     )
 
     assert check_outputs(tmp_path, stale) == 1
-    assert "extra: .claude/skills/demo-qa/references/notes.md" in capsys.readouterr().out
+    assert "extra: .claude/skills/demo-stack-qa/references/notes.md" in capsys.readouterr().out
 
 
 # --- the template gate ------------------------------------------------------------
@@ -337,7 +337,7 @@ def test_raw_tags_are_honoured_in_a_file_that_names_no_helper(tmp_path):
     renderer = _renderer(tmp_path, root, ["helm"])
 
     outputs = renderer.render(agents={"claude": True}, roots=set())
-    rendered = outputs[tmp_path / ".claude" / "skills" / "demo-helm" / "SKILL.md"]
+    rendered = outputs[tmp_path / ".claude" / "skills" / "demo-stack-helm" / "SKILL.md"]
 
     assert "{{ .Values.arn }}" in rendered
     assert "raw" not in rendered

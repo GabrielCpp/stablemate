@@ -1,17 +1,17 @@
 ---
-name: stablemate-code-structure
+name: stablemate-architecture-code-structure
 description: "The language-neutral rules for where code lives *inside* a layer — when a pile of functions becomes an object, when a module becomes two, when a value crossing a boundary needs a name, and where configuration and side effects are allowed to appear. Every rule carries a mechanically detectable trigger, so a violation is a finding rather than a matter of taste. Load when adding a module, growing a parameter list, choosing between a function and a class, or reviewing structure; hexagonal-architecture governs the boundaries *between* layers, and the stack architecture skill (go-architecture, python-architecture, flutter-architecture, typescript-architecture) supplies the mechanics. Applies to **/*.go,**/*.dart,**/*.ts,**/*.tsx,**/*.py."
 metadata:
   generated_by: farrier
   source: library/skills/architecture/code-structure/SKILL.md
-  resolve: "farrier source .claude/skills/stablemate-code-structure/SKILL.md"
+  resolve: "farrier source .claude/skills/stablemate-architecture-code-structure/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [standards]
 ---
 
 # Code Structure — Rules That Can Fire
 
-[`../stablemate-hexagonal-architecture/SKILL.md`](../stablemate-hexagonal-architecture/SKILL.md)
+[`../stablemate-architecture-hexagonal-architecture/SKILL.md`](../stablemate-architecture-hexagonal-architecture/SKILL.md)
 governs the boundaries **between** rings: which way dependencies point, what a port may name, where
 infrastructure is allowed to live. This skill governs the inside of a single ring — the decisions
 that never trip a layering check and produce most of the damage anyway: a 1,600-line module, a

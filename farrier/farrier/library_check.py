@@ -39,6 +39,7 @@ import yaml
 from markdown_it import MarkdownIt
 from mdit_py_plugins.front_matter import front_matter_plugin
 
+from farrier.naming import compose_name, kebab, strip_known_suffix
 from farrier.skill_hooks import findings as hook_findings
 
 __all__ = ["Finding", "check_library", "check_text", "format_findings"]
@@ -249,6 +250,40 @@ def check_text(text: str, path: Path, *, require_tags: bool = True) -> list[Find
     return found
 
 
+def _stutter_finding(root: Path, sub: str, path: Path) -> Finding | None:
+    """A warning when a source's basename repeats its own parent folder.
+
+    ``flutter/flutter-api`` installs as ``flutter-api``, exactly as ``flutter/api``
+    does — the group join collapses an adjacent duplicate, so both spellings are
+    correct and neither moves an installed name. The stutter is therefore never a
+    build failure, and never worth a flag day across two libraries.
+
+    It is still worth saying: the repetition is invisible in the installed name, so
+    nothing else in the toolchain ever reports it, and a library drifts back into it
+    one file at a time. A warning here is the only place the drift is visible.
+    """
+    rel = path.relative_to(root / sub)
+    if path.name == "SKILL.md":
+        parts = rel.parent.parts
+    else:
+        parts = rel.with_name(strip_known_suffix(rel)).parts
+    if len(parts) < 2:
+        return None
+    group, base = kebab(parts[-2]), kebab(parts[-1])
+    if base != group and not base.startswith(f"{group}-"):
+        return None
+    installed = compose_name(group, base)
+    return Finding(
+        path=path,
+        level="warning",
+        code="group-stutter",
+        message=(
+            f"basename repeats its folder {group!r}; installs as {installed!r} either "
+            f"way, so dropping the repetition from the source renames nothing"
+        ),
+    )
+
+
 def check_library(roots: list[Path], *, require_tags: bool = True) -> tuple[list[Finding], int]:
     """``(findings, files_checked)`` over every markdown source under *roots*.
 
@@ -278,6 +313,9 @@ def check_library(roots: list[Path], *, require_tags: bool = True) -> tuple[list
                     continue
                 checked += 1
                 findings.extend(check_text(text, path, require_tags=require_tags))
+                stutter = _stutter_finding(root, sub, path)
+                if stutter is not None:
+                    findings.append(stutter)
     return findings, checked
 
 

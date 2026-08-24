@@ -154,8 +154,8 @@ def test_find_by_tags_renders_the_matches_as_a_reference_list(tmp_path):
         '{{ find_by_tags("web") }}', "claude", tmp_path / "AGENTS.md"
     )
     assert rendered == (
-        "`.claude/skills/demo-web-std/SKILL.md`, "
-        "`.claude/skills/demo-web-tests/SKILL.md`"
+        "`.claude/skills/demo-stack-web-std/SKILL.md`, "
+        "`.claude/skills/demo-stack-web-tests/SKILL.md`"
     )
 
 

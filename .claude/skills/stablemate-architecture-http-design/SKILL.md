@@ -1,10 +1,10 @@
 ---
-name: stablemate-http-design
+name: stablemate-architecture-http-design
 description: "The stack-neutral contract for designing an HTTP API — operate on resources, never verbs; no request body in GET or DELETE; how to model actions that are not CRUD (a cache refresh, a send, a retry) as sub-resources instead of RPC verbs; batch requests as an explicit collection operation; ordering, pagination and searching as query-string contracts on collections and sub-collections; status codes that say what happened rather than 200-with-an-error-body. OpenAPI-first where the repo carries a contract file: the spec is edited before the handler. Load when adding or changing any HTTP endpoint; hexagonal-architecture governs where the handler sits (an adapter), this governs the shape of the surface it exposes."
 metadata:
   generated_by: farrier
   source: library/skills/architecture/http-design/SKILL.md
-  resolve: "farrier source .claude/skills/stablemate-http-design/SKILL.md"
+  resolve: "farrier source .claude/skills/stablemate-architecture-http-design/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [standards]
 ---
@@ -13,7 +13,7 @@ metadata:
 
 This is the stack-neutral definition of a well-shaped HTTP API. It states the *contract*; the
 mechanics — router, framework, serializer, validation library — are stack-specific and live in
-the matching stack skill. The [`../stablemate-hexagonal-architecture/SKILL.md`](../stablemate-hexagonal-architecture/SKILL.md)
+the matching stack skill. The [`../stablemate-architecture-hexagonal-architecture/SKILL.md`](../stablemate-architecture-hexagonal-architecture/SKILL.md)
 skill governs where the handler sits (in the adapter ring, translating the wire into domain
 calls); this skill governs the shape of the wire itself.
 

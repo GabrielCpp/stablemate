@@ -110,7 +110,7 @@ the final value. Fake the expensive leaves (network, model calls, clock), never 
 
 An end-to-end spec driving the running system through its UI is the outermost composition test,
 and it carries failure modes of its own (locator brittleness, wait races, cold-start noise) — the
-[`../stablemate-e2e-testing/SKILL.md`](../stablemate-e2e-testing/SKILL.md) skill is this
+[`../stablemate-testing-e2e-testing/SKILL.md`](../stablemate-testing-e2e-testing/SKILL.md) skill is this
 contract extended to that layer.
 
 ## 7. Every gate needs a test that proves it rejects

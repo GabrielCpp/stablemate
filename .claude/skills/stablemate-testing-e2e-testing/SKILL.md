@@ -1,10 +1,10 @@
 ---
-name: stablemate-e2e-testing
+name: stablemate-testing-e2e-testing
 description: "The end-to-end test contract, driver-neutral — locate by role plus a stable minimal accessible name, never a full literal string; rely on auto-retrying assertions instead of sleeps; recognize the cold-start first-navigation race as a named failure shape; run the flaky-vs-real checklist before calling a failure either one; keep every scenario isolated. Load whenever writing or reviewing an end-to-end/journey spec; a stack skill (react-router-playwright, flutter-qa) supplies the concrete driver mechanics. Applies to E2E spec files on any platform."
 metadata:
   generated_by: farrier
   source: library/skills/testing/e2e-testing/SKILL.md
-  resolve: "farrier source .claude/skills/stablemate-e2e-testing/SKILL.md"
+  resolve: "farrier source .claude/skills/stablemate-testing-e2e-testing/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [standards, tests]
 ---

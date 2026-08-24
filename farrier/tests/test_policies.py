@@ -76,8 +76,8 @@ def _render(
 
 FULL_MAPPING = (
     "  - policies: [house-rules]\n"
-    "    skills: [demo-ostler]\n"
-    "    prompts: [demo-commit]\n"
+    "    skills: [demo-stablemate-ostler]\n"
+    "    prompts: [demo-stablemate-commit]\n"
     '    paths: ["."]\n'
     "    includeReadme: false\n"
 )
@@ -219,7 +219,7 @@ def test_source_resolves_a_generated_file_back_to_its_policy(tmp_path, capsys, n
     repo = _repo(
         tmp_path,
         "  - policies: [house-rules]\n"
-        "    skills: [demo-ostler]\n"
+        "    skills: [demo-stablemate-ostler]\n"
         '    paths: ["."]\n',
     )
     generated = repo / name

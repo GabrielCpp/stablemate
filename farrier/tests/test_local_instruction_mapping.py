@@ -64,8 +64,8 @@ def _render(
 def test_prompt_body_is_aggregated_after_the_skills(tmp_path):
     repo, outputs = _render(
         tmp_path,
-        "  - skills: [demo-ostler]\n"
-        "    prompts: [demo-commit]\n"
+        "  - skills: [demo-stablemate-ostler]\n"
+        "    prompts: [demo-stablemate-commit]\n"
         '    paths: ["."]\n'
         "    includeReadme: false\n",
     )
@@ -80,19 +80,19 @@ def test_arguments_placeholder_is_dropped_when_aggregated(tmp_path):
     # aggregated it would be a literal dollar sign in every session's context.
     repo, outputs = _render(
         tmp_path,
-        "  - prompts: [demo-commit]\n"
+        "  - prompts: [demo-stablemate-commit]\n"
         '    paths: ["."]\n'
         "    includeReadme: false\n",
     )
     assert "$ARGUMENTS" not in outputs[repo / "AGENTS.md"]
     # ...but the command itself still renders with it.
-    assert "$ARGUMENTS" in outputs[repo / ".claude" / "commands" / "demo-commit.md"]
+    assert "$ARGUMENTS" in outputs[repo / ".claude" / "commands" / "demo-stablemate-commit.md"]
 
 
 def test_prompt_only_mapping_needs_no_skill(tmp_path):
     repo, outputs = _render(
         tmp_path,
-        '  - prompt: demo-commit\n    paths: ["."]\n    includeReadme: false\n',
+        '  - prompt: demo-stablemate-commit\n    paths: ["."]\n    includeReadme: false\n',
     )
     assert "Push as you go." in outputs[repo / "AGENTS.md"]
 
@@ -108,7 +108,7 @@ def test_claude_only_repo_still_writes_agents_md_plus_a_pointer(tmp_path):
     # turning codex on later must not move a file or change what it says.
     repo, outputs = _render(
         tmp_path,
-        '  - skill: demo-ostler\n    paths: ["."]\n    includeReadme: false\n',
+        '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    includeReadme: false\n',
     )
     assert "Ostler rules." in outputs[repo / "AGENTS.md"]
     pointer = outputs[repo / "CLAUDE.md"]
@@ -125,7 +125,7 @@ def test_codex_only_repo_gets_no_claude_pointer(tmp_path):
         "agents:\n  claude: false\n  codex: true\n"
         "skills:\n  - stablemate/ostler\n"
         "localInstructions:\n"
-        '  - skill: demo-ostler\n    paths: ["."]\n    includeReadme: false\n',
+        '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    includeReadme: false\n',
         encoding="utf-8",
     )
     from farrier.frontmatter import read_yaml
@@ -144,7 +144,7 @@ def _with_readme(tmp_path: Path) -> None:
 def test_readme_is_imported_when_claude_is_the_only_adapter(tmp_path):
     _with_readme(tmp_path)
     repo, outputs = _render(
-        tmp_path, '  - skill: demo-ostler\n    paths: ["."]\n', codex=False
+        tmp_path, '  - skill: demo-stablemate-ostler\n    paths: ["."]\n', codex=False
     )
     # Claude can pull it in by reference, so the always-loaded file stays lean.
     assert "@README.md" in outputs[repo / "CLAUDE.md"]
@@ -154,7 +154,7 @@ def test_readme_is_imported_when_claude_is_the_only_adapter(tmp_path):
 def test_readme_is_copied_when_another_adapter_reads_the_file(tmp_path):
     _with_readme(tmp_path)
     repo, outputs = _render(
-        tmp_path, '  - skill: demo-ostler\n    paths: ["."]\n', codex=True
+        tmp_path, '  - skill: demo-stablemate-ostler\n    paths: ["."]\n', codex=True
     )
     # Codex has no import directive, so the body is copied — and Claude then gets
     # it through the pointer, which must not import it a second time.
@@ -165,7 +165,7 @@ def test_readme_is_copied_when_another_adapter_reads_the_file(tmp_path):
 def test_legacy_include_readme_spellings_still_map_onto_the_boolean(tmp_path):
     repo, outputs = _render(
         tmp_path,
-        '  - skill: demo-ostler\n    paths: ["."]\n    includeReadme: none\n',
+        '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    includeReadme: none\n',
     )
     assert "## Local README" not in outputs[repo / "AGENTS.md"]
 
@@ -174,7 +174,7 @@ def test_unknown_include_readme_value_is_rejected(tmp_path):
     with pytest.raises(SystemExit) as exc:
         _render(
             tmp_path,
-            '  - skill: demo-ostler\n    paths: ["."]\n    includeReadme: maybe\n',
+            '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    includeReadme: maybe\n',
         )
     assert "includeReadme" in str(exc.value)
 
@@ -186,8 +186,8 @@ def test_source_resolves_either_generated_file_to_skill_and_prompt(
     root = _library(tmp_path)
     repo = _repo(
         tmp_path,
-        "  - skills: [demo-ostler]\n"
-        "    prompts: [demo-commit]\n"
+        "  - skills: [demo-stablemate-ostler]\n"
+        "    prompts: [demo-stablemate-commit]\n"
         '    paths: ["."]\n',
     )
     generated = repo / name

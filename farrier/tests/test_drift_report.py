@@ -51,8 +51,8 @@ def rendered(tmp_path: Path) -> tuple[Path, dict[Path, str]]:
         "skills:\n  - stablemate/ostler\n"
         "prompts:\n  - stablemate/commit\n"
         "localInstructions:\n"
-        "  - skills: [demo-ostler]\n"
-        "    prompts: [demo-commit]\n"
+        "  - skills: [demo-stablemate-ostler]\n"
+        "    prompts: [demo-stablemate-commit]\n"
         '    paths: ["."]\n'
         "    includeReadme: false\n",
         encoding="utf-8",
@@ -100,7 +100,7 @@ def test_the_prefix_lines_survive_for_the_other_two_verdicts(rendered, capsys):
     and each still gets the sentence saying which way to resolve it."""
     repo, outputs = rendered
     (repo / "AGENTS.md").unlink()
-    stale = repo / ".claude" / "skills" / "demo-ostler" / "references" / "old.md"
+    stale = repo / ".claude" / "skills" / "demo-stablemate-ostler" / "references" / "old.md"
     stale.parent.mkdir(parents=True)
     stale.write_text("stale\n", encoding="utf-8")
 
@@ -108,7 +108,7 @@ def test_the_prefix_lines_survive_for_the_other_two_verdicts(rendered, capsys):
 
     out = capsys.readouterr().out
     assert "missing: AGENTS.md" in out
-    assert "extra: .claude/skills/demo-ostler/references/old.md" in out
+    assert "extra: .claude/skills/demo-stablemate-ostler/references/old.md" in out
     assert "removed or renamed and left this copy behind" in out
 
 
@@ -171,7 +171,7 @@ def test_the_report_marks_the_attributed_source_and_only_it(rendered):
 def test_a_generated_skill_resolves_through_its_own_front_matter(rendered):
     """A skill copy stamps `metadata.source`; nothing extra is needed to report it."""
     repo, outputs = rendered
-    skill = repo / ".claude" / "skills" / "demo-ostler" / "SKILL.md"
+    skill = repo / ".claude" / "skills" / "demo-stablemate-ostler" / "SKILL.md"
     content = outputs[skill]
 
     assert sources_for(content, str(content)) == [
@@ -198,7 +198,7 @@ def test_provenance_is_read_off_the_expected_text_not_the_edited_copy(rendered):
     editable as its body. Resolving from the worktree copy would let the edit choose
     where it gets reported — including at a library file it invented."""
     repo, outputs = rendered
-    skill = repo / ".claude" / "skills" / "demo-ostler" / "SKILL.md"
+    skill = repo / ".claude" / "skills" / "demo-stablemate-ostler" / "SKILL.md"
     expected = str(outputs[skill])
     forged = expected.replace(
         "library/skills/stablemate/ostler/SKILL.md", "library/skills/made/up/SKILL.md"

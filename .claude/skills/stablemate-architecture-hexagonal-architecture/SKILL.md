@@ -1,10 +1,10 @@
 ---
-name: stablemate-hexagonal-architecture
+name: stablemate-architecture-hexagonal-architecture
 description: "The universal ports-and-adapters contract for any codebase, language-neutral — the domain depends on nothing; the application depends only on ports it owns; adapters implement those ports and own the infrastructure types. Covers the five obligations, the file layout they imply (port at the package root, adapters beneath, factory apart), why a deferred import is a dependency cycle rather than a style choice, and why an absent collaborator is a null adapter rather than a nullable reference. Load for any service, app, or library with a domain worth protecting; code-structure covers structure inside a ring, and a stack skill (go-architecture, flutter-architecture, python-architecture, typescript-architecture) supplies the concrete mechanics. Applies to **/*.go,**/*.dart,**/*.ts,**/*.py."
 metadata:
   generated_by: farrier
   source: library/skills/architecture/hexagonal-architecture/SKILL.md
-  resolve: "farrier source .claude/skills/stablemate-hexagonal-architecture/SKILL.md"
+  resolve: "farrier source .claude/skills/stablemate-architecture-hexagonal-architecture/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [standards]
 ---
@@ -242,6 +242,6 @@ holds and architecture that erodes. When you add a port, you owe both.
 This file governs the boundaries **between** rings. The rules for structure **inside** a ring —
 when a group of functions becomes an object, when a module becomes two, when a value crossing a
 boundary needs a name, where configuration and effects may appear — are in
-[`../stablemate-code-structure/SKILL.md`](../stablemate-code-structure/SKILL.md). The two are
+[`../stablemate-architecture-code-structure/SKILL.md`](../stablemate-architecture-code-structure/SKILL.md). The two are
 complementary: a codebase can satisfy every obligation here and still be unreadable, because
 nothing above says a module may not be sixteen hundred lines.
