@@ -8,6 +8,14 @@ Independently review the frozen implementation diff and the current OKF book aft
 documentation author has finished. Do not edit code or documentation. Your decision is a hard
 gate before QA.
 
+You and the author are held to the same written model, so that a finding you file is one the
+author could have read beforehand: {{ skill_load_ref("ostler-documentation", skill_dir() + "/ostler-documentation/SKILL.md") }}
+Judge against its references, not against a standard you re-derive here — `references/node-types/<type>.md`
+for what a type owes, `references/bullet-grammar.md` for claim splitting and check attribution,
+`references/check-vocabulary.md` for the checks and their signatures, and
+`references/defect-kinds.md` for the definition of every `kind` you may return. When your reading
+and a reference disagree, the reference wins and there is no finding.
+
 ## Inputs
 
 - Story: `{{ workhorse_var('story_path') }}`
@@ -61,34 +69,25 @@ changelog of this story. In particular, for the surfaces this story touched:
   journey plan alone is not OKF documentation;
 - structured bullets contain the full behavioral contract, including states, fields,
   preconditions, effects, errors, accessibility, and boundaries where applicable;
-- each normative bullet carries **one provable claim**. Every value of `does:`, `when:`,
-  `returns:`, `raises:`, `status:`, `error:`, `auth:`, `persistence:`, `emits:`, `consumes:`,
-  `concurrency:`, `idempotency:`, `required:`, `default:` or `semantics:` becomes one QA
-  obligation proved by one scenario, so a bullet holding three requirements ships two of them
-  claimed-as-covered and never tested. Flag a bullet whose success effect, error cases,
-  persistence and emissions are fused into one sentence, and name the seams to split it on;
-  the repair is repeating the key, not rewording;
+- each normative bullet carries **one provable claim** (`references/bullet-grammar.md`; which
+  keys are normative is in the type's own reference). Flag a bullet whose success effect, error
+  cases, persistence and emissions are fused into one sentence, and name the seams to split it
+  on; the repair is repeating the key, not rewording. Splitting a bullet does **not** by itself
+  owe a new check per fragment — a `verify:` above a group of normative bullets binds to the
+  node's contract and covers all of them, so do not file `verify-overclaim` against bullets the
+  previous lap correctly split;
 - `code:` and `tests:` cite real implementation and tests without using broad or invented refs,
-  and every ref names something that currently exists — `ostler doctor` rejects a `code:`
-  target that isn't there, with no exception. A symbol or file this story deleted needs no
-  citation at all; do not send the author back to add one, and flag a bullet that still cites
+  and every ref names something that currently exists. A symbol or file this story deleted needs
+  no citation at all; do not send the author back to add one, and flag a bullet that still cites
   something deleted as a defect to remove;
-- `verify:` fails differently, and is judged differently. It is not a ref: it declares the
-  **observation** that fulfils the node's obligations, as a named call from ostler's check
-  vocabulary with typed arguments — `http_status`, `json_path`, `unchanged`, `keys_unchanged`,
-  `count`, `absent`, `created`, `removed`, `visible`, `persists`, `emitted`, `omits`,
-  `conflict_on_stale`. Each one is attributed to the nearest normative bullet **above** it, so a
-  `verify:` written above the claim it observes is read as an observation of the previous claim
-  and is a defect to reorder. A test id in a
-  `verify:` is a defect whose repair is to move it to `tests:` and declare the check instead;
-  `ostler doctor` reports that one as `unparsed-check`;
-- every node this story touched that mints obligations **declares at least one observation**.
-  A node whose `does:`/`raises:`/`states:` bullets carry no `verify:` is a finding, and the
-  repair is a `verify:` bullet per observation — not prose, not a promise in the story. Nothing
-  downstream can supply it: `ostler qa validate` has no declaration to enforce, the evidence map
-  reports no deficit, and the obligation reaches QA where any assertion satisfies it. `ostler
-  doctor` warns `undeclared-obligation`; a warn does not block the gate, which is why this
-  review is where it gets caught;
+- `verify:` declares the **observation**, not a ref, and is judged by
+  `references/check-vocabulary.md` (a check outside that vocabulary or carrying a test id is
+  `unparsed-check`) and by the document-order attribution rule in `references/bullet-grammar.md`
+  (a check written above the claim it observes is credited to the previous claim — a defect to
+  reorder). A check that cannot go red on the defect its claim forbids is `verify-overclaim`;
+  the bar is in `references/defect-kinds.md`;
+- every node this story touched that mints obligations **declares at least one observation**
+  (`undeclared-obligation`, doctor's warn — which is why this review is where it gets caught);
 - behavior this story changed on an in-scope node is described completely enough to guide a
   behavior-equivalent implementation, and behavior it did not change was not *degraded* —
   a bullet the author deleted or weakened is a defect, a bullet that was already thin before
@@ -118,6 +117,12 @@ ostler graph --orphans                               # nodes no edge reaches
 Do not spend the review guessing flags. If a query does not exist above, it is not the one to
 reach for — read the file and say what you saw.
 
+**In `semantic` multi-repo mode, repository-local `ostler doctor` cannot resolve service-repo
+`code:` paths beneath the separate docs root.** Its `dangling-code-ref` and `missing-code-symbol`
+findings are yours to judge against the real tree, not evidence on their own: the author is
+excused from returning `blocked` for those two codes alone, so do not file a `grounding` finding
+that rests only on them. Every other doctor error is blocking for the author and fair game here.
+
 {% if workhorse_var('review_notes') %}
 ## Re-review discipline
 
@@ -138,10 +143,11 @@ D1 [node-type] docs/features/acme/gui/screens/editor.md#insert-widget: browser c
 D2 [overclaim] docs/features/acme/flows/widget.md: cited test clicks controls, so do not claim keyboard reorder behavior.
 ```
 
-Each finding must name the file/anchor, classify the defect (`node-type`, `missing-node`,
-`flow-coverage`, `overclaim`, `bullet-granularity`, `grounding`, `verify-overclaim`, or
-`author-decision`), and state
-the smallest acceptable repair. Do not return a broad prose paragraph that the author must
+Each finding must name the file/anchor, classify the defect as one of `node-type`,
+`missing-node`, `flow-coverage`, `overclaim`, `bullet-granularity`, `grounding`,
+`verify-overclaim` or `author-decision` — each defined in the skill's
+`references/defect-kinds.md`, and a defect that fits none of the eight is not a defect — and
+state the smallest acceptable repair. Do not return a broad prose paragraph that the author must
 reinterpret.
 
 Return JSON only:

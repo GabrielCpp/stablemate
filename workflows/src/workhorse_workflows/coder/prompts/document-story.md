@@ -11,9 +11,13 @@ documented before QA derives obligations. This is an incremental one-story updat
 changelog or a bulk build.
 
 Load the skill and follow it: {{ skill_load_ref("ostler-documentation", skill_dir() + "/ostler-documentation/SKILL.md") }}
-It carries the full loop (scaffold → author → fmt → doctor), the node-type vocabulary, and
-the linter rules; obey it. The reference for the type table and bullets is the
-`ostler` skill it links to.
+It carries the full loop (scaffold → author → fmt → doctor) and links the written model, which
+is the authority for everything below: `references/node-types/<type>.md` for the type you are
+about to write (its keys, required sections, relationships, doctor codes),
+`references/bullet-grammar.md` for what a normative bullet owes and which claim a `verify:` or a
+`fixture:` attaches to, `references/check-vocabulary.md` for the checks and their signatures, and
+`references/defect-kinds.md` for what the reviewer after you rejects on. Read the type reference
+before authoring a type you have not authored this run.
 
 ## Inputs
 
@@ -123,7 +127,7 @@ without a product or author decision, return `blocked` and name that item.
    / `ostler list` for the node if it exists; `ostler scaffold` it if not; author the
    as-built prose and structured bullets; set `code:` / `tests:` to the **real**
    `path::symbol` you just wrote (omit `tests:` rather than invent a test that doesn't
-   exist), and `verify:` to the observation that proves the node — a call from ostler's check
+   exist), and `verify:` to the observation that proves the node — a call from the check
    vocabulary, e.g. `http_status(409, title="Conflict")`, never a test name. Run `ostler checks`
    for the signatures before writing a call you have not written before — the arguments are not
    uniform (`absent` takes `subject`, `visible` takes `locator`), and a guessed one is a blocking
@@ -131,15 +135,32 @@ without a product or author decision, return `blocked` and name that item.
    Never weaken an invariant, journey completion condition, persistence rule, event
    contract, or concurrency requirement merely to match the implementation. Such drift
    is a product/author decision, not a grounding edit.
-   **One provable claim per normative bullet.** Each value of `does:`, `when:`, `returns:`,
-   `raises:`, `status:`, `error:`, `auth:`, `persistence:`, `emits:`, `consumes:`,
-   `concurrency:`, `idempotency:`, `required:`, `default:` or `semantics:` becomes one QA
-   obligation, proved by one scenario. Merging this story's delta into a sentence that already
-   holds three requirements makes a bullet where the scenario proves whichever clause the
-   planner read and the rest ships claimed-as-covered — the story passes QA over behavior
-   nobody tested. Split on the real seams (the success effect, each error case, what is
-   persisted, what is emitted) by repeating the key; `doctor` errors past 700 characters of
-   prose in one bullet.
+
+   Four rules decide whether the review after you approves. Each is written out in the skill's
+   references; what follows is what they cost you if you skip them.
+
+   - **One provable claim per normative bullet** (`references/bullet-grammar.md`, and which keys
+     are normative is in the type's own reference). Merging this story's delta into a sentence
+     that already holds three requirements makes a bullet where the scenario proves whichever
+     clause the planner read and the rest ships claimed-as-covered. Split on the real seams by
+     repeating the key; `doctor` errors past 700 characters.
+   - **A check goes under the claim it observes.** Document order is the binding: a `verify:` is
+     attributed to the nearest normative bullet **above** it, and one written before any of them
+     belongs to the node's whole contract. A check placed above its claim is credited to the
+     claim before it — the observation of a refusal filed as the observation of the success case.
+   - **Every node that mints an obligation declares at least one observation.** A node whose
+     `does:`/`raises:`/`states:` bullets carry no `verify:` reaches QA where any assertion
+     satisfies it; `doctor` warns `undeclared-obligation` and the review rejects it.
+   - **A check earns its place only if it can go red on the defect the claim forbids**
+     (`references/defect-kinds.md`, `verify-overclaim`). Name the subject concretely, assert the
+     before-state rather than assuming it, and discriminate the claim from its nearest plausible
+     defect. Splitting a bullet does **not** by itself owe a new check per fragment: a `verify:`
+     above a group of normative bullets binds to the node's contract and covers them all.
+
+   **Fill the whole contract, not a stub.** The type's reference lists what its bullets are for;
+   the bar is fields with `type`/`required`/`default`, every flag and argument item by item,
+   `does:` as ordered effects, errors/exit/status codes, and for UI the
+   `role:`/`name:`/`placement:`/`keyboard:`/`states:` contract.
    Prefer narrow, evidence-backed prose over broad claims: write "click controls reorder tabs"
    instead of "keyboard reordering works" unless a keyboard test proves it; write "new nested
    insertion is blocked" instead of "containers can never nest" when loaded legacy nested

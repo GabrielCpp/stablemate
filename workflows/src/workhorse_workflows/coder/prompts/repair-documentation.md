@@ -20,8 +20,12 @@ same conversation with the still-red errors — it is told the budget stopped yo
 start the book over and do not re-close what is already closed.
 
 Load the skill and follow it: {{ skill_load_ref("ostler-documentation", skill_dir() + "/ostler-documentation/SKILL.md") }}
-It carries the node-type vocabulary, the bullet schema and the linter rules; obey them. The
-reference for the type table and bullets is the `ostler` skill it links to.
+It links the written model, which is the authority for every rule below and the standard the
+reviewer who filed these findings judged against: `references/node-types/<type>.md` for what a
+type owes, `references/bullet-grammar.md` for claim splitting and check attribution,
+`references/check-vocabulary.md` for the checks and their signatures, `references/doctor-codes.md`
+for a code's trigger and its remedy, and `references/defect-kinds.md` for what each finding
+`kind` means. Read the reference for the code you are repairing before you repair it.
 
 ## Inputs
 
@@ -114,16 +118,11 @@ a grounding bullet you had to add makes the answer `documented`.
 
 **The other half: what the behavior would look like observed.** `code:` and `tests:` say where
 the behavior lives; `verify:` says what holds when it works, and it is a *declaration*, not a
-ref. It is a named call from ostler's check vocabulary with typed arguments.
-
-**Read the signatures; do not infer them from the name.** The arguments are not uniform —
-`absent` takes `subject`, `visible` takes `locator`, `emitted` takes `event` — and a plausible
-guess costs a full gate lap:
-
-```bash
-ostler checks            # every check: signature + the defect it excludes
-ostler checks emitted    # one of them
-```
+ref — a named call from the check vocabulary, whose signatures are in
+`references/check-vocabulary.md`. **Read the signature; do not infer it from the name.** The
+arguments are not uniform (`absent` takes `subject`, `visible` takes `locator`, `emitted` takes
+`event`) and a plausible guess costs a full gate lap. `ostler checks [name]` prints the live
+list and is the authority when it and the reference disagree.
 
 ```markdown
 - does: on a stale write the manifest is left byte-identical and the request is refused
@@ -147,21 +146,11 @@ Two grounding failures land here, and they are repaired differently:
 
 Do not invent an observation the code does not make. If a normative bullet is genuinely
 unobservable from outside, that is usually the bullet being descriptive rather than normative:
-reword it, which is a repair the deletion rule above already permits.
-
-Pick the check by the shape of evidence the claim needs, not by the surface it appears on:
-
-- use `http_status` for route readiness and response status;
-- use `json_path` for exact payload values, extracted PDF text arrays, ordering, booleans such
-  as "same page" / "different page", and other structured evidence;
-- use `count` for cardinality, including "one heading per tab" or "no duplicate title";
-- use `visible` only for a concrete thing a user can perceive. A locator string that says
-  "A precedes B", "one per tab", "on the next page", or "all sentinels" does not prove that
-  relationship — it only renames it. Replace it with a check whose value changes when the
-  order, count, page relationship, or exact text is wrong.
-
-For command startup, observe a real readiness seam. If the implementation starts a server and
-does not print a banner, declare the health route or other actual probe, not invented stdout.
+reword it, which is a repair the deletion rule above already permits. Pick the check by the
+shape of evidence the claim needs rather than by the surface it appears on — every entry in
+`references/check-vocabulary.md` states the defect that check excludes, and
+a check that cannot go red on the defect its claim forbids is the `verify-overclaim` the
+reviewer will file next lap (`references/defect-kinds.md`).
 
 ## Converge
 
