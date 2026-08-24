@@ -52,7 +52,7 @@ Rules:
 
 Check the spec directory before you write anything. A story is re-selected by the queue
 until it reaches `QA passed`, so one that was interrupted after planning — or that is coming
-back for documentation or QA — arrives here with `plan.md` (and often `plan-review.md`, a
+back for documentation or QA — arrives here with `plan.md` (and often a
 review, a settlement) already written. That is the normal resumed case, not an error, and
 you are not being asked to redo it.
 

@@ -20,7 +20,7 @@ limit — take the time you need), with full tool access: read, edit, run comman
 
 ## The block
 
-- Stage: **{{ block_kind }}** — `plan` (a planning / plan-review block), `implementation`
+- Stage: **{{ block_kind }}** — `plan` (a planning block), `implementation`
   (an implementation turn that could not proceed), `review` (an implementation-review
   block), `qa` (a QA block), or `docs` (the documentation phase refusing to write the
   book's claim as true).

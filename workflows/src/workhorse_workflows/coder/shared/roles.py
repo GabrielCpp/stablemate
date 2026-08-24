@@ -63,7 +63,7 @@ LIBRARY_SUBDIR = Path("library") / "prompts" / "coder"
 ROLES: dict[str, str] = {
     # dev
     "plan-story": "plan a story into per-service implementation plans",
-    "refine-plan": "repair a plan a gate or a reviewer rejected",
+    "refine-plan": "repair a plan a gate rejected",
     "implement-plan": "implement one service layer of the plan",
     "dev-fix": "repair whatever gate went red, one lap",
     # review
