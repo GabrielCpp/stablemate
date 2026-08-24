@@ -4,15 +4,15 @@
 Reached from the main graph as a `type: flow` node that reads nothing back, and standalone as
 `workhorse-coder run review` for a PR that no story pipeline produced::
 
-    start (code review + code reuse) → review ⇄ apply (bounded) → feedback poll → done
-                                            ↘ operator gate ↗
+    start (code review) → review ⇄ apply (bounded) → feedback poll → done
+                               ↘ operator gate ↗
 
 Eighteen nodes become eight states. Four are `type: branch` routers reading a value the node
 above them had just produced; two are the `seed`/`incr` pair for the rework counter, which is
 a state parameter here; `stamp_specs_review` merges into the review state it always ran
-directly after; and the code-review/code-reuse pair — two nodes in the YAML — is one state,
-`start`, sending both prompts to the same agent instance over a review-local session chain
-rather than spawning a second turn cold.
+directly after; and the code-review/code-reuse pair — two nodes in the YAML — is one turn,
+`start`'s single review pass: the reuse hunt is a lens of the code review rather than a
+second turn re-reading the same diff cold, which is what it cost to be.
 
 **Three call sites share one `apply-review.md` node**, as the YAML also had them — the review
 loop, the operator resolution, and the feedback pass. The driver ids an agent turn by its
@@ -47,13 +47,12 @@ Divergences from the YAML, all deliberate:
   an operator control the YAML did not have. Recorded in the progress ledger as a finding;
   it is the third instance of that shape, after `genesis`'s `max_genesis_reworks` and `dev`'s
   `max_validate_reworks`.
-* **the two review verdicts are threaded, not read back.** `review_implementation` takes
-  `code_review_result` and `code_reuse_result`, both produced inside `start`, one state
-  earlier; under the YAML engine they sat in the run context for the flow's lifetime.
-  `self.output` reads only *node* outputs, and an agent turn is not a node, so the two models
-  travel as state parameters. They are the one genuinely large thing this flow checkpoints,
-  and they are checkpointed because the state that consumes them is also the state the
-  feedback loop and the operator loop return to.
+* **the review verdict is threaded, not read back.** `review_implementation` takes
+  `code_review_result`, produced inside `start`, one state earlier; under the YAML engine it
+  sat in the run context for the flow's lifetime. `self.output` reads only *node* outputs,
+  and an agent turn is not a node, so the model travels as a state parameter. It is the one
+  genuinely large thing this flow checkpoints, and it is checkpointed because the state that
+  consumes it is also the state the feedback loop and the operator loop return to.
 """
 from __future__ import annotations
 
@@ -93,7 +92,6 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     OperatorResolution,
 )
 from workhorse_workflows.coder.shared.schemas.review import (
-    CodeReuseResult,
     CodeReviewResult,
     ReviewResult,
     ReviewVerdict,
@@ -193,22 +191,26 @@ class Review(Workflow):
         """The same, plus which review round the next state is on."""
         return self.labels() | counter_labels(params, "review", self.BUDGET_LABELS)
 
-    # --- the two feeder reviews ---------------------------------------------
+    # --- the feeder review ---------------------------------------------------
 
     def start(self, review_blocks: int = 0, session_turns: int = 0) -> Continue:
-        """Run the code-review pass, then the reuse hunt, as one conversation.
+        """Review the diff — bugs, the coding standard, and reuse — in one pass.
 
         A PR is not required: uncommitted working-tree edits and story-branch commits are
         both reviewable, and if a PR happens to be open the findings are posted as inline
         comments too. The findings ride forward in the result so the implementation reviewer
         sees them without re-deriving them.
 
-        The two feeder turns share a session — the reuse pass reads the same diff and the
-        same story, so handing it the review turn's own context to build on beats a second
-        cold read of the repo. That chain is reset before the pair runs, not after: this is
-        also where the operator loop comes back to, and `apply_resolved`'s docstring is
-        explicit that a re-entry here is a fresh review round, not a continuation of the one
-        that got blocked — so each entry looks at the code with no memory of the last round's
+        Duplication and missed reuse are a lens of this pass rather than a turn of their own.
+        They were a second turn once; over the same diff and the same story it cost a full
+        cold ramp-up to ask a question the reviewer already has the diff open for, and the
+        findings arrive tagged with a `category` so the binding reviewer can still tell them
+        apart.
+
+        The feeder chain is reset before the pass runs, not after: this is also where the
+        operator loop comes back to, and `apply_resolved`'s docstring is explicit that a
+        re-entry here is a fresh review round, not a continuation of the one that got
+        blocked — so each entry looks at the code with no memory of the last round's
         findings, whether that is the first entry or the fifth.
         """
         self.logger.info("reviewing %s", self.ctx.story_slug, extra={"activity": True})
@@ -245,33 +247,10 @@ class Review(Workflow):
                 "implementation reviewer is the binding verdict and still runs",
                 code_review.findings_summary or "no reason given",
             )
-        turn = roles.turn("code-reuse", self.repo_dir, self.library_dirs)
-        code_reuse = self.agent(
-            turn.prompt,
-            returns=CodeReuseResult,
-            # high: semantic "is this already implemented elsewhere?" matching across the
-            # codebase — the same discovery task as dev's check_code_reuse.
-            power="high",
-            session=self._feeder_chain,
-            cwd=self._docs_repo,
-            add_dirs=self._dirs(),
-            args=turn.args | {
-                "story_path": self.ctx.story_path,
-                "spec_dir": self.ctx.spec_dir,
-                "affected_repo_paths": self._repos,
-            },
-        )
-        if code_reuse.blocked:
-            # Same reasoning as above: advisory, and the reviewer reads it as prose.
-            self.logger.warning(
-                "the reuse pass reported it could not run (%s) — folding it in as it stands",
-                code_reuse.findings_summary or "no reason given",
-            )
         return Continue(
-            code_reuse,
+            code_review,
             self.review,
             code_review=code_review,
-            code_reuse=code_reuse,
             review_blocks=review_blocks,
             session_turns=session_turns,
         )
@@ -281,7 +260,6 @@ class Review(Workflow):
     def review(
         self,
         code_review: CodeReviewResult,
-        code_reuse: CodeReuseResult,
         review_rework: int = 0,
         review_blocks: int = 0,
         session_turns: int = 0,
@@ -312,7 +290,6 @@ class Review(Workflow):
                 "spec_dir": self.ctx.spec_dir,
                 "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
                 "code_review_result": code_review,
-                "code_reuse_result": code_reuse,
             },
         )
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
@@ -321,7 +298,6 @@ class Review(Workflow):
                 result,
                 self.poll_feedback,
                 code_review=code_review,
-                code_reuse=code_reuse,
                 review_rework=review_rework,
                 review_blocks=review_blocks,
                 session_turns=session_turns,
@@ -334,7 +310,6 @@ class Review(Workflow):
                 result,
                 result.notes,
                 code_review,
-                code_reuse,
                 review_blocks,
                 session_turns=session_turns,
             )
@@ -342,7 +317,6 @@ class Review(Workflow):
             result,
             result.notes,
             code_review,
-            code_reuse,
             review_rework,
             review_blocks,
             session_turns,
@@ -352,7 +326,6 @@ class Review(Workflow):
         self,
         notes: str,
         code_review: CodeReviewResult,
-        code_reuse: CodeReuseResult,
         review_rework: int,
         review_blocks: int = 0,
         session_turns: int = 0,
@@ -399,7 +372,6 @@ class Review(Workflow):
                 settled,
                 self.poll_feedback,
                 code_review=code_review,
-                code_reuse=code_reuse,
                 review_rework=review_rework,
                 review_blocks=review_blocks,
                 session_turns=turns,
@@ -409,7 +381,6 @@ class Review(Workflow):
                 settled,
                 notes,
                 code_review,
-                code_reuse,
                 review_blocks,
                 where="applying the review findings",
                 session_turns=turns,
@@ -418,7 +389,6 @@ class Review(Workflow):
             settled,
             notes,
             code_review,
-            code_reuse,
             review_rework + 1,
             review_blocks,
             turns,
@@ -429,7 +399,6 @@ class Review(Workflow):
         result: object,
         notes: str,
         code_review: CodeReviewResult,
-        code_reuse: CodeReuseResult,
         review_rework: int,
         review_blocks: int,
         session_turns: int = 0,
@@ -444,7 +413,6 @@ class Review(Workflow):
                 result,
                 notes,
                 code_review,
-                code_reuse,
                 review_blocks,
                 session_turns=session_turns,
             )
@@ -453,7 +421,6 @@ class Review(Workflow):
             self.apply,
             notes=notes,
             code_review=code_review,
-            code_reuse=code_reuse,
             review_rework=review_rework,
             review_blocks=review_blocks,
             session_turns=session_turns,
@@ -464,7 +431,6 @@ class Review(Workflow):
         result: object,
         notes: str,
         code_review: CodeReviewResult,
-        code_reuse: CodeReuseResult,
         review_blocks: int,
         where: str = "the implementation-review stage",
         session_turns: int = 0,
@@ -485,7 +451,6 @@ class Review(Workflow):
                 self.read_operator,
                 notes=notes,
                 code_review=code_review,
-                code_reuse=code_reuse,
                 review_blocks=review_blocks,
                 session_turns=session_turns,
             )
@@ -494,7 +459,6 @@ class Review(Workflow):
             self.resolve_review,
             notes=notes,
             code_review=code_review,
-            code_reuse=code_reuse,
             review_blocks=review_blocks,
             where=where,
             session_turns=session_turns,
@@ -506,7 +470,6 @@ class Review(Workflow):
         self,
         notes: str,
         code_review: CodeReviewResult,
-        code_reuse: CodeReuseResult,
         review_blocks: int = 0,
         where: str = "the implementation-review stage",
         session_turns: int = 0,
@@ -539,7 +502,6 @@ class Review(Workflow):
                 self.read_operator,
                 notes=notes,
                 code_review=code_review,
-                code_reuse=code_reuse,
                 review_blocks=review_blocks + 1,
                 session_turns=session_turns,
             )
@@ -552,7 +514,6 @@ class Review(Workflow):
             self.read_operator,
             notes=notes,
             code_review=code_review,
-            code_reuse=code_reuse,
             review_blocks=review_blocks + 1,
             session_turns=session_turns,
         )
@@ -561,7 +522,6 @@ class Review(Workflow):
         self,
         notes: str,
         code_review: CodeReviewResult,
-        code_reuse: CodeReuseResult,
         review_blocks: int = 0,
         session_turns: int = 0,
     ) -> Continue:
@@ -579,7 +539,6 @@ class Review(Workflow):
             notes=notes,
             operator_context=answer.content,
             code_review=code_review,
-            code_reuse=code_reuse,
             review_blocks=review_blocks,
             session_turns=session_turns,
         )
@@ -589,7 +548,6 @@ class Review(Workflow):
         notes: str,
         operator_context: str,
         code_review: CodeReviewResult,
-        code_reuse: CodeReuseResult,
         review_blocks: int = 0,
         session_turns: int = 0,
     ) -> Continue | Await:
@@ -626,7 +584,6 @@ class Review(Workflow):
                 result,
                 result.notes or notes,
                 code_review,
-                code_reuse,
                 review_blocks,
                 where="applying the operator's own resolution",
                 session_turns=turns,
@@ -640,7 +597,6 @@ class Review(Workflow):
     def poll_feedback(
         self,
         code_review: CodeReviewResult,
-        code_reuse: CodeReuseResult,
         review_rework: int,
         review_blocks: int = 0,
         session_turns: int = 0,
@@ -661,7 +617,6 @@ class Review(Workflow):
             self.apply_feedback,
             content=feedback.content,
             code_review=code_review,
-            code_reuse=code_reuse,
             review_rework=review_rework,
             review_blocks=review_blocks,
             session_turns=session_turns,
@@ -671,7 +626,6 @@ class Review(Workflow):
         self,
         content: str,
         code_review: CodeReviewResult,
-        code_reuse: CodeReuseResult,
         review_rework: int,
         review_blocks: int = 0,
         session_turns: int = 0,
@@ -710,7 +664,6 @@ class Review(Workflow):
                 result,
                 result.notes or content,
                 code_review,
-                code_reuse,
                 review_blocks,
                 where="applying the operator's feedback note",
                 session_turns=turns,
@@ -719,7 +672,6 @@ class Review(Workflow):
             result,
             self.review,
             code_review=code_review,
-            code_reuse=code_reuse,
             review_rework=review_rework,
             review_blocks=review_blocks,
             session_turns=turns,
@@ -776,9 +728,9 @@ class Review(Workflow):
 
     @property
     def _feeder_chain(self) -> str:
-        """The code-review/code-reuse pair's own conversation — review-local by design.
+        """The code-review pass's own conversation — review-local by design.
 
-        Named for the pair alone, never `self.session_id`: a reviewer that inherited the
+        Named for the review alone, never `self.session_id`: a reviewer that inherited the
         author's context is reviewing its own reasoning, so the judging turns are the half
         of this lane that must stay cold. The key must also never collide with the
         implementer chain, since the two are reset on entirely different schedules — this

@@ -1,16 +1,16 @@
-"""The review flow's models: three review turns, the settlement gate, the feedback inbox.
+"""The review flow's models: two review turns, the settlement gate, the feedback inbox.
 
 Two shapes are worth naming, because both are deliberate.
 
-* **The YAML's whole-key `default:` becomes per-field defaults.** `code_review_result` and
-  `code_reuse_result` each declared a three-key default — `{status: skipped, findings: [],
+* **The YAML's whole-key `default:` becomes per-field defaults.** `code_review_result`
+  declared a three-key default — `{status: skipped, findings: [],
   findings_summary: "… did not run."}` — which the engine applied only when the agent
   produced no such key at all. A model's defaults are per field, so a turn that answers
   `status` but not `findings_summary` would otherwise be handed the "did not run" sentence
   as if it were its own. `status` keeps its `skipped` default, because that is a real
   routing arm and a blank has to land somewhere; the sentence is dropped rather than
-  risking a false claim in the next prompt's context. Nothing branches on either result —
-  both are read as prose by `review-implementation.md`.
+  risking a false claim in the next prompt's context. Nothing branches on the result — it
+  is read as prose by `review-implementation.md`.
 * **`feedback.present` is a bool.** It was `"yes"`/`"no"` because a script's JSON fed a
   `type: branch`, and a branch compares strings. A node returns a typed value now.
 
@@ -20,6 +20,23 @@ overwrites it both carry a status and notes, and it is the same key the YAML reu
 from __future__ import annotations
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
+
+
+class ReviewFinding(Finding):
+    """A code-review finding, plus which lens caught it.
+
+    `category` exists because the reuse hunt is a lens of the review pass rather than a
+    turn of its own: it was a second cold turn over the same diff, and the only thing lost
+    by folding it in is the ability to tell a duplication finding from a bug at a glance.
+    So the prompt tags each one — `Code Duplication` and `Missed Utility` are the two the
+    binding reviewer reads back out into its own reuse section — and an untagged finding
+    is a bug report, which is what the field's empty default means.
+    """
+
+    #: Which lens caught it. Free-form on purpose: nothing routes on it, `review-implementation.md`
+    #: reports on it, and a model that answered with a spelling this file did not predict
+    #: should not have its finding dropped for it.
+    category: str = ""
 
 
 class CodeReviewResult(CoderResult):
@@ -36,19 +53,7 @@ class CodeReviewResult(CoderResult):
     """
 
     status: str = "skipped"
-    findings: list[Finding] = []
-    findings_summary: str = ""
-
-
-class CodeReuseResult(CoderResult):
-    """`prompts/code-reuse.md` — did the implementation rebuild what already exists?
-
-    The post-implementation counterpart to `dev`'s pre-implementation reuse check: that one
-    looked at the plan, this one looks at the diff. Also advisory, also fed to the reviewer.
-    """
-
-    status: str = "skipped"
-    findings: list[Finding] = []
+    findings: list[ReviewFinding] = []
     findings_summary: str = ""
 
 
@@ -105,10 +110,10 @@ class ReviewResult(CoderResult):
 
 
 __all__ = [
-    "CodeReuseResult",
     "CodeReviewResult",
     "Feedback",
     "ReviewContext",
+    "ReviewFinding",
     "ReviewResult",
     "ReviewVerdict",
 ]

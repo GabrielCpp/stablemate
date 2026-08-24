@@ -1332,7 +1332,6 @@ workflow = (
             "plan-story": {"status": "complete"},
             "refine-plan": {"status": "complete"},
             "implement-plan": {"status": "complete"},
-            "code-reuse": {"status": "ok"},
             "dev-fix": {"status": "fixed"},
             "code-review": {"status": "approved"},
             "review-implementation": {"status": "approved"},

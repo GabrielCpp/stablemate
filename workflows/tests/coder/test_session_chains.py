@@ -26,7 +26,6 @@ from workhorse_workflows.coder.shared.schemas.dev import DevResult
 from workhorse_workflows.coder.shared.schemas.docs import DocsProgress, DocsResult
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaLoop
 from workhorse_workflows.coder.shared.schemas.review import (
-    CodeReuseResult,
     CodeReviewResult,
 )
 
@@ -337,7 +336,6 @@ def _apply_review(flow: Review, **kwargs: Any) -> None:
         flow.apply(
             notes="the handler ignores the timeout",
             code_review=CodeReviewResult(status="ok"),
-            code_reuse=CodeReuseResult(status="ok"),
             review_rework=0,
             **kwargs,
         )

@@ -64,12 +64,11 @@ SELF_COMMITTING = {
     "settle-worktree.md",
 }
 
-#: Prompts that write nothing a commit could carry: two reviewers that are told in so
-#: many words not to commit, a documentation review that only reports, two reporters that
+#: Prompts that write nothing a commit could carry: a reviewer that is told in so many
+#: words not to commit, a documentation review that only reports, two reporters that
 #: write to a ticket, and the operator gate (whose file is the gate, not the repo).
 NON_PRODUCERS = {
     "code-review.md",
-    "code-reuse.md",
     "report-qa-dev-pass.md",
     "report-qa-dev.md",
     "resolve-operator.md",

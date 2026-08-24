@@ -232,15 +232,11 @@ class _Agent:
     def _code_review(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {
             "status": "ok",
-            "findings": [{"severity": "minor", "note": "naming"}],
+            "findings": [
+                {"severity": "minor", "note": "naming"},
+                {"category": "Missed Utility", "note": "the path helper exists"},
+            ],
             "findings_summary": f"one minor finding (pass {nth})",
-        }
-
-    def _code_reuse(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        return {
-            "status": "ok",
-            "findings": [],
-            "findings_summary": f"nothing duplicated (pass {nth})",
         }
 
     def _review_implementation(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -350,7 +346,6 @@ def test_an_approved_review_stamps_the_specs_and_stops(
     assert result.status == "approved", result
     assert agent.counts() == {
         "code-review": 1,
-        "code-reuse": 1,
         "review-implementation": 1,
     }, agent.counts()
 
@@ -370,13 +365,13 @@ def test_the_implementation_reviewer_is_handed_both_feeder_verdicts(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The two verdicts travel as state parameters, and they arrive.
+    """The review verdict travels as a state parameter, and it arrives.
 
-    Under the YAML engine `code_review_result` and `code_reuse_result` sat in the run context
-    for the flow's lifetime. `self.output` reads only *node* outputs and an agent turn is not
-    a node, so the port threads both models through five states — which means pydantic models
-    are round-tripped through the checkpoint's `jsonable`/`TypeAdapter` pair on every
-    transition. If that threading breaks, the reviewer silently renders two blanks and
+    Under the YAML engine `code_review_result` sat in the run context for the flow's
+    lifetime. `self.output` reads only *node* outputs and an agent turn is not a node, so
+    the port threads the model through five states — which means pydantic models are
+    round-tripped through the checkpoint's `jsonable`/`TypeAdapter` pair on every
+    transition. If that threading breaks, the reviewer silently renders a blank and
     nothing else in the suite notices.
     """
     agent = _Agent(docs)
@@ -385,7 +380,8 @@ def test_the_implementation_reviewer_is_handed_both_feeder_verdicts(
 
     handed = agent.args_for("review-implementation")[0]
     assert handed["code_review_result"]["findings_summary"] == "one minor finding (pass 1)"
-    assert handed["code_reuse_result"]["findings_summary"] == "nothing duplicated (pass 1)"
+    # The reuse hunt is a lens of that one pass now, so its findings ride in the same model.
+    assert handed["code_review_result"]["findings"][1]["category"] == "Missed Utility"
 
 
 def test_the_reviewers_run_in_the_docs_repo_and_see_the_code_repos(
@@ -476,9 +472,8 @@ def test_the_apply_loop_is_bounded_and_then_reaches_the_operator(
     assert agent.counts()["apply-review"] == 4, agent.counts()
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
     assert agent.args_for("resolve-operator")[0]["block_kind"] == "review"
-    # Re-entering at `start` re-runs both feeder reviews: the answer is binding, not asserted.
+    # Re-entering at `start` re-runs the feeder review: the answer is binding, not asserted.
     assert agent.counts()["code-review"] == 2, agent.counts()
-    assert agent.counts()["code-reuse"] == 2, agent.counts()
     assert agent.counts()["review-implementation"] == 2, agent.counts()
 
 
@@ -792,7 +787,6 @@ def test_a_run_killed_mid_review_resumes_on_the_review_state(
     # Only what the transition actually bound is checkpointed; `review_rework` keeps its
     # default on the way back in, which is the same 0 the killed run was carrying.
     assert sorted(resume.params) == [
-        "code_reuse",
         "code_review",
         "review_blocks",
         "session_turns",

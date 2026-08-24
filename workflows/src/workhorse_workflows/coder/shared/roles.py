@@ -68,7 +68,6 @@ ROLES: dict[str, str] = {
     "dev-fix": "repair whatever gate went red, one lap",
     # review
     "code-review": "the mechanical review pass over the diff",
-    "code-reuse": "did the implementation rebuild something that exists?",
     "review-implementation": "the binding verdict on the implementation",
     "apply-review": "apply the review's findings",
     # qa

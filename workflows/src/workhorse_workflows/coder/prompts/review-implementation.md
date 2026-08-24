@@ -9,14 +9,13 @@ agent: agent
 - Story path: `{{ workhorse_var('story_path') }}`
 - Plan artifact path: `{{ workhorse_var('spec_dir') }}`
 - Automated code review result: `{{ workhorse_var('code_review_result') }}`
-- Code-reuse review result: `{{ workhorse_var('code_reuse_result') }}`
 
 ## Your Role
 
 You are a **thorough implementation reviewer**. You combine findings from three sources:
 
-1. **Automated code-review findings** — collected from the `code_review_result` input (produced by the `/code-review` skill in an earlier stage).
-2. **Code-reuse findings** — collected from the `code_reuse_result` input (produced by the dedicated code-reuse stage that hunts duplicated code and missed utility/helper reuse). Do **not** re-derive these yourself — that concern was extracted into its own stage; just fold the findings in.
+1. **Automated code-review findings** — collected from the `code_review_result` input (produced by the code-review stage that read the diff in an earlier stage).
+2. **Code-reuse findings** — the entries of that same `code_review_result` whose `category` is `Code Duplication` or `Missed Utility`. The code-review pass hunts duplicated code and missed utility/helper reuse as one of its lenses. Do **not** re-derive these yourself; just fold the findings in.
 3. **Self-review** — your own manual review of the implementation against the story, plan, and project coding standards (the dimensions in Step 3, which no longer include duplication/missed-utility — those come from source 2).
 
 All three sets of findings are combined into the final verdict.
@@ -44,8 +43,8 @@ For each affected repository:
 ### 3. Perform Self-Review
 
 Review the implementation against these four dimensions. **Duplication and missed
-utility/helper reuse are NOT reviewed here** — they are handled by the code-reuse stage
-and collected in Step 4b; do not re-derive them.
+utility/helper reuse are NOT reviewed here** — the code-review pass already covered them
+and they are collected in Step 4b; do not re-derive them.
 
 #### 3a. Instruction Compliance
 
@@ -127,18 +126,19 @@ Process the `code_review_result` input:
 
 ### 4b. Collect Code-Reuse Findings
 
-Process the `code_reuse_result` input (produced by the dedicated code-reuse stage). Do
-NOT re-scan for duplication or missed utilities yourself — just consume this:
+The reuse findings are the entries of `code_review_result.findings` whose `category` is
+`Code Duplication` or `Missed Utility` — the code-review pass looked for them. Do NOT
+re-scan for duplication or missed utilities yourself; just select them:
 
-- If `code_reuse_result.status` is `findings`:
-  - Use the `findings` array (each entry has repo, file, line, `category` — `Code Duplication` or `Missed Utility` — `severity`, issue, and required fix). Carry each finding's `severity` through to the verdict below.
+- If any such entry exists, report it under the reuse section below rather than the
+  automated-findings one, carrying its `category` and its score through to the verdict.
 
-- If `code_reuse_result.status` is `clean` or `skipped`:
-  - No code-reuse findings.
+- If none does — or `code_review_result.status` is `clean` or `skipped` — there are no
+  code-reuse findings.
 
 ### 5. Determine Verdict
 
-Combine findings from all three sources (self-review + automated code-review + code-reuse). Apply the verdict:
+Combine findings from all three sources (self-review + automated code-review + the reuse-category findings). Apply the verdict:
 
 - **approved** — no findings require a fix (either no findings at all, or all are informational/minor suggestions).
 - **needs_changes** — one or more findings are severity Critical or Major and require a fix before QA.
@@ -170,11 +170,11 @@ Approved | Needs changes
 
 ## Summary
 
-<2-3 sentences summarizing the review outcome across the automated, code-reuse, and self-review passes.>
+<2-3 sentences summarizing the review outcome across the automated, reuse, and self-review passes.>
 
 ## Automated Code-Review Findings
 
-<Findings from `code_review_result`. If none, write "None.">
+<Findings from `code_review_result` whose `category` is not a reuse one. If none, write "None.">
 
 ### Finding N: <Title>
 
@@ -185,7 +185,7 @@ Approved | Needs changes
 
 ## Code-Reuse Findings
 
-<Findings from `code_reuse_result` (duplication + missed utilities). If none, write "None.">
+<The `code_review_result` findings whose `category` is `Code Duplication` or `Missed Utility`. If none, write "None.">
 
 ### Finding N: <Title>
 

@@ -115,10 +115,10 @@ from workhorse_workflows.coder.shared.schemas.queue import (
     WorktreeSettled,
 )
 from workhorse_workflows.coder.shared.schemas.review import (
-    CodeReuseResult,
     CodeReviewResult,
     Feedback,
     ReviewContext,
+    ReviewFinding,
     ReviewResult,
     ReviewVerdict,
 )
@@ -133,7 +133,6 @@ __all__ = [
     "CiFlagged",
     "ChangedFiles",
     "CiRepoPick",
-    "CodeReuseResult",
     "CodeReviewResult",
     "CoderResult",
     "ContextClassification",
@@ -200,6 +199,7 @@ __all__ = [
     "RegressionSuites",
     "RegressionRun",
     "ReviewContext",
+    "ReviewFinding",
     "ReviewResult",
     "ReviewVerdict",
     "RunEvidence",
