@@ -642,6 +642,48 @@ def test_await_with_no_questions_preserves_a_pre_authored_gate():
         assert drive(Blocks(), _env(tmp, clock=AnsweringClock())).startswith("STATUS: ANSWERED")
 
 
+def test_a_machine_await_is_not_reported_as_an_operator_gate():
+    """A detached job's wait is a wait, not a block.
+
+    Every `Await` used to report itself to telemetry as `operator`, so a 40-hour
+    measurement rendered in groom as a human failing to answer a gate and fired
+    BLOCKED and WAITING with the text "nothing is running for it". Something was:
+    the supervisor that writes this very file. The kind is what tells them apart,
+    and groom exempts every non-operator wait already.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        wake = Path(tmp) / "wake"
+
+        class Blocks(Workflow):
+            def start(self) -> Transition:
+                return Await.on_machine(wake, "", self.resumed)
+
+            def resumed(self) -> Transition:
+                return Done("collected")
+
+        class SupervisorClock(FakeClock):
+            """The job, finishing during the first poll interval."""
+
+            def sleep(self, seconds: float) -> None:
+                wake.write_text("done\n")
+                super().sleep(seconds)
+
+        env = _env(tmp, clock=SupervisorClock())
+        fake = RecordingTelemetry()
+        previous = otel.install(otel.TelemetryHost(active=fake))
+        try:
+            assert drive(Blocks(), env) == "collected"
+        finally:
+            otel.install(previous)
+
+        assert fake.waits == [
+            ("start", 1, "machine", "start"),
+            ("end", 1, "completed", ""),
+        ], fake.waits
+        # An empty ask writes nothing, so the supervisor's file is the only thing here.
+        assert wake.read_text() == "done\n"
+
+
 def test_await_ignores_a_save_that_left_the_gate_unanswered():
     """A touch is not an answer.
 

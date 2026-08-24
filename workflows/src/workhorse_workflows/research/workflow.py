@@ -703,8 +703,10 @@ class Research(Workflow):
         # No questions: nobody is being asked anything, and the file this parks on is
         # the supervisor's, not an operator's. `_ask` writes nothing for an empty ask,
         # and a missing file reads as unanswered — so the wait ends on the supervisor's
-        # first touch and on nothing else.
-        return Await(
+        # first touch and on nothing else. `on_machine` is what says that out loud: a
+        # 40-hour measurement is not a human failing to answer a gate, and reporting it
+        # as one costs a page and a wrong status per experiment.
+        return Await.on_machine(
             Path(watch.wake_path),
             "",
             self.await_result,

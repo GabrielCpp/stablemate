@@ -117,9 +117,20 @@ class Await(Generic[P]):
     an `Await`'s target must be a state whose prefix is cheap: the natural shape is
     a state that exists only to consume the answer and reads everything else by
     reference via `self.output(...)`.
+
+    `kind` says **who owes the answer**, and it is the difference between a page and
+    a wait. The default `operator` is the gate this class was written for: nothing is
+    running for the run, and nothing will until a human writes in the file — so groom
+    fires BLOCKED when it opens and WAITING while it stays open, because a person not
+    knowing they are the bottleneck is the one condition an alert can shorten. A
+    `machine` wait is the opposite fact wearing the same shape: a detached job is
+    running right now and will touch the file itself when it finishes, so a page
+    shortens nothing and the alert text — "nothing is running for it" — is simply
+    false. Build one with :meth:`on_machine`; groom already exempts every non-operator
+    wait, the way it exempts a cap wait.
     """
 
-    __slots__ = ("path", "questions", "target", "state", "params")
+    __slots__ = ("path", "questions", "target", "state", "params", "kind")
 
     def __init__(
         self,
@@ -135,9 +146,31 @@ class Await(Generic[P]):
         self.target = next
         self.state = state_name(next)
         self.params = bind_params(next, args, kwargs)
+        self.kind = "operator"
+
+    @classmethod
+    def on_machine(
+        cls,
+        path: str | Path,
+        questions: str,
+        next: Callable[P, "Transition"],  # noqa: A002 — see Continue
+        /,
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> "Await[P]":
+        """An `Await` whose answer a running process owes, not a person.
+
+        A classmethod rather than a `kind=` keyword because the trailing `**kwargs`
+        *are* the next state's parameters: a keyword here would shadow any state that
+        happened to take one called `kind`, and silently, at the one callsite that
+        needed it most.
+        """
+        await_ = cls(path, questions, next, *args, **kwargs)
+        await_.kind = "machine"
+        return await_
 
     def __repr__(self) -> str:
-        return f"Await({self.path}, →{self.state}, {self.params!r})"
+        return f"Await({self.path}, {self.kind}, →{self.state}, {self.params!r})"
 
 
 # `[...]` and not `[Any]`: both classes are generic over a *ParamSpec*, and the gradual

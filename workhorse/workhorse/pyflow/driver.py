@@ -438,8 +438,11 @@ def drive(
                 ctx=ctx_payload,
                 waiting_on=str(outcome.path),
             )
-            env.log.info("[workhorse] await  → blocked on %s", outcome.path)
-            with otel.wait("operator", spec.name):
+            # "blocked" is a claim about who is stalled, and it is only true of an
+            # operator gate. A machine wait has a job running for it right now.
+            verb = "blocked on" if outcome.kind == "operator" else "waiting on"
+            env.log.info("[workhorse] await  → %s %s", verb, outcome.path)
+            with otel.wait(outcome.kind, spec.name):
                 wait_for_answer(
                     outcome.path,
                     interval=env.config.await_poll_s,

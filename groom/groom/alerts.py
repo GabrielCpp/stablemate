@@ -22,7 +22,8 @@ result was that the one condition a page can actually *fix* — a human is the
 bottleneck and does not know it — reached only an open browser tab. BLOCKED
 fires the moment the gate opens; WAITING is the reminder for a gate that opened
 while nobody was looking. Only an ``operator`` wait counts: a cap wait is the
-runner throttling itself and no page shortens it.
+runner throttling itself, and a ``machine`` wait has a detached job running for
+it — no page shortens either.
 
 ``fired`` is also what the dashboard renders as a run's alert badges, so the
 rules that describe a *current* condition retire themselves when the condition
@@ -539,8 +540,9 @@ def check_time_rules(now: float | None = None) -> list[Alert]:
             # An open wait is never STUCK — the run is parked on purpose. But an
             # operator gate nobody has answered is the one wait a page can shorten,
             # and BLOCKED only fires once, when the gate opens. WAITING is the
-            # reminder for the gate that opened while nobody was looking. A cap wait
-            # is exempt outright: it is the runner throttling itself.
+            # reminder for the gate that opened while nobody was looking. Every other
+            # kind is exempt outright: a cap wait is the runner throttling itself, and
+            # a machine wait has a job running for it that will answer the file itself.
             if run.wait_kind == "operator" and run.wait_elapsed_s > _wait_after_s():
                 _fire(
                     run,
