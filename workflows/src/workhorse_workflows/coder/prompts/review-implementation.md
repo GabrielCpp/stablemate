@@ -115,7 +115,7 @@ An uncovered acceptance criterion and an unjustified test edit are both **Critic
 Process the `code_review_result` input:
 
 - If `code_review_result.status` is `findings`:
-  - Use the `findings` array (each entry has repo, file, line, issue, required fix, and score).
+  - Use the `findings` array (each entry has `target` — repo, file and line as one string — `issue`, `repair`, `category`, and `score`).
   - Fallback: if the array is empty despite the status, and an affected repo has an open PR, fetch the inline comments with `timeout 30 gh pr view --comments` and extract findings from there.
 
 - If `code_review_result.status` is `clean`:
@@ -179,9 +179,9 @@ Approved | Needs changes
 ### Finding N: <Title>
 
 - **Severity**: as reported
-- **Reference**: repo, file path, and line
+- **Reference**: the finding's `target`
 - **Issue**: as reported
-- **Required fix**: as reported
+- **Required fix**: the finding's `repair`
 
 ## Code-Reuse Findings
 
@@ -191,9 +191,9 @@ Approved | Needs changes
 
 - **Category**: Code Duplication | Missed Utility
 - **Severity**: as reported
-- **Reference**: repo, file path, and line
+- **Reference**: the finding's `target`
 - **Issue**: as reported
-- **Required fix**: as reported
+- **Required fix**: the finding's `repair`
 
 ## Self-Review Findings
 

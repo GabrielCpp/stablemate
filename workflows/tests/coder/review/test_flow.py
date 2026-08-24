@@ -233,8 +233,20 @@ class _Agent:
         return {
             "status": "ok",
             "findings": [
-                {"severity": "minor", "note": "naming"},
-                {"category": "Missed Utility", "note": "the path helper exists"},
+                {
+                    "target": "api-service/link.go:12",
+                    "issue": "the handler name reads as a noun",
+                    "repair": "rename it to CreateLink",
+                    "category": "Bug",
+                    "score": 88,
+                },
+                {
+                    "target": "api-service/path.go:4",
+                    "issue": "re-derives the canonical path",
+                    "repair": "call the shared path helper",
+                    "category": "Missed Utility",
+                    "score": 82,
+                },
             ],
             "findings_summary": f"one minor finding (pass {nth})",
         }
@@ -382,6 +394,8 @@ def test_the_implementation_reviewer_is_handed_both_feeder_verdicts(
     assert handed["code_review_result"]["findings_summary"] == "one minor finding (pass 1)"
     # The reuse hunt is a lens of that one pass now, so its findings ride in the same model.
     assert handed["code_review_result"]["findings"][1]["category"] == "Missed Utility"
+    # And each finding keeps the half that lets a fixer act on it rather than an operator.
+    assert handed["code_review_result"]["findings"][1]["repair"] == "call the shared path helper"
 
 
 def test_the_reviewers_run_in_the_docs_repo_and_see_the_code_repos(

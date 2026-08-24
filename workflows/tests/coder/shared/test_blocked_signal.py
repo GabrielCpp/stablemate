@@ -7,6 +7,8 @@ failure mode rather than a preference, so each of those derivations is pinned he
 """
 from __future__ import annotations
 
+import pathlib
+
 from workhorse_workflows.coder.shared.schemas._base import (
     BLOCKED_STATUSES,
     CoderResult,
@@ -135,3 +137,56 @@ def test_the_review_lane_parses_the_loose_findings_it_used_to_declare() -> None:
     )
     assert result.blocked
     assert [f.repair for f in result.actionable] == ["batch the query"]
+
+
+def test_the_shape_the_review_prompt_emits_is_actionable() -> None:
+    """The finding the prompt asks for, parsed by the model that receives it.
+
+    These two documents drifted once: the prompt emitted `repo`/`file`/`line`/`required_fix`
+    while the model declared `target`/`issue`/`repair`, and `extra="ignore"` made the
+    disagreement silent — every finding arrived with its repair stripped, so none was ever
+    `actionable` and a block that a fixer could have taken went to the operator instead.
+    Nothing but a test holds a prompt and a schema together, so this is that test.
+    """
+    result = CodeReviewResult.model_validate(
+        {
+            "status": "findings",
+            "findings": [
+                {
+                    "target": "api-service/internal/link/store.go:118",
+                    "issue": "the short code is generated without checking for a collision",
+                    "repair": "insert with a unique constraint and retry on conflict",
+                    "category": "Bug",
+                    "score": 92,
+                },
+                {
+                    "target": "api-service/internal/link/path.go:14",
+                    "issue": "re-derives the canonical path",
+                    "repair": "call pkg/urlpath.Canonical",
+                    "category": "Missed Utility",
+                    "score": 84,
+                },
+            ],
+        }
+    )
+    assert len(result.actionable) == 2
+    assert [f.category for f in result.findings] == ["Bug", "Missed Utility"]
+    assert [f.score for f in result.findings] == [92, 84]
+
+
+def test_the_review_prompt_asks_for_the_keys_the_model_reads() -> None:
+    """The other half of the pairing: read the prompt, not a copy of it.
+
+    A shape-check on hand-written JSON only proves the model parses what this file typed.
+    The document the agent is handed is the one that has to name `target` and `repair`, and
+    must not go back to naming the keys the model drops on the floor.
+    """
+    prompt = (
+        pathlib.Path(__file__).resolve().parents[3]
+        / "src/workhorse_workflows/coder/prompts/code-review.md"
+    ).read_text()
+    body = prompt.split("Return this JSON as your final response:")[1]
+    for key in ("target", "issue", "repair", "category", "score"):
+        assert f'"{key}"' in body, key
+    for dropped in ("required_fix", '"repo"', '"file"', '"line"'):
+        assert dropped not in body, dropped

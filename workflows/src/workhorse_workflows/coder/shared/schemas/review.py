@@ -23,7 +23,7 @@ from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 
 
 class ReviewFinding(Finding):
-    """A code-review finding, plus which lens caught it.
+    """A code-review finding: the base contract, plus which lens caught it and how sure it is.
 
     `category` exists because the reuse hunt is a lens of the review pass rather than a
     turn of its own: it was a second cold turn over the same diff, and the only thing lost
@@ -38,6 +38,11 @@ class ReviewFinding(Finding):
     #: should not have its finding dropped for it.
     category: str = ""
 
+    #: The 0-100 confidence the pass scored it. The prompt already drops everything under 80,
+    #: so this is not a second filter — it is how sure the review was, carried with the finding
+    #: instead of discarded at the parse, for a reader weighing two survivors against each other.
+    score: int = 0
+
 
 class CodeReviewResult(CoderResult):
     """`prompts/code-review.md` — the mechanical review pass over the diff.
@@ -46,10 +51,14 @@ class CodeReviewResult(CoderResult):
     whole result as evidence. A blank takes `skipped`, which is what the YAML's default said.
 
     `findings` was `list[dict[str, Any]]` — a shape that admitted anything and so guaranteed
-    nothing. It is `Finding` now, the same contract the QA and documentation gates already
-    met: a target to go to and a repair to make. The keys the prompt already emits survive
-    (extras are ignored); what changes is that a finding with neither half is now visibly
-    not evidence, which is what decides whether a block routes to a fixer or the operator.
+    nothing. It is a `Finding` now, the same contract the QA and documentation gates already
+    met: a target to go to and a repair to make. That contract only binds if the prompt
+    answers in it, and for a while this one did not — it emitted `repo`/`file`/`line` and
+    `required_fix`, all of which `extra="ignore"` dropped on the floor, so every finding
+    reached `review-implementation.md` as a bare sentence and none was ever `actionable`,
+    which sent a block to the operator that a fixer could have taken. The prompt emits
+    `target`/`issue`/`repair` now, and a finding missing either half is visibly not
+    evidence rather than silently stripped of it.
     """
 
     status: str = "skipped"

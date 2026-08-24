@@ -75,12 +75,10 @@ Return this JSON as your final response:
   "status": "findings" | "clean" | "skipped" | "blocked",
   "findings": [
     {
-      "repo": "<repo directory name>",
-      "file": "<path relative to that repo>",
-      "line": 0,
-      "category": "Bug" | "Standard" | "Code Duplication" | "Missed Utility",
+      "target": "<repo>/<path relative to that repo>:<line>",
       "issue": "<what is wrong>",
-      "required_fix": "<what to change>",
+      "repair": "<what to change>",
+      "category": "Bug" | "Standard" | "Code Duplication" | "Missed Utility",
       "score": 0
     }
   ],
@@ -88,6 +86,8 @@ Return this JSON as your final response:
 }
 ```
 
+- `target` and `repair` are both required of every finding. A finding that names no place to go, or names no change to make, is not evidence — it is a complaint, and the machine downstream cannot route it. `target` is one string: the repo, the file within it and the line, e.g. `api-service/internal/link/store.go:118`.
+- `score` — the confidence you scored it, carried through so a later reader can see how sure this pass was.
 - `category` — which lens caught it. The two reuse categories are named exactly as above; the implementation reviewer reads them back out to report the reuse findings separately.
 - `findings` — at least one finding scored 80 or above in one or more repos; each is listed in `findings`.
 - `clean` — the review ran on at least one repo with local changes and found no issues meeting the threshold; `findings` is empty.
