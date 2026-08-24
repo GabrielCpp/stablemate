@@ -42,8 +42,7 @@
 #
 #   claude  → .claude/skills/<name>/SKILL.md      + .claude/commands/<name>.md
 #   codex   → .agents/skills/<name>/SKILL.md      + .agents/prompts/<name>.prompt.md
-#   copilot → .github/instructions/<name>.instructions.md,
-#             .github/skills/<name>/SKILL.md, .github/prompts/<name>.prompt.md,
+#   copilot → .github/skills/<name>/SKILL.md, .github/prompts/<name>.prompt.md,
 #             and roots → .github/copilot-instructions.md
 # ---------------------------------------------------------------------------
 agents:

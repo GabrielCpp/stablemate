@@ -59,8 +59,8 @@ Each enabled name turns on a distinct output set in `Renderer.render`:
 - `claude` — `.claude/skills/<name>/SKILL.md` (every selected skill) +
   `.claude/commands/<name>.md` (every selected prompt).
 - `codex` — `.agents/skills/<name>/SKILL.md` + `.agents/prompts/<name>.prompt.md`.
-- `copilot` — `.github/instructions/<name>.instructions.md`, `.github/skills/<name>/SKILL.md`,
-  `.github/prompts/<name>.prompt.md`, plus rendering every selected `roots` file into
+- `copilot` — `.github/skills/<name>/SKILL.md`, `.github/prompts/<name>.prompt.md`, plus
+  rendering every selected `roots` file into
   `.github/copilot-instructions.md` and `.github/agents/copilot-instructions.md`.
 
 [`localInstructions`](#localinstructions) writes `AGENTS.md` for any enabled adapter, plus a

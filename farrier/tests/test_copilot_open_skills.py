@@ -6,6 +6,8 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
+import pytest
+
 
 from farrier.install import Renderer, Source
 
@@ -43,11 +45,16 @@ def test_skill_output_path_copilot_uses_open_skills_format(tmp_path):
     assert path == tmp_path / ".github" / "skills" / "demo-go" / "SKILL.md"
 
 
-def test_skill_output_path_copilot_instruction_still_works(tmp_path):
-    """The copilot-instruction target remains available for explicit use."""
+def test_the_copilot_instruction_target_is_gone(tmp_path):
+    """Copilot reads open-format skills natively, so the per-skill copy has no target.
+
+    It is refused rather than quietly aliased to the open path: a cross-reference that
+    still asks for it is asking for a file nothing writes, and that should be an error
+    at render time instead of a dead link in installed text.
+    """
     renderer, source = _make_renderer(tmp_path)
-    path = renderer.skill_output_path(source.id, "copilot-instruction")
-    assert path == tmp_path / ".github" / "instructions" / "demo-go.instructions.md"
+    with pytest.raises(SystemExit):
+        renderer.skill_output_path(source.id, "copilot-instruction")
 
 
 def test_context_manifest_copilot_uses_open_skills_paths(tmp_path):

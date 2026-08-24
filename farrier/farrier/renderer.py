@@ -356,10 +356,6 @@ class Renderer:
     def skill_output_path(self, name: str, target: str) -> Path:
         source = self.skill_source(name)
         generated = public_name(self.prefix, source)
-        if target == "copilot-instruction":
-            return (
-                self.repo / ".github" / "instructions" / f"{generated}.instructions.md"
-            )
         if target == "copilot":
             return self.repo / ".github" / "skills" / generated / "SKILL.md"
         if target == "codex":
@@ -415,12 +411,11 @@ class Renderer:
             return content
         env = Environment(autoescape=False, undefined=StrictUndefined)
         template = env.from_string(content)
-        skill_target = "copilot-instruction" if target == "copilot" else target
 
         def instruction_ref(name: str) -> str:
             if self.optional_skill_source(name):
                 return relative_reference(
-                    from_file, self.skill_output_path(name, skill_target)
+                    from_file, self.skill_output_path(name, target)
                 )
             return f"generated {name} instruction file when installed"
 
@@ -460,7 +455,7 @@ class Renderer:
             wanted = normalize_tags(list(tags))
             refs = sorted(
                 relative_reference(
-                    from_file, self.skill_output_path(source.id, skill_target)
+                    from_file, self.skill_output_path(source.id, target)
                 )
                 for source in self.skills_with_tags(wanted)
             )
@@ -475,7 +470,7 @@ class Renderer:
         return template.render(
             instruction_file=lambda name: (
                 relative_reference(
-                    from_file, self.skill_output_path(name, skill_target)
+                    from_file, self.skill_output_path(name, target)
                 )
                 if self.optional_skill_source(name)
                 else f"generated {name} instruction file when installed"

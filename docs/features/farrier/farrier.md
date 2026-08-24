@@ -120,7 +120,10 @@ the pruned starting point, and the two are kept consistent by hand.
     nor `.agents/local.compose.yaml` is scanned: farrier rendered a workflow's YAML tree into the
     first and a per-workflow compose override into the second while workflows were its concern,
     and it emits neither now — so scanning them would report a leftover from an older install as
-    `extra:`, a `--check` failure no re-render can fix
+    `extra:`, a `--check` failure no re-render can fix. `.github/instructions` is the
+    opposite case and stays scanned: farrier no longer writes a per-skill
+    `<name>.instructions.md` copy there, and keeping the directory managed is what lets a
+    later install sweep the ones an older install tagged
   - run (`--check`): also record as `extra` any of these fixed paths that exist on disk, are
     farrier's, and aren't in the expected map: `.github/copilot-instructions.md` and the
     launcher/hook scaffolding `.agents/agents.mk`, `.agents/lefthook.farrier.yml`,

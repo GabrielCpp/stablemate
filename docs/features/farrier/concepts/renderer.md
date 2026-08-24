@@ -51,13 +51,13 @@ it with `| default(...)`) if `content` contains any of a fixed token list (`inst
 (cheap skip for templates using none of these). Helpers exposed to the template:
 
 - `instruction_ref(name)` / `instruction_file(name)` — a relative path (`relative_reference`,
-  computed from `from_file`) to `name`'s rendered skill output for this render pass's `target`
-  (Copilot resolves through `copilot-instruction`, i.e. `.github/instructions/*.instructions.md`,
-  not the `.github/skills/` copy); falls back to `"generated <name> instruction file when
-  installed"` if `name` isn't a selected skill.
-- `skill_file(name)` — same resolution as `instruction_ref`, but always against the plain
-  `skill_output_path(name, target)` (Copilot resolves to `.github/skills/`, not the instructions
-  copy).
+  computed from `from_file`) to `name`'s rendered skill output for this render pass's `target`;
+  falls back to `"generated <name> instruction file when installed"` if `name` isn't a
+  selected skill.
+- `skill_file(name)` — the same resolution as `instruction_ref`. Copilot used to be sent
+  through a `copilot-instruction` pseudo-target here, so the two helpers pointed at different
+  files for the same skill; the per-skill `.instructions.md` copy is no longer written, and
+  every target now resolves to the one open-format skill.
 - `prompt_ref(name)` / `prompt_file(name)` — a relative path to `name`'s rendered prompt output for
   `target`; same "generated ... when installed" fallback if unselected.
 - `skill_dir()` — a relative path to this `target`'s skill directory (`skill_dir_path`).
@@ -88,7 +88,6 @@ map it to its per-target generated path:
 | `claude` | `.claude/skills/<name>/SKILL.md` | `.claude/commands/<name>.md` |
 | `codex` | `.agents/skills/<name>/SKILL.md` | `.agents/prompts/<name>.prompt.md` |
 | `copilot` | `.github/skills/<name>/SKILL.md` | `.github/prompts/<name>.prompt.md` |
-| `copilot-instruction` | `.github/instructions/<name>.instructions.md` | n/a |
 
 `<name>` is `public_name(prefix, source)` — the resolved install `prefix` plus the source's
 deprefixed public id. An unrecognized `target` string is a `SystemExit` (defensive; every call site
