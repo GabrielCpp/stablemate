@@ -6,6 +6,7 @@ upkeep. The write side of the pipeline the CLI drives.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,7 @@ from farrier.launcher import (
     LAUNCHER_CONTEXT_MANIFEST,
     LAUNCHER_ROOT_MAKEFILE,
 )
+from farrier._vendor.stablemate_core.config import config_path
 from farrier.layers import available_names
 from farrier.naming import repo_prefix
 from farrier.ownership import is_owned, owned_files, sweep
@@ -51,6 +53,11 @@ from farrier.sources import (
     unmatched_patterns,
 )
 from farrier.template_values import collect_template_values
+from farrier.user_library import (
+    HARNESSES,
+    user_library_tables,
+    user_template_values,
+)
 
 
 #: The directories farrier renders into. It scans these for its *own* files — see
@@ -98,6 +105,38 @@ ASSUMED_OWNED = [
 ]
 
 
+@dataclass(frozen=True)
+class Managed:
+    """What one install scope owns — the directories it sweeps and the files it names.
+
+    Repo scope and user scope render into different trees and own different things: a
+    user-scope install writes skills and commands and nothing else, so it has no
+    launcher, no hook runner and no root instruction file to dispose of. Passing the
+    set in makes that a parameter of the scope rather than four module globals every
+    caller has to remember not to apply.
+    """
+
+    dirs: tuple[str, ...]
+    files: tuple[str, ...] = ()
+    assumed: tuple[str, ...] = ()
+    #: Whether the scope owns a repo's surroundings — the managed .gitignore rules and
+    #: the launcher include. A home directory is not a checkout: it usually is not a git
+    #: repo at all, and writing ignore rules into one that is would be farrier editing a
+    #: file it was never pointed at.
+    repo_scaffolding: bool = True
+
+
+REPO_MANAGED = Managed(tuple(MANAGED_DIRS), tuple(MANAGED_FILES), tuple(ASSUMED_OWNED))
+
+#: User scope, relative to the user's home. Every entry is a directory the harness
+#: itself reads for every project; nothing outside them is farrier's to touch, which is
+#: why the file and assumed-owned lists are empty rather than inherited.
+USER_MANAGED = Managed(
+    (".claude/skills", ".claude/commands", ".codex/skills", ".copilot/skills"),
+    repo_scaffolding=False,
+)
+
+
 def expected_text(content: str) -> str:
     """The exact bytes *content* installs as — the one place the rule is stated.
 
@@ -131,13 +170,17 @@ def normalize_agents(config: dict[str, Any]) -> dict[str, bool]:
     }
 
 
-def is_assumed_owned(repo: Path, path: Path) -> bool:
+def is_assumed_owned(
+    repo: Path, path: Path, managed: Managed = REPO_MANAGED
+) -> bool:
     """True when *path* is one farrier owns by convention rather than by a mark."""
     rel = path.relative_to(repo).as_posix()
-    return any(fnmatch(rel, pattern) for pattern in ASSUMED_OWNED)
+    return any(fnmatch(rel, pattern) for pattern in managed.assumed)
 
 
-def conflicts(repo: Path, outputs: dict[Path, str]) -> list[str]:
+def conflicts(
+    repo: Path, outputs: dict[Path, str], managed: Managed = REPO_MANAGED
+) -> list[str]:
     """The paths farrier is about to write that are held by files it did not generate.
 
     Repo-root-relative, sorted, and complete: an operator fixing these wants the whole
@@ -148,12 +191,14 @@ def conflicts(repo: Path, outputs: dict[Path, str]) -> list[str]:
         path.relative_to(repo).as_posix()
         for path in outputs
         if path.exists()
-        and not is_assumed_owned(repo, path)
+        and not is_assumed_owned(repo, path, managed)
         and not is_owned(path, repo)
     )
 
 
-def refuse_conflicts(repo: Path, outputs: dict[Path, str]) -> None:
+def refuse_conflicts(
+    repo: Path, outputs: dict[Path, str], managed: Managed = REPO_MANAGED
+) -> None:
     """Abort the install when any output path holds a file farrier does not own.
 
     Before anything is deleted or written, so a refusal leaves the repo exactly as it
@@ -161,7 +206,7 @@ def refuse_conflicts(repo: Path, outputs: dict[Path, str]) -> None:
     the file is somebody's work, and the only two answers — keep it under another name,
     or throw it away — are both theirs.
     """
-    held = conflicts(repo, outputs)
+    held = conflicts(repo, outputs, managed)
     if not held:
         return
     listing = "\n".join(f"  {rel}" for rel in held)
@@ -175,7 +220,7 @@ def refuse_conflicts(repo: Path, outputs: dict[Path, str]) -> None:
     )
 
 
-def remove_targets(repo: Path) -> None:
+def remove_targets(repo: Path, managed: Managed = REPO_MANAGED) -> None:
     """Delete farrier's previous output — and only farrier's.
 
     A scan for the generated-by mark rather than an ``rmtree`` of every managed
@@ -188,13 +233,13 @@ def remove_targets(repo: Path) -> None:
     install's leftovers are found by the same scan; anything so old it carries
     neither is reported as a conflict, by name, rather than deleted on a guess.
     """
-    for rel in MANAGED_DIRS:
+    for rel in managed.dirs:
         sweep(repo / rel)
-    for rel in MANAGED_FILES:
+    for rel in managed.files:
         path = repo / rel
         if path.is_file() and is_owned(path, repo):
             path.unlink()
-    for pattern in ASSUMED_OWNED:
+    for pattern in managed.assumed:
         for path in sorted(repo.glob(pattern)):
             if path.is_file():
                 path.unlink()
@@ -364,6 +409,64 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
     return outputs
 
 
+def render_user_expected(config: dict[str, Any], home: Path) -> dict[Path, str]:
+    """The complete user-scope output set, from the stablemate config's user_library.
+
+    The user-scope sibling of :func:`render_expected`. Everything below the selection is
+    the same machinery — the same layer stack, the same source loading, the same
+    renderer — so a skill installs identically whichever scope brought it in. What
+    differs is above it: no repo, so no repo prefix, no `agents:` list (each harness is
+    named by having a table), no roots, no localInstructions and no hooks. A hook is a
+    repo's git config; there is nothing at user scope for one to attach to.
+    """
+    selections = user_library_tables(config)
+    if not selections:
+        raise SystemExit(
+            "error: no user library is configured. Add a "
+            "[user_library.<harness>] table naming the skills to install for every "
+            f"project — one of {', '.join(HARNESSES)} — to {config_path()}."
+        )
+    values = user_template_values(config)
+    all_skills = load_layered_sources("skill", "library", "skills")
+    all_prompts = load_layered_sources("prompt", "library", "prompts")
+
+    outputs: dict[Path, str] = {}
+    for harness, table in selections.items():
+        include_skills, include_prompts, roots, _scaffolds = collect_selection(table)
+        if roots:
+            raise SystemExit(
+                f"error: [user_library.{harness}] names roots. A root renders into a "
+                "repo's always-on instruction file, and no harness reads one from the "
+                "home directory."
+            )
+        if include_prompts and harness != "claude":
+            raise SystemExit(
+                f"error: [user_library.{harness}] names prompts. Claude is the only "
+                "harness with a personal command directory (~/.claude/commands), so "
+                "prompts are Claude-only at user scope."
+            )
+        exclude = table.get("exclude") or {}
+        skills = selected_sources(
+            all_skills, include_skills, set(exclude.get("skills", []) or [])
+        )
+        prompts = selected_sources(
+            all_prompts, include_prompts, set(exclude.get("prompts", []) or [])
+        )
+        check_selection(
+            [
+                ("skills", all_skills, include_skills),
+                ("prompts", all_prompts, include_prompts),
+            ]
+        )
+        if not skills and not prompts:
+            raise SystemExit(
+                f"error: [user_library.{harness}] selected no skills or prompts."
+            )
+        renderer = Renderer(home, "", {}, values, skills, prompts, scope="user")
+        outputs.update(renderer.render({harness: True}, set()))
+    return outputs
+
+
 def selected_hooks(prefix: str, skills) -> list[SkillHook]:
     """Every hook the selected skills declare, in selection order.
 
@@ -378,7 +481,12 @@ def selected_hooks(prefix: str, skills) -> list[SkillHook]:
     return hooks
 
 
-def check_outputs(repo: Path, outputs: dict[Path, str], manager: str | None = None) -> int:
+def check_outputs(
+    repo: Path,
+    outputs: dict[Path, str],
+    manager: str | None = None,
+    managed: Managed = REPO_MANAGED,
+) -> int:
     missing: list[str] = []
     changed: list[Drifted] = []
     extra: list[str] = []
@@ -407,14 +515,17 @@ def check_outputs(repo: Path, outputs: dict[Path, str], manager: str | None = No
     # somebody's own file, sitting where farrier also writes, and install leaves it
     # alone. Reporting it as drift would fail --check with nothing to fix.
     expected_paths = set(outputs)
-    for rel in MANAGED_DIRS:
+    for rel in managed.dirs:
         for path in owned_files(repo / rel):
             if path not in expected_paths:
                 extra.append(path.relative_to(repo).as_posix())
-    for rel in [*MANAGED_FILES, LAUNCHER_CONTEXT_MANIFEST]:
+    named = list(managed.files)
+    if managed.files:
+        named.append(LAUNCHER_CONTEXT_MANIFEST)
+    for rel in named:
         path = repo / rel
         if path not in expected_paths and path.is_file():
-            if is_assumed_owned(repo, path) or is_owned(path, repo):
+            if is_assumed_owned(repo, path, managed) or is_owned(path, repo):
                 extra.append(path.relative_to(repo).as_posix())
 
     # The fenced region inside a file farrier does not own is checked the same way and
@@ -582,10 +693,13 @@ def ensure_makefile_include(repo: Path) -> bool:
 
 
 def install_outputs(
-    repo: Path, outputs: dict[Path, str], manager: str | None = None
+    repo: Path,
+    outputs: dict[Path, str],
+    manager: str | None = None,
+    managed: Managed = REPO_MANAGED,
 ) -> None:
-    refuse_conflicts(repo, outputs)
-    remove_targets(repo)
+    refuse_conflicts(repo, outputs, managed)
+    remove_targets(repo, managed)
     for path, content in sorted(outputs.items(), key=lambda item: item[0].as_posix()):
         write_text(path, content)
     # Workflow runs write logs/artifacts under .agents/runs (see workhorse's --runs-dir
@@ -597,7 +711,9 @@ def install_outputs(
     # keeps the artifacts out of the index before the hook ever has to refuse them. Both
     # are guarded on the gate script itself being among the outputs: a repo that did not
     # select the ostler skill has not asked for either.
-    if any(path.name == Path(GATE_SCRIPT).name for path in outputs):
+    if managed.repo_scaffolding and any(
+        path.name == Path(GATE_SCRIPT).name for path in outputs
+    ):
         if ensure_qa_gitignore(repo):
             print("Updated QA evidence .gitignore rules")
     # Splice farrier's one fenced entry into the repo's hook manager. Last, because the

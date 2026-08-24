@@ -71,6 +71,38 @@ is an agent: the base library's `implement-plan` command resolves it with
 
 - code: `core/stablemate_core/config.py::write_worktree_dir`
 
+### user_library
+- type: `table of tables` — required: no — default: absent (nothing is installed at user scope)
+
+The personal library: which skills and prompts
+[`farrier install --user`](farrier.md#install---user) renders into the harness home directories,
+for every project rather than per repo. One table per harness — `[user_library.claude]`,
+`[user_library.codex]`, `[user_library.copilot]` — each holding the same
+`skills` / `prompts` / `exclude` keys [`agents.yml`](agents-yml-config.md) uses, plus one shared
+`[user_library.template]` table supplying `{{ template.* }}` values. A harness with no table gets
+nothing; an unknown table name is an error rather than a silent no-op, because a typo'd harness
+is indistinguishable from one that was never configured.
+
+```toml
+[user_library.claude]
+skills = ["stablemate/*"]
+prompts = ["stablemate/grill"]
+
+[user_library.codex]
+skills = ["stablemate/ostler"]
+
+[user_library.template]
+backend_layer_name = "Go API"
+```
+
+It lives here rather than in a repo because that is the whole point: a skill that needs nothing
+from the checkout it is invoked in was being installed into every checkout and drifting in each
+one. `prompts` is Claude-only — the other harnesses have no personal command directory — and
+naming it elsewhere is a hard error. There is **no setter subcommand**: these are nested tables,
+and `write_config_key`'s flat assignment cannot express one.
+
+- code: `farrier/farrier/user_library.py::user_library_tables`
+
 ### config_version
 - type: `integer` — required: no — default: absent (treated as version 0)
 

@@ -51,9 +51,11 @@ from farrier.library_check import check_library, format_findings
 from farrier.library_view import KINDS, find, format_list, layer_label, stack
 from farrier.naming import repo_prefix
 from farrier.outputs import (
+    USER_MANAGED,
     check_outputs,
     install_outputs,
     render_expected,
+    render_user_expected,
     write_text,
 )
 from farrier.renderer import Renderer
@@ -101,6 +103,19 @@ def _add_install_args(parser: argparse.ArgumentParser) -> None:
         type=Path,
         help="Library directory (agents/ tree). Overrides $FARRIER_LIBRARY_DIR and the home config.",
     )
+    parser.add_argument(
+        "--user",
+        action="store_true",
+        help="Install into the harness home directories (~/.claude, ~/.codex, "
+             "~/.copilot) from the [user_library.<harness>] tables of the stablemate "
+             "config, instead of into a repo. Needs no repo and no agents.yml.",
+    )
+    parser.add_argument(
+        "--home",
+        type=Path,
+        help="With --user: the home directory to install into (default: ~). For tests "
+             "and for trying a selection out without touching the real one.",
+    )
 
 
 def _run_init(args: argparse.Namespace) -> int:
@@ -128,6 +143,24 @@ def _run_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_user_install(args: argparse.Namespace) -> int:
+    """`farrier install --user` — render the user_library tables into the harness homes.
+
+    Deliberately not reachable from a repo install. In Claude Code a personal skill wins
+    over the project's, and in Copilot the project wins, so the same name installed at
+    both scopes is not a harmless duplicate — on one harness it silently shadows what
+    the repo pinned. Which harness gets which skill is therefore the user's call, made
+    once in their config, rather than a side effect of running install in a repo.
+    """
+    home = (args.home or Path.home()).expanduser().resolve()
+    outputs = render_user_expected(read_config(), home)
+    if args.check:
+        return check_outputs(home, outputs, None, USER_MANAGED)
+    install_outputs(home, outputs, None, USER_MANAGED)
+    print(f"Installed {len(outputs)} generated files into {home}")
+    return 0
+
+
 def _run_install(args: argparse.Namespace) -> int:
     # Check out the base library, and update it, before anything looks for it. This is the
     # one command that does: install is an operator asking for a re-render at a moment
@@ -141,6 +174,8 @@ def _run_install(args: argparse.Namespace) -> int:
     # commit it ran against.
     ensure_base_library_dir(refresh=not args.check)
     set_layers(resolve_library_dir(args.library))
+    if getattr(args, "user", False):
+        return _run_user_install(args)
     repo = args.repo.resolve()
     config_path = args.config.resolve() if args.config else repo / "agents.yml"
     if not args.config and not config_path.exists():

@@ -160,6 +160,48 @@ it — are the operator's to choose, not farrier's.
 - verify: `farrier/tests/test_base_fetch_on_install.py::test_install_refreshes_the_base`
 - verify: `farrier/tests/test_base_fetch_on_install.py::test_check_fetches_but_does_not_refresh`
 
+### install --user
+- usage: `farrier install --user [--check] [--home DIR] [--library DIR]`
+- flags:
+  - `--user` — install into the harness home directories instead of a repo. Selection comes from
+    the [shared config file](../workhorse/concepts/config.md), not from an `agents.yml`; no repo
+    is read and none is written to.
+  - `--home <dir>` — the home directory to install into. Default: `~`. It exists for tests and
+    for a container that keeps its agent config somewhere other than `$HOME`.
+  - `--check` — as for a repo install: verify the installed files are current, write nothing,
+    exit `1` naming what would be rewritten.
+  - `--library <dir>` — the same [layer resolution](concepts/library-directory.md) a repo install
+    uses. User scope changes *where files land*, never where sources come from.
+- does:
+  - run: read `[user_library.<harness>]` from the config — one table per harness that gets a
+    personal library, holding the same `skills:`/`prompts:`/`exclude:` keys
+    [`agents.yml`](agents-yml-config.md) uses. A harness with no table installs nothing; no table
+    at all is an error naming the config path, since `--user` was asked for explicitly
+  - run: render each table's selection with a [`Renderer`](concepts/renderer.md) at user scope
+    into `~/.claude/skills/<name>/SKILL.md`, `~/.claude/commands/<name>.md`,
+    `~/.codex/skills/<name>/SKILL.md` and `~/.copilot/skills/<name>/SKILL.md`
+  - run: name each installed skill by its **library group** (`stablemate/ostler` →
+    `stablemate-ostler`), never by a repo — there is no repo to prefix with, and a personal skill
+    is the same skill in every checkout
+  - run: substitute `{{ template.* }}` from one shared `[user_library.template]` table. A template
+    value is a fact about the machine, not about the harness reading it, so it is not per-harness.
+    An **undefined** reference is a hard error, and so is any `{{ repo.* }}` reference: nothing at
+    user scope can supply one, and rendering it empty would install a skill that silently lies
+  - run: `prompts:` under any harness but `claude` is a hard error — Claude alone has a personal
+    command directory. A silent skip would be a prompt the agent never sees and nobody misses
+  - run: write **no repo scaffolding** — no launcher, no `.agents/` context manifest, no
+    `.gitignore` rules, no aggregated `AGENTS.md`. Each of those describes a checkout
+  - run: [ownership](#ownership) is unchanged, so a hand-written `~/.claude/skills/mine/SKILL.md`
+    survives every install and a path farrier would overwrite aborts the run naming the file
+- **Never implied by a repo install.** The two scopes collide differently per harness — a personal
+  Claude skill shadows the project's copy, while Copilot resolves the project's first — so which
+  copy an agent gets depends on the harness. That is a decision for the operator to take once,
+  explicitly, rather than a side effect of installing into some repo.
+- code: `farrier/farrier/cli.py::_run_user_install`, `farrier/farrier/outputs.py::render_user_expected`
+- verify: `farrier/tests/test_user_install.py::test_skills_and_prompts_land_in_the_harness_home`
+- verify: `farrier/tests/test_user_install.py::test_the_repo_scaffolding_stays_out_of_the_home`
+- verify: `farrier/tests/test_user_install.py::test_a_deselected_skill_is_swept_and_a_hand_written_one_is_not`
+
 ### config
 - usage: `farrier config [--config PATH] <set-library|set-stablemate|set-base|set-worktree|show> [args]`
 - flags:
