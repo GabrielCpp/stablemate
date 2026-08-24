@@ -360,6 +360,49 @@ def _package_label(item: Any) -> str:
     return str(item)
 
 
+def _instruction_paths(
+    services: list[dict[str, Any]],
+    instructions: dict[str, str],
+    instruction_tags: dict[str, list[str]],
+    logger: logging.Logger,
+) -> list[str]:
+    """The standards the implementer must hold, deduplicated in service order.
+
+    Two channels, and the first is the workflow's rather than the planner's. A service's
+    `type` is the layer it is (`backend`, `web`, `cli`, …), and the library already answers
+    "however this repo writes that layer" — it is the same `tags:` query `find_by_tags`
+    renders into the planning prompt. Asking the manifest directly means the standard is
+    chosen by the workflow: the planner picks layers, not a hand-typed inventory of eleven
+    skill names it has to keep in sync with the library.
+
+    `skills` is the second channel and stays, because a story can turn on a standard its
+    layer's tags do not reach — a release rule, a codegen contract, one shared package's
+    convention. It is a union, not an override: a named skill adds to what the layer already
+    implies, and a name the repo's manifest does not carry is warned about and dropped,
+    exactly as before. A `type` that matches no tag simply contributes nothing, which leaves
+    a repo that tags no skills behaving as it did.
+    """
+    paths: list[str] = []
+
+    def add(path: str) -> None:
+        if path and path not in paths:
+            paths.append(path)
+
+    for svc in services:
+        layer = str(svc.get("type") or "").strip().lower()
+        if layer:
+            for name, tags in sorted(instruction_tags.items()):
+                if layer in {str(tag).lower() for tag in tags}:
+                    add(instructions.get(name, ""))
+        for skill_name in svc.get("skills") or []:
+            path = instructions.get(str(skill_name).replace(".", "-"))
+            if not path:
+                logger.warning("skill '%s' not in repo manifest — skipping", skill_name)
+                continue
+            add(path)
+    return paths
+
+
 @blueprint.node
 def resolve_impl_context(
     logger: logging.Logger,
@@ -392,18 +435,10 @@ def resolve_impl_context(
 
     manifest = load_json(root / MANIFEST_REL, "context manifest", logger)
     instructions: dict[str, str] = manifest.get("instructions") or {}
+    instruction_tags: dict[str, list[str]] = manifest.get("instruction_tags") or {}
     services = plan_ctx.get("services") or []
 
-    # Instruction paths from every service's skills, deduplicated in order.
-    impl_instruction_paths: list[str] = []
-    for svc in services:
-        for skill_name in svc.get("skills") or []:
-            path = instructions.get(str(skill_name).replace(".", "-"))
-            if not path:
-                logger.warning("skill '%s' not in repo manifest — skipping", skill_name)
-                continue
-            if path not in impl_instruction_paths:
-                impl_instruction_paths.append(path)
+    impl_instruction_paths = _instruction_paths(services, instructions, instruction_tags, logger)
 
     # Fall back to a single repo-root dispatch whenever the plan names no services —
     # whether plan-context.json is absent OR present in the legacy flat form. Without this
