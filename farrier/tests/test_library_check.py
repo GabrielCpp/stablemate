@@ -20,7 +20,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from farrier.frontmatter import _front_matter
-from farrier.library_check import check_library, check_text, format_findings
+from farrier.library_check import (
+    BODY_LIMIT,
+    DESCRIPTION_LIMIT,
+    NAME_LIMIT,
+    check_library,
+    check_text,
+    format_findings,
+)
 
 
 def _codes(text: str, path: Path | None = None, **kwargs) -> list[str]:
@@ -129,9 +136,10 @@ def test_a_flow_sequence_is_the_documented_spelling_for_tags_not_a_fragile_value
     assert _codes("---\nname: t\ndescription: A thing\ntags: [go, backend, tests]\n---\n\n# T\n") == []
 
 
-def test_a_missing_name_is_not_reported_at_all():
-    """Regression: farrier derives the installed name from the path, never from this key."""
-    assert _codes("---\ndescription: A thing\ntags: [go]\n---\n\n# T\n") == []
+def test_a_missing_name_on_a_prompt_is_not_reported():
+    """A prompt is addressed by its path and has no spec to answer to."""
+    assert _codes("---\ndescription: A thing\n---\n\n# T\n",
+                  Path("prompts/t.md"), require_tags=False) == []
 
 
 def test_a_quoted_colon_or_brace_is_clean_wherever_it_appears():
@@ -152,19 +160,98 @@ def test_a_skill_with_no_tags_is_warned_but_not_failed():
     assert [(f.code, f.level) for f in findings] == [("untagged", "warning")]
 
 
-def test_a_missing_description_is_warned_because_the_fallback_restates_the_title():
-    assert "missing-description" in _codes("---\nname: t\ntags: [go]\n---\n\n# T\n")
-
-
-def test_a_name_that_disagrees_with_its_directory_is_warned():
-    """farrier installs under the directory name, so the key misleads only the reader."""
-    findings = check_text(_skill("", name="qa-acme-local"), Path("skills/acme/qa-local/SKILL.md"))
-    assert [f.code for f in findings] == ["name-mismatch"]
-    assert "qa-local" in findings[0].message
+def test_a_missing_description_on_a_prompt_is_warned_not_failed():
+    """Nothing rejects a prompt without one; it just ranks on a restatement of its title."""
+    findings = check_text("---\nagent: a\n---\n\n# T\n", Path("prompts/t.md"),
+                          require_tags=False)
+    assert [(f.code, f.level) for f in findings] == [("missing-description", "warning")]
 
 
 def test_a_name_matching_its_directory_is_silent():
     assert check_text(_skill("", name="qa-local"), Path("skills/acme/qa-local/SKILL.md")) == []
+
+
+# --- the Open Agent Skills spec -----------------------------------------------------
+#
+# Every one of these is an error rather than a warning, and the reason is asymmetric
+# harness behaviour: Claude Code installs a skill that breaks the spec and says nothing,
+# Copilot refuses it. A library only ever shipped to Claude therefore drifts past the
+# limits with no symptom at all, and the first repo to enable Copilot inherits the whole
+# backlog at once.
+
+
+def test_a_skill_with_no_name_is_an_error_naming_the_folder_it_must_match():
+    findings = check_text("---\ndescription: A thing\ntags: [go]\n---\n\n# T\n",
+                          Path("skills/acme/qa-local/SKILL.md"))
+    assert [(f.code, f.level) for f in findings] == [("missing-name", "error")]
+    assert "qa-local" in findings[0].message
+
+
+def test_a_name_that_disagrees_with_its_directory_is_an_error():
+    """The folder is how a harness addresses the skill; the key is how it answers."""
+    findings = check_text(_skill("", name="qa-acme-local"), Path("skills/acme/qa-local/SKILL.md"))
+    assert [(f.code, f.level) for f in findings] == [("name-mismatch", "error")]
+    assert "qa-local" in findings[0].message
+
+
+def test_a_skill_with_no_description_is_an_error():
+    findings = check_text("---\nname: t\ntags: [go]\n---\n\n# T\n",
+                          Path("skills/t/SKILL.md"))
+    assert [(f.code, f.level) for f in findings] == [("missing-description", "error")]
+
+
+def test_a_name_over_the_limit_is_an_error():
+    name = "x" * (NAME_LIMIT + 1)
+    findings = check_text(_skill("", name=name), Path(f"skills/acme/{name}/SKILL.md"))
+    assert [f.code for f in findings] == ["name-too-long"]
+
+
+def test_a_name_at_the_limit_is_clean():
+    name = "x" * NAME_LIMIT
+    assert check_text(_skill("", name=name), Path(f"skills/acme/{name}/SKILL.md")) == []
+
+
+def test_a_description_over_the_limit_is_an_error():
+    text = f"---\nname: t\ndescription: '{'x' * (DESCRIPTION_LIMIT + 1)}'\ntags: [go]\n---\n\n# T\n"
+    assert _codes(text) == ["description-too-long"]
+
+
+def test_a_description_at_the_limit_is_clean():
+    text = f"---\nname: t\ndescription: '{'x' * DESCRIPTION_LIMIT}'\ntags: [go]\n---\n\n# T\n"
+    assert _codes(text) == []
+
+
+def test_a_body_over_the_limit_is_an_error():
+    body = "\n".join("line" for _ in range(BODY_LIMIT + 1))
+    findings = check_text(f"---\nname: t\ndescription: A thing\ntags: [go]\n---\n\n{body}\n",
+                          Path("skills/t/SKILL.md"))
+    assert [f.code for f in findings] == ["body-too-long"]
+    assert str(BODY_LIMIT) in findings[0].message
+
+
+def test_a_body_at_the_limit_is_clean():
+    """Off-by-one here would fail every long skill in the library on the day it lands."""
+    body = "\n".join("line" for _ in range(BODY_LIMIT))
+    assert check_text(f"---\nname: t\ndescription: A thing\ntags: [go]\n---\n\n{body}\n",
+                      Path("skills/t/SKILL.md")) == []
+
+
+def test_the_front_matter_is_not_counted_against_the_body_limit():
+    """A long `description` is its own finding; charging it to the body twice reports
+    one problem as two and points the author at the wrong half of the file."""
+    front = "\n".join(f"key{i}: value" for i in range(50))
+    body = "\n".join("line" for _ in range(BODY_LIMIT - 1))
+    text = f"---\nname: t\ndescription: A thing\ntags: [go]\n{front}\n---\n\n{body}\n"
+    assert check_text(text, Path("skills/t/SKILL.md")) == []
+
+
+def test_a_prompt_is_held_to_none_of_the_spec_limits():
+    """The spec governs SKILL.md. A prompt is rendered into each harness's own command
+    format, and there is no published contract for it to break."""
+    long_name = "x" * (NAME_LIMIT + 10)
+    body = "\n".join("line" for _ in range(BODY_LIMIT + 10))
+    text = f"---\nname: {long_name}\ndescription: A thing\n---\n\n{body}\n"
+    assert check_text(text, Path("prompts/t.md"), require_tags=False) == []
 
 
 # --- structural failures ------------------------------------------------------------

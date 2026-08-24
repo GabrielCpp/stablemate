@@ -39,6 +39,7 @@ import yaml
 from markdown_it import MarkdownIt
 from mdit_py_plugins.front_matter import front_matter_plugin
 
+from farrier.frontmatter import front_matter_end
 from farrier.naming import compose_name, kebab, strip_known_suffix
 from farrier.skill_hooks import findings as hook_findings
 
@@ -148,6 +149,75 @@ def _trailing_text(fence: str, event: yaml.ScalarEvent) -> str:
     return rest.split("\n", 1)[0].strip()
 
 
+#: The Open Agent Skills limits farrier holds a library to. They are the *published*
+#: ones, not farrier's: a skill is rendered for three harnesses and only the strictest
+#: reader's rules make a source portable. Copilot validates a SKILL.md and rejects one
+#: that breaks them; Claude Code is lenient and installs it anyway — so a library that
+#: only ever ships to Claude drifts past the limits without a symptom, and the first
+#: repo to turn Copilot on discovers a decade of skills at once.
+NAME_LIMIT = 64
+DESCRIPTION_LIMIT = 1024
+BODY_LIMIT = 500
+
+
+def _spec_findings(
+    text: str, data: dict, path: Path, declared: str, description: str
+) -> list[Finding]:
+    """Where one SKILL.md breaks the Open Agent Skills spec — errors, all of them.
+
+    Only SKILL.md. A prompt is a farrier-side concept rendered into each harness's own
+    command format; there is no published contract for it to violate.
+
+    ``name`` must equal the parent folder because that identity is the spec's, not a
+    convention: the folder is how a harness addresses the skill and the key is how it
+    announces itself, and a skill whose two names disagree is one nothing can reliably
+    refer to. farrier renders both from the same source path, so the pair can only
+    diverge in a hand-written file — which is exactly the file this gate is for.
+    """
+    found: list[Finding] = []
+    add = lambda code, msg: found.append(Finding(path, "error", code, msg))  # noqa: E731
+
+    if not declared:
+        add("missing-name",
+            "no `name:` — required by the Open Agent Skills spec. Copilot rejects a "
+            f"skill without one; it must be {path.parent.name!r}, the folder name.")
+    elif declared != path.parent.name:
+        add("name-mismatch",
+            f"`name: {declared}` but the skill directory is {path.parent.name!r}. The "
+            "spec requires the two to match — farrier installs under the directory "
+            "name, so a harness validating the key sees a skill that is not there.")
+    if len(declared) > NAME_LIMIT:
+        add("name-too-long",
+            f"`name:` is {len(declared)} characters; the spec allows {NAME_LIMIT}. The "
+            "installed name is longer still — the library group prefixes it.")
+
+    if not description:
+        add("missing-description",
+            "no `description:` — required by the spec, and it is the entire signal a "
+            "harness ranks this skill by. farrier's fallback restates the title.")
+    elif len(description) > DESCRIPTION_LIMIT:
+        add("description-too-long",
+            f"`description:` is {len(description)} characters; the spec allows "
+            f"{DESCRIPTION_LIMIT}. Move the detail into the body — the description is "
+            "read to *choose* the skill, not to follow it.")
+
+    body = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")[front_matter_end(text):]
+    # The blank line after the fence is a separator and the one at EOF is punctuation —
+    # neither is content, and counting them would fail a skill written exactly to the
+    # limit. ``split_front_matter`` drops the leading one for the same reason.
+    if body and not body[0].strip():
+        body = body[1:]
+    if body and not body[-1].strip():
+        body = body[:-1]
+    lines = len(body)
+    if lines > BODY_LIMIT:
+        add("body-too-long",
+            f"body is {lines} lines; the spec allows {BODY_LIMIT}. Split the overflow "
+            "into `references/` beside the SKILL.md — bundled files ship with it and "
+            "cost nothing until the agent opens one.")
+    return found
+
+
 def check_text(text: str, path: Path, *, require_tags: bool = True) -> list[Finding]:
     """Every finding for one library markdown source.
 
@@ -182,23 +252,19 @@ def check_text(text: str, path: Path, *, require_tags: bool = True) -> list[Find
             "front matter must be a YAML mapping of key: value pairs.")
         return found
 
-    # `description` is a warning, not an error: farrier does render without one. But the
-    # fallback is "Use for <repo> work involving <first heading>" — a restatement of the
-    # title, and on a harness that selects skills by description alone that is the whole
-    # ranking signal spent saying nothing.
-    if not str(data.get("description") or "").strip():
+    description = str(data.get("description") or "").strip()
+    declared = str(data.get("name") or "").strip()
+
+    if path.name == "SKILL.md":
+        found.extend(_spec_findings(text, data, path, declared, description))
+    elif not description:
+        # For a prompt the fallback is "Use for <repo> work involving <first heading>" —
+        # a restatement of the title, and on a harness that selects by description alone
+        # that is the whole ranking signal spent saying nothing. Still only a warning:
+        # nothing downstream rejects the file, it just ranks badly.
         add("warning", "missing-description",
             "no `description:` — farrier substitutes the first heading, which restates "
             "the title. On Claude the description is the entire selection signal.")
-
-    # Deliberately no `name:` requirement. farrier derives the installed name from the
-    # source's path (public_name), never from this key, so a missing one costs nothing —
-    # but one that *disagrees* with the directory misleads every human who reads it.
-    declared = str(data.get("name") or "").strip()
-    if declared and path.name == "SKILL.md" and declared != path.parent.name:
-        add("warning", "name-mismatch",
-            f"`name: {declared}` but the skill directory is {path.parent.name!r}; farrier "
-            "installs it under the directory name and ignores this key.")
 
     # Only *unquoted* scalars are at risk, and only where a scalar is what was meant.
     # `tags: [go, backend]` opens with a YAML indicator because a flow sequence is the
