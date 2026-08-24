@@ -73,3 +73,33 @@ def test_the_section_ends_at_the_next_heading(tmp_path: Path) -> None:
         "The refreshed page looks right",
         "The flow crosses both apps",
     ]
+
+
+def test_the_unnumbered_heading_parses_like_the_numbered_one() -> None:
+    """`## Test Scenarios` and `## 5. Test Scenarios` name the same section.
+
+    `plan-story.md` dropped the number when the seven-section inventory collapsed to four;
+    `_words` was already discarding a leading `5.`, so both spellings live in real plans.
+    """
+    assert parse_scenarios(MIXED.replace("## 5. Test", "## Test")) == parse_scenarios(MIXED)
+
+
+def test_the_prompts_own_scenario_example_parses() -> None:
+    """The example in `plan-story.md` must be a shape this parser reads.
+
+    It was not: the prompt asked for a numbered list, the parser wants one `###` heading per
+    scenario, and a real run's plan therefore yielded zero scenarios — the QA lane received
+    no QA-only obligations at all and nothing said so. Pinning the prompt's own example
+    against the parser is what makes that divergence loud instead of silent.
+    """
+    prompt = (
+        Path(__file__).parents[3]
+        / "src/workhorse_workflows/coder/prompts/plan-story.md"
+    ).read_text(encoding="utf-8")
+    start = prompt.index("### Test Scenarios")
+    example = prompt[prompt.index("```markdown", start) + len("```markdown") :]
+    example = example[: example.index("```")]
+
+    # The block is the body of the section, so it is parsed under that section's heading.
+    parsed = parse_scenarios("## Test Scenarios\n" + example)
+    assert [(s.ac, s.level) for s in parsed] == [("2", "endpoint")], parsed

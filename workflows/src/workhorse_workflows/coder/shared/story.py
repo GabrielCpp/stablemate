@@ -164,7 +164,7 @@ def stamp_specs(
 ) -> SpecsStamped:
     """Give every spec doc in the story's spec dir an OKF `type`, or fail the run.
 
-    The coder's process artifacts (plan.md, qa.md, review.md, executive.md) are written as
+    The coder's process artifacts (plan.md, qa.md, review.md) are written as
     free-form markdown by agents, so the frontmatter that makes them Concepts is only as
     reliable as the model's memory. (`qa-report.md` is the exception: the runner renders it
     and stamps its type itself, so the idempotent pass below just leaves it alone.) The prompts ask for `ostler create spec` up front; this
