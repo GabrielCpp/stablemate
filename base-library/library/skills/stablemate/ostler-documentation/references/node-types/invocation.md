@@ -1,0 +1,78 @@
+# `invocation`
+
+Something the *system* does without a person driving it: a webhook arriving, a scheduled job
+firing, a queue consumer waking. Reach for `invocation` for a machine-driven action; the
+human-driven counterpart is an [`interaction`](interaction.md).
+
+The two types share most of their shape on purpose — the difference is the actor, and that is
+the distinction the `node-type` defect kind exists for.
+
+## Identity
+
+Section type. A `### <id>` under an `## Invocations` heading. Its id is `path#anchor`.
+
+## Bullet keys
+
+| key | required | what it does |
+| --- | --- | --- |
+| `on` | **yes** | link — the node this acts on |
+| `trigger` | **yes** | what fires it |
+| `when` | no | **mints an obligation** — the condition it applies under |
+| `does` | **yes** | nested; **mints an obligation** per value |
+| `emits` | no | **mints an obligation** (via the shared set) |
+| `consumes` | no | **mints an obligation** (via the shared set) |
+| `status` | no | **mints an obligation** — one claim per value |
+| `statuses` | no | alias of `status` |
+| `errors` | no | **mints an obligation** — the refusal arm |
+| `error` | no | alias of `errors` |
+| `auth` | no | **mints an obligation** — who may cause it |
+| `authorization` | no | alias of `auth` |
+| `code` | no | link, **owns** its file |
+| `verify` | no | a check |
+| `fixture` | no | a fixture |
+| `tests` | no | link — the test files covering it |
+
+`emits:`/`consumes:` are normative through the
+[shared set](../bullet-grammar.md#keys-that-are-normative-on-every-type), not through a flag of
+their own — one obligation per value either way. The outcome keys sit between the effect and
+its grounding so a `verify:` written under one binds to that one.
+
+An invocation carries no `role:`/`name:`/`keyboard:`: there is no operator to announce
+anything to. If those apply, it is an interaction.
+
+## Relationships
+
+`on:` links the node acted on. `detail:` points at a [`concept`](concept.md) — it is not in
+this type's declared list, but relation keys work on every type.
+
+## Minimal example
+
+```bash
+timeout 30 ostler scaffold invocation expire-stale-links --in docs/features/acme/http/links-api.md
+```
+
+```markdown
+### expire-stale-links
+
+- on: [links-api](links-api.md)
+- trigger: the nightly scheduler, at 03:00 UTC
+- when: a link has not been followed for 90 days
+- does: marks the link expired and stops resolving it
+- emits: link.expired, one per expired link
+- code: internal/jobs/expire.go::ExpireStale
+- fixture: link_last_followed_91_days_ago
+- verify: removed(subject="the stale link from the active index")
+- verify: emitted(event="link.expired", count=1)
+```
+
+## Doctor codes it can trip
+
+`missing-required-bullet` (`on:`, `trigger:`, `does:`), `undeclared-obligation`, `weak-check`,
+`unstated-precondition`, `compound-normative-bullet`, `unresolved-relation`. See
+[../doctor-codes.md](../doctor-codes.md).
+
+## When bullets are not enough
+
+Bullets state what this job does. If a reader could pick the wrong one — a legacy job and its
+replacement, each right in its own context — and still satisfy every claim on it, that belongs
+in a [`concept`](concept.md), pointed at with `detail:`.

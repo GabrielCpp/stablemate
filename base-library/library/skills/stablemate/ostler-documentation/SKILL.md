@@ -29,23 +29,58 @@ Three rules govern *what* you write (from `docs/okf-ui-profile.md`):
    you are updating `docs/features/**`.)
 2. **Spec-complete — enough to regenerate the code.** A node carries every field with its
    type/default/required, every flag/arg, every effect and guard, the algorithm as ordered steps,
-   errors/exit codes, and (for UI) the DOM/props/state contract. A one-line stub is below bar. See
-   the per-type checklist in [[ostler]] → "The OKF UI profile" (profile §8).
+   errors/exit codes, and (for UI) the role/name/placement contract. A one-line stub is below
+   bar. The per-type bar is the type's own reference, above.
 3. **Spec, not implementation.** Document *what* the code does — the behavior and contract. Do
    **not** write coding patterns, idioms, or library/structure choices; those are owned by the
    stack skills (`go`, `react-router`, `python-testing`, …), not the book. `code:`/`tests:` anchor
    the current implementation; the prose never prescribes a technique.
 
+## The written model
+
+The OKF model is written down, one reference per node type, and those references are the
+authority when this skill and they disagree:
+
+| | | |
+| --- | --- | --- |
+| [`screen`](references/node-types/screen.md) | [`cli`](references/node-types/cli.md) | [`server`](references/node-types/server.md) |
+| [`concept`](references/node-types/concept.md) | [`format`](references/node-types/format.md) | [`flow`](references/node-types/flow.md) |
+| [`runbook`](references/node-types/runbook.md) | [`environment`](references/node-types/environment.md) | [`component`](references/node-types/component.md) |
+| [`command`](references/node-types/command.md) | [`endpoint`](references/node-types/endpoint.md) | [`interaction`](references/node-types/interaction.md) |
+| [`invocation`](references/node-types/invocation.md) | [`method`](references/node-types/method.md) | [`field`](references/node-types/field.md) |
+| [`step`](references/node-types/step.md) | | |
+
+Each one gives what the type is and when to reach for it rather than its neighbours, its
+identity (file or section, its folder or heading), its bullet keys in canonical order with what
+each does, its required sections, its relationships, a minimal example with the `ostler
+scaffold` line that produces it, and the doctor codes it can trip.
+
+Four references cut across all of them:
+
+- [bullet-grammar.md](references/bullet-grammar.md) — the bullet-key flags, the four key
+  families, the shared normative keys, ownership, one-provable-claim, and **document order is
+  the binding** (which `verify:` and which `fixture:` attach to which claim).
+- [check-vocabulary.md](references/check-vocabulary.md) — all 14 checks with their signatures
+  and, for each, **the defect it excludes**. `ostler checks [--json]` prints the same thing live.
+- [doctor-codes.md](references/doctor-codes.md) — every finding `ostler doctor` can raise,
+  grouped, with its trigger and its remedy.
+- [defect-kinds.md](references/defect-kinds.md) — the eight defect kinds a documentation review
+  files, each anchored to the rule and the doctor code behind it.
+
 ## Which shape: a UI-profile node, or a plain `feature`?
 
-- **A surface, element, behavior, or concept your story touched → a UI-profile node.** A screen,
-  a component, a click/keyboard interaction, a CLI command, an HTTP/WS endpoint, a domain or code
-  concept, a multi-step flow, or a file format. These are **structured and machine-navigable**,
-  and their conformance is a **hard `ostler doctor` gate**. This is the default for feature work.
-  Read the type table, folder layout, and linter rules in [[ostler]] → "The OKF UI profile."
+- **A surface, element, behavior, or concept your story touched → a UI-profile node**, from the
+  table above. These are **structured and machine-navigable**, and their conformance is a **hard
+  `ostler doctor` gate**. This is the default for feature work.
 - **A prose-only reference → a plain `feature`.** When the thing is best explained as narrative
   (an architecture overview, a subsystem's why/constraints) with no enumerable surface, use the
   `feature` flow further below.
+
+**Judgment does not live in bullets.** A registry can say what a node *is*; it can never say
+whether you should be using it. Two services that do the same job — one legacy, one current,
+each right in a different context — both produce perfectly conformant nodes, and doctor is
+green on both. That selection rule belongs in a [`concept`](references/node-types/concept.md),
+the one type with no normative keys, linked from each competing node with `detail:`.
 
 ## The story-documentation loop (UI profile)
 
@@ -73,7 +108,7 @@ The default: **scaffold → author → fmt → doctor.** Never hand-write the fi
 3. **Author to the spec-complete bar, merging your delta in.** Edit the `.md` directly (the body
    is the sanctioned surface). If the node already exists, **merge** your story's change into it so
    it reads as the complete current spec (rule 1) — don't bolt on a note. Fill the structured
-   bullets to the per-type completeness bar (rule 2; each type's bullets are in [[ostler]]):
+   bullets to the per-type completeness bar (rule 2; each type's bullets are in its reference):
    fields with `type`/`required`/`default`, flags/args item-by-item, `does:` as ordered effects,
    errors/exit codes, and for UI the `dom:`/`props:`/`states:` contract. Describe behavior, not
    coding patterns (rule 3). Since you just wrote the code, set `code:` / `tests:` to the real
@@ -104,16 +139,16 @@ The default: **scaffold → author → fmt → doctor.** Never hand-write the fi
    *seen*, so an assertion can never be weaker than the claim filed under it.
 
    **Never guess a check's arguments — read them.** `absent` takes `subject`, not `locator`;
-   `emitted` takes `event`, not `subject`. One command answers this, and it needs no book:
+   `emitted` takes `event`, not `subject`. Either source answers it:
 
    ```bash
    ostler checks                # every check: signature + the defect it excludes
    ostler checks visible        # one of them
    ```
 
-   Run it *before* writing a `verify:` bullet you have not written before, not after doctor
-   refuses one. The vocabulary and the reason for the split are in [[ostler]] → "The OKF UI
-   profile".
+   and [check-vocabulary.md](references/check-vocabulary.md) has the same table in prose. Read
+   one *before* writing a `verify:` bullet you have not written before, not after doctor
+   refuses it.
 
    **`code:` is grounded part-wise, and a refactor breaks it.** `missing-code-symbol` means the
    symbol is not declared at that path *today* — a re-export does not ground a citation, and a
@@ -124,16 +159,20 @@ The default: **scaffold → author → fmt → doctor.** Never hand-write the fi
    explanation of where the symbol "really lives" that you did not check in the source is a
    guess, and it costs a whole gate lap.
 
-   **One provable claim per normative bullet.** Each value of `does:`, `when:`, `returns:`,
-   `raises:`, `status:`, `error:`, `auth:`, `persistence:`, `emits:`, `consumes:`,
-   `concurrency:`, `idempotency:`, `required:`, `default:` or `semantics:` becomes **one QA
-   obligation**, proved by **one scenario**. Merging your delta into a sentence that already
-   holds three requirements produces a bullet where the scenario proves whichever clause the
-   planner read and the rest ships claimed-as-covered — which is how a story passes QA over
-   behavior nobody tested. Split on the real seams (the success effect, each error case, what
-   is persisted, what is emitted) by repeating the key. `doctor` errors past 700 characters of
-   prose, and the split is yours to make: only you know which clauses are separate
-   requirements.
+   **One provable claim per normative bullet.** Each value of a normative key becomes **one QA
+   obligation**, proved by **one scenario** — which keys those are is per type, in the type's own
+   reference, and doctor errors past 700 characters of prose. Merging your delta into a sentence
+   that already holds three requirements produces a bullet where the scenario proves whichever
+   clause the planner read and the rest ships claimed-as-covered. Split on the real seams by
+   repeating the key; only you know which clauses are separate requirements. The rule, and which
+   `verify:` binds to which claim once you have split, are in
+   [bullet-grammar.md](references/bullet-grammar.md).
+
+   **Every obligation-minting node declares at least one observation.** A node that states
+   claims and no `verify:` is `undeclared-obligation`: a QA plan claiming it can assert anything
+   and still pass. And a declared check earns its place only if it can go **red** on the defect
+   the claim forbids — the bar, and the shapes that fail it, are in
+   [defect-kinds.md](references/defect-kinds.md) under `verify-overclaim`.
 
 4. **Canonicalize, then gate:**
    ```bash
@@ -144,9 +183,11 @@ The default: **scaffold → author → fmt → doctor.** Never hand-write the fi
    section/bullet; you fix a broken link). `code:` / `tests:` are not *link*-checked — they are
    not document links — but they **are** grounded here, against the source tree: a missing file
    is `dangling-code-ref` and an undeclared symbol is `missing-code-symbol`. `verify:` is checked
-   against the check vocabulary. See the full rule table in [[ostler]].
+   against the check vocabulary.
 
-   To narrow that report to your own nodes, `ostler doctor --json` emits
+   Every code, with its trigger and remedy, is in
+   [doctor-codes.md](references/doctor-codes.md). To narrow the report to your own nodes,
+   `ostler doctor --json` emits
    `{org, profile, epics, errors, warnings, findings}`. `findings` is the list — each entry
    carries `path`, `line`, `code`, `severity` and `suggestion` — while `errors` and `warnings`
    are **counts**, not lists. Keep stderr out of the pipe (`--json 2>/dev/null`, never `2>&1`):
@@ -240,8 +281,8 @@ making it conformant over leaving it orphaned from the graph.
 
 ## When to reach for the neighbors
 
-- **The type table, folder layout, bullet vocabulary, and full linter rules** for the UI profile →
-  [[ostler]] ("The OKF UI profile").
+- **The type table, bullet vocabulary, check vocabulary and doctor codes** → the references
+  above, which are the authority. [[ostler]] carries the rest of the CLI.
 - **Modeling a whole app's surface graph** from scratch (from a description) or from existing code
   → [[okf-modeling]]. This skill is the one-story increment; that one is the bulk build.
 - **The wider planning graph** — epics, stories, seeds, `docs/specs/**`

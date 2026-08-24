@@ -1,0 +1,66 @@
+# `field`
+
+A typed attribute: a JSON key, an exported property, a column. Reach for `field` for one named
+slot of a [`format`](format.md) or a [`concept`](concept.md); the callables beside it are
+[`method`](method.md) nodes.
+
+## Identity
+
+Section type under a `## Fields` heading (or a nested `### field: …`). **`literal_id`** — the
+id is the field name as authored, often camelCase or PascalCase, and `ostler fmt` keeps its
+case rather than lowercasing it into a slug.
+
+## Bullet keys
+
+| key | required | what it does |
+| --- | --- | --- |
+| `type` | no | the declared type |
+| `default` | no | **mints an obligation** — the value when unset |
+| `required` | no | **mints an obligation** — whether it may be absent |
+| `semantics` | no | **mints an obligation** — what the value means |
+| `code` | no | link, **owns** its file |
+| `verify` | no | a check |
+| `fixture` | no | a fixture |
+
+`type:` alone is not a claim — it is a restatement of the code. The obligations are the three
+below it: what happens when the field is absent, whether absence is legal, and what the value
+means to a reader who has both.
+
+Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type).
+`persistence:` is the common one here.
+
+## Relationships
+
+Belongs to the format or concept whose file it sits in. `detail:` points at a
+[`concept`](concept.md) — it is not in this type's declared list, but relation keys work on
+every type.
+
+## Minimal example
+
+```bash
+timeout 30 ostler scaffold field expiresAt --in docs/features/acme/link-export.md
+```
+
+```markdown
+### expiresAt
+
+- type: string, RFC 3339 timestamp
+- default: absent — a link with no expiry
+- required: false
+- semantics: after this instant the link stops resolving and is omitted from the export
+- code: internal/export/link.go::LinkRecord
+- verify: json_path(path="$.expiresAt", absent=true)
+- verify: absent(subject="the expired link in a later export")
+```
+
+## Doctor codes it can trip
+
+`undeclared-obligation`, `weak-check`, `unparsed-check`, `compound-normative-bullet`,
+`overlong-normative-bullet`, `dangling-code-ref`, `missing-code-symbol`. See
+[../doctor-codes.md](../doctor-codes.md).
+
+## When bullets are not enough
+
+Bullets state what this slot holds. If a reader could read the wrong field — a deprecated one
+and its replacement, each right in its own context — and still satisfy every claim on it, that
+belongs in a [`concept`](concept.md), pointed at with `detail:`.

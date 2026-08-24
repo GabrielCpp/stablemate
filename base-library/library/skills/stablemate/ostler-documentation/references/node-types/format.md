@@ -1,0 +1,76 @@
+# `format`
+
+A file or wire format the system reads or writes: a config schema, an export shape, an
+on-disk artifact. Reach for `format` when the subject is *the shape of data at rest*, and its
+keys are [`field`](field.md) nodes under `## Fields`.
+
+Not a format: an idea, a rule, or a rationale — that is a [`concept`](concept.md). Not a
+format: an HTTP payload defined by a route, which belongs on the [`endpoint`](endpoint.md).
+
+## Identity
+
+File type with **no context folder** (`context=""`), directly under
+`docs/features/<service>/`, `type: format` in frontmatter.
+
+## Bullet keys
+
+| key | required | what it does |
+| --- | --- | --- |
+| `file` | no | **owns** the path — the file this format describes |
+| `config` | no | **owns** the path — a configuration file in this format |
+| `code` | no | link, **owns** its file |
+
+`config:` does one thing more than owning: a declared config path is a production unit even
+where `qa context`'s non-production filter would drop it as stack config, so a change to it
+reaches this node instead of vanishing. It is not a grounding key — a config file may be
+gitignored or env-local — so doctor does not require it to exist.
+
+Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type).
+
+## Required sections
+
+None. `## Fields` and `## Methods` are the conventional headings.
+
+## Relationships
+
+Formats are pointed at with `detail:` from the endpoints and commands that produce or consume
+them. `extends:` is not declared here — a format that refines another is documented as its own
+node with its own fields.
+
+## Minimal example
+
+```bash
+timeout 30 ostler scaffold format link-export --service acme
+```
+
+```markdown
+---
+type: format
+---
+
+# Link Export
+
+- file: exports/links.jsonl
+- code: internal/export/link.go::LinkRecord
+
+## Fields
+
+### slug
+
+- type: string
+- required: true
+- semantics: the short-link key, unique per export
+- code: internal/export/link.go::LinkRecord
+- verify: json_path(path="$.slug", matches="^[a-z0-9]{6}$")
+```
+
+## Doctor codes it can trip
+
+`dangling-code-ref`, `missing-code-symbol`, plus whatever its `field` children trip. See
+[../doctor-codes.md](../doctor-codes.md).
+
+## When bullets are not enough
+
+Bullets state the shape. If a reader could pick the wrong format — a v1 export and a v2, each
+right in its own context — and still satisfy every claim on it, that belongs in a
+[`concept`](concept.md), pointed at with `detail:`.
