@@ -55,22 +55,21 @@ Before writing any code:
 
 1. Read the story and your **service-specific plan** (from spec dir: `{{ workhorse_var('plan_file') }}`; if multi-service, also skim the root `plan.md` for cross-service contracts). **The story's Acceptance Criteria are the bar — your job is to make ALL of them true** for this service's scope, as a person using the running app would observe them, at parity with the named source of truth. The story is deliberately lean (Context + Acceptance Criteria); it does not list files or steps. **Cover the whole goal**: if satisfying a criterion requires fixing a root cause that spans the surface (e.g. state keyed wrong across every field, labels untranslated everywhere, a missing nav/section), that whole fix is in scope — do not implement a narrow symptom-patch that leaves the criterion only partly met. This may take **several passes**: QA will exercise each criterion against the source of truth and fail anything not actually met, looping you back here. The story's `## Context` links the surface documentation it is grounded in (OKF node ids — a node id is a repo-relative path, optionally `path#anchor`); read those for grounding, but the Acceptance Criteria — not the docs — define done.
    - **Genuinely separate scope becomes a follow-up, not a narrowing.** Covering the goal means every fix *this* surface needs to meet its criteria. A *different* surface or an unrelated defect you pass through is filed to the backlog (Step 5.3) — never used as an excuse to leave this story's own criteria unmet.
-2. Load the coding-standard instruction files the planner resolved for **this** story. The workflow decoded the plan into the list below — read every file in it before writing code:
+2. Load this story's coding standards — the workflow derived the list below from the layers the plan declares. **If you planned this story in this same conversation, that standard is already in your context — re-read only the paths below you did not already load.** On a fresh session (a resumed story, a fix lane) read every one of them before writing code:
 {% if impl_instruction_paths %}
 {%- for path in impl_instruction_paths %}
    - `{{ path }}`
 {%- endfor %}
 {%- else %}
-   - _(The resolved list is empty.)_ Fall back to the plan's **Coding Standards Alignment** (Summary) and **Required Skill Files Read** sections and load every instruction file they name.
+   - _(The resolved list is empty.)_ Fall back to the standards the plan's **Approach** and **Changes** sections cite by name, and load each one.
 {%- endif %}
    - Docs-only work also covers `AGENTS.md` and `docs/CODEX.md`.
 3. If the current assistant environment supports skills, use the matching local skills as well — in particular each touched layer's testing skill before writing or updating its tests.
-4. **Find each layer's "Verification Commands" section** in its instructions where present — these are the canonical test, codegen, lint, and build commands. The plan's section 6 will reference them.
-5. **For multi-layer plans**: read the plan-overview.md first. Note the **implementation order** and **integration contracts**. Implement one layer at a time in the specified order.
-6. Track the generated skill or instruction files you read. The implementation notes or story status update must include `Required Skill Files Read`.
-7. Check that referenced files exist and dependencies are available.
-8. **Search before you build.** List the concrete units the plan says it will create — endpoints, service methods, models, components, screens, validators, formatters, any "helper" or "util" it names — and search the affected repos for each one before writing it. Match on **behaviour, not name**: the existing version is often called something else, and shared utility trees are where reinvention concentrates. Reuse or extend what you find; where you deliberately do not, say why in the implementation notes. A capability rebuilt beside the one that already does it is the single most common defect this stage produces, and it is cheapest to catch here — you are about to read this code anyway.
-9. If anything is ambiguous, ask before proceeding.
+4. **Find each layer's "Verification Commands" section** in its instructions where present — these are the canonical test, codegen, lint, and build commands. The plan's **Verification Commands** section references them.
+5. **For multi-layer plans**: read the root `plan.md` first. Note the **implementation order** and **integration contracts**. Implement one layer at a time in the specified order.
+6. Check that referenced files exist and dependencies are available.
+7. **Search before you build.** List the concrete units the plan says it will create — endpoints, service methods, models, components, screens, validators, formatters, any "helper" or "util" it names — and search the affected repos for each one before writing it. Match on **behaviour, not name**: the existing version is often called something else, and shared utility trees are where reinvention concentrates. Reuse or extend what you find; where you deliberately do not, say why in the implementation notes. A capability rebuilt beside the one that already does it is the single most common defect this stage produces, and it is cheapest to catch here — you are about to read this code anyway.
+8. If anything is ambiguous, ask before proceeding.
 
 ---
 
@@ -164,7 +163,6 @@ For **each task**:
 ### 3f. Mark complete
 
 - Confirm this step matches the plan.
-- Update implementation notes or the story status with `Required Skill Files Read` if it is missing or changed.
 - Mark the task `completed`.
 
 ---

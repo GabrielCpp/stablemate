@@ -81,10 +81,6 @@ Append or update this section in:
 ```markdown
 ## Resolution
 
-## Required Skill Files Read
-
-- [list generated skill or instruction files read while applying review fixes]
-
 - **Finding 1**: Resolved | Not resolved | Deferred
   - Notes:
   - Verification:

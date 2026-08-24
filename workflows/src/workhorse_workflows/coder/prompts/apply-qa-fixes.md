@@ -158,10 +158,6 @@ Append or update this section in:
 ```markdown
 ## QA Fix Resolution
 
-## Required Skill Files Read
-
-- [list generated skill or instruction files read while applying QA fixes]
-
 - **Failure 1**: Resolved | Not resolved | Blocked
   - Notes:
   - Verification:
