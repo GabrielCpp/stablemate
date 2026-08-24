@@ -169,9 +169,11 @@ navigable graph of typed nodes (`screen`/`cli`/`server`, `component`/`command`/`
 **[references/okf-ui-profile.md](references/okf-ui-profile.md)** carries that branch whole:
 the role/context type table, file-vs-section identity and how sections nest, where nodes live
 per service, the link rules (plain markdown paths, never `[[wikilinks]]`, `parent:`/`extends:`
-relations, no orphans), the completeness bar, the scaffold→author→fmt→doctor loop, and every
-`doctor` error code with its remedy. Read it when authoring or linting anything under
-`docs/features/`; the planning graph above needs none of it.
+relations, no orphans), the completeness bar and the scaffold→author→fmt→doctor loop. Read it
+when authoring or linting anything under `docs/features/`; the planning graph above needs none
+of it. The **format** the linter enforces — a reference per node type, the bullet grammar, the
+check vocabulary and every `doctor` code — is [[ostler-documentation]]'s `references/`, and it
+is the authority wherever the two disagree.
 
 ## When to reach for it
 
@@ -188,5 +190,5 @@ relations, no orphans), the completeness bar, the scaffold→author→fmt→doct
   `epic.md`'s generated sections.
 - Any node that documents a UI/CLI/server surface or a domain/code concept → the OKF UI profile
   (`scaffold`/`fmt`/`doctor`) above; for the create-or-refresh loop after a story, load
-  [[documentation]]; to model a whole app's surface graph from scratch or from existing code, load
+  [[ostler-documentation]]; to model a whole app's surface graph from scratch or from existing code, load
   [[okf-modeling]].

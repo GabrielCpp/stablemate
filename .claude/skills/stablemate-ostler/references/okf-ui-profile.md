@@ -10,9 +10,10 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-ostler/
 
 The typed-node branch of [`ostler`](../SKILL.md): the profile of OKF that describes UIs, CLIs
 and HTTP/WS servers as a navigable graph. Reached when you are authoring or linting nodes
-under `docs/features/` — the type table, where nodes live, the completeness bar, the
-scaffold→fmt→doctor loop, and every `doctor` error with its remedy. Planning docs (epics,
-stories, seeds) do not come here.
+under `docs/features/` — the type table, where nodes live, the completeness bar and the
+scaffold→fmt→doctor loop. The format itself — per-type keys, the check vocabulary, every
+`doctor` code — is [[ostler-documentation]]'s `references/`. Planning docs (epics, stories,
+seeds) do not come here.
 
 A *profile* of OKF for describing UIs, CLIs, HTTP/WS servers, and the concepts they serve as a
 navigable graph (full spec: `docs/okf-ui-profile.md`). Ostler recognizes these UI types as
@@ -29,6 +30,11 @@ screen's components, a concept's methods, a format's fields, or follow which int
 | **journey** (ordered path) | | | | `flow` |
 | **noun** (domain *or* code) | | | | `concept` |
 | **artifact / data shape** | | | | `format` |
+| **operations** | | | | `runbook`, `environment` |
+
+One reference per type — its keys, required sections, relationships, example and doctor codes —
+is in [[ostler-documentation]] → `references/node-types/<type>.md`, and those are the authority
+when this file and they disagree.
 
 **File vs section (author's choice).** A node is either its **own file** (identity = path; every
 top-level `concept` gets one so others can link it) *or* a **section** inside a larger doc,
@@ -62,18 +68,10 @@ implementation of an abstraction via a plain `refs:` link (see the profile §7.1
 context it applies* (fresh start vs resume, which mode, its default), with inline links to the
 `concept`/`format`/command it touches. `- flags: --a, --b, --c` with no explanation is a smell.
 
-**One provable claim per normative bullet.** A normative bullet — `does:`, `when:`, `returns:`,
-`raises:`, `status:`, `errors:`, `auth:`, a command's `errors:`/`exits:`, `persistence:`, `emits:`,
-`consumes:`, `concurrency:`, `idempotency:`, `required:`, `default:`, `semantics:`, a flow's
-`start:`/`end:` — is minted as **one obligation** and proved by **one QA scenario**. Which keys
-are normative on which type is a flag on the registry's bullet declaration
-(`registry.BulletKey.normative`), so a graded key is by construction one `fmt` orders and
-`doctor` recognizes. So a bullet that carries a paragraph is several
-requirements wearing one id, and the scenario covering it proves whichever clause the planner
-happened to read; the rest is documented, claimed as covered, and never tested. Split on the seams
-that are really separate: the success effect, each error case, what is persisted, what is emitted.
-Repeat the key — a repeated `- does:` is a list of obligations, which is exactly what you want.
-`doctor` errors past 700 characters of prose.
+**One provable claim per normative bullet**, and which keys are normative is a flag on the
+registry's bullet declaration rather than a list to memorise. The rule, the 700-character
+ceiling, and how to split on the real seams are in [[ostler-documentation]] →
+`references/bullet-grammar.md`; the per-type key tables are its `references/node-types/`.
 
 **No orphans — everything reachable from the surface root.** Every node links outward to what it
 relates to, and the `screen`/`cli`/`server` index links its key concepts/formats in its *own*
@@ -89,14 +87,14 @@ regenerate behavior-equivalent code** from the docs plus the team's stack skills
 
 - **Spec-complete per node** — fields with `type`/`required`/`default`, flags/args item-by-item,
   `does:` as ordered effects, algorithms as ordered steps, errors/exit/status codes, and for UI the
-  `dom:`/`props:`/`states:`/`a11y:` contract. A lone `code:` stub is below bar.
+  `role:`/`name:`/`placement:`/`keyboard:`/`states:` contract. A lone `code:` stub is below bar.
 - **Spec, not implementation** — the node says *what* the code does; the *how* (patterns, idioms,
   libraries, structure) lives in the stack skills, never the book. `code:` anchors the impl.
 - **The book, not a changelog** — a story is a delta; its doc step *merges* into these nodes so
   they read as the complete current reality (never "this story added X").
 
 Completeness is a **review** standard (the doc gates + the auditor), not a `doctor` gate — a linter
-can't judge "enough to regenerate." Reach for [[documentation]] (one-story merge) or [[okf-modeling]]
+can't judge "enough to regenerate." Reach for [[ostler-documentation]] (one-story merge) or [[okf-modeling]]
 (bulk build) to apply it.
 
 ### Scaffold → author → fmt → doctor (the authoring loop)
@@ -118,122 +116,34 @@ ostler doctor                          # gate: non-zero exit on any error
 `ostler fmt` is the mechanical shape-fixer (the `ruff format` to doctor's `ruff check`); it never
 touches prose. Scaffold output is already canonical.
 
-### The mandatory linter (doctor errors — all with a deterministic remedy)
+### The mandatory linter
 
 Unlike the draft profile's original "warns, never blocks" stance, UI conformance is a **hard
-`doctor` gate**: every rule is `error`-severity, carries a `path:line` location, and has a
-mechanical fix, so a workflow node can gate on `ostler doctor` and always converge. The
-exceptions are `overlong-normative-bullet`, `compound-normative-bullet`,
-`undeclared-obligation`, `unknown-bullet`, `unminted-claim`, `weak-check` and
-`unstated-precondition` (warns),
-whose remedy is a judgement about the *source*: only the code can say which clauses are separate
-requirements, and cutting the bullet on punctuation invents obligations nobody can prove.
+`doctor` gate**: every rule carries a `path:line` location and a mechanical fix, so a workflow
+node can gate on `ostler doctor` and always converge. The warns are the rules whose remedy is a
+judgement about the *source* — only the code can say which clauses are separate requirements,
+and cutting a bullet on punctuation invents obligations nobody can prove.
 
-| Code | Means | Remedy |
-|---|---|---|
-| `unknown-type` | `type:` isn't a recognized OKF type | fix the frontmatter `type:` |
-| `bad-heading-type` | `## interactions` (wrong casing of a known heading) | `ostler fmt` |
-| `missing-required-section` | a surface lacks a required `## Heading` (e.g. `cli` without `## Commands`) | `ostler scaffold` / add the heading |
-| `missing-required-bullet` | a node lacks a required **key** (e.g. `interaction` without `on:`/`does:`) | `ostler scaffold` stubs it (key presence, not value) |
-| `overlong-normative-bullet` | one obligation-minting bullet runs past 700 characters of prose | split it into one bullet per provable claim |
-| `compound-normative-bullet` (warn) | one bullet states several observations — enumerated status codes, several error names, semicolon-joined clauses | split it: one bullet is one obligation, proved by one scenario |
-| `unknown-bullet` (warn) | a profile key on a type that does not declare it — `verify:` on a concept, `does:` on a component, `exits:` on a method — so here it is inert: nothing orders, grades or grounds it, and no `verify:` binds to it. A key no type declares (`meaning:`) is the author's own and is not reported | move the claim under a key the type mints from, the observation onto the node that states the claim, or the bullet into prose |
-| `unminted-claim` (warn) | a node that mints no obligation at all, yet one of its bullets reads like a claim — a status code, an error name, a lifecycle verb, a `must`/`returns`/`rejects` — under a key the type does not declare (`errors:` on a concept, `outcome:` in an untyped section, an author's own `rules:`). Nothing will ever ask a plan to prove it. Reported once per node, at the first such bullet; a node that mints even one obligation is never asked | move the claim under a normative key of that type (the message lists them), or onto the node that states it, or rewrite it as prose if it was description all along |
-| `unparsed-check` | a `verify:` value is not a call from the check vocabulary (a test id, an unknown name, a bad argument) | rewrite it as `name(arg=…)`; a test citation belongs in `tests:` |
-| `undeclared-obligation` (warn) | the node mints obligations and declares no `verify:` at all — nothing says what observing them looks like | declare a check per observation; the node is the only place that knows what the behaviour promised |
-| `weak-check` (warn) | every check the node declares passes on the defect it is meant to catch — a field asserted by presence with no value, a `2xx` naming neither `path:` nor `title:` | name the value, the route or the title the claim turns on |
-| `unstated-precondition` (warn) | a bullet says the node creates or removes something, and the checks read only the state afterwards — the same state a no-op leaves | declare the change as a change: `created(subject=…)` / `removed(subject=…)` |
-| `qa-fixture-bullet` | a `fixture:` value is not `name [arg ...] [— prose]` — a capitalised name, unbalanced quoting, nothing at all | rewrite the head as the key `agents.yml` declares it under |
-| `unknown-book-fixture` | a `fixture:` names an arrangement the repo never declared under `qa: {fixtures:}` | declare it, or name the one that already reaches that state |
-| `unresolved-relation` | a `parent:`/`extends:`/`detail:`/`on:` link doesn't resolve | fix the link target |
-| `dangling-link` | a plain link's target **file** is missing | fix the path or create the target |
-| `missing-anchor` | file exists but `#anchor` heading isn't there | fix the anchor |
+Every code, its severity, its trigger and its remedy are in [[ostler-documentation]] →
+`references/doctor-codes.md`. Three facts about the linter are ostler's rather than the
+format's, and live here:
 
-**Link validation is document-wide.** `dangling-link` / `missing-anchor` are checked for **every
-link in every doc file**, not only links inside an indexed node — a broken link is broken whether or
-not the graph happens to cover it. Links **inside code** (fenced blocks and `` `inline` `` spans) are
-skipped, so `arr[i](x)` in a snippet is never mistaken for a link.
+- **Link validation is document-wide.** `dangling-link` / `missing-anchor` are checked for
+  **every link in every doc file**, not only links inside an indexed node — a broken link is
+  broken whether or not the graph happens to cover it. Links **inside code** (fenced blocks and
+  `` `inline` `` spans) are skipped, so `arr[i](x)` in a snippet is never mistaken for a link.
+- **Convergence contract:** `missing-required-bullet` checks that the **key** is present, not
+  its value — so `scaffold`'s stubs clear it.
+- **`code:` / `tests:` are code refs** (`path::symbol`) grounded at a *later* QA gate, never at
+  author time; doctor deliberately does not flag them as dangling links.
 
-**Convergence contract:** `missing-required-bullet` checks that the **key** is present, not its
-value — so `scaffold`'s stubs clear it. **`code:` / `tests:` bullets are code refs
-(`path::symbol`), grounded at a *later* QA gate, never at author time** — doctor deliberately does
-*not* flag them as dangling links.
-
-**Owning keys.** `qa context` maps a story's changed files onto the book through the bullets whose
-value names a file the node is documented against: `code:` on every type, plus `openapi:` on a
-`server`/`endpoint`, `file:` on a `format`, and `config:` on an `environment` or a `format`
-(`registry.owning_keys`, the `BulletKey.owns` flag). A changed file no owning bullet claims is an
-`unmapped-change` error in the packet; a file a typed bullet names needs no second `code:`
-citation, and citing one path under two keys is one owner, not two. `tests:` never owns — a test
-is evidence, not the node's subject. `config:` does one thing more: the packet drops stack
-configuration (`Pulumi.<stack>.yaml`, build manifests) from the change surface by default, and a
-path declared under `config:` is a production unit regardless — one bullet per file
-(`- config: pulumi/Pulumi.dev.yaml`), beside the program's `code:`. It is not a grounding key; a
-config file may be gitignored or env-local.
-
-**`verify:` is not one of them.** It declares the *observation* that fulfils the node's
-obligations, as a named check with typed arguments from ostler's vocabulary — `http_status`,
-`json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `created`, `removed`, `visible`,
-`persists`, `emitted`, `omits`, `conflict_on_stale`:
-
-```markdown
-- verify: http_status(409, title="Manifest Conflict")
-- verify: unchanged(subject="manifest", except_fields=["pages.getting-started.fr.slug"])
-- tests: `api/publish_test.go::TestPublish_Conflict`
-```
-
-Doctor grounds it against that vocabulary (`unparsed-check`), `ostler qa validate` refuses a QA
-scenario that does not invoke the declared call, and the harness implements each name. A test id
-names the code that ran, not the thing observed — which is why it moved to `tests:`, where its one
-reader is regression failure attribution. On a runbook `step:`, `verify:` keeps its own older
-meaning (how to tell the step ran) and is not a check.
-
-**Declaring nothing is the failure `unparsed-check` cannot see.** `verify:` is required on no type,
-so a node whose `does:`/`raises:`/`states:` bullets carry none is green while every obligation it
-mints reaches QA with nothing to bind: `qa validate` has no declaration to enforce, and the evidence
-map reports no deficit. `undeclared-obligation` is that gap, reported per **node** rather than per
-bullet: the pairing *is* written down — each `verify:` observes the nearest normative bullet above
-it, and one written before any of them belongs to the node's contract — but the per-claim version of
-this gap is `qa validate`'s `claimed-but-unasserted`, raised against the plan that has to prove it.
-So what this asks is whether the node declares any observation at all. A node that
-declared and got the call wrong gets `unparsed-check` and not this, for the same reason an overlong
-bullet is not also reported as compound: one defect, one finding, one thing to waive.
-
-**Declaring something is not declaring an observation.** A check that is green whatever the code
-does leaves the obligation exactly as unprovable as no check at all, and `weak-check` /
-`unstated-precondition` are the two shapes of that a linter can see: a value asserted by presence
-alone, a success status naming neither route nor title, a creation or a delete read only after the
-action. The bar itself — name the state of the world in which the check goes red, assert the
-before-state rather than assuming it, discriminate the claim from its nearest plausible defect —
-is the [[falsifiable-verification]] skill.
-
-**`fixture:` is the third leg of the same triple.** The normative bullets say what the node
-claims, `verify:` says what observing the claim looks like, and `fixture:` says how to reach the
-state the claim is true in. It goes in the book for the same reason the check does: which
-arrangement a claim is documented in is a fact about the claim, not about whichever plan happens
-to check it this week — so a plan compiled from the book alone opens with the arrangement instead
-of a marker an author fills in by reading the implementation.
-
-```markdown
-- fixture: seeded_accounts — two holders and one adjuster exist in the auth emulator
-- fixture: seeded-ledger 3 draft — three draft policies on file
-```
-
-The grammar is `name [arg ...] [— what state it leaves behind]`, not a call: `qa.fixture` takes a
-name the repo declared under `qa: {fixtures:}` plus positional strings appended to the declared
-argv, and spelling it as Python would invite a book to write arguments the harness cannot bind.
-The head is what the harness runs; the tail is what a person reads, and it becomes the scenario's
-precondition. Doctor grounds the name (`unknown-book-fixture`) and the grammar
-(`qa-fixture-bullet`).
-
-**Attribution is deliberately not the check's.** A `verify:` written above every normative bullet
-observes the node's own contract and nothing else — an observation is specific by nature, and
-crediting it to claims it was not written for is how a weak check comes to cover a sharp one. An
-arrangement written there is the state the node *as a whole* is documented in, so it fans out to
-every obligation the node mints; one written under a claim adds a second state to reach rather
-than replacing the ambient one. Give a node no `fixture:` when it needs none — an endpoint that
-reads no state and asks for no identity is documented in the empty arrangement, and naming one
-would describe a state nothing needs.
+**The bullet grammar itself is written down elsewhere.** Owning keys and what `qa context`
+does with them, the check vocabulary behind `verify:`, `fixture:` as the third leg, and the
+document-order rule that says which claim a check or an arrangement attaches to are in
+[[ostler-documentation]] → `references/bullet-grammar.md` and `references/check-vocabulary.md`.
+The bar a check has to clear to be an observation at all — name the state of the world in which
+it goes red, assert the before-state rather than assuming it, discriminate the claim from its
+nearest plausible defect — is the [[falsifiable-verification]] skill.
 
 ### Navigating the UI graph
 

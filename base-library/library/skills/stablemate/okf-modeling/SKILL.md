@@ -9,8 +9,9 @@ tags: [standards, docs]
 Load this skill to model an **entire service's** surfaces (screens/CLIs/servers), their elements,
 behaviors, concepts, flows, and formats as a conformant OKF UI-profile subgraph under
 `docs/features/<service>/`. This is the *bulk build* skill. For a single story's incremental doc
-update, load [[documentation]] instead; for the type vocabulary, folder layout, and linter rules,
-[[ostler]] is the reference — read its "The OKF UI profile" section first, this skill assumes it.
+update, load [[ostler-documentation]] instead; for the type vocabulary
+and the linter, [[ostler-documentation]]'s `references/` is the written model — read
+`references/bullet-grammar.md` and the types you are about to build first, this skill assumes them.
 
 You are writing **the book**: OKF is the full, always-current *spec* of the system, complete enough
 that an agent could **regenerate behavior-equivalent code** from it plus the team's stack skills.
@@ -45,15 +46,14 @@ Three rules govern the content (profile §2, §8):
   for a field — one per attribute, never crammed into one line. Then
   `ostler graph --path 'concept:X / method:foo'` walks straight to it. Reserve prose for the summary,
   not the spec.
-- **One provable claim per normative bullet.** A bullet QA mints an obligation from — `does:`,
-  `when:`, `returns:`, `raises:`, `status:`, `errors:`, `auth:`, a command's `exits:`,
-  `persistence:`, `emits:`, `consumes:`, `concurrency:`, `idempotency:`, `required:`,
-  `default:`, `semantics:` — is proved by exactly one scenario. Only on the types that declare
-  it: `doctor` warns `unknown-bullet` for a profile key on a type where it is inert (a `does:`
-  on a component, a `verify:` on a concept). A bullet holding a paragraph is several requirements sharing one id,
-  and the scenario proves whichever clause the planner read; the rest ships claimed-as-covered
-  and untested. Split on real seams — the success effect, each error case, what is persisted,
-  what is emitted — by repeating the key. `doctor` errors past 700 characters of prose.
+- **One provable claim per normative bullet.** A bullet QA mints an obligation from is proved by
+  exactly one scenario, so a bullet holding a paragraph is several requirements sharing one id: the
+  scenario proves whichever clause the planner read, and the rest ships claimed-as-covered and
+  untested. Split on real seams — the success effect, each error case, what is persisted, what is
+  emitted — by repeating the key. `doctor` errors past 700 characters of prose. Which keys are
+  normative is per type and enumerable rather than a list to memorise: see [[ostler-documentation]]
+  → `references/node-types/<type>.md`, and `references/bullet-grammar.md` for the shared ones. A
+  profile key on a type that does not declare it is inert, and `doctor` warns `unknown-bullet`.
 - **Spec, not implementation** — document *what* the code does; the *how* (patterns, idioms,
   libraries, structure) is owned by the stack skills, never the book. `code:` anchors the impl; the
   prose never prescribes a technique. It is also how a diff finds its way back to the node: `qa
@@ -61,7 +61,7 @@ Three rules govern the content (profile §2, §8):
   / `file:` where the type has one), and a changed production file no node owns is an
   `unmapped-change` error in the QA packet.
 - **The book, not a changelog** — model the current reality in full; when a later story changes it,
-  its delta is merged into these nodes (that is [[documentation]]'s job).
+  its delta is merged into these nodes (that is [[ostler-documentation]]'s job).
 
 There are **two playbooks** that converge on the *same output* — a spec-complete, referentially-
 complete subgraph that `ostler doctor` passes — and share the *same mechanics* (the scaffold →
@@ -135,9 +135,7 @@ Two blind spots to hunt deliberately:
 
 Every normative bullet mints a QA obligation, and `verify:` is where the node says **what would be
 observed** if that obligation holds. It is a call from ostler's check vocabulary with typed
-arguments — `http_status`, `json_path`, `unchanged`, `keys_unchanged`, `count`, `absent`, `created`,
-`removed`, `visible`, `persists`, `emitted`, `omits`, `conflict_on_stale` — never a test id, never
-prose:
+arguments, never a test id and never prose:
 
 ```markdown
 - does: on conflict the manifest is left byte-identical
@@ -146,34 +144,27 @@ prose:
 - tests: `api/publish_test.go::TestPublish_Conflict`
 ```
 
-**Write each check under the claim it observes.** Document order is the binding: a `verify:` is
-attributed to the nearest normative bullet above it, and one written before any of them belongs to
-the node's own contract. A check placed above its claim is credited to whatever precedes it, so the
-observation of a refusal ends up filed as the observation of the success case.
+The fourteen checks with their signatures and the defect each excludes are in
+[[ostler-documentation]] → `references/check-vocabulary.md`; `ostler checks` prints the same live.
+Document order is the binding — which claim a check attaches to, and what a fixture above every
+claim fans out to, are in that skill's `references/bullet-grammar.md`.
 
 `doctor` grounds each call against the vocabulary (`unparsed-check`, an **error**), `ostler qa
 validate` refuses a QA plan that claims the obligation without invoking the declared call with the
 declared arguments, and the harness implements each name. That chain is the point: **an assertion
 cannot come out weaker than the declaration, because the assertion *is* the declaration.** Every
-argument you leave off is a defect the QA of every future story is licensed to miss — a mask over a
-field, a comparison that never inventories keys — and nobody downstream can put it back, because
-only this node knows what the behaviour promised. A test id names the code that ran rather than the
-thing observed, which is why it lives in `tests:`, whose one reader is regression attribution.
+argument you leave off is a defect the QA of every future story is licensed to miss, and nobody
+downstream can put it back, because only this node knows what the behaviour promised.
 
-A declared check is not automatically an observation: presence without a value, or a `2xx` naming
-neither route nor title, is green the day the defect ships, and a creation read only afterwards
-cannot be told from a subject that was already there. `doctor` reports those as `weak-check` and
-`unstated-precondition`. [[falsifiable-verification]] is the bar and the repair — load it whenever
-you are writing checks in bulk rather than reading one.
+A declared check is not automatically an observation — `weak-check` and `unstated-precondition` are
+the two shapes a linter can see, and [[falsifiable-verification]] is the bar and the repair. Load it
+whenever you are writing checks in bulk rather than reading one.
 
 **A node whose normative bullets declare no observation is unfinished**, and `doctor` says so:
 `undeclared-obligation`. It is a warning rather than an error only because books written before the
-rule are full of them — treat it as queued work, not as noise. It follows that when you merge into
-a node that already exists and its `does:`/`raises:`/`states:` bullets carry no `verify:`, declaring
-them is part of the merge, not optional polish. Its mirror image is `unminted-claim`: a node that
-mints nothing but states a status code, an error name or a `must` under a key its type does not
-declare — a requirement no plan will ever be asked to prove; move it under a normative key or
-into prose. The rule table and the full vocabulary are in [[ostler]] → "The OKF UI profile".
+rule are full of them — treat it as queued work, not as noise. In a bulk build that matters twice
+over: when you merge into a node that already exists and its `does:`/`raises:`/`states:` bullets
+carry no `verify:`, declaring them is part of the merge, not optional polish.
 
 ---
 
@@ -245,4 +236,4 @@ link. Loop until green.
 ## Neighbors
 
 - **Type vocabulary, per-type bullets, folder layout, verbs, full linter rules** → [[ostler]].
-- **One-story incremental update** (not a bulk build) → [[documentation]].
+- **One-story incremental update** (not a bulk build) → [[ostler-documentation]].

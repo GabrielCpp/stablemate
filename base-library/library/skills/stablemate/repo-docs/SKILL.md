@@ -12,7 +12,7 @@ Load this skill when you are writing or maintaining the repo's **prose entry sur
 
 This skill does **not** cover `docs/features/**`. That is the OKF knowledge graph — ostler
 owns its structure and ids, and it is never hand-written. For a story's docs load
-[[documentation]]; to model a whole surface graph load [[okf-modeling]]. If you are about to
+[[ostler-documentation]]; to model a whole surface graph load [[okf-modeling]]. If you are about to
 create a file under `docs/features/`, you are in the wrong skill.
 
 ## The four surfaces, and who pays for them
@@ -25,7 +25,7 @@ The whole discipline follows from *when* each file is read:
 | `CLAUDE.md` (nested) | the agent | every turn *touching that subtree* | free elsewhere — this is the budget lever |
 | `README.md` | a human deciding whether/how to use the package | on demand | also the PyPI landing page when published |
 | `<package>/docs/*.md` | whoever follows a link | on demand | unbounded; where long-form belongs |
-| `docs/features/**` | ostler + agents via `ostler` queries | queried | **not yours** — see [[documentation]] |
+| `docs/features/**` | ostler + agents via `ostler` queries | queried | **not yours** — see [[ostler-documentation]] |
 
 `CLAUDE.md` is not documentation. It is a standing instruction loaded into every request,
 so every line it carries is a line the agent re-reads forever. Treat it as a budget.
@@ -67,7 +67,7 @@ trimmed on the next pass.
 | relevant only while doing a **task** (writing docs, reviewing, testing, releasing) | a skill — loaded on demand |
 | an explanation of how or why the system works | `README.md` |
 | long-form reference, design rationale, or an ops procedure | `<package>/docs/<TOPIC>.md` |
-| the behavioral spec of a surface, command, or endpoint | `docs/features/**` via [[documentation]] |
+| the behavioral spec of a surface, command, or endpoint | `docs/features/**` via [[ostler-documentation]] |
 
 The nested `CLAUDE.md` is a **context-budget tool**, not filing. Pushing a rule down one
 directory makes it cost nothing on every turn that never goes there. When a root section
@@ -197,7 +197,7 @@ grep -nE '^(hooks|test|check-public):' Makefile
 wc -c CLAUDE.md $(grep -oP '(?<=^@)\S+' CLAUDE.md)
 
 # 3. Nothing under docs/features/ was hand-written by this change.
-git diff --name-only | grep '^docs/features/' && echo "use ostler — see [[documentation]]"
+git diff --name-only | grep '^docs/features/' && echo "use ostler — see [[ostler-documentation]]"
 ```
 
 Then read the file top to bottom once and ask the admission question of every line. Anything
@@ -205,7 +205,7 @@ that fails it goes to its place in the placement table, or goes away.
 
 ## When to reach for the neighbors
 
-- **A story's behavioral docs, or anything under `docs/features/**`** → [[documentation]]
+- **A story's behavioral docs, or anything under `docs/features/**`** → [[ostler-documentation]]
   (per-story) or [[okf-modeling]] (whole-surface). ostler owns structure and ids there.
 - **The `docs/` knowledge-graph CLI, epics, stories, coverage** → [[ostler]].
 - **How the material is written, once you know where it goes** — the context pointer and
