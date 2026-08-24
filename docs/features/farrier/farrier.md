@@ -221,6 +221,43 @@ through farrier for every shared setting. The nested `[power.<tier>.<backend>]` 
 [`[profiles.<name>]`](../workhorse/concepts/config.md#profiles) tables have no writer subcommand
 — they are edited by hand, and read back with `show --profile`.
 
+### library
+- usage: `farrier library list|show|check [--library DIR] [--layer base|overlay]`
+- args:
+  - `list` — print the catalog of what the resolved layer stack provides
+  - `show` — print one item's library source, as written
+  - `check` — report front-matter problems in the library's own sources
+- flags:
+  - `--library <dir>` — same resolution override as `install`
+  - `--<kind>s` (`--skills`, `--prompts`, `--policies`, `--packs`, `--scaffolds`, `--roots`) —
+    `list` only; repeatable, and reporting every kind is the default
+  - `--<kind>` (`--skill NAME`, `--prompt NAME`, …) — `show` only; exactly one is required
+  - `--layer base|overlay` — narrow to one layer. Shorthand rather than a path, so the same
+    command means the same thing on the next machine.
+  - `--strict` — `check` only; treat warnings (untagged skills, fragile unquoted values) as errors
+  - `--check` — the older spelling of `library check`, kept working
+- does:
+  - run: resolve the [library directory](concepts/library-directory.md) and set the layer stack;
+    `SystemExit` when the stack is empty (nothing configured and no base installed)
+  - run (`list`): print the layer stack, then a block per kind — the library id, the name it
+    installs under, the layer it resolves from, and the layers it shadows. Two layers naming the
+    same directory collapse to one, so a repo that pins its own tree as both overlay and base is
+    not reported as shadowing itself.
+  - run (`list --layer`): report what that layer **provides**, including items the other layer
+    shadows — filtering on the winner would answer a different question than the one asked
+  - run (`show`): resolve NAME by library id, then installed name, then bare basename; an
+    ambiguous basename is refused with every spelling it could mean, and an unknown one lists the
+    catalog. Print the source file verbatim, so the output pipes.
+  - run (`check`): run `check_library` over each layer's `library/` root and print the findings;
+    return `1` on any error (or any warning under `--strict`)
+- code: `farrier/farrier/cli.py::_run_library`, `farrier/farrier/library_view.py`
+- verify: `farrier/tests/test_library_browse.py::test_a_shadowed_item_is_reported_as_shadowed`
+
+Ownership of a name belongs to whichever layer wins it, and nothing in a rendered repo says
+which one did. `list` is where that becomes visible before it becomes a surprise, and `show`
+prints the copy that would actually be installed — the reverse of `farrier source`, which walks
+from a generated file back to the library.
+
 ### source
 - usage: `farrier source <file> [--library DIR]`
 - flags:

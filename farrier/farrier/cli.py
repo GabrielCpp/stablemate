@@ -48,6 +48,7 @@ from farrier.layers import (
     set_layers,
 )
 from farrier.library_check import check_library, format_findings
+from farrier.library_view import KINDS, find, format_list, layer_label, stack
 from farrier.naming import repo_prefix
 from farrier.outputs import (
     check_outputs,
@@ -626,24 +627,48 @@ def _build_parser() -> argparse.ArgumentParser:
     # library
     library_p = sub.add_parser(
         "library",
-        help="Validate the library's own sources (front matter, tags)",
+        help="Read the library the layer stack resolves, or validate its sources",
+    )
+    library_p.add_argument(
+        "mode",
+        nargs="?",
+        choices=["list", "show", "check"],
+        help="list: the catalog, with each item's layer named. "
+             "show: one item's library source, as written. "
+             "check: report front-matter problems and exit non-zero on any error.",
     )
     library_p.add_argument(
         "--check",
         action="store_true",
-        help="Report front-matter problems and exit non-zero on any error. "
-             "Currently the only mode, and required so the verb reads the same as "
-             "`agent-check` in a Makefile.",
+        help="The older spelling of `farrier library check`, kept working so an "
+             "existing Makefile target does not have to be edited.",
     )
     library_p.add_argument(
         "--strict",
         action="store_true",
-        help="Treat warnings (untagged skills, fragile unquoted values) as errors.",
+        help="check: treat warnings (untagged skills, fragile unquoted values) as errors.",
     )
     library_p.add_argument(
         "--library",
         type=Path,
         help="Library directory (agents/ tree). Overrides $FARRIER_LIBRARY_DIR and the home config.",
+    )
+    for plural, singular in KINDS.items():
+        library_p.add_argument(
+            f"--{plural}",
+            action="store_true",
+            help=f"list: report {plural} only (repeatable with the other kind flags).",
+        )
+        library_p.add_argument(
+            f"--{singular}",
+            metavar="NAME",
+            help=f"show: print the source of the {singular} named NAME.",
+        )
+    library_p.add_argument(
+        "--layer",
+        choices=["base", "overlay"],
+        help="Narrow to the items one layer provides — including the ones the other "
+             "layer shadows, which is the question worth asking.",
     )
 
     # version
@@ -697,20 +722,82 @@ def _run_hooks(args: argparse.Namespace) -> int:
 
 
 def _run_library(args: argparse.Namespace) -> int:
-    """`farrier library --check` — the gate on the library's own front matter.
+    """`farrier library list | show | check` — reading and validating the layer stack.
+
+    One verb for all three because they are one question asked three ways, about the
+    same resolved stack. A verb named for a single layer (`base-library`) would lie the
+    moment an overlay shadows something: what you get installed is the stack's answer,
+    not the base's.
+    """
+    set_layers(resolve_library_dir(args.library))
+    if not LAYERS:
+        raise SystemExit(
+            "error: no library layers — none configured, and no base library "
+            "installed. Set one with `farrier config set-library <path>`."
+        )
+    mode = args.mode or ("check" if args.check else None)
+    if mode is None:
+        raise SystemExit(
+            "error: `farrier library` needs a mode: list, show or check"
+        )
+    if mode == "list":
+        return _run_library_list(args)
+    if mode == "show":
+        return _run_library_show(args)
+    return _run_library_check(args)
+
+
+def _selected_layer(args: argparse.Namespace) -> str | None:
+    return layer_label(args.layer) if args.layer else None
+
+
+def _run_library_list(args: argparse.Namespace) -> int:
+    """The catalog, one block per kind, layers named."""
+    layer = _selected_layer(args)
+    for name in [layer] if layer else stack():
+        print(f"# layer: {name}")
+    print()
+    kinds = [plural for plural in KINDS if getattr(args, plural)] or list(KINDS)
+    print(format_list(kinds, layer), end="")
+    return 0
+
+
+def _run_library_show(args: argparse.Namespace) -> int:
+    """One item's library source, undecorated so it pipes.
+
+    The *source*, not the installed adapter file: what you would edit. `farrier source`
+    already covers the other direction, from a generated file back to this one.
+    """
+    chosen = [
+        (plural, getattr(args, singular))
+        for plural, singular in KINDS.items()
+        if getattr(args, singular)
+    ]
+    if len(chosen) != 1:
+        flags = " | ".join(f"--{singular} NAME" for singular in KINDS.values())
+        raise SystemExit(f"error: `farrier library show` takes exactly one of: {flags}")
+    kind, name = chosen[0]
+    item = find(kind, name)
+    path = item.path
+    if (layer := _selected_layer(args)) is not None:
+        found = item.path_in(layer)
+        if found is None:
+            raise SystemExit(
+                f"error: {layer} does not provide {kind[:-1]} {item.name!r} — "
+                f"it comes from {item.layer}."
+            )
+        path = found
+    print(path.read_text(encoding="utf-8"), end="")
+    return 0
+
+
+def _run_library_check(args: argparse.Namespace) -> int:
+    """The gate on the library's own front matter.
 
     Checks every layer in the resolution stack, not just the overlay: a base-library
     skill with a broken fence fails in exactly the same silent way, and the operator
     running this cannot tell which layer a given skill came from without being told.
     """
-    if not args.check:
-        raise SystemExit("error: `farrier library` needs --check (the only mode today)")
-    set_layers(resolve_library_dir(args.library))
-    if not LAYERS:
-        raise SystemExit(
-            "error: no library layers to check — none configured, and no base library "
-            "installed. Set one with `farrier config set-library <path>`."
-        )
     # A stack that names the same directory twice is one library, not two — which is how
     # a repo pins this gate to its own library regardless of what the operator has
     # configured: point both the overlay and $STABLEMATE_BASE_DIR at it, and the two
