@@ -64,7 +64,11 @@ from typing import Any, ClassVar
 from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.conversation import spend_turn, story_chain
-from workhorse_workflows.coder.shared.dev import plan_summary, read_operator_context
+from workhorse_workflows.coder.shared.dev import (
+    plan_summary,
+    read_operator_context,
+    resolve_impl_context,
+)
 from workhorse_workflows.coder.shared.escalation import escalation
 from workhorse_workflows.coder.shared.resolution import (
     RESOLVER_POWER,
@@ -169,6 +173,12 @@ class Review(Workflow):
         self.call(resolve_workspace_dirs, self.docs_path)
         ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
         self.call(resolve_review_context, ctx.spec_dir, self.repo, self.docs_path)
+        # The instruction files the implementer was handed, decoded off the plan projection
+        # the dev lane left on the spec dir. Handing the reviewer the standard the code was
+        # written against beats letting it hunt for the nearest CLAUDE.md, and it is the
+        # same list `implement-plan` got — deterministic, and empty for a standalone PR
+        # review with no plan behind it.
+        self.call(resolve_impl_context, ctx.spec_dir)
         self.seed_session(story_chain(ctx.story_slug), self.session_id)
         return ctx
 
@@ -186,7 +196,7 @@ class Review(Workflow):
     # --- the two feeder reviews ---------------------------------------------
 
     def start(self, review_blocks: int = 0, session_turns: int = 0) -> Continue:
-        """Run the native code-review skill, then the reuse hunt, as one conversation.
+        """Run the code-review pass, then the reuse hunt, as one conversation.
 
         A PR is not required: uncommitted working-tree edits and story-branch commits are
         both reviewable, and if a PR happens to be open the findings are posted as inline
@@ -211,8 +221,8 @@ class Review(Workflow):
         code_review = self.agent(
             turn.prompt,
             returns=CodeReviewResult,
-            # medium: runs a packaged review skill over a diff. The judgement it needs is
-            # the skill's, not the caller's.
+            # medium: reads a diff and judges it against the standard the implementer
+            # was given. Real judgement, but bounded by the diff in front of it.
             power="medium",
             session=self._feeder_chain,
             cwd=self._docs_repo,
@@ -220,14 +230,15 @@ class Review(Workflow):
             args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "affected_repo_paths": self._repos,
+                "instruction_paths": self._instruction_paths,
                 "branch": self.branch,
                 "pr_number": self.pr_number,
             },
         )
         if code_review.blocked:
             # Advisory input, not a gate: `review-implementation.md` below is the binding
-            # verdict and it runs against the diff either way. A turn that could not run the
-            # review skill is worth saying out loud and worth not pretending produced
+            # verdict and it runs against the diff either way. A turn that could not read
+            # the diff is worth saying out loud and worth not pretending produced
             # findings — it is not worth stopping the run to ask a human about.
             self.logger.warning(
                 "the code-review pass reported it could not run (%s) — the "
@@ -725,6 +736,11 @@ class Review(Workflow):
     def _repos(self) -> list[str]:
         """The code repos this story touched, which are what the reviewers may read."""
         return list(self.output(resolve_review_context).affected_repo_paths)
+
+    @property
+    def _instruction_paths(self) -> list[str]:
+        """The coding standards the implementer built against — see `setup`."""
+        return list(self.output(resolve_impl_context).impl_instruction_paths)
 
     @property
     def _context(self) -> Path:
