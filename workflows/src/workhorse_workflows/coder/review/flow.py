@@ -160,10 +160,16 @@ class Review(Workflow):
         is the rule for `setup`. `resolve_review_context` belongs here rather than in `start`
         because the docs repo it resolves is the *cwd* of the three review turns, and a cwd
         that changed between them would mean they were not reviewing the same thing.
+
+        Seeding the implementer chain also belongs here: `session=` names a chain, never
+        an id, so the dev lane's id is filed under this story's backbone key once, before
+        any turn runs — which is what makes `_apply_power()`'s cheap tier honest. Empty
+        id (a standalone PR review), or a chain this run already started: no-op.
         """
         self.call(resolve_workspace_dirs, self.docs_path)
         ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
         self.call(resolve_review_context, ctx.spec_dir, self.repo, self.docs_path)
+        self.seed_session(story_chain(ctx.story_slug), self.session_id)
         return ctx
 
     def labels(self) -> dict[str, str]:
@@ -780,11 +786,12 @@ class Review(Workflow):
 
         A finding is a request to change code somebody just wrote, and the cheapest turn
         that can act on it is the one that wrote it: it knows why the line is there, what it
-        already tried, and which files it touched. Empty `session_id` — a standalone PR
-        review with no dev lane in front of it — names a per-story chain the CLI mints on
-        first use, which is a cold turn exactly as before.
+        already tried, and which files it touched. `setup` seeds this key with the dev
+        lane's session id; an empty `session_id` — a standalone PR review with no dev lane
+        in front of it — leaves the chain unseeded and the CLI mints one on first use,
+        which is a cold turn exactly as before.
         """
-        return story_chain(self.session_id, self.ctx.story_slug)
+        return story_chain(self.ctx.story_slug)
 
     def _spend_turn(self, session_turns: int) -> int:
         """Count one apply turn onto the implementer conversation, recycling it when full.

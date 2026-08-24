@@ -478,8 +478,17 @@ class Qa(Workflow):
     MAX_CHAIN_LAPS: ClassVar[int] = 4
 
     def setup(self) -> StoryPaths:
-        """Resolve the slug to the story path, its spec dir and its `qa/` directory."""
-        return self.call(prepare_story, self.docs_path, self.story, self.epic)
+        """Resolve the slug to the story path, its spec dir and its `qa/` directory, and
+        pick up the conversation the lane before this one was having.
+
+        Seeding is how an opaque session id becomes resumable: `session=` names a chain,
+        never an id, so an id threaded in from a prior stage is filed under this story's
+        backbone key here, once, before any turn runs. Empty id, or a chain this run has
+        already started: no-op.
+        """
+        ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
+        self.seed_session(story_chain(ctx.story_slug), self.session_id)
+        return ctx
 
     def labels(self) -> dict[str, str]:
         """Which story this run is on — the YAML's `labels:` block."""
@@ -498,12 +507,12 @@ class Qa(Workflow):
     def _story_chain(self) -> str:
         """The backbone conversation this story's primary turns run on.
 
-        An incoming session id (threaded from a prior stage across a handoff boundary) is
-        resumed directly; otherwise a fresh per-story chain is named and the CLI mints one
-        the first time it is used. Distinct from `_chain`/`_WORKLISTS`: those name the
-        narrower, intentionally-isolated repair loops, and stay untouched by this one.
+        One key per story, seeded in `setup` with the session id threaded in from a prior
+        stage so this lane continues that conversation rather than opening a cold one.
+        Distinct from `_chain`/`_WORKLISTS`: those name the narrower,
+        intentionally-isolated repair loops, and stay untouched by this one.
         """
-        return story_chain(self.session_id, self.ctx.story_slug)
+        return story_chain(self.ctx.story_slug)
 
     #: The repair loops that run on a chain of their own, as the worklist half of their key.
     #: `fix_regression` builds its this way; the plan-repair chain is `_chain`, which several

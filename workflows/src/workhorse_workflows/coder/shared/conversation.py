@@ -18,16 +18,19 @@ from __future__ import annotations
 from workhorse.pyflow import Workflow
 
 
-def story_chain(session_id: str, slug: str) -> str:
+def story_chain(slug: str) -> str:
     """The chain name a story's primary turns share across lanes.
 
-    An id threaded in from a prior stage is resumed directly; otherwise the per-story name
-    is what the CLI mints a session against the first time it is used, and every later lane
-    naming the same story lands in the same conversation. The literal lives here because
-    three lanes have to agree on it — a lane that spells it its own way is a lane that
-    quietly reviews its own diff in a fresh context.
+    Every lane naming the same story lands in the same conversation. The literal lives
+    here because four lanes have to agree on it — a lane that spells it its own way is a
+    lane that quietly reviews its own diff in a fresh context.
+
+    A lane entered with a `session_id` from an earlier lane seeds *this* key with it
+    (`flow.seed_session(story_chain(slug), session_id)`, once, in `setup`) rather than
+    using the id as a key of its own: an id is an opaque string, and a chain named after
+    one is a chain nobody else can name.
     """
-    return session_id or f"story:{slug}"
+    return f"story:{slug}"
 
 
 def spend_turn(flow: Workflow, chain: str, turns: int, cap: int) -> int:

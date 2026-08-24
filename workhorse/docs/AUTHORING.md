@@ -311,24 +311,36 @@ The chain is in the telemetry too: the node's `enter` record carries `chain` and
 `resumed_session` it continued, so a reader can tell a lap that resumed from one that
 started over without joining three files by hand.
 
-### Holding the id instead of the key
+### Carrying a conversation past the run directory
 
 A chain file lives in the run directory, so a resumed run finds its chains where it left
-them. When a state needs the conversation itself as a *value* — to carry it somewhere the
-key does not reach, or to hand it to a turn several states away — read it and pass it
-back:
+them — and nothing else does. A sub-flow with a scope of its own, or a run whose
+artifacts moved, finds no `.sessions/<key>` and opens a cold conversation while the flow
+believes it is on lap two. What survives unconditionally is a state's parameters, because
+they *are* the checkpoint. So read the id out and carry it:
 
 ```python
 sid = self.chain_session(f"docs-repair:{story.slug}")   # "" before the first lap
-...
-self.agent("prompts/repair.md", returns=Repair, session=sid)
 ```
 
-`session=` takes either: anything shaped like an agent-CLI session id is used as one, and
-everything else is a chain key. An id given this way becomes a chain named after itself,
-so `reset_session`, the not-resumable recovery and the `enter` record all behave exactly
-as they do for a key. Hold it in a state's parameters — which are its checkpoint — and the
-turn after a resume opens the conversation the turn before it did.
+**A session id is an opaque string.** One backend mints a UUID, another
+`ses_fddd573afffeJTtbN3ebtAWQib`, another an integer task id, and nothing in workhorse has
+an opinion about which. So `session=` always names a *chain*, never an id — passing an id
+there would name a chain after itself, and be indistinguishable from a key that happened
+to read like one. To resume a conversation whose id you hold, seed the chain with it and
+then pass the key like any other:
+
+```python
+self.seed_session(f"docs-repair:{story.slug}", sid)     # once, on the way in
+...
+self.agent("prompts/repair.md", returns=Repair, session=f"docs-repair:{story.slug}")
+```
+
+`seed_session` is a no-op on an empty id and on a chain that already has one, which is
+what makes it safe to call unconditionally in `setup`: a resumed run keeps the
+conversation it had reached rather than being thrown back to the id the flow started
+with. `reset_session`, the not-resumable recovery and the `enter` record all behave
+exactly as they do for a chain nothing seeded.
 
 ## A stack that outlives the turn
 

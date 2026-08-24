@@ -69,6 +69,7 @@ from workhorse_workflows.coder.shared.docs import (
     documentation_obligations,
     verify_story_documentation,
 )
+from workhorse_workflows.coder.shared.conversation import story_chain
 from workhorse_workflows.coder.shared.escalation import escalation
 from workhorse_workflows.coder.shared.resolution import (
     RESOLVER_POWER,
@@ -172,9 +173,18 @@ class Docs(Workflow):
     MAX_CHAIN_LAPS: ClassVar[int] = 4
 
     def setup(self) -> StoryPaths:
-        """Resolve the slug to paths and the workspace to directories."""
+        """Resolve the slug to paths and the workspace to directories, and pick up the
+        conversation the lane before this one was having.
+
+        Seeding is how an opaque session id becomes resumable: `session=` names a chain,
+        never an id, so an id threaded in from a prior stage is filed under this story's
+        backbone key here, once, before any turn runs. Empty id, or a chain this run has
+        already started: no-op.
+        """
         self.call(resolve_workspace_dirs, self.docs_path)
-        return self.call(prepare_story, self.docs_path, self.story, self.epic)
+        ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
+        self.seed_session(story_chain(ctx.story_slug), self.session_id)
+        return ctx
 
     def labels(self) -> dict[str, str]:
         """Which story this run is on — the YAML's `labels:` block."""
@@ -193,12 +203,12 @@ class Docs(Workflow):
     def _story_chain(self) -> str:
         """The backbone conversation this story's primary turn runs on.
 
-        An incoming session id (threaded from a prior stage across a handoff boundary) is
-        resumed directly; otherwise a fresh per-story chain is named and the CLI mints one
-        the first time it is used. Distinct from `_chain`: that names the narrower,
-        intentionally-isolated repair loop, and stays untouched by this one.
+        One key per story, seeded in `setup` with the session id threaded in from a prior
+        stage so this lane continues that conversation rather than opening a cold one.
+        Distinct from `_chain`: that names the narrower, intentionally-isolated repair
+        loop, and stays untouched by this one.
         """
-        return self.session_id or f"story:{self.ctx.story_slug}"
+        return story_chain(self.ctx.story_slug)
 
     def _ends(self, result: DocsResult) -> Done:
         """End the flow, and the story's repair chain with it.

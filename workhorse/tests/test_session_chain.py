@@ -186,33 +186,6 @@ def test_reset_session_ends_the_chain_and_forgives_one_that_never_ran():
         assert not (env.run_dir / ".sessions" / "docs-S-1").exists()
 
 
-def test_a_literal_session_id_resumes_that_exact_conversation():
-    """The id a caller already holds — out of checkpointed state, or from an operator —
-    goes where a key goes. Seeding the file with it *is* the resume."""
-    with tempfile.TemporaryDirectory() as tmp:
-        seen: list[dict[str, Any]] = []
-
-        def fake_run(node: Any, ctx: Any, wdir: Any, sid: Any, **kwargs: Any) -> Any:
-            seen.append({"sid": sid, "held": sid.read_text().strip(), **kwargs})
-            return "rendered", {"kind": "ok"}
-
-        env = _env(tmp, agent_runner=ScriptedRunner(fake_run))
-        held = "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
-
-        class Asks(Workflow):
-            def start(self) -> Transition:
-                self.agent("prompts/repair.md", returns=Payload, session=held)
-                return Done(None)
-
-        drive(Asks(), env)
-
-        assert seen[0]["held"] == held, seen[0]
-        assert seen[0]["resume_session"] is True, seen[0]
-        # And the record says which conversation, not just that there was one.
-        (enter,) = _enters(env, "repair")
-        assert enter["resumed_session"] == held, enter
-
-
 def test_the_id_a_chain_is_on_is_readable_so_a_state_can_checkpoint_it():
     """A chain file survives a resume because it lives in the run directory; an id a
     *state* holds survives because the state's parameters are its checkpoint. This is
@@ -250,10 +223,11 @@ def test_a_repair_lap_resumes_its_own_session_after_the_run_dies_and_restarts():
     flow believes it is on lap two of one it started.
 
     What survives unconditionally is a state's parameters, because they *are* the
-    checkpoint. So lap one reads back the id the CLI minted (`self.session_id`) and hands
-    it to lap two as a parameter; lap two passes it where a key would go. Here the run is
-    killed between the laps and resumed into a fresh run directory — the chain file is
-    provably absent — and lap two still resumes lap one's conversation.
+    checkpoint. So lap one reads back the id the CLI minted and hands it to lap two as a
+    parameter; lap two *seeds* the chain with it, because an id is an opaque string and
+    `session=` only ever names a chain. Here the run is killed between the laps and
+    resumed into a fresh run directory — the chain file is provably absent — and lap two
+    still resumes lap one's conversation.
     """
     with tempfile.TemporaryDirectory() as tmp:
         minted = "7a6b5c4d-3e2f-4a1b-8c7d-6e5f4a3b2c1d"
@@ -278,7 +252,8 @@ def test_a_repair_lap_resumes_its_own_session_after_the_run_dies_and_restarts():
                 return Continue(None, self.lap_two, held=self.chain_session(key))
 
             def lap_two(self, held: str = "") -> Transition:
-                self.agent("prompts/apply-qa-fixes.md", returns=Payload, session=held)
+                self.seed_session(key, held)
+                self.agent("prompts/apply-qa-fixes.md", returns=Payload, session=key)
                 return Done(held)
 
         first = _env(tmp, agent_runner=ScriptedRunner(fake_run))
@@ -312,11 +287,38 @@ def test_a_repair_lap_resumes_its_own_session_after_the_run_dies_and_restarts():
         assert enter["resumed_session"] == minted, enter
 
 
-def test_a_chain_key_is_never_mistaken_for_an_id():
-    """The two live in one parameter, so the test that tells them apart is the contract."""
-    assert sessions.is_session_id("11111111-2222-4333-8444-555555555555")
-    assert not sessions.is_session_id("qa-plan-repair:STORY-1")
-    assert not sessions.is_session_id("")
+def test_a_session_id_is_opaque_and_seeding_is_how_one_is_resumed():
+    """No shape is a session id's shape.
+
+    Backends mint whatever they mint — a UUID here, `ses_fddd573afffeJTtbN3ebtAWQib`
+    there, an integer task id elsewhere — so nothing may infer "this string is an id"
+    from how it reads. `seed_session` is the whole of "resume this exact conversation",
+    and it is deliberately no-op-on-occupied so a flow can seed unconditionally on the
+    way in without throwing away the conversation a resumed run had reached.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        opaque = "ses_fddd573afffeJTtbN3ebtAWQib"
+        handed: list[str] = []
+
+        def fake_run(node: Any, ctx: Any, wdir: Any, sid: Any, **kwargs: Any) -> Any:
+            handed.append(sid.read_text(encoding="utf-8").strip() if sid.exists() else "")
+            return "rendered", {"kind": "ok"}
+
+        class Seeds(Workflow):
+            def start(self) -> Transition:
+                self.seed_session("story:S-1", opaque)
+                # Neither of these may disturb the seeded chain.
+                self.seed_session("story:S-1", "ses_a-later-conversation")
+                self.seed_session("story:S-2", "")
+                self.agent("prompts/apply-review.md", returns=Payload, session="story:S-1")
+                self.agent("prompts/apply-review.md", returns=Payload, session="story:S-2")
+                return Done(None)
+
+        env = _env(tmp, agent_runner=ScriptedRunner(fake_run))
+        drive(Seeds(), env)
+
+        assert handed == [opaque, ""], handed
+        assert sessions.read_chain(env.run_dir, "story:S-2") == ""
 
 
 def test_two_stories_repairing_in_one_run_do_not_share_a_conversation():

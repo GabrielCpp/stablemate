@@ -154,15 +154,39 @@ def test_ending_the_docs_flow_ends_its_chain(spy: _Spy) -> None:
     assert done.result.session_id == f"story:{STORY}"
 
 
-def test_the_docs_backbone_resumes_an_incoming_session_rather_than_naming_a_fresh_one(
-    spy: _Spy,
+def test_every_lane_seeds_the_backbone_chain_with_the_id_it_was_handed(
+    spy: _Spy, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A `session_id` threaded in from `dev` is the conversation to continue — not a
-    reason to open a second one keyed on the story slug."""
-    flow = _docs()
-    flow.session_id = "story:from-dev"
+    """A `session_id` threaded in from the lane before is the conversation to continue.
 
-    assert flow._story_chain() == "story:from-dev"
+    It cannot be *used as the key*: an id is an opaque string, so the only thing that
+    says "resume this exact conversation" is seeding the chain with it — once, in
+    `setup`, before any turn runs. Every lane keys on the story either way, which is
+    what lets a later lane name the same conversation without holding the id.
+    """
+    seeded: list[tuple[str, str]] = []
+    ctx = SimpleNamespace(story_slug=STORY, story_path="", spec_dir="", qa_dir="")
+    for flow_cls in (Docs, Qa, Dev, Review):
+        monkeypatch.setattr(
+            flow_cls,
+            "seed_session",
+            lambda _self, key, sid: seeded.append((key, sid)),
+        )
+        monkeypatch.setattr(flow_cls, "call", lambda _self, _node, *a, **k: ctx)
+
+    for flow, chain in (
+        (_docs(), "_story_chain"),
+        (_qa(), "_story_chain"),
+        (_dev(), "_story_chain"),
+        # The review lane names the same key from the other side: the conversation it
+        # rejoins is the implementer's.
+        (_review(), "_impl_chain"),
+    ):
+        flow.session_id = "ses_fddd573afffeJTtbN3ebtAWQib"
+        flow.setup()
+        assert getattr(flow, chain)() == f"story:{STORY}"
+
+    assert seeded == [(f"story:{STORY}", "ses_fddd573afffeJTtbN3ebtAWQib")] * 4
 
 
 # ── the QA-plan lane ─────────────────────────────────────────────────────────────────
@@ -219,15 +243,6 @@ def test_ending_the_qa_flow_ends_every_chain_it_opened(spy: _Spy) -> None:
         f"qa-regression-fix:{STORY}",
     ]
     assert done.result.session_id == f"story:{STORY}"
-
-
-def test_the_qa_backbone_resumes_an_incoming_session_rather_than_naming_a_fresh_one(
-    spy: _Spy,
-) -> None:
-    flow = _qa()
-    flow.session_id = "story:from-docs"
-
-    assert flow._story_chain() == "story:from-docs"
 
 
 # ── the QA fix lane ──────────────────────────────────────────────────────────────────
@@ -314,15 +329,6 @@ def test_ending_the_dev_flow_ends_every_plan_chain(spy: _Spy) -> None:
     assert done.result.session_id == f"story:{STORY}"
 
 
-def test_the_dev_backbone_resumes_an_incoming_session_rather_than_naming_a_fresh_one(
-    spy: _Spy,
-) -> None:
-    flow = _dev()
-    flow.session_id = "story:from-a-resumed-run"
-
-    assert flow._story_chain() == "story:from-a-resumed-run"
-
-
 # ── the review lane ──────────────────────────────────────────────────────────────────
 
 
@@ -341,10 +347,11 @@ def test_an_apply_turn_rejoins_the_implementer_rather_than_judging_cold(spy: _Sp
     """The half of this lane that changes code is not the half that judges it. A finding is
     a request to edit a line somebody just wrote, and the turn that wrote it is the cheapest
     one that can act on it — which is also what makes the low power tier sufficient."""
-    _apply_review(_review(session_id="story:from-dev"))
+    _apply_review(_review(session_id="ses_from-dev"))
 
     assert spy.turns[0]["prompt"] == "prompts/apply-review.md"
-    assert spy.turns[0]["session"] == "story:from-dev"
+    # The key is the story's; `setup` is what put the dev lane's id behind it.
+    assert spy.turns[0]["session"] == f"story:{STORY}"
     assert spy.turns[0]["power"] == "low"
 
 
@@ -353,7 +360,7 @@ def test_the_judging_turns_stay_cold_even_when_the_implementer_is_threaded_in(
 ) -> None:
     """The reason the two halves are named apart: a reviewer that inherited the author's
     context is reviewing its own reasoning, so no threaded id may reach the feeder chain."""
-    flow = _review(session_id="story:from-dev")
+    flow = _review(session_id="ses_from-dev")
 
     assert flow._feeder_chain == f"review-feeders:{STORY}"
     assert flow._feeder_chain != flow._impl_chain()
@@ -373,7 +380,7 @@ def test_a_standalone_pr_review_has_no_implementer_to_resume_and_pays_for_it(
 def test_the_apply_turns_keep_counting_from_what_the_dev_lane_spent(spy: _Spy) -> None:
     """The cap bounds the *conversation*, not each lane's share of it. A review that
     restarted the count would hand the recycler a context twice as long as it agreed to."""
-    flow = _review(session_id="story:from-dev", session_turns=7, max_session_turns=8)
+    flow = _review(session_id="ses_from-dev", session_turns=7, max_session_turns=8)
 
     assert flow._spend_turn(0) == 8
     assert spy.resets == []
@@ -382,7 +389,7 @@ def test_the_apply_turns_keep_counting_from_what_the_dev_lane_spent(spy: _Spy) -
 def test_a_conversation_that_fills_up_inside_the_review_lane_is_recycled(spy: _Spy) -> None:
     """Where the cap is reached is not where it is owned: the dev lane can hand over a
     conversation already at the threshold, and the next apply turn opens a fresh one."""
-    flow = _review(session_id="story:from-dev", session_turns=8, max_session_turns=8)
+    flow = _review(session_id="ses_from-dev", session_turns=8, max_session_turns=8)
 
     assert flow._spend_turn(0) == 1
-    assert spy.resets == ["story:from-dev"]
+    assert spy.resets == [f"story:{STORY}"]

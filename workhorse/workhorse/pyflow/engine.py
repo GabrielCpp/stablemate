@@ -350,13 +350,6 @@ class Engine:
         resumed = ""
         if session and session_path is not None:
             session_path = sessions.chain_path(session_path.parent, session)
-            # A literal id is a chain named after itself: seeding the file is the whole
-            # of "resume this exact conversation", and it makes the id a *held* value —
-            # a state can put it in its parameters, which are its checkpoint, and the
-            # turn after a resume opens the same conversation the turn before it did.
-            if sessions.is_session_id(session) and not session_path.exists():
-                session_path.parent.mkdir(parents=True, exist_ok=True)
-                session_path.write_text(session.strip(), encoding="utf-8")
             if session_path.exists():
                 resumed = session_path.read_text(encoding="utf-8").strip()
         # The `enter` below opens this node's span and only `write_step` closes it.
@@ -477,6 +470,29 @@ class Engine:
         if not key or self.env.session_id_path is None:
             return ""
         return sessions.read_chain(self.env.session_id_path.parent, key)
+
+    def seed_session(self, key: str, session_id: str) -> None:
+        """Start chain ``key`` on an id someone else's turn minted.
+
+        The one way to say "resume this exact conversation": a session id is an opaque
+        string, so ``session=`` cannot be overloaded to carry one, and a caller holding
+        an id — a sub-flow handed the implementer's session, an operator naming a
+        conversation on the CLI — files it under a key of its own choosing and then
+        passes that key like any other.
+
+        A no-op when the chain already has an id, which is what makes it safe to call
+        unconditionally on the way into a flow: a resumed run finds the chain file
+        already there and carries on the conversation it was already having, rather
+        than being thrown back to the id the flow started with.
+        """
+        if not key or not session_id.strip() or self.env.session_id_path is None:
+            return
+        path = sessions.chain_path(self.env.session_id_path.parent, key)
+        if path.exists():
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(session_id.strip(), encoding="utf-8")
+        self.env.log.info("[workhorse] chain %s: seeded", key)
 
     def reset_session(self, key: str) -> None:
         """End chain ``key``: the next turn on it opens a fresh conversation.

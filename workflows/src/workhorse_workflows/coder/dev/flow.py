@@ -197,9 +197,15 @@ class Dev(Workflow):
 
         `prepare_story` is also the authored-story gate: a story ostler knows and reports
         unauthored fails the run here rather than being planned against.
+
+        Seeding the backbone chain also belongs here: `session=` names a chain, never an
+        id, so an id threaded in from a prior stage is filed under this story's key once,
+        before any turn runs. Empty id, or a chain this run already started: no-op.
         """
         self.call(resolve_workspace_dirs, self.docs_path)
-        return self.call(prepare_story, self.docs_path, self.story, self.epic)
+        ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
+        self.seed_session(story_chain(ctx.story_slug), self.session_id)
+        return ctx
 
     def labels(self) -> dict[str, str]:
         """Which story this run is on — the YAML's `labels:` block."""
@@ -234,10 +240,10 @@ class Dev(Workflow):
     def _story_chain(self) -> str:
         """The backbone conversation this story's primary turns run on.
 
-        An incoming session id (threaded from a prior stage across a handoff boundary) is
-        resumed directly; otherwise a fresh per-story chain is named and the CLI mints one
-        the first time it is used. Distinct from `_chain`: that names the narrower,
-        intentionally-isolated plan-repair loops, and stays untouched by this one.
+        One key per story, seeded in `setup` with the session id threaded in from a prior
+        stage so this lane continues that conversation rather than opening a cold one.
+        Distinct from `_chain`: that names the narrower, intentionally-isolated
+        plan-repair loops, and stays untouched by this one.
 
         **The implementation half of the lane shares it.** Implement and every repair turn
         for every layer run here, where each used to open its own conversation: a fixer in a
@@ -245,7 +251,7 @@ class Dev(Workflow):
         minutes earlier, and then reports on a diff it has only just met. `max_session_turns`
         is what keeps that from growing without end.
         """
-        return story_chain(self.session_id, self.ctx.story_slug)
+        return story_chain(self.ctx.story_slug)
 
     def _spend_turn(self, session_turns: int) -> int:
         """Count one turn onto the story conversation, recycling it when it is full."""

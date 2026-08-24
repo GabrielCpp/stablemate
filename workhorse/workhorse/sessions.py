@@ -15,6 +15,14 @@ resume it, so the laps are one conversation with one context to compact.
 The key is per *worklist*, not per node: two stories repaired in one run must not share
 a chain, or story two opens on story one's diff. Callers key on the story.
 
+A session id is an **opaque string**: whatever the agent CLI hands back is the id, and
+nothing here has an opinion on its shape — one backend mints a UUID, another
+``ses_fddd573afffeJTtbN3ebtAWQib``, another an integer task id. So ``session=`` is
+always a *key*, never an id, and a caller that already holds an id to resume seeds the
+chain with it first (:meth:`workhorse.pyflow.workflow.Workflow.seed_session`). Guessing
+which of the two a string was is what made a non-UUID backend silently cold-start every
+lane it crossed.
+
 The layout is a module of its own because two layers build the same path from opposite
 ends — the engine composes it from a run directory and a key, and
 :func:`workhorse.runner.failure.record_session_map` has to recover the run directory
@@ -39,22 +47,6 @@ _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 def slug(key: str) -> str:
     """A chain key as a single safe filename. Empty keys are refused by the caller."""
     return _UNSAFE.sub("-", key).strip("-") or "chain"
-
-
-#: What an agent CLI mints. Every backend this runner drives hands back a UUID, and a
-#: chain key is a human-written name (``qa-plan-repair:STORY-1``) that cannot collide
-#: with one — which is what lets a single ``session=`` parameter carry either.
-_SESSION_ID = re.compile(r"\A[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\Z")
-
-
-def is_session_id(value: str) -> bool:
-    """Whether ``value`` is a literal session id rather than a chain key.
-
-    A caller that already holds an id — from checkpointed state, or from an operator
-    naming a conversation to resume — passes it where a key would go, and the id becomes
-    the key: a chain named after itself, seeded with itself, resumed like any other.
-    """
-    return bool(_SESSION_ID.match(value.strip()))
 
 
 def chain_path(run_dir: Path, key: str) -> Path:

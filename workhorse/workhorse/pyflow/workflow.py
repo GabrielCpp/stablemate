@@ -347,7 +347,8 @@ class Workflow(BaseModel):
         is reviewing their own reasoning. Use a chain for a repair loop whose laps share
         one worklist, key it per worklist (a story, not a run), and reset it with
         `reset_session` when the worklist changes or the laps stop converging;
-        `docs/AUTHORING.md` has the rules.
+        `docs/AUTHORING.md` has the rules. To continue a conversation whose id you were
+        handed, `seed_session` the key first — `session=` never takes an id.
         """
         return self._require_engine().agent(
             prompt,
@@ -361,12 +362,26 @@ class Workflow(BaseModel):
             session=session,
         )
 
+    def seed_session(self, key: str, session_id: str) -> None:
+        """Start chain `key` on a session id another turn — or another flow — minted.
+
+        A session id is an opaque string, so `session=` cannot be overloaded to carry
+        one: it always names a chain. This is how a caller holding a literal id says
+        "resume this exact conversation" — file the id under a key, then pass the key.
+        A sub-flow handed the implementer's session does this once on the way in.
+
+        No-op on an empty id or a chain that already has one, so a state may seed
+        unconditionally: a resumed run keeps the conversation it had reached rather
+        than being thrown back to the id the flow started with.
+        """
+        self._require_engine().seed_session(key, session_id)
+
     def chain_session(self, key: str) -> str:
         """The session id chain `key` is on, or `""` before its first turn.
 
         Read it to hold a conversation in checkpointed state — a state's parameters are
-        its checkpoint — and pass it back as `session=` to reopen that conversation from
-        anywhere, including a later run.
+        its checkpoint — and hand it to another flow, which `seed_session`s it under a
+        key of its own to reopen that conversation, including in a later run.
         """
         return self._require_engine().session_id(key)
 
