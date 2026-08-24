@@ -15,11 +15,17 @@ Plan **only** the story at the story path above. Do NOT search the repository, g
 
 ### Instruction Set Resolution
 
-Load the target layer's coding standard files before planning. Use the template references below so generated prompts point at the target adapter's instruction directory (`{{ skill_dir() }}`).
+Read the standards that bear on the decisions this story asks you to make — the layer it
+touches, and within that layer the files whose rules the design turns on. Not the whole set:
+the implementer is handed every standard tagged with each service's layer whether you read it
+or not, so reading one here buys a better *plan*, and reading one that changes no decision
+buys nothing. A handful is normal; a dozen means you are reading the layer rather than
+planning the story. (References point at the target adapter's instruction directory,
+`{{ skill_dir() }}`.)
 
-Use the instruction files that match the layer and files touched. Only the layers this
-repository actually installs are listed below — if a layer you expected is absent, this
-repo has no skills for it, so use the shared repo guidance rather than inventing a path.
+Only the layers this repository actually installs are listed below — if a layer you expected
+is absent, this repo has no skills for it, so use the shared repo guidance rather than
+inventing a path.
 {%- set backend_refs = find_by_tags("backend") %}
 {%- set cli_refs = find_by_tags("cli") %}
 {%- set web_refs = find_by_tags("web") %}
@@ -44,8 +50,8 @@ repo has no skills for it, so use the shared repo guidance rather than inventing
 
 Rules:
 
-- One layer → use only that layer's instruction files plus shared repo/docs guidance.
-- Multiple layers → load each layer's instruction files and split plan sections by layer.
+- One layer → that layer's instruction files plus shared repo/docs guidance, nothing else.
+- Multiple layers → the ones each layer's decisions turn on, and split the plan by layer.
 - Layer unclear → inspect the story and code paths first; if still unclear, stop and ask before planning.
 
 ### When the plan is already there
@@ -78,7 +84,7 @@ you are not being asked to redo it.
 3. Check dependencies: prerequisite stories, related work, external dependencies.
 4. Review existing code: search for and understand current implementation patterns.
 5. Do not include features out of scope for this story.
-6. Do not start implementation until the plan is reviewed and approved.
+6. Do not start implementation. The workflow gates this plan and runs the implementer itself.
 
 ---
 
@@ -102,8 +108,8 @@ Do not put plan artifacts beside the story unless the caller explicitly override
 **Create each markdown artifact through `ostler`, don't hand-write its frontmatter** (when
 `ostler` is on PATH): run `timeout 30 ostler create spec <story-name> <file>` — e.g.
 `ostler create spec persist-mvp-profile-fields plan.md` — *before* writing the body. It stamps the
-`type:` that makes the doc an OKF Concept (`spec.<stem>`: `plan.md` → `spec.plan`, `executive.md` →
-`spec.executive`), creates the file if it is absent, and leaves an already-typed doc untouched. Then
+`type:` that makes the doc an OKF Concept (`spec.<stem>`: `plan.md` → `spec.plan`, `qa.md` →
+`spec.qa`), creates the file if it is absent, and leaves an already-typed doc untouched. Then
 write your content **below the `---` frontmatter block, leaving that block in place** — a doc with
 no `type:` is an `okf-missing-type` error against the graph.
 
@@ -118,7 +124,10 @@ shape is under "Machine-Readable Result" at the end of this prompt, and it is:
   - `repo`: the repo name (must match a folder name in the workspace or the CWD repo name)
   - `path`: relative path from repo root to the service directory (e.g., `cmd/alert`, `packages/discover`, `.` for root)
   - `type`: the technology, using the key **this repo's** instructions/prompts gate on — take it from the skill short-names listed under "Instruction Set Resolution" above and from the repo's own `agents.yml`, not from a taxonomy you remember. `docs` is the type for documentation-only services in every repo.
-  - `skills`: instruction short-names the implementer must load for this service
+  - `skills`: **optional.** The workflow already hands the implementer every standard
+    tagged with this service's `type`, so leave this out unless the story turns on a
+    standard the layer's tags do not reach — a release rule, a codegen contract, one
+    shared package's convention. Names here are added to the layer's, never instead of them.
   - `plan_file`: the plan file for this service (relative to spec dir)
   - `new_service`: `true` only when the directory does not exist yet and this story scaffolds it
 - `implementation_order`: ordered list of `repo::path` keys specifying build order. Dependencies first: whatever defines a shared contract before whatever implements it, and whatever implements it before whatever consumes it. Every entry must name a service you declared.
@@ -150,253 +159,147 @@ from the layout you can see, and name in your summary what you used.
 **Single-service stories** collapse to one entry in `services`, one `plan.md`, and a one-element `implementation_order`.
 
 For single-service stories:
-- `executive.md` — Human-readable summary (always)
 - `plan.md` — Complete plan for the service
 
 For multi-service stories, use per-service plan files:
 - `plan.md` — Root plan: high-level design, cross-service contracts, implementation order
 - Per-service files named in each service's `plan_file` field (e.g., `plan-api-service-alert.md`, `plan-web-app-discover.md`)
-- `executive.md` — Human-readable summary (always, for review)
 
 ### Cross-Service Coordination
 
-When a story spans multiple services (across one or more repos), the **plan.md** (root) MUST include:
+**Multi-service stories only** — a single-service story skips straight to `### Approach`.
 
-#### Implementation Order
+The root `plan.md` carries what the per-service files cannot: the order and the contracts
+between them.
 
-Specify which service must be implemented first, and derive the order from this story's
-own dependencies rather than from a fixed layer ranking:
+**Implementation order.** Derive it from this story's own dependencies, not from a fixed
+layer ranking: whatever both sides agree on (schemas, API definitions, generated-code
+inputs) first, then the service that owns the contract, then the infrastructure those
+contracts provision for, then the consumers — client-side last, against a backend that
+already answers. State it as `repo::path` keys in `implementation_order`. Each service is
+implemented independently in its own repo CWD.
 
-1. **Shared contracts** — schemas, API definitions, generated-code inputs: whatever both sides agree on
-2. **The service that owns the contract** — it has to satisfy the contract before anything can call it
-3. **Infrastructure** — once the application contracts it provisions for are settled
-4. **The services that consume the contract** — client-side last, against a backend that already answers
+**Integration contracts.** For each boundary the story crosses: the exact endpoint or event
+(path, method, type), the request/response shape (field names, types, required vs optional),
+the error cases the consumer must handle, the flag gating it if there is one, and — when a
+shared contract changes — which consumers have to regenerate.
 
-State the order explicitly using `repo::path` notation in `implementation_order`. Each service is implemented independently in its own repo CWD.
+### Approach
 
-#### Integration Contracts
+Two to five sentences: the story's objective, the design decision you made, and — where the
+tree already has something to say about it — what exists today that this builds on or
+changes. Cite the rule behind each decision by the skill that carries it rather than
+restating the rule; the reviewer loads those files itself.
 
-For each cross-service boundary, document:
+This is the one section read by a reviewer who does not share your session. Everything below
+it is read either by a node that does share it or by a parser, so write those for use, not
+for an amnesiac reader.
 
-- **API endpoint or event** — Exact path, method, event type
-- **Request/response shape** — Field names, types, required vs optional
-- **Error cases** — What the consumer should handle
-- **Feature flag gating** — If the new behavior is behind a flag, name it
-- **Cross-repo dependency** — If api-service changes a proto, specify which web-app/mobile-app consumers must update
+### Changes
 
-#### Per-Service Verification
+The units to build, one line each, in the order they should be built. Give each the
+behavioral responsibility and the standard it follows — not the code:
 
-Each service plan file must reference its applicable instruction files → **"Verification Commands"** section for the exact test/lint/build commands where that section exists. Do not invent commands when the instruction files define them; if a command is missing, state that and choose the narrowest standard command for the affected service.
+- `internal/<domain>/service.go` — mint and resolve codes; validation lives here, not in the
+  controller (per the architecture skill).
+- `internal/<domain>/repository.go` — the port and its adapter; the port takes no HTTP type.
+- `<the shared contract file>` + regenerate — the command and the generated output path are
+  in that layer's instruction files, never in this prompt.
 
-### 1. Summary
+Name the smallest directory or package when the exact file is not knowable yet, and say why.
+Generated artifacts and migrations get their own lines, each with its generation command and
+the input that changes. Omit anything the story does not change.
 
-- Story objective in 1-2 sentences
-- High-level approach
-- Key architectural decisions
-- **Coding Standards Alignment**: which instruction file(s) apply
+### Blast Radius
 
-### Required Skill Files Read
+**Write this section only when the story changes a symbol, contract, validation rule,
+generated model or persistence shape that already has callers.** Greenfield and purely
+additive stories omit it entirely — do not write it to say "none".
 
-- List every generated skill or instruction file read before planning.
-- If no layer-specific skill file applies, write `None` and explain why.
+Search for the affected names first. Then for each: what it does today, who calls it, what it
+does after this story, and what must be re-verified. Follow a chain only as far as an entry
+point, screen, handler or external contract.
 
-### 2. Current State Analysis
+Stop and reconsider if you are removing something with three or more callers, changing shared
+validation without checking them all, or breaking a contract an external consumer expects.
 
-- Existing code structure and behavior
-- Known issues or tech debt
+### Test Scenarios
 
-### 3. Proposed Changes
+This section is the **contract between the acceptance criteria and the test suite**, and it
+is parsed. `Level: QA-only` scenarios are handed to the QA plan as its obligations — a
+scenario nobody writes a test for and nobody hands to QA is covered by nothing in the run.
 
-#### Architecture Decisions
+**The shape is load-bearing.** Each scenario is its own `###` heading with a title after the
+colon, and its fields are bullets. A numbered list does not parse and yields no scenarios at
+all:
 
-- Design choices and rationale
-- Alternatives considered and trade-offs
+```markdown
+### Scenario 1: rejects a relative destination
 
-#### Impact Analysis For Shared Behavior
+**Given** a request whose `url` is relative, **when** it is posted to `/links`,
+**should** return `400` with a JSON `title` naming the destination as unacceptable.
 
-Use this section when the story changes shared functions, contracts, validation rules, generated models, persistence behavior, navigation behavior, or anything with multiple callers or consumers.
-
-The goal is to avoid a locally successful implementation that leaves another workflow broken.
-
-For each shared function, endpoint, model, provider, command, generated type, or contract likely to be affected, document:
-
-- Current observable responsibility
-- Known callers, consumers, or user-facing workflows
-- Expected behavior after this story
-- Compatibility risks
-- Areas that must be verified
-- Areas intentionally left unchanged
-
-**Process:**
-
-1. Search the codebase for likely affected shared names and contracts.
-2. Document the relevant callers or consumers and assess if they need changes.
-3. Follow important chains until reaching entry points, screens, commands, handlers, or external contracts.
-4. Summarize the dependency tree only as far as needed to prevent breakage.
-
-**Red flags — stop and reconsider if:**
-
-- Removing a function used by 3+ callers
-- Changing shared validation logic without checking all callers
-- Modifying data structures passed between layers
-- Breaking contracts expected by external APIs
-
-#### Code Generation & Build Artifacts
-
-Identify any generated files affected by the changes:
-
-{%- if backend_refs %}
-- API contract changes → the generated server/types under `{{ template.go_api_generated_path | default("the path the backend instructions name") }}/` (run the generation command those instructions give)
-{%- endif %}
-{%- if mobile_refs %}
-- API contract changes → the generated client under `{{ template.dart_api_generated_path | default("the path the mobile instructions name") }}/` (run the generation command those instructions give)
-{%- endif %}
-- Any other generated artifact this repo builds from a checked-in input — the command lives in that layer's instruction files, never in this prompt
-- Database migrations (if schema changes)
-
-For each, list the generation command, input files that change, and output files that will be regenerated.
-
-#### Expected Files To Touch
-
-List the files, directories, or generated artifacts the implementation is expected to modify.
-
-For each item, describe the behavioral responsibility of the change, not the exact code edit. If the exact file is not yet knowable without implementation, name the smallest likely directory or package and explain why.
-
-Examples of the shape — with this repo's own paths, not these:
-
-- `{{ template.openapi_path | default("<the shared contract file>") }}` — add or adjust the contract this story needs.
-- `{{ template.api_path | default("<the owning service>") }}/...` — update the behavior that serves it.
-- `<the generated client, on each side that consumes the contract>` — regenerate when the contract changes.
-- `docs/specs/<story-name>/...` — keep plan, review, and QA artifacts for this story.
-
-### 4. Implementation Checklist
-
-Ordered steps. **Every checklist must end with these closing steps:**
-
-```
-- [ ] Run code generation (if applicable): [exact command]
-- [ ] Run tests: [exact test command for this layer]
-- [ ] Run linter/formatter: [exact lint command for this layer]
-- [ ] Verify no compile/type errors remain
+- **AC**: 2
+- **Level**: endpoint
 ```
 
-### 5. Test Scenarios
-
-This section is the **contract between the acceptance criteria and the test suite** — the
-implementation is split into a tests-first pass and a code pass with a deterministic red gate
-between them, and the gate and the reviewer both read this list. A scenario missing here is a
-scenario nobody writes; an AC no scenario names is an AC the reviewer flags as uncovered.
-
-Write each test case in **Given / When / Should** format, and give every scenario two more
-fields:
-
-- **AC**: the acceptance criterion it covers, by number or exact quote. Every AC must be
-  covered by at least one scenario; a scenario may also guard an edge case no AC names —
-  mark those `AC: none (edge case)`.
-- **Level**: where the test lives —
+- **AC** — the criterion it covers, by number or exact quote. Every AC needs at least one
+  scenario; an edge case no AC names is `AC: none (edge case)`.
+- **Level** — where the test lives:
   - `unit` — a pure function or class, no wiring.
-  - `component` — the primary target: a component/handler/service exercised through its
-    public surface with real wiring and faked leaves.
-  - `endpoint` — an HTTP surface exercised through the router.
-  - `integration` — added or extended only where the story warrants it (a contract crossing
-    services, a persistence shape). An integration test listed here **is part of the red
-    gate**, so it must be reachable from this layer's test command in the Verification
-    Commands section.
-  - `QA-only` — verifiable only by a live walkthrough (visual layout, cross-app flow).
-    No test is written for it; QA covers it. Use this sparingly and say why.
+  - `component` — the primary target: a component/handler/service through its public surface,
+    real wiring, faked leaves.
+  - `endpoint` — an HTTP surface through the router.
+  - `integration` — only where the story warrants it (a contract crossing services, a
+    persistence shape); it must be reachable from this layer's test command.
+  - `QA-only` — verifiable only by a live walkthrough (visual layout, cross-app flow). No
+    test is written; QA covers it. Use it sparingly and say why — before reaching for it,
+    check whether a `component` scenario could cover the same AC.
 
-Cover happy paths, error cases, and edge cases across the scenarios.
+Cover happy paths, error cases and edge cases. If the story changes no observable behavior at
+all — a pure refactor, a rename, a dependency bump — say so in one line instead of a scenario
+list; the existing suite is the safety net.
 
-**Regression-only escape (decided here, at plan time — never by the implementer):** if the
-story changes no observable behavior (a pure refactor, a rename, a dependency bump), state
-`Test scenarios: regression-only` with one line of justification instead of a scenario list.
-The implementation then skips the tests-first pass and the red gate, and the existing suite
-is the safety net. If any new behavior exists, this escape does not apply.
+### Verification Commands
 
-**QA-only escape (same rule, different reason):** if — having written the list honestly —
-*every* scenario in it came out `Level: QA-only`, add the line `Test scenarios: qa-only`
-above the list and keep the list. The tests-first pass has nothing it is permitted to write
-in that case, so the implementation takes a single turn and the red gate stands aside; the
-scenarios are handed to the QA plan as its obligations, which is where they will actually be
-verified. This is not a way to avoid writing tests: it costs the story every automated
-guarantee, and one scenario at any other level means the escape does not apply and the whole
-list goes through the gate as usual. If you find yourself reaching for it, first check
-whether a `component` scenario could cover the same AC.
+Copy the exact commands from the layer's instruction files → **"Verification Commands"**
+section where present. Do not invent commands when the instruction files define them; if one
+is missing, say so and choose the narrowest standard command for that service.
 
-### 6. Verification Commands (CRITICAL)
-
-Copy the exact commands from the layer's instruction files → **"Verification Commands"** section where present. Do not invent commands when the instruction files define them.
-
-For each layer involved, list:
+For each layer involved:
 
 ```
 ## [layer-name] Verification
 
-# Code generation (if applicable)
-[copy from the relevant instruction files listed under "Instruction Set Resolution" above]
-
+# Code generation (if applicable — "None" if not)
 # Tests
-[copy from relevant layer instructions]
-
 # Lint / Format
-[copy from relevant layer instructions]
-
 # Build
-[copy from relevant layer instructions]
-
-# Local run (smoke) — how to bring this layer up locally and exercise the touched path
-[The exact commands to start this layer's local runtime and reach the story's path, copied from
- the layer instruction files and the project's local-stack / "operate the local stack" runbook
- (whatever bringing this layer up locally takes here — a server, a dev server, an emulator,
- a plan-preview). State the observable success signal — endpoint returns a real status, the
- route renders the feature, the screen loads — so the implementer can confirm it actually runs,
- not just that unit tests pass. If this layer has no runnable surface (docs-only), write "None".]
+# Local run (smoke) — how to bring this layer up locally and exercise the story's path,
+#   with the observable success signal (endpoint returns a real status, route renders the
+#   feature, screen loads) so the implementer can confirm it runs. "None" if docs-only.
 ```
 
-If no code generation applies for a layer, write "None" — do not omit the section.
-For multi-layer stories, list commands for **each layer separately** so the implementer can run them independently. The **Local run (smoke)** block is mandatory for every layer with a runnable surface — the implementer is required to run the touched layers locally before completing the story (it is not optional), so the plan must tell it exactly how.
-
-### 7. Success Criteria
-
-- Functional requirements met
-- All tests passing (including new tests) **per layer**
-- **The touched path runs in a local environment** — each touched layer's "Local run (smoke)" passes and the story's path was exercised, not just unit-tested
-- No broken dependencies
-- Code generation outputs up to date
-- Cross-layer contracts verified (API shape matches consumer expectations)
-- Documentation updated
+For multi-layer stories list each layer separately so the implementer can run them
+independently. The **Local run (smoke)** block is mandatory for every layer with a runnable
+surface — the implementer is required to run the touched layers locally, so the plan must say
+exactly how.
 
 ---
 
-## Before Finalizing Plan
+## Before You Return
 
-All items must be checked:
+- [ ] Every acceptance criterion is covered by at least one scenario, and every scenario is a
+      `### Scenario N: <title>` heading with `- **AC**:` and `- **Level**:` bullets.
+- [ ] Verification commands are copied from each layer's instruction files, not invented, and
+      every runnable layer has a Local run (smoke) with its success signal.
+- [ ] `services` lists every service the story changes and nothing it does not; each path
+      exists and carries the marker file its `type` implies.
+- [ ] Multi-service stories document implementation order and the integration contract.
 
-- [ ] Loaded the relevant instruction files for **every service** and added **Coding Standards Alignment** to the Summary
-- [ ] Added **Required Skill Files Read** to every planning artifact
-- [ ] Searched for affected shared functions, contracts, models, providers, commands, and generated types; documented relevant callers or consumers
-- [ ] Identified code generation dependencies and listed exact regen commands (or "None")
-- [ ] Copied verification commands from each service's instructions files → "Verification Commands" section
-- [ ] Specified a **Local run (smoke)** command + observable success signal for every service with a runnable surface (or "None" for docs-only)
-- [ ] Returned a `services` array (concrete paths with repo, type, skills, plan_file) — it drives the implementer's per-service iteration
-- [ ] Listed **every** changed service in it, and nothing the story does not change
-- [ ] Verified every service path exists and carries the marker file its `type` implies (see "How to identify services")
-- [ ] Added **Given / When / Should** test scenarios for all affected code paths, each with its **AC** reference and **Level** — every acceptance criterion covered by at least one scenario (or the story declared regression-only, with justification)
-- [ ] Confirmed no breaking changes to external APIs
-- [ ] Implementation checklist ends with: codegen → test → lint → verify
-- [ ] Multi-service stories: documented implementation order, integration contracts, and per-service verification
-
-## Common Pitfalls
-
-❌ Don't assume "only one place uses this function" — always search.
-❌ Don't invent verification commands — copy them from the layer's instructions files.
+❌ Don't plan for a layer this repo does not have — the "Instruction Set Resolution" list
+above is the whole set.
 ❌ Don't forget code generation — stale generated files cause silent failures.
-❌ Don't plan a consumer-side change against a contract change without specifying the implementation order.
-❌ Don't plan for a layer this repo does not have — the "Instruction Set Resolution" list above is the whole set.
-✅ Search exact function names (case-sensitive).
-✅ Copy test/lint/build commands from each layer's instruction files → **"Verification Commands"** section where present.
-✅ Identify generated files that must be refreshed after contract changes.
-✅ For multi-layer stories, document the integration contract so each layer can be implemented independently.
 
 ## Commit What You Wrote
 
@@ -435,14 +338,14 @@ After writing the plan artifacts, return this exact JSON object as the LAST thin
       "repo": "api-service",
       "path": "cmd/alert",
       "type": "go",
-      "skills": ["api-service", "api-service-grpc", "api-service-events"],
+      "skills": ["api-service-events"],
       "plan_file": "plan-api-service-alert.md"
     },
     {
       "repo": "web-app",
       "path": "packages/discover",
       "type": "web-app",
-      "skills": ["web-app", "web-app-component"],
+      "skills": [],
       "plan_file": "plan-web-app-discover.md"
     }
   ],
