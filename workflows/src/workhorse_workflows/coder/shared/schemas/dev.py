@@ -486,6 +486,19 @@ class PlanSummary(CoderResult):
     text: str = ""
 
 
+class InstructionFile(CoderResult):
+    """One coding standard, carried as content rather than as a path to go read.
+
+    A path costs the implementer a tool call per file — sixteen standards is sixteen
+    serial turns of time-to-first-token before the first edit. Handing the text itself
+    makes loading them one render. `text` is empty when the file could not be read, and
+    the prompt falls back to naming the path, which is the pre-inlining behaviour.
+    """
+
+    path: str = ""
+    text: str = ""
+
+
 class ImplContext(CoderResult):
     """`resolve-impl-context.py` — the approved plan decoded against the workspace.
 
@@ -500,6 +513,8 @@ class ImplContext(CoderResult):
     """
 
     impl_instruction_paths: list[str] = []
+    #: The same standards as content — see `InstructionFile` for why both exist.
+    impl_instructions: list[InstructionFile] = []
     qa_run_plan: list[QaRunEntry] = []
     verification_setup: dict[str, Any] = {}
     #: The plan's declared fixtures, carried through so the QA planner is handed the names

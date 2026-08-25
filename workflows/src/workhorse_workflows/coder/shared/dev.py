@@ -49,6 +49,7 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     GateList,
     GateOutcome,
     ImplContext,
+    InstructionFile,
     LayerPick,
     OperatorAnswer,
     PlanFixture,
@@ -403,6 +404,28 @@ def _instruction_paths(
     return paths
 
 
+def _instruction_files(
+    root: Path, paths: list[str], logger: logging.Logger
+) -> list[InstructionFile]:
+    """The resolved standards as content, so the implement turn loads them in one render.
+
+    Rendered into the prompt instead of listed as paths to go read: each path used to cost
+    the implementer a serial tool turn, and on a fresh session that is a dozen-plus turns
+    of time-to-first-token before the first edit. Degrading, like everything else on this
+    node: a path that cannot be read is carried with empty `text` (logged), and the prompt
+    names it for the agent to read itself — the pre-inlining behaviour.
+    """
+    files: list[InstructionFile] = []
+    for rel in paths:
+        text = ""
+        try:
+            text = (root / rel).read_text(encoding="utf-8")
+        except OSError:
+            logger.warning("instruction file '%s' not readable — passing the path only", rel)
+        files.append(InstructionFile(path=rel, text=text))
+    return files
+
+
 @blueprint.node
 def resolve_impl_context(
     logger: logging.Logger,
@@ -439,6 +462,7 @@ def resolve_impl_context(
     services = plan_ctx.get("services") or []
 
     impl_instruction_paths = _instruction_paths(services, instructions, instruction_tags, logger)
+    impl_instructions = _instruction_files(root, impl_instruction_paths, logger)
 
     # Fall back to a single repo-root dispatch whenever the plan names no services —
     # whether plan-context.json is absent OR present in the legacy flat form. Without this
@@ -492,6 +516,7 @@ def resolve_impl_context(
 
     return ImplContext(
         impl_instruction_paths=impl_instruction_paths,
+        impl_instructions=impl_instructions,
         qa_run_plan=qa_run_plan,
         verification_setup=_verification_setup(plan_ctx),
         fixtures=[PlanFixture(**item) for item in _fixtures(plan_ctx)],

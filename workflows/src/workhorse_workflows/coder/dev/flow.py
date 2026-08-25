@@ -550,7 +550,18 @@ class Dev(Workflow):
 
         `session_turns` counts this story's backbone conversation, which the repair turns
         share — see `_spend_turn`.
+
+        The first implementation turn of a story opens a *fresh* backbone rather than
+        inheriting the planning conversation: the plan is on disk (`plan.md`,
+        `plan-context.json`) and its standards are inlined into the prompt, while the
+        planning history it would inherit is long enough to trip the assistant's
+        auto-compaction before any code is written. Repair turns, later layers and an
+        operator-answer re-entry still join the implementation conversation — only the
+        plan→implement boundary is cut.
         """
+        if index == 0 and not impl_blocks and not operator_context:
+            self.reset_session(self._story_chain())
+            session_turns = 0
         turns = self._spend_turn(session_turns)
         result = self._implement_classic(operator_context)
         if result.blocked:
@@ -602,6 +613,7 @@ class Dev(Workflow):
                 "service_type": layer.type,
                 "verification": layer.verification,
                 "impl_instruction_paths": impl.impl_instruction_paths,
+                "impl_instructions": impl.impl_instructions,
                 "qa_run_plan": impl.qa_run_plan,
                 "verification_setup": impl.verification_setup,
                 "gates": gates.text,

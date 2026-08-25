@@ -221,6 +221,7 @@ class Fix(Workflow):
                 "service_type": layer.type,
                 "verification": layer.verification,
                 "impl_instruction_paths": impl.impl_instruction_paths,
+                "impl_instructions": impl.impl_instructions,
                 "qa_run_plan": impl.qa_run_plan,
                 "verification_setup": impl.verification_setup,
                 "operator_context": operator_context,

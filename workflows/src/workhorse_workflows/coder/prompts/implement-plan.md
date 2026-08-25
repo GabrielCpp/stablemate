@@ -55,8 +55,9 @@ Before writing any code:
 
 1. Read the story and your **service-specific plan** (from spec dir: `{{ workhorse_var('plan_file') }}`; if multi-service, also skim the root `plan.md` for cross-service contracts). **The story's Acceptance Criteria are the bar — your job is to make ALL of them true** for this service's scope, as a person using the running app would observe them, at parity with the named source of truth. The story is deliberately lean (Context + Acceptance Criteria); it does not list files or steps. **Cover the whole goal**: if satisfying a criterion requires fixing a root cause that spans the surface (e.g. state keyed wrong across every field, labels untranslated everywhere, a missing nav/section), that whole fix is in scope — do not implement a narrow symptom-patch that leaves the criterion only partly met. This may take **several passes**: QA will exercise each criterion against the source of truth and fail anything not actually met, looping you back here. The story's `## Context` links the surface documentation it is grounded in (OKF node ids — a node id is a repo-relative path, optionally `path#anchor`); read those for grounding, but the Acceptance Criteria — not the docs — define done.
    - **Genuinely separate scope becomes a follow-up, not a narrowing.** Covering the goal means every fix *this* surface needs to meet its criteria. A *different* surface or an unrelated defect you pass through is filed to the backlog (Step 5.3) — never used as an excuse to leave this story's own criteria unmet.
-2. Load this story's coding standards — the workflow derived the list below from the layers the plan declares. **If you planned this story in this same conversation, that standard is already in your context — re-read only the paths below you did not already load.** On a fresh session (a resumed story, a fix lane) read every one of them before writing code:
-{% if impl_instruction_paths %}
+2. Hold this story's coding standards — the workflow derived them from the layers the plan declares.
+{%- if impl_instructions %} **Their full text is inlined under "Coding Standards (inlined)" at the end of this prompt — it is already in front of you, so do not spend turns re-reading those files.** A standard listed there without an inlined body is the exception: read that path yourself before writing code.
+{%- elif impl_instruction_paths %} Read every one of these before writing code:
 {%- for path in impl_instruction_paths %}
    - `{{ path }}`
 {%- endfor %}
@@ -140,7 +141,7 @@ For **each task**:
 - Map each test to the plan's **Given / When / Should** cases.
 - Add assertions for: new functions, new branches, new error conditions, new state transitions.
 - **For a component that consumes an external contract** (an API payload, another producer's output), derive its test fixtures from a **captured real payload** (a golden file recorded from the real producer), not a hand-authored shape. A fixture you invent can encode the *same wrong assumption* as the code it tests — then both agree and the suite passes green over a real bug. Record the real payload and assert against it.
-- Before editing a layer's tests, load and follow that layer's **testing instruction file** from the resolved list in Step 1.2 — that list is the whole set; a layer missing from it
+- Before editing a layer's tests, follow that layer's **testing instruction file** from the standards resolved in Step 1.2 — that set is the whole set; a layer missing from it
   has no testing skill in this repo. Treat it as the canonical source for that layer's test naming, fixtures, integration-test shape, and assertion conventions — if this prompt appears to disagree with it, follow the layer's testing skill.
 - If skills are available, explicitly use the matching testing skill before writing or updating that layer's tests. Do not rely only on automatic path matching.
 
@@ -309,3 +310,18 @@ After implementing the story and running verification, return this exact JSON ob
 - `exit_conditions`: the promise from Step 2, revised to what you actually mean by the end. Each `commands` entry is run to completion and each `files` entry is looked for in the diff — so state what is true, not what sounds thorough. Omit the whole object, or any list in it, when you have nothing to promise.
 - `tests_added`: the test files this turn wrote or extended, service-relative. Only paths really in the diff count; naming a file you did not write comes back as a repair turn.
 - `no_test_reason`: why there is none, when there is none. An exemption is weighed against what the service declares — it does not switch the check off.
+{% if impl_instructions %}
+
+---
+
+## Coding Standards (inlined — authoritative)
+
+The full text of every standard resolved in Step 1.2, verbatim from the repo. Do not
+re-read these files; hold every rule below for each layer you touch.
+{% for ins in impl_instructions %}
+
+### `{{ ins.path }}`
+
+{% if ins.text %}{{ ins.text }}{% else %}_(not inlined — read this file before writing code)_{% endif %}
+{%- endfor %}
+{% endif %}
