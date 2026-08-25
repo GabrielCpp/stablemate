@@ -30,9 +30,19 @@ default_cli = "opencode"
 # reaches for deliberately. There is no subscription-side `luna`, which is what these
 # tables held before; `terra` is the nearest step up from it.
 
+# Each rung differs from its neighbours, which is the property that makes a scorecard
+# readable. The ~40 `power=` sites under workflows/ each carry a written reason for the
+# rung they ask for; a table that resolves two rungs to the same (model, effort) pair
+# throws that reason away and bills every node at one tier, so a round measured under it
+# cannot say whether a tier choice was right. `terra` still carries all three per-node
+# tiers and `sol` still only the two a workflow reaches for deliberately — the quota
+# shape above is unchanged. The separation is bought with `effort`, which opencode
+# renders as `--variant` (low -> minimal, medium -> the provider default, high -> high,
+# xhigh -> max).
+
 [power.high.opencode]
 model = "openai/gpt-5.6-terra"
-effort = "medium"
+effort = "high"
 
 [power.smart.opencode]
 model = "openai/gpt-5.6-sol"
@@ -40,7 +50,7 @@ effort = "high"
 
 [power.extra-smart.opencode]
 model = "openai/gpt-5.6-sol"
-effort = "high"
+effort = "xhigh"
 
 [power.medium.opencode]
 model = "openai/gpt-5.6-terra"
