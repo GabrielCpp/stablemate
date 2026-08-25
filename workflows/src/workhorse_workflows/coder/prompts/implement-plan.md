@@ -2,7 +2,7 @@
 agent: agent
 ---
 
-Implement the plan for service `{{ workhorse_var('service_path') }}`. Follow these steps in order.
+Implement this repo's plan. Follow these steps in order.
 
 ## Provided Inputs (authoritative — do not rediscover)
 
