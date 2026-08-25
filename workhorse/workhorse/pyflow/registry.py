@@ -62,16 +62,21 @@ class Registry:
     the state machine, this is what the packaging metadata points at.
     """
 
-    def __init__(self, name: str = "", package: str = "") -> None:
+    def __init__(self, name: str = "", package: str | None = None) -> None:
         self.name = name
         #: The importable package whose directory holds this workflow's `prompts/`, as
-        #: `Registry("coder", package=__package__)`. Declared rather than inferred
-        #: because the registry *is* the composition root: the entry class is free to
-        #: live in a sub-package beside its siblings (`coder/main/flow.py`), and a root
-        #: taken from that class would land inside one flow and put every other flow's
-        #: prompts outside the loader. Empty falls back to the entry class's package,
-        #: which is what every workflow relied on before this existed.
-        self.package = package
+        #: `Registry("coder", package=__package__)`. `None` is accepted because that is
+        #: what `__package__` is typed as — a top-level module has no package — and it
+        #: falls back exactly as an omitted argument does, rather than making every
+        #: callsite launder the one expression this parameter exists to take.
+        #:
+        #: Declared rather than inferred because the registry *is* the composition root:
+        #: the entry class is free to live in a sub-package beside its siblings
+        #: (`coder/main/flow.py`), and a root taken from that class would land inside one
+        #: flow and put every other flow's prompts outside the loader. Unset falls back to
+        #: the entry class's package, which is what every workflow relied on before this
+        #: existed.
+        self.package = package or ""
         self.blueprints: list[Blueprint] = []
         self.flows: dict[str, type[Workflow]] = {}
         self.entry: type[Workflow] | None = None
