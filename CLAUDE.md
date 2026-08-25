@@ -4,6 +4,7 @@ Edits here are overwritten by `make agent-install` (or: farrier --repo .).
 Edit the library source(s) instead, then regenerate:
   library/policies/repo/uv-workspace.md
   library/policies/repo/public-repo.md
+  library/policies/repo/no-shell-scripts.md
   library/policies/python/python-lint-clean.md
   library/policies/git/commit-and-push.md
 Editable paths on this machine: `farrier source CLAUDE.md`

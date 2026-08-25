@@ -64,6 +64,10 @@ template:
   private_names_install: "make install"
   check_public_command: "make check-public    # also runs as part of `make test`"
 
+  # no-shell-scripts: the guard that is both the sweep and the PreToolUse hook.
+  check_no_shell_command: "make check-no-shell   # also runs as part of `make test`"
+  check_no_shell_script: "scripts/check_no_shell.py"
+
   # python-lint-clean / commit-and-push: the one gate command.
   lint_command: "make lint"
   commit_gate: "make lint          # ruff + ty, every subproject in one pass, from the repo root"
@@ -126,6 +130,7 @@ localInstructions:
   - policies:
       - uv-workspace
       - public-repo
+      - no-shell-scripts
       - python-lint-clean
       - commit-and-push
     paths:

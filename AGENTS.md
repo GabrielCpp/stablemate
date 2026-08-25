@@ -73,6 +73,46 @@ attention.
 
 ---
 
+## No ad-hoc shell scripts (load-bearing)
+
+A capability goes into the **unified CLI** — a subcommand or module in the
+package that owns the concern, or a guard under
+`scripts/` for a repo-level check. Never a
+new `.sh` beside the last one.
+
+The reason is mechanical, not aesthetic. A shell script is outside every gate
+this repo has: the linter does not read it, the type checker does not read it,
+and the test runner cannot import it. So the discipline that holds everywhere
+else stops at its first line — and because a script is the cheapest thing to
+write, they accumulate: three files that each do two-thirds of the same job
+under names that do not say so, and no test that would notice when one of them
+stops working. "I'll just add a quick script" is how a codebase acquires a
+second, unversioned, untested build system.
+
+The rewrite is usually smaller than it looks. A script that greps a tree and
+exits non-zero is a function plus a `main()`; what it gains is a name in an
+import graph, a test that can call it directly, and a reviewer who can see it.
+
+Shell is allowed exactly where **another program dictates the interface** — git
+execs a hook, Docker execs an entrypoint as PID 1. Those files delegate on their
+second line to the real language, which is the shape this rule asks for. They
+are named in the guard's `ALLOWED` set, and adding to it is a decision somebody
+makes on purpose, not a step in getting a task done.
+
+```bash
+make check-no-shell   # also runs as part of `make test`
+```
+
+Two enforcement points, one rule, one file —
+`scripts/check_no_shell.py`.
+A `PreToolUse` hook runs it with `--hook` and denies the tool call *before* the
+file exists — the point at which the decision is still free — and the sweep
+above scans every **tracked** file, because a hook only ever covers the machine
+it is installed on. A script committed from a clone with no hook configured is
+in the tree forever otherwise.
+
+---
+
 ## Python linting (load-bearing)
 
 This repo is linted with **ruff** *and* type-checked with **ty**. Keep both
