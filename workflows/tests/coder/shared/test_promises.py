@@ -80,6 +80,29 @@ def test_a_promised_command_that_is_red_is_quoted_back_as_the_failure(service: P
     assert outcome.command == "echo boom >&2; exit 3"
 
 
+def test_a_promised_server_is_never_run(service: Path) -> None:
+    """A command that runs until stopped can never be green — it waits out the whole gate
+    timeout and reads as a broken promise over healthy code. The gate refuses it up front
+    instead; the promises that can terminate are still held."""
+    outcome = _call(
+        check_promises,
+        cwd=str(service / "api-service"),
+        commands=["cd api && go run ./cmd/server", "npm run dev", "tail -f log", "exit 0"],
+    )
+
+    assert outcome.status == "clean"
+
+
+def test_a_turn_that_promised_only_servers_forfeits_the_check(service: Path) -> None:
+    outcome = _call(
+        check_promises,
+        cwd=str(service / "api-service"),
+        commands=["go run ./cmd/server &"],
+    )
+
+    assert outcome.status == "skipped"
+
+
 def test_a_command_the_declared_gates_already_ran_is_not_run_twice(service: Path) -> None:
     """It was just proven clean. Re-running it costs the story a full test suite."""
     marker = service / "api-service" / "ran"

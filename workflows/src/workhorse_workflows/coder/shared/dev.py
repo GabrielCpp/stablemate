@@ -1063,6 +1063,23 @@ def _matches(promised: str, changed: list[str]) -> bool:
     )
 
 
+# Command shapes that run until they are stopped — dev servers, watchers, tails. A promise
+# gate can only read an exit code, so one of these can never be green: it waits out the
+# whole GATE_TIMEOUT and then reads as a broken promise over perfectly healthy code, and
+# the repair lap it triggers re-runs it for a second timeout. The envelope already tells
+# the turn not to promise them; this is the deterministic backstop for the turn that does.
+_NON_TERMINATING = re.compile(
+    r"(?:^|&&|;|\|)\s*(?:"
+    r"go\s+run\b"
+    r"|(?:npm|pnpm|bun)\s+(?:start\b|run\s+(?:dev|start|serve|watch)\b)"
+    r"|yarn\s+(?:dev|start|serve|watch)\b"
+    r"|flask\s+run\b|uvicorn\b|gunicorn\b|rails\s+s(?:erver)?\b|php\s+-S\b"
+    r"|tail\s+-\w*f\b|watch\s"
+    r")"
+    r"|&\s*$"
+)
+
+
 @blueprint.node
 def check_promises(
     logger: logging.Logger,
@@ -1102,6 +1119,17 @@ def check_promises(
     about the code and unrunnable as a string.
     """
     commands = [_bare(c) for c in (commands or []) if c and _bare(c)]
+    kept: list[str] = []
+    for command in commands:
+        if _NON_TERMINATING.search(command):
+            logger.warning(
+                "promised `%s` looks non-terminating (a server/watcher) — not running it: "
+                "a command that runs until stopped can never be green",
+                command,
+            )
+            continue
+        kept.append(command)
+    commands = kept
     files = [f for f in (files or []) if f and f.strip()]
     if not commands and not files:
         logger.info("the turn stated no exit conditions — nothing to hold it to")
