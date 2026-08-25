@@ -47,7 +47,7 @@ from paddock import Run, Score
 #: declare. A flow with no rewind rule would be entered on a tree that already holds its
 #: own output, which measures a lane confirming its own work — the most expensive way
 #: there is to learn nothing.
-KNOWN_FLOWS = ("qa", "docs")
+KNOWN_FLOWS = ("qa", "docs", "dev")
 
 #: The default wall-clock budget for one trial, in seconds. Enforced by workhorse between
 #: states, so an over-budget trial stops at a node boundary with its telemetry intact and
@@ -77,10 +77,10 @@ class Pin:
 
     story: str
     commits: Mapping[str, str]
-    #: The ref whose book the docs flow is entered with, when the default is wrong.
-    #: The default — the docs commit's parent — is right for a story whose book entry was
-    #: landed by a run: the book then lags this story by exactly one story, which is the
-    #: real historical input. It is wrong for a story whose docs flow **never ran**, where
+    #: The ref the flow is entered with, when the default is wrong.
+    #: The default — the flow commit's parent — is right for a story whose output was
+    #: landed by a run: the tree then lags this story by exactly one story, which is the
+    #: real historical input. It is wrong for a story whose flow **never ran**, where
     #: there is no commit to be the parent of and the entry state is a tree as it stands.
     #: Naming that tree here is what lets such a story be replayed at all.
     book_from: str = ""
@@ -91,7 +91,7 @@ class Pin:
             raise sm.TrialError(f"no {flow} commit pinned for story {self.story!r}")
         return commit
 
-    def book_ref(self, flow: str) -> str:
+    def entry_ref(self, flow: str) -> str:
         return self.book_from or f"{self.commit(flow)}~"
 
 
@@ -158,15 +158,22 @@ def plan_round(run: Run, fixture: Fixture) -> list[tuple[Pin, str]]:
 def rewind(repo: Path, fixture: Fixture, pin: Pin, flow: str) -> None:
     """Put the checked-out tree back into the state the flow was entered in.
 
-    Per flow, because the two write to different places:
+    Per flow, because each writes to a different place:
 
       * **qa** removes the story's plan and evidence from its spec dir, leaving the story,
         the implementation plan and the code — what `run qa` was handed.
-      * **docs** restores the book to `pin.book_ref(flow)`, by default the docs commit's
+      * **docs** restores the book to `pin.entry_ref(flow)`, by default the docs commit's
         *parent*, so the book lags this story by exactly one story. That is the real
         historical input, and the distinction matters: a book rewound further would be
         missing entries outside this story's obligations, which is a different and easier
         complaint for a reviewer to make.
+      * **dev** restores the *whole tree* to `pin.entry_ref(flow)`. Unlike the other two,
+        dev's output is a diff and not a directory: it writes source under whatever surface
+        the story touches, a spec dir, a qa-stack page, and a status stamp inside story.md,
+        and which files those are is a property of the story rather than of the fixture.
+        Anything narrower than the whole tree therefore leaves some part of the lane's own
+        answer standing where the next agent can read it, which is the one thing a replay
+        may not do. The harness comes back afterwards, in `restore_harness`.
     """
     if flow == "qa":
         spec = repo / "docs" / "specs" / pin.story
@@ -181,12 +188,25 @@ def rewind(repo: Path, fixture: Fixture, pin: Pin, flow: str) -> None:
                 shutil.rmtree(target)
             elif target.exists():
                 target.unlink()
+    elif flow == "dev":
+        ref = pin.entry_ref(flow)
+        # Same delete-first reason as the book below, at the scale of the repository: a
+        # bare `git checkout <ref> -- .` copies the ref's files over the tree and leaves
+        # every file the story *added* — which for dev is the implementation itself.
+        sm.git("rm", "-r", "--quiet", "--force", "--ignore-unmatch", "--", ".", cwd=repo)
+        sm.git("checkout", ref, "--", ".", cwd=repo)
+        story_md = repo / "docs" / "epics"
+        if not any(story_md.glob(f"*/stories/{pin.story}/story.md")):
+            raise sm.TrialError(
+                f"no story.md for {pin.story!r} at {ref} — the dev pin names a commit "
+                f"whose parent predates the story it is supposed to implement"
+            )
     else:
         # Delete first, then restore: `git checkout <tree> -- <path>` copies the tree's
         # files over the working tree but leaves behind anything the commit *added*, so on
         # its own it does not rewind a story that introduced a book entry — it hands the
         # docs flow the entry it is being measured on writing.
-        book, ref = fixture.book, pin.book_ref(flow)
+        book, ref = fixture.book, pin.entry_ref(flow)
         sm.git("rm", "-r", "--quiet", "--force", "--ignore-unmatch", "--", book, cwd=repo)
         if sm.git("ls-tree", "--name-only", ref, book, cwd=repo).strip():
             sm.git("checkout", ref, "--", book, cwd=repo)

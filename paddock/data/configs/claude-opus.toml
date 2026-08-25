@@ -1,0 +1,53 @@
+# Every rung is Claude Opus, on purpose. This is the head-to-head config.
+#
+# `workhorse-coder run --config` replaces the machine's stablemate config whole — no
+# merge — so a task that names this file measures these models rather than whatever the
+# operator happens to have selected today.
+#
+# What makes this file different from `opencode.toml` is that it deliberately throws the
+# power ladder away: all five tiers resolve to the same (model, effort) pair. Under any
+# other question that would be a defect — the ~40 `power=` sites under workflows/ each
+# carry a written reason for the rung they ask for, and a table that flattens them bills
+# every node at one tier and cannot say whether a tier choice was right.
+#
+# Here it is the measurement. The number this config exists to be compared against is a
+# single `claude -p --model claude-opus-5` invocation handed the same backlog and the same
+# decision records, which finished the whole link-shortener in ~158s. If the lane ran on a
+# mixed ladder, any difference would be attributable to the models as easily as to the
+# workflow, and the workflow is the thing under test. One model on both sides leaves
+# structure — how many nodes, how many turns, how many tokens each one emits — as the only
+# variable left.
+#
+# No `effort` key anywhere, for the same reason: the baseline invocation passed no
+# `--effort`, so the trials must not either. The claude backend appends `--effort` only
+# when a tier names one.
+
+config_version = 1
+default_cli = "claude"
+
+[power.low.claude]
+model = "claude-opus-5"
+
+[power.medium.claude]
+model = "claude-opus-5"
+
+[power.high.claude]
+model = "claude-opus-5"
+
+[power.smart.claude]
+model = "claude-opus-5"
+
+[power.extra-smart.claude]
+model = "claude-opus-5"
+
+[default.claude]
+model = "claude-opus-5"
+
+# The QA tools this app's `agents.yml` may reach for. Copied from `opencode.toml` rather
+# than shared, because a config is replaced whole and a task that pins this file inherits
+# nothing: an entry missing here is fail-closed at the point a QA plan asks for the tool,
+# not at load. `jq` is the one link-shortener opts into — the durable-ledger evidence its
+# `persists` pattern needs, which a plan may not read with its own `open()`.
+[qa_tools.jq]
+command = "jq"
+description = "the jq CLI, for reading a durable store file as evidence that a write persisted"
