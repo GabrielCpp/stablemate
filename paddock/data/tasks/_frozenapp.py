@@ -381,7 +381,17 @@ def capture_witness(repo: Path, dest: Path, extra: tuple[str, ...] = ()) -> Path
             shutil.copyfile(repo / name, dest / name)
     for rel in extra:
         source = repo / rel
-        if source.is_file():
+        if source.is_dir():
+            # A directory entry seals a whole surface — the replay fixtures use it for the
+            # product tree an acceptance gate rebuilds. Caches are left out for the same
+            # reason `.git` is: they are this machine's, not the trial's.
+            shutil.copytree(
+                source,
+                dest / rel,
+                dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns(".git", "__pycache__", "node_modules"),
+            )
+        elif source.is_file():
             (dest / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, dest / rel)
     return dest

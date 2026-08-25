@@ -30,6 +30,7 @@ The models are flattened to a single rung on purpose — see `configs/claude-opu
 
 from __future__ import annotations
 
+import _linkshort as linkshort
 import _replay as replay
 import _stablemate as sm
 from paddock import Run, Score, step, task
@@ -60,6 +61,9 @@ FIXTURE = replay.Fixture(
     flows=("dev",),
     harness=("agents.yml", "Makefile", ".gitignore", ".githooks", ".agents"),
     harness_ref=HARNESS_REF,
+    # The whole product, so the acceptance gate can rebuild and interrogate it from the
+    # sealed result — a wall-clock number with no quality bar under it is half a comparison.
+    extra_witness=("api",),
 )
 
 
@@ -74,4 +78,32 @@ def trials(run: Run) -> None:
 
 
 def score(run: Run) -> Score:
-    return replay.score_round(run)
+    """The replay's cost, and beside it the same gate the solo baseline was graded on.
+
+    The gate runs over each trial's sealed witness (which carries `api/`, see the
+    fixture), builds in `scratch/` and logs into `run.artifacts` — the two places a score
+    is allowed to write — so a sealed result stays re-gradable without re-running a trial.
+    """
+    base = replay.score_round(run)
+    trials = list((base.data or {}).get("trials", []))
+    gates = []
+    for trial in trials:
+        run_id = str(trial["run_id"])
+        outcome = linkshort.probe(
+            run.stage / str(trial["witness"]),
+            run.workdir(f"gate-{run_id}"),
+            run.artifacts / run_id,
+        )
+        gates.append({"run_id": run_id, **outcome})
+
+    if not gates:
+        return base
+    line = "  ".join(linkshort.gate_line(gate) for gate in gates)
+    detail = [*base.detail, ""]
+    for gate in gates:
+        detail.extend(linkshort.gate_detail(str(gate["run_id"]), gate))
+    return Score(
+        headline=f"{base.headline} | {line}",
+        detail=tuple(detail),
+        data={**(base.data or {}), "gates": gates},
+    )
