@@ -119,6 +119,11 @@ body {
 .detail-head { padding:8px 12px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .detail-head .repo-branch { font-family:var(--mono); font-size:12px; color:var(--text-0); }
 .detail-head .meta { font-family:var(--mono); font-size:11px; color:var(--text-2); }
+/* the full run id, shown whole so it can be copied: `user-select:all` makes one
+   click take the entire string, and `break-all` lets a long id wrap in a narrow
+   pane instead of pushing the head's chips off the edge */
+.detail-head .run-id { font-family:var(--mono); font-size:11px; color:var(--text-1);
+  cursor:text; user-select:all; -webkit-user-select:all; word-break:break-all; }
 /* the activity line owns the full width under the head's chips */
 .detail-head .doing-line { flex-basis:100%; font-family:var(--mono); font-size:11.5px; color:var(--text-1);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

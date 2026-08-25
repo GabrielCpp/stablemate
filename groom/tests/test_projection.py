@@ -311,6 +311,21 @@ def test_the_head_omits_the_cli_until_a_turn_has_advertised_one():
     assert projection.head(_wf(), _tel(backend="codex"))["cli"] == "codex"
 
 
+def test_the_head_carries_the_whole_run_id_not_a_fragment():
+    # The pane's id is the one people paste — into a workhorse command, a groom
+    # URL, a run-directory path. A prefix looks like an id right up until it is
+    # used as one, so a native row reports its run id entire.
+    native = _wf("coder-p5cc503a7", native=True, run_id="coder-p5cc503a7")
+    assert projection.head(native)["handle"] == "coder-p5cc503a7"
+    # A docker row has no run id of its own until it pushes one; it reports the
+    # twelve characters docker prints and accepts, not the whole 64-char sha.
+    docker = _wf("0123456789abcdef0123456789abcdef")
+    assert projection.head(docker)["handle"] == "0123456789ab"
+    # The row keeps its scanning-width fragment — the list and the pane answer
+    # different questions.
+    assert projection.short_id(native) == "code"
+
+
 def test_exit_hint_only_on_finished_with_a_code():
     # A code set on a run that is still live is leftover, not a verdict.
     ok = projection.head(_wf("a", state=WorkflowState.FINISHED, exit_code=0))

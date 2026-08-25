@@ -448,8 +448,12 @@ function StatusBar() {
 // --------------------------------------------------------------------------- //
 function RunHead({ head }) {
   const meta =
-    "#" + head.handle + " · " + head.state + (head.node ? " · node " + head.node : "") +
+    head.state + (head.node ? " · node " + head.node : "") +
     (head.cli ? " · " + head.cli : "") + (head.pid ? " · pid " + head.pid : "");
+  // The id is its own element rather than a slice of `meta`, because it is the
+  // one part of this line anybody copies: `user-select: all` (see the CSS) turns
+  // a single click into the whole id, and a partial selection cannot cut it in
+  // half mid-paste.
   // role="status" because that is what it is: the line that says what this run is
   // doing right now, re-rendered on the server's clock.
   return html`<div class="detail-head" role="status" aria-label="Selected run">
@@ -457,6 +461,7 @@ function RunHead({ head }) {
     <${TypeBadge} type=${head.type} hue=${head.type_hue} />
     <span class="repo-branch">${head.repo}</span>
     ${head.live_label ? html`<span class="pulse ${head.live}">${head.live_label}</span>` : null}
+    <span class="run-id" title="Run id — click to select">${head.handle}</span>
     <span class="meta">${meta}</span>
     ${head.exit_hint
       ? html`<span class=${"exit-hint " + (head.exit_ok ? "exit-ok" : "exit-err")}>${head.exit_hint}</span>`

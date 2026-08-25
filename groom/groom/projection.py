@@ -355,10 +355,18 @@ def repo_entries(
 # Detail pane (GET /worker/{id}, and the pushed refresh of the open pane)
 # --------------------------------------------------------------------------- #
 def handle(wf: WorkflowContainer) -> str:
-    """The id fragment the detail pane shows. Longer than a row's ``short_id``:
-    the row is scanned in a list where four characters disambiguate, the pane is
-    the thing you paste into ``docker logs``."""
-    return wf.container_id[:6]
+    """The id the detail pane shows — whole, not a fragment.
+
+    A row's ``short_id`` is for scanning a list, where four characters
+    disambiguate. The pane is the thing you *paste*: into a workhorse command,
+    into a groom URL, into a run-directory path. So a native row reports its
+    entire run id, and a docker row the twelve characters docker itself prints
+    and accepts. Truncating the run id saved a few pixels of header and cost
+    every paste that needed it.
+    """
+    if wf.native:
+        return wf.run_id or wf.container_id
+    return wf.container_id[:12]
 
 
 def cli_label(tel: RunTelemetry | None) -> str:
