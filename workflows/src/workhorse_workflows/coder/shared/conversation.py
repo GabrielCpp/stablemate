@@ -3,7 +3,11 @@
 A story is implemented, repaired and review-applied by the same agent in the same
 conversation: the fixer that already read the code it is fixing does not spend its first
 minutes re-reading it, and the applier that wrote the line a reviewer objects to knows why
-it is there. That is what `session_id` threads between lanes.
+it is there. That is what the story's chain key buys, and why every lane derives the same
+one from the story slug instead of being handed a session id: the chain file lives in the
+run directory, so a lane that names the key finds the conversation the lane before it left,
+and a lane run on its own — a replay, a standalone PR review — finds nothing and starts
+cold, which is the honest answer rather than a missing parameter.
 
 The cost of that is context length, and a long context is where a cheap turn stops being a
 cheap turn. So the conversation is recycled on a turn count rather than allowed to grow: past
@@ -25,10 +29,11 @@ def story_chain(slug: str) -> str:
     here because four lanes have to agree on it — a lane that spells it its own way is a
     lane that quietly reviews its own diff in a fresh context.
 
-    A lane entered with a `session_id` from an earlier lane seeds *this* key with it
-    (`flow.seed_session(story_chain(slug), session_id)`, once, in `setup`) rather than
-    using the id as a key of its own: an id is an opaque string, and a chain named after
-    one is a chain nobody else can name.
+    Derived from the slug and nothing else, so no lane has to be *told* which conversation
+    it is joining. Handed-off sub-flows share their parent's run directory, and the chain
+    file lives there, so `dev` opening the conversation is all it takes for `review`,
+    `docs` and `qa` to find it — and nothing outside the run can point a lane at a
+    conversation, which a settable session id would have allowed.
     """
     return f"story:{slug}"
 

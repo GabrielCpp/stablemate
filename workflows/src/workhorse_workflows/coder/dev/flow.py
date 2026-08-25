@@ -167,9 +167,6 @@ class Dev(Workflow):
     #: in-flight run on reload with a bare pydantic `extra_forbidden`.
     max_lint_reworks: int = 2
     max_reuse_reworks: int = 2
-    #: The CLI session id to resume for the story's backbone turns, threaded in from a
-    #: prior stage's turn across a `handoff()` boundary. Empty starts a fresh chain.
-    session_id: str = ""
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
     #: fill each one in for any node or sub-flow that declares a parameter of the same
@@ -198,13 +195,12 @@ class Dev(Workflow):
         `prepare_story` is also the authored-story gate: a story ostler knows and reports
         unauthored fails the run here rather than being planned against.
 
-        Seeding the backbone chain also belongs here: `session=` names a chain, never an
-        id, so an id threaded in from a prior stage is filed under this story's key once,
-        before any turn runs. Empty id, or a chain this run already started: no-op.
+        Nothing seeds the backbone chain: its key is derived from the story slug, and the
+        chain file lives in the run directory, so this lane simply opens the conversation
+        the later lanes will name.
         """
         self.call(resolve_workspace_dirs, self.docs_path)
         ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
-        self.seed_session(story_chain(ctx.story_slug), self.session_id)
         return ctx
 
     def labels(self) -> dict[str, str]:
@@ -240,8 +236,8 @@ class Dev(Workflow):
     def _story_chain(self) -> str:
         """The backbone conversation this story's primary turns run on.
 
-        One key per story, seeded in `setup` with the session id threaded in from a prior
-        stage so this lane continues that conversation rather than opening a cold one.
+        One key per story, derived from the slug alone, so this lane and every lane after
+        it in the run name the same conversation without being handed anything.
         Distinct from `_chain`: that names the narrower, intentionally-isolated
         plan-repair loops, and stays untouched by this one.
 
@@ -264,14 +260,13 @@ class Dev(Workflow):
 
         A chain outliving its flow is what makes a re-run of the same story resume a
         conversation about a plan that has since been rewritten. The backbone chain is the
-        exception: `result.session_id` is stamped with whatever id it resolved to, so the
-        parent can thread it into the next stage instead of reopening a conversation, and
-        `result.session_turns` with how much of the recycle budget that conversation has
-        already spent, so the review lane's apply turns continue the same count.
+        exception: it is left open for the lanes after this one, which find it under the
+        same story-derived key. `result.session_turns` carries how much of the recycle
+        budget that conversation has already spent, so the review lane's apply turns
+        continue the same count.
         """
         for worklist in ("block-repair", "path-repair"):
             self.reset_session(self._chain(worklist))
-        result.session_id = self.chain_session(self._story_chain())
         result.session_turns = session_turns
         return Done(result)
 

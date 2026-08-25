@@ -22,9 +22,11 @@ by node name, and what distinguished the sites was their arguments and where the
 **The lane is split in two along one line: who judges, and who changes the code.** The judging
 turns — code review, reuse, the implementation verdict — are cold by design; a reviewer that
 inherited the author's context is reviewing its own reasoning. The three apply turns are the
-opposite case: they resume the *implementer's* conversation (`session_id`, threaded in from
-`dev`), because a finding is a request to change code somebody just wrote and the turn that
-wrote it already knows why the line is there. That also makes the cheap power tier sufficient
+opposite case: they resume the *implementer's* conversation — the story's backbone chain,
+which the dev lane left open in this run's directory — because a finding is a request to
+change code somebody just wrote and the turn that wrote it already knows why the line is
+there. Nothing is threaded in to make that happen: the key is derived from the story slug,
+and a lane with no dev lane in front of it simply finds no chain and runs cold. That also makes the cheap power tier sufficient
 for an apply, which is where this lane's cost was. `max_session_turns` bounds the conversation
 across both lanes — the count arrives with `DevResult.session_turns` and keeps going here.
 
@@ -127,11 +129,6 @@ class Review(Workflow):
     #: The PR to comment on. Empty lets the reviewer derive one from the branch, and no
     #: open PR at all is fine — the review runs against local changes either way.
     pr_number: str = ""
-    #: The story's backbone conversation — the one the implementer worked in — threaded in
-    #: from the dev lane. The *judging* turns never touch it (see the module docstring);
-    #: only the apply turns resume it. Empty is a standalone PR review with no implementer
-    #: to rejoin, and every turn is cold, as it was.
-    session_id: str = ""
     #: How many turns that conversation had already spent before this flow entered it.
     #: Carried from `DevResult.session_turns` so the recycle threshold bounds the whole
     #: conversation rather than each lane's share of it.
@@ -163,10 +160,9 @@ class Review(Workflow):
         because the docs repo it resolves is the *cwd* of the three review turns, and a cwd
         that changed between them would mean they were not reviewing the same thing.
 
-        Seeding the implementer chain also belongs here: `session=` names a chain, never
-        an id, so the dev lane's id is filed under this story's backbone key once, before
-        any turn runs — which is what makes `_apply_power()`'s cheap tier honest. Empty
-        id (a standalone PR review), or a chain this run already started: no-op.
+        Nothing seeds the implementer chain: its key comes from the story slug, so a dev
+        lane earlier in the same run has already left the conversation under it, and a
+        standalone PR review finds nothing there and runs cold.
         """
         self.call(resolve_workspace_dirs, self.docs_path)
         ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
@@ -177,7 +173,6 @@ class Review(Workflow):
         # same list `implement-plan` got — deterministic, and empty for a standalone PR
         # review with no plan behind it.
         self.call(resolve_impl_context, ctx.spec_dir)
-        self.seed_session(story_chain(ctx.story_slug), self.session_id)
         return ctx
 
     def labels(self) -> dict[str, str]:
@@ -730,7 +725,7 @@ class Review(Workflow):
     def _feeder_chain(self) -> str:
         """The code-review pass's own conversation — review-local by design.
 
-        Named for the review alone, never `self.session_id`: a reviewer that inherited the
+        Named for the review alone, never the story's backbone: a reviewer that inherited the
         author's context is reviewing its own reasoning, so the judging turns are the half
         of this lane that must stay cold. The key must also never collide with the
         implementer chain, since the two are reset on entirely different schedules — this
@@ -746,18 +741,22 @@ class Review(Workflow):
         in the context, and what is being asked for now is a named change to code the turn
         already understands. With no session to resume — a standalone PR review — the turn
         is cold and pays the old price.
+
+        The chain itself is what is asked, rather than anything threaded in: it is right on a
+        resumed run whose conversation exists but whose entry parameters are long gone, and
+        it correctly reports cold once the recycler has reset the chain.
         """
-        return "low" if self.session_id else "high"
+        return "low" if self.chain_session(self._impl_chain()) else "high"
 
     def _impl_chain(self) -> str:
         """The implementer's conversation, which the *apply* turns rejoin.
 
         A finding is a request to change code somebody just wrote, and the cheapest turn
         that can act on it is the one that wrote it: it knows why the line is there, what it
-        already tried, and which files it touched. `setup` seeds this key with the dev
-        lane's session id; an empty `session_id` — a standalone PR review with no dev lane
-        in front of it — leaves the chain unseeded and the CLI mints one on first use,
-        which is a cold turn exactly as before.
+        already tried, and which files it touched. The dev lane opened this chain under the
+        same story-derived key earlier in the run; a standalone PR review with no dev lane in
+        front of it finds no chain and the CLI mints one on first use, which is a cold turn
+        exactly as before.
         """
         return story_chain(self.ctx.story_slug)
 

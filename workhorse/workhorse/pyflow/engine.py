@@ -463,9 +463,10 @@ class Engine:
         """The session id chain ``key`` is on, or ``""`` before its first turn.
 
         What makes a chain survivable across a resume: the chain *file* lives in the run
-        directory and a resumed run finds it there, but a state that wants the id in its
-        own parameters — the only thing a checkpoint carries — has to be able to read it
-        out. Passing that id back as ``session=`` reopens the same conversation.
+        directory, so a resumed run — or a handed-off sub-flow, which shares that directory
+        — finds it by naming the key, with nothing carried in its own parameters. Reading
+        the id out is for a caller that has to *decide* on it rather than pass it: an empty
+        answer means no turn has run on this key yet, which is a cold conversation.
         """
         if not key or self.env.session_id_path is None:
             return ""
@@ -475,10 +476,11 @@ class Engine:
         """Start chain ``key`` on an id someone else's turn minted.
 
         The one way to say "resume this exact conversation": a session id is an opaque
-        string, so ``session=`` cannot be overloaded to carry one, and a caller holding
-        an id — a sub-flow handed the implementer's session, an operator naming a
-        conversation on the CLI — files it under a key of its own choosing and then
-        passes that key like any other.
+        string, so ``session=`` cannot be overloaded to carry one, and a caller holding an
+        id files it under a key of its own choosing and then passes that key like any
+        other. Rare, and deliberately so — a flow whose lanes share a run directory names
+        a key instead, and a key that can be *set* from outside the run is a lane that can
+        be pointed at a conversation rather than at the tree in front of it.
 
         A no-op when the chain already has an id, which is what makes it safe to call
         unconditionally on the way into a flow: a resumed run finds the chain file

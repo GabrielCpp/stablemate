@@ -149,9 +149,6 @@ class Docs(Workflow):
     #: resolver turn standing in for the author that wrote this product's specs; the other
     #: two park on the driver's `Await` and wait for a person. See `_blocked`.
     operator_mode: str = "auto"
-    #: The CLI session id to resume for the story's backbone turns, threaded in from a
-    #: prior stage's turn across a `handoff()` boundary. Empty starts a fresh chain.
-    session_id: str = ""
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
     #: fill each one in for any node or sub-flow that declares a parameter of the same
@@ -176,14 +173,13 @@ class Docs(Workflow):
         """Resolve the slug to paths and the workspace to directories, and pick up the
         conversation the lane before this one was having.
 
-        Seeding is how an opaque session id becomes resumable: `session=` names a chain,
-        never an id, so an id threaded in from a prior stage is filed under this story's
-        backbone key here, once, before any turn runs. Empty id, or a chain this run has
-        already started: no-op.
+        Nothing is seeded to make that happen: the backbone key is derived from the story
+        slug, and handed-off lanes share the run's chain directory, so naming the key is
+        all it takes to land in the conversation an earlier lane left. A lane run on its
+        own finds no chain and starts cold.
         """
         self.call(resolve_workspace_dirs, self.docs_path)
         ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
-        self.seed_session(story_chain(ctx.story_slug), self.session_id)
         return ctx
 
     def labels(self) -> dict[str, str]:
@@ -203,8 +199,9 @@ class Docs(Workflow):
     def _story_chain(self) -> str:
         """The backbone conversation this story's primary turn runs on.
 
-        One key per story, seeded in `setup` with the session id threaded in from a prior
-        stage so this lane continues that conversation rather than opening a cold one.
+        One key per story, derived from the slug alone, so this lane continues whatever
+        conversation an earlier lane in the run left under it rather than opening a cold
+        one — and opens a cold one when there is no earlier lane.
         Distinct from `_chain`: that names the narrower, intentionally-isolated repair
         loop, and stays untouched by this one.
         """
@@ -215,11 +212,10 @@ class Docs(Workflow):
 
         Every terminal goes through here so no exit can forget: a chain left behind is a
         conversation about a book as it was, waiting for the next entry to resume it. The
-        backbone chain is the exception: `result.session_id` is stamped with whatever id it
-        resolved to, so the parent can thread it into the next stage.
+        backbone chain is the exception: it is left open for whatever lane runs next in
+        this run, which finds it under the same story-derived key.
         """
         self.reset_session(self._chain)
-        result.session_id = self.chain_session(self._story_chain())
         return Done(result)
 
     #: The two budgets, split because the grounding gate and the reviewer fail for

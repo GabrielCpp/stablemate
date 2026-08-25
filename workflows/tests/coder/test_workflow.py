@@ -237,7 +237,6 @@ class _StubFlow(Workflow):
     repo: str = ""
     branch: str = ""
     ci_summary: str = ""
-    session_id: str = ""
     session_turns: int = 0
 
 
@@ -309,15 +308,7 @@ class _Sub:
                 raise RuntimeError(f"killed during {name}")
             return Done(reply(child))
 
-        # Redeclared, not just inherited: pydantic only re-resolves a shadowed field's
-        # default against the *defining* class's own namespace, so a dynamic subclass
-        # that never repeats the annotation would see `Workflow.session_id`'s method,
-        # not `_StubFlow`'s "" default, whenever nothing overrides it at construction.
-        return type(
-            name,
-            (_StubFlow,),
-            {"start": start, "__annotations__": {"session_id": str}, "session_id": ""},
-        )
+        return type(name, (_StubFlow,), {"start": start})
 
     def calls_to(self, name: str) -> list[_StubFlow]:
         return [c for n, c in zip(self.calls, self.seen, strict=True) if n == name]
@@ -487,55 +478,35 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
     assert _output(run_env, select_epic)["reason"], _output(run_env, select_epic)
 
 
-def test_the_backbone_session_threads_through_every_lane_unread(
+def test_no_lane_is_handed_a_conversation_but_the_turn_count_threads(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Every lane is handed the story's conversation, and `review` passes it on untouched.
+    """The graph names no conversation; it only carries how much of the budget is spent.
 
-    `Review` gets the id because its *apply* turns rejoin the implementer — whether its
-    *judging* turns stay cold is `Review`'s own affair, asserted in its own tests. What the
-    graph owes is the thread itself, and that nothing is read back off `Review`'s result:
-    what reaches `document` is exactly what `dev` produced, with the turn count that says
-    how much of the recycle budget the conversation has already spent.
+    Every lane derives the story's chain key from the slug and finds the chain in the run
+    directory it shares with its parent, so there is nothing for the graph to thread and
+    nothing outside the run that could point a lane at a conversation. What the graph does
+    owe is the turn count: the recycler needs to know how long the conversation already is,
+    and that cannot be read off a chain file.
     """
     repo = epic()
 
     class _ChainingSub(_Sub):
         def _dev(self, child: _StubFlow) -> DevResult:
             super()._dev(child)
-            return DevResult(
-                status="ready", session_id="story:from-dev", session_turns=3
-            )
-
-        def _docs(self, child: _StubFlow) -> DocsResult:
-            return DocsResult(status="passed", session_id="story:from-docs")
+            return DevResult(status="ready", session_turns=3)
 
     sub = _ChainingSub(repo).install(monkeypatch)
 
     drive_flow(Coder(), env(), _Agent())
 
-    assert sub.calls_to("Review")[0].session_id == "story:from-dev"
     assert sub.calls_to("Review")[0].session_turns == 3
-    assert sub.calls_to("Docs")[0].session_id == "story:from-dev"
-    assert sub.calls_to("Qa")[0].session_id == "story:from-docs"
-
-
-def test_a_fresh_story_starts_with_no_backbone_session(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`prepare` hands `dev` nothing to resume — the chain is `dev`'s own to open."""
-    repo = epic()
-    sub = _Sub(repo).install(monkeypatch)
-
-    drive_flow(Coder(), env(), _Agent())
-
-    assert sub.calls_to("Dev")[0].session_id == ""
+    # `_StubFlow` declares every keyword the handoffs pass and forbids extras, so a graph
+    # that started naming a conversation again would fail construction right here.
+    assert "session_id" not in _StubFlow.model_fields
 
 
 def test_a_qa_mutation_requires_final_documentation_before_commit(

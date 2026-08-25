@@ -42,6 +42,15 @@ class _Spy:
     def __init__(self) -> None:
         self.turns: list[dict[str, Any]] = []
         self.resets: list[str] = []
+        #: Which chains already have a conversation behind them. `None` — the default —
+        #: is every chain, which is what a lane entered from the lane before it sees.
+        self.open_chains: set[str] | None = None
+
+    def session_id(self, key: str) -> str:
+        """What `chain_session(key)` reports: the chain name itself stands in for an id."""
+        if self.open_chains is None:
+            return key
+        return key if key in self.open_chains else ""
 
 
 @pytest.fixture
@@ -62,9 +71,9 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
         seen.resets.append(key)
 
     def fake_require_engine(self: Any) -> Any:
-        # `_ends` resolves the backbone chain's id through the engine; no turn in these
-        # tests reaches a real one, so the resolved id is the chain name itself.
-        return SimpleNamespace(session_id=lambda key: key)
+        # Asking whether a chain is open goes through the engine; no turn in these tests
+        # reaches a real one, so the resolved id is the chain name itself.
+        return SimpleNamespace(session_id=seen.session_id)
 
     for flow in (Docs, Qa, Dev, Review):
         monkeypatch.setattr(flow, "agent", fake_agent)
@@ -149,19 +158,20 @@ def test_ending_the_docs_flow_ends_its_chain(spy: _Spy) -> None:
 
     assert isinstance(done.result, DocsResult) and done.result.status == "passed"
     assert spy.resets == [f"docs-repair:{STORY}"]
-    # The backbone chain is stamped on the way out, not dropped like the repair chains.
-    assert done.result.session_id == f"story:{STORY}"
+    # The backbone chain is left open for whichever lane runs next, not dropped like
+    # the repair chains.
+    assert f"story:{STORY}" not in spy.resets
 
 
-def test_every_lane_seeds_the_backbone_chain_with_the_id_it_was_handed(
+def test_every_lane_names_the_same_conversation_without_being_handed_anything(
     spy: _Spy, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A `session_id` threaded in from the lane before is the conversation to continue.
+    """The key is derived from the story slug, and that is the whole transport.
 
-    It cannot be *used as the key*: an id is an opaque string, so the only thing that
-    says "resume this exact conversation" is seeding the chain with it — once, in
-    `setup`, before any turn runs. Every lane keys on the story either way, which is
-    what lets a later lane name the same conversation without holding the id.
+    Handed-off lanes share their parent run's chain directory, so a lane that names the
+    key lands in the conversation the lane before it left — with nothing threaded in and
+    nothing seeded. A lane run on its own finds no chain there and starts cold, which is
+    what makes replaying one lane honest instead of answering out of memory.
     """
     seeded: list[tuple[str, str]] = []
     ctx = SimpleNamespace(story_slug=STORY, story_path="", spec_dir="", qa_dir="")
@@ -181,11 +191,18 @@ def test_every_lane_seeds_the_backbone_chain_with_the_id_it_was_handed(
         # rejoins is the implementer's.
         (_review(), "_impl_chain"),
     ):
-        flow.session_id = "ses_fddd573afffeJTtbN3ebtAWQib"
         flow.setup()
         assert getattr(flow, chain)() == f"story:{STORY}"
 
-    assert seeded == [(f"story:{STORY}", "ses_fddd573afffeJTtbN3ebtAWQib")] * 4
+    assert seeded == []
+
+
+def test_no_lane_takes_a_session_id_as_a_parameter(spy: _Spy) -> None:
+    """A `Workflow` field is settable from outside with `--params`, and a lane pointed at
+    a conversation from outside answers out of that conversation's memory rather than
+    from the tree in front of it. There is no such field to point."""
+    for flow_cls in (Docs, Qa, Dev, Review):
+        assert "session_id" not in flow_cls.model_fields
 
 
 # ── the QA-plan lane ─────────────────────────────────────────────────────────────────
@@ -241,7 +258,7 @@ def test_ending_the_qa_flow_ends_every_chain_it_opened(spy: _Spy) -> None:
         f"qa-feedback:{STORY}",
         f"qa-regression-fix:{STORY}",
     ]
-    assert done.result.session_id == f"story:{STORY}"
+    assert f"story:{STORY}" not in spy.resets
 
 
 # ── the QA fix lane ──────────────────────────────────────────────────────────────────
@@ -316,8 +333,8 @@ def test_a_repair_lap_runs_on_the_story_conversation(spy: _Spy, monkeypatch) -> 
 
 
 def test_ending_the_dev_flow_ends_every_plan_chain(spy: _Spy) -> None:
-    """The story chain is not reset here: its id is stamped onto the result instead, so
-    the next stage resumes the conversation rather than reopening one."""
+    """The story chain is not reset here: it is left open under a key the next lane
+    derives for itself, so that lane resumes the conversation rather than reopening one."""
     done = _dev()._ends(DevResult())
 
     assert isinstance(done.result, DevResult)
@@ -325,7 +342,6 @@ def test_ending_the_dev_flow_ends_every_plan_chain(spy: _Spy) -> None:
         f"plan-block-repair:{STORY}",
         f"plan-path-repair:{STORY}",
     ]
-    assert done.result.session_id == f"story:{STORY}"
 
 
 # ── the review lane ──────────────────────────────────────────────────────────────────
@@ -345,10 +361,10 @@ def test_an_apply_turn_rejoins_the_implementer_rather_than_judging_cold(spy: _Sp
     """The half of this lane that changes code is not the half that judges it. A finding is
     a request to edit a line somebody just wrote, and the turn that wrote it is the cheapest
     one that can act on it — which is also what makes the low power tier sufficient."""
-    _apply_review(_review(session_id="ses_from-dev"))
+    _apply_review(_review())
 
     assert spy.turns[0]["prompt"] == "prompts/apply-review.md"
-    # The key is the story's; `setup` is what put the dev lane's id behind it.
+    # The key is the story's; the dev lane earlier in the run is what opened it.
     assert spy.turns[0]["session"] == f"story:{STORY}"
     assert spy.turns[0]["power"] == "low"
 
@@ -357,8 +373,8 @@ def test_the_judging_turns_stay_cold_even_when_the_implementer_is_threaded_in(
     spy: _Spy,
 ) -> None:
     """The reason the two halves are named apart: a reviewer that inherited the author's
-    context is reviewing its own reasoning, so no threaded id may reach the feeder chain."""
-    flow = _review(session_id="ses_from-dev")
+    context is reviewing its own reasoning, so the feeder chain must never be the story's."""
+    flow = _review()
 
     assert flow._feeder_chain == f"review-feeders:{STORY}"
     assert flow._feeder_chain != flow._impl_chain()
@@ -368,7 +384,9 @@ def test_a_standalone_pr_review_has_no_implementer_to_resume_and_pays_for_it(
     spy: _Spy,
 ) -> None:
     """No dev lane in front of it means no context to inherit, so the apply turn is cold —
-    and a cold turn needs the reasoning the resumed one did not have to repeat."""
+    and a cold turn needs the reasoning the resumed one did not have to repeat. The chain
+    itself is what says which of the two this is: an unopened chain is a cold turn."""
+    spy.open_chains = set()
     _apply_review(_review())
 
     assert spy.turns[0]["session"] == f"story:{STORY}"
@@ -378,7 +396,7 @@ def test_a_standalone_pr_review_has_no_implementer_to_resume_and_pays_for_it(
 def test_the_apply_turns_keep_counting_from_what_the_dev_lane_spent(spy: _Spy) -> None:
     """The cap bounds the *conversation*, not each lane's share of it. A review that
     restarted the count would hand the recycler a context twice as long as it agreed to."""
-    flow = _review(session_id="ses_from-dev", session_turns=7, max_session_turns=8)
+    flow = _review(session_turns=7, max_session_turns=8)
 
     assert flow._spend_turn(0) == 8
     assert spy.resets == []
@@ -387,7 +405,7 @@ def test_the_apply_turns_keep_counting_from_what_the_dev_lane_spent(spy: _Spy) -
 def test_a_conversation_that_fills_up_inside_the_review_lane_is_recycled(spy: _Spy) -> None:
     """Where the cap is reached is not where it is owned: the dev lane can hand over a
     conversation already at the threshold, and the next apply turn opens a fresh one."""
-    flow = _review(session_id="ses_from-dev", session_turns=8, max_session_turns=8)
+    flow = _review(session_turns=8, max_session_turns=8)
 
     assert flow._spend_turn(0) == 1
     assert spy.resets == [f"story:{STORY}"]

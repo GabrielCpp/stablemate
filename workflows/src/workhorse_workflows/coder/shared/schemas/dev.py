@@ -605,11 +605,6 @@ class DevResult(CoderResult):
 
     status: str = "ready"
     operator_notes: str = ""
-    #: The CLI session id the story's backbone turns ended on — empty when none ran, or
-    #: when a checkpoint predates this field. The parent threads it into `Review`'s
-    #: successor stages so `Docs` and `Qa` resume the same conversation instead of
-    #: reopening one. See `Dev._story_chain`.
-    session_id: str = ""
     #: How many turns that conversation had already spent when the flow ended. The review
     #: lane's apply turns join the same conversation and keep counting from here, so the
     #: recycle threshold bounds the *conversation*, not each lane's share of it.

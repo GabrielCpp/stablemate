@@ -258,10 +258,6 @@ class DocsResult(CoderResult):
     status: str = "failed"
     notes: str = ""
     authored_nodes: list[str] = []
-    #: The CLI session id the story's backbone turn ended on — empty when none ran. Threaded
-    #: back to the parent so the next stage (`Qa`, or another `Docs` recheck) resumes this
-    #: conversation instead of reopening one. See `Docs._story_chain`.
-    session_id: str = ""
 
 
 __all__ = [

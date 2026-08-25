@@ -379,9 +379,6 @@ class Qa(Workflow):
     #: `resolve_operator`, `apply_feedback` and `report_dev`.
     qa_lane_budget_s: int = 3300
     plan_lane_budget_s: int = 2400
-    #: The CLI session id to resume for the story's backbone turns, threaded in from a
-    #: prior stage's turn across a `handoff()` boundary. Empty starts a fresh chain.
-    session_id: str = ""
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
     #: fill each one in for any node or sub-flow that declares a parameter of the same
@@ -481,13 +478,12 @@ class Qa(Workflow):
         """Resolve the slug to the story path, its spec dir and its `qa/` directory, and
         pick up the conversation the lane before this one was having.
 
-        Seeding is how an opaque session id becomes resumable: `session=` names a chain,
-        never an id, so an id threaded in from a prior stage is filed under this story's
-        backbone key here, once, before any turn runs. Empty id, or a chain this run has
-        already started: no-op.
+        Nothing is seeded to make that happen: the backbone key is derived from the story
+        slug, and handed-off lanes share the run's chain directory, so naming the key is
+        all it takes to land in the conversation an earlier lane left. A lane run on its
+        own finds no chain and starts cold.
         """
         ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
-        self.seed_session(story_chain(ctx.story_slug), self.session_id)
         return ctx
 
     def labels(self) -> dict[str, str]:
@@ -507,8 +503,9 @@ class Qa(Workflow):
     def _story_chain(self) -> str:
         """The backbone conversation this story's primary turns run on.
 
-        One key per story, seeded in `setup` with the session id threaded in from a prior
-        stage so this lane continues that conversation rather than opening a cold one.
+        One key per story, derived from the slug alone, so this lane continues whatever
+        conversation an earlier lane in the run left under it rather than opening a cold
+        one — and opens a cold one when there is no earlier lane.
         Distinct from `_chain`/`_WORKLISTS`: those name the narrower,
         intentionally-isolated repair loops, and stay untouched by this one.
         """
@@ -534,7 +531,6 @@ class Qa(Workflow):
         conversation about a plan and a diff that have both moved on since.
         """
         self._reset_chains()
-        result.session_id = self.chain_session(self._story_chain())
         return Done(result)
 
     def _first_verdict_ends(self, loop: QaLoop) -> Done:
