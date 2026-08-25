@@ -36,7 +36,7 @@ Your CWD is the repo containing the service above. All code changes go in this r
 
 Implement **only** the plan you were handed for this iteration. Do NOT search other repos, git history, or branch state to guess which story to implement, and do NOT substitute a different service.
 
-If the story path is blank or its file does not exist, stop and report that the workflow did not provide a usable story path — do not pick a story yourself.
+If the story path is blank or its file does not exist, return `status: "blocked"` (Machine-Readable Result below) with notes saying the workflow did not provide a usable story path — that hands it to the operator. Do not pick a story yourself.
 
 {% if operator_context %}
 ## Operator answer (authoritative ground truth)
@@ -63,13 +63,10 @@ Before writing any code:
 {%- else %}
    - _(The resolved list is empty.)_ Fall back to the standards the plan's **Approach** and **Changes** sections cite by name, and load each one.
 {%- endif %}
-   - Docs-only work also covers `AGENTS.md` and `docs/CODEX.md`.
-3. If the current assistant environment supports skills, use the matching local skills as well — in particular each touched layer's testing skill before writing or updating its tests.
-4. **Find each layer's "Verification Commands" section** in its instructions where present — these are the canonical test, codegen, lint, and build commands. The plan's **Verification Commands** section references them.
-5. **For multi-layer plans**: note the plan's **implementation order** and **integration contracts**{% if root_plan_text %} (the cross-service contracts are inlined under **"Cross-service contracts"** at the end of this prompt){% endif %}. Implement one layer at a time in the specified order.
-6. Check that referenced files exist and dependencies are available.
-7. **Search before you build.** List the concrete units the plan says it will create — endpoints, service methods, models, components, screens, validators, formatters, any "helper" or "util" it names — and search the affected repos for each one before writing it. Match on **behaviour, not name**: the existing version is often called something else, and shared utility trees are where reinvention concentrates. Reuse or extend what you find; where you deliberately do not, say why in the implementation notes. A capability rebuilt beside the one that already does it is the single most common defect this stage produces, and it is cheapest to catch here — you are about to read this code anyway.
-8. If anything is ambiguous, ask before proceeding.
+   - Docs-only work also covers the repo's `AGENTS.md`.
+3. Use the matching local skills as well — in particular each touched layer's testing skill before writing or updating its tests.
+4. The plan's **Verification Commands** section carries the canonical test, codegen, lint, and build commands, and **Provided Inputs** carries this service's gates. Those are the commands you run — do not hunt through instruction files for others, and do not invent any.
+5. Where the plan leaves a detail open, make the reasonable design decision yourself and record it in the implementation notes — the planning gates are behind you, and a block here costs an operator round-trip. Reserve `blocked` for what a decision cannot get past (an operator-only foundation, per Step 5).
 
 ---
 
@@ -80,22 +77,11 @@ Create a small, sequential, testable task list using the task/todo tool availabl
 Rules:
 
 - One task per coherent unit of *behaviour* — an endpoint, a service method with its ports, a screen. A task may span several files; a file is not a task.
-- One **"Run tests"** task per layer, after that layer's implementation tasks — not one after every task.
+- One **"Run tests"** task after the implementation tasks — not one after every task.
 - If the plan identifies code generation, add a **"Run code generation"** task before the first test that depends on generated output.
 - End the task list with a **"Final verification"** task.
-- **Multi-layer plans**: Group tasks by layer in the order the plan's **Implementation Order** specifies (typically the API/contract layer before the consumers that depend on it). Complete one layer's tasks — including its final verification — before starting the next. Generic shape:
-  ```
-  1. [<first layer>]  Run code generation (only if the plan lists any)
-  2. [<first layer>]  Implement the change
-  3. [<first layer>]  Run tests
-  4. [<first layer>]  Final verification
-  5. [<next layer>]   Regenerate its client/artifacts (only if the plan lists any)
-  6. [<next layer>]   Implement the change
-  7. [<next layer>]   Run tests
-  8. [<next layer>]   Final verification
-  ```
 
-Mark each task `in-progress` when you start it and `completed` once its layer's checks pass — never before the check that covers it has run.
+Mark each task `in-progress` when you start it and `completed` once the check that covers it passes — never before that check has run.
 
 ### State your exit conditions before you start
 
@@ -126,7 +112,7 @@ list as you learn — what you return at the end is what you are held to.
 
 ---
 
-## Step 3 — Implement in Batches, Verify per Layer
+## Step 3 — Implement in Batches, Then Verify
 
 Spend your turns on edits, not ceremony: **batch independent file writes and edits into the
 same response wherever your tools allow.** A turn that writes one small file and stops is
@@ -145,24 +131,22 @@ earlier command's output (generated code, a failing test's message).
 - **For a component that consumes an external contract** (an API payload, another producer's output), derive its test fixtures from a **captured real payload** (a golden file recorded from the real producer), not a hand-authored shape. A fixture you invent can encode the *same wrong assumption* as the code it tests — then both agree and the suite passes green over a real bug. Record the real payload and assert against it.
 - Before editing a layer's tests, follow that layer's **testing instruction file** from the standards resolved in Step 1.2 — that set is the whole set; a layer missing from it
   has no testing skill in this repo. Treat it as the canonical source for that layer's test naming, fixtures, integration-test shape, and assertion conventions — if this prompt appears to disagree with it, follow the layer's testing skill.
-- If skills are available, explicitly use the matching testing skill before writing or updating that layer's tests. Do not rely only on automatic path matching.
+- Explicitly use the matching testing skill before writing or updating that layer's tests. Do not rely only on automatic path matching.
 
 ### 3b. Run code generation when its inputs change
 
 - When your edits modify files that feed into code generation (an OpenAPI/GraphQL spec, a generated API client, mocks, etc., per the plan's **Code Generation & Build Artifacts** section), run the generation command from the plan's **Verification Commands** before writing code that depends on the generated output, and verify it compiles.
 
-### 3c. Verify once per layer
+### 3c. Verify once, as a batch
 
-- When a layer's implementation tasks are done, run its verification **once, as a batch**:
-  the gate commands from **Provided Inputs** plus the test command from the layer's
-  instruction files → **"Verification Commands"** section where present. Do **not** re-run
-  the full gate set after every task — the per-task loop is where runs go to spend their
-  wall clock.
+- When the implementation tasks are done, run the verification **once, as a batch**: the
+  gate commands from **Provided Inputs** plus the test command from the plan's
+  **Verification Commands** section. Do **not** re-run the full gate set after every
+  task — the per-task loop is where runs go to spend their wall clock.
 - **If a check fails, fix the code immediately and re-run what failed**, then the batch
-  once more; watch for regressions in related tests. Do not start the next layer with this
-  one red.
+  once more; watch for regressions in related tests.
 - Use the available diagnostics/analyzer output to confirm no compile/type errors remain
-  before calling the layer done.
+  before calling the work done.
 
 ### 3d. Mark complete
 
@@ -173,7 +157,7 @@ earlier command's output (generated code, a failing test's message).
 
 ## Step 4 — Final Verification (BLOCKING)
 
-After all implementation tasks are done, run every command from the layer's instruction files → **"Verification Commands"** section in order where present:
+After all implementation tasks are done, run every command from the plan's **Verification Commands** section in order:
 
 1. **Code generation**: Run all codegen commands. Verify output files are up to date. (Skip if plan says "None".)
 2. **Tests**: Run the full test command. All must pass.
@@ -186,7 +170,7 @@ After all implementation tasks are done, run every command from the layer's inst
 
 **Generated client code is first-class**: when the plan regenerates an API client in any language, treat the generated package as app code — do **not** hide analyzer/type failures by excluding it. If generated-API analysis fails, fix the generation inputs, the generated package's dependencies, or the regeneration flow until both the app and the generated package pass.
 
-**Story success gate**: Before considering implementation complete, every touched layer must be cleanly formatted, linted/analyzed, tested, and built — using the exact commands from the plan's **Verification Commands** and the layer's instruction files (loaded in Step 1.2). Agent toolkit config or source changes additionally require `farrier --check` to leave generated adapter files current.
+**Story success gate**: Before considering implementation complete, every touched layer must be cleanly formatted, linted/analyzed, tested, and built — using the exact commands from the plan's **Verification Commands** section. Agent toolkit config or source changes additionally require `farrier --check` to leave generated adapter files current.
 
 **Do not consider the work complete until all required checks pass for every touched layer.**
 
@@ -228,7 +212,7 @@ If a touched layer's local environment **genuinely cannot be brought up** here (
 
 **Never do this:**
 
-- Skip a layer's test run before moving to the next layer.
+- Skip the test run before final verification.
 - Skip code generation when the plan identifies generated files.
 - Mark a task complete before the check that covers it has passed.
 - Continue with compile errors or failing tests.
@@ -236,19 +220,17 @@ If a touched layer's local environment **genuinely cannot be brought up** here (
 - **Report `done` with a declared gate red.** The workflow re-runs every gate in **Provided Inputs** and routes a failure straight back to you, so leaving one dirty does not finish the story faster.
 - **Hand-edit the story's `status:` frontmatter or its `## Implementation Status` **Status** line.** See "Story Status" below.
 - Apply the wrong layer's instruction set.
-- Start implementing a consumer layer before the contract/API layer it depends on passes verification.
 
 **Always do this:**
 
-- Run each layer's tests when its implementation tasks are done — not only once at the very end of a multi-layer story.
+- Run the tests when the implementation tasks are done, before final verification.
 - Batch independent file writes into one turn; serialize only on genuine dependencies.
 - **Run every gate command from Provided Inputs in the service directory before declaring `done`** and fix every finding — formatting, unused imports, and any accessibility findings for UI work (missing labels/roles, unnamed controls). Follow the loaded accessibility skill for UI surfaces.
 - Run code generation before testing when generated files are involved.
 - **Bring up the local stack and exercise the touched story path (Step 5) before declaring `done`.**
-- Use the exact commands from the layer's instruction files → **"Verification Commands"** section where present.
+- Use the exact commands from the plan's **Verification Commands** section — never invented ones.
 - Fix errors immediately — never defer them.
 - Re-read the plan section before coding each step.
-- For multi-layer stories, implement layers in the order specified by the plan's **Implementation Order** (typically the API/contract layer before the consumers that depend on it) and verify each before moving on.
 
 ## Story Status
 
@@ -324,15 +306,6 @@ The approved plan for this iteration, verbatim. This is the plan every step abov
 to — do not re-read it from disk.
 
 {{ plan_text }}
-{% if root_plan_text %}
-
-### Cross-service contracts
-
-The root plan carrying the implementation order and the contracts between services,
-verbatim. Your work is still only the plan above; this is context, not extra scope.
-
-{{ root_plan_text }}
-{% endif %}
 {% endif %}
 {% if impl_instructions %}
 

@@ -13,7 +13,7 @@ The workflow supplies these values. Use them exactly as given:
 - Story path: `{{ workhorse_var('story_path') }}`
 - Spec/artifact directory: `{{ workhorse_var('spec_dir') }}`
 
-Refine **only** the plan for the story at the story path above, under the spec directory above. Do NOT search the repository, git history, or branch state to guess which story or plan to refine, and do NOT substitute a different story. If the story path above is blank or the file does not exist, stop and report that the workflow did not provide a usable story path — do not pick a story yourself.
+Refine **only** the plan for the story at the story path above, under the spec directory above. Do NOT search the repository, git history, or branch state to guess which story or plan to refine, and do NOT substitute a different story. If the story path above is blank or the file does not exist, return `status: "blocked"` (Machine-Readable Result below) with a summary saying the workflow did not provide a usable story path — that hands it to the operator. Do not pick a story yourself.
 
 If `{{ workhorse_var('spec_dir') }}` is blank, use the story folder name from the story path above as `<story-name>` and refine the plan under `docs/specs/<story-name>/`.
 
@@ -75,8 +75,6 @@ skills for that layer.)
 {%- if infra_refs %}
 - {{ template.infra_layer_name | default("Infrastructure") }}: {{ infra_refs }}
 {%- endif %}
-
-Also read `docs/CODEX.md` when the work touches docs, epics, stories, or roadmap artifacts.
 
 Do not implement code while refining the plan.
 

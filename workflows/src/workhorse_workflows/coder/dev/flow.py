@@ -596,9 +596,6 @@ class Dev(Workflow):
             declared_gates, layer.cwd, layer.service, service_type=layer.type
         )
         plan_text = read_plan_text(self.ctx.spec_dir, layer.plan_file, self.logger)
-        root_plan_text = ""
-        if len(impl.dispatch_list) > 1 and layer.plan_file != "plan.md":
-            root_plan_text = read_plan_text(self.ctx.spec_dir, "plan.md", self.logger)
         turn = roles.turn("implement-plan", self.repo_dir, self.library_dirs)
         return self.agent(
             turn.prompt,
@@ -615,7 +612,6 @@ class Dev(Workflow):
                 "spec_dir": self.ctx.spec_dir,
                 "plan_file": layer.plan_file,
                 "plan_text": plan_text,
-                "root_plan_text": root_plan_text,
                 "service_path": layer.service_path,
                 "service_type": layer.type,
                 "verification": layer.verification,

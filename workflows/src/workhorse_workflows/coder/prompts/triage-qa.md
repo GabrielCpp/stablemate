@@ -24,8 +24,9 @@ The workflow supplies these. Use them exactly as given:
 - QA evidence directory: `{{ workhorse_var('qa_dir') }}`
 
 Triage **only** the story at the story path above. Do NOT search the repo, git history, or branch
-state to guess a different story. If the story path is blank or missing, stop and report that the
-workflow did not provide a usable story path — do not pick a story yourself.
+state to guess a different story. If the story path is blank or missing, say in your `notes` that the
+workflow did not provide a usable story path — that hands it to the operator. Do not pick a
+story yourself.
 
 If `{{ workhorse_var('spec_dir') }}` is blank, derive `<story-name>` from the story folder name in
 the story path. The QA report is `{{ workhorse_var('spec_dir') }}/qa.md` (machine verdict in
