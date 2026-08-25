@@ -40,13 +40,14 @@ built atop a rejected baseline, and the review nobody stopped to demand never ha
 An `Await` costs the same operator ten minutes it always would have; a give-up spent
 those ten minutes anyway; it just spent them after the run had already moved on.
 
-The auto-resolver a block routes through (`prompts/resolve-operator.md`) **applies
-decisions; it does not make them.** It may write `STATUS: ANSWERED` and let the loop
-continue only when it can quote the thing that already settles the question — a record
-under `<docs-root>/docs/decisions/`, a convention in `AGENTS.md` or an installed skill, an
-acceptance criterion in the story's own spec — and it publishes that citation in the
-answer and in the run log. A question with a written answer costs a human nothing to be
-asked and teaches them nothing when they answer it the way the document already says.
+The auto-resolver a block routes through — each flow's own copy of
+`<flow>/prompts/resolve-operator.md` — **applies decisions; it does not make them.** It
+may write `STATUS: ANSWERED` and let the loop continue only when it can quote the thing
+that already settles the question — a record under `<docs-root>/docs/decisions/`, a
+convention in `AGENTS.md` or an installed skill, an acceptance criterion in the story's
+own spec — and it publishes that citation in the answer and in the run log. A question
+with a written answer costs a human nothing to be asked and teaches them nothing when
+they answer it the way the document already says.
 
 A question *without* one is theirs by definition, and the resolver escalates: an unwritten
 product or scope call, two sources that genuinely conflict, anything needing a credential
@@ -71,7 +72,7 @@ This guard is narrow: it stops the specific vocabulary of a deleted give-up patt
 quietly reappearing, not every way the rule could be broken. It does not cover the
 resolver-authority half of the rule — that an `answered` arm exists only where the answer
 was grounded in something already written, at the `operator_mode` sites in
-`author/workflow.py`, `author/surveyor/flow.py`, `coder/dev/flow.py`,
+`author/main/flow.py`, `author/surveyor/flow.py`, `coder/dev/flow.py`,
 `coder/review/flow.py`, `coder/qa/flow.py` and `coder/docs/flow.py` — which needs the
 control-flow graph, not a grep, same as everything else this check cannot see
 structurally. See the script's own docstring before widening it.

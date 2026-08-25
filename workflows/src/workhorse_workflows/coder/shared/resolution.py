@@ -43,7 +43,7 @@ RESOLVER_POWER = "smart"
 def resolver_args(
     flow: Workflow, *, block_kind: str, notes: str, docs_path: str
 ) -> dict[str, str]:
-    """The template arguments every `prompts/resolve-operator.md` turn takes.
+    """The template arguments every `<flow>/prompts/resolve-operator.md` turn takes.
 
     One builder rather than five near-identical dict literals, for the same reason
     `escalation()` exists: the lanes differed only in `block_kind`, so a new argument —

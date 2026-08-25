@@ -45,7 +45,7 @@ class ReviewFinding(Finding):
 
 
 class CodeReviewResult(CoderResult):
-    """`prompts/code-review.md` — the mechanical review pass over the diff.
+    """`review/prompts/code-review.md` — the mechanical review pass over the diff.
 
     `status` is advisory: nothing routes on it, and `review-implementation.md` is handed the
     whole result as evidence. A blank takes `skipped`, which is what the YAML's default said.
@@ -67,7 +67,7 @@ class CodeReviewResult(CoderResult):
 
 
 class ReviewVerdict(CoderResult):
-    """`prompts/review-implementation.md` — the binding verdict on the implementation.
+    """`review/prompts/review-implementation.md` — the binding verdict on the implementation.
 
     `status` is `approved`, `needs_changes` or `blocked`, and a blank takes the YAML's
     `default:` arm, which is `needs_changes`: the holistic reviewer is the gate, and a

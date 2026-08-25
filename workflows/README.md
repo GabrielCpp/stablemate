@@ -235,18 +235,18 @@ and each of those is a state machine with nodes of its own. The layout says so: 
 src/workhorse_workflows/
   kit/            shared workflow-side helpers (git.py, github.py, workspace.py)
   <workflow>/
-    workflow.py   the main machine — one Workflow subclass, `main`, nothing else
-    nodes/        the callables only workflow.py calls, one module per subject
+    workflow.py   the composition root — the Registry, the flow table, the console script
+    main/         the machine a bare `run` starts, laid out like any other flow below
     <flow>/       one directory per sub-graph, named for the flow:
       flow.py       its Workflow subclass, reached by handoff() or run directly
       nodes.py      the callables only this flow calls  (→ nodes/ when it grows)
+      prompts/      the agent-facing markdown only this flow renders
     shared/       what a second machine also reaches:
       blueprint.py  the one Blueprint every node in the workflow registers on
       paths.py      the only caller of `ostler.path`: doc dirs + this workflow's filenames
       schemas.py    agent-reply schemas and node return types  (→ schemas/ when it grows)
       stubs.py      the --dry-run stand-ins
       <subject>.py  a node module more than one machine calls
-    prompts/      the agent-facing markdown, rendered by a filesystem template loader
 
 tests/<workflow>/  outside src/ and outside the wheel; mirrors the tree above —
                    tests/<workflow>/<flow>/test_flow.py, plus one test_workflow.py
@@ -259,9 +259,18 @@ the QA flow (one caller) while `coder/shared/story.py` is shared (seven), and wh
 node module keeps the name of its **subject** rather than of the flow that reads it most —
 naming one of two callers is the mirroring this layout undoes.
 
-A workflow with no sub-flows has no `shared/` and no `<flow>/`: with one machine there is
-nothing to share, which is why `research/` is `workflow.py` + `nodes/` + a `scaffold/`
-package and nothing more.
+**A prompt belongs to the flow that renders it**, and a prompt two flows both render is
+**two files**, one per flow, each free to diverge — nothing checks that copies stay
+identical. That is why `workflow.py` declares `Registry(name, package=__package__)`: the
+package directory is the template root, so a path is written from there down
+(`dev/prompts/implement-plan.md`) and every flow's prompts stay inside the one loader. Were
+the root inferred from the entry class instead, moving that class into `main/` would put
+every sibling flow's prompts outside it.
+
+A workflow with no sub-flows has no `shared/` and no `<flow>/`, and keeps its `prompts/` at
+the package root: with one machine there is nothing to share and nothing to disambiguate,
+which is why `research/` is `workflow.py` + `nodes/` + `prompts/` + a `scaffold/` package
+and nothing more.
 
 Prompts stay at the workflow root even though flows have directories of their own, because
 `handoff` subscopes only the run *writer*, not the environment: a sub-flow's prompt path

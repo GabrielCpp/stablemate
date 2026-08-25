@@ -72,7 +72,7 @@ class PushOutcome(CoderResult):
 
 
 class FixCiResult(CoderResult):
-    """`prompts/fix-ci.md` — the fixer's own report: `fixed`, `failed` or `blocked`.
+    """`fix_ci/prompts/fix-ci.md` — the fixer's own report: `fixed`, `failed` or `blocked`.
 
     The optimistic half is not branched on: the push and the next poll decide whether the
     fix worked, and an agent claiming `fixed` is not evidence that it did. `blocked` is,

@@ -61,7 +61,7 @@ def progress_verdict(previous: Sequence[str] | None, current: Sequence[str]) -> 
     ``churned``     the same number outstanding, but a different set of them.
 
     ``churned`` is deliberately not folded into ``stalled``. The repair-pass contract in
-    ``prompts/document-story.md`` requires the author to retain stable finding ids, so a
+    ``coder/docs/prompts/document-story.md`` requires the author to retain stable finding ids, so a
     changed id set is evidence the old worklist *was* closed and new defects were found —
     progress on the items with no net convergence, which is the shape the docs loop
     actually dies of. Note the id stability is a prompt contract rather than an enforced

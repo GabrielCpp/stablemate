@@ -8,8 +8,9 @@ graph resolves the same context when it triages.
 
 The handoff boundary is the one [the package docstring](../__init__.py) describes:
 `handoff` returns the sub-flow's `Done(...)` **value**, `self.output(node)` cannot see
-across it, prompt paths still resolve against `coder/prompts/`, and the sub-flow drives on
-its own transition budget.
+across it, prompt paths still resolve against the `coder/` package directory — this flow
+names its own from there down, `review/prompts/code-review.md` — and the sub-flow drives
+on its own transition budget.
 """
 from __future__ import annotations
 

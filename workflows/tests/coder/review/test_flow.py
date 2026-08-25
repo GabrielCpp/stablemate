@@ -48,7 +48,7 @@ STORY_REL = f"docs/epics/{EPIC}/stories/{STORY}"
 CONTEXT_REL = f"{STORY_REL}/context.md"
 
 #: What an escalating resolver leaves in `context.md` before handing the block to a person —
-#: the shape `prompts/resolve-operator.md` mandates for the escalated arm.
+#: the shape `review/prompts/resolve-operator.md` mandates for the escalated arm.
 ESCALATION_NOTE = (
     "STATUS: AWAITING_OPERATOR\n\n"
     "The retry is unsatisfiable either way; both readings cost something.\n"
@@ -312,7 +312,7 @@ class _Agent:
     def _escalate(self) -> None:
         """An escalating resolver writes its note into the same file, it does not write nothing.
 
-        `prompts/resolve-operator.md` mandates `STATUS: AWAITING_OPERATOR` plus what it tried
+        `review/prompts/resolve-operator.md` mandates `STATUS: AWAITING_OPERATOR` plus what it tried
         and what the human must supply — the thing the escalated `Await` must not overwrite.
         """
         (self.docs / CONTEXT_REL).write_text(ESCALATION_NOTE, encoding="utf-8")

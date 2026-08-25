@@ -51,8 +51,11 @@ my_workflow/
 `nodes.py` there is a *split*, not a requirement — `hello_world` keeps its one node in
 `workflow.py`, and when the split stops being taste is
 [workflows/README.md](https://github.com/GabrielCpp/stablemate/blob/main/workflows/README.md#layout),
-where that rule is stated normatively. `prompts/` is not optional in the same way: a state
-that renders a template needs the template on disk beside its package.
+where that rule is stated normatively — along with what the layout becomes once a workflow
+grows sub-flows: one directory per machine, each holding the `nodes/` and `prompts/` only
+that machine uses, with `Registry(name, package=__package__)` keeping the package root as
+the template root. `prompts/` is not optional in the same way: a state that renders a
+template needs the template on disk beside its package.
 
 Its **states** are methods on a `Workflow` subclass, each returning the next state;
 its **nodes** are plain functions collected into a `Blueprint`; a `Registry` names the

@@ -1254,7 +1254,7 @@ class Research(Workflow):
         return Done(result)
 
 
-workflow = Registry("research").add_blueprints(blueprint).stub_agents(
+workflow = Registry("research", package=__package__).add_blueprints(blueprint).stub_agents(
     {
         # What `--dry-run` gets back, and why it is these two prompts. Every arm of
         # this machine returns to `start`, and `start` routes on whatever

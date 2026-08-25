@@ -34,6 +34,14 @@ my_workflow/
     └── step.md
 ```
 
+A workflow with sub-flows spreads the same three kinds out one directory per machine —
+`main/flow.py` + `main/nodes/` + `main/prompts/`, `<flow>/flow.py` + `<flow>/nodes/` +
+`<flow>/prompts/` — and its prompt paths are then written from the package root down
+(`dev/prompts/step.md`). That only works if the root stays the package rather than
+following the entry class into `main/`, which is what `Registry(name,
+package=__package__)` is for; without it the root is inferred from the entry class's
+module and every sibling flow's prompts fall outside the loader.
+
 Nothing enforces those filenames — the console script names whatever module holds the
 `main` it points at, and prompt paths are resolved relative to the package directory. What
 *is* load-bearing is that the package be importable from a real directory on disk:
@@ -174,7 +182,9 @@ against a run directory named after the node.
 ### prompts/
 - type: directory of Jinja2 `.md` templates — required: no (yes if any state calls `self.agent`)
 
-Resolved relative to the package directory. Rendered with a resilient undefined — a
+Resolved relative to the package directory — so a nested `dev/prompts/step.md` is named in
+full, and Jinja's loader refuses a `..` that would climb out. Rendered with a resilient
+undefined — a
 missing variable renders empty and logs a warning rather than raising. `node_timeout_s` /
 `node_timeout_min` are injected so a prompt can size its own work (both read `"unbounded"`
 when the turn has no budget). A prompt must output JSON matching the model its turn

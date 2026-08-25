@@ -77,7 +77,7 @@ class HelloWorld(Workflow):
 #: the prompt's stem — which is what lets the dry run walk this machine end to end with
 #: no agent CLI installed.
 workflow = (
-    Registry("hello-world")
+    Registry("hello-world", package=__package__)
     .add_blueprints(blueprint)
     .stub_agents({"greet": {"greeting": "Hello from a dry run."}})
 )

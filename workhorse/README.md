@@ -393,7 +393,11 @@ see [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhors
 A workflow is a Python package: `workflow.py` holds the `Registry` and the `Workflow`
 subclasses whose methods are its **states**, `nodes.py` holds the `@blueprint.node`
 functions that are its **nodes**, and `prompts/` holds the Jinja2 templates an agent turn
-renders. Control flow is ordinary Python — `if`, `for`, a counter that is just a counter —
+renders. Once a workflow grows more than one machine, each one takes a directory of its
+own — `dev/flow.py` beside the `nodes/` and `prompts/` only it renders — `workflow.py`
+shrinks to the `Registry` alone, and prompt paths are written from the package root down
+(`"dev/prompts/implement-plan.md"`), which is what `Registry(name, package=__package__)`
+declares. Control flow is ordinary Python — `if`, `for`, a counter that is just a counter —
 and each state returns the next one:
 
 ```python

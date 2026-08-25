@@ -17,12 +17,17 @@ reading either:
   work only that machine calls — `pr` alone, because the epic's PR boundary is the one
   subject no sub-flow touches
 * `dev/`, `docs/`, `dream/`, `fix/`, `fix_ci/`, `genesis/`, `qa/`, `review/` — one
-  directory per registered Python sub-flow: each `flow.py` beside the nodes only it calls
+  directory per registered Python sub-flow: each `flow.py` beside the `nodes/` and
+  `prompts/` only it calls
 * `shared/` — what a second machine also reaches: `paths`, `schemas`, `contract`,
   `blueprint`, `stubs`, and the node subjects more than one graph runs (`story`, `dev`,
   `queue`, `backlog`, `ci`, `docs`, `okf`, `review`)
-* `prompts/` — every agent turn's Markdown, at the package root because a sub-flow's
-  prompt path resolves against the *parent* package directory
+
+Every agent turn's Markdown lives in the `prompts/` of the flow that renders it, and a
+prompt two flows both render is **two files** — `implement-plan.md` exists under `main/`,
+`dev/` and `fix/`, each free to diverge. Paths are written from this package root down
+(`dev/prompts/implement-plan.md`), because that root is what `workflow.py` declares as
+the registry's `package`.
 
 **Three registered sub-graphs are never handed off to.** `genesis`, `dream` and `fix`
 are packages here because each is a standalone machine, and none is sequenced by the
@@ -41,8 +46,9 @@ Two things follow from `Engine.handoff` that a sub-flow author has to know, beca
 neither is obvious from the callsite:
 
 * only the run **writer** is subscoped, not the environment. A sub-flow's prompt paths
-  therefore resolve against the *parent* package directory, which is why every prompt a
-  flow reaches lives under `coder/prompts/`;
+  therefore resolve against the *parent* package directory, which is why a flow names its
+  own prompts from `coder/` down — `dev/prompts/implement-plan.md`, not
+  `prompts/implement-plan.md`;
 * `self.output(node)` reads that subscope, so it cannot see a node the parent ran and the
   parent cannot see one a sub-flow ran. A value that has to cross the boundary crosses it
   as an argument or as the `Done` value.

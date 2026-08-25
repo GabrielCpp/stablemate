@@ -253,7 +253,7 @@ class RegressionRun(CoderResult):
 
 
 class ContextRepair(CoderResult):
-    """The repair half of `prompts/repair-qa-context.md` — did the obligation packet heal?
+    """The repair half of `qa/prompts/repair-qa-context.md` — did the obligation packet heal?
 
     `repaired` re-runs the build; anything else, blank included, goes to the operator gate.
     """

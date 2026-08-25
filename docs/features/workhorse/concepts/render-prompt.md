@@ -57,8 +57,8 @@ Jinja global a rendered prompt can call — [`instruction_ref`, `prompt_ref`, `s
    1. Call [`_flavor_override(template_path, context, workflow_dir)`](#_flavor_override).
    2. If it returns a hit `(flavor_dir, node_name)`: search path becomes `[flavor_dir,
       workflow_dir]` (flavor first, so the override file itself resolves there) and template name
-      becomes `node_name` — the override's `{% extends "prompts/<node>.md" %}` then finds the base
-      prompt on the second search path entry.
+      becomes the matched candidate — the override's `{% extends "<flow>/prompts/<node>.md" %}`
+      then finds the base prompt on the second search path entry.
    3. No hit: search path/template name stay as set in step 3 — the base prompt renders unchanged.
 4. Build a Jinja2 `Environment(loader=FileSystemLoader(search_paths), undefined=ResilientUndefined,
    keep_trailing_newline=True)` — a **fresh environment per call**, so no globals or loader state
@@ -87,13 +87,21 @@ farrier copying or rewriting it. Presence alone activates it: no config, no sele
      can carry its own flavor independent of the orchestrating repo. Neither available → return
      `None` (no repo to look an override up against, e.g. a manifest-free run).
   2. `flavor_dir = Path(repo_root) / ".agents" / "flavors" / workflow_dir.name`.
-  3. If `(flavor_dir / template_path.name)` is a file, return `(str(flavor_dir),
-     template_path.name)`; else return `None`.
-- **Output:** `tuple[str, str] | None` — `(flavor_dir, file_name)` on a hit, else `None`.
+  3. Two candidates, the **path-keyed** one first — `<flow>/<name>.md`, mirroring the prompt's own
+     directory (`dev/implement-plan.md` for `dev/prompts/implement-plan.md`), then `<name>.md` by
+     basename alone. Return `(str(flavor_dir), <candidate>)` for the first that is a file; else
+     `None`.
+- **Output:** `tuple[str, str] | None` — `(flavor_dir, template_name)` on a hit, else `None`.
 
-A flavor file is expected to open with `{% extends "prompts/<name>.md" %}` and fill the base's
-named `{% block %}`s; with no override the base's blocks extend to nothing, so a plain base prompt
-is unaffected either way.
+The path-keyed location exists because a workflow whose flows each own their prompts has several
+files called `implement-plan.md`, one per flow, and the basename cannot tell them apart: one
+flavor would activate on all of them while its `{% extends %}` names a single base. The basename
+location stays and stays working — it is what every repo that already ships a flavor wrote — it is
+simply the broader match.
+
+A flavor file is expected to open with `{% extends "<flow>/prompts/<name>.md" %}` — the base's own
+path from the workflow root down — and fill the base's named `{% block %}`s; with no override the
+base's blocks extend to nothing, so a plain base prompt is unaffected either way.
 
 ## `render_string`
 

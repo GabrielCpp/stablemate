@@ -53,5 +53,5 @@ title: Coder documentation gate
   `workflows/src/workhorse_workflows/coder/docs/flow.py::_review_notes`
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationFinding`,
   `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationReview`
-- code: `workflows/src/workhorse_workflows/coder/prompts/document-story.md`
-- code: `workflows/src/workhorse_workflows/coder/prompts/review-story-documentation.md`
+- code: `workflows/src/workhorse_workflows/coder/docs/prompts/document-story.md`
+- code: `workflows/src/workhorse_workflows/coder/docs/prompts/review-story-documentation.md`

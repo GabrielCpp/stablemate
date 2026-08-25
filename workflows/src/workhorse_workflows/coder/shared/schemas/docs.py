@@ -64,7 +64,7 @@ class WorktreeSnapshot(CoderResult):
 
 
 class DocumentationResult(CoderResult):
-    """`prompts/document-story.md` — the story folded into the as-built OKF book.
+    """`docs/prompts/document-story.md` — the story folded into the as-built OKF book.
 
     `status` is `documented`, `not_required` or `blocked`, and a blank takes the YAML's
     `default:` arm, which is `blocked` — an author that did not speak has not documented
@@ -138,7 +138,7 @@ class DocumentationFinding(Finding):
 
 
 class DocumentationReview(CoderResult):
-    """`prompts/review-story-documentation.md` — an independent read of what was written.
+    """`docs/prompts/review-story-documentation.md` — an independent read of what was written.
 
     `status` is `approved`, `revise` or `blocked`. A blank takes `revise`, the YAML's
     `default:`, which spends a rework rather than approving or failing. A `revise` verdict

@@ -181,7 +181,7 @@ class PullRequest(AuthorResult):
 
 
 class DecomposeResult(AuthorResult):
-    """`prompts/decompose-epics.md` and `prompts/rework-epics.md` — the backlog split.
+    """`main/prompts/decompose-epics.md` and `main/prompts/rework-epics.md` — the backlog split.
 
     Both prompts return under the YAML's one `decompose_result` key, so both return
     this: the rework pass is the same product, re-derived against review notes.
@@ -192,14 +192,14 @@ class DecomposeResult(AuthorResult):
 
 
 class EpicReview(AuthorResult):
-    """`prompts/review-epics.md` — the decomposition reviewed before any story lands."""
+    """`main/prompts/review-epics.md` — the decomposition reviewed before any story lands."""
 
     status: str = ""
     notes: str = ""
 
 
 class GrillBrief(AuthorResult):
-    """`prompts/grill-brief.md` — the frontier brief handed to the operator's grill.
+    """`main/prompts/grill-brief.md` — the frontier brief handed to the operator's grill.
 
     Written to the outbox alongside the trigger command; the operator's own grilling
     session reads it as round one instead of rediscovering the repo.
@@ -209,20 +209,20 @@ class GrillBrief(AuthorResult):
 
 
 class BacklogRefactor(AuthorResult):
-    """`prompts/refactor-backlog.md` — the backlog rewritten from the grill's decisions."""
+    """`main/prompts/refactor-backlog.md` — the backlog rewritten from the grill's decisions."""
 
     summary: str = ""
 
 
 class WriteEpicResult(AuthorResult):
-    """`prompts/write-epic.md` — one epic's `epic.md` written from its seeds."""
+    """`main/prompts/write-epic.md` — one epic's `epic.md` written from its seeds."""
 
     status: str = ""
     notes: str = ""
 
 
 class StorySplit(AuthorResult):
-    """`prompts/split-stories.md` — an epic's seeds grouped into story-sized units.
+    """`main/prompts/split-stories.md` — an epic's seeds grouped into story-sized units.
 
     `status` `standoff` is the splitter refusing the rework it was asked for; that
     escalates to the coverage gate, where the resolver can see both sides.
@@ -233,7 +233,7 @@ class StorySplit(AuthorResult):
 
 
 class MockupResult(AuthorResult):
-    """`prompts/design-mockup.md` — the surface sketch a UI story is written against."""
+    """`<flow>/prompts/design-mockup.md` — the surface sketch a UI story is written against."""
 
     status: str = ""
     surface: str = ""
@@ -260,7 +260,7 @@ class MockupGate(AuthorResult):
 
 
 class WriteStoryResult(AuthorResult):
-    """`prompts/write-story.md` and `prompts/rework-story.md` — one story written."""
+    """`<flow>/prompts/write-story.md` and `<flow>/prompts/rework-story.md` — one story written."""
 
     status: str = ""
     notes: str = ""
@@ -269,7 +269,7 @@ class WriteStoryResult(AuthorResult):
 class AuditFinding(AuthorResult):
     """One defect the story auditor is willing to fail the story over.
 
-    `kind` is intentionally closed on the four axes `prompts/audit-story.md` judges: it lets
+    `kind` is intentionally closed on the four axes `<flow>/prompts/audit-story.md` judges: it lets
     the consumer and later static tooling tell a journey gap from an ungrounded claim without
     scraping prose. `target` is the section or line of the story the finding is against — a
     defect the auditor cannot point at is not a defect.
@@ -283,7 +283,7 @@ class AuditFinding(AuthorResult):
 
 
 class AuditResult(AuthorResult):
-    """`prompts/audit-story.md` — the story read back against its epic and seeds.
+    """`<flow>/prompts/audit-story.md` — the story read back against its epic and seeds.
 
     `findings` is what the verdict is read from, not `status`: an empty list is a pass by
     construction. Free-text `status` alone let each audit lap raise one *different* objection
@@ -297,7 +297,7 @@ class AuditResult(AuthorResult):
 
 
 class CoverageReview(AuthorResult):
-    """`prompts/review-coverage.md` — every seed accounted for by some story."""
+    """`<flow>/prompts/review-coverage.md` — every seed accounted for by some story."""
 
     status: str = ""
     notes: str = ""

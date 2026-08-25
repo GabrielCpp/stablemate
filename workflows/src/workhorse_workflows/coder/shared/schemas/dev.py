@@ -103,7 +103,7 @@ class PlanFixture(CoderResult):
 
 
 class PlanResult(CoderResult):
-    """`prompts/plan-story.md` and `prompts/refine-plan.md` — the plan, or the blocker.
+    """`dev/prompts/plan-story.md` and `dev/prompts/refine-plan.md` — the plan, or the blocker.
 
     `status` is `done` or `blocked`. A blank takes the YAML's `default:` arm, which is
     `done` — the plan gate is deliberately permissive, because depth and correctness are
@@ -247,7 +247,7 @@ class ExitConditions(CoderResult):
 
 
 class ImplResult(CoderResult):
-    """`prompts/implement-plan.md` — one service layer implemented, or the blocker.
+    """`<flow>/prompts/implement-plan.md` — one service layer implemented, or the blocker.
 
     The optimistic half is still not branched on: the lint gate below and QA downstream
     decide whether the layer is done, and an agent claiming `done` is not evidence that it
@@ -320,7 +320,7 @@ class FailureReport(CoderResult):
 
 
 class FixResult(CoderResult):
-    """`prompts/dev-fix.md` — the repair turn's own report, whatever the gate was.
+    """`dev/prompts/dev-fix.md` — the repair turn's own report, whatever the gate was.
 
     `fixed` and `failed` are not branched on; re-running the gate is what decides, and an
     agent's claim to have fixed something is not evidence that the gate agrees. `blocked` is
@@ -356,7 +356,7 @@ class FixResult(CoderResult):
 
 
 class OperatorResolution(CoderResult):
-    """`prompts/resolve-operator.md` — the resolver's report on a block.
+    """`<flow>/prompts/resolve-operator.md` — the resolver's report on a block.
 
     Note the field is `summary` here and `notes` in `author`'s copy of this model: the
     two prompts genuinely ask for different key names, and the port follows each prompt

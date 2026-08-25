@@ -74,7 +74,8 @@ under `library/prompts/stablemate/` is the other thing — prompts for the *pers
 farrier, installed into a repo as slash commands.
 
 What this directory is, in an **overlay**, is an override slot. Each coder turn is two
-halves: the *envelope* (`coder/prompts/<role>.md`, in the workflow's own distribution)
+halves: the *envelope* (`coder/<flow>/prompts/<role>.md`, in the workflow's own
+distribution — one copy per flow that renders it)
 renders the inputs, the exit condition and the result schema the state machine parses
 back, and it pulls a *body* in with `{% include body_template %}`. The envelope is a
 contract the state machine reads its own replies against, so a repo editing it would be

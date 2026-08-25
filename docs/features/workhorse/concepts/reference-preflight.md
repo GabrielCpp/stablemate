@@ -30,9 +30,12 @@ belongs where the manifest and the prompts finally meet: the runner.
 
 ## What is scanned
 
-`prompts/**/*.md` under the workflow directory, and nothing else. The scope is deliberate: a
+`**/prompts/**/*.md` under the workflow directory, and nothing else. The scope is deliberate: a
 workflow's own README or design note may show `{{ instruction_ref(...) }}` in a fenced example,
-and a documented example is not a broken reference.
+and a documented example is not a broken reference. The leading `**` is what reaches a workflow
+whose flows each own their prompts — `coder/dev/prompts/`, `coder/main/prompts/` — since a glob
+anchored at the workflow root would sweep only the single-machine workflows and pass vacuously on
+every other.
 
 Each file is **parsed as Jinja**, not grepped. The templates are Jinja already, so the call sites
 are in the AST — which means every alias of the helper (`instruction_file`, `skill_file`,

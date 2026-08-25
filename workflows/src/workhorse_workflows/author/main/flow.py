@@ -302,7 +302,7 @@ class Author(Workflow):
         self.logger.info("%s%s", message, suffix, extra={"activity": True})
 
     def _resolve(self, stage: str, notes: str, context: str, epic_dir: str) -> OperatorResolution:
-        """One operator-resolution turn: `prompts/resolve-operator.md`.
+        """One operator-resolution turn: `main/prompts/resolve-operator.md`.
 
         Six of the YAML's gates shared this prompt and differed only in the four
         arguments, so they share one call here. High-power and unbounded because it is

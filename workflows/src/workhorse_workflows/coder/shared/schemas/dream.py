@@ -30,7 +30,7 @@ class RunEvidence(CoderResult):
 
 
 class ReflectionResult(CoderResult):
-    """`prompts/dream-reflect.md` — what the reflection turn concluded.
+    """`dream/prompts/dream-reflect.md` — what the reflection turn concluded.
 
     `status` is `reflected`, `no_issues`, `insufficient_evidence` or `blocked`, and
     `top_layer` names the layer most of the proposals landed in. Neither is branched on;
