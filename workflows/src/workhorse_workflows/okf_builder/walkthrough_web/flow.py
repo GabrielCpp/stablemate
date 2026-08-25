@@ -238,7 +238,7 @@ class WalkthroughWeb(Workflow):
             "%s%s", where, f" · {progress}" if progress else "", extra={"activity": True}
         )
         result = self.agent(
-            "prompts/walkthrough-web.md",
+            "walkthrough_web/prompts/walkthrough-web.md",
             returns=WalkTurn,
             power="high",
             cwd=self.ctx.repo_root,

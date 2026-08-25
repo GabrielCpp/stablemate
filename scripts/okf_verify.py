@@ -25,7 +25,7 @@ import tempfile
 from pathlib import Path
 
 from ostler import Ostler, path as okf_path
-from workhorse_workflows.okf_builder.nodes.coverage import inventory_source
+from workhorse_workflows.okf_builder.main.nodes.coverage import inventory_source
 
 ROOT = Path(__file__).resolve().parent.parent
 LOG = logging.getLogger("okf-verify")

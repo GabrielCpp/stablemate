@@ -8,7 +8,8 @@ code nobody wrote a fragment for fall through to the generic remedy instead of r
 Two things are easy to get wrong here and neither shows up until a live run:
 
 - the include path is resolved against the **workflow package directory**, not the prompt's
-  own directory, so `"repair/<code>.md"` silently misses and every item renders the default;
+  own directory, so `"repair/<code>.md"` — anything short of the full
+  `"main/prompts/repair/<code>.md"` — silently misses and every item renders the default;
 - `item_code` reaches the template through `workhorse_var`, so a node that forgets to pass it
   renders the empty string, misses every candidate, and again yields the default.
 
@@ -28,7 +29,7 @@ import workhorse_workflows
 from workhorse_workflows.okf_builder.shared.vocabulary import check_vocabulary
 
 WORKFLOW_DIR = Path(workhorse_workflows.__file__).parent / "okf_builder"
-FRAGMENTS = WORKFLOW_DIR / "prompts" / "repair"
+FRAGMENTS = WORKFLOW_DIR / "main" / "prompts" / "repair"
 
 
 def _context(code: str) -> dict[str, object]:
@@ -65,7 +66,7 @@ def test_the_fragment_set_is_not_empty() -> None:
 
 @pytest.mark.parametrize("code", CODES)
 def test_a_known_code_renders_its_own_fragment(code: str) -> None:
-    rendered = render("prompts/repair.md", _context(code), WORKFLOW_DIR)
+    rendered = render("main/prompts/repair.md", _context(code), WORKFLOW_DIR)
 
     # The fragment's own heading is the marker: each one opens with `### `<code>` — …`.
     assert f"### `{code}`" in rendered or code in rendered.split("Where the rule bites")[1]
@@ -75,14 +76,14 @@ def test_a_known_code_renders_its_own_fragment(code: str) -> None:
 
 
 def test_an_unknown_code_falls_through_to_the_default() -> None:
-    rendered = render("prompts/repair.md", _context("no-such-doctor-code"), WORKFLOW_DIR)
+    rendered = render("main/prompts/repair.md", _context("no-such-doctor-code"), WORKFLOW_DIR)
 
     assert "The finding's own remedy" in rendered
 
 
 def test_the_frame_carries_the_item_through() -> None:
     """`workhorse_var` misses render empty, so the item would vanish without a word."""
-    rendered = render("prompts/repair.md", _context("weak-check"), WORKFLOW_DIR)
+    rendered = render("main/prompts/repair.md", _context("weak-check"), WORKFLOW_DIR)
 
     assert "r1:docs/features/acme/concepts/refund.md#refund#weak-check" in rendered
     assert '"grounded": false' in rendered
@@ -97,7 +98,7 @@ def test_every_check_signature_reaches_the_prompt() -> None:
     exist and a UI check on a byte slice — and every one came back as a fresh
     `unparsed-check`. The list is short, so it is in the prompt rather than a directory away.
     """
-    rendered = render("prompts/repair.md", _context("undeclared-obligation"), WORKFLOW_DIR)
+    rendered = render("main/prompts/repair.md", _context("undeclared-obligation"), WORKFLOW_DIR)
 
     for spec in checks.CHECKS:
         assert spec.signature() in rendered, f"{spec.name} is not in the repair prompt"
@@ -111,5 +112,5 @@ def test_a_check_bearing_code_loads_the_falsifiability_bar_and_others_do_not() -
     """
     bar = "falsifiable-verification"
 
-    assert bar in render("prompts/repair.md", _context("undeclared-obligation"), WORKFLOW_DIR)
-    assert bar not in render("prompts/repair.md", _context("missing-placement"), WORKFLOW_DIR)
+    assert bar in render("main/prompts/repair.md", _context("undeclared-obligation"), WORKFLOW_DIR)
+    assert bar not in render("main/prompts/repair.md", _context("missing-placement"), WORKFLOW_DIR)

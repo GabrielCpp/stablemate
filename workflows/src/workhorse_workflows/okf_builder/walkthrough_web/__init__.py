@@ -1,14 +1,17 @@
 """`walkthrough-web` — the sub-graph `okf-builder` reaches with `self.handoff(...)`.
 
-The flow and the nodes only it calls are one directory: `flow.py` is the machine,
-`nodes/` is its own non-agent work (`walkthrough.py`, `stack.py`). Anything the build
-*also* calls — `select_item`, `record`, `checkpoint_book`, the schemas, the blueprint —
-is in [`shared/`](../shared) rather than duplicated here.
+The flow, the nodes only it calls and the prompt only it renders are one directory:
+`flow.py` is the machine, `nodes/` is its own non-agent work (`walkthrough.py`,
+`stack.py`), `prompts/` holds `walkthrough-web.md`. Anything the build *also* calls —
+`select_item`, `record`, `checkpoint_book`, the schemas, the blueprint — is in
+[`shared/`](../shared) rather than duplicated here.
 
 The handoff boundary is the usual one: `handoff` returns the sub-flow's `Done(...)`
 **value**, `self.output(node)` cannot see across it, and the sub-flow drives on its own
 transition budget. Only the run *writer* is subscoped, not the environment, so the walk's
-prompt paths still resolve against `okf_builder/prompts/` like every other one.
+prompt path is written from the package root down —
+`walkthrough_web/prompts/walkthrough-web.md` — like every other one, because that root is
+what [`../workflow.py`](../workflow.py) declares as the registry's `package`.
 
 What is specific to this flow is that it is **standalone-invokable**, and was designed
 that way in the YAML::

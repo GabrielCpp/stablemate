@@ -68,7 +68,7 @@ def load_inventory(path: str | Path) -> dict:
     """Read a source-inventory artifact, raising rather than returning empty.
 
     The producer is the okf-builder workflow's ``inventory_source`` node
-    (``workhorse_workflows.okf_builder.nodes.coverage``); ``scripts/okf_verify.py`` calls the
+    (``workhorse_workflows.okf_builder.main.nodes.coverage``); ``scripts/okf_verify.py`` calls the
     same node. There is no standalone script to run — the shape is what this reads.
 
     An unreadable inventory must never present as zero units: downstream, an empty unit list

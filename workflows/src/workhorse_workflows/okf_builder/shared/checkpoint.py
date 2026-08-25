@@ -88,7 +88,7 @@ def _repair_items(findings: list[dict], rnd: int) -> list[dict[str, str]]:
 
     **One remedy per item, because the prompt is chosen from the code.** The kind *is* the
     finding code — `fix:compound-normative-bullet` — so the turn's instructions are knowable
-    before it starts, and `prompts/repair.md` can dispatch to a fragment written for that
+    before it starts, and `main/prompts/repair.md` can dispatch to a fragment written for that
     one defect. An item mixing a dangling link with an unfalsifiable check has no such
     fragment: the only prompt that fits it is the generic one that made both repairs shallow.
 

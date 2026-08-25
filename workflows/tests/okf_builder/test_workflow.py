@@ -146,7 +146,7 @@ class _Agent:
             doc.unlink(missing_ok=True)
         return {"doc_status": "documented", "discovered": self.spawn.get(target, [])}
 
-    #: A `fix:` item renders `prompts/repair.md` instead, so the dispatch above sees a
+    #: A `fix:` item renders `main/prompts/repair.md` instead, so the dispatch above sees a
     #: different stem for the same node. Same turn, same seam — the prompt is what differs.
     _repair = _investigate
 

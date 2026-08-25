@@ -25,9 +25,9 @@ out for the same answer.
 """
 from __future__ import annotations
 
-from workhorse_workflows.okf_builder.nodes.coverage import compute_coverage, inventory_source
-from workhorse_workflows.okf_builder.nodes.prepare import prepare
-from workhorse_workflows.okf_builder.nodes.waivers import auto_waive
+from workhorse_workflows.okf_builder.main.nodes.coverage import compute_coverage, inventory_source
+from workhorse_workflows.okf_builder.main.nodes.prepare import prepare
+from workhorse_workflows.okf_builder.main.nodes.waivers import auto_waive
 
 __all__ = [
     "auto_waive",

@@ -90,7 +90,7 @@ Three ways that rule gets broken while looking like a repair, all seen in a real
 
 Where the rule bites, per code, is below.
 
-{% include ["prompts/repair/" ~ workhorse_var('item_code') ~ ".md", "prompts/repair/_default.md"] %}
+{% include ["main/prompts/repair/" ~ workhorse_var('item_code') ~ ".md", "main/prompts/repair/_default.md"] %}
 
 ## Output
 
