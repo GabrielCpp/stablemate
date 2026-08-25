@@ -88,6 +88,7 @@ test: ## Run the packages' test suites, the workflow suites, and the public/priv
 	$(MAKE) check-public
 	$(MAKE) check-no-env
 	$(MAKE) check-no-giveup
+	$(MAKE) check-no-shell
 	$(MAKE) check-fixtures
 	$(MAKE) check-prompt-agnostic
 	$(MAKE) check-parsers
@@ -155,6 +156,14 @@ check-no-giveup: ## Guard the "a workflow never gives up" rule (blocked, not fai
 	# This can only catch the vocabulary of the deleted pattern reappearing, not every
 	# way the rule could be broken again — see the script's docstring for what it misses.
 	uv run python scripts/check_no_giveup.py
+
+.PHONY: check-no-shell
+check-no-shell: ## Guard the "no ad-hoc shell scripts" rule (extend the Python CLI instead)
+	# A `.sh` file is outside every gate this repo has — ruff, ty and pytest all skip it —
+	# so the discipline that holds everywhere else stops at its first line. The same script
+	# backs a Claude PreToolUse hook (.claude/settings.json) that refuses to write one; this
+	# sweep is the half that still works on a clone where no hook is installed.
+	uv run python scripts/check_no_shell.py
 
 .PHONY: check-fixtures
 check-fixtures: ## Guard the declared-fixture rule across the benchmark corpus
