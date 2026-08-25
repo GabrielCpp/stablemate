@@ -183,7 +183,7 @@ def test_the_review_prompt_asks_for_the_keys_the_model_reads() -> None:
     """
     prompt = (
         pathlib.Path(__file__).resolve().parents[3]
-        / "src/workhorse_workflows/coder/prompts/code-review.md"
+        / "src/workhorse_workflows/coder/review/prompts/code-review.md"
     ).read_text()
     body = prompt.split("Return this JSON as your final response:")[1]
     for key in ("target", "issue", "repair", "category", "score"):

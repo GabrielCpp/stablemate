@@ -170,7 +170,7 @@ class FixCi(Workflow):
         flavor override from `<repo>/.agents/flavors/coder/fix-ci.md`. It does **not**
         push: `push` below does, so credential handling stays in one place.
         """
-        turn = roles.turn("fix-ci", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "fix-ci")
         result = self.agent(
             turn.prompt,
             # medium: reads failing job logs and the diff, and makes a narrow repair —

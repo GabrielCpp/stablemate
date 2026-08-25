@@ -284,7 +284,7 @@ class Dev(Workflow):
         could not resolve — reaches the operator.
         """
         self.logger.info("planning %s", self.ctx.story_slug, extra={"activity": True})
-        turn = roles.turn("plan-story", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "plan-story")
         result = self.agent(
             turn.prompt,
             returns=PlanResult,
@@ -350,7 +350,7 @@ class Dev(Workflow):
         """
         self.logger.info("resolving the plan block", extra={"activity": True})
         result = self.agent(
-            "prompts/resolve-operator.md",
+            "dev/prompts/resolve-operator.md",
             returns=OperatorResolution,
             # smart, and unbounded: it is investigating a block, with full tool access,
             # on the highest-stakes decision in the flow.
@@ -596,7 +596,7 @@ class Dev(Workflow):
             declared_gates, layer.cwd, layer.service, service_type=layer.type
         )
         plan_text = read_plan_text(self.ctx.spec_dir, layer.plan_file, self.logger)
-        turn = roles.turn("implement-plan", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "implement-plan")
         return self.agent(
             turn.prompt,
             returns=ImplResult,
@@ -763,7 +763,7 @@ class Dev(Workflow):
             else from_gate(self.output(run_gate), self._layer.cwd, fix_lap)
         )
         turns = self._spend_turn(session_turns)
-        turn = roles.turn("dev-fix", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "dev-fix")
         result = self.agent(
             turn.prompt,
             returns=FixResult,
@@ -920,7 +920,7 @@ class Dev(Workflow):
         """
         self.logger.info("resolving the implementation block", extra={"activity": True})
         result = self.agent(
-            "prompts/resolve-operator.md",
+            "dev/prompts/resolve-operator.md",
             returns=OperatorResolution,
             # smart, and unbounded: see `resolve_plan` — it is investigating a block with
             # full tool access, standing in for the person who would otherwise be woken.
@@ -992,7 +992,7 @@ class Dev(Workflow):
         other's. `power` is the caller's too: re-planning around an operator's answer is
         high-stakes work, repairing a rejected service path is a string edit.
         """
-        turn = roles.turn("refine-plan", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "refine-plan")
         return self.agent(
             turn.prompt,
             returns=PlanResult,

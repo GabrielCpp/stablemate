@@ -214,7 +214,7 @@ class Review(Workflow):
         # and that re-entry is a fresh review round like any other.
         self.call(clear_review_resolution, self.docs_path, self.ctx.story_slug)
         self.reset_session(self._feeder_chain)
-        turn = roles.turn("code-review", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "code-review")
         code_review = self.agent(
             turn.prompt,
             returns=CodeReviewResult,
@@ -270,7 +270,7 @@ class Review(Workflow):
         makes them OKF Concepts is only as reliable as the model's memory, so it is applied
         mechanically each time rather than trusted once.
         """
-        turn = roles.turn("review-implementation", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "review-implementation")
         result = self.agent(
             turn.prompt,
             returns=ReviewVerdict,
@@ -338,7 +338,7 @@ class Review(Workflow):
         the operator. Anything else spends a rework and re-applies only what is still open.
         """
         turns = self._spend_turn(session_turns)
-        turn = roles.turn("apply-review", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "apply-review")
         claim = self.agent(
             turn.prompt,
             returns=ImplResult,
@@ -480,7 +480,7 @@ class Review(Workflow):
         """
         self.logger.info("resolving the review block", extra={"activity": True})
         result = self.agent(
-            "prompts/resolve-operator.md",
+            "review/prompts/resolve-operator.md",
             returns=OperatorResolution,
             # smart, and unbounded: standing in for a human, with full tool access, on a
             # finding nobody else could settle.
@@ -558,7 +558,7 @@ class Review(Workflow):
         answer that could not be applied, which is a different question from the original.
         """
         turns = self._spend_turn(session_turns)
-        turn = roles.turn("apply-review", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "apply-review")
         result = self.agent(
             turn.prompt,
             returns=ImplResult,
@@ -638,7 +638,7 @@ class Review(Workflow):
         reached and reporting the story approved over it.
         """
         turns = self._spend_turn(session_turns)
-        turn = roles.turn("apply-review", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "apply-review")
         result = self.agent(
             turn.prompt,
             returns=ImplResult,

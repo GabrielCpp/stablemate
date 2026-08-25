@@ -25,22 +25,33 @@ import pytest
 
 import workhorse_workflows
 
-PROMPTS = Path(workhorse_workflows.__file__).parent / "coder" / "prompts"
+CODER = Path(workhorse_workflows.__file__).parent / "coder"
 
 #: The prompts that change code but hold no status verdict. `review-implementation`,
 #: `apply-qa-fixes` and `replan-epic` are absent on purpose — each one *does* own a
 #: transition and is told to write it.
 NO_STATUS_AUTHORITY = ("implement-plan.md", "apply-review.md")
 
+#: Every copy of them. `implement-plan` is duplicated across the flows that render it,
+#: and the guard has to hold in each — the copies are free to diverge, which is exactly
+#: how one of them would lose the prohibition unnoticed.
+UNAUTHORIZED = sorted(
+    p for p in CODER.glob("*/prompts/*.md") if p.name in NO_STATUS_AUTHORITY
+)
 
-@pytest.mark.parametrize("name", NO_STATUS_AUTHORITY)
-def test_the_prompt_forbids_writing_the_story_status_line(name: str) -> None:
+
+def _id(path: Path) -> str:
+    return f"{path.parent.parent.name}/{path.stem}"
+
+
+@pytest.mark.parametrize("prompt", UNAUTHORIZED, ids=_id)
+def test_the_prompt_forbids_writing_the_story_status_line(prompt: Path) -> None:
     """Each names the status line and prohibits editing it."""
-    text = PROMPTS.joinpath(name).read_text(encoding="utf-8")
+    text = prompt.read_text(encoding="utf-8")
     section = text.partition("## Story Status")[2]
-    assert section, f"{name} has no `## Story Status` section"
-    assert "Implementation Status" in section, name
-    assert "Do **not**" in section or "do **not**" in section, name
+    assert section, f"{prompt} has no `## Story Status` section"
+    assert "Implementation Status" in section, prompt
+    assert "Do **not**" in section or "do **not**" in section, prompt
 
 
 def test_the_guard_explains_why_a_stamped_status_sticks() -> None:
@@ -50,10 +61,9 @@ def test_the_guard_explains_why_a_stamped_status_sticks() -> None:
     the story and was recording a true-looking fact. A bare prohibition reads as bookkeeping
     to an agent in that position; the consequence is what makes it a rule worth obeying.
     """
-    section = (
-        PROMPTS.joinpath("implement-plan.md")
-        .read_text(encoding="utf-8")
-        .partition("## Story Status")[2]
-    )
-    assert "QA passed" in section
-    assert "queue" in section
+    copies = [p for p in UNAUTHORIZED if p.name == "implement-plan.md"]
+    assert copies, "no `implement-plan.md` found — the glob is looking in the wrong place"
+    for copy in copies:
+        section = copy.read_text(encoding="utf-8").partition("## Story Status")[2]
+        assert "QA passed" in section, copy
+        assert "queue" in section, copy

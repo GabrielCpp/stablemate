@@ -328,7 +328,7 @@ def test_a_repair_lap_runs_on_the_story_conversation(spy: _Spy, monkeypatch) -> 
     with pytest.raises(_Reached):
         flow.fix(index=0, fix_lap=0)
 
-    assert spy.turns[0]["prompt"] == "prompts/dev-fix.md"
+    assert spy.turns[0]["prompt"] == "dev/prompts/dev-fix.md"
     assert spy.turns[0]["session"] == f"story:{STORY}"
 
 
@@ -363,7 +363,7 @@ def test_an_apply_turn_rejoins_the_implementer_rather_than_judging_cold(spy: _Sp
     one that can act on it — which is also what makes the low power tier sufficient."""
     _apply_review(_review())
 
-    assert spy.turns[0]["prompt"] == "prompts/apply-review.md"
+    assert spy.turns[0]["prompt"] == "review/prompts/apply-review.md"
     # The key is the story's; the dev lane earlier in the run is what opened it.
     assert spy.turns[0]["session"] == f"story:{STORY}"
     assert spy.turns[0]["power"] == "low"

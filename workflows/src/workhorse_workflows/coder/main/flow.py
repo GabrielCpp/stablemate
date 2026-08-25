@@ -564,7 +564,7 @@ class Coder(Workflow):
         of a sub-flow's return value, and a sub-flow's node records are in its own subscope.
         """
         self.logger.info("replanning epic %s", self._queue_epic(epic), extra={"activity": True})
-        turn = roles.turn("replan-epic", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "replan-epic")
         result = self.agent(
             turn.prompt,
             returns=ReplanResult,
@@ -675,7 +675,7 @@ class Coder(Workflow):
         """`plan_fix` + `decide_plan_fix`: plan the one-AC fix story."""
         fix = self._fix_story
         self.logger.info("planning %s", fix.story_slug, extra={"activity": True})
-        turn = roles.turn("plan-story", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "plan-story")
         result = self.agent(
             turn.prompt,
             returns=PlanResult,
@@ -726,7 +726,7 @@ class Coder(Workflow):
         layer = self._fix_layer
         fix = self._fix_story
         self.logger.info("implementing %s", layer.service or "the fix", extra={"activity": True})
-        turn = roles.turn("implement-plan", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "implement-plan")
         result = self.agent(
             turn.prompt,
             returns=ImplResult,
@@ -765,7 +765,7 @@ class Coder(Workflow):
         """
         fix = self._fix_story
         self.logger.info("applying QA fixes to the drained item", extra={"activity": True})
-        turn = roles.turn("apply-qa-fixes", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "apply-qa-fixes")
         result = self.agent(
             turn.prompt,
             returns=QaResult,
@@ -883,7 +883,7 @@ class Coder(Workflow):
             extra={"activity": True},
         )
         result = self.agent(
-            "prompts/settle-worktree.md",
+            "main/prompts/settle-worktree.md",
             # medium: deciding what a diff belongs to and writing its commit message, with
             # no design left to do — the work itself is already on disk.
             power="medium",
@@ -1030,7 +1030,7 @@ class Coder(Workflow):
         gate = self.output(open_pr)
         self.logger.info("resolving the merge for %s", gate.ci_epic, extra={"activity": True})
         result = self.agent(
-            "prompts/fix-merge.md",
+            "main/prompts/fix-merge.md",
             returns=MergeFixResult,
             # high: a wrong conflict resolution silently corrupts code.
             power="high",
@@ -1176,7 +1176,7 @@ class Coder(Workflow):
         """
         fix = self._fix_story
         self.logger.info("checking %s", fix.story_slug, extra={"activity": True})
-        turn = roles.turn("qa-fix-item", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "qa-fix-item")
         return self.agent(
             turn.prompt,
             returns=QaResult,

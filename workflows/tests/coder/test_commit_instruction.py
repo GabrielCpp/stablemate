@@ -26,7 +26,12 @@ from workhorse.templates import render
 
 import workhorse_workflows
 
-PROMPTS = Path(workhorse_workflows.__file__).parent / "coder" / "prompts"
+CODER = Path(workhorse_workflows.__file__).parent / "coder"
+
+#: Every envelope the coder workflow ships, across the flow packages that own them. A
+#: duplicated stem is checked once per copy, which is the point: two copies of
+#: `implement-plan.md` are two files and either can lose the instruction on its own.
+PROMPTS = sorted(CODER.glob("*/prompts/*.md"))
 
 HEADING = "## Commit What You Wrote"
 
@@ -83,7 +88,15 @@ def _commit_section(rendered: str) -> str:
 
 
 def _all_prompts() -> set[str]:
-    return {p.name for p in PROMPTS.glob("*.md")}
+    return {p.name for p in PROMPTS}
+
+
+def _producers() -> list[Path]:
+    return [p for p in PROMPTS if p.name in PRODUCERS]
+
+
+def _id(path: Path) -> str:
+    return f"{path.parent.parent.name}/{path.stem}"
 
 
 def test_every_prompt_is_classified() -> None:
@@ -92,26 +105,26 @@ def test_every_prompt_is_classified() -> None:
     assert _all_prompts() == classified
 
 
-@pytest.mark.parametrize("name", sorted(PRODUCERS))
-def test_producer_carries_the_commit_instruction(name: str) -> None:
-    body = (PROMPTS / name).read_text(encoding="utf-8")
+@pytest.mark.parametrize("prompt", _producers(), ids=_id)
+def test_producer_carries_the_commit_instruction(prompt: Path) -> None:
+    body = prompt.read_text(encoding="utf-8")
     assert HEADING in body
     section = body.split(HEADING, 1)[1]
     assert "git add -A" in section, "the explicit-path rule names what it forbids"
     assert "Do not push" in section
 
 
-@pytest.mark.parametrize("name", sorted(PRODUCERS))
-def test_trailers_render_from_the_turn_args(name: str) -> None:
+@pytest.mark.parametrize("prompt", _producers(), ids=_id)
+def test_trailers_render_from_the_turn_args(prompt: Path) -> None:
     context = {"story_slug": "STORY-1-widget", "epic": "EPIC-2-checkout"}
-    section = _commit_section(render(PROMPTS / name, context, PROMPTS.parent))
+    section = _commit_section(render(prompt, context, CODER))
     assert "Epic: EPIC-2-checkout" in section
     assert "Story: STORY-1-widget" in section
 
 
-@pytest.mark.parametrize("name", sorted(PRODUCERS))
-def test_trailers_vanish_when_there_is_no_story(name: str) -> None:
+@pytest.mark.parametrize("prompt", _producers(), ids=_id)
+def test_trailers_vanish_when_there_is_no_story(prompt: Path) -> None:
     """`dream-reflect` runs with no story in scope; a bare `Story:` would be a lie."""
-    section = _commit_section(render(PROMPTS / name, {}, PROMPTS.parent))
+    section = _commit_section(render(prompt, {}, CODER))
     assert "Epic:" not in section
     assert "Story:" not in section

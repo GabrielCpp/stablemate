@@ -94,7 +94,7 @@ def test_the_prompts_own_scenario_example_parses() -> None:
     """
     prompt = (
         Path(__file__).parents[3]
-        / "src/workhorse_workflows/coder/prompts/plan-story.md"
+        / "src/workhorse_workflows/coder/dev/prompts/plan-story.md"
     ).read_text(encoding="utf-8")
     start = prompt.index("### Test Scenarios")
     example = prompt[prompt.index("```markdown", start) + len("```markdown") :]

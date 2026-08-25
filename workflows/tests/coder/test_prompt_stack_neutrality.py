@@ -36,7 +36,15 @@ from workhorse.templates import render
 
 import workhorse_workflows
 
-PROMPTS = Path(workhorse_workflows.__file__).parent / "coder" / "prompts"
+CODER = Path(workhorse_workflows.__file__).parent / "coder"
+
+#: Every envelope, across the flow packages that own them. Duplicated stems are checked
+#: once per copy — the copies may diverge, so neutrality has to hold in each of them.
+PROMPTS = sorted(CODER.glob("*/prompts/*.md"))
+
+
+def _id(path: Path) -> str:
+    return f"{path.parent.parent.name}/{path.stem}"
 
 #: What each stack's skills are called, what each declares in `tags:`, and the words that
 #: only belong to that stack. The *tags* are what the prompts query — the layer tag is the
@@ -126,10 +134,10 @@ def _foreign_words(stack: str) -> tuple[str, ...]:
     )
 
 
-@pytest.mark.parametrize("prompt", sorted(PROMPTS.glob("*.md")), ids=lambda p: p.stem)
+@pytest.mark.parametrize("prompt", PROMPTS, ids=_id)
 @pytest.mark.parametrize("stack", sorted(STACKS))
 def test_a_prompt_names_no_stack_the_manifest_does_not_have(stack: str, prompt: Path) -> None:
-    rendered = render(prompt, _context(stack), PROMPTS.parent)
+    rendered = render(prompt, _context(stack), CODER)
     # Strip the schema vocabulary first so a documented enum value can't be mistaken for
     # a claim about the repo — see SCHEMA_VOCABULARY.
     prose = SCHEMA_VOCABULARY.sub("", rendered)
@@ -140,7 +148,7 @@ def test_a_prompt_names_no_stack_the_manifest_does_not_have(stack: str, prompt: 
         )
 
 
-@pytest.mark.parametrize("prompt", sorted(PROMPTS.glob("*.md")), ids=lambda p: p.stem)
+@pytest.mark.parametrize("prompt", PROMPTS, ids=_id)
 @pytest.mark.parametrize("stack", sorted(STACKS))
 def test_no_prompt_demands_another_stacks_skill(stack: str, prompt: Path) -> None:
     """The same defect in its other spelling: a *required* ref to a stack-specific skill.
@@ -156,7 +164,7 @@ def test_no_prompt_demands_another_stacks_skill(stack: str, prompt: Path) -> Non
     agent would actually read, and it appears no matter which alias of the helper
     (`instruction_ref`/`instruction_file`/`skill_file`) produced it.
     """
-    rendered = render(prompt, _context(stack), PROMPTS.parent)
+    rendered = render(prompt, _context(stack), CODER)
     for other, spec in STACKS.items():
         if other == stack:
             continue
@@ -173,7 +181,7 @@ def test_no_prompt_demands_another_stacks_skill(stack: str, prompt: Path) -> Non
 PLACEHOLDER = re.compile(r"generated (\S+) instruction file when installed")
 
 
-@pytest.mark.parametrize("prompt", sorted(PROMPTS.glob("*.md")), ids=lambda p: p.stem)
+@pytest.mark.parametrize("prompt", PROMPTS, ids=_id)
 @pytest.mark.parametrize("stack", sorted(STACKS))
 def test_no_prompt_requires_a_skill_this_package_cannot_promise(stack: str, prompt: Path) -> None:
     """The generalization of the test above: *no* singular ref may go unresolved.
@@ -191,7 +199,7 @@ def test_no_prompt_requires_a_skill_this_package_cannot_promise(stack: str, prom
     skill some repos have is asked for by tag with `find_by_tags(...)` — which renders
     nothing when nothing matches — or guarded with `isUsingInstruction`.
     """
-    rendered = render(prompt, _context(stack), PROMPTS.parent)
+    rendered = render(prompt, _context(stack), CODER)
     missing = sorted(set(PLACEHOLDER.findall(rendered)))
     assert not missing, (
         f"{prompt.name} requires {', '.join(missing)} — a skill no repo is obliged to "
@@ -210,9 +218,11 @@ def test_the_stack_it_does_have_still_reaches_the_prompt(stack: str) -> None:
     `refine-plan` are the two that branch per layer, so each must still name at least one
     of the manifest's own skill files once the guards have run.
     """
-    for name in ("plan-story.md", "refine-plan.md"):
-        rendered = render(PROMPTS / name, _context(stack), PROMPTS.parent)
+    branching = [p for p in PROMPTS if p.name in ("plan-story.md", "refine-plan.md")]
+    assert branching, "no branching prompt found — the glob is looking in the wrong place"
+    for prompt in branching:
+        rendered = render(prompt, _context(stack), CODER)
         assert any(skill in rendered for skill in STACKS[stack]["skills"]), (
-            f"{name} rendered for a {stack} repo mentions none of its skills — the "
+            f"{_id(prompt)} rendered for a {stack} repo mentions none of its skills — the "
             f"guards are dropping the prose they were meant to select"
         )

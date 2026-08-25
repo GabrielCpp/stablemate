@@ -15,14 +15,15 @@ Three answers, highest precedence first:
 
 That third answer is the normal one, and it is why this resolver is an override mechanism
 rather than a relocation. **The workflow ships standalone**: `workhorse-workflows` is
-installed on its own and every prompt it needs is inside it, at `coder/prompts/<role>.md`.
+installed on its own and every prompt it needs is inside it, at
+`coder/<flow>/prompts/<role>.md`.
 A machine that never ran farrier, has no `~/.cache/stablemate` and no overlay still runs
 every story end to end. The base library's `library/prompts/` are the *user's* prompts —
 what farrier installs into a repo for a person to invoke — and a workflow that reached
 into them for its own defaults would have made an optional install load-bearing.
 
-What a layer may do is *replace* a body. The envelope — `coder/prompts/<role>.md` — is the
-*contract*: the inputs provided, the exit condition, the result schema the state machine
+What a layer may do is *replace* a body. The envelope — `coder/<flow>/prompts/<role>.md` —
+is the *contract*: the inputs provided, the exit condition, the result schema the state machine
 parses back. A repo does not get to edit it, because the state machine would then be
 parsing a document it did not write. The body it wraps is the *procedure*, which is
 exactly the part that knows this repo's stack, and so is exactly the part a repo must be
@@ -34,11 +35,18 @@ envelope is named, and a bare filename would resolve back to the envelope.
 **A role is named for the envelope's own stem**, not renamed to something tidier. Node
 ids in a run directory, in the resume path and in telemetry derive from that stem, so a
 rename here would break resumes and split every metric across two names for no gain the
-plan asks for. It also means `fix`'s and the top-level workflow's reuse of dev's
-`plan-story`/`implement-plan` bodies stays a single file, as it already is.
+plan asks for.
+
+**A role is one key, not one file.** Each flow owns the envelopes it renders, in its own
+`prompts/`, so `plan-story` exists three times over — `dev/`, `fix/` and `main/` each hold
+a copy, free to diverge, and nothing checks that they agree. `turn` takes the calling flow
+for exactly that reason. What stays single is everything on the *override* side: `ROLES`,
+a repo's `agents.yml` `prompts:` block and `LIBRARY_SUBDIR` are keyed by role alone, so a
+repo replaces a body once and every flow's copy of that envelope picks it up.
 
 The mechanics prompts are not roles and are absent from the registry below:
-`resolve-operator.md`, `settle-worktree.md`, `fix-merge.md`. They are the state machine
+`resolve-operator.md`, `settle-worktree.md`, `fix-merge.md` — named at their callsites by
+path, since there is no body for a layer to swap. They are the state machine
 talking to itself — an operator gate's resolution, git surgery on a worktree — and a repo
 overriding them would be overriding the workflow, not describing itself.
 """
@@ -52,6 +60,9 @@ import yaml
 from workhorse.pyflow import WorkflowFailed
 from workhorse.templates import BODY_PREFIX
 from workhorse_workflows.kit import find_repo_root
+
+#: The package every coder flow sits one level under. `flow_dir` measures against it.
+PACKAGE = "workhorse_workflows.coder"
 
 #: Where a library layer may keep a *replacement* coder body, relative to the layer root.
 #: Nothing is expected to be here — the defaults ship with the workflow — so an empty or
@@ -107,8 +118,13 @@ class Turn:
     args: dict[str, Any]
 
 
-def turn(role: str, repo_dir: str | Path = "", library_dirs: tuple[str, ...] = ()) -> Turn:
+def turn(flow: Any, role: str) -> Turn:
     """Resolve `role` to the envelope and the body arguments for one agent turn.
+
+    Takes the calling flow, because a role no longer names one file: each flow owns its
+    own copy of every envelope it renders, and which copy this is depends on who asked.
+    `flow.repo_dir` and `flow.library_dirs` come along for free, which is what the two
+    arguments this replaced were reading off the same object at every callsite.
 
     Raises `WorkflowFailed` for an unregistered role — that is a typo in the flow, caught
     on the transition rather than as a puzzling render. Resolving *no* body is not an
@@ -120,14 +136,33 @@ def turn(role: str, repo_dir: str | Path = "", library_dirs: tuple[str, ...] = (
             f"unknown prompt role {role!r}; the coder workflow's roles are: "
             + ", ".join(sorted(ROLES))
         )
-    body = _body(role, repo_dir, library_dirs)
-    prompt = f"prompts/{role}.md"
+    body = _body(role, flow.repo_dir, flow.library_dirs)
+    prompt = f"{flow_dir(flow)}/prompts/{role}.md"
     if body is None:
         return Turn(prompt, {})
     return Turn(
         prompt,
         {"_body_dir": str(body.parent), "body_template": f"{BODY_PREFIX}/{body.name}"},
     )
+
+
+def flow_dir(flow: Any) -> str:
+    """The flow package's own directory name, as a prompt path is prefixed with it.
+
+    Read off the defining module rather than declared on the class, so a flow that moves
+    directory carries its prompts with it and nothing has to be kept in step by hand.
+    Everything under `coder/` is one package deep — `…coder.dev.flow` is `dev`, and
+    `…coder.main.flow` is `main` for the same reason the main graph is a flow package.
+    """
+    module = type(flow).__module__
+    prefix = f"{PACKAGE}."
+    if not module.startswith(prefix):
+        raise WorkflowFailed(
+            f"{type(flow).__name__} is defined in {module!r}, outside {PACKAGE!r}, so it "
+            "has no flow directory to resolve its prompts against. A coder flow lives in "
+            "its own package under `coder/`, beside the `prompts/` it renders."
+        )
+    return module[len(prefix) :].split(".", 1)[0]
 
 
 def _body(role: str, repo_dir: str | Path, library_dirs: tuple[str, ...]) -> Path | None:
@@ -172,4 +207,4 @@ def _repo_prompts(repo_dir: str | Path) -> dict[str, str]:
     return {str(k): str(v) for k, v in block.items() if isinstance(v, str)}
 
 
-__all__ = ["LIBRARY_SUBDIR", "ROLES", "Turn", "turn"]
+__all__ = ["LIBRARY_SUBDIR", "PACKAGE", "ROLES", "Turn", "flow_dir", "turn"]

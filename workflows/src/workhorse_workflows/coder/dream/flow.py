@@ -93,7 +93,7 @@ class Dream(Workflow):
         measuring, and the turn is reading it rather than re-deriving it.
         """
         evidence = self.output(gather_run_evidence)
-        turn = roles.turn("dream-reflect", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "dream-reflect")
         result = self.agent(
             turn.prompt,
             returns=ReflectionResult,

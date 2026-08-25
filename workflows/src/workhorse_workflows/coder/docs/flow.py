@@ -337,7 +337,7 @@ class Docs(Workflow):
         `repair`, which edits the nodes the findings cite instead of re-authoring the book.
         """
         self.logger.info("documenting %s", self.ctx.story_slug, extra={"activity": True})
-        turn = roles.turn("document-story", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "document-story")
         result = self.agent(
             turn.prompt,
             returns=DocumentationResult,
@@ -409,7 +409,7 @@ class Docs(Workflow):
         progress = progress.model_copy(update={"chain_laps": laps + 1})
         overran = ""
         try:
-            turn = roles.turn("repair-documentation", self.repo_dir, self.library_dirs)
+            turn = roles.turn(self, "repair-documentation")
             result = self.agent(
                 turn.prompt,
                 returns=DocumentationResult,
@@ -675,7 +675,7 @@ class Docs(Workflow):
         killed the *run*. Returning `blocked` lets `Coder.blocked_docs` contain the finding
         to this story, including when a post-QA mutation made the final recheck mandatory.
         """
-        turn = roles.turn("review-story-documentation", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "review-story-documentation")
         result = self.agent(
             turn.prompt,
             returns=DocumentationReview,
@@ -898,7 +898,7 @@ class Docs(Workflow):
         """
         self.logger.info("resolving the documentation block", extra={"activity": True})
         result = self.agent(
-            "prompts/resolve-operator.md",
+            "docs/prompts/resolve-operator.md",
             returns=OperatorResolution,
             # smart, and unbounded: the same reasoning `qa` documents — standing in for the
             # accountable party, with full tool access, on the flow's costliest decision.

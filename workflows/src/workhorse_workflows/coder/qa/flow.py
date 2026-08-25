@@ -694,7 +694,7 @@ class Qa(Workflow):
         """
         self.logger.info("repairing the QA obligation packet", extra={"activity": True})
         started = time.monotonic()
-        turn = roles.turn("repair-qa-context", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "repair-qa-context")
         reply = self.agent(
             turn.prompt,
             returns=QaContextRepair,
@@ -779,7 +779,7 @@ class Qa(Workflow):
         started = time.monotonic()
         drafted: QaPlanResult | None = None
         try:
-            turn = roles.turn("plan-qa", self.repo_dir, self.library_dirs)
+            turn = roles.turn(self, "plan-qa")
             drafted = self.agent(
                 turn.prompt,
                 returns=QaPlanResult,
@@ -854,7 +854,7 @@ class Qa(Workflow):
         result: QaPlanResult | None = None
         started = time.monotonic()
         try:
-            turn = roles.turn("repair-qa-plan", self.repo_dir, self.library_dirs)
+            turn = roles.turn(self, "repair-qa-plan")
             result = self.agent(
                 turn.prompt,
                 returns=QaPlanResult,
@@ -1177,7 +1177,7 @@ class Qa(Workflow):
         lands on the same two loops: the plan rework, or the setup repair.
         """
         started = time.monotonic()
-        turn = roles.turn("qa-story", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "qa-story")
         assessment = self.agent(
             turn.prompt,
             returns=QaAssessment,
@@ -1306,7 +1306,7 @@ class Qa(Workflow):
         takes the prose path to the plan, so this adds no new way to kill a passing run.
         """
         started = time.monotonic()
-        turn = roles.turn("audit-qa", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "audit-qa")
         result = self.agent(
             turn.prompt,
             returns=QaAudit,
@@ -1391,7 +1391,7 @@ class Qa(Workflow):
         than re-running QA against a story that changed underneath it.
         """
         started = time.monotonic()
-        turn = roles.turn("triage-qa", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "triage-qa")
         triage = self.agent(
             turn.prompt,
             returns=QaTriage,
@@ -1443,7 +1443,7 @@ class Qa(Workflow):
         did not pass. This is the one legitimate terminal exit left in this flow: a dev
         target has no code to rework, so there is no operator-answerable question to gate on.
         """
-        turn = roles.turn("report-qa-dev", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "report-qa-dev")
         report = self.agent(
             turn.prompt,
             returns=QaReport,
@@ -1599,7 +1599,7 @@ class Qa(Workflow):
         run = self.output(run_regression_suite)
         self.logger.info("fixing the regression suite", extra={"activity": True})
         started = time.monotonic()
-        turn = roles.turn("fix-regression", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "fix-regression")
         fix = self.agent(
             turn.prompt,
             returns=RegressionFix,
@@ -1682,7 +1682,7 @@ class Qa(Workflow):
         logged instead, at warning, so the missing report is visible to whoever goes looking
         for it rather than silently absent.
         """
-        turn = roles.turn("report-qa-dev-pass", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "report-qa-dev-pass")
         report = self.agent(
             turn.prompt,
             returns=QaReport,
@@ -1868,7 +1868,7 @@ class Qa(Workflow):
         failed_assertions = (
             qa_support.failed_assertions(qa_support.scored_run_log(spec_abs)) if spec_abs else {}
         )
-        turn = roles.turn("fix-qa-scenario", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "fix-qa-scenario")
         return self.agent(
             turn.prompt,
             returns=QaResult,
@@ -1920,7 +1920,7 @@ class Qa(Workflow):
         self.logger.info("repairing the QA stack", extra={"activity": True})
         impl = self.output(resolve_impl_context)
         started = time.monotonic()
-        turn = roles.turn("setup-fix", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "setup-fix")
         result = self.agent(
             turn.prompt,
             returns=SetupResult,
@@ -1977,7 +1977,7 @@ class Qa(Workflow):
         """
         self.logger.info("diagnosing the QA block for the operator", extra={"activity": True})
         result = self.agent(
-            "prompts/resolve-operator.md",
+            "qa/prompts/resolve-operator.md",
             returns=OperatorResolution,
             # smart, and unbounded: a full-tool-access investigation ahead of the highest-
             # stakes decision in the flow.
@@ -2561,7 +2561,7 @@ class Qa(Workflow):
         }
         if operator_feedback is not None:
             args["operator_feedback"] = operator_feedback
-        turn = roles.turn("apply-qa-fixes", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "apply-qa-fixes")
         return self.agent(
             turn.prompt,
             returns=QaResult,

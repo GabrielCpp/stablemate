@@ -15,9 +15,10 @@ Non-literal prompts are a failure here rather than a skip, with two shapes excus
 conditional between two literals (`"a.md" if cond else "b.md"`, which is how okf-builder's
 one drain state picks the repair prompt over the discovery one) — both arms are checked, so
 nothing stops being covered. And `turn.prompt`, the coder workflow's role indirection: the
-`turn = roles.turn("dev-fix", …)` that produced it is in the same function, so the role
+`turn = roles.turn(self, "dev-fix")` that produced it is in the same function, so the role
 name is still a literal in the source and the envelope it resolves to is still checkable
-here. That is the whole reason the resolver names the envelope after its own stem. Anything
+here — under the calling flow's own `prompts/`, which is the directory the walked file
+sits in. That is the whole reason the resolver names the envelope after its own stem. Anything
 else — a computed name, an f-string — is a failure, because silently dropping it would turn
 this check into one that quietly stops covering things.
 """
@@ -46,6 +47,7 @@ def _agent_prompts(source: Path) -> list[tuple[int, ast.expr]]:
     found: list[tuple[int, ast.expr]] = []
     tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
     resolved = _roles_by_line(tree)
+    flow = source.parent.name
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -56,20 +58,21 @@ def _agent_prompts(source: Path) -> list[tuple[int, ast.expr]]:
             continue
         if node.args:
             found.extend(
-                (node.lineno, _literalize(arg, resolved)) for arg in _branches(node.args[0])
+                (node.lineno, _literalize(arg, resolved, flow))
+                for arg in _branches(node.args[0])
             )
             continue
         for kw in node.keywords:
             if kw.arg == "prompt":
                 found.extend(
-                    (node.lineno, _literalize(arg, resolved))
+                    (node.lineno, _literalize(arg, resolved, flow))
                     for arg in _branches(kw.value)
                 )
     return found
 
 
 def _roles_by_line(tree: ast.Module) -> dict[int, str]:
-    """Every `<name> = roles.turn("<role>", …)` in the module, by the line it is on."""
+    """Every `<name> = roles.turn(self, "<role>")` in the module, by the line it is on."""
     seen: dict[int, str] = {}
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
@@ -81,15 +84,15 @@ def _roles_by_line(tree: ast.Module) -> dict[int, str]:
             and isinstance(fn.value, ast.Name)
             and fn.value.id == "roles"
         )
-        if not named_roles_turn or not node.value.args:
+        if not named_roles_turn or len(node.value.args) < 2:
             continue
-        role = node.value.args[0]
+        role = node.value.args[1]
         if isinstance(role, ast.Constant) and isinstance(role.value, str):
             seen[node.lineno] = role.value
     return seen
 
 
-def _literalize(arg: ast.expr, resolved: dict[int, str]) -> ast.expr:
+def _literalize(arg: ast.expr, resolved: dict[int, str], flow: str) -> ast.expr:
     """`turn.prompt` → the envelope path of the nearest preceding `roles.turn(…)`.
 
     Nearest *preceding* rather than "the one in this function": the walk is over an AST
@@ -109,7 +112,7 @@ def _literalize(arg: ast.expr, resolved: dict[int, str]) -> ast.expr:
     before = [line for line in resolved if line <= arg.lineno]
     if not before:
         return arg
-    return ast.Constant(value=f"prompts/{resolved[max(before)]}.md")
+    return ast.Constant(value=f"{flow}/prompts/{resolved[max(before)]}.md")
 
 
 def _branches(arg: ast.expr) -> list[ast.expr]:

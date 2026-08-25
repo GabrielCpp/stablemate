@@ -145,7 +145,7 @@ class Fix(Workflow):
         proceeds, exactly as `dev`'s plan gate does.
         """
         self.logger.info("planning %s", self._story.story_slug, extra={"activity": True})
-        turn = roles.turn("plan-story", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "plan-story")
         result = self.agent(
             turn.prompt,
             returns=PlanResult,
@@ -204,7 +204,7 @@ class Fix(Workflow):
         layer = self._layer
         impl = self.output(resolve_impl_context)
         self.logger.info("implementing %s", layer.service or "the fix", extra={"activity": True})
-        turn = roles.turn("implement-plan", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "implement-plan")
         result = self.agent(
             turn.prompt,
             returns=ImplResult,
@@ -271,7 +271,7 @@ class Fix(Workflow):
         there is no second turn for a chain to hand anything to.
         """
         self.logger.info("applying QA fixes to the drained item", extra={"activity": True})
-        turn = roles.turn("apply-qa-fixes", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "apply-qa-fixes")
         result = self.agent(
             turn.prompt,
             returns=QaResult,
@@ -410,7 +410,7 @@ class Fix(Workflow):
         status, which the branch below reads as "not passed".
         """
         self.logger.info("checking %s", self._story.story_slug, extra={"activity": True})
-        turn = roles.turn("qa-fix-item", self.repo_dir, self.library_dirs)
+        turn = roles.turn(self, "qa-fix-item")
         return self.agent(
             turn.prompt,
             returns=QaResult,

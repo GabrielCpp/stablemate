@@ -24,7 +24,9 @@ from ostler.qa.session import QA_DIRNAME
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes.qa import QA_SCRATCH_DIRNAME
 
-PROMPT = Path(workhorse_workflows.__file__).parent / "coder" / "prompts" / "plan-qa.md"
+PROMPT = (
+    Path(workhorse_workflows.__file__).parent / "coder" / "qa" / "prompts" / "plan-qa.md"
+)
 
 #: The fenced ```python block holding the plan skeleton the agent copies.
 _PYTHON_BLOCK = re.compile(r"```python\n(.*?)```", re.DOTALL)
