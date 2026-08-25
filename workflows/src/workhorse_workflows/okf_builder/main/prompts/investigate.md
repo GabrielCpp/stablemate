@@ -14,6 +14,13 @@ Use **Playbook B (from existing code)**. The type vocabulary, per-type spec-comp
 folder layout, and linter rules are in the `ostler` skill it links to. Always finish an
 item by running `ostler fmt <touched>` on what you wrote.
 
+**The per-type authority is the reference page, not memory.** Before authoring a node of a
+type, read `{{ skill_dir() }}/ostler-documentation/references/node-types/<type>.md` — it
+carries each key's meaning with examples. The legal keys and their flags, rendered from
+ostler's own registry so they cannot be stale:
+
+{{ workhorse_var('bullet_grammar') }}
+
 ## Guardrails (this runs unattended — stay in your lane)
 
 - **Docs only.** You write **only** under `docs/features/**` (via `ostler scaffold`/`fmt` and your

@@ -95,6 +95,17 @@ def worklist_path(root: Path, service: str) -> Path:
     return build_dir(root) / f"{service or 'all'}.worklist.json"
 
 
+def operator_context_path(root: Path, service: str) -> Path:
+    """Where a budget stop parks its questions, and where an answer resumes the run.
+
+    Run state like the worklist beside it, not a document: the gitignored build dir is the
+    right home because the file's whole life is one `Await` round trip — the workflow
+    writes the pending count and the resume instruction, the operator edits the file, the
+    resume consumes it. Nothing downstream reads it after that.
+    """
+    return build_dir(root) / f"{service or 'all'}.context.md"
+
+
 def walk_worklist_path(root: Path, service: str) -> Path:
     """The walk's own worklist — a separate memory, so a walk re-run is not a re-build."""
     return build_dir(root) / f"{service}.walkthrough.json"
@@ -137,6 +148,7 @@ __all__ = [
     "build_dir",
     "docs_root",
     "features_root",
+    "operator_context_path",
     "screenshots_dir",
     "source_inventory_path",
     "waivers_path",

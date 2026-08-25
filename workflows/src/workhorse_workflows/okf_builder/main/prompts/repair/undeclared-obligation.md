@@ -25,3 +25,22 @@ For each bullet, before you write the call:
 Read the node's `code:` target to answer those; the bullets alone will not tell you what the near
 miss is. Where the source genuinely does not settle what an obligation asserts, leave that bullet
 unbound and say so — a node that stays red is a correct outcome, a node stamped green is not.
+
+**When the claim is real but the closed vocabulary has no observation for it**, that is a
+different outcome from "unsure", and it has a sanctioned exit: a doctor waiver. Append an
+entry to `docs/doctor-waivers.json` (shape: `{"waivers": [...]}`), quoting the claim
+itself as the reason:
+
+```json
+{"code": "undeclared-obligation", "ref": "<the node id the finding names>",
+ "reason": "no check in the closed vocabulary observes: '<the bullet's claim, quoted>'",
+ "backlog": "revisit when the check vocabulary can observe it"}
+```
+
+That is a reviewable ledger entry a human can audit and revoke — strictly better than
+either of the alternatives: an eternally-red warn every future round re-pays an agent turn
+to stare at, or a fabricated near-miss check that stamps the node green while observing
+something else. The bar for taking this exit is that you walked the vocabulary above and
+can say *why* each candidate check fails to observe the claim; say that in `doc_status`
+too. Never waive a bullet a check in the list *can* observe — that is the deletion rule
+wearing JSON.

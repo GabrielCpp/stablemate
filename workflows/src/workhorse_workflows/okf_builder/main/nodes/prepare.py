@@ -12,6 +12,7 @@ import logging
 from pathlib import Path
 
 from ostler import Ostler
+from workhorse.manifest import BACKEND_SKILL_DIR
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared import stubs
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
@@ -63,6 +64,43 @@ def _ostler_loads(root: Path) -> tuple[bool, str]:
         _ = Ostler(root).graph
     except (OSError, ValueError, RuntimeError) as exc:
         return False, f"ostler cannot load a graph at {root}: {exc}"
+    return True, ""
+
+
+#: What the installed ostler-documentation skill must carry for the build's prompts to
+#: point anywhere real: the per-type reference pages plus the two grammar sheets.
+_REFERENCES = ("references/node-types", "references/bullet-grammar.md",
+               "references/check-vocabulary.md")
+
+
+def _references_ok(root: Path) -> tuple[bool, str]:
+    """Whether an installed ostler-documentation skill carries the references corpus.
+
+    The prompts hand agents the path `<skill_dir>/ostler-documentation/references/…` as
+    the per-type authority. On a repo whose skills predate the corpus, that path does not
+    exist, and a real run showed what happens next: every turn greps for it, finds
+    nothing, and improvises the contract from memory — the exact drift the corpus exists
+    to stop. A skill that is installed but incomplete is therefore a blocked run, not a
+    degraded one, and the fix is a farrier refresh, not agent persistence.
+    """
+    installs = [
+        root / d / "ostler-documentation"
+        for d in BACKEND_SKILL_DIR.values()
+        if (root / d / "ostler-documentation").is_dir()
+    ]
+    if not installs:
+        return False, (
+            f"no installed ostler-documentation skill under {root} — run a farrier "
+            "refresh so the build's prompts have their per-type references"
+        )
+    for skill in installs:
+        missing = [ref for ref in _REFERENCES if not (skill / ref).exists()]
+        if missing:
+            return False, (
+                f"the installed skill at {skill} is missing {', '.join(missing)} — "
+                "it predates the references corpus; run a farrier refresh before "
+                "building against it"
+            )
     return True, ""
 
 
@@ -130,8 +168,10 @@ def prepare(
         baseline,
     )
     ostler_ok, why = _ostler_loads(root)
+    if ostler_ok:
+        ostler_ok, why = _references_ok(root)
     if not ostler_ok:
-        logger.warning("ostler cannot load a graph — the build will branch away: %s", why)
+        logger.warning("the build cannot start and will branch away: %s", why)
     return Prepared(
         worklist_path=str(wl),
         features_root=str(features),

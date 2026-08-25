@@ -68,9 +68,22 @@ def select_item(
         path, len(items), done, this_run, done_baseline, max_items or "none",
     )
 
+    pick = wl.select_next(items)  # active-first crash-safe re-pick, then first pending
+    if pick is None:
+        logger.info("drain is dry — no active or pending items; handing off to checkpoint")
+        return Pick(
+            done_count=done,
+            done_this_run=this_run,
+            progress=snap.progress,
+            kinds=snap.kinds,
+        )
+
     if max_items and this_run >= max_items:
         # Over budget: stop handing out work so the run converges the partial book
         # rather than burning quota all night. Pending items remain for a later resume.
+        # Checked only when there IS a next item: a drain that finished its last item
+        # exactly at the cap is dry, not over budget, and blocking it would ask the
+        # operator for an allowance nothing is waiting to spend.
         logger.warning(
             "over budget — %d done this run reaches the cap of %d; handing out no more "
             "work with %d still pending (resume to continue)",
@@ -79,16 +92,6 @@ def select_item(
         return Pick(
             over_budget=True,
             pending_count=snap.counts.pending,
-            done_count=done,
-            done_this_run=this_run,
-            progress=snap.progress,
-            kinds=snap.kinds,
-        )
-
-    pick = wl.select_next(items)  # active-first crash-safe re-pick, then first pending
-    if pick is None:
-        logger.info("drain is dry — no active or pending items; handing off to checkpoint")
-        return Pick(
             done_count=done,
             done_this_run=this_run,
             progress=snap.progress,

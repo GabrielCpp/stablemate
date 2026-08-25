@@ -29,6 +29,7 @@ import logging
 from pathlib import Path
 
 from ostler import Ostler
+from ostler.autofix import run_autofix
 from ostler.fmt import run_fmt
 from workhorse_workflows.okf_builder.shared import stubs
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
@@ -50,7 +51,42 @@ GROUNDED_CODES = frozenset({
     # A placement band has to be measured on the running UI. Guessing one either invents a
     # constraint the product never had, or picks a band so wide it can never go red.
     "missing-placement",
+    # Whether a stray claim belongs under a normative key or in prose is a fact about what
+    # the code does — filed from the finding text alone it becomes an obligation nobody
+    # read the source for, or prose that buries a real requirement.
+    "unminted-claim",
+    # The subject is the record, event or lock the code actually touches; naming one off
+    # the bullet's own wording just restates the vagueness the finding is about.
+    "relation-without-subject",
+    # The cited symbol moved or was renamed; where it went is in the source (or the source
+    # inventory), and re-aiming the citation without reading it points the node at a
+    # neighbour that happens to exist.
+    "missing-code-symbol",
 })
+
+#: The drain's spend order, as code families from upstream to downstream. Grounding first:
+#: a claim about a symbol that no longer exists is not worth rephrasing, and a check bound
+#: to it observes nothing. Then claim shape (what the book asserts), then obligations (how
+#: each assertion is observed), then the UI contract. A code in no family sorts after all
+#: of them; errors sort before warns regardless of family, because an error blocks the
+#: graph itself. The point is where a *bounded* run's allowance goes — the gate ("no
+#: standing non-waived finding") is unchanged.
+_CODE_FAMILIES: tuple[frozenset[str], ...] = (
+    frozenset({"missing-code-symbol", "dangling-code-ref", "dangling-link",
+               "missing-anchor", "unresolved-relation"}),
+    frozenset({"compound-normative-bullet", "overlong-normative-bullet",
+               "unminted-claim", "relation-without-subject"}),
+    frozenset({"unparsed-check", "weak-check", "undeclared-obligation",
+               "unstated-precondition"}),
+    frozenset({"missing-placement", "malformed-placement", "ambiguous-locator",
+               "unnamed-interactive", "unreachable-screen", "no-entry-point"}),
+)
+
+
+def _family_rank(code: str) -> int:
+    return next((n for n, family in enumerate(_CODE_FAMILIES) if code in family),
+                len(_CODE_FAMILIES))
+
 
 #: How many findings one repair item may carry. A doc's findings overwhelmingly share a
 #: cause — the same component file, the same route module — so batching them is both
@@ -103,6 +139,13 @@ def _repair_items(findings: list[dict], rnd: int) -> list[dict[str, str]]:
     in the target because a finding that survives its repair must be re-queued next round
     rather than deduped away as already-seen.
 
+    **The item order is the drain order.** `select_item` hands out the first pending item,
+    so the sort here decides where a budget-capped run's allowance is spent: errors before
+    warns, then by `_CODE_FAMILIES` (grounding → claim shape → obligations → UI), then
+    alphabetically for stability. On a drifted book with thousands of findings, a run that
+    stops early has then fixed the dead citations before the prose polish, not whichever
+    codes sort first in the alphabet.
+
     `GROUNDED_CODES` no longer picks the item kind (the code does); it rides in the context
     as `grounded`, which is the repair prompt's cue to demand a value read out of the source
     rather than derived from the finding text.
@@ -114,7 +157,15 @@ def _repair_items(findings: list[dict], rnd: int) -> list[dict[str, str]]:
         groups.setdefault((path, node, str(finding.get("code", ""))), []).append(finding)
 
     items = []
-    for (path, node, code), group in sorted(groups.items()):
+    ordered = sorted(
+        groups.items(),
+        key=lambda kv: (
+            0 if any(f.get("severity") == "error" for f in kv[1]) else 1,
+            _family_rank(kv[0][2]),
+            kv[0],
+        ),
+    )
+    for (path, node, code), group in ordered:
         group.sort(key=lambda f: (f.get("line", 0), str(f.get("ref", ""))))
         chunks = [group[i:i + MAX_FINDINGS_PER_ITEM]
                   for i in range(0, len(group), MAX_FINDINGS_PER_ITEM)]
@@ -254,6 +305,12 @@ def checkpoint_book(
     okf = Ostler(repo_root)
     if features_root:
         try:
+            # Autofix first: a mechanical drift repair must never cost an agent turn, and
+            # fmt then sorts whatever autofix moved into canonical position. Both are
+            # idempotent shape rewrites, so on a clean or from-scratch book this is a no-op.
+            fixed = run_autofix(okf.graph, [features_root])
+            if fixed.changed:
+                logger.info("autofixed %d drifted file(s) under %s", len(fixed.changed), features_root)
             result = run_fmt(okf.graph, [features_root])
             if result.changed:
                 logger.info("canonicalized %d file(s) under %s", len(result.changed), features_root)

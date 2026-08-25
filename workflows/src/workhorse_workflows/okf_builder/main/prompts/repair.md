@@ -9,7 +9,7 @@ it is the **same code** on the **same node**, which is why the instructions belo
 that one defect rather than for repairs in general.
 
 Load the method and obey it: {{ skill_load_ref("okf-modeling", skill_dir() + "/okf-modeling/SKILL.md") }}
-{% if workhorse_var('item_code') in ['undeclared-obligation', 'weak-check', 'unstated-precondition', 'unparsed-check', 'compound-normative-bullet'] %}
+{% if workhorse_var('item_code') in ['undeclared-obligation', 'weak-check', 'unstated-precondition', 'unparsed-check', 'compound-normative-bullet', 'unminted-claim'] %}
 This finding is about whether a claim can ever be observed, so load the bar it is measured against:
 {{ skill_load_ref("falsifiable-verification", skill_dir() + "/falsifiable-verification/SKILL.md") }}
 {% endif %}
@@ -28,6 +28,8 @@ This finding is about whether a claim can ever be observed, so load the bar it i
 - repo root: `{{ workhorse_var('repo_root') }}`
 - source root: `{{ workhorse_var('source_root') }}`
 - excluded source paths: `{{ workhorse_var('source_excludes') }}`
+- source inventory (mechanical, per-file symbol list; may not exist before the first
+  coverage re-scan): `{{ workhorse_var('source_inventory_path') }}`
 
 ## The check vocabulary — closed, and this is all of it
 
@@ -47,6 +49,19 @@ made-up check comes straight back as the finding you were paid to remove.
 - **A check's arguments are values, not prose.** `json_path(path="$.x", equals="the second
   address line")` asserts the field equals that sentence. If you do not know the value, read
   the source for it; if the claim has no single value, choose a check that fits.
+
+## The bullet grammar — rendered from the registry, per node type
+
+Every bullet you write or move must be a key the node's type declares, carrying the flags
+below. This is the same contract `ostler doctor` enforces, rendered from the same registry,
+so a key that is not here comes back as `unknown-bullet`.
+
+{{ workhorse_var('bullet_grammar') }}
+
+The full authority for a type — what each key *means*, with examples — is its reference
+page: `{{ skill_dir() }}/ostler-documentation/references/node-types/<type>.md`. Read the
+page for the node's type before restructuring its bullets; the grammar above says what is
+legal, the page says what is right.
 
 Work the findings **top-down by line**. All of them are yours to resolve this turn; a finding you
 leave standing comes back next round as a fresh item, so skipping one costs a round rather than

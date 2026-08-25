@@ -24,9 +24,13 @@ that confirms them on a workflow that shares none of author's shape:
   40 fixup rounds to get doctor green arrived at `guard_rounds` with `round=41` and failed
   its *first* coverage re-scan on a cap about a check that had not run once. Parameters
   cannot be confused for each other — a state either takes `rescan` or it does not;
-* the four `type: fail` terminals (`cannot_build`, `rounds_exhausted`, `budget_exhausted`,
-  `doctor_stuck`) are `raise WorkflowFailed(...)` **at the site that decides**, with the
-  reason spelled out. The YAML could only name a node;
+* the YAML's four `type: fail` terminals are decided **at the site that decides**, with
+  the reason spelled out — the YAML could only name a node. Two of them are still
+  `raise WorkflowFailed(...)`: a run that cannot measure (`cannot_build`) and a finding
+  that is neither repairable nor waivable (`doctor_stuck`). The other two —
+  `budget_exhausted` and `rounds_exhausted` — are budget stops, not defects, and a
+  workflow never gives up on a budget: they are operator gates (`Await`) now, resumable
+  with a fresh allowance;
 * the `type: flow` node is `self.handoff(...)`.
 
 Three divergences worth naming, beyond the mechanical ones the node modules record:
@@ -52,7 +56,9 @@ bounds the worklist's lifetime. See `walkthrough_web/flow.py`.
 """
 from __future__ import annotations
 
-from workhorse.pyflow import Continue, Done, NodeNotRunError, Workflow, WorkflowFailed
+from pathlib import Path
+
+from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, Workflow, WorkflowFailed
 from workhorse_workflows.okf_builder.main.nodes import (
     auto_waive,
     compute_coverage,
@@ -62,7 +68,7 @@ from workhorse_workflows.okf_builder.main.nodes import (
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book
 from workhorse_workflows.okf_builder.shared.schemas import Discovery, Investigation, Prepared, Recheck
-from workhorse_workflows.okf_builder.shared.vocabulary import check_vocabulary
+from workhorse_workflows.okf_builder.shared.vocabulary import bullet_grammar, check_vocabulary
 from workhorse_workflows.okf_builder.shared.worklist import record, select_item
 from workhorse_workflows.okf_builder.walkthrough_web import WalkthroughWeb
 
@@ -82,8 +88,9 @@ class OkfBuilder(Workflow):
 
     The stop condition is convergence, not a budget: the run ends when the computed
     coverage join is complete and `ostler doctor` is green. `max_items` is a safety valve
-    for a quota-limited practice run, and reaching it is a **failure** — a partial book
-    must not read as a finished one.
+    for a quota-limited practice run, and reaching it **blocks** the run on an operator
+    gate rather than ending it — a partial book must not read as a finished one, and a
+    budget stop is not a defect, so the run waits for a fresh allowance instead of dying.
     """
 
     #: Which `<features-root>/<service>` book to build, the root being ostler's answer;
@@ -183,29 +190,48 @@ class OkfBuilder(Workflow):
     # --- the drain ----------------------------------------------------------
 
     def select(
-        self, rnd: int = 0, rescan: int = 0, stall: int = 0, signature: str = ""
-    ) -> Continue:
+        self,
+        rnd: int = 0,
+        rescan: int = 0,
+        stall: int = 0,
+        signature: str = "",
+        refuels: int = 0,
+    ) -> Continue | Await:
         """`select_item` + `guard_budget` + `decide_item`: take one item, or converge.
 
-        The four counters ride along untouched. They belong to the *convergence* loop, not
+        The counters ride along untouched. They belong to the *convergence* loop, not
         to this one, but a drain re-entered from a fixup round has to hand them back to
         `checkpoint` when it goes dry — which is exactly what the YAML's run-global `vars`
-        did implicitly and what these four parameters do visibly.
+        did implicitly and what these parameters do visibly. `refuels` is the one that
+        belongs to *this* guard: each operator pass through `refuel` grants one more
+        `max_items` allowance on top of the baseline `prepare` froze at setup.
         """
         pick = self.call(
-            select_item, self.ctx.worklist_path, self.max_items, self.ctx.done_baseline
+            select_item,
+            self.ctx.worklist_path,
+            self.max_items * (refuels + 1) if self.max_items else 0,
+            self.ctx.done_baseline,
         )
         if pick.over_budget:
-            # The valve, not the stop condition. Canonicalize what was built so the
-            # partial book is at least well-formed, then fail: pending items survive for
-            # a resume, which gets its own allowance off a fresh `done_baseline`.
+            # The valve, not the stop condition — and a budget, not a defect, so the run
+            # blocks instead of dying. Canonicalize what was built so the partial book is
+            # at least well-formed, then hand the stop to the operator: answering the
+            # gate file resumes at `refuel`, which grants another `max_items`.
             self.call(checkpoint_book, self.ctx.repo_root, self.ctx.features_root, rnd)
-            raise WorkflowFailed(
-                f"stopped at the {self.max_items}-item ceiling with {pick.pending_count} "
-                f"item(s) still pending — the book is partial, not converged. Re-run to "
-                f"resume with a fresh allowance.",
-                failure_class="okf-builder-item-ceiling",
-                artifacts={"features_root": str(self.ctx.features_root)},
+            return Await(
+                paths.operator_context_path(Path(self.ctx.repo_root), self.service),
+                f"okf-builder stopped at its {self.max_items * (refuels + 1)}-item "
+                f"ceiling with {pick.pending_count} item(s) still pending — the book "
+                f"is partial, not converged. It was canonicalized (`ostler fmt`) so "
+                f"what exists is well-formed. Flip this file's `STATUS:` line to "
+                f"`ANSWERED` to resume the drain with a fresh allowance of "
+                f"{self.max_items} item(s).",
+                self.refuel,
+                rnd=rnd,
+                rescan=rescan,
+                stall=stall,
+                signature=signature,
+                refuels=refuels,
             )
         if not pick.has_item:
             return Continue(
@@ -215,6 +241,7 @@ class OkfBuilder(Workflow):
                 rescan=rescan,
                 stall=stall,
                 signature=signature,
+                refuels=refuels,
             )
         return Continue(
             pick,
@@ -229,6 +256,35 @@ class OkfBuilder(Workflow):
             rescan=rescan,
             stall=stall,
             signature=signature,
+            refuels=refuels,
+        )
+
+    def refuel(
+        self,
+        rnd: int = 0,
+        rescan: int = 0,
+        stall: int = 0,
+        signature: str = "",
+        refuels: int = 0,
+    ) -> Continue:
+        """Consume the operator's answer to an item-ceiling stop: one more allowance.
+
+        Exists so the `Await` above has a cheap-prefix target that does the one thing a
+        resume means here — grant another `max_items` and re-enter the drain. Re-entering
+        `select` directly would re-arrive at the same guard with the same allowance and
+        block again; the increment has to live on the far side of the wait.
+        """
+        self.logger.info(
+            "operator refuel #%d: granting %d more item(s)", refuels + 1, self.max_items
+        )
+        return Continue(
+            None,
+            self.select,
+            rnd=rnd,
+            rescan=rescan,
+            stall=stall,
+            signature=signature,
+            refuels=refuels + 1,
         )
 
     def investigate(
@@ -243,6 +299,7 @@ class OkfBuilder(Workflow):
         rescan: int = 0,
         stall: int = 0,
         signature: str = "",
+        refuels: int = 0,
     ) -> Continue:
         """The heart: document ONE item to the spec-complete bar, or repair one finding.
 
@@ -283,6 +340,10 @@ class OkfBuilder(Workflow):
                 "item_target": item_target,
                 "item_context": item_context,
                 "check_vocabulary": check_vocabulary(),
+                "bullet_grammar": bullet_grammar(),
+                "source_inventory_path": str(
+                    paths.source_inventory_path(self.ctx.worklist_path)
+                ),
                 "service": self.service,
                 "features_root": self.ctx.features_root,
                 "repo_root": self.ctx.repo_root,
@@ -299,6 +360,7 @@ class OkfBuilder(Workflow):
             rescan=rescan,
             stall=stall,
             signature=signature,
+            refuels=refuels,
         )
 
     def record_item(
@@ -309,6 +371,7 @@ class OkfBuilder(Workflow):
         rescan: int = 0,
         stall: int = 0,
         signature: str = "",
+        refuels: int = 0,
     ) -> Continue:
         """`record`: close the item the turn documented, open what it revealed."""
         return Continue(
@@ -318,13 +381,19 @@ class OkfBuilder(Workflow):
             rescan=rescan,
             stall=stall,
             signature=signature,
+            refuels=refuels,
         )
 
     # --- convergence: the mechanical gate ------------------------------------
 
     def checkpoint(
-        self, rnd: int = 0, rescan: int = 0, stall: int = 0, signature: str = ""
-    ) -> Continue:
+        self,
+        rnd: int = 0,
+        rescan: int = 0,
+        stall: int = 0,
+        signature: str = "",
+        refuels: int = 0,
+    ) -> Continue | Await:
         """`checkpoint` + `decide_checkpoint` + `guard_fixup_progress` + `seed_fixup` +
         `guard_rounds`: canonicalize, read doctor, and decide what the dirt means.
 
@@ -334,7 +403,9 @@ class OkfBuilder(Workflow):
         * dirty doctor whose finding set has not changed in `MAX_STALL_ROUNDS` rounds → a
           repair that cannot land in the book, so hand it to `waive`;
         * clean doctor after `MAX_RESCAN_ROUNDS` coverage re-scans → the coverage check is
-          not converging, so stop. Reaching the cap is **not** convergence and says so.
+          not converging. Reaching the cap is **not** convergence — but it is a budget,
+          not a defect, so it blocks on the operator gate; answering the gate file
+          resumes the re-scan with a fresh round allowance.
         """
         result = self.call(
             checkpoint_book,
@@ -353,6 +424,7 @@ class OkfBuilder(Workflow):
                     rescan=rescan,
                     stall=result.stall_rounds,
                     signature=result.fixup_signature,
+                    refuels=refuels,
                 )
             return Continue(
                 self.call(record, self.ctx.worklist_path, None, result.fixup_items),
@@ -361,19 +433,34 @@ class OkfBuilder(Workflow):
                 rescan=rescan,
                 stall=result.stall_rounds,
                 signature=result.fixup_signature,
+                refuels=refuels,
             )
         if rescan >= MAX_RESCAN_ROUNDS:
-            raise WorkflowFailed(
-                f"the coverage re-scan did not converge in {MAX_RESCAN_ROUNDS} rounds — "
-                f"the book is still short of its source inventory and this run gave up "
-                f"rather than loop. This is not a finished book.",
-                failure_class="okf-builder-rescan-did-not-converge",
-                artifacts={"features_root": str(self.ctx.features_root)},
+            return Await(
+                paths.operator_context_path(Path(self.ctx.repo_root), self.service),
+                f"okf-builder's coverage re-scan did not converge in "
+                f"{MAX_RESCAN_ROUNDS} rounds — doctor is clean but the book is still "
+                f"short of its source inventory, so each re-scan keeps finding "
+                f"uncovered units. This is not a finished book. Look at the missing "
+                f"list beside the worklist under .agents/okf-build/ to see what keeps "
+                f"coming back, then flip this file's `STATUS:` line to `ANSWERED` to "
+                f"resume the re-scan with a fresh {MAX_RESCAN_ROUNDS}-round allowance.",
+                self.rescan_coverage,
+                rnd=result.round,
+                rescan=0,
+                refuels=refuels,
             )
-        return Continue(result, self.rescan_coverage, rnd=result.round, rescan=rescan)
+        return Continue(
+            result, self.rescan_coverage, rnd=result.round, rescan=rescan, refuels=refuels
+        )
 
     def waive(
-        self, rnd: int = 0, rescan: int = 0, stall: int = 0, signature: str = ""
+        self,
+        rnd: int = 0,
+        rescan: int = 0,
+        stall: int = 0,
+        signature: str = "",
+        refuels: int = 0,
     ) -> Continue:
         """`auto_waive` + `decide_auto_waive`: accept what a doc edit cannot fix, or stop.
 
@@ -404,11 +491,12 @@ class OkfBuilder(Workflow):
             rescan=rescan,
             stall=stall,
             signature=signature,
+            refuels=refuels,
         )
 
     # --- convergence: the exhaustiveness re-scan ------------------------------
 
-    def rescan_coverage(self, rnd: int = 0, rescan: int = 0) -> Continue:
+    def rescan_coverage(self, rnd: int = 0, rescan: int = 0, refuels: int = 0) -> Continue:
         """`inventory_source` + `compute_coverage` + `decide_coverage`.
 
         Two nodes in one state because the second consumes the first's only output and
@@ -442,9 +530,11 @@ class OkfBuilder(Workflow):
         # would be a second, weaker reader of a question already answered upstream.
         if coverage.coverage_complete:
             return Continue(coverage, self.walkthrough)
-        return Continue(coverage, self.recheck, rnd=rnd, rescan=coverage.rescan_round)
+        return Continue(
+            coverage, self.recheck, rnd=rnd, rescan=coverage.rescan_round, refuels=refuels
+        )
 
-    def recheck(self, rnd: int = 0, rescan: int = 0) -> Continue:
+    def recheck(self, rnd: int = 0, rescan: int = 0, refuels: int = 0) -> Continue:
         """Adjudicate the computed missing list — the only coverage judgement left to an agent.
 
         It no longer votes on completeness. It receives the rows the join reports missing
@@ -485,11 +575,16 @@ class OkfBuilder(Workflow):
             },
         )
         return Continue(
-            result, self.seed_recheck, discovered=result.discovered, rnd=rnd, rescan=rescan
+            result,
+            self.seed_recheck,
+            discovered=result.discovered,
+            rnd=rnd,
+            rescan=rescan,
+            refuels=refuels,
         )
 
     def seed_recheck(
-        self, discovered: list[dict], rnd: int = 0, rescan: int = 0
+        self, discovered: list[dict], rnd: int = 0, rescan: int = 0, refuels: int = 0
     ) -> Continue:
         """`seed_recheck`: queue what the adjudication ruled to be real work.
 
@@ -502,6 +597,7 @@ class OkfBuilder(Workflow):
             self.select,
             rnd=rnd,
             rescan=rescan,
+            refuels=refuels,
         )
 
     # --- the live-app walk ---------------------------------------------------
