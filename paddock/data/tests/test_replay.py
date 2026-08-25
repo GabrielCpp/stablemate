@@ -1,15 +1,20 @@
-"""The expense-split replay's two contracts: what a round plans, and what a rewind undoes.
+"""The replay library's contracts: what a round plans, and what a rewind undoes.
 
-Neither is checkable by running the task — a real trial is a forty-minute agent run behind
-a docker stack — and both are exactly the kind of thing that breaks silently. A pin list
-that has drifted still runs; it just replays a different commit. A rewind that deletes one
-file too many still runs; it just measures a flow being handed less than it was handed
+Neither is checkable by running a task — a real trial is a forty-minute agent run behind a
+docker stack — and both are exactly the kind of thing that breaks silently. A pin list that
+has drifted still runs; it just replays a different commit. A rewind that deletes one file
+too many still runs; it just measures a flow being handed less than it was handed
 historically, which reads as the loop getting worse.
+
+The declaring fixtures are asserted here too, for the same reason: `expense_split.py` and
+`link_shortener_replay.py` are now five and two rows of data, and a typo in a row is not a
+crash.
 """
 
 from __future__ import annotations
 
 import contextlib
+import importlib
 import importlib.util
 import subprocess
 import sys
@@ -37,21 +42,26 @@ def _tasks_dir_on_path() -> Iterator[None]:
         sys.path[:] = saved
 
 
-def _load() -> ModuleType:
-    path = DATA / "tasks" / "expense_split.py"
-    spec = importlib.util.spec_from_file_location("expense_split", path)
+def _load(name: str) -> ModuleType:
+    path = DATA / "tasks" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None  # noqa: S101 - a real file on disk
     module = importlib.util.module_from_spec(spec)
     with _tasks_dir_on_path():
-        # The declaration calls in the module body write to the process-wide registry the
+        # The declaration calls in a task body write to the process-wide registry the
         # loader owns; resetting first is what lets this import happen beside any other.
         registry.REGISTRY.reset()
-        sys.modules["expense_split"] = module
+        sys.modules[name] = module
         spec.loader.exec_module(module)
     return module
 
 
-task_module = _load()
+with _tasks_dir_on_path():
+    replay = importlib.import_module("_replay")
+    sm = importlib.import_module("_stablemate")
+
+expense_split = _load("expense_split")
+link_shortener = _load("link_shortener_replay")
 
 
 def git(*args: str, cwd: Path) -> None:
@@ -74,34 +84,64 @@ def make_run(tmp_path: Path, **params: str) -> Run:
     )
 
 
-def test_every_story_is_pinned_once_on_both_flows() -> None:
-    stories = [pin.story for pin in task_module.PINS]
+def test_every_expense_split_story_is_pinned_once_on_both_flows() -> None:
+    stories = [pin.story for pin in expense_split.FIXTURE.pins]
     assert stories == sorted(set(stories), key=stories.index), "a story is pinned twice"
     assert len(stories) == 5
-    for pin in task_module.PINS:
+    for pin in expense_split.FIXTURE.pins:
         # A pin that lost half its pair still runs and replays the wrong flow's state.
         assert pin.commit("qa") and pin.commit("docs")
 
 
+def test_a_fixture_only_declares_flows_the_library_can_rewind() -> None:
+    """A flow with no rewind rule is entered on a tree that already holds its own output.
+
+    That measures a lane confirming its own work, which is the most expensive way there is
+    to learn nothing — and it does not fail, so nothing but this says so.
+    """
+    for fixture in (expense_split.FIXTURE, link_shortener.FIXTURE):
+        assert set(fixture.flows) <= set(replay.KNOWN_FLOWS)
+
+
 def test_a_round_pairs_every_pinned_story_with_every_flow(tmp_path: Path) -> None:
-    plan = task_module.plan_round(make_run(tmp_path))
-    assert len(plan) == len(task_module.PINS) * len(task_module.FLOWS)
+    fixture = expense_split.FIXTURE
+    plan = replay.plan_round(make_run(tmp_path), fixture)
+    assert len(plan) == len(fixture.pins) * len(fixture.flows)
     # Stories outermost, so a round interrupted halfway has finished stories rather than
     # half a flow of every story.
     assert [flow for _, flow in plan[:2]] == ["qa", "docs"]
 
 
+def test_a_round_skips_a_flow_a_story_has_no_pin_for(tmp_path: Path) -> None:
+    """A fixture may pin one flow for one story and both for another; the round follows.
+
+    Without this the link-shortener fixture — docs-pinned only — would plan QA trials whose
+    first act is to fail a checkout.
+    """
+    plan = replay.plan_round(make_run(tmp_path), link_shortener.FIXTURE)
+    assert [(pin.story, flow) for pin, flow in plan] == [
+        ("create-short-links", "docs"),
+        ("redirect-short-links", "docs"),
+    ]
+
+
 def test_params_narrow_a_round_and_a_typo_is_refused(tmp_path: Path) -> None:
-    plan = task_module.plan_round(make_run(tmp_path, stories="expense-list", flows="qa"))
+    fixture = expense_split.FIXTURE
+    plan = replay.plan_round(make_run(tmp_path, stories="expense-list", flows="qa"), fixture)
     assert [(pin.story, flow) for pin, flow in plan] == [("expense-list", "qa")]
 
-    with pytest.raises(task_module.sm.TrialError, match="no pin for"):
-        task_module.plan_round(make_run(tmp_path, stories="expense-lists"))
-    with pytest.raises(task_module.sm.TrialError, match="known flows"):
-        task_module.plan_round(make_run(tmp_path, flows="review"))
+    with pytest.raises(sm.TrialError, match="no pin for"):
+        replay.plan_round(make_run(tmp_path, stories="expense-lists"), fixture)
+    with pytest.raises(sm.TrialError, match="this fixture replays"):
+        replay.plan_round(make_run(tmp_path, flows="review"), fixture)
+    # And a flow the *library* knows but this fixture does not pin is refused just as
+    # loudly, rather than silently planning nothing.
+    with pytest.raises(sm.TrialError, match="this fixture replays"):
+        replay.plan_round(make_run(tmp_path, flows="qa"), link_shortener.FIXTURE)
 
 
 def test_the_qa_rewind_removes_the_flows_outputs_and_nothing_else(tmp_path: Path) -> None:
+    fixture = expense_split.FIXTURE
     repo = tmp_path / "repo"
     spec = repo / "docs" / "specs" / "expense-list"
     spec.mkdir(parents=True)
@@ -118,7 +158,7 @@ def test_the_qa_rewind_removes_the_flows_outputs_and_nothing_else(tmp_path: Path
     # list and not a `qa*` sweep — a sweep would take this with it.
     (spec / "qa_plan.py").write_text("SCENARIOS = []", encoding="utf-8")
 
-    task_module.rewind(repo, task_module.PINS[3], "qa")
+    replay.rewind(repo, fixture, fixture.pins[3], "qa")
 
     # The story and the plan are what the flow is *entered* with; everything the flow
     # writes has to be gone, or the trial measures a repair of its own last answer.
@@ -130,13 +170,15 @@ def test_the_qa_rewind_removes_the_flows_outputs_and_nothing_else(tmp_path: Path
 
 
 def test_the_qa_rewind_refuses_a_pin_whose_spec_dir_is_absent(tmp_path: Path) -> None:
+    fixture = expense_split.FIXTURE
     repo = tmp_path / "repo"
     (repo / "docs").mkdir(parents=True)
-    with pytest.raises(task_module.sm.TrialError, match="still right"):
-        task_module.rewind(repo, task_module.PINS[0], "qa")
+    with pytest.raises(sm.TrialError, match="still right"):
+        replay.rewind(repo, fixture, fixture.pins[0], "qa")
 
 
-def test_the_docs_rewind_leaves_the_book_one_story_behind(tmp_path: Path) -> None:
+def _book_repo(tmp_path: Path) -> tuple[Path, str]:
+    """A two-commit book: `group.md`, then `expense.md` beside it."""
     repo = tmp_path / "repo"
     features = repo / "docs" / "features"
     features.mkdir(parents=True)
@@ -152,17 +194,70 @@ def test_the_docs_rewind_leaves_the_book_one_story_behind(tmp_path: Path) -> Non
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=str(repo), check=True, capture_output=True, text=True
     ).stdout.strip()
+    return repo, head
 
-    task_module.rewind(repo, task_module.Pin(story="expense-record", qa=head, docs=head), "docs")
+
+def test_the_docs_rewind_leaves_the_book_one_story_behind(tmp_path: Path) -> None:
+    repo, head = _book_repo(tmp_path)
+
+    pin = replay.Pin(story="expense-record", commits={"docs": head})
+    replay.rewind(repo, expense_split.FIXTURE, pin, "docs")
 
     # The book as it stood *before* this story landed: the real historical input, and one
     # story behind rather than empty — a book rewound further is missing entries outside
     # this story's obligations, which is a different complaint for a reviewer to make.
-    assert sorted(p.name for p in features.iterdir()) == ["group.md"]
+    assert sorted(p.name for p in (repo / "docs" / "features").iterdir()) == ["group.md"]
+
+
+def test_book_from_replays_a_story_whose_docs_lane_never_ran(tmp_path: Path) -> None:
+    """There is no commit to be the parent of, so the entry state is a tree as it stands.
+
+    The default would rewind to `head~` and hand the lane a book missing the *previous*
+    story as well — a strictly easier and historically wrong input.
+    """
+    repo, head = _book_repo(tmp_path)
+
+    pin = replay.Pin(story="never-documented", commits={"docs": head}, book_from=head)
+    replay.rewind(repo, expense_split.FIXTURE, pin, "docs")
+
+    assert sorted(p.name for p in (repo / "docs" / "features").iterdir()) == [
+        "expense.md",
+        "group.md",
+    ]
+
+
+def test_the_harness_restore_brings_in_config_the_history_never_tracked(tmp_path: Path) -> None:
+    """A clone at a pin that predates tracking `agents.yml` installs nothing at all.
+
+    This is not part of the state the flow was entered in — it is the part of the tree the
+    capture failed to record — which is why it is applied after the rewind and names only
+    files that describe the repo rather than the work.
+    """
+    repo, _ = _book_repo(tmp_path)
+    (repo / "agents.yml").write_text("packs:\n  - go\n", encoding="utf-8")
+    git("add", "--all", cwd=repo)
+    git("commit", "--quiet", "-m", "track the harness", cwd=repo)
+    harness_ref = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=str(repo), check=True, capture_output=True, text=True
+    ).stdout.strip()
+    (repo / "agents.yml").unlink()
+
+    fixture = replay.Fixture(
+        app="x", pins=(), harness=("agents.yml",), harness_ref=harness_ref
+    )
+    replay.restore_harness(repo, fixture)
+
+    assert (repo / "agents.yml").read_text(encoding="utf-8") == "packs:\n  - go\n"
+
+
+def test_the_harness_restore_refuses_paths_with_no_ref_to_take_them_from(tmp_path: Path) -> None:
+    fixture = replay.Fixture(app="x", pins=(), harness=("agents.yml",))
+    with pytest.raises(sm.TrialError, match="no `harness_ref`"):
+        replay.restore_harness(tmp_path, fixture)
 
 
 def test_the_backfill_gives_a_predating_story_the_dependencies_section(tmp_path: Path) -> None:
-    """The bundle was captured before `## Dependencies` was a required story section.
+    """expense-split was captured before `## Dependencies` was a required story section.
 
     Without the backfill every pin stops at the first node — "story.md is still a bare
     scaffold" — on both flows, and the fixture measures nothing.
@@ -174,7 +269,7 @@ def test_the_backfill_gives_a_predating_story_the_dependencies_section(tmp_path:
         encoding="utf-8",
     )
 
-    task_module.backfill_story_sections(tmp_path)
+    replay.backfill_story_sections(tmp_path)
 
     written = story_md.read_text(encoding="utf-8")
     assert "## Dependencies\n\n(none)\n" in written
@@ -193,13 +288,13 @@ def test_the_backfill_leaves_a_story_that_already_declares_dependencies_alone(
     before = "# Story\n\n## Dependencies\n\n- Blocked by: group-membership\n\n## Context\n\nx.\n"
     story_md.write_text(before, encoding="utf-8")
 
-    task_module.backfill_story_sections(tmp_path)
+    replay.backfill_story_sections(tmp_path)
 
     assert story_md.read_text(encoding="utf-8") == before
 
 
 def test_the_pack_fix_subscribes_the_captured_app_to_the_docs_pack(tmp_path: Path) -> None:
-    """The seed was captured subscribing to `product-planning` and `go` only.
+    """expense-split was captured subscribing to `product-planning` and `go` only.
 
     The docs lane's prompts carry a `skill_load_ref` to `ostler-documentation`, which ships
     in the `stablemate` pack — so without this every docs trial renders the prompt's
@@ -212,7 +307,7 @@ def test_the_pack_fix_subscribes_the_captured_app_to_the_docs_pack(tmp_path: Pat
         encoding="utf-8",
     )
 
-    task_module.subscribe_to_the_docs_pack(tmp_path)
+    replay.subscribe_to_packs(tmp_path, expense_split.FIXTURE.packs)
 
     written = agents_yml.read_text(encoding="utf-8")
     assert "packs:\n  - product-planning\n  - go\n  - stablemate\n" in written
@@ -225,13 +320,20 @@ def test_the_pack_fix_is_a_no_op_when_the_pack_is_already_declared(tmp_path: Pat
     before = "packs:\n  - stablemate\n  - go\n\n# a comment the seed owns\nworkflows:\n  - coder\n"
     agents_yml.write_text(before, encoding="utf-8")
 
-    task_module.subscribe_to_the_docs_pack(tmp_path)
+    replay.subscribe_to_packs(tmp_path, ("stablemate",))
 
     # Byte-for-byte, comment included — a YAML round-trip would have dropped that line.
     assert agents_yml.read_text(encoding="utf-8") == before
 
 
+def test_the_pack_fix_is_skipped_entirely_by_a_fixture_that_declares_none(tmp_path: Path) -> None:
+    """The link-shortener seed already subscribes to `stablemate`, so there is nothing to
+    patch — and a fixture with no packs must not require an `agents.yml` to exist yet."""
+    assert link_shortener.FIXTURE.packs == ()
+    replay.subscribe_to_packs(tmp_path, ())
+
+
 def test_the_pack_fix_refuses_an_agents_yml_with_no_packs_block(tmp_path: Path) -> None:
     (tmp_path / "agents.yml").write_text("repo:\n  name: x\n", encoding="utf-8")
-    with pytest.raises(task_module.sm.TrialError, match="no `packs:` block"):
-        task_module.subscribe_to_the_docs_pack(tmp_path)
+    with pytest.raises(sm.TrialError, match="no `packs:` block"):
+        replay.subscribe_to_packs(tmp_path, ("stablemate",))
