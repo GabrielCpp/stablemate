@@ -99,6 +99,10 @@ MAX_EXTENSIONS = 6
 #: interventions is one document rather than a directory nobody lists.
 BLOCKED_NAME = "BLOCKED.md"
 
+#: The prefix every fix reason carries when an operator, and not a classifier, is what
+#: released the state. It is what tells a resumed state to go and read the gate.
+OPERATOR_RELEASED = "an operator addressed"
+
 #: Forced outcomes the bookkeeping prompt writes when the program concludes.
 GOAL_REACHED = "GOAL_REACHED"
 GOAL_IMPOSSIBLE = "GOAL_IMPOSSIBLE"
@@ -210,6 +214,36 @@ class Research(Workflow):
         """
         return Await(
             self._abs(f"{self.ctx.program_dir}/{BLOCKED_NAME}"), questions, resume, **params
+        )
+
+    def _released_by(self, fix_reason: str) -> str:
+        """`fix_reason`, plus the gate itself when an operator is what released the state.
+
+        The gate is the answer channel as well as the question channel, and until this
+        existed nothing ever read it back: a state re-entered after a block was handed
+        its *own* notes as the reason it was released, so an engineer that blocked to be
+        told something was told what it had already said. It then re-read the same
+        evidence, reached the same conclusion, and blocked again — a loop no budget caps,
+        because an operator block spends none of them. `_blocked` promises the operator's
+        answer *is* the authorization the resumed state needs; this is the half of that
+        promise that delivers it.
+
+        Verbatim, whole file, oldest first. The answers are what the state must act on,
+        and its own asks above them are how it sees that it is repeating itself.
+        """
+        if not fix_reason.startswith(OPERATOR_RELEASED):
+            return fix_reason
+        gate = self._abs(f"{self.ctx.program_dir}/{BLOCKED_NAME}")
+        if not gate.is_file():
+            return fix_reason
+        return (
+            f"{fix_reason}\n\n"
+            f"The operator answered on `{self.ctx.program_dir}/{BLOCKED_NAME}`, below, "
+            "oldest first: your own asks and the answers to them. Do what the answers "
+            "say. Where one tells you a fault is not yours and needs no change here, it "
+            "is settled — do not raise it again; carry on with the work it releases you "
+            "to do. The `STATUS:` header is the engine's bookkeeping, not yours.\n\n"
+            f"{gate.read_text(encoding='utf-8').strip()}"
         )
 
     def _publish(self) -> None:
@@ -455,7 +489,7 @@ class Research(Workflow):
                 gate_id=gate_id,
                 gate_doc_path=gate_doc_path,
                 design=design.model_dump(mode="json"),
-                fix_reason=fix_reason,
+                fix_reason=self._released_by(fix_reason),
                 fix_count=budget.build_fixes,
                 result_file="result.json",
             ),
@@ -473,7 +507,7 @@ class Research(Workflow):
                 gate_doc_path=gate_doc_path,
                 design=design.model_dump(mode="json"),
                 budget=budget,
-                fix_reason=f"an operator addressed: {build.notes}",
+                fix_reason=f"{OPERATOR_RELEASED}: {build.notes}",
             )
         rehearsal = self.call(
             dry_run,
@@ -566,7 +600,7 @@ class Research(Workflow):
                 gate_doc_path=gate_doc_path,
                 design=design.model_dump(mode="json"),
                 budget=budget,
-                fix_reason=f"an operator addressed a tooling fault: {reason}",
+                fix_reason=f"{OPERATOR_RELEASED} a tooling fault: {reason}",
             )
         if budget.build_fixes >= MAX_BUILD_FIXES:
             return self._to_lead(

@@ -262,6 +262,7 @@ def _drive(
     nodes: _Nodes | None = None,
     ledger: str = "",
     caps: dict[str, int] | None = None,
+    answer: str = "",
     **inputs: Any,
 ) -> _Run:
     """Drive `Research` against a real repo until it terminates, parks, or halts.
@@ -270,6 +271,10 @@ def _drive(
     *changing the constant*, which is only possible because there is one copy of it.
     `ledger` seeds the program's spend file, which is how a *prior run's* budget gets
     into a test without running one.
+
+    `answer` is an operator who is *present*: the block writes it onto the gate and the
+    wait returns, so the run resumes through the block instead of ending at it. Without
+    it a block is the end of the drive, which is what most tests here want.
     """
     waited: list[Path] = []
     checkpoints: list[dict[str, Any]] = []
@@ -283,6 +288,9 @@ def _drive(
         waited.append(Path(path))
         if Path(path).name == research.BLOCKED_NAME:
             text = Path(path).read_text() if Path(path).exists() else ""
+            if answer:
+                Path(path).write_text(f"{text}\n\n## Operator answer\n\n{answer}\n")
+                return
             raise _Parked(Path(path), text)
         # A job's own `wake` file: the supervisor touched it, so the wait is over and
         # `await_result` re-enters and looks again. Nobody was asked anything.
@@ -518,6 +526,43 @@ def test_the_engineer_may_declare_a_tooling_fault_only_by_naming_what_is_broken(
     assert "the doc graph will not open" in outcome.blocked_text, outcome.blocked_text
     # It never reached the runner: nothing was rehearsed and nothing was submitted.
     assert outcome.nodes.counts()["dry_run"] == 0, outcome.nodes.counts()
+
+
+def test_the_operator_s_answer_reaches_the_state_it_released():
+    """A block is a question, so the state that asked it has to be given the answer.
+
+    It was not, and the shape of that bug is why this test exists: the resumed build was
+    handed its own `notes` back as the reason it had been released, read the same
+    evidence again, reached the same conclusion again, and blocked again — on a path
+    that spends no budget, so nothing ever stopped it. What the operator wrote is the
+    authorization; if it does not arrive, the block is a loop with a file in it.
+    """
+    outcome = _run(
+        _script(
+            **{
+                "build-experiment": [
+                    {
+                        "status": "blocked",
+                        "fault_locus": "tooling",
+                        "component": "the runner's supervisor",
+                        "notes": "the supervisor vanished without finalizing the job",
+                    },
+                    {"status": "ok", "command": ["python", "run.py"]},
+                ],
+                "gate-check": [{"status": "approved"}],
+            }
+        ),
+        answer="The host rebooted; there is no defect. Do not raise this again — submit.",
+    )
+
+    turns = outcome.agent.args_for("build-experiment")
+    assert len(turns) == 2, outcome.agent.counts()
+    # The first ask had nothing on the gate yet; the second was told what came back.
+    assert "The host rebooted" not in turns[0]["fix_reason"]
+    assert "The host rebooted" in turns[1]["fix_reason"], turns[1]["fix_reason"]
+    assert "Do not raise this again" in turns[1]["fix_reason"]
+    # And the release was real: the run went on to rehearse and submit.
+    assert outcome.nodes.counts()["dry_run"] == 1, outcome.nodes.counts()
 
 
 def test_a_rehearsal_that_dies_under_the_runner_never_reaches_submission():

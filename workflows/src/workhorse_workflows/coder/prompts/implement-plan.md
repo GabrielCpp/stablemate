@@ -2,7 +2,7 @@
 agent: agent
 ---
 
-Implement this repo's plan. Follow these steps in order.
+Implement this plan. Follow these steps in order.
 
 ## Provided Inputs (authoritative — do not rediscover)
 
