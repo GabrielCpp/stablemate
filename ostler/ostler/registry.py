@@ -465,7 +465,16 @@ UI_TYPES: tuple[UINodeType, ...] = (
     ),
     UINodeType(
         name="concept", kind="file", context="concepts",
-        bullet_keys=(BulletKey("code", link=True, owns=True), BulletKey("extends", link=True)),
+        bullet_keys=(
+            BulletKey("code", link=True, owns=True),
+            BulletKey("extends", link=True),
+            # The test files covering this node, as on `flow` and for the same reader: the
+            # regression node attributes a failing suite test back to the node that owns it.
+            # Declared on every type that can carry a `verify:` observation, because the books
+            # wrote the split's *path* half wherever they wrote its *observation* half — a
+            # `tests:` legal on `method` but inert on the concept above it is drift, not design.
+            BulletKey("tests", link=True),
+        ),
     ),
     UINodeType(
         name="format", kind="file", context="",
@@ -478,6 +487,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # grounding key: a config file may be gitignored or env-local.
             BulletKey("config", owns=True),
             BulletKey("code", link=True, owns=True),
+            BulletKey("tests", link=True),
         ),
     ),
     UINodeType(
@@ -551,6 +561,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # pin it kept.
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            BulletKey("tests", link=True),
         ),
     ),
     # ---- section-level elements / behaviors (a `### id` under a typed `## Heading`) ----
@@ -582,6 +593,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("code", link=True, owns=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            BulletKey("tests", link=True),
         ),
     ),
     UINodeType(
@@ -601,6 +613,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            BulletKey("tests", link=True),
         ),
     ),
     UINodeType(
@@ -633,6 +646,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # not being declared meant nobody read them.
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            BulletKey("tests", link=True),
         ),
     ),
     UINodeType(
@@ -712,6 +726,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("code", link=True, owns=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            BulletKey("tests", link=True),
         ),
     ),
     # One ordered boot step of a `runbook` — a `### id` under its `## Steps` (docs/okf-runbook.md §4.3).

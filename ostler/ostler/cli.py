@@ -11,7 +11,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
+from ostler import autofix as autofix_mod, backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
 from ostler import checks as checks_mod
 from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
@@ -456,6 +456,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--check",
         action="store_true",
         help="don't write; exit 1 if any file is not already canonical",
+    )
+
+    af = sub.add_parser(
+        "autofix", help="fix shape-detectable format drift (e.g. verify: holding test ids)"
+    )
+    af.add_argument(
+        "paths", nargs="*", help="files to fix (default: all docs/features/**/*.md)"
+    )
+    af.add_argument(
+        "--check",
+        action="store_true",
+        help="don't write; exit 1 if any file carries a fixable drift",
     )
 
     # ---- path resolution -----------------------------------------------------
@@ -1075,6 +1087,27 @@ def _cmd_fmt(graph, args) -> int:
         )
         return 1
     _out(f"\nreformatted {len(result.changed)} file(s)")
+    return 0
+
+
+def _cmd_autofix(graph, args) -> int:
+    result = autofix_mod.run_autofix(graph, args.paths, check=args.check)
+    for path in result.changed:
+        rel = (
+            path.relative_to(graph.root).as_posix()
+            if path.is_relative_to(graph.root)
+            else path.as_posix()
+        )
+        _out(f"{'would fix' if args.check else 'fixed'}: {rel}")
+    if not result.changed:
+        _out("no fixable drift found")
+        return 0
+    if args.check:
+        _out(
+            f"\n{len(result.changed)} file(s) carry fixable drift (run `ostler autofix` to fix)"
+        )
+        return 1
+    _out(f"\nfixed {len(result.changed)} file(s)")
     return 0
 
 
@@ -1743,6 +1776,8 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
         )
     if c == "fmt":
         return _cmd_fmt(graph, args)
+    if c == "autofix":
+        return _cmd_autofix(graph, args)
     if c == "edit":
         return _cmd_edit(graph, args)
     if c == "freeze":
