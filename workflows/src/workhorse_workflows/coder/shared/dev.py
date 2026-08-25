@@ -426,6 +426,24 @@ def _instruction_files(
     return files
 
 
+def read_plan_text(spec_dir: str, plan_file: str, logger: logging.Logger) -> str:
+    """The layer's plan as content, inlined into the implement turn rather than read by it.
+
+    The implementer is handed a plan, not a filename: how the planning lane split the work
+    across services and what it called each file is planning-side mechanics, and reading
+    the file back costs the turn a serial tool call before the first edit. Degrading, like
+    `_instruction_files`: an unreadable or unnamed file returns "" (logged), and the prompt
+    falls back to naming the path for the agent to read itself.
+    """
+    if not spec_dir or not plan_file:
+        return ""
+    try:
+        return (Path(spec_dir) / plan_file).read_text(encoding="utf-8")
+    except OSError:
+        logger.warning("plan file '%s' not readable — passing the path only", plan_file)
+        return ""
+
+
 @blueprint.node
 def resolve_impl_context(
     logger: logging.Logger,
@@ -1330,6 +1348,7 @@ __all__ = [
     "plan_document",
     "plan_summary",
     "read_operator_context",
+    "read_plan_text",
     "record_plan",
     "resolve_impl_context",
     "run_gate",

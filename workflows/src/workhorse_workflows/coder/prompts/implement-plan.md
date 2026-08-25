@@ -10,7 +10,6 @@ The workflow supplies these values. Use them exactly as given:
 
 - Story path: `{{ workhorse_var('story_path') }}`
 - Spec/artifact directory: `{{ workhorse_var('spec_dir') }}`
-- Plan file: `{{ workhorse_var('plan_file') }}`
 - Service path: `{{ workhorse_var('service_path') }}`
 - Service type: `{{ workhorse_var('service_type') }}`
 - Verification command: `{{ workhorse_var('verification') }}`
@@ -35,9 +34,9 @@ failing test. Report what you wrote in `tests_added` — a miss is recorded, not
 
 Your CWD is the repo containing the service above. All code changes go in this repo. The service root is `{{ workhorse_var('service_path') }}` within this repo — focus changes there and its dependencies (shared packages in the same repo).
 
-Implement **only** the service-specific plan for this iteration. Do NOT search other repos, git history, or branch state to guess which story to implement, and do NOT substitute a different service.
+Implement **only** the plan you were handed for this iteration. Do NOT search other repos, git history, or branch state to guess which story to implement, and do NOT substitute a different service.
 
-If the plan file above is blank or does not exist in the spec directory, fall back to `{{ workhorse_var('spec_dir') }}/plan.md`. If the story path is blank or its file does not exist, stop and report that the workflow did not provide a usable story path — do not pick a story yourself.
+If the story path is blank or its file does not exist, stop and report that the workflow did not provide a usable story path — do not pick a story yourself.
 
 {% if operator_context %}
 ## Operator answer (authoritative ground truth)
@@ -53,8 +52,8 @@ second-guess it, or raise the same block again — it has been answered.
 
 Before writing any code:
 
-1. Read the story and your **service-specific plan** (from spec dir: `{{ workhorse_var('plan_file') }}`; if multi-service, also skim the root `plan.md` for cross-service contracts). **The story's Acceptance Criteria are the bar — your job is to make ALL of them true** for this service's scope, as a person using the running app would observe them, at parity with the named source of truth. The story is deliberately lean (Context + Acceptance Criteria); it does not list files or steps. **Cover the whole goal**: if satisfying a criterion requires fixing a root cause that spans the surface (e.g. state keyed wrong across every field, labels untranslated everywhere, a missing nav/section), that whole fix is in scope — do not implement a narrow symptom-patch that leaves the criterion only partly met. This may take **several passes**: QA will exercise each criterion against the source of truth and fail anything not actually met, looping you back here. The story's `## Context` links the surface documentation it is grounded in (OKF node ids — a node id is a repo-relative path, optionally `path#anchor`); read those for grounding, but the Acceptance Criteria — not the docs — define done.
-   - **Genuinely separate scope becomes a follow-up, not a narrowing.** Covering the goal means every fix *this* surface needs to meet its criteria. A *different* surface or an unrelated defect you pass through is filed to the backlog (Step 5.3) — never used as an excuse to leave this story's own criteria unmet.
+1. Read the story{% if plan_text %} — your plan is inlined under **"The Plan"** at the end of this prompt; it is already in front of you, so do not spend a turn reading it from disk{% else %}, and your plan: `{{ workhorse_var('spec_dir') }}/{{ workhorse_var('plan_file') or 'plan.md' }}`{% endif %}. **The story's Acceptance Criteria are the bar — your job is to make ALL of them true**, as a person using the running app would observe them, at parity with the named source of truth. **Cover the whole goal**: if satisfying a criterion requires fixing a root cause that spans the surface (e.g. state keyed wrong across every field, labels untranslated everywhere, a missing nav/section), that whole fix is in scope — do not implement a narrow symptom-patch that leaves the criterion only partly met. This may take **several passes**: QA will exercise each criterion against the source of truth and fail anything not actually met, looping you back here. The story's `## Context` links the documentation it is grounded in; read those links for grounding, but the Acceptance Criteria — not the docs — define done.
+   - A *different* surface or an unrelated defect you pass through is filed to the backlog (Step 5.3) as a follow-up — never absorbed into this story, and never an excuse to leave this story's own criteria unmet.
 2. Hold this story's coding standards — the workflow derived them from the layers the plan declares.
 {%- if impl_instructions %} **Their full text is inlined under "Coding Standards (inlined)" at the end of this prompt — it is already in front of you, so do not spend turns re-reading those files.** A standard listed there without an inlined body is the exception: read that path yourself before writing code.
 {%- elif impl_instruction_paths %} Read every one of these before writing code:
@@ -67,7 +66,7 @@ Before writing any code:
    - Docs-only work also covers `AGENTS.md` and `docs/CODEX.md`.
 3. If the current assistant environment supports skills, use the matching local skills as well — in particular each touched layer's testing skill before writing or updating its tests.
 4. **Find each layer's "Verification Commands" section** in its instructions where present — these are the canonical test, codegen, lint, and build commands. The plan's **Verification Commands** section references them.
-5. **For multi-layer plans**: read the root `plan.md` first. Note the **implementation order** and **integration contracts**. Implement one layer at a time in the specified order.
+5. **For multi-layer plans**: note the plan's **implementation order** and **integration contracts**{% if root_plan_text %} (the cross-service contracts are inlined under **"Cross-service contracts"** at the end of this prompt){% endif %}. Implement one layer at a time in the specified order.
 6. Check that referenced files exist and dependencies are available.
 7. **Search before you build.** List the concrete units the plan says it will create — endpoints, service methods, models, components, screens, validators, formatters, any "helper" or "util" it names — and search the affected repos for each one before writing it. Match on **behaviour, not name**: the existing version is often called something else, and shared utility trees are where reinvention concentrates. Reuse or extend what you find; where you deliberately do not, say why in the implementation notes. A capability rebuilt beside the one that already does it is the single most common defect this stage produces, and it is cheapest to catch here — you are about to read this code anyway.
 8. If anything is ambiguous, ask before proceeding.
@@ -100,9 +99,11 @@ Mark each task `in-progress` when you start it and `completed` once its layer's 
 
 ### State your exit conditions before you start
 
-With the task list in front of you and before the first edit, write down what "done" will
-look like — you will return it as `exit_conditions` in the result below, and the workflow
-checks it against what actually happened:
+The Acceptance Criteria are given — nothing here asks you to invent the bar. What only you
+can state is the concrete, checkable evidence *this turn* will leave behind, and the
+workflow holds you to it: with the task list in front of you and before the first edit,
+write down what "done" will look like — you will return it as `exit_conditions` in the
+result below, and the workflow runs and diffs it against what actually happened:
 
 - `criteria` — the story's acceptance criteria this turn intends to satisfy, in the story's
   own words. Carried forward to review and QA as the thing to check first.
@@ -313,6 +314,26 @@ After implementing the story and running verification, return this exact JSON ob
 - `exit_conditions`: the promise from Step 2, revised to what you actually mean by the end. Each `commands` entry is run to completion and each `files` entry is looked for in the diff — so state what is true, not what sounds thorough. Omit the whole object, or any list in it, when you have nothing to promise.
 - `tests_added`: the test files this turn wrote or extended, service-relative. Only paths really in the diff count; naming a file you did not write comes back as a repair turn.
 - `no_test_reason`: why there is none, when there is none. An exemption is weighed against what the service declares — it does not switch the check off.
+{% if plan_text %}
+
+---
+
+## The Plan (inlined — authoritative)
+
+The approved plan for this iteration, verbatim. This is the plan every step above refers
+to — do not re-read it from disk.
+
+{{ plan_text }}
+{% if root_plan_text %}
+
+### Cross-service contracts
+
+The root plan carrying the implementation order and the contracts between services,
+verbatim. Your work is still only the plan above; this is context, not extra scope.
+
+{{ root_plan_text }}
+{% endif %}
+{% endif %}
 {% if impl_instructions %}
 
 ---

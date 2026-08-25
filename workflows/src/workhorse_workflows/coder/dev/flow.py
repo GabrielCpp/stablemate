@@ -93,6 +93,7 @@ from workhorse_workflows.coder.shared.dev import (
     declared_gates,
     declared_markers,
     read_operator_context,
+    read_plan_text,
     record_plan,
     resolve_impl_context,
     run_gate,
@@ -551,15 +552,15 @@ class Dev(Workflow):
         `session_turns` counts this story's backbone conversation, which the repair turns
         share — see `_spend_turn`.
 
-        The first implementation turn of a story opens a *fresh* backbone rather than
-        inheriting the planning conversation: the plan is on disk (`plan.md`,
-        `plan-context.json`) and its standards are inlined into the prompt, while the
-        planning history it would inherit is long enough to trip the assistant's
-        auto-compaction before any code is written. Repair turns, later layers and an
-        operator-answer re-entry still join the implementation conversation — only the
-        plan→implement boundary is cut.
+        Each layer's first implementation turn opens a *fresh* backbone rather than
+        inheriting the conversation before it: the implementer is called once per plan on
+        a fresh context, with the plan and its standards inlined into the prompt, while
+        the planning (or previous layer's) history it would inherit is long enough to trip
+        the assistant's auto-compaction before any code is written. Repair turns and an
+        operator-answer re-entry still join that layer's implementation conversation —
+        only the entry boundary is cut.
         """
-        if index == 0 and not impl_blocks and not operator_context:
+        if not impl_blocks and not operator_context:
             self.reset_session(self._story_chain())
             session_turns = 0
         turns = self._spend_turn(session_turns)
@@ -594,6 +595,10 @@ class Dev(Workflow):
         gates = self.call(
             declared_gates, layer.cwd, layer.service, service_type=layer.type
         )
+        plan_text = read_plan_text(self.ctx.spec_dir, layer.plan_file, self.logger)
+        root_plan_text = ""
+        if len(impl.dispatch_list) > 1 and layer.plan_file != "plan.md":
+            root_plan_text = read_plan_text(self.ctx.spec_dir, "plan.md", self.logger)
         turn = roles.turn("implement-plan", self.repo_dir, self.library_dirs)
         return self.agent(
             turn.prompt,
@@ -609,6 +614,8 @@ class Dev(Workflow):
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "plan_file": layer.plan_file,
+                "plan_text": plan_text,
+                "root_plan_text": root_plan_text,
                 "service_path": layer.service_path,
                 "service_type": layer.type,
                 "verification": layer.verification,

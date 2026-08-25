@@ -71,6 +71,7 @@ from workhorse_workflows.coder.shared.dev import (
     branch_code_repos,
     plan_summary,
     read_operator_context,
+    read_plan_text,
     resolve_impl_context,
     select_next_layer,
 )
@@ -217,6 +218,9 @@ class Fix(Workflow):
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
                 "plan_file": layer.plan_file,
+                "plan_text": read_plan_text(
+                    self._story.spec_dir, layer.plan_file, self.logger
+                ),
                 "service_path": layer.service_path,
                 "service_type": layer.type,
                 "verification": layer.verification,
