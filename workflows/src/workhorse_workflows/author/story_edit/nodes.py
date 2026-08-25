@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ostler import Ostler
 from workhorse.pyflow import Blueprint, WorkflowFailed
-from workhorse_workflows.author.nodes.stories import resolve_bullet
+from workhorse_workflows.author.main.nodes.stories import resolve_bullet
 from workhorse_workflows.author.shared.schemas import EditIntent
 
 blueprint = Blueprint("author-story-edit")

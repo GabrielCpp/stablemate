@@ -11,7 +11,7 @@ from pathlib import Path
 from ostler import Ostler
 from ostler.select import epic_by_name
 from workhorse import worklist as wl
-from workhorse_workflows.author.nodes._blueprint import blueprint
+from workhorse_workflows.author.main.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.main import EpicChoice

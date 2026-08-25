@@ -218,7 +218,7 @@ class Surveyor(Workflow):
         is what sends the flow back here with `plan_errors` set.
         """
         result = self.agent(
-            "prompts/surveyor/plan-units.md",
+            "surveyor/prompts/plan-units.md",
             returns=PlanResult,
             # high: this is the one call in the flow that decides the *shape* of the
             # whole survey — get the granularity wrong and every unit below is wrong.
@@ -296,7 +296,7 @@ class Surveyor(Workflow):
         """
         self.logger.info("resolving the granularity block", extra={"activity": True})
         self.agent(
-            "prompts/surveyor/resolve-operator.md",
+            "surveyor/prompts/resolve-operator.md",
             returns=OperatorResolution,
             # high, and unbounded: it is investigating a block, with full tool access.
             power="high",
@@ -365,7 +365,7 @@ class Surveyor(Workflow):
             extra={"activity": True},
         )
         result = self.agent(
-            "prompts/surveyor/assess-unit.md",
+            "surveyor/prompts/assess-unit.md",
             returns=UnitAssessment,
             # medium: reads one unit and the rubric's skills and judges against them.
             # The exhaustiveness is the loop's job; this turn's job is one surface.
@@ -462,7 +462,7 @@ class Surveyor(Workflow):
         what decides — so nothing branches on it and the loop re-checks either way.
         """
         self.agent(
-            "prompts/surveyor/fix-record.md",
+            "surveyor/prompts/fix-record.md",
             returns=RecordFix,
             # medium: a mechanical repair against a named list of validation errors.
             power="medium",
@@ -515,7 +515,7 @@ class Surveyor(Workflow):
         """
         self.logger.info("resolving the coverage block", extra={"activity": True})
         self.agent(
-            "prompts/surveyor/resolve-operator.md",
+            "surveyor/prompts/resolve-operator.md",
             returns=OperatorResolution,
             power="high",
             timeout=UNBOUNDED,
@@ -545,7 +545,7 @@ class Surveyor(Workflow):
         a partition cannot quietly drop a finding on its way to becoming a backlog item.
         """
         result = self.agent(
-            "prompts/surveyor/partition-findings.md",
+            "surveyor/prompts/partition-findings.md",
             returns=PartitionProposal,
             # high: reads every finding record at once and decides what work items the
             # whole survey becomes — the second of the flow's two shaping judgments.
@@ -610,7 +610,7 @@ class Surveyor(Workflow):
         """
         self.logger.info("resolving the partition block", extra={"activity": True})
         self.agent(
-            "prompts/surveyor/resolve-operator.md",
+            "surveyor/prompts/resolve-operator.md",
             returns=OperatorResolution,
             power="high",
             timeout=UNBOUNDED,

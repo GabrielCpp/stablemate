@@ -11,8 +11,8 @@ import logging
 from pathlib import Path
 
 from ostler import Ostler, backlog as ostler_backlog, markdown
-from workhorse_workflows.author.nodes._blueprint import blueprint
-from workhorse_workflows.author.nodes import _stubs
+from workhorse_workflows.author.main.nodes._blueprint import blueprint
+from workhorse_workflows.author.main.nodes import _stubs
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.main import Defects, Pruned

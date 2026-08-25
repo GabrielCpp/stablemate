@@ -1,6 +1,6 @@
 """`write-story.md` never demands an artifact another gate deterministically suppressed.
 
-The story writer has two sibling gates in `author/nodes/stories.py`, and both of them
+The story writer has two sibling gates in `author/main/nodes/stories.py`, and both of them
 stand down on a greenfield backend-only story: `check_story_grounding` puts its
 cite-a-node requirement behind `if okf.graph.ui_nodes:`, and `check_mockup_needed`
 decides from `layers:` on the covered seeds, so a story tagged `layers: backend` gets
@@ -21,11 +21,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from workhorse.templates import render
 
 import workhorse_workflows
 
 WORKFLOW_DIR = Path(workhorse_workflows.__file__).parent / "author"
+
+#: Every flow's own copy of the envelope. `main` and `epic-edit` both write stories, and
+#: each renders its own file, so the drift this guard catches has to be checked in both.
+WRITE_STORY = sorted(WORKFLOW_DIR.glob("*/prompts/write-story.md"))
+
+
+def _id(path: Path) -> str:
+    return path.parent.parent.name
 
 
 def _backend_only_story() -> dict[str, object]:
@@ -45,8 +54,9 @@ def _backend_only_story() -> dict[str, object]:
     }
 
 
-def test_the_backend_only_story_is_given_something_to_ground_in() -> None:
-    rendered = render("prompts/write-story.md", _backend_only_story(), WORKFLOW_DIR)
+@pytest.mark.parametrize("prompt", WRITE_STORY, ids=_id)
+def test_the_backend_only_story_is_given_something_to_ground_in(prompt: Path) -> None:
+    rendered = render(prompt, _backend_only_story(), WORKFLOW_DIR)
 
     # Not a bare "epic's seeds" — the *Authority for new behavior* section says those words
     # already, and an assertion that passes against the prose this test exists to replace is
@@ -58,24 +68,26 @@ def test_the_backend_only_story_is_given_something_to_ground_in() -> None:
     assert "new and undocumented" in rendered
 
 
-def test_the_absent_mockup_is_not_a_block() -> None:
+@pytest.mark.parametrize("prompt", WRITE_STORY, ids=_id)
+def test_the_absent_mockup_is_not_a_block(prompt: Path) -> None:
     """The park this test exists for was an author blocking on a missing artifact.
 
     Asserting the seeds are *mentioned* is not enough: the earlier prose mentioned the
     mockup too, as the thing to link. What must be present is the permission not to
     block on its absence.
     """
-    rendered = render("prompts/write-story.md", _backend_only_story(), WORKFLOW_DIR)
+    rendered = render(prompt, _backend_only_story(), WORKFLOW_DIR)
 
     assert "its absence is not a block" in rendered
     assert "Do not block for the want of a node or a mockup" in rendered
 
 
-def test_the_mockup_arm_survives_for_the_story_that_has_one() -> None:
+@pytest.mark.parametrize("prompt", WRITE_STORY, ids=_id)
+def test_the_mockup_arm_survives_for_the_story_that_has_one(prompt: Path) -> None:
     """The fix widens the disjunction; it must not have replaced the original arm."""
     context = _backend_only_story() | {"mockup_path": "./mockup.html"}
 
-    rendered = render("prompts/write-story.md", context, WORKFLOW_DIR)
+    rendered = render(prompt, context, WORKFLOW_DIR)
 
     assert "./mockup.html" in rendered
     assert "link it from Context as the source of truth" in rendered

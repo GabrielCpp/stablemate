@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from workhorse.pyflow import WorkflowFailed
-from workhorse_workflows.author.nodes.grill import resolve_grill_trigger
+from workhorse_workflows.author.main.nodes.grill import resolve_grill_trigger
 
 
 def _logger() -> logging.Logger:

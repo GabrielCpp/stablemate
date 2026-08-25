@@ -192,7 +192,7 @@ class ParitySurveyor(Workflow):
             "%s%s", where, f" · {progress}" if progress else "", extra={"activity": True}
         )
         result = self.agent(
-            "prompts/surveyor/assess-parity-unit.md",
+            "parity_surveyor/prompts/assess-parity-unit.md",
             returns=UnitAssessment,
             # medium: reads one surface, the target feature book and the epics, and
             # decides whether anything owns it — judgment over documents, not design.

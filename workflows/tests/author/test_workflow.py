@@ -59,9 +59,9 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
 from workhorse_workflows import author
-from workhorse_workflows.author.nodes.artifacts import validate_artifacts
-from workhorse_workflows.author.nodes.epics import select_epic
-from workhorse_workflows.author.nodes.stories import prune_bullet
+from workhorse_workflows.author.main.nodes.artifacts import validate_artifacts
+from workhorse_workflows.author.main.nodes.epics import select_epic
+from workhorse_workflows.author.main.nodes.stories import prune_bullet
 from workhorse_workflows.author.epic_edit import EpicEdit
 from workhorse_workflows.author.shared.survey import record_slug
 from workhorse_workflows.author.story_edit import StoryEdit
@@ -1482,7 +1482,7 @@ def test_survey_mode_runs_the_surveyor_then_authors_what_it_found(
     """`handoff`: the sub-flow runs on the parent's env, and the parent reads its output.
 
     The surveyor's own machinery is covered in `flows/test_surveyor.py`. What this proves
-    is the hand-off: the child's prompts (`prompts/surveyor/*.md`) resolve against the
+    is the hand-off: the child's prompts (`surveyor/prompts/*.md`) resolve against the
     *parent's* workflow directory, the child's nodes and agent turns run under the parent's
     run directory, and `split_epics` then decomposes the backlog the child wrote — the
     surveyor's whole purpose being to produce author's input.

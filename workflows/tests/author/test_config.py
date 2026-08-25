@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 import workhorse_workflows
-from workhorse_workflows.author.nodes.config import load_config
+from workhorse_workflows.author.main.nodes.config import load_config
 
 
 def test_author_config_never_invents_a_surface_inventory(tmp_path: Path) -> None:
@@ -26,11 +26,15 @@ def test_author_config_never_invents_a_surface_inventory(tmp_path: Path) -> None
 
 
 def test_design_prompt_has_no_inventory_write_contract() -> None:
-    prompt = (
-        Path(workhorse_workflows.__file__).parent
-        / "author/prompts/design-mockup.md"
-    ).read_text(encoding="utf-8")
+    # Both flows that design a mockup ship their own copy of the envelope, and a write
+    # contract reintroduced in either one is the defect this guards.
+    author = Path(workhorse_workflows.__file__).parent / "author"
+    copies = sorted(author.glob("*/prompts/design-mockup.md"))
+    assert copies, "no flow ships design-mockup.md"
 
-    assert "surface_manifest" not in prompt
-    assert "inventory.json" not in prompt
-    assert "manifest entry" not in prompt
+    for path in copies:
+        prompt = path.read_text(encoding="utf-8")
+
+        assert "surface_manifest" not in prompt, path
+        assert "inventory.json" not in prompt, path
+        assert "manifest entry" not in prompt, path

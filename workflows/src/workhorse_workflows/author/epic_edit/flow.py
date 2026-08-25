@@ -13,7 +13,7 @@ from workhorse_workflows.author.epic_edit.nodes import (
     validate_edit_plan,
     validate_epic_document,
 )
-from workhorse_workflows.author.nodes import (
+from workhorse_workflows.author.main.nodes import (
     branch_author,
     check_story_grounding,
     commit_author,
@@ -112,7 +112,7 @@ class EpicEdit(Workflow):
 
     def plan_edit(self, intent: EditIntent, snapshot: EpicSnapshot) -> Continue:
         plan = self.agent(
-            "prompts/plan-epic-edit.md",
+            "epic_edit/prompts/plan-epic-edit.md",
             returns=EpicEditPlan,
             power="high",
             cwd=self.ctx.repo_root,
@@ -171,7 +171,7 @@ class EpicEdit(Workflow):
         reworks: int = 0,
     ) -> Continue:
         revised = self.agent(
-            "prompts/refine-epic-edit-plan.md",
+            "epic_edit/prompts/refine-epic-edit-plan.md",
             returns=EpicEditPlan,
             power="high",
             cwd=self.ctx.repo_root,
@@ -199,7 +199,7 @@ class EpicEdit(Workflow):
         reworks: int = 0,
     ) -> Continue | Await:
         review = self.agent(
-            "prompts/review-epic-edit-plan.md",
+            "epic_edit/prompts/review-epic-edit-plan.md",
             returns=EpicEditReview,
             power="high",
             cwd=self.ctx.repo_root,
@@ -261,7 +261,7 @@ class EpicEdit(Workflow):
         reworks: int = 0,
     ) -> Continue | Await:
         result = self.agent(
-            "prompts/rewrite-epic-edit.md",
+            "epic_edit/prompts/rewrite-epic-edit.md",
             returns=EpicRewriteResult,
             power="high",
             cwd=self.ctx.repo_root,
@@ -345,7 +345,7 @@ class EpicEdit(Workflow):
         index: int,
     ) -> Continue:
         result = self.agent(
-            "prompts/design-mockup.md",
+            "epic_edit/prompts/design-mockup.md",
             returns=MockupResult,
             power="high",
             cwd=self.ctx.repo_root,
@@ -377,7 +377,7 @@ class EpicEdit(Workflow):
         reworks: int = 0,
     ) -> Continue | Await:
         result = self.agent(
-            "prompts/write-story.md",
+            "epic_edit/prompts/write-story.md",
             returns=WriteStoryResult,
             power="high",
             cwd=self.ctx.repo_root,
@@ -456,7 +456,7 @@ class EpicEdit(Workflow):
                 errors,
             )
             result = self.agent(
-                "prompts/rework-story.md",
+                "epic_edit/prompts/rework-story.md",
                 returns=WriteStoryResult,
                 power="high",
                 cwd=self.ctx.repo_root,
@@ -504,7 +504,7 @@ class EpicEdit(Workflow):
         reworks: int = 0,
     ) -> Continue | Await:
         result = self.agent(
-            "prompts/audit-story.md",
+            "epic_edit/prompts/audit-story.md",
             returns=AuditResult,
             power="high",
             cwd=self.ctx.repo_root,
@@ -565,7 +565,7 @@ class EpicEdit(Workflow):
             findings,
         )
         result = self.agent(
-            "prompts/rework-story.md",
+            "epic_edit/prompts/rework-story.md",
             returns=WriteStoryResult,
             power="high",
             cwd=self.ctx.repo_root,
@@ -602,7 +602,7 @@ class EpicEdit(Workflow):
                 artifacts={"epic_dir": str(applied.epic_dir)},
             )
         review = self.agent(
-            "prompts/review-coverage.md",
+            "epic_edit/prompts/review-coverage.md",
             returns=CoverageReview,
             power="high",
             cwd=self.ctx.repo_root,

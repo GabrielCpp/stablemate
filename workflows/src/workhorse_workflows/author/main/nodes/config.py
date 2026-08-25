@@ -17,7 +17,7 @@ from pathlib import Path
 import yaml
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.kit import find_repo_root
-from workhorse_workflows.author.nodes._blueprint import blueprint
+from workhorse_workflows.author.main.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.main import Branches, Config

@@ -28,8 +28,8 @@ from pathlib import Path
 from ostler import Ostler, markdown, registry, select
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.kit import find_repo_root
-from workhorse_workflows.author.nodes._blueprint import blueprint
-from workhorse_workflows.author.nodes import _stubs
+from workhorse_workflows.author.main.nodes._blueprint import blueprint
+from workhorse_workflows.author.main.nodes import _stubs
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import launch_repo_root, survey_repo_root
 from workhorse_workflows.author.shared.schemas.main import Committed, Defects, PullRequest, VerifyReport

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from workhorse.pyflow import Done, Workflow
 from workhorse_workflows.author.epic_edit import EpicEdit
-from workhorse_workflows.author.nodes import adopt_backlog, load_config
+from workhorse_workflows.author.main.nodes import adopt_backlog, load_config
 from workhorse_workflows.author.shared.schemas import Config
 from workhorse_workflows.author.story_edit.nodes import resolve_story_intent
 

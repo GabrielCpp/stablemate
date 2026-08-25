@@ -14,7 +14,7 @@ import logging
 import yaml
 
 from workhorse.pyflow import WorkflowFailed
-from workhorse_workflows.author.nodes._blueprint import blueprint
+from workhorse_workflows.author.main.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared.paths import survey_repo_root
 
 #: `farrier/farrier/outputs.py` — where a Claude command adapter lands, repo-root
