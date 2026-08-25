@@ -1,0 +1,14 @@
+name = "link-shortener-built"
+repo_dir = "link-shortener"
+sha256 = "1afe9b65241c0d078d1d8235460f33b6e565b6a6da3460d40aae981100dd00dd"
+bytes = 465355
+head = "7019808483e5bbb532638b0b5da9e63cc4ac62a0"
+dirty = false
+url = ""
+note = "the two-story link-shortener at the end of its review lane; per-story docs pins reachable in .git"
+source = ""
+tree_sha256 = "882b23cf092abae6f90af1e7a6cd5858f9dea08f91d3f93b565ec522b54123fd"
+excludes = [
+    ".opencode",
+    ".claude",
+]
