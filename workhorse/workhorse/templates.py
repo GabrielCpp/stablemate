@@ -272,6 +272,19 @@ def _flavor_override(
     untouched (the blocks extend to nothing). Returns ``(flavor_dir, node_name)``
     when an override exists, else ``None``.
 
+    Two locations, the **path-keyed** one first::
+
+        .agents/flavors/<workflow>/<dir>/<node>.md   # mirrors the prompt's own path
+        .agents/flavors/<workflow>/<node>.md         # by basename alone
+
+    A workflow whose flows each own their prompts has several files called
+    ``implement-plan.md``, one per flow, and the basename cannot tell them apart: a
+    single flavor would activate on all of them while its ``{% extends %}`` names one
+    base, so a repo flavouring dev's turn would silently render dev's envelope inside
+    fix's node. Mirroring the prompt's directory (``dev/implement-plan.md``) says which
+    one is meant. The basename location stays, and stays working, because it is what
+    every repo that already ships a flavor wrote — it is simply the broader match.
+
     When the agent node declares a ``cwd`` (e.g. to run in a specific repo), the
     flavor is looked up relative to that per-node CWD rather than the manifest's
     repo root — so each repo in a multi-repo workflow can provide its own flavor
@@ -282,9 +295,13 @@ def _flavor_override(
     if not repo_root:
         return None
     node_name = template_path.name
-    flavor_dir = Path(repo_root) / ".agents" / "flavors" / workflow_dir.name
-    if (flavor_dir / node_name).is_file():
-        return str(flavor_dir), node_name
+    root = Path(repo_root) / ".agents" / "flavors" / workflow_dir.name
+    # `dev/prompts/implement-plan.md` -> `dev/`, the flow that owns the prompt. A prompt
+    # at the workflow root keeps `parent.parent` empty, so both candidates coincide.
+    owner = template_path.parent.parent
+    for flavor_dir in (root / owner, root):
+        if (flavor_dir / node_name).is_file():
+            return str(flavor_dir), node_name
     return None
 
 

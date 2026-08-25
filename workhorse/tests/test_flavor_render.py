@@ -81,6 +81,65 @@ def test_no_repo_root_renders_base(tmp_path):
     assert "REPO RULE" not in out
 
 
+# --------------------------------------------------------------------------------
+# a prompt owned by one flow: `dev/prompts/write-story.md`
+# --------------------------------------------------------------------------------
+
+FLOW_OVERRIDE = (
+    '{% extends "dev/prompts/write-story.md" %}\n'
+    "{% block repo_authoring_rules %}FLOW RULE: dev only.{% endblock %}\n"
+)
+
+
+def _setup_flow(base: Path) -> tuple[Path, dict]:
+    """The same workflow with the prompt inside the flow package that renders it."""
+    workflow_dir, ctx = _setup(base)
+    (workflow_dir / "dev" / "prompts").mkdir(parents=True)
+    (workflow_dir / "dev" / "prompts" / "write-story.md").write_text(BASE)
+    return workflow_dir, ctx
+
+
+def test_flow_keyed_override_wins(tmp_path):
+    # `.agents/flavors/author/dev/write-story.md` names the flow, so it can `{% extends %}`
+    # the one copy it means -- which a basename-keyed file cannot do once two flows own a
+    # prompt of the same name.
+    workflow_dir, ctx = _setup_flow(tmp_path)
+    flow_dir = Path(ctx["_repo_root"]) / ".agents" / "flavors" / "author" / "dev"
+    flow_dir.mkdir(parents=True)
+    (flow_dir / "write-story.md").write_text(FLOW_OVERRIDE)
+    out = render("dev/prompts/write-story.md", ctx, workflow_dir)
+    assert "Generic authoring instructions." in out
+    assert "FLOW RULE: dev only." in out
+
+
+def test_basename_override_still_activates_for_a_flow_prompt(tmp_path):
+    # The location consuming repos already use keeps working -- with `{% extends %}`
+    # naming the flow-qualified path, since that is where the base now lives.
+    workflow_dir, ctx = _setup_flow(tmp_path)
+    _write_override(
+        Path(ctx["_repo_root"]),
+        content=FLOW_OVERRIDE.replace("FLOW RULE: dev only.", "REPO RULE: applies everywhere."),
+    )
+    out = render("dev/prompts/write-story.md", ctx, workflow_dir)
+    assert "REPO RULE: applies everywhere." in out
+
+
+def test_flow_keyed_override_beats_basename(tmp_path):
+    # Both present: the one that named the flow is the more specific answer.
+    workflow_dir, ctx = _setup_flow(tmp_path)
+    repo_root = Path(ctx["_repo_root"])
+    _write_override(
+        repo_root,
+        content=FLOW_OVERRIDE.replace("FLOW RULE: dev only.", "REPO RULE: applies everywhere."),
+    )
+    flow_dir = repo_root / ".agents" / "flavors" / "author" / "dev"
+    flow_dir.mkdir(parents=True)
+    (flow_dir / "write-story.md").write_text(FLOW_OVERRIDE)
+    out = render("dev/prompts/write-story.md", ctx, workflow_dir)
+    assert "FLOW RULE: dev only." in out
+    assert "REPO RULE" not in out
+
+
 if __name__ == "__main__":
     import tempfile
 

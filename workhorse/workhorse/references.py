@@ -76,7 +76,12 @@ GUARD_HELPERS = frozenset({"isUsingInstruction", "is_using_instruction"})
 # Where a workflow keeps the templates rendered as node prompts. Scoped on purpose:
 # a workflow's own docs may show `{{ instruction_ref(...) }}` in a fenced example,
 # and a documented example is not a broken reference.
-PROMPT_GLOB = "prompts/**/*.md"
+#
+# Any depth, because a flow owns the prompts it renders: `coder/dev/prompts/` and
+# `coder/main/prompts/` are as much prompt directories as a root-level one, and a glob
+# anchored at the root would sweep only the workflows that never split them up — passing
+# vacuously on the ones that did, which is the worst way for this check to fail.
+PROMPT_GLOB = "**/prompts/**/*.md"
 
 
 @dataclass(frozen=True)

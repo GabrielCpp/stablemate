@@ -118,6 +118,69 @@ def test_a_registry_resolves_to_its_own_package_directory(tmp_path: Path) -> Non
         assert module.workflow.directory() == site / "demo_flows" / "demo"
 
 
+#: The same distribution with its entry class moved into a sub-package beside its
+#: sibling flows, which is what a workflow looks like once each flow owns its prompts.
+#: The registry declares the root explicitly, because inferring it from `Main`'s module
+#: would land inside one flow and put every other flow's prompts outside the loader.
+_SPLIT_WORKFLOW_MODULE = '''
+from workhorse.cli import console_script
+from workhorse.pyflow import Registry
+
+from demo_flows.demo.main import Main
+
+
+workflow = Registry("demo", package=__package__)
+main = console_script(workflow.entry_point(Main))
+'''
+
+_MAIN_FLOW_MODULE = '''
+from workhorse.pyflow import Done, Workflow
+
+
+class Main(Workflow):
+    def start(self):
+        return Done(None)
+'''
+
+
+def _write_split_package(site: Path) -> None:
+    """``demo_flows.demo`` with the entry class in ``demo_flows.demo.main``."""
+    _write_package(site, _SPLIT_WORKFLOW_MODULE)
+    flow = site / "demo_flows" / "demo" / "main"
+    flow.mkdir()
+    (flow / "__init__.py").write_text("from demo_flows.demo.main.flow import Main\n")
+    (flow / "flow.py").write_text(_MAIN_FLOW_MODULE)
+
+
+def test_a_declared_package_is_the_directory(tmp_path: Path) -> None:
+    """The registry's own package wins, not the sub-package the entry class sits in.
+
+    Without this the root would follow `Main` into `demo/main/`, and every sibling
+    flow's prompts would fall outside the loader — unreachable, because Jinja refuses
+    `..` in a template name.
+    """
+    site = tmp_path / "site"
+    site.mkdir()
+    _write_split_package(site)
+
+    with _OnPath(site):
+        module = importlib.import_module("demo_flows.demo.workflow")
+        assert module.workflow.directory() == site / "demo_flows" / "demo"
+
+
+def test_a_registry_with_a_package_needs_no_entry_point(tmp_path: Path) -> None:
+    """`package` answers on its own — the entry class was only ever a way to find it."""
+    site = tmp_path / "site"
+    site.mkdir()
+    _write_package(site)
+
+    with _OnPath(site):
+        importlib.import_module("demo_flows.demo")
+        registry = Registry("demo", package="demo_flows.demo")
+        assert registry.entry is None
+        assert registry.directory() == site / "demo_flows" / "demo"
+
+
 def test_zip_imported_package_fails_at_startup(tmp_path: Path) -> None:
     """Not at TemplateNotFound time, three nodes into a run."""
     archive = _write_zipped_package(tmp_path)

@@ -235,6 +235,20 @@ def test_nested_prompt_directories_are_scanned(tmp_path: Path) -> None:
     assert [m.template for m in found] == ["prompts/sub/deep.md"]
 
 
+def test_a_flows_own_prompts_are_scanned(tmp_path: Path) -> None:
+    """`dev/prompts/` is a prompt directory too, and the worst failure here is silence.
+
+    A sweep anchored at the workflow root passes vacuously on exactly the workflows that
+    moved their prompts into the flow that renders them — reporting nothing, which reads
+    as "everything resolves".
+    """
+    root = tmp_path / "wf"
+    (root / "dev" / "prompts").mkdir(parents=True)
+    (root / "dev" / "prompts" / "implement.md").write_text("{{ instruction_ref('x') }}", "utf-8")
+    found = missing_references(root, {"_instructions": {}})
+    assert [m.template for m in found] == ["dev/prompts/implement.md"]
+
+
 def test_docs_outside_prompts_are_not_scanned(tmp_path: Path) -> None:
     """A workflow's README showing the helper in a fenced example is not a defect."""
     root = _workflow(tmp_path, plan="ok")

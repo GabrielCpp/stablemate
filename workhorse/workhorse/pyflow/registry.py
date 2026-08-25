@@ -1,7 +1,7 @@
 """The module-level object a workflow's console script points at.
 
 ```python
-workflow = Registry("coder").add_blueprints(kit.blueprint, blueprint)
+workflow = Registry("coder", package=__package__).add_blueprints(kit.blueprint, blueprint)
 main = console_script(workflow.entry_point(Coder))
 ```
 
@@ -62,8 +62,16 @@ class Registry:
     the state machine, this is what the packaging metadata points at.
     """
 
-    def __init__(self, name: str = "") -> None:
+    def __init__(self, name: str = "", package: str = "") -> None:
         self.name = name
+        #: The importable package whose directory holds this workflow's `prompts/`, as
+        #: `Registry("coder", package=__package__)`. Declared rather than inferred
+        #: because the registry *is* the composition root: the entry class is free to
+        #: live in a sub-package beside its siblings (`coder/main/flow.py`), and a root
+        #: taken from that class would land inside one flow and put every other flow's
+        #: prompts outside the loader. Empty falls back to the entry class's package,
+        #: which is what every workflow relied on before this existed.
+        self.package = package
         self.blueprints: list[Blueprint] = []
         self.flows: dict[str, type[Workflow]] = {}
         self.entry: type[Workflow] | None = None
@@ -222,15 +230,22 @@ class Registry:
     def directory(self) -> Path:
         """The workflow's own directory — what holds its `prompts/`.
 
-        Taken from the package the entry class's module lives in — the one place that
-        holds regardless of how the registry reached the CLI, and the reason nothing
-        needs to record a path. `package_dir` is what refuses a zip-imported package
-        here rather than at `TemplateNotFound` time.
+        `package` when the registry declared one, which is the composition root itself
+        and the only answer that stays right once the entry class moves into a
+        sub-package beside its sibling flows. Otherwise the package the entry class's
+        module lives in — what every workflow relied on before `package` existed, kept
+        so a distribution that declares nothing keeps resolving as it did.
+
+        `package_dir` is what refuses a zip-imported package here rather than at
+        `TemplateNotFound` time.
         """
+        if self.package:
+            return package_dir(self.package, workflow=self.name or None)
         if self.entry is None:
             raise WorkflowDefinitionError(
-                f"workflow {self.name!r} declares no entry point, so it has no "
-                "directory — call `workflow.entry_point(SomeWorkflow)` in the workflow module"
+                f"workflow {self.name!r} declares neither a package nor an entry point, "
+                "so it has no directory — pass `Registry(name, package=__package__)`, or "
+                "call `workflow.entry_point(SomeWorkflow)` in the workflow module"
             )
         module = sys.modules.get(self.entry.__module__)
         package = getattr(module, "__package__", None) or self.entry.__module__.rpartition(".")[0]
