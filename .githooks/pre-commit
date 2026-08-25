@@ -35,6 +35,10 @@ repo_root=$(git rev-parse --show-toplevel)
 # block the commit. The failure mode this repo cannot afford is a guard that passes
 # because it never ran.
 python3 "$repo_root/scripts/check_public.py" --names-only
+# The same guard the Claude PreToolUse hook runs with --hook. That one covers an agent
+# on a machine where it is installed; this covers everyone else, at the moment the file
+# would enter the tree rather than whenever someone next runs `make test`.
+python3 "$repo_root/scripts/check_no_shell.py"
 # >>> farrier: hooks (generated) >>>
 make farrier-run-hook
 # <<< farrier: hooks <<<
