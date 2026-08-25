@@ -80,8 +80,8 @@ Create a small, sequential, testable task list using the task/todo tool availabl
 
 Rules:
 
-- One task per logical unit (one file, one function, one handler).
-- After every implementation task, add a **"Run tests"** task.
+- One task per coherent unit of *behaviour* — an endpoint, a service method with its ports, a screen. A task may span several files; a file is not a task.
+- One **"Run tests"** task per layer, after that layer's implementation tasks — not one after every task.
 - If the plan identifies code generation, add a **"Run code generation"** task before the first test that depends on generated output.
 - End the task list with a **"Final verification"** task.
 - **Multi-layer plans**: Group tasks by layer in the order the plan's **Implementation Order** specifies (typically the API/contract layer before the consumers that depend on it). Complete one layer's tasks — including its final verification — before starting the next. Generic shape:
@@ -96,7 +96,7 @@ Rules:
   8. [<next layer>]   Final verification
   ```
 
-Mark each task `in-progress` when you start and `completed` immediately when it passes — never batch completions.
+Mark each task `in-progress` when you start it and `completed` once its layer's checks pass — never before the check that covers it has run.
 
 ### State your exit conditions before you start
 
@@ -125,46 +125,48 @@ list as you learn — what you return at the end is what you are held to.
 
 ---
 
-## Step 3 — Implement One Step at a Time
+## Step 3 — Implement in Batches, Verify per Layer
 
-For **each task**:
+Spend your turns on edits, not ceremony: **batch independent file writes and edits into the
+same response wherever your tools allow.** A turn that writes one small file and stops is
+latency spent on nothing — when the plan names five files whose contents you already know,
+write all five in one turn. Serialize only where a later edit genuinely depends on an
+earlier command's output (generated code, a failing test's message).
 
-### 3a. Write the code
+### 3a. Write the code and its tests, together
 
-- Implement only what this step requires.
-- Follow the plan's file paths, function names, and patterns exactly.
-- Enforce the target layer's instruction rules for every edit.
-
-### 3b. Write or update tests
-
-- **Every new behavior must have a corresponding test.** Not optional.
-- Map each test to the plan's **Given / When / Should** cases.
-- Add assertions for: new functions, new branches, new error conditions, new state transitions.
+- Work the task list in order; implement each task fully — production code **and its tests
+  in the same pass**. **Every new behavior must have a corresponding test.** Not optional.
+- Follow the plan's file paths, function names, and patterns exactly, and enforce the
+  target layer's instruction rules for every edit.
+- Map each test to the plan's **Given / When / Should** cases; add assertions for new
+  functions, branches, error conditions, and state transitions.
 - **For a component that consumes an external contract** (an API payload, another producer's output), derive its test fixtures from a **captured real payload** (a golden file recorded from the real producer), not a hand-authored shape. A fixture you invent can encode the *same wrong assumption* as the code it tests — then both agree and the suite passes green over a real bug. Record the real payload and assert against it.
 - Before editing a layer's tests, follow that layer's **testing instruction file** from the standards resolved in Step 1.2 — that set is the whole set; a layer missing from it
   has no testing skill in this repo. Treat it as the canonical source for that layer's test naming, fixtures, integration-test shape, and assertion conventions — if this prompt appears to disagree with it, follow the layer's testing skill.
 - If skills are available, explicitly use the matching testing skill before writing or updating that layer's tests. Do not rely only on automatic path matching.
 
-### 3c. Run code generation (if applicable)
+### 3b. Run code generation when its inputs change
 
-- If this step modifies files that feed into code generation (an OpenAPI/GraphQL spec, a generated API client, mocks, etc., per the plan's **Code Generation & Build Artifacts** section), run the generation command from the plan's **Verification Commands** now.
-- Verify the generated output compiles.
+- When your edits modify files that feed into code generation (an OpenAPI/GraphQL spec, a generated API client, mocks, etc., per the plan's **Code Generation & Build Artifacts** section), run the generation command from the plan's **Verification Commands** before writing code that depends on the generated output, and verify it compiles.
 
-### 3d. Run the checks this service declares
+### 3c. Verify once per layer
 
-- Run the gate commands listed in **Provided Inputs**, plus the test command from the layer's instruction files → **"Verification Commands"** section where present.
-- **If a check fails, fix the code immediately. Do not move to the next task.**
-- Check for regressions in related tests.
+- When a layer's implementation tasks are done, run its verification **once, as a batch**:
+  the gate commands from **Provided Inputs** plus the test command from the layer's
+  instruction files → **"Verification Commands"** section where present. Do **not** re-run
+  the full gate set after every task — the per-task loop is where runs go to spend their
+  wall clock.
+- **If a check fails, fix the code immediately and re-run what failed**, then the batch
+  once more; watch for regressions in related tests. Do not start the next layer with this
+  one red.
+- Use the available diagnostics/analyzer output to confirm no compile/type errors remain
+  before calling the layer done.
 
-### 3e. Check for errors
+### 3d. Mark complete
 
-- Use the available diagnostics, analyzer, compiler, test, lint, or build commands to confirm no compile/type errors remain. If the assistant environment provides an editor diagnostics tool, use it; otherwise rely on the verification commands from the plan.
-- Fix all errors before continuing.
-
-### 3f. Mark complete
-
-- Confirm this step matches the plan.
-- Mark the task `completed`.
+- Confirm the finished tasks match the plan, then mark them `completed` — marking several
+  at once right after a green verify is fine; claiming one before its check ran is not.
 
 ---
 
@@ -225,9 +227,9 @@ If a touched layer's local environment **genuinely cannot be brought up** here (
 
 **Never do this:**
 
-- Skip running tests after an implementation step.
+- Skip a layer's test run before moving to the next layer.
 - Skip code generation when the plan identifies generated files.
-- Mark a task complete before its tests pass.
+- Mark a task complete before the check that covers it has passed.
 - Continue with compile errors or failing tests.
 - **Report `done` when you never ran the code in a local environment.** Green unit tests are not proof the code runs.
 - **Report `done` with a declared gate red.** The workflow re-runs every gate in **Provided Inputs** and routes a failure straight back to you, so leaving one dirty does not finish the story faster.
@@ -237,7 +239,8 @@ If a touched layer's local environment **genuinely cannot be brought up** here (
 
 **Always do this:**
 
-- Run tests after every implementation step — not just at the end.
+- Run each layer's tests when its implementation tasks are done — not only once at the very end of a multi-layer story.
+- Batch independent file writes into one turn; serialize only on genuine dependencies.
 - **Run every gate command from Provided Inputs in the service directory before declaring `done`** and fix every finding — formatting, unused imports, and any accessibility findings for UI work (missing labels/roles, unnamed controls). Follow the loaded accessibility skill for UI surfaces.
 - Run code generation before testing when generated files are involved.
 - **Bring up the local stack and exercise the touched story path (Step 5) before declaring `done`.**
