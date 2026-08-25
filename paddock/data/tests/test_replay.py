@@ -103,12 +103,19 @@ def test_a_fixture_only_declares_flows_the_library_can_rewind() -> None:
         assert set(fixture.flows) <= set(replay.KNOWN_FLOWS)
 
 
-def test_a_round_pairs_every_pinned_story_with_every_flow(tmp_path: Path) -> None:
+def test_a_round_pairs_every_pinned_story_with_every_flow_it_pinned(tmp_path: Path) -> None:
     fixture = expense_split.FIXTURE
     plan = replay.plan_round(make_run(tmp_path), fixture)
-    assert len(plan) == len(fixture.pins) * len(fixture.flows)
     # Stories outermost, so a round interrupted halfway has finished stories rather than
-    # half a flow of every story.
+    # half a flow of every story — and only the flows each pin carries a commit for, so
+    # the library's default flow list growing (it gained "dev") does not plan trials
+    # whose first act is to fail a checkout.
+    assert [(pin.story, flow) for pin, flow in plan] == [
+        (pin.story, flow)
+        for pin in fixture.pins
+        for flow in fixture.flows
+        if flow in pin.commits
+    ]
     assert [flow for _, flow in plan[:2]] == ["qa", "docs"]
 
 
