@@ -4,7 +4,7 @@
 
 That is the whole package, and the shortness is the point: the coder's main graph is
 mostly a sequencer, so nearly every subject it touches is one a sub-flow touches too and
-therefore lives in [`shared/`](../shared). What is left is the one boundary no sub-flow
+therefore lives in [`shared/`](../../shared). What is left is the one boundary no sub-flow
 crosses — an epic's pull request is opened, held against CI and merged by the graph that
 owns the epic.
 
@@ -33,7 +33,7 @@ push/poll mismatch (recorded in the progress ledger) became visible at all.
 """
 from __future__ import annotations
 
-from workhorse_workflows.coder.nodes.pr import (
+from workhorse_workflows.coder.main.nodes.pr import (
     flag_ci_failure,
     flag_merge_failure,
     merge_pr,

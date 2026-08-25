@@ -46,11 +46,11 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.kit import commit_all, commit_paths, is_ancestor
-from workhorse_workflows.coder import workflow as coder_workflow
+from workhorse_workflows.coder.main import flow as coder_main
 from workhorse_workflows.coder.shared import commits
 from workhorse_workflows.coder.shared.backlog import prune_fix_item, select_fix_item
 from workhorse_workflows.coder.shared.ci import poll_pr_checks
-from workhorse_workflows.coder.nodes.pr import (
+from workhorse_workflows.coder.main.nodes.pr import (
     _epic_pr_title,
     flag_ci_failure,
     merge_pr,
@@ -75,7 +75,7 @@ from workhorse_workflows.coder.shared.schemas.docs import DocsResult
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaResult
 from workhorse_workflows.coder.shared.schemas.pr import MergeOutcome
 from workhorse_workflows.coder.shared.schemas.review import ReviewResult
-from workhorse_workflows.coder.workflow import Coder
+from workhorse_workflows.coder.main import Coder
 
 EPIC = "EPIC-1"
 INDEX = f"""# Epics
@@ -289,7 +289,7 @@ class _Sub:
             ("Qa", self._qa),
             ("FixCi", self._fix_ci),
         ):
-            monkeypatch.setattr(coder_workflow, name, self._flow(name, reply))
+            monkeypatch.setattr(coder_main, name, self._flow(name, reply))
         return self
 
     def _flow(self, name: str, reply: Callable[[_StubFlow], Any]) -> type:
@@ -1725,7 +1725,7 @@ def test_red_ci_spends_its_three_attempts_and_then_escalates_to_a_human(
     sub = _Sub(repo).install(monkeypatch)
     polls: list[str] = []
     green = {"yes": False}
-    monkeypatch.setattr(coder_workflow, "poll_pr_checks", _red_ci(polls, green))
+    monkeypatch.setattr(coder_main, "poll_pr_checks", _red_ci(polls, green))
     run_env = env()
     seen: list[str] = []
 
@@ -1800,7 +1800,7 @@ def test_a_merge_resolver_that_cannot_decide_parks_instead_of_spending_the_budge
     _Sub(repo).install(monkeypatch)
     merges: list[str] = []
     landed = {"yes": False}
-    monkeypatch.setattr(coder_workflow, "merge_pr", _failing_merge(merges, landed))
+    monkeypatch.setattr(coder_main, "merge_pr", _failing_merge(merges, landed))
     run_env = env()
     seen: list[str] = []
 

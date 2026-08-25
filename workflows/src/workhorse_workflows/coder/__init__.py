@@ -10,9 +10,12 @@ The package has the layout `workflows/README.md` prescribes for every workflow �
 directory per *machine*, so a reader can tell which nodes belong to which graph without
 reading either:
 
-* `workflow.py` — the main machine, the `Coder` class, and only that class
-* `nodes/` — the non-agent work only that machine calls; here it is `pr` alone, because
-  the epic's PR boundary is the one subject no sub-flow touches
+* `workflow.py` — the composition root, and only that: the `Registry`, the flow table,
+  the dry-run stubs and the console-script binding
+* `main/` — the machine a bare `workhorse-coder run` starts, laid out as a flow package
+  like the other eight: `flow.py` holds the `Coder` class, and `main/nodes/` the non-agent
+  work only that machine calls — `pr` alone, because the epic's PR boundary is the one
+  subject no sub-flow touches
 * `dev/`, `docs/`, `dream/`, `fix/`, `fix_ci/`, `genesis/`, `qa/`, `review/` — one
   directory per registered Python sub-flow: each `flow.py` beside the nodes only it calls
 * `shared/` — what a second machine also reaches: `paths`, `schemas`, `contract`,
