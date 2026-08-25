@@ -26,8 +26,9 @@ What the port could get wrong, and what is therefore under test here:
   doctor code and re-enters the drain; a repaired book converges to the coverage re-scan.
 * `MAX_STALL_ROUNDS` and the `waive` hand-off, including its honest failure on a finding
   that is not auto-waivable — the YAML could only name a `type: fail` node here.
-* the `max_items` valve, which is a **failure** and not a quiet success: a partial book
-  must not read as a finished one.
+* the `max_items` valve, which is an **operator gate** and not a quiet success: a partial
+  book must not read as a finished one, and a budget stop is not a defect, so the run
+  blocks on an `Await` and a refuel answer grants another allowance.
 * `handoff` into `walkthrough-web`, whose own `detect_webapp` gates it — a service with no
   documented screen surface is walked by a no-op, and the run's value is the sub-flow's.
 * resume, which is why the checkpoint lands before the agent turn: a run killed while
@@ -53,6 +54,7 @@ from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import activity as pyflow_activity
+from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
@@ -366,14 +368,46 @@ def test_a_repair_that_never_lands_stops_the_run_rather_than_looping(
     assert (dirty / REFUND).exists()
 
 
-def test_the_item_ceiling_is_a_failure_and_not_a_finished_book(
+class _Parked(Exception):
+    """Raised by the patched `wait_for_answer` to stop a run right at its `Await`.
+
+    A budget stop always escalates now, and never terminates on its own — so a test that
+    only wants to prove the gate was reached, without scripting an answer and the drain
+    that follows it, stops the run here. Nothing in `drive()` catches around the
+    `wait_for_answer` call, so this propagates cleanly to `pytest.raises`.
+    """
+
+
+def _parked_at(seen: list[str]) -> Callable[..., None]:
+    """Capture the escalation body the `Await` wrote, then stop the run there."""
+
+    def stop(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text(encoding="utf-8"))
+        raise _Parked
+
+    return stop
+
+
+def _answers(seen: list[str]) -> Callable[..., None]:
+    """A stand-in for the operator: flip the gate's `STATUS:` line to `ANSWERED`."""
+
+    def answered(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text(encoding="utf-8"))
+        path.write_text("STATUS: ANSWERED\n\nCarry on.\n", encoding="utf-8")
+
+    return answered
+
+
+def test_the_item_ceiling_blocks_on_an_operator_gate_not_a_finished_book(
     booked: Path, tmp_path: Path
 ) -> None:
-    """`max_items` is a safety valve for a quota-limited run, and reaching it is a failure.
+    """`max_items` is a safety valve for a quota-limited run, and reaching it *blocks*.
 
-    The partial book is canonicalized on the way out — the checkpoint runs — so what is
-    left behind is well-formed, and the pending item survives for a resume that gets its
-    own allowance off a fresh `done_baseline`.
+    A budget stop is not a defect, so the run parks on an `Await` instead of dying —
+    `ended_at: null` abandonment was the normal ending of a real backfill campaign, and
+    this is the shape that retires it. The partial book is canonicalized on the way out —
+    the checkpoint runs — so what is left behind is well-formed, and the pending item
+    survives in the worklist the gate's eventual answer resumes into.
     """
     agent = _Agent(
         booked,
@@ -382,14 +416,51 @@ def test_the_item_ceiling_is_a_failure_and_not_a_finished_book(
             {"kind": "surface", "target": "acme/other.py", "context": "two"},
         ],
     )
-    with pytest.raises(WorkflowFailed, match="1-item ceiling with 1 item"):
+    seen: list[str] = []
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
         _drive(_env(tmp_path), agent, max_items=1)
 
+    # The gate says what stopped and what an answer buys — the operator reads this cold.
+    assert len(seen) == 1, seen
+    assert "1-item ceiling with 1 item(s) still pending" in seen[0], seen[0]
+    assert "fresh allowance" in seen[0], seen[0]
     assert agent.counts()["investigate"] == 1, agent.counts()
     assert {i["target"]: i["status"] for i in _worklist(booked)} == {
         "acme/service.py": "done",
         "acme/other.py": "pending",
     }, _worklist(booked)
+
+
+def test_a_refuel_answer_grants_another_allowance_and_the_drain_finishes(
+    booked: Path, tmp_path: Path
+) -> None:
+    """The far side of the gate: `refuel` multiplies the ceiling instead of resetting it.
+
+    `done_baseline` is frozen at setup, so a fresh allowance cannot come from a new
+    baseline mid-run — it comes from `max_items * (refuels + 1)`. One answered gate must
+    therefore finish this two-item drain under `max_items=1`, and the run must converge
+    exactly as an unbounded one would.
+    """
+    agent = _Agent(
+        booked,
+        surfaces=[
+            {"kind": "surface", "target": "acme/service.py", "context": "one"},
+            {"kind": "surface", "target": "acme/other.py", "context": "two"},
+        ],
+    )
+    seen: list[str] = []
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = _drive(_env(tmp_path), agent, max_items=1)
+
+    # Blocked exactly once: item one spent the first allowance, the answer bought the
+    # second, and the drain went dry before a third was needed.
+    assert len(seen) == 1, seen
+    assert agent.counts()["investigate"] == 2, agent.counts()
+    assert all(i["status"] == "done" for i in _worklist(booked)), _worklist(booked)
+    assert result.is_webapp is False, result
 
 
 # -------------------------------------------------------------------------------- resume

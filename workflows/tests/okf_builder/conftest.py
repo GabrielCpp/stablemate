@@ -73,6 +73,14 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         ("config", "user.name", "Test"),
     ):
         subprocess.run(["git", *args], cwd=root, check=True, stdout=subprocess.DEVNULL)
+    # The smallest installed skill `prepare._references_ok` accepts: the references corpus
+    # is a run precondition (a build whose prompts point at pages that do not exist is
+    # blocked, not degraded), so a repo without it never gets past `start`.
+    references = root / ".claude/skills/ostler-documentation/references"
+    (references / "node-types").mkdir(parents=True)
+    (references / "node-types" / "concept.md").write_text("# concept\n", encoding="utf-8")
+    (references / "bullet-grammar.md").write_text("# bullet grammar\n", encoding="utf-8")
+    (references / "check-vocabulary.md").write_text("# checks\n", encoding="utf-8")
     monkeypatch.chdir(root)
     return root
 
@@ -118,10 +126,10 @@ def booked(repo: Path, write: Callable[[Path, str], Path]) -> Path:
 def dirty(booked: Path, write: Callable[[Path, str], Path]) -> Path:
     """`booked` plus a doc citing `acme/service.py::refund`, which nothing declares.
 
-    `ostler doctor` reports it as a `missing-code-symbol` **error**, and that code is in
-    neither `checkpoint.GROUNDED_CODES` (so the repair is queued as a `fixup`, not a
-    `backfill`) nor `waivers.AUTO_WAIVABLE` (so a stalled loop ends the run rather than
-    papering over it). One fixture, both arms.
+    `ostler doctor` reports it as a `missing-code-symbol` **error** — grounded (the
+    repair's value must come out of the source, not off the finding) and not in
+    `waivers.AUTO_WAIVABLE`, so a stalled loop ends the run rather than papering over
+    it. One fixture, both arms.
     """
     write(
         booked / f"docs/features/{SERVICE}/concepts/refund.md",

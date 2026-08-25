@@ -129,6 +129,37 @@ def test_one_item_per_node_and_code() -> None:
         assert ctx["node"] in (f"{doc}#charge", f"{doc}#refund")
 
 
+def test_the_item_order_is_the_drain_order() -> None:
+    """Errors first, then grounding → claim shape → obligations → UI, then the rest.
+
+    `select_item` hands out the first pending item, so this sort decides where a bounded
+    run's allowance goes. On a drifted book with thousands of findings, a run that stops
+    early must have spent itself on the dead citations — a claim about a symbol that no
+    longer exists is not worth rephrasing, and a check bound to it observes nothing —
+    not on whichever code happens to sort first alphabetically.
+    """
+    doc = f"{BOOK}/pay.md"
+    def at(code: str, node: str, severity: str = "warn") -> dict:
+        return {**_finding(code, severity, path=doc), "ref": f"{doc}#{node}#member"}
+
+    findings = [
+        at("missing-placement", "hero"),               # UI family
+        at("undeclared-obligation", "charge"),          # obligations
+        at("aaa-unclassified", "charge"),               # no family: last despite the alphabet
+        at("compound-normative-bullet", "charge"),      # claim shape
+        at("missing-code-symbol", "refund", "error"),  # error: first regardless of family
+        at("dangling-link", "refund"),                  # grounding: first among the warns
+    ]
+    assert [i["kind"] for i in _repair_items(findings, 1)] == [
+        "fix:missing-code-symbol",
+        "fix:dangling-link",
+        "fix:compound-normative-bullet",
+        "fix:undeclared-obligation",
+        "fix:missing-placement",
+        "fix:aaa-unclassified",
+    ]
+
+
 def test_a_ref_that_is_not_a_node_groups_by_the_file() -> None:
     """Not every finding names a book node, and neither shape may lose one.
 
