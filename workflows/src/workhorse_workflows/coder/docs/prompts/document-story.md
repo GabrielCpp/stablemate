@@ -10,7 +10,7 @@ screens, components, commands, endpoints, interactions, concepts, formats, and f
 documented before QA derives obligations. This is an incremental one-story update, not a
 changelog or a bulk build.
 
-Load the skill and follow it: {{ skill_load_ref("ostler-documentation", skill_dir() + "/ostler-documentation/SKILL.md") }}
+Load the skill and follow it: {{ skill_load_ref("ostler-okf", skill_dir() + "/ostler-okf/SKILL.md") }}
 It carries the full loop (scaffold → author → fmt → doctor) and links the written model, which
 is the authority for everything below: `references/node-types/<type>.md` for the type you are
 about to write (its keys, required sections, relationships, doctor codes),

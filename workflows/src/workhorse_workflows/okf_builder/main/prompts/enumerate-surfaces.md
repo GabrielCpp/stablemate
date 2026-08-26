@@ -8,7 +8,7 @@ Seed the crawl. Read the service's code and find **every entry-point surface** â
 or caller enters the system. The crawl descends from these; miss one and a whole subtree is lost,
 so be exhaustive about *surfaces* (their internals are discovered later, not now).
 
-Load the method: {{ skill_load_ref("okf-modeling", skill_dir() + "/okf-modeling/SKILL.md") }}
+Load the method: {{ skill_load_ref("ostler-okf", skill_dir() + "/ostler-okf/SKILL.md") }}
 
 **Guardrails (unattended):** read-only reconnaissance â€” do **not** write any docs, modify code, run
 `git`, or run builds/tests this turn. Just identify surfaces and return them. Stay inside the

@@ -19,7 +19,7 @@ more than one that batched them and landed none. If it happens, the next turn co
 same conversation with the still-red errors — it is told the budget stopped you, so do not
 start the book over and do not re-close what is already closed.
 
-Load the skill and follow it: {{ skill_load_ref("ostler-documentation", skill_dir() + "/ostler-documentation/SKILL.md") }}
+Load the skill and follow it: {{ skill_load_ref("ostler-okf", skill_dir() + "/ostler-okf/SKILL.md") }}
 It links the written model, which is the authority for every rule below and the standard the
 reviewer who filed these findings judged against: `references/node-types/<type>.md` for what a
 type owes, `references/bullet-grammar.md` for claim splitting and check attribution,

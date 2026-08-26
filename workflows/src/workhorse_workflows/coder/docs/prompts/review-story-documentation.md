@@ -9,7 +9,7 @@ documentation author has finished. Do not edit code or documentation. Your decis
 gate before QA.
 
 You and the author are held to the same written model, so that a finding you file is one the
-author could have read beforehand: {{ skill_load_ref("ostler-documentation", skill_dir() + "/ostler-documentation/SKILL.md") }}
+author could have read beforehand: {{ skill_load_ref("ostler-okf", skill_dir() + "/ostler-okf/SKILL.md") }}
 Judge against its references, not against a standard you re-derive here — `references/node-types/<type>.md`
 for what a type owes, `references/bullet-grammar.md` for claim splitting and check attribution,
 `references/check-vocabulary.md` for the checks and their signatures, and

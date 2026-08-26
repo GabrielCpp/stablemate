@@ -67,16 +67,16 @@ def _ostler_loads(root: Path) -> tuple[bool, str]:
     return True, ""
 
 
-#: What the installed ostler-documentation skill must carry for the build's prompts to
+#: What the installed ostler-okf skill must carry for the build's prompts to
 #: point anywhere real: the per-type reference pages plus the two grammar sheets.
 _REFERENCES = ("references/node-types", "references/bullet-grammar.md",
                "references/check-vocabulary.md")
 
 
 def _references_ok(root: Path) -> tuple[bool, str]:
-    """Whether an installed ostler-documentation skill carries the references corpus.
+    """Whether an installed ostler-okf skill carries the references corpus.
 
-    The prompts hand agents the path `<skill_dir>/ostler-documentation/references/…` as
+    The prompts hand agents the path `<skill_dir>/ostler-okf/references/…` as
     the per-type authority. On a repo whose skills predate the corpus, that path does not
     exist, and a real run showed what happens next: every turn greps for it, finds
     nothing, and improvises the contract from memory — the exact drift the corpus exists
@@ -84,13 +84,13 @@ def _references_ok(root: Path) -> tuple[bool, str]:
     degraded one, and the fix is a farrier refresh, not agent persistence.
     """
     installs = [
-        root / d / "ostler-documentation"
+        root / d / "ostler-okf"
         for d in BACKEND_SKILL_DIR.values()
-        if (root / d / "ostler-documentation").is_dir()
+        if (root / d / "ostler-okf").is_dir()
     ]
     if not installs:
         return False, (
-            f"no installed ostler-documentation skill under {root} — run a farrier "
+            f"no installed ostler-okf skill under {root} — run a farrier "
             "refresh so the build's prompts have their per-type references"
         )
     for skill in installs:
