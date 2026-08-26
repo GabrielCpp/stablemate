@@ -59,11 +59,27 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 BASE = REPO / "base-library"
 
-# The skill families the public base library carries: the toolchain's own skills
-# (`stablemate/`) plus the generic cross-language contracts migrated from the overlay
-# (design/testing/architecture — the red-gate plan, docs/plans/tdd-ac-coverage.md §7).
-# Per-stack mechanics (`stacks/`) and house rules remain overlay content.
-BASE_SKILL_FAMILIES = {"stablemate", "testing", "architecture", "ui"}
+# The skill families the public base library carries. Two kinds, and the split is the
+# same one the two packs make: a directory per tool in this toolchain (`farrier/`,
+# `ostler/`, `groom/`, `workhorse/` — the `stablemate` pack), and the generic
+# cross-language contracts (`architecture/`, `testing/`, `ui/`, plus the cross-cutting
+# singles that own no family — the `general` pack). Per-stack mechanics (`stacks/`) and
+# house rules remain overlay content.
+#
+# It is an allowlist rather than a shape rule on purpose: admitting a new family to the
+# public base is a decision somebody makes, not a side effect of creating a directory.
+BASE_SKILL_FAMILIES = {
+    "farrier",
+    "ostler",
+    "groom",
+    "workhorse",
+    "architecture",
+    "testing",
+    "ui",
+    "code-review",
+    "diagnosing-bugs",
+    "vertical-slicing",
+}
 RESOLVER = REPO / "scripts" / "private_names.py"
 #: What `pre-commit install` writes, and the marker it leaves in what it writes. The
 #: scripts themselves still live in `.githooks/` and are still runnable by hand; what

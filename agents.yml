@@ -18,13 +18,19 @@ hooks:
 
 packs:
   - python-workflow
+  - general
   - stablemate
-  - testing
-  - architecture
-  - ui
 
+# Every repo takes the same two base-library packs — `general` (the cross-cutting
+# craft: architecture, testing, ui, vertical-slicing, diagnosing-bugs,
+# code-review) and `stablemate` (this toolchain: farrier, groom, ostler,
+# workhorse) — and then adds its stack pack on top. Here that is
+# `python-workflow`, from the overlay library; it pulls the language-neutral
+# `architecture` and `testing` packs in itself, which `general` already carries,
+# and a selection is a set, so the overlap costs nothing.
+#
 # groom's web UI owes the accessibility contract; `ui/ui-accessibility` arrives
-# with the `ui` pack above.
+# with the `general` pack above.
 #
 # `stacks/python/python-htmx-accessibility` is deliberately no longer selected
 # here: groom's dashboard does not use HTMX any more. The server sends JSON and
@@ -40,7 +46,7 @@ packs:
 # not this repo's call to make unilaterally -- so `stablemate-groom` says
 # out loud that the stack skill does not apply here.
 #
-# This repo names no skills directly: `stablemate/repo-docs`, which governs its
+# This repo names no skills directly: `ostler/ostler-repo-docs`, which governs its
 # prose entry surface, ships in the `stablemate` pack above, and its root rules are
 # *policies* rather than skills — see localInstructions below.
 
