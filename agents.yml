@@ -17,7 +17,7 @@ hooks:
   manager: githooks
 
 packs:
-  - python-workflow
+  - python
   - general
   - stablemate
 
@@ -25,7 +25,7 @@ packs:
 # craft: architecture, testing, ui, vertical-slicing, diagnosing-bugs,
 # code-review) and `stablemate` (this toolchain: farrier, groom, ostler,
 # workhorse) — and then adds its stack pack on top. Here that is
-# `python-workflow`, from the overlay library; it pulls the language-neutral
+# `python`, from the overlay library; it pulls the language-neutral
 # `architecture` and `testing` packs in itself, which `general` already carries,
 # and a selection is a set, so the overlap costs nothing.
 #
