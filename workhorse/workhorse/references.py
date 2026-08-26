@@ -46,7 +46,7 @@ from workhorse.manifest import ManifestContext
 # `skill_load_ref` belongs here even though it renders an instruction rather than a
 # path: it is the *most* required of the singular helpers, since its call sites read
 # "Load the skill and follow it" and name exactly one. Leaving it out is what let the
-# coder's `document_story` and `code_review` prompts point at `ostler-documentation`
+# coder's `document_story` and `code_review` prompts point at `ostler-okf`
 # and `code-review` on repos installing neither — a preflight that reports every other
 # unresolved reference and stays silent about the two that are load-bearing is worse
 # than one that reports nothing, because its silence reads as an answer.

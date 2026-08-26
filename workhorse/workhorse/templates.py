@@ -214,8 +214,8 @@ def _farrier_globals(
         a defect and is reported as one — same ``unresolved`` channel, same reason.
 
         **Both harness spellings come from the one resolved path.** Farrier installs a
-        skill under the consuming repo's prefix, so ``ostler-documentation`` lands as
-        ``<repo>-ostler-documentation`` — directory and registered command alike. The
+        skill under the consuming repo's prefix, so ``ostler-okf`` lands as
+        ``<repo>-ostler-okf`` — directory and registered command alike. The
         Claude branch used to emit the caller's bare argument, which therefore named a
         slash command no repo has: the single failure this helper exists to prevent,
         produced on every Claude run. Deriving the command from the installed

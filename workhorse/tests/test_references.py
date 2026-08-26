@@ -291,9 +291,9 @@ def test_skill_load_ref_is_checked_like_any_other_required_reference(tmp_path: P
     name skills no benchmark repo installed, silently, while every other unresolved
     reference in the same file was reported.
     """
-    root = _workflow(tmp_path, doc="{{ skill_load_ref('ostler-documentation') }}")
+    root = _workflow(tmp_path, doc="{{ skill_load_ref('ostler-okf') }}")
     found = missing_references(root, {"_instructions": {"other": "o.md"}})
-    assert [(m.kind, m.name) for m in found] == [("skill", "ostler-documentation")]
+    assert [(m.kind, m.name) for m in found] == [("skill", "ostler-okf")]
 
 
 def test_skill_load_refs_fallback_path_is_not_read_as_a_second_reference(

@@ -66,7 +66,7 @@ yields a path for a prompt to cite, this yields the instruction that *loads* the
 whatever harness is running — a `/slash-command` on Claude Code, `Read \`<path>\` and
 follow its instructions` elsewhere. Both spellings are derived from the one resolved
 path, because farrier installs a skill under the consuming repo's prefix
-(`ostler-documentation` → `<repo>-ostler-documentation`) and the registered command is
+(`ostler-okf` → `<repo>-ostler-okf`) and the registered command is
 that installed name, not the one the prompt asked for. Its first argument **is** a
 required reference and is preflighted like any other; the second is only where an
 uninstalled skill would have lived, and is never checked.
