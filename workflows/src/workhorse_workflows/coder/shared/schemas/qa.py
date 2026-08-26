@@ -6,7 +6,7 @@ suite, three `mark-*` scripts and three agent turns — with three different pay
 because a run-context key has no schema. Here it is a single model — `status` and `notes`,
 what every one of those writers actually produced — and it is what the flow threads from
 gate to gate as *the* verdict. The ostler-backed runner produces more, so it returns the
-`QaRunResult` subclass; a `QaResult`-typed field holds it without losing the payload.
+`QaPlanRun` subclass; a `QaResult`-typed field holds it without losing the payload.
 
 **The status vocabularies stay separate.** `QaResult.status` is ostler's four-state
 `passed | failed | blocked | invalid`; `QaPlanValidation.status` is the two-state
@@ -33,14 +33,14 @@ class QaResult(CoderResult):
     that routes on it names its arms explicitly and sends the blank to a `default`, which
     is what the YAML's branch tables did.
 
-    The runner's raw payload is **not** a field here — see `QaRunResult` below for why.
+    The runner's raw payload is **not** a field here — see `QaPlanRun` below for why.
     """
 
     status: str = ""
     notes: str = ""
 
 
-class QaRunResult(QaResult):
+class QaPlanRun(QaResult):
     """`run_qa_plan`'s verdict, plus the ostler payload only it has.
 
     `ostler` is a subclass field rather than an optional field on `QaResult` because a
@@ -57,6 +57,24 @@ class QaRunResult(QaResult):
     """
 
     ostler: dict[str, Any] = {}
+
+
+class QaRunResult(CoderResult):
+    """One QA verdict an agent turn was asked for — the fix lane's check, retry and recheck.
+
+    Separate from `QaResult` because the two are produced by different things. `QaResult` is
+    the *rolling* verdict Python threads from gate to gate, and it starts blank because the
+    flow reads it before anything has run. This one is what a turn *reports*, so `status` is
+    a required `Literal` with no default: a turn that cannot name which of the three it found
+    has not reported, and the parse failure buys a retry turn where a blank bought a silent
+    "not passed" arm nobody chose.
+
+    Three values, not ostler's four: a grading turn either passed the item, failed it, or
+    could not grade it at all. `invalid` is a QA *plan*'s verdict and no turn here writes one.
+    """
+
+    status: Literal["passed", "failed", "blocked"]
+    notes: str = ""
 
 
 class QaPlanValidation(CoderResult):
@@ -883,6 +901,7 @@ __all__ = [
     "QaPlanValidation",
     "QaReport",
     "QaResult",
+    "QaPlanRun",
     "QaRunResult",
     "QaToolCatalog",
     "QaTriage",

@@ -121,7 +121,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     QaPlanResult,
     QaReport,
     QaResult,
-    QaRunResult,
+    QaPlanRun,
     QaTriage,
     RegressionFix,
     SetupResult,
@@ -182,7 +182,7 @@ def _finding(passed: bool, notes: str) -> str:
     return "" if passed else notes
 
 
-def _blocked_problems(result: QaRunResult) -> tuple[str, ...]:
+def _blocked_problems(result: QaPlanRun) -> tuple[str, ...]:
     """The runtime requirements a `blocked` run named, sorted; empty for every other status.
 
     Read off the runner payload rather than parsed back out of `notes`, and sorted because
@@ -198,7 +198,7 @@ def _blocked_problems(result: QaRunResult) -> tuple[str, ...]:
     return tuple(sorted(str(problem) for problem in problems))
 
 
-def _failure_signature(result: QaRunResult) -> tuple[str, ...]:
+def _failure_signature(result: QaPlanRun) -> tuple[str, ...]:
     """What a failing run failed at, as a fingerprint two runs can be compared on.
 
     One entry per non-passing scenario — its id, its status, and how far it got before it
@@ -227,7 +227,7 @@ def _failure_signature(result: QaRunResult) -> tuple[str, ...]:
     )
 
 
-def _failed_scenario_ids(result: QaRunResult) -> tuple[str, ...]:
+def _failed_scenario_ids(result: QaPlanRun) -> tuple[str, ...]:
     """The ids alone of the scenarios a failing run did not pass, sorted.
 
     `_failure_signature` above answers a different question with the same payload, and glues

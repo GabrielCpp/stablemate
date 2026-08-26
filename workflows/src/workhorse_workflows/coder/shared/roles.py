@@ -91,6 +91,8 @@ ROLES: dict[str, str] = {
     "apply-qa-fixes": "apply a batch of QA findings",
     "fix-qa-scenario": "fix one failing QA scenario, with its own dry-run proof",
     "qa-fix-item": "apply one QA finding",
+    # fix
+    "fix-item": "plan and implement one drained backlog item, in one turn",
     "repair-qa-plan": "repair a QA plan that did not validate",
     "repair-qa-context": "repair the obligation packet QA runs against",
     "report-qa-dev": "report a failing QA run back to the dev lane",

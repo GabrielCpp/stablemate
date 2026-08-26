@@ -37,7 +37,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     DryRunGate,
     QaCleared,
     QaPlanValidation,
-    QaRunResult,
+    QaPlanRun,
     QaToolCatalog,
     StackStatus,
     StackTornDown,
@@ -388,7 +388,7 @@ def run_qa_plan(
     spec_dir: str = "",
     docs_path: str = "",
     repo_dir: str = "",
-) -> QaRunResult:
+) -> QaPlanRun:
     """Execute the QA plan through ostler and normalize its four-state outcome.
 
     The returncode is deliberately ignored: `failed` and `blocked` are answers the runner
@@ -407,7 +407,7 @@ def run_qa_plan(
     minted, error = _mint_qa_secrets(manifest.get("secrets") or {}, docs_root, logger)
     if error:
         logger.warning("QA secret refresh failed: %s", error)
-        return QaRunResult(status="blocked", notes=f"QA secret refresh failed: {error}")
+        return QaPlanRun(status="blocked", notes=f"QA secret refresh failed: {error}")
     with scoped_envs(minted):
         outcome = Ostler(docs_root).qa_run(plan, spec=spec_dir)
     status = outcome.status.lower()
@@ -415,7 +415,7 @@ def run_qa_plan(
         status = "invalid"
     notes = notes_for(outcome, f"Ostler QA run returned {status}.")
     logger.info("ostler qa run for %s returned status=%s", spec_dir, status)
-    return QaRunResult(status=status, notes=notes, ostler=outcome.data)
+    return QaPlanRun(status=status, notes=notes, ostler=outcome.data)
 
 
 __all__ = [

@@ -1,6 +1,6 @@
 """End-to-end tests for the `fix` flow — the standalone backlog drain.
 
-Twenty-four YAML nodes became nine states around one loop that re-enters at the draw. What
+Twenty-four YAML nodes became eight states around one loop that re-enters at the draw. What
 is worth testing is what each iteration does to the backlog file, because that file *is* the
 worklist: a shipped item leaves it, a stuck item stays with a `(blocked` marker every later
 draw skips, and an empty section is what ends the run. So the tests are organised by what
@@ -8,17 +8,20 @@ the bullet looks like afterwards.
 
 **There are no seams here beyond the agent turn.** `select_fix_item` really parses a real
 `docs/backlog.md`, `seed_fix_story` really creates the `fixes` bucket and really authors the
-story ostler then loads back, `resolve_impl_context` really decodes the plan against a real
-workspace, `branch_code_repos` really visits the code repo, `commit_story` really commits,
-and the `docs` handoff really runs the whole `docs` flow — its OKF pre-gate, its grounding
-gate and its reviewer — against a real graph. That last one is the point of the handoff test:
-the sub-flow is not stubbed, so what crosses the boundary is what would cross it in a run.
+story ostler then loads back, the gates really shell out to the repo's own Makefile,
+`commit_story` really commits, and the `docs` handoff really runs the whole `docs` flow —
+its OKF pre-gate, its grounding gate and its reviewer — against a real graph. That last one
+is the point of the handoff test: the sub-flow is not stubbed, so what crosses the boundary
+is what would cross it in a run.
 
 The scripted agent dispatches on the prompt's filename, the same key the engine derives its
-node id from, and every handler leaves behind the artifacts its reply claims — the plan turn
-writes `plan-context.json` and the per-service plan file, the implement turn writes the code
-change the commit then finds. A handler that only returned a status would be testing the
-state machine against a fiction.
+node id from, and every handler leaves behind the artifacts its reply claims — the fix turn
+writes the code change the gates then judge and the commit then finds. A handler that only
+returned a status would be testing the state machine against a fiction.
+
+**One turn per item** is the shape under test. There is no plan turn and no dispatch list:
+`fix-item.md` plans and writes the repair in one session, the gates that judge it are
+Python's, and the repositories they run in are the ones git says the turn changed.
 """
 from __future__ import annotations
 
@@ -38,9 +41,8 @@ from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
-from workhorse_workflows.coder.fix.flow import Fix
+from workhorse_workflows.coder.fix.flow import MAX_FIX_LAPS, Fix
 from workhorse_workflows.coder.shared.backlog import mark_fix_blocked, prune_fix_item
-from workhorse_workflows.coder.shared.dev import branch_code_repos, resolve_impl_context
 
 BULLET = "widget-pagination"
 TEXT = "the widget list does not paginate"
@@ -57,25 +59,10 @@ BACKLOG = f"""# Backlog
 - [{BULLET}] {TEXT}
 """
 
-#: The one service the plan turn declares. It lives *outside* the docs worktree, which is
-#: the multi-repo shape — and therefore the `semantic` route through the `docs` sub-flow.
-API_SERVICE: dict[str, Any] = {
-    "repo": "api",
-    "path": ".",
-    "type": "go",
-    "plan_file": "plan-api.md",
-    "skills": [],
-}
-
-#: A second service, to drive the divergence the module docstring records: the YAML wires
-#: `implement_fix` straight to `check_fix`, so only the first of these is ever implemented.
-WEB_SERVICE: dict[str, Any] = {
-    "repo": "web",
-    "path": ".",
-    "type": "react-router",
-    "plan_file": "plan-web.md",
-    "skills": [],
-}
+#: A `lint` target `make -n` accepts and `make` fails, so the repo's own gate goes red on
+#: exactly the pass that installs it. The gates resolve `make <gate>` by convention when a
+#: service declares nothing, which is the whole check for a repo-wide repair.
+RED_MAKEFILE = "lint:\n\t@echo 'pagination.go:1: undefined: pageSize'; exit 1\n"
 
 
 # --------------------------------------------------------------------------- fixtures
@@ -101,7 +88,11 @@ def workspace(
     write: Callable[[Path, str], Path],
     ambient: dict[str, str],
 ) -> dict[str, Path]:
-    """Two real code repos and the workspace file that names them, outside the docs tree."""
+    """Two real code repos and the workspace file that names them, outside the docs tree.
+
+    Two rather than one because the lane's targets are git-derived now: the second repo is
+    what proves an untouched checkout is neither gated nor committed.
+    """
     root = tmp_path / "ws"
     repos: dict[str, Path] = {}
     for name in ("api", "web"):
@@ -124,29 +115,30 @@ def workspace(
 
 
 class _Agent:
-    """The flow's four prompts plus the `docs` sub-flow's two, scripted on the flow's arms.
+    """The flow's three prompts plus the `docs` sub-flow's three, scripted on the flow's arms.
 
-    `plan_blocked` blocks the first N planning turns, `qa_fails` fails the first N QA turns
-    — one is the retry, two is the give-up — and `services` is what the plan declares.
-    `explode` raises on a named prompt, which is a run killed mid-turn.
+    `impl_blocked` blocks the first N fix turns, `gate_red` leaves a failing gate behind on
+    the first N of them, `qa_fails` fails the first N QA turns — one is the retry, two is the
+    flag — and `apply_blocked` blocks the retry itself. `explode` raises on a named prompt,
+    which is a run killed mid-turn.
     """
 
     def __init__(
         self,
         workspace: dict[str, Path],
         *,
-        services: list[dict[str, Any]] | None = None,
-        plan_blocked: int = 0,
         impl_blocked: int = 0,
+        gate_red: int = 0,
         qa_fails: int = 0,
+        apply_blocked: int = 0,
         review_blocks: bool = False,
         explode: set[str] | None = None,
     ) -> None:
         self.workspace = workspace
-        self.services = services if services is not None else [API_SERVICE]
-        self.plan_blocked = plan_blocked
         self.impl_blocked = impl_blocked
+        self.gate_red = gate_red
         self.qa_fails = qa_fails
+        self.apply_blocked = apply_blocked
         self.review_blocks = review_blocks
         self.explode = explode or set()
         self.calls: list[str] = []
@@ -170,49 +162,29 @@ class _Agent:
     def args_for(self, stem: str) -> list[dict[str, Any]]:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
 
-    # -- the fix flow's four ----------------------------------------------
+    # -- the fix flow's three ---------------------------------------------
 
-    def _plan_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """Write the spec dir the planner is told to write, then report on it.
-
-        The plan is written even on the blocked pass, exactly as a real planner's partial
-        work would be: the flow's `blocked` arm has to be what stops the run, not the
-        absence of a file downstream states would have tripped over anyway.
-        """
-        spec = Path(data["spec_dir"])
-        spec.mkdir(parents=True, exist_ok=True)
-        for svc in self.services:
-            (spec / svc["plan_file"]).write_text(f"# Plan for {svc['repo']}\n", encoding="utf-8")
-        (spec / "plan-context.json").write_text(
-            json.dumps(
-                {
-                    "story": SLUG,
-                    "services": self.services,
-                    "implementation_order": [f"{s['repo']}::{s['path']}" for s in self.services],
-                },
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        if nth <= self.plan_blocked:
-            return {"status": "blocked", "summary": "the pagination contract is undecided"}
-        return {"status": "done", "summary": f"plan {nth}"}
-
-    def _implement_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """Write the change, so the commit at the end of the iteration has something to find.
+    def _fix_item(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """Write the change, so the gates and the commit have something to find.
 
         `impl_blocked` blocks the first N turns and — the part that matters — writes
-        *nothing* while doing so, which is the state the drain used to QA as if it were a fix.
+        *nothing* while doing so, which is the state the drain used to QA as if it were a
+        fix. `gate_red` writes a Makefile whose `lint` target fails, and stops writing it
+        once the budget is spent, so a repair lap is something the run can come back from.
         """
         if nth <= self.impl_blocked:
             return {
                 "status": "blocked",
                 "notes": "the page size is a product decision nobody has made",
             }
-        repo = self.workspace[Path(data["plan_file"]).stem.removeprefix("plan-")]
+        repo = self.workspace["api"]
         (repo / "pagination.go").write_text(f"// pass {nth}\n", encoding="utf-8")
-        return {"status": "done", "notes": f"implemented {data['service_path']}"}
+        makefile = repo / "Makefile"
+        if nth <= self.gate_red:
+            makefile.write_text(RED_MAKEFILE, encoding="utf-8")
+        elif makefile.exists():
+            makefile.unlink()
+        return {"status": "done", "notes": f"paginated the widget list on pass {nth}"}
 
     def _qa_fix_item(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if nth <= self.qa_fails:
@@ -220,9 +192,11 @@ class _Agent:
         return {"status": "passed", "notes": "pagination works"}
 
     def _apply_qa_fixes(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        return {"status": "fixed", "notes": "widened the page window"}
+        if nth <= self.apply_blocked:
+            return {"status": "blocked", "notes": "QA wants a page size nobody has picked"}
+        return {"status": "passed", "notes": "widened the page window"}
 
-    # -- the `docs` sub-flow's two ----------------------------------------
+    # -- the `docs` sub-flow's three --------------------------------------
 
     def _document_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {
@@ -293,7 +267,7 @@ def _branch_of(repo: Path) -> str:
 # --------------------------------------------------------------------------- happy path
 
 
-def test_one_item_is_seeded_planned_implemented_checked_pruned_and_committed(
+def test_one_item_is_seeded_fixed_checked_pruned_and_committed(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
@@ -304,6 +278,9 @@ def test_one_item_is_seeded_planned_implemented_checked_pruned_and_committed(
     Every claim the flow makes about a drained item is checked against the file it changed:
     the story exists and carries the bullet as its single AC, the bullet is gone from the
     backlog, and the code repo has a commit naming the story.
+
+    The count is the one-turn shape on the outside: one `fix-item`, not a plan turn and an
+    implement turn.
     """
     agent = _Agent(workspace)
     run_env = env()
@@ -315,8 +292,7 @@ def test_one_item_is_seeded_planned_implemented_checked_pruned_and_committed(
     assert "no drainable bullet" in result.reason, result
 
     assert agent.counts() == {
-        "plan-story": 1,
-        "implement-plan": 1,
+        "fix-item": 1,
         "qa-fix-item": 1,
         "document-story": 1,
         "review-story-documentation": 1,
@@ -332,10 +308,33 @@ def test_one_item_is_seeded_planned_implemented_checked_pruned_and_committed(
     assert BULLET not in _backlog(docs), _backlog(docs)
     assert "## Filed by coder" in _backlog(docs)
 
-    # And the change was committed in the repo the plan named, with no push and no PR — as a
-    # Conventional Commit `fix` scoped to that repo, because release-please reads the subject.
+    # And the change was committed in the repo git says it landed in, with no push and no
+    # PR — a Conventional Commit `fix` scoped to that repo, because release-please reads it.
     assert _log_of(workspace["api"])[0] == f"fix(api): {SLUG}"
     assert (workspace["api"] / "pagination.go").is_file()
+
+
+def test_the_turn_is_handed_the_item_and_an_empty_first_pass_gate_report(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`fix-item.md` renders four flow-owned values, and none of them has a fallback arm.
+
+    The prompt inlines `gate_report` and `operator_context` unconditionally, so the flow owes
+    both on the first pass too — blank by *content*, never by absence. This is the assertion
+    that says the flow pays that debt.
+    """
+    agent = _Agent(workspace)
+
+    drive_flow(Fix(), env(), agent)
+
+    first = agent.args_for("fix-item")[0]
+    assert first["bullet_text"] == TEXT, first
+    assert first["story_path"].endswith("story.md"), first
+    assert "no gate has run" in first["gate_report"].lower(), first
+    assert first["operator_context"] == "", first
 
 
 def test_the_drain_keeps_going_until_the_section_is_empty(
@@ -345,7 +344,7 @@ def test_the_drain_keeps_going_until_the_section_is_empty(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`commit_fix_item.next` is the draw, so two items are two full iterations in one run.
+    """`commit`'s next is the draw, so two items are two full iterations in one run.
 
     The commit-per-item rule is what this asserts: two drained items are two commits, not one
     squashed at the end. That is the whole difference between this flow and the main graph's
@@ -360,42 +359,129 @@ def test_the_drain_keeps_going_until_the_section_is_empty(
     result = drive_flow(Fix(), env(), agent)
 
     assert result.has_fix is False, result
-    assert agent.counts()["plan-story"] == 2, agent.counts()
+    assert agent.counts()["fix-item"] == 2, agent.counts()
     assert agent.counts()["qa-fix-item"] == 2, agent.counts()
     assert "widget-pagination" not in _backlog(docs), _backlog(docs)
     assert "mobile-pagination" not in _backlog(docs), _backlog(docs)
     assert len([line for line in _log_of(workspace["api"]) if line.startswith("fix(api):")]) == 2
 
 
-# --------------------------------------------------------------------------- the two flags
+# --------------------------------------------------------------------------- the gates
 
 
-def test_a_blocked_plan_flags_the_bullet_without_spending_an_implement_turn(
+def test_a_red_gate_buys_a_repair_lap_and_hands_the_turn_its_output(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The first of the two ways an item is flagged, and the cheapest.
+    """The deterministic half of the collapsed split: git names the repos, `make` judges them.
 
-    A blocked plan skips implementation and QA entirely — and the annotated bullet is what
-    stops the very next draw from picking it up again, which is what keeps a permanently
-    stuck item from spinning the loop.
+    The turn is re-entered rather than a fresh one dispatched — same session, same story —
+    and what it is handed is the gate's own output, not a summary of it.
     """
-    agent = _Agent(workspace, plan_blocked=1)
-    run_env = env()
+    agent = _Agent(workspace, gate_red=1)
 
-    result = drive_flow(Fix(), run_env, agent)
+    result = drive_flow(Fix(), env(), agent)
 
     assert result.has_fix is False, result
-    assert "implement-plan" not in agent.counts(), agent.counts()
-    assert "qa-fix-item" not in agent.counts(), agent.counts()
-    assert agent.counts()["plan-story"] == 1, agent.counts()
+    assert agent.counts()["fix-item"] == 2, agent.counts()
 
-    line = next(ln for ln in _backlog(docs).splitlines() if BULLET in ln)
-    assert "(blocked" in line, line
-    assert "plan blocked" in line, line
-    assert _output(run_env, mark_fix_blocked)["marked"] is True
+    lap = agent.args_for("fix-item")[1]["gate_report"]
+    assert "Repair lap 1" in lap, lap
+    assert "make lint" in lap, lap
+    assert "undefined: pageSize" in lap, lap
+    assert str(workspace["api"]) in lap, lap
+
+    # The lap converged, so the item shipped like any other.
+    assert BULLET not in _backlog(docs), _backlog(docs)
+
+
+def test_a_gate_still_red_when_the_laps_run_out_parks_rather_than_giving_up(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A spent repair budget is a block, not a `WorkflowFailed` — AGENTS.md's rule, here.
+
+    The escalation publishes the gate's own output so whoever answers is not re-deriving it,
+    and the answered run comes back into the same turn and finishes the item.
+    """
+    agent = _Agent(workspace, gate_red=MAX_FIX_LAPS)
+    seen: list[str] = []
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Fix(), env(), agent)
+
+    assert result.has_fix is False, result
+
+    (gate,) = seen
+    assert "lint gate on the fix-drain item" in gate, gate
+    assert f"after {MAX_FIX_LAPS} repair lap(s)" in gate, gate
+    assert "undefined: pageSize" in gate, gate
+
+    # Three laps inside the budget, then the turn the operator's answer re-enters.
+    assert agent.counts()["fix-item"] == MAX_FIX_LAPS + 1, agent.counts()
+    assert "Twenty per page" in agent.args_for("fix-item")[-1]["operator_context"]
+    assert BULLET not in _backlog(docs), _backlog(docs)
+
+
+def test_an_untouched_repo_is_neither_gated_nor_committed(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The targets are git's account of the change, not the workspace manifest's list.
+
+    `web` is in the manifest and reachable by every turn, and the item never touched it: its
+    gates are not run and it gets no empty commit. A repo the manifest merely *lists* is not
+    a repo this item changed.
+    """
+    (workspace["web"] / "Makefile").write_text(RED_MAKEFILE, encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "Makefile"], cwd=workspace["web"], check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-qm", "Add a lint target that fails"],
+        cwd=workspace["web"],
+        check=True,
+        capture_output=True,
+    )
+    agent = _Agent(workspace)
+
+    result = drive_flow(Fix(), env(), agent)
+
+    # The red gate in `web` was never run: it is not this item's repo.
+    assert result.has_fix is False, result
+    assert agent.counts()["fix-item"] == 1, agent.counts()
+    assert not any(line.startswith("fix(web):") for line in _log_of(workspace["web"]))
+    assert _log_of(workspace["api"])[0] == f"fix(api): {SLUG}"
+
+
+def test_the_commits_land_on_the_branch_the_repos_were_already_on(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """No story branch, no fix branch — "commit this one drained item onto the CURRENT branch".
+
+    The lane branched nothing before and branches nothing now; what changed is that the call
+    claiming to is gone. It resolved its repos from plan context, and with the plan turn
+    deleted it would have branched an empty list under a name that said otherwise.
+    """
+    agent = _Agent(workspace)
+
+    drive_flow(Fix(), env(), agent)
+
+    assert _branch_of(workspace["api"]) == "main"
+    assert _branch_of(docs) == "main"
+    assert _log_of(workspace["api"])[0] == f"fix(api): {SLUG}"
+
+
+# --------------------------------------------------------------------------- the QA tail
 
 
 def test_qa_gets_exactly_one_retry_and_the_fixer_is_handed_the_first_verdict(
@@ -431,11 +517,10 @@ def test_a_second_failing_check_flags_rather_than_retrying_again(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The retry is one, not a loop — the drain never escalates and never spins."""
+    """The retry is one, not a loop — a QA verdict the drain believes never escalates."""
     agent = _Agent(workspace, qa_fails=2)
-    run_env = env()
 
-    result = drive_flow(Fix(), run_env, agent)
+    result = drive_flow(Fix(), env(), agent)
 
     assert result.has_fix is False, result
     assert agent.counts()["qa-fix-item"] == 2, agent.counts()
@@ -448,97 +533,95 @@ def test_a_second_failing_check_flags_rather_than_retrying_again(
     assert BULLET in _backlog(docs)
 
 
-# ------------------------------------------------------------------- dispatch and layers
-
-
-def test_only_the_first_service_layer_is_implemented(
+def test_a_retry_that_says_it_cannot_parks_instead_of_rechecking_nothing(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The YAML's `implement_fix.next: check_fix`, preserved — and pinned here.
+    """`apply_once`'s verdict was parsed and dropped, so a blocked fixer was rechecked anyway.
 
-    `flows.dev` loops back to its layer selector; this flow does not, so a plan dispatching
-    two services gets one of them implemented and is then QA'd as a whole. It reads far more
-    like an omission than a decision, which is exactly why it is a test: the behavior is
-    recorded rather than quietly repaired, and a later decision to loop will fail here.
+    The recheck then failed — over an unchanged worktree — and the bullet was flagged as if
+    QA had failed twice, which is a false answer to a question nobody asked. It parks now,
+    and the answer re-enters the fix turn with the operator's words in the prompt.
     """
-    agent = _Agent(workspace, services=[API_SERVICE, WEB_SERVICE])
-    run_env = env()
+    agent = _Agent(workspace, qa_fails=1, apply_blocked=1)
+    seen: list[str] = []
 
-    drive_flow(Fix(), run_env, agent)
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Fix(), env(), agent)
 
-    assert agent.counts()["implement-plan"] == 1, agent.counts()
-    assert agent.args_for("implement-plan")[0]["plan_file"] == "plan-api.md"
-    # Both layers were dispatched; only the first was implemented.
-    assert len(_output(run_env, resolve_impl_context)["dispatch_list"]) == 2
+    assert result.has_fix is False, result
+
+    (gate,) = seen
+    assert "QA wants a page size nobody has picked" in gate, gate
+
+    # One retry, no second one, and no recheck over the empty worktree.
+    assert agent.counts()["apply-qa-fixes"] == 1, agent.counts()
+    assert agent.counts()["fix-item"] == 2, agent.counts()
+    assert agent.counts()["qa-fix-item"] == 2, agent.counts()
+    assert BULLET not in _backlog(docs), _backlog(docs)
 
 
-def test_a_plan_that_dispatches_no_layer_is_still_checked(
+def test_an_implementation_turn_that_says_it_cannot_parks_instead_of_qa_ing_nothing(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`decide_fix_layer`'s `"no"` arm: a fix that changes only documents is legitimate."""
-    agent = _Agent(workspace, services=[])
+    """The fifth lane's copy of the dropped-verdict bug, from the outside.
+
+    The implementation verdict was discarded, so a turn reporting it could not write the fix
+    went straight to QA over an unchanged worktree — and the QA verdict that followed flagged
+    the *bullet* as unfixable. The block now parks on the drained story's own `context.md`,
+    and the answer re-enters the same state with the operator's words in the prompt.
+    """
+    agent = _Agent(workspace, impl_blocked=1)
+    seen: list[str] = []
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Fix(), env(), agent)
+
+    assert result.has_fix is False, result
+
+    # The gate is beside the drained item, and it publishes what the turn actually said.
+    (gate,) = seen
+    assert "the page size is a product decision nobody has made" in gate, gate
+    assert "implementation stage, the fix-drain implementation turn" in gate, gate
+    assert SLUG in gate, gate
+
+    # No QA turn was spent on the empty worktree: the second fix turn is what the first
+    # check sees, and it carries the answer.
+    assert agent.counts()["fix-item"] == 2, agent.counts()
+    assert agent.counts()["qa-fix-item"] == 1, agent.counts()
+    retried = agent.args_for("fix-item")[1]
+    assert "Twenty per page" in retried["operator_context"], retried
+
+    # And the iteration finishes as any other: the bullet is drained, not flagged.
+    assert BULLET not in _backlog(docs), _backlog(docs)
+    assert _log_of(workspace["api"])[0] == f"fix(api): {SLUG}"
+
+
+def test_a_blocked_item_is_flagged_and_the_next_draw_skips_it(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The annotated bullet is what stops the very next draw from picking it up again.
+
+    Without it the loop re-draws the item it just failed on, forever. This is the property
+    the flag exists for, and it is what keeps a permanently stuck item from spinning the
+    drain.
+    """
+    agent = _Agent(workspace, qa_fails=2)
     run_env = env()
 
     result = drive_flow(Fix(), run_env, agent)
 
     assert result.has_fix is False, result
-    assert "implement-plan" not in agent.counts(), agent.counts()
-    assert agent.counts()["qa-fix-item"] == 1, agent.counts()
-    assert BULLET not in _backlog(docs), _backlog(docs)
-
-
-def test_the_implement_turn_is_handed_the_three_values_its_prompt_reads(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """`implement-plan.md` reads three values this YAML node never passed.
-
-    Same divergence `flows.dev` records and for the same reason: under the YAML engine
-    `resolve_fix_impl_context`'s declared outputs landed in the run context and the prompt
-    rendered against the whole of it. `Engine.agent` renders against `args` alone.
-    """
-    agent = _Agent(workspace)
-    run_env = env()
-
-    drive_flow(Fix(), run_env, agent)
-
-    first = agent.args_for("implement-plan")[0]
-    impl = _output(run_env, resolve_impl_context)
-    assert first["qa_run_plan"] == impl["qa_run_plan"]
-    assert first["impl_instruction_paths"] == impl["impl_instruction_paths"]
-    assert first["verification_setup"] == impl["verification_setup"]
-
-
-def test_the_repos_are_branched_onto_the_current_branch_not_a_fix_branch(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """`branch_fix_code_repos` is called with `spec_dir` alone — the recorded divergence.
-
-    `flows.dev` passes the story branch; this node's YAML argument list is one entry long, so
-    the branch defaults to the docs repo's *current* branch. The repos stay on `main` and the
-    commits land there, which is what "commit this one drained item onto the CURRENT branch"
-    meant. Passing `self.docs_path` or a derived branch here would change that silently.
-    """
-    agent = _Agent(workspace)
-    run_env = env()
-
-    drive_flow(Fix(), run_env, agent)
-
-    outcome = _output(run_env, branch_code_repos)
-    assert outcome["branched"] == [], outcome
-    assert outcome["already_on_branch"] == ["api"], outcome
-    assert _branch_of(workspace["api"]) == "main"
+    assert agent.counts()["fix-item"] == 1, agent.counts()
+    assert _output(run_env, mark_fix_blocked)["marked"] is True
 
 
 # --------------------------------------------------------------------------- documentation
@@ -550,7 +633,7 @@ def test_the_docs_sub_flow_runs_for_real_and_its_verdict_gates_the_commit(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`document_fix_item` is a `type: flow`, so the whole `docs` flow runs per drained item.
+    """`document` is a handoff, so the whole `docs` flow runs per drained item.
 
     This is the handoff under test rather than stubbed: the sub-flow's own OKF pre-gate finds
     the `docs/epics` tree the seeder just created, takes the `semantic` route because the code
@@ -558,9 +641,8 @@ def test_the_docs_sub_flow_runs_for_real_and_its_verdict_gates_the_commit(
     same scripted agent — a handoff shares the environment, only the writer is subscoped.
     """
     agent = _Agent(workspace)
-    run_env = env()
 
-    drive_flow(Fix(), run_env, agent)
+    drive_flow(Fix(), env(), agent)
 
     assert agent.counts()["document-story"] == 1, agent.counts()
     assert agent.counts()["review-story-documentation"] == 1, agent.counts()
@@ -576,17 +658,15 @@ def test_documentation_that_cannot_converge_fails_the_run_before_the_commit(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`fix_documentation_failed` was a `type: fail`, and this is the arm that reaches it.
+    """A blocked reviewer is the sub-flow saying the story cannot be documented as it stands.
 
-    A blocked reviewer is the sub-flow saying the story cannot be documented as it stands.
     That failure crosses the handoff boundary — `Engine.handoff` does not catch it — and the
     fix flow does not swallow it either: nothing is committed and the drain stops here rather
     than moving on to the next bullet.
 
     It also pins the ordering, which is not free: the prune runs *before* the documentation,
     so a run that dies here has already taken the bullet off the backlog while leaving the
-    work uncommitted. That is the YAML's wiring (`prune_fix_item.next: document_fix_item`)
-    and it is preserved, but it means the failed item is not re-drawn on the next run.
+    work uncommitted. That is the wiring, and it means the failed item is not re-drawn.
     """
     agent = _Agent(workspace, review_blocks=True)
 
@@ -608,9 +688,8 @@ def test_a_run_killed_mid_check_resumes_at_the_check(
 ) -> None:
     """The checkpoint is written before a state runs, so the drawn item survives the kill.
 
-    This is the resume shape the port has to match: the state, the flow name, and inputs that
-    reconstruct the workflow. The resumed run re-enters on `check` — it does not re-draw a
-    different item, it does not re-plan, and it does not implement a second time.
+    This is what the expensive turn being a state of its own buys: the resumed run re-enters
+    on `check`. It does not re-draw a different item, and it does not write the fix twice.
     """
     run_env = env()
     run_dir = run_env.writer.run_dir
@@ -627,47 +706,6 @@ def test_a_run_killed_mid_check_resumes_at_the_check(
     result = drive_flow(Fix(**resume.inputs), env(run_dir=run_dir), agent, resume)
 
     assert result.has_fix is False, result
-    assert "plan-story" not in agent.counts(), agent.counts()
-    assert "implement-plan" not in agent.counts(), agent.counts()
+    assert "fix-item" not in agent.counts(), agent.counts()
     assert agent.counts()["qa-fix-item"] == 1, agent.counts()
     assert BULLET not in _backlog(docs), _backlog(docs)
-
-
-def test_an_implementation_turn_that_says_it_cannot_parks_instead_of_qa_ing_nothing(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """The fifth lane's copy of the dropped-verdict bug, from the outside.
-
-    `implement` discarded its `ImplResult`, so a turn reporting it could not implement the
-    plan went straight to QA over an unchanged worktree — and the QA verdict that followed
-    flagged the *bullet* as unfixable, which is a false answer to a question nobody asked.
-    The block now parks on the drained story's own `context.md`, and the answer re-enters
-    the same state with the operator's words in the prompt.
-    """
-    agent = _Agent(workspace, impl_blocked=1)
-    seen: list[str] = []
-
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
-        result = drive_flow(Fix(), env(), agent)
-
-    assert result.has_fix is False, result
-
-    # The gate is beside the drained item, and it publishes what the turn actually said.
-    (gate,) = seen
-    assert "the page size is a product decision nobody has made" in gate, gate
-    assert "implementation stage, the fix-drain implementation turn" in gate, gate
-    assert SLUG in gate, gate
-
-    # No QA turn was spent on the empty worktree: the second implement turn is what the
-    # first check sees, and it carries the answer.
-    assert agent.counts()["implement-plan"] == 2, agent.counts()
-    assert agent.counts()["qa-fix-item"] == 1, agent.counts()
-    retried = agent.args_for("implement-plan")[1]
-    assert "Twenty per page" in retried["operator_context"], retried
-
-    # And the iteration finishes as any other: the bullet is drained, not flagged.
-    assert BULLET not in _backlog(docs), _backlog(docs)
-    assert _log_of(workspace["api"])[0] == f"fix(api): {SLUG}"

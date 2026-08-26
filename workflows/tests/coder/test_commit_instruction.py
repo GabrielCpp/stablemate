@@ -68,6 +68,14 @@ SELF_COMMITTING = {
     "settle-worktree.md",
 }
 
+#: Prompts that produce a file and carry **no** commit block, because the protocol is not
+#: theirs to state: the target repo installs the `commit-and-push` policy through its own
+#: generated agent instructions, and the turn-specific trailers are applied by the flow.
+#: Every prompt written after that ruling belongs here; the ones above predate it.
+REPO_OWNED = {
+    "fix-item.md",
+}
+
 #: Prompts that write nothing a commit could carry: a reviewer that is told in so many
 #: words not to commit, a documentation review that only reports, two reporters that
 #: write to a ticket, and the operator gate (whose file is the gate, not the repo).
@@ -100,7 +108,7 @@ def _id(path: Path) -> str:
 
 def test_every_prompt_is_classified() -> None:
     """A new prompt is a decision, not a default."""
-    classified = PRODUCERS | SELF_COMMITTING | NON_PRODUCERS
+    classified = PRODUCERS | SELF_COMMITTING | REPO_OWNED | NON_PRODUCERS
     assert _all_prompts() == classified
 
 

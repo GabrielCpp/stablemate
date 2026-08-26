@@ -920,6 +920,30 @@ def _stamp_status(
     return True, superseded
 
 
+def _commit_roots(
+    logger: logging.Logger,
+    root: Path,
+    spec_dir: str,
+    workspace_file: str,
+    repo_dir: str,
+    roots: list[str] | None,
+) -> list[tuple[str, Path]]:
+    """Which checkouts this story's commit covers — the caller's list, or the plan's.
+
+    A caller that already knows where the work went says so. The fix drain does: it has no
+    plan context to read the affected repos off, because its one-turn item lane produces
+    none, so it asks git which repositories are holding changes and hands the answer here.
+    Without that the plan lookup below falls back to the resolved root, which silently
+    leaves a second repo's half of the repair uncommitted.
+
+    The package name is the checkout's own directory name, which is what the workspace
+    manifest keys a repo by and what release-please knows the package as.
+    """
+    if roots:
+        return [(Path(p).name, Path(p)) for p in roots]
+    return _affected_roots(logger, root, spec_dir, workspace_file, repo_dir)
+
+
 def _affected_roots(
     logger: logging.Logger, root: Path, spec_dir: str, workspace_file: str, repo_dir: str
 ) -> list[tuple[str, Path]]:
@@ -1059,6 +1083,7 @@ def commit_story(
     repo_dir: str = "",
     workspace_file: str = "",
     kind: str = "feat",
+    roots: list[str] | None = None,
 ) -> StoryCommitted:
     """Commit a completed story's changes in each affected code repo, then stamp it passed.
 
@@ -1111,7 +1136,7 @@ def commit_story(
             ) from exc
 
     any_committed = False
-    for name, repo_path in _affected_roots(logger, root, spec_dir, workspace_file, repo_dir):
+    for name, repo_path in _commit_roots(logger, root, spec_dir, workspace_file, repo_dir, roots):
         if _commit_in(repo_path, name):
             logger.info("committed in %s", repo_path.name)
             any_committed = True

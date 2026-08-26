@@ -1,57 +1,33 @@
-"""Drain the coder's own backlog, one filed item at a time — the port of
-`coder/workflow.yaml`'s `flows.fix` (24 nodes, lines 3605-3893).
+"""Drain the coder's own backlog, one filed item at a time.
 
 Standalone only. Nothing hands off to it: the main graph carries its **own** copy of the
-drain (`select_fix_item` through `decide_post_drain`, lines 859-1144), which rides inside an
-epic's story chain and commits nothing of its own. This flow is the copy you run with no
-epic and no story selected — and it differs from the nested one in exactly two ways, both of
-which the YAML's comment calls out and both of which are states here::
+drain, which rides inside an epic's story chain and commits nothing of its own. This flow
+is the copy you run with no epic and no story selected, and it differs from the nested one
+in exactly two ways, both of which are states here::
 
-    draw → plan → dispatch → implement → check → (apply once → recheck)
-         → (prune | flag) → document → commit → draw
+    start → item → gates → (item | Await) → check → (apply once → recheck)
+          → (prune | flag) → document → commit → start
 
 * it **documents** each drained item, by handing off to the `docs` flow — the nested copy
   runs documentation once at the end of the story, over the whole working tree;
 * it **commits** each drained item onto the current branch, one commit per item, no push
   and no PR — the nested copy's changes ride the story's own commit.
 
-And it terminates when the backlog is dry, where the nested copy falls through to
-`decide_post_drain` and the story chain continues. Both shapes have to exist; this one is
-not reachable from the other.
+And it terminates when the backlog is dry, where the nested copy's drain falls through and
+the story chain continues. Both shapes have to exist; this one is not reachable from the
+other.
 
-Twenty-four nodes become nine states. Six are `type: branch` routers reading a value
-produced directly above them; `resolve_workspace` is `setup`; `prune_fix_item` and
-`fix_give_up` are one deterministic node each, reached from two deciding sites apiece, so
-they are the private routers `_prune` and `_flag` rather than states.
+**One turn per item.** A drained bullet is a one-criterion repair, so the lane does not
+mimic `dev`'s plan → dispatch → implement split: a single session plans the fix and writes
+it, and the gates that judge the result run afterwards, in Python, against the repositories
+git says the turn actually changed. The split is what produced the two defects that lived
+here — a plan whose dispatch named two services got exactly one of them implemented, and
+the planner filed new backlog items into the very list this loop drains — and deleting it
+is what fixes them.
 
-Divergences from the YAML, all deliberate:
-
-* **only the first service layer is implemented.** `implement_fix.next` is `check_fix`, not
-  `select_fix_layer` — there is no layer loop here, where `flows.dev` has one. A drained fix
-  whose plan dispatches two services gets one of them implemented and is then QA'd. That is
-  the YAML's wiring, preserved; it is recorded in the progress ledger as a finding, because
-  it reads much more like an omission than a decision.
-* **`branch_fix_code_repos` is called with `spec_dir` alone.** `flows.dev` passes the story
-  branch and the docs path too; this node's YAML argument list is one entry long, so
-  `branch` and `docs_path` take their empty defaults. Preserved rather than harmonised —
-  passing `self.docs_path` here would change which repos get branched on a run whose docs
-  root is not the working directory.
-* `implement-plan.md`'s last three args (`impl_instruction_paths`, `qa_run_plan`,
-  `verification_setup`) are passed although the YAML node does not list them, for the reason
-  `flows.dev` records: the prompt reads them, and under the YAML engine they were in scope
-  because `resolve_fix_impl_context` declared them as outputs. Same values, same source
-  node, different route.
-* `refuel: fix_bullet_id` on `select_fix_item` has no counterpart: pyflow has no gas tank.
-  The drain is unbounded in the YAML and bounded here by the transition budget — the same
-  loop-2 design question `okf-builder` raised.
-* **`fix_documentation_failed` was a `type: fail`**, so the arm that reached it raises
-  `WorkflowFailed` at the deciding site.
-* there is **no `stamp_specs` after the plan turn**, where `flows.dev` has one. The YAML
-  wires `plan_fix` straight to its branch; a drained fix's plan is not registered as an OKF
-  Concept. Preserved.
-* the `done` terminal declared no outputs, so the flow returns the draw that found nothing —
-  `FixPick(has_fix=False)` carries the reason the pool is dry, which is the whole of what
-  the YAML had to say at that node.
+The QA tail is unchanged and deliberately so: one verdict, one retry, one recheck. A fix
+that will not converge in that budget is annotated in the backlog rather than escalated —
+see `recheck`.
 """
 from __future__ import annotations
 
@@ -66,24 +42,51 @@ from workhorse_workflows.coder.shared.backlog import (
     seed_fix_story,
     select_fix_item,
 )
+from workhorse_workflows.coder.shared.conversation import story_chain
 from workhorse_workflows.coder.shared.dev import (
-    branch_code_repos,
+    GATE_ORDER,
+    changed_files,
     plan_summary,
     read_operator_context,
-    read_plan_text,
-    resolve_impl_context,
-    select_next_layer,
+    run_gate,
 )
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
+from workhorse_workflows.coder.shared.failure import from_gate
 from workhorse_workflows.coder.shared.queue import commit_story
 from workhorse_workflows.coder.shared.story import prepare_fix_story, resolve_workspace_dirs
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
-from workhorse_workflows.coder.shared.schemas.dev import DispatchEntry, ImplResult, PlanResult
-from workhorse_workflows.coder.shared.schemas.qa import QaResult
+from workhorse_workflows.coder.shared.schemas.dev import FailureReport, ImplResult
+from workhorse_workflows.coder.shared.schemas.qa import QaRunResult
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
 
-#: The note `mark-fix-blocked.py` was handed, verbatim — it names both ways in.
-BLOCKED_NOTE = "blocked in fix loop (plan blocked, or QA still failing after one retry)"
+#: The note `mark_fix_blocked` is handed, verbatim. One way in now that the plan turn
+#: is gone: `recheck` is the only caller of `_flag`, and every other block parks.
+BLOCKED_NOTE = "blocked in fix loop (QA still failing after one retry)"
+
+#: Repair laps a red gate buys before the block goes to an operator. The same budget
+#: `dev` spends on the same failure, for the same reason: a gate that is still red on the
+#: fourth reading of its own output is not going to be read into submission.
+MAX_FIX_LAPS = 3
+
+#: What the turn is handed on its first pass, when no gate has run yet. A literal rather
+#: than an empty string because the prompt inlines it unconditionally — an input the flow
+#: owns is always supplied, and a `{% if %}` arm in the prompt would be the flow's
+#: obligation pushed onto the agent.
+NO_GATE_REPORT = "None. No gate has run against this item yet — this is the first pass."
+
+
+def render_gate(report: FailureReport) -> str:
+    """The failing gate, as the prompt's `gate_report` section reads it.
+
+    Rendered here rather than in the template because the payload is a pydantic model and
+    a model handed to Jinja renders as its Python repr. The turn needs the command, the
+    directory to re-run it in, and the output — anything else it can read off the tree.
+    """
+    return (
+        f"Repair lap {report.lap}: the `{report.source}` gate failed in `{report.cwd}`.\n\n"
+        f"Command: `{report.command}`\n\n"
+        f"```\n{report.output}\n```"
+    )
 
 
 class Fix(Workflow):
@@ -95,7 +98,7 @@ class Fix(Workflow):
     #: The `.code-workspace` manifest naming this run's repos. Empty falls back to the
     #: single checkout at `repo_dir` — a one-repo run needs no manifest.
     workspace_file: str = ""
-    #: `local` or `dev` — passed to the impl-context decode and to both QA turns.
+    #: `local` or `dev` — passed to both QA turns.
     target_env: str = "local"
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
@@ -106,9 +109,9 @@ class Fix(Workflow):
     def setup(self) -> WorkspaceDirs:
         """Every directory an agent turn in this run may read.
 
-        `resolve_workspace` is the whole of it. Unlike every other per-story flow, `fix` has
-        no story at setup time — it draws one per iteration — so the workspace is the only
-        thing that can be resolved once and used by all of them.
+        Unlike every other per-story flow, `fix` has no story at setup time — it draws one
+        per iteration — so the workspace is the only thing that can be resolved once and
+        used by all of them.
         """
         return self.call(resolve_workspace_dirs, self.docs_path)
 
@@ -117,13 +120,9 @@ class Fix(Workflow):
     def start(self) -> Continue | Done:
         """Draw the next drainable bullet, seed it as a story, and resolve its paths.
 
-        `select_fix_item` + `decide_fix_item` + `seed_fix_story` + `prepare_fix_story`. The
-        two seeding nodes are deterministic and unbranched, so they belong to the state that
-        decided there was something to seed.
-
-        The draw does not touch the backlog file — pruning and flagging happen at the far end
-        of the iteration — which is what lets a resumed run re-draw the same item and land on
-        the same story rather than skipping it.
+        The draw does not touch the backlog file — pruning and flagging happen at the far
+        end of the iteration — which is what lets a resumed run re-draw the same item and
+        land on the same story rather than skipping it.
         """
         pick = self.call(select_fix_item, self.docs_path)
         if not pick.has_fix:
@@ -134,149 +133,142 @@ class Fix(Workflow):
             seed_fix_story, pick.fix_bullet_id, pick.fix_bullet_text, "", "", self.docs_path
         )
         story = self.call(prepare_fix_story, self.docs_path, seed.story_slug, seed.epic)
-        return Continue(story, self.plan)
+        return Continue(story, self.item)
 
-    def plan(self) -> Continue:
-        """Plan the one-AC fix story — the same planner `dev` runs, on a much smaller story.
+    def item(
+        self,
+        gate_report: str = NO_GATE_REPORT,
+        operator_context: str = "",
+        impl_blocks: int = 0,
+        lap: int = 0,
+    ) -> Continue | Await:
+        """Plan and write the repair, in one session — and re-enter it for each repair lap.
 
-        `plan_fix` + `decide_plan_fix`. A `blocked` plan is the first of the two ways an item
-        gets flagged rather than pruned; a blank status takes the YAML's `default:` arm and
-        proceeds, exactly as `dev`'s plan gate does.
+        A state of its own because it is the expensive turn, and a checkpoint is written
+        before a state runs: a kill during QA re-enters at QA rather than implementing a
+        second time.
+
+        The verdict is branched on. A turn reporting it could not implement was discarded
+        here for the whole of this lane's life, so the drain went on to QA a change nobody
+        had written and then flagged the bullet as if the *fix* were the thing that had
+        failed. It is a block like any other now — it parks on the story's `context.md` and
+        re-enters this state with the answer in hand.
+
+        `gate_report` is the failure a gate found on the previous lap, already rendered;
+        `operator_context` is what an answered block said. Both are always supplied, and
+        both are blank-by-content rather than blank-by-absence on the ordinary first pass.
         """
-        self.logger.info("planning %s", self._story.story_slug, extra={"activity": True})
-        turn = roles.turn(self, "plan-story")
-        result = self.agent(
-            turn.prompt,
-            returns=PlanResult,
-            # high: the same planner `dev` runs. A fix story is small, but the plan still
-            # decides what production code gets touched.
-            power="high",
-            add_dirs=self._dirs(),
-            args=turn.args
-            | {
-                "story_path": self._story.story_path,
-                "spec_dir": self._story.spec_dir,
-                "story_slug": self._story.story_slug,
-                "epic": self._story.story_epic,
-            },
+        self.logger.info(
+            "fixing %s (lap %d)", self._story.story_slug, lap + 1, extra={"activity": True}
         )
-        if result.status == "blocked":
-            return self._flag(result)
-        return Continue(result, self.dispatch)
-
-    def dispatch(self) -> Continue:
-        """Decode the plan, branch the repos it names, and take the first service layer.
-
-        `resolve_fix_impl_context` + `branch_fix_code_repos` + `select_fix_layer` +
-        `decide_fix_layer`. All three nodes are deterministic and the branch reads the
-        third's own output, so they are one state.
-
-        A plan that dispatches no layer at all is legitimate — a fix that changes only
-        documents — and goes straight to the QA turn, which is what `decide_fix_layer`'s
-        `"no"` arm did.
-        """
-        self.call(resolve_impl_context, self._story.spec_dir, self.target_env, self.docs_path)
-        self.call(branch_code_repos, self._story.spec_dir)
-        pick = self.call(select_next_layer, self._story.spec_dir, -1)
-        if not pick.has_layer:
-            self.logger.info("no service layer dispatched — checking the fix as it stands")
-            return Continue(pick, self.check)
-        return Continue(pick, self.implement)
-
-    def implement(self, operator_context: str = "", impl_blocks: int = 0) -> Continue | Await:
-        """Implement the first service layer, and only it — see the module docstring.
-
-        A state of its own for the reason `dev`'s is: it is the expensive turn, and a
-        checkpoint is written before a state runs, so a kill during QA re-enters at QA rather
-        than implementing a second time.
-
-        The verdict is branched on, which is the same root cause `dev` was repaired for and
-        the reason this state was rewritten: a turn reporting it could not implement the plan
-        used to be discarded here, so the drain went on to QA a change nobody had written and
-        then flagged the bullet as if the *fix* were the thing that had failed. It is a block
-        like any other now — it parks on the story's `context.md` and re-enters this state
-        with the answer in hand.
-
-        `operator_context` is what the answer said; the prompt reads it, and a blank one is
-        the ordinary first pass.
-        """
-        layer = self._layer
-        impl = self.output(resolve_impl_context)
-        self.logger.info("implementing %s", layer.service or "the fix", extra={"activity": True})
-        turn = roles.turn(self, "implement-plan")
+        turn = roles.turn(self, "fix-item")
         result = self.agent(
             turn.prompt,
             returns=ImplResult,
-            # high: writes the production change.
+            # high: this turn is both the plan and the production change.
             power="high",
-            cwd=layer.cwd,
             add_dirs=self._dirs(),
-            args=turn.args | {
+            # The repair laps and the operator's answers are one conversation: the turn
+            # that wrote the line a gate objects to knows why it is there.
+            session=story_chain(self._story.story_slug),
+            args=turn.args
+            | {
                 "story_slug": self._story.story_slug,
                 "epic": self._story.story_epic,
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
-                "plan_file": layer.plan_file,
-                "plan_text": read_plan_text(
-                    self._story.spec_dir, layer.plan_file, self.logger
-                ),
-                "service_path": layer.service_path,
-                "service_type": layer.type,
-                "verification": layer.verification,
-                "impl_instruction_paths": impl.impl_instruction_paths,
-                "impl_instructions": impl.impl_instructions,
-                "qa_run_plan": impl.qa_run_plan,
-                "verification_setup": impl.verification_setup,
+                "bullet_text": self.output(select_fix_item).fix_bullet_text,
+                "gate_report": gate_report,
                 "operator_context": operator_context,
             },
         )
         if result.blocked:
-            return self._gate_impl(result, impl_blocks)
-        return Continue(result, self.check)
+            return self._gate_impl(result, gate_report, impl_blocks, lap)
+        return Continue(result, self.gates, lap=lap)
 
-    def read_operator_impl(self, impl_blocks: int = 0) -> Continue:
-        """Consume the operator's answer and implement again with it in hand.
+    def gates(self, lap: int = 0, impl_blocks: int = 0) -> Continue | Await:
+        """Run the repo's own gates over what the turn changed, and buy a lap when one is red.
 
-        The thin consume state an `Await` asks for — resume replays its target from the top,
-        so everything but the answer is read by reference. `SCOPE: epic` has no meaning here
-        and is deliberately not honoured: the drain has no epic queue to hand a story back
-        to, and every item it draws is its own one-AC story.
+        The targets are derived from git rather than from a plan: every repository this run
+        can reach is asked what it is holding, and the ones with changes get one pass of
+        each gate. That is the deterministic half of the split this lane used to have — a
+        plan naming its services was the agent's account of where the work went, and this
+        is git's.
+
+        No service name is passed, because a drained item is not dispatched per layer:
+        `run_gate` falls back to the repository's own `make <gate>`, which is the whole
+        check for a repo-wide repair.
+        """
+        for repo_dir in self._changed_dirs():
+            for gate in GATE_ORDER:
+                outcome = self.call(run_gate, repo_dir, "", gate)
+                if outcome.status != "dirty":
+                    continue
+                report = from_gate(outcome, repo_dir, lap + 1)
+                if lap + 1 < MAX_FIX_LAPS:
+                    return Continue(
+                        report,
+                        self.item,
+                        gate_report=render_gate(report),
+                        impl_blocks=impl_blocks,
+                        lap=lap + 1,
+                    )
+                return self._gate_red(report, impl_blocks)
+        self.logger.info("gates are clean for %s", self._story.story_slug)
+        return Continue(self._story, self.check)
+
+    def read_operator_impl(
+        self, gate_report: str = NO_GATE_REPORT, impl_blocks: int = 0, lap: int = 0
+    ) -> Continue:
+        """Consume the operator's answer and re-enter the turn with it in hand.
+
+        The thin consume state an `Await` asks for — resume replays its target from the
+        top, so everything but the answer is read by reference. `SCOPE: epic` has no
+        meaning here and is deliberately not honoured: the drain has no epic queue to hand
+        a story back to, and every item it draws is its own one-AC story.
         """
         answer = self.call(read_operator_context, self._story.story_path)
         return Continue(
-            answer, self.implement, operator_context=answer.content, impl_blocks=impl_blocks
+            answer,
+            self.item,
+            gate_report=gate_report,
+            operator_context=answer.content,
+            impl_blocks=impl_blocks,
+            lap=lap,
         )
 
     def check(self) -> Continue:
-        """QA the fix. `check_fix` + `decide_fix_check`.
+        """QA the fix.
 
-        `qa-story.md` run directly rather than the whole `qa` flow: a drained fix gets one QA
-        turn and, if it fails, one fix-and-recheck. Anything the YAML's `default:` arm caught
-        — a blank status included — spends that retry.
+        `qa-fix-item.md` run directly rather than the whole `qa` flow: a drained fix gets
+        one QA turn and, if it fails, one fix-and-recheck.
         """
         result = self._qa()
         if result.status == "passed":
             return self._prune(result)
         return Continue(result, self.apply_once, notes=result.notes)
 
-    def apply_once(self, notes: str = "") -> Continue:
-        """The single retry: apply what QA found. `apply_fix_once`.
+    def apply_once(self, notes: str = "", impl_blocks: int = 0) -> Continue | Await:
+        """The single retry: apply what QA found.
 
-        `notes` is `{{ get_node_output('check_fix','qa_result').notes }}`, threaded as an
-        argument because it crosses from one agent turn to the next and agent turns are not
-        nodes — `self.output` cannot reach them.
+        `notes` is the check's verdict, threaded as an argument because it crosses from one
+        agent turn to the next and agent turns are not nodes — `self.output` cannot reach
+        them.
 
-        No session chain, unlike the QA lane's fix loop: there is exactly one lap here, so
-        there is no second turn for a chain to hand anything to.
+        The verdict this turn returns was parsed and then dropped, which meant a fixer that
+        reported it could not apply the findings was rechecked anyway and the bullet flagged
+        as if QA had failed twice. `blocked` parks instead: the retry produced no change to
+        recheck, and asking is what a block is for.
         """
         self.logger.info("applying QA fixes to the drained item", extra={"activity": True})
         turn = roles.turn(self, "apply-qa-fixes")
         result = self.agent(
             turn.prompt,
-            returns=QaResult,
+            returns=QaRunResult,
             # high: this retry has to converge, because there is not a second one.
             power="high",
             add_dirs=self._dirs(),
+            session=story_chain(self._story.story_slug),
             args=turn.args | {
                 "story_slug": self._story.story_slug,
                 "epic": self._story.story_epic,
@@ -286,18 +278,23 @@ class Fix(Workflow):
                 "qa_notes": notes,
             },
         )
+        if result.status == "blocked":
+            return self._gate_impl(result, NO_GATE_REPORT, impl_blocks, 0)
         return Continue(result, self.recheck)
 
     def recheck(self) -> Continue:
-        """QA it again, and settle the item either way. `recheck_fix` + `decide_recheck`.
+        """QA it again, and settle the item either way.
 
-        The only arm that prunes is `passed`; everything else — including the blank the
-        YAML's `default:` caught — flags the bullet and moves on. *This* arm never escalates
-        to an operator, which is the design: a fix that will not converge stays visible in
-        the backlog, annotated, and stops costing the loop anything. That is a statement
-        about a QA verdict the drain believes, not about the drain's tolerance for blocks —
-        an implementation turn that says it cannot proceed has produced no verdict to
-        believe, and `implement` parks on it.
+        The only arm that prunes is `passed`; anything else flags the bullet and moves on.
+        *This* arm never escalates to an operator, which is the design: a fix that will not
+        converge stays visible in the backlog, annotated, and stops costing the loop
+        anything. The residue is caught where it is cheap to catch — a flagged bullet is
+        still in the backlog the next drain reads, and the run that filed it reads its own
+        annotation rather than re-deriving the failure.
+
+        That is a statement about a QA verdict the drain believes, not about its tolerance
+        for blocks — a turn that says it cannot proceed has produced no verdict to believe,
+        and `item` and `apply_once` both park on one.
         """
         result = self._qa()
         if result.status == "passed":
@@ -307,10 +304,11 @@ class Fix(Workflow):
     # ── the far end of an iteration ───────────────────────────────────────────────────
 
     def document(self) -> Continue:
-        """Fold the drained item into the OKF book. `document_fix_item` + its two branches.
+        """Fold the drained item into the OKF book, by handing off to the `docs` flow.
 
-        The `docs` flow, handed off to. `not_applicable` — no OKF book here — is a pass, and
-        anything else is `fix_documentation_failed`, which was a `type: fail`.
+        `not_applicable` — no OKF book here — is a pass, and anything else fails the run:
+        an undocumented item that has already been pruned off the backlog is invisible to
+        every drain after this one.
         """
         seed = self.output(seed_fix_story)
         result = self.handoff(
@@ -330,49 +328,52 @@ class Fix(Workflow):
     def commit(self) -> Continue:
         """Commit this one item onto the current branch, then draw the next.
 
-        `commit_fix_item`, which is `commit-story.py` unchanged: it resolves the affected
-        repos from *this* fix's own plan context, via this iteration's `spec_dir`, so each
-        commit covers exactly the repos its own plan touched. No push and no PR — this flow
-        is standalone, and there is no epic branch for it to open one against.
+        The repos are the ones git says this iteration changed, for the same reason the
+        gates are: there is no plan context to read them off, and the workspace manifest
+        lists every repo the run *may* touch rather than the ones it did. No push and no
+        PR — this flow is standalone, and there is no epic branch to open one against.
 
         `kind="fix"` is the one override of the story default: every item this flow drains
-        was *filed* — by a review, by QA, by an operator — against behavior that already
+        was *filed* — by a review, by QA, by an operator — against behaviour that already
         shipped. Committing those as `feat` would bump a minor version for a repair and
         list the defect in the changelog's features.
         """
         seed = self.output(seed_fix_story)
         result = self.call(
-            commit_story, seed.epic, self._story.story_slug, self._story.spec_dir, kind="fix"
+            commit_story,
+            seed.epic,
+            self._story.story_slug,
+            self._story.spec_dir,
+            kind="fix",
+            roots=self._changed_dirs(),
         )
         return Continue(result, self.start)
 
     # ── routers and shared turns, none of them states ─────────────────────────────────
 
     def _prune(self, result: CoderResult) -> Continue:
-        """`prune_fix_item`: the fix shipped, so its bullet leaves the backlog."""
+        """The fix shipped, so its bullet leaves the backlog."""
         bullet = self.output(select_fix_item).fix_bullet_id
         self.call(prune_fix_item, bullet, self.docs_path)
         return Continue(result, self.document)
 
     def _flag(self, result: CoderResult) -> Continue:
-        """`fix_give_up`: the bullet is annotated in place, and the drain moves on.
-
-        Reached from the blocked plan and from a second failing QA. Both wrote the same note,
-        which is why it is one string and not two.
-        """
+        """The bullet is annotated in place, and the drain moves on."""
         bullet = self.output(select_fix_item).fix_bullet_id
         self.logger.info("flagging %s as blocked", bullet)
         self.call(mark_fix_blocked, bullet, BLOCKED_NOTE, self.docs_path)
         return Continue(result, self.document)
 
-    def _gate_impl(self, result: ImplResult, impl_blocks: int) -> Await:
-        """`implement` said it could not — park on the story and ask.
+    def _gate_impl(
+        self, result: ImplResult | QaRunResult, gate_report: str, impl_blocks: int, lap: int
+    ) -> Await:
+        """A turn said it could not — park on the story and ask.
 
         Straight to the file, with no resolver arm: the drain has no `operator_mode` and no
         resolver turn of its own, because unlike `dev` it is not running inside a story
         queue whose other stories are waiting on this one. Nothing is lost by asking, and
-        `escalation` publishes the turn's own findings so whoever answers is not re-deriving
-        them.
+        `escalation` publishes the turn's own findings so whoever answers is not
+        re-deriving them.
 
         Uncapped, per AGENTS.md: `impl_blocks` numbers the escalations for a reader and
         bounds nothing. A block that recurs asks again.
@@ -387,23 +388,55 @@ class Fix(Workflow):
             story=self._story,
         )
         return Await(
-            context_path(self, self._story.story_path), gate.body, self.read_operator_impl, impl_blocks=impl_blocks + 1
+            context_path(self, self._story.story_path),
+            gate.body,
+            self.read_operator_impl,
+            gate_report=gate_report,
+            impl_blocks=impl_blocks + 1,
+            lap=lap,
         )
 
-    def _qa(self) -> QaResult:
-        """`qa-fix-item.md`, which `check_fix` and `recheck_fix` ran with identical arguments.
+    def _gate_red(self, report: FailureReport, impl_blocks: int) -> Await:
+        """The repair budget is spent and the gate is still red — ask, do not give up.
+
+        A spent budget is a block, not a failure: the change is real, the gate's own output
+        says what is wrong with it, and the answer is one an operator can give. The turn
+        re-enters with the same report in hand, which is why it is rendered into the
+        `Await` rather than recomputed on the way back.
+        """
+        gate = escalation(
+            self,
+            block_kind="implementation",
+            where=f"the {report.source} gate on the fix-drain item",
+            notes=(
+                f"`{report.command or report.source}` still fails in {report.cwd} after "
+                f"{report.lap} repair lap(s).\n\n{report.output}"
+            ),
+            number=impl_blocks + 1,
+            findings=report.actionable,
+            story=self._story,
+        )
+        return Await(
+            context_path(self, self._story.story_path),
+            gate.body,
+            self.read_operator_impl,
+            gate_report=render_gate(report),
+            impl_blocks=impl_blocks + 1,
+            lap=0,
+        )
+
+    def _qa(self) -> QaRunResult:
+        """`qa-fix-item.md`, which `check` and `recheck` run with identical arguments.
 
         Not `qa-story.md`: that prompt assesses a run ostler already executed, and the drain
         has no runner behind it — it never passes `runner_status`, and it asks back for a
-        `passed | failed | blocked` verdict, not an assessment's disposition. The YAML pointed
-        both here and there, so the turn could not parse and always defaulted to a blank
-        status, which the branch below reads as "not passed".
+        `passed | failed | blocked` verdict, not an assessment's disposition.
         """
         self.logger.info("checking %s", self._story.story_slug, extra={"activity": True})
         turn = roles.turn(self, "qa-fix-item")
         return self.agent(
             turn.prompt,
-            returns=QaResult,
+            returns=QaRunResult,
             # high: the drain has no QA plan, no evidence gate and no audit behind it — this
             # turn is the whole verdict on the fix.
             power="high",
@@ -420,6 +453,20 @@ class Fix(Workflow):
             },
         )
 
+    def _changed_dirs(self) -> list[str]:
+        """The run's repositories that are holding work for this item, git's account of it.
+
+        Asked of every directory the workspace resolved rather than of a plan, so a repair
+        spanning two repos is gated in both and committed in both. A repo holding nothing
+        is dropped: gating it would run the whole suite of a repository this item never
+        touched.
+        """
+        return [
+            d
+            for d in self._dirs()
+            if self.call(changed_files, d, self._story.story_slug).paths
+        ]
+
     @property
     def _story(self) -> StoryPaths:
         """The story this iteration is draining, as `prepare_fix_story` resolved it.
@@ -430,14 +477,9 @@ class Fix(Workflow):
         """
         return self.output(prepare_fix_story)
 
-    @property
-    def _layer(self) -> DispatchEntry:
-        """The one service layer this fix implements, as `select_fix_layer` picked it."""
-        return self.output(select_next_layer).layer
-
     def _dirs(self) -> list[str]:
-        """`{{ workspace_dirs }}` — the `add_dirs` every agent turn in this flow was given."""
+        """The `add_dirs` every agent turn in this flow is given."""
         return list(self.ctx.dirs)
 
 
-__all__ = ["BLOCKED_NOTE", "Fix"]
+__all__ = ["BLOCKED_NOTE", "MAX_FIX_LAPS", "NO_GATE_REPORT", "Fix", "render_gate"]
