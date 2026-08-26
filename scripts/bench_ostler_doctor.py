@@ -361,6 +361,12 @@ def measure(book: Path, index_dir: Path) -> dict[str, Any]:
     because that is the state the plan's per-increment targets are written against.
     """
     by_state: dict[str, dict[str, float]] = {}
+    # The warm-only measurements are the loop's second output. Bound here rather than
+    # inside the ``warm-index`` arm so that the one pass that takes them is visibly the
+    # same pass that times the phases, on the same graph.
+    warm_shape: dict[str, int] = {}
+    checks = Timings()
+    components = Timings()
     for state in INDEX_STATES:
         with index.session(book, directory=index_dir, enabled=state != NO_INDEX):
             graph, by_state[state] = _phases_under(book)
