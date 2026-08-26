@@ -1,29 +1,34 @@
 """The base every agent reply and node return in this workflow derives from.
 
-Identical in force to `author`'s and `research`'s, and here for the same two reasons,
-both about how workhorse *fails*:
+**Who produces a status decides whether it defaults.** The two kinds of status this
+workflow carries fail in opposite directions, so they are typed in opposite ways:
 
-* **A node's fields default.** After the resilience ladder's last rung a node that
-  could not be answered emits its declared output keys as `null` and the run advances
-  (`workhorse/docs/GUARDRAILS.md`, "Default to the next node"). A required field would
-  turn that soft failure into a hard one. The deliberate exception is the handful of
-  *agent-facing* statuses typed as required `Literal`s: the arms are closed and the model
-  is told them, so a missing one is a parse failure the runner answers with a retry turn
-  — which is the right answer for a turn that would otherwise get away with not saying
-  what it did.
-* **Unknown keys are ignored, nulls are dropped**, so a missing answer falls back to the
-  field's own default instead of raising.
+* **An agent produces it** — the field is a *required* `Literal` over the closed set of
+  arms. The model is told the arms (the prompt renders the schema), so a reply that omits
+  one or invents one is a parse failure, and the runner answers a parse failure with a
+  retry turn. That is the right answer: a turn allowed to get away with not saying what
+  it did buys a silent arm somewhere downstream. An agent is never allowed to fail its
+  own contract by staying quiet.
+* **Python produces it** — the field is a `Literal` *with* a default, and the default is
+  the pessimistic arm. After the resilience ladder's last rung a node that could not be
+  answered emits its declared output keys as `null` and the run advances
+  (`workhorse/docs/GUARDRAILS.md`, "Default to the next node"); the default is what that
+  node falls back to, and it has to be the arm that does not pass a gate nobody ran.
 
-A defaulted `status` is `""`, which matched no YAML `cases:` entry and so took the
-node's `default:` arm. Every `if` ported from such a branch keeps that arm as its `else`,
-which is in every case the conservative one — an unanswered gate does not pass.
+A third kind stays an open `str`: a field whose values come from the *repo's* config — a
+gate name, a suite id, a tool label — has no closed set to write down here.
 
-That last paragraph is also why `blocked` is *derived* rather than a field of its own.
-A dead node emits nulls, `_drop_nulls` drops them, and every field falls back to its
+`extra="ignore"` and `_drop_nulls` are what make the second bullet work: unknown keys are
+ignored and nulls are dropped, so a missing answer falls back to the field's own default
+instead of raising. On a required agent status there is no default to fall back to, which
+is precisely how the parse retry gets triggered.
+
+That is also why `blocked` is *derived* rather than a field of its own. A dead node emits
+nulls, `_drop_nulls` drops them, and every Python-produced field falls back to its
 default; if "hand this to the operator" were a defaulted field it would fire on every
-node the ladder failed to answer, and "conservative" would silently become "blocked".
-Read off `status`, an unanswered node is `""` — not blocked, and still on the
-conservative arm it was already taking.
+node the ladder failed to answer, and "pessimistic" would silently become "blocked".
+Read off `status` instead, an unanswered Python node is whatever pessimistic arm it
+declared — not blocked, and still on the conservative arm it was already taking.
 """
 from __future__ import annotations
 
@@ -33,9 +38,16 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 #: The four spellings the coder workflow grew for one thing: this node cannot finish, and
 #: something outside it has to decide. They were four because each schema declared its own
-#: free-form `status` with its own default and nothing shared a vocabulary — `blocked` in
-#: dev and docs, `unfixable` in the QA fix loop, `not_passed` at the QA gate, `invalid` for
-#: a plan or an evidence packet. Nothing downstream ever distinguished them.
+#: free-form `status` and nothing shared a vocabulary — `blocked` in dev and docs,
+#: `unfixable` in the QA fix loop, `not_passed` at the QA gate, `invalid` for a plan or an
+#: evidence packet. Nothing downstream ever distinguished them.
+#:
+#: The statuses are `Literal`s now, so each of these four spellings is a declared arm of
+#: some model rather than a string that might turn up. Membership stays the derivation
+#: because it is a *union* across models: `blocked` has to answer for every schema in the
+#: tree, and the type checker cannot join arms that no single class declares together.
+#: What the Literals buy is that the set is now closed on the producing side too — a fifth
+#: spelling cannot arrive without someone adding an arm here.
 #:
 #: A *deterministic* validator returning `invalid` is not what this is about. `PlanValidation`
 #: and the evidence scaffold are ports, not agents; their verdicts are already evidence and
@@ -95,7 +107,9 @@ class CoderResult(_Result):
         """This node cannot finish and something outside it has to decide.
 
         Derived from `status` rather than declared, so a schema without one is never
-        blocked and an unanswered node is never blocked either — see the module docstring.
+        blocked, and a Python-produced status falling back to its pessimistic default is
+        not blocked either — see the module docstring. An agent-produced status has no
+        default to fall back to, so this answers a `blocked` the agent actually said.
         """
         return str(getattr(self, "status", "")).strip().lower() in BLOCKED_STATUSES
 

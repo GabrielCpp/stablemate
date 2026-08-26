@@ -335,12 +335,15 @@ class OperatorAnswer(CoderResult):
 
     The consume half of `scripts/await_operator.py`, which is the only half that gets
     ported: the 280 lines of ctypes inotify that made up the *wait* half are replaced by the
-    driver's `Await`. `scope` is `epic` or `story`, read from the file's `SCOPE:` line, and
-    only `epic` is honoured — anything else, blank included, is `story`.
+    driver's `Await`.
     """
 
     answered: bool = False
-    scope: str = "story"
+    #: Read from the file's `SCOPE:` line by `read_operator_context`, which is what closes
+    #: the arms: only `epic` is honoured there, so anything else the operator typed —
+    #: blank included — arrives here already narrowed to `story`, the default a node the
+    #: ladder could not answer also takes.
+    scope: Literal["story", "epic"] = "story"
     content: str = ""
 
 
