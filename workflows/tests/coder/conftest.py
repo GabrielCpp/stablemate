@@ -92,7 +92,7 @@ def write() -> Callable[[Path, str], Path]:
 
 @pytest.fixture
 def write_json(write: Callable[[Path, str], Path]) -> Callable[[Path, Any], Path]:
-    """The same, for the workspace file, the dream inbox and the ledger."""
+    """The same, for the workspace file and the other JSON artifacts a run leaves."""
 
     def _write_json(path: Path, data: Any) -> Path:
         return write(path, json.dumps(data, indent=2) + "\n")

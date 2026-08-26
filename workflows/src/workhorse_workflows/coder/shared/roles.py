@@ -102,7 +102,6 @@ ROLES: dict[str, str] = {
     # the rest
     "fix-ci": "repair a red CI run",
     "replan-epic": "replan an epic whose stories no longer fit",
-    "dream-reflect": "reflect on the run and propose an improvement",
 }
 
 @dataclass(frozen=True)

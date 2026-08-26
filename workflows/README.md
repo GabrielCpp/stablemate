@@ -175,7 +175,7 @@ learns about the config.
 What a workflow still owns is the **filename it invented** — `context.md`, `feedback.md`,
 `_author-context.md`, `<gate>-context.md`, `attempts.md` — joined onto
 a directory ostler resolved. Run artifacts that are not documents at all (`.agents/operator`,
-`.agents/okf-build`, the dream inbox and ledger, the surveyor's `docs/survey/` scratch) stay
+`.agents/okf-build`, the surveyor's `docs/survey/` scratch) stay
 with the workflow, because ostler has no opinion about them.
 
 Each workflow's `shared/paths.py` is the one place that calls `ostler.path`, and it is also

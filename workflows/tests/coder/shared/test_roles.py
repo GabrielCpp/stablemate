@@ -41,7 +41,7 @@ def _flow(name: str, repo_dir: Path, library_dirs: tuple[str, ...] = ()) -> obje
 
     `turn` only ever touches these three attributes and the defining module, so faking
     the module is faking the whole of what it looks at — and it keeps this file from
-    having to import eight flow classes to exercise one resolver.
+    having to import seven flow classes to exercise one resolver.
     """
     fake = type("Flow", (), {"repo_dir": repo_dir, "library_dirs": library_dirs})
     fake.__module__ = f"{roles.PACKAGE}.{name}.flow"
@@ -50,7 +50,7 @@ def _flow(name: str, repo_dir: Path, library_dirs: tuple[str, ...] = ()) -> obje
 
 def test_the_sweep_found_prompt_directories():
     """The guard against a glob that silently matches nothing after another move."""
-    assert len(PROMPT_DIRS) >= 8, [d.parent.name for d in PROMPT_DIRS]
+    assert len(PROMPT_DIRS) >= 7, [d.parent.name for d in PROMPT_DIRS]
 
 
 def test_every_role_has_an_envelope_the_workflow_ships():

@@ -50,7 +50,7 @@ derivation below routes through `ostler.path`, so a repo that moved its epics wi
 `0001-checkout` is found from the bare slug the queue carries. What stays here is the part
 ostler has no opinion about: the *filenames this workflow invented* — `<gate>-context.md`,
 `context.md`, `attempts.md` — joined onto a directory ostler resolved, and the run
-artifacts that are not documents at all (`.agents/operator`, the dream inbox and ledger).
+artifacts that are not documents at all (`.agents/operator`).
 
 The `docs/epics/` probes in the root resolvers above are the one exception, and they are
 not a second derivation: they are how a *root* is recognized before there is a root to ask
@@ -65,10 +65,6 @@ from ostler import path as okf_path
 #: Where a run's operator gates leave the file a human answers in. Repo-relative, one
 #: file per gate kind, so two gates open in the same story do not overwrite each other.
 OPERATOR_DIR = ".agents/operator"
-
-#: Where `dream` drains its proposals from, and the durable ledger it drains into.
-DREAM_INBOX = "docs/.dream-improvements.inbox.json"
-DREAM_LEDGER = "docs/workflow-improvements"
 
 #: The run's ambient path inputs: which checkout, which docs checkout, which workspace
 #: manifest, and which library layers a turn resolves its prompt body against. All four
@@ -276,8 +272,6 @@ def is_gate_context(path: str | Path) -> bool:
 
 __all__ = [
     "AMBIENT",
-    "DREAM_INBOX",
-    "DREAM_LEDGER",
     "OPERATOR_DIR",
     "backlog_file",
     "epic_dir",

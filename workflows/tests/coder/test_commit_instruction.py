@@ -14,8 +14,8 @@ somebody has decided which it is. A one-sided list would let a new producer ship
 instruction and nothing red.
 
 The trailers are rendered rather than grepped, because they are conditional: a turn with
-no story in scope (`dream-reflect`) must not emit a dangling `Story:` line, and the guard
-that prevents it is Jinja, which a grep cannot evaluate.
+no story in scope must not emit a dangling `Story:` line, and the guard that prevents it
+is Jinja, which a grep cannot evaluate.
 """
 from __future__ import annotations
 
@@ -41,7 +41,6 @@ PRODUCERS = {
     "apply-review.md",
     "audit-qa.md",
     "document-story.md",
-    "dream-reflect.md",
     "fix-regression.md",
     "implement-plan.md",
     "plan-qa.md",
@@ -124,7 +123,7 @@ def test_trailers_render_from_the_turn_args(prompt: Path) -> None:
 
 @pytest.mark.parametrize("prompt", _producers(), ids=_id)
 def test_trailers_vanish_when_there_is_no_story(prompt: Path) -> None:
-    """`dream-reflect` runs with no story in scope; a bare `Story:` would be a lie."""
+    """A turn can run with no story in scope; a bare `Story:` would be a lie."""
     section = _commit_section(render(prompt, {}, CODER))
     assert "Epic:" not in section
     assert "Story:" not in section

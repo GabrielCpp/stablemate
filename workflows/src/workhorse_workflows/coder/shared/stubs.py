@@ -7,15 +7,12 @@ and the validator's `valid=False` is the repair loop, which spends its two rewor
 nothing and then fails the run. A dry run is meant to walk the happy path and prove the
 graph is wired; ending it in the error arm proves only that the error arm exists.
 
-So the four gates genesis branches on are declared here. The two that are *not* declared
-are as deliberate as the ones that are:
+So the four gates genesis branches on are declared here. The one that is *not* declared
+is as deliberate as the ones that are:
 
 * `select_ci_repo` — blank means `has_repo=False`, which ends the CI loop on its first
   pass. Stubbing it truthy would send a dry run round a poll/fix cycle that has no PR to
   poll and no agent to fix with.
-* `gather_run_evidence`, `record_improvements` — dream is linear; nothing branches on
-  either, so a blank instance walks the same path a real one does.
-
 The same argument covers the story spine. `prepare_story` blank means `story_path == ""`,
 and `docs` (and every other per-story flow that resolves the slug for itself) raises
 `WorkflowFailed` on exactly that, because a slug that would not resolve is a run with

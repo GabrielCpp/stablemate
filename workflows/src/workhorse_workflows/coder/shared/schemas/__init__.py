@@ -55,11 +55,6 @@ from workhorse_workflows.coder.shared.schemas.docs import (
     DocumentationReview,
     OkfDetection,
 )
-from workhorse_workflows.coder.shared.schemas.dream import (
-    ImprovementsRecorded,
-    ReflectionResult,
-    RunEvidence,
-)
 from workhorse_workflows.coder.shared.schemas.genesis import (
     AgentsYml,
     FarrierInstall,
@@ -165,7 +160,6 @@ __all__ = [
     "ImplContext",
     "ImplResult",
     "ImplStatus",
-    "ImprovementsRecorded",
     "Lap",
     "LayerPick",
     "MergeFixResult",
@@ -195,7 +189,6 @@ __all__ = [
     "QaRunEntry",
     "QaRunResult",
     "QaTriage",
-    "ReflectionResult",
     "RegressionFix",
     "RegressionSuite",
     "RegressionSuites",
@@ -204,7 +197,6 @@ __all__ = [
     "ReviewFinding",
     "ReviewResult",
     "ReviewVerdict",
-    "RunEvidence",
     "ScreenshotFlush",
     "SetupResult",
     "Skeleton",

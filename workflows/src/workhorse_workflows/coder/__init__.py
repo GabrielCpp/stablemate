@@ -1,7 +1,7 @@
 """The coder workflow as a Python state machine.
 
 The port of `base-library/workflows/coder/workflow.yaml` — 4,366 lines of YAML, 308
-nodes across nine graphs, and the largest thing in the base library by a wide margin. It
+nodes across eight graphs, and the largest thing in the base library by a wide margin. It
 builds an epic: it walks the epic queue, and for each story plans, implements, reviews,
 documents and QAs it, then commits, opens one PR per epic, holds it against CI, and
 merges.
@@ -13,10 +13,10 @@ reading either:
 * `workflow.py` — the composition root, and only that: the `Registry`, the flow table,
   the dry-run stubs and the console-script binding
 * `main/` — the machine a bare `workhorse-coder run` starts, laid out as a flow package
-  like the other eight: `flow.py` holds the `Coder` class, and `main/nodes/` the non-agent
+  like the other seven: `flow.py` holds the `Coder` class, and `main/nodes/` the non-agent
   work only that machine calls — `pr` alone, because the epic's PR boundary is the one
   subject no sub-flow touches
-* `dev/`, `docs/`, `dream/`, `fix/`, `fix_ci/`, `genesis/`, `qa/`, `review/` — one
+* `dev/`, `docs/`, `fix/`, `fix_ci/`, `genesis/`, `qa/`, `review/` — one
   directory per registered Python sub-flow: each `flow.py` beside the `nodes/` and
   `prompts/` only it calls
 * `shared/` — what a second machine also reaches: `paths`, `schemas`, `contract`,
@@ -29,13 +29,11 @@ prompt two flows both render is **two files** — `implement-plan.md` exists und
 (`dev/prompts/implement-plan.md`), because that root is what `workflow.py` declares as
 the registry's `package`.
 
-**Three registered sub-graphs are never handed off to.** `genesis`, `dream` and `fix`
-are packages here because each is a standalone machine, and none is sequenced by the
-main loop: `genesis` produces the preconditions the main loop *assumes*, `dream` runs
-after the work like sleep so that reflection never gates a story, and `fix` is a
-standalone drain of the backlog the main loop also drains inline, on its own copy of the
-same nodes. All three are registered flows on the coder `Registry` and entered directly,
-as `workhorse-coder run genesis`.
+**Two registered sub-graphs are never handed off to.** `genesis` and `fix` are packages
+here because each is a standalone machine, and neither is sequenced by the main loop:
+`genesis` produces the preconditions the main loop *assumes*, and `fix` is a standalone
+drain of the backlog the main loop also drains. Both are registered flows on the coder
+`Registry` and entered directly, as `workhorse-coder run genesis`.
 
 The other five are reached with `self.handoff(...)`, and the caller names the class at the
 callsite::

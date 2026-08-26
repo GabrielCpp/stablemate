@@ -57,9 +57,8 @@ Divergences from the YAML, all deliberate:
   includes pydantic v1's deprecated `validate`, `json`, `dict`, `copy` and `schema`
   aliases. A state named `validate` is therefore silently not a state, and the run only
   finds out when a transition names it. This is the second reserved-name collision the
-  coder port hit (see `dream.py` for `run_dir`) and both are in the progress ledger; the
-  rename is workflow-side and costs nothing here, since no run has ever checkpointed on
-  the name.
+  coder port hit, and it is in the progress ledger; the rename is workflow-side and costs
+  nothing here, since no run has ever checkpointed on the name.
 * `refuel: target_dir` on `resolve_target` has no counterpart: pyflow has no gas tank. The
   flow is a straight line now, so the transition budget is not in question here; it is
   recorded in the progress ledger as a driver-level gap rather than worked around per flow.

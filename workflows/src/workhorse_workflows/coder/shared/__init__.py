@@ -3,8 +3,8 @@
 The rule that puts a module here is a counting one, not a taste one: `workflow.py` and
 each `<flow>/flow.py` own the modules only they reach, and anything a *second* machine
 also reaches moves here. That is why `pr` is not here (only the main graph opens and
-merges the epic's PR) and `dream`'s two nodes are not (only `dream/flow.py` runs them),
-while `story` is — seven of the nine graphs start by turning a slug into paths.
+merges the epic's PR), while `story` is — most of the graphs start by turning a slug
+into paths.
 
 The plumbing every graph stands on:
 

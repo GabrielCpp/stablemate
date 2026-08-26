@@ -18,7 +18,6 @@ from workhorse.cli import console_script
 from workhorse.pyflow import Registry
 from workhorse_workflows.coder.dev import Dev
 from workhorse_workflows.coder.docs import Docs
-from workhorse_workflows.coder.dream import Dream
 from workhorse_workflows.coder.fix import Fix
 from workhorse_workflows.coder.fix_ci import FixCi
 from workhorse_workflows.coder.genesis import Genesis
@@ -30,9 +29,8 @@ from workhorse_workflows.coder.shared.blueprint import blueprint
 workflow = (
     Registry("coder", package=__package__)
     .add_blueprints(blueprint)
-    # The eight registered Python sub-flows, by the name `workhorse-coder run <name>`
-    # takes. Five are reached by `handoff`; `genesis`, `dream` and `fix` are entered
-    # directly.
+    # The seven registered Python sub-flows, by the name `workhorse-coder run <name>`
+    # takes. Five are reached by `handoff`; `genesis` and `fix` are entered directly.
     .add_flows(
         genesis=Genesis,
         dev=Dev,
@@ -41,7 +39,6 @@ workflow = (
         qa=Qa,
         fix=Fix,
         fix_ci=FixCi,
-        dream=Dream,
     )
     .stub_agents(
         {
@@ -70,7 +67,6 @@ workflow = (
             "fix-merge": {"status": "resolved"},
             "replan-epic": {"status": "complete"},
             "resolve-operator": {"decision": "answered"},
-            "dream-reflect": {"status": "complete"},
         }
     )
 )
