@@ -76,12 +76,12 @@ template:
 
   # python-lint-clean / commit-and-push: the one gate command.
   lint_command: "make lint"
-  commit_gate: "make lint          # ruff + ty, every subproject in one pass, from the repo root"
+  commit_gate: "make lint          # ruff + ty + basedpyright, every subproject in one pass, from the root"
 
   # implement-plan-*: the gate a plan is measured against, and the bootstrap a
   # fresh checkout needs before any of it runs.
   repo_gate: "`make lint` from the root, plus the affected test package"
-  repo_gate_command: "make lint   # ruff + ty from the root; then the affected test package"
+  repo_gate_command: "make lint   # ruff + ty + basedpyright from the root; then the affected test package"
   repo_bootstrap: "make install   # venv + hooks; see the root README"
 
   # commit-and-push: the scope vocabulary `.githooks/commit-msg` accepts. The

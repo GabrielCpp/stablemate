@@ -27,7 +27,7 @@ there, runnable by hand when you are working out why a commit was blocked.
 
 | Command | What it does |
 | --- | --- |
-| `make lint` | ruff + ty over the whole workspace. Zero findings is the bar. |
+| `make lint` | ruff + ty + basedpyright over the whole workspace. Zero findings is the bar. |
 | `make test` | lint, then every package's suite, then the repo's guards. |
 | `make -C <pkg> test` | one package (`core`, `workhorse`, `workflows`, `ostler`, `farrier`, `groom`, `saddlebag`). |
 

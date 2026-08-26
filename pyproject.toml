@@ -67,6 +67,12 @@ dev = [
     # the same version — a type checker that floats reports a different set of findings
     # per machine, which is the one thing a gate must not do.
     "ty>=0.0.65",
+    # The third checker in the gate. ty and basedpyright disagree often enough to be
+    # worth both: ty is fast and follows this workspace's own calls, basedpyright
+    # carries pyright's inference and its bundled stubs, so it sees through the
+    # third-party libraries ty treats as opaque. Pinned here for the same reason ty is
+    # — a checker that floats reports a different set of findings per machine.
+    "basedpyright>=1.31",
     # ostler vet's live path (`--cdp-url` CDP scan + per-component crops), used by the
     # okf-builder walkthrough that runs against this workspace's .venv.
     "playwright>=1.40",
@@ -141,3 +147,87 @@ exclude = [
     # linted by the same AST allowlist `ostler qa lint` holds a plan to.
     "paddock/data/apps/*/docs/specs/_fixtures/*.py",
 ]
+
+# basedpyright — pyright's inference and its bundled third-party stubs, run from this
+# root next to ruff and ty (`make lint`). It is a third opinion, not a replacement:
+# ty follows this workspace's own calls and is fast; basedpyright sees through the
+# libraries ty treats as opaque, and disagrees with it often enough to be worth the
+# minute it costs.
+#
+# `typeCheckingMode = "standard"` is pyright's own default, deliberately not
+# basedpyright's ("recommended", which turns every reportUnknown* on as an error and
+# reports ~86k findings here — an annotation project, not a gate). Standard is the
+# level whose findings are defects: an argument that cannot be assigned, a member on
+# an Optional, a name possibly unbound. Ratcheting a single rule up from here is one
+# line in [tool.basedpyright.reportX]; the mode is what makes the gate meaningful now.
+[tool.basedpyright]
+typeCheckingMode = "standard"
+pythonVersion = "3.12"
+# `include` is explicit rather than "the repo root", because the root also holds
+# untracked working trees a checker must not walk: a member's stray .venv, the
+# benchmark's materialized run directories. The excludes below are the same list
+# [tool.ty.src] carries, for the reasons given there, plus the two trees whose
+# contents are not this workspace's code.
+include = [
+    "core", "workhorse", "workflows", "farrier", "ostler", "groom", "saddlebag",
+    "paddock", "scripts", "docs",
+]
+exclude = [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+    "docs/plans/author-workflow-python/workflow.py",
+    # The benchmark's fixture applications: ~24 near-identical materialized trees
+    # (one per defect variant and per story checkpoint), each a standalone project
+    # rooted at its own directory rather than a package in this workspace. Resolving
+    # their imports would mean one executionEnvironment per variant, and they are
+    # already covered where it counts — ruff lints them, and the benchmark executes
+    # them for real, which is the check that binds on a fixture.
+    "paddock/data/apps",
+]
+
+# A test module imports its own conftest and its `_fakes` siblings by bare name, the
+# way pytest runs it — pytest puts the test directory on sys.path, and nothing else
+# does. Same for the two directories that are copied somewhere else to run: the QA
+# harness lands on a project's PYTHONPATH as a flat directory of stdlib-only modules,
+# and a paddock task module imports the `_`-prefixed helpers beside it.
+[[tool.basedpyright.executionEnvironments]]
+root = "ostler/ostler/qa/harness"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "paddock/data/tasks"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "paddock/data/tests"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "core/tests"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "farrier/tests"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "groom/tests"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "ostler/tests"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "paddock/tests"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "saddlebag/tests"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "scripts/tests"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "workflows/tests"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "workhorse/tests"
+
+# The catch-all, last: pyright takes the first environment whose root contains the
+# file, so the repo root has to come after every narrower one.
+[[tool.basedpyright.executionEnvironments]]
+root = "."

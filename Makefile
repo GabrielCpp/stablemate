@@ -55,10 +55,10 @@ hooks: ## Install the git hooks (private names, Conventional Commits, generated 
 	@echo "                        names the library source the edit belongs in."
 
 .PHONY: lint
-lint: ## Lint every subproject in one pass: ruff (style, imports) + ty (types)
-	# Both run from this root over the whole workspace, against the one ruleset in
-	# pyproject.toml — a member package that lints itself lints a different tree than
-	# CI does. They answer different questions and neither subsumes the other: ruff
+lint: ## Lint every subproject in one pass: ruff (style, imports) + ty + basedpyright (types)
+	# All three run from this root over the whole workspace, against the one ruleset
+	# in pyproject.toml — a member package that lints itself lints a different tree
+	# than CI does. They answer different questions and none subsumes another: ruff
 	# reads one file at a time, so the argument that does not match the parameter is
 	# invisible to it; ty follows the call across modules and never has an opinion
 	# about import order.
@@ -72,6 +72,14 @@ lint: ## Lint every subproject in one pass: ruff (style, imports) + ty (types)
 	# set-up one.
 	uv run --all-packages ruff check .
 	uv run --all-packages ty check
+	# The third checker, and the second type checker on purpose. ty and basedpyright
+	# infer differently and disagree often enough that each catches defects the other
+	# misses: ty is fast and follows this workspace's own calls, basedpyright carries
+	# pyright's inference and its bundled stubs, so it sees through the third-party
+	# libraries ty treats as opaque. `-p` is not optional — invoked without it,
+	# basedpyright ignores `[tool.basedpyright]` in pyproject.toml and silently runs
+	# at its own default mode over a tree this config deliberately narrows.
+	uv run --all-packages basedpyright -p pyproject.toml
 
 .PHONY: test
 test: ## Run the packages' test suites, the workflow suites, and the public/private guard

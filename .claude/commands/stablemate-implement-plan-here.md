@@ -62,7 +62,7 @@ Read that output before editing:
 ## 3. Take the baseline before you change anything
 
 ```bash
-make lint   # ruff + ty from the root; then the affected test package
+make lint   # ruff + ty + basedpyright from the root; then the affected test package
 ```
 
 On the unmodified tree, now. A green baseline is what makes the first red result mean

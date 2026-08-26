@@ -115,12 +115,12 @@ in the tree forever otherwise.
 
 ## Python linting (load-bearing)
 
-This repo is linted with **ruff** *and* type-checked with **ty**. Keep both
-clean — zero findings is the bar, and a change isn't done until
-`make lint` passes.
+This repo is linted with **ruff** and type-checked with **ty** *and*
+**basedpyright**. Keep all three clean — zero findings is the bar, and a change
+isn't done until `make lint` passes.
 
 ```bash
-# both, from the repo root — every package in one pass
+# all three, from the repo root — every package in one pass
 make lint
 # apply the autofixable ruff findings (unused imports, etc.)
 ruff check . --fix
@@ -130,14 +130,26 @@ Run it from the **repo root** before wrapping up any Python change, so every
 package is covered in one pass. The test target runs it first, so a type error
 fails the suite rather than waiting for a reviewer.
 
+**Two type checkers is deliberate.** ty is fast and follows this repo's own
+calls; basedpyright carries pyright's inference and its bundled third-party
+stubs, so it sees through libraries ty treats as opaque. They disagree often
+enough that each catches defects the other misses — neither one is the
+redundant one, and a finding from either is a finding.
+
 - **Fix the finding, don't silence it.** Prefer correcting the code over adding
-  `# noqa` / `# ty: ignore` or broadening an ignore. Reach for config only when a
-  rule is genuinely wrong for this codebase, and say why.
+  `# noqa` / `# ty: ignore` / `# pyright: ignore` or broadening an ignore. Reach
+  for config only when a rule is genuinely wrong for this codebase, and say why.
 - **The same bar applies to test files** — unused imports, ambiguous names
   (`l`/`I`/`O`), multi-statement semicolon lines, and a fake that has drifted
   from the port it stands in for are findings, not style preferences.
-- **`# type: ignore[...]` is mypy's spelling and is inert for ty.** The one that
-  suppresses is `# ty: ignore[rule]`, and it names the rule.
+- **`# type: ignore[...]` is mypy's spelling and is inert for both.** ty reads
+  `# ty: ignore[rule]`; basedpyright reads `# pyright: ignore[rule]`. Each names
+  the rule, and each is ignored by the other checker — a suppression that
+  silences one still has to answer to the other.
+- **Run basedpyright with `-p <config>`.** Invoked without it, it does not read
+  the `[tool.basedpyright]` table in `pyproject.toml`: it silently falls back to
+  its own default mode over its own default tree, and reports a different set of
+  findings than the gate does.
 
 ---
 
@@ -172,7 +184,7 @@ Split first, then label.
 Run the repo's gate, not just the test you were staring at:
 
 ```bash
-make lint          # ruff + ty, every subproject in one pass, from the repo root
+make lint          # ruff + ty + basedpyright, every subproject in one pass, from the root
 ```
 
 plus the affected test package. The gate belongs on the *near* side of the push,
