@@ -45,7 +45,7 @@ Resolve the findings in `review.md` without adding new story scope.
 
 ## Rules
 
-- Fix only review findings marked Critical, High, Medium, or explicitly required before QA.
+- Fix only review findings marked Critical or Major, or explicitly required before QA. Minor findings are suggestions and do not block.
 - Do not implement optional suggestions unless they are necessary to satisfy acceptance criteria.
 - Do not broaden the plan without stopping to report a blocker.
 - Add or update tests for fixes that affect behavior.

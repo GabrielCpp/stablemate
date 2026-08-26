@@ -8,14 +8,24 @@ agent: agent
 
 - Story path: `{{ workhorse_var('story_path') }}`
 - Plan artifact path: `{{ workhorse_var('spec_dir') }}`
-- Automated code review result: `{{ workhorse_var('code_review_result') }}`
+
+### Code-review findings you must fold in
+
+{{ workhorse_var('must_fix_findings') }}
+
+### Advisory code-review findings
+
+Scored below the confidence the flow binds on. They are context — weigh them, but no verdict
+turns on them.
+
+{{ workhorse_var('advisory_findings') }}
 
 ## Your Role
 
 You are a **thorough implementation reviewer**. You combine findings from three sources:
 
-1. **Automated code-review findings** — collected from the `code_review_result` input (produced by the code-review stage that read the diff in an earlier stage).
-2. **Code-reuse findings** — the entries of that same `code_review_result` whose `category` is `Reuse`. The code-review pass hunts duplicated code and missed utility/helper reuse as one of its lenses, and reports both under that one category. Do **not** re-derive these yourself; just fold the findings in.
+1. **Automated code-review findings** — the must-fix list above, produced by the code-review stage that read the diff in an earlier stage.
+2. **Code-reuse findings** — the entries of that same list whose category is `Reuse`. The code-review pass hunts duplicated code and missed utility/helper reuse as one of its lenses, and reports both under that one category. Do **not** re-derive these yourself; just fold the findings in.
 3. **Self-review** — your own manual review of the implementation against the story, plan, and project coding standards (the dimensions in Step 3, which no longer include duplication/missed-utility — those come from source 2).
 
 All three sets of findings are combined into the final verdict.
@@ -44,7 +54,7 @@ For each affected repository:
 
 Review the implementation against these four dimensions. **Duplication and missed
 utility/helper reuse are NOT reviewed here** — the code-review pass already covered them
-and they are collected in Step 4b; do not re-derive them.
+and they are folded in at Step 4; do not re-derive them.
 
 #### 3a. Instruction Compliance
 
@@ -110,35 +120,17 @@ story, not against the implementer's claims.
 
 An uncovered acceptance criterion and an unjustified test edit are both **Critical**.
 
-### 4a. Collect Automated Code-Review Findings
+### 4. Fold In The Code-Review Findings
 
-Process the `code_review_result` input:
-
-- If `code_review_result.status` is `findings`:
-  - Use the `findings` array (each entry has `target` — repo, file and line as one string — `issue`, `repair`, `category`, and `score`).
-  - Fallback: if the array is empty despite the status, and an affected repo has an open PR, fetch the inline comments with `timeout 30 gh pr view --comments` and extract findings from there.
-
-- If `code_review_result.status` is `clean`:
-  - No automated findings.
-
-- If `code_review_result.status` is `skipped`:
-  - The automated review did not run (no local changes or tool unavailable). No automated findings.
-
-### 4b. Collect Code-Reuse Findings
-
-The reuse findings are the entries of `code_review_result.findings` whose `category` is
-`Reuse` — the code-review pass looked for them. Do NOT
-re-scan for duplication or missed utilities yourself; just select them:
-
-- If any such entry exists, report it under the reuse section below rather than the
-  automated-findings one, carrying its score through to the verdict.
-
-- If none does — or `code_review_result.status` is `clean` or `skipped` — there are no
-  code-reuse findings.
+The must-fix list above is the automated pass's binding output — it is already filtered to the
+findings the flow holds the implementation to, so every entry on it is a finding of this
+review. Split it by category as you report it: entries whose category is `Reuse` go under the
+code-reuse section of `review.md`, the rest under the automated-findings section. Do NOT
+re-scan for duplication or missed utilities yourself.
 
 ### 5. Determine Verdict
 
-Combine findings from all three sources (self-review + automated code-review + the reuse-category findings). Apply the verdict:
+Combine findings from all three sources (self-review + the automated code-review's must-fix list + the reuse-category entries of it). Apply the verdict:
 
 - **approved** — no findings require a fix (either no findings at all, or all are informational/minor suggestions).
 - **needs_changes** — one or more findings are severity Critical or Major and require a fix before QA.
@@ -174,7 +166,7 @@ Approved | Needs changes
 
 ## Automated Code-Review Findings
 
-<Findings from `code_review_result` whose `category` is not a reuse one. If none, write "None.">
+<The must-fix findings whose category is not `Reuse`. If none, write "None.">
 
 ### Finding N: <Title>
 
@@ -185,7 +177,7 @@ Approved | Needs changes
 
 ## Code-Reuse Findings
 
-<The `code_review_result` findings whose `category` is `Reuse`. If none, write "None.">
+<The must-fix findings whose category is `Reuse`. If none, write "None.">
 
 ### Finding N: <Title>
 

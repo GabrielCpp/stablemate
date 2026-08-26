@@ -52,8 +52,8 @@ Divergences from the YAML, all deliberate:
   an operator control the YAML did not have. Recorded in the progress ledger as a finding;
   it is the third instance of that shape, after `genesis`'s `max_genesis_reworks` and `dev`'s
   `max_validate_reworks`.
-* **the review verdict is threaded, not read back.** `review_implementation` takes
-  `code_review_result`, produced inside `start`, one state earlier; under the YAML engine it
+* **the review verdict is threaded, not read back.** `review_implementation` reads the
+  findings produced inside `start`, one state earlier; under the YAML engine they
   sat in the run context for the flow's lifetime. `self.output` reads only *node* outputs,
   and an agent turn is not a node, so the model travels as a state parameter. It is the one
   genuinely large thing this flow checkpoints, and it is checkpointed because the state that
@@ -102,6 +102,7 @@ from workhorse_workflows.coder.shared.schemas.dev import (
 )
 from workhorse_workflows.coder.shared.schemas.review import (
     CodeReviewResult,
+    ReviewFinding,
     ReviewLoop,
     ReviewResult,
     ReviewVerdict,
@@ -117,6 +118,39 @@ UNBOUNDED = float("inf")
 #: and the same reasoning as `dev`'s. A constant rather than a field: nobody sets it, and a
 #: `--param` nobody passes is an input in name only.
 MAX_SESSION_TURNS = 8
+
+#: The confidence at or above which a code-review finding binds. The reviewer scores every
+#: finding it raises and reports all of them; this line decides which ones the implementation
+#: reviewer must fold into its verdict and which travel as context. It is Python's call
+#: rather than the prompt's because "drop the ones you scored below 80" is a filter nothing
+#: downstream can check — a turn that silently kept one, or silently dropped one it scored 85,
+#: reads identically. Here the whole list is parsed and the split is a comparison.
+MUST_FIX_CONFIDENCE = 80
+
+
+def split_on_confidence(
+    findings: Sequence[ReviewFinding],
+) -> tuple[list[ReviewFinding], list[ReviewFinding]]:
+    """Split code-review findings into the mandatory ones and the advisory ones."""
+    must_fix = [f for f in findings if f.score >= MUST_FIX_CONFIDENCE]
+    advisory = [f for f in findings if f.score < MUST_FIX_CONFIDENCE]
+    return must_fix, advisory
+
+
+def findings_block(findings: Sequence[ReviewFinding]) -> str:
+    """Render findings as the markdown the review prompt inlines, or `None.` for an empty set.
+
+    Rendered here rather than looped in the template so the prompt carries no `{% if %}` arm
+    for the empty case: both blocks are always present and always say something.
+    """
+    if not findings:
+        return "None."
+    return "\n".join(
+        f"- **{f.target}** — {f.issue}\n"
+        f"  - Category: {f.category} (confidence {f.score})\n"
+        f"  - Required fix: {f.repair}"
+        for f in findings
+    )
 
 
 class Review(Workflow):
@@ -284,7 +318,12 @@ class Review(Workflow):
         is the YAML's wiring: the review turn can rewrite spec docs and the frontmatter that
         makes them OKF Concepts is only as reliable as the model's memory, so it is applied
         mechanically each time rather than trusted once.
+
+        The code-review findings arrive already split at `MUST_FIX_CONFIDENCE`: the reviewer
+        below is handed a mandatory list and an advisory one instead of a struct it was
+        trusted to filter.
         """
+        must_fix, advisory = split_on_confidence(code_review.findings)
         turn = roles.turn(self, "review-implementation")
         result = self.agent(
             turn.prompt,
@@ -299,7 +338,8 @@ class Review(Workflow):
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
-                "code_review_result": code_review,
+                "must_fix_findings": findings_block(must_fix),
+                "advisory_findings": findings_block(advisory),
             },
         )
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)

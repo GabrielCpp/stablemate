@@ -38,9 +38,14 @@ from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
-from workhorse_workflows.coder.review.flow import Review
+from workhorse_workflows.coder.review.flow import (
+    MUST_FIX_CONFIDENCE,
+    Review,
+    findings_block,
+    split_on_confidence,
+)
 from workhorse_workflows.coder.shared.review import resolve_review_context
-from workhorse_workflows.coder.shared.schemas.review import ReviewResult
+from workhorse_workflows.coder.shared.schemas.review import ReviewFinding, ReviewResult
 
 STORY = "STORY-1"
 EPIC = "EPIC-1"
@@ -248,6 +253,13 @@ class _Agent:
                     "category": "Reuse",
                     "score": 82,
                 },
+                {
+                    "target": "api-service/link.go:40",
+                    "issue": "the receiver name is one letter",
+                    "repair": "spell it out",
+                    "category": "Standard",
+                    "score": 40,
+                },
             ],
             "findings_summary": f"one minor finding (pass {nth})",
         }
@@ -374,13 +386,32 @@ def test_an_approved_review_stamps_the_specs_and_stops(
     assert ctx["docs_repo_path"] == str(docs)
 
 
+
+def test_a_findings_block_says_none_rather_than_rendering_empty() -> None:
+    """An empty list is still a section, so the prompt carries no `{% if %}` arm for it."""
+    assert findings_block([]) == "None."
+
+
+def test_the_split_is_inclusive_at_the_confidence_line() -> None:
+    """A finding scored exactly at the line binds — the reviewer's `>= 80` is must-fix."""
+    at = ReviewFinding(target="a.go:1", issue="i", repair="r", category="Bug",
+                       score=MUST_FIX_CONFIDENCE)
+    below = ReviewFinding(target="b.go:1", issue="i", repair="r", category="Bug",
+                          score=MUST_FIX_CONFIDENCE - 1)
+
+    must_fix, advisory = split_on_confidence([at, below])
+
+    assert must_fix == [at]
+    assert advisory == [below]
+
+
 def test_the_implementation_reviewer_is_handed_both_feeder_verdicts(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The review verdict travels as a state parameter, and it arrives.
+    """The review verdict travels as a state parameter, and it arrives split on confidence.
 
     Under the YAML engine `code_review_result` sat in the run context for the flow's
     lifetime. `self.output` reads only *node* outputs and an agent turn is not a node, so
@@ -388,17 +419,26 @@ def test_the_implementation_reviewer_is_handed_both_feeder_verdicts(
     round-tripped through the checkpoint's `jsonable`/`TypeAdapter` pair on every
     transition. If that threading breaks, the reviewer silently renders a blank and
     nothing else in the suite notices.
+
+    What the reviewer is handed is two rendered lists rather than the model: the prompt
+    used to be told to drop everything scoring below 80, which is a filter nothing
+    downstream could check. `MUST_FIX_CONFIDENCE` splits them here instead.
     """
     agent = _Agent(docs)
 
     drive_flow(Review(story=STORY), env(), agent)
 
     handed = agent.args_for("review-implementation")[0]
-    assert handed["code_review_result"]["findings_summary"] == "one minor finding (pass 1)"
-    # The reuse hunt is a lens of that one pass now, so its findings ride in the same model.
-    assert handed["code_review_result"]["findings"][1]["category"] == "Reuse"
+    must_fix = handed["must_fix_findings"]
+    advisory = handed["advisory_findings"]
+    assert "api-service/link.go:12" in must_fix
+    # The reuse hunt is a lens of that one pass now, so its findings ride in the same list.
+    assert "Category: Reuse (confidence 82)" in must_fix
     # And each finding keeps the half that lets a fixer act on it rather than an operator.
-    assert handed["code_review_result"]["findings"][1]["repair"] == "call the shared path helper"
+    assert "Required fix: call the shared path helper" in must_fix
+    # The one scored below the line is demoted, not deleted.
+    assert "api-service/link.go:40" not in must_fix
+    assert "api-service/link.go:40" in advisory
 
 
 def test_the_reviewers_run_in_the_docs_repo_and_see_the_code_repos(

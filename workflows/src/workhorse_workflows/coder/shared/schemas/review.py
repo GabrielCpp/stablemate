@@ -54,8 +54,9 @@ class ReviewFinding(Finding):
     #: Which lens caught it. The reviewer says it, so there is no default to fall back to.
     category: ReviewCategory
 
-    #: The 0-100 confidence the pass scored it, carried with the finding rather than
-    #: discarded at the parse — a reader weighing two survivors against each other wants it.
+    #: The 0-100 confidence the pass scored it. Every finding is reported whatever it
+    #: scored: the flow splits them at `MUST_FIX_CONFIDENCE`, so a low score demotes a
+    #: finding to advisory context rather than deleting it inside the turn that raised it.
     score: int = 0
 
 

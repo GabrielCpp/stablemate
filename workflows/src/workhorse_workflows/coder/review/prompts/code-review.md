@@ -44,9 +44,8 @@ For each path in `affected_repo_paths`:
    - **75**: Highly confident. You double checked the issue, and verified that it is very likely a real issue that will be hit in practice. The existing approach in the change is insufficient. The issue is very important and will directly impact the code's functionality, or it is an issue that is directly mentioned in the relevant instructions.
    - **100**: Absolutely certain. You double checked the issue, and confirmed that it is definitely a real issue, that will happen frequently in practice. The evidence directly confirms this.
 
-   For an issue flagged against the standard, double check that the instruction file actually calls out that issue specifically before scoring it above 50. For a reuse finding, score by consequence: substantial duplication or a hand-rolled replacement of an existing utility that leaves the code fragile or divergent is a real finding; two copies of a rule that must stay in lockstep and already disagree is a bug. A small nice-to-have consolidation is not worth the reviewer's time and scores below the threshold.
-{% if workhorse_var('branch') %}8{% else %}7{% endif %}. **Drop every finding scoring below 80.** What survives goes into the `findings` array below, with its score.
-{% if workhorse_var('branch') %}9{% else %}8{% endif %}. If (and only if) step {% if workhorse_var('branch') %}4{% else %}3{% endif %} found an open PR, also post the surviving findings as a single `gh pr comment`: a `### Code review` heading, `Found N issues:`, then one numbered brief description each, citing the file and line. Keep it brief, no emojis. The implementation reviewer consumes the JSON below, not PR comments, so the findings must be complete here whether or not a PR exists.
+   For an issue flagged against the standard, double check that the instruction file actually calls out that issue specifically before scoring it above 50. For a reuse finding, score by consequence: substantial duplication or a hand-rolled replacement of an existing utility that leaves the code fragile or divergent is a real finding; two copies of a rule that must stay in lockstep and already disagree is a bug. A small nice-to-have consolidation is not worth the reviewer's time and scores low.
+{% if workhorse_var('branch') %}8{% else %}7{% endif %}. If (and only if) step {% if workhorse_var('branch') %}4{% else %}3{% endif %} found an open PR, also post the findings as a single `gh pr comment`: a `### Code review` heading, `Found N issues:`, then one numbered brief description each, citing the file and line. Keep it brief, no emojis. The implementation reviewer consumes the JSON below, not PR comments, so the findings must be complete here whether or not a PR exists.
 
 ## Not findings
 
@@ -87,10 +86,10 @@ Return this JSON as your final response:
 ```
 
 - `target` and `repair` are both required of every finding. A finding that names no place to go, or names no change to make, is not evidence — it is a complaint, and the machine downstream cannot route it. `target` is one string: the repo, the file within it and the line, e.g. `api-service/internal/link/store.go:118`.
-- `score` — the confidence you scored it, carried through so a later reader can see how sure this pass was.
+- `score` — the 0-100 confidence you scored it. Report **every** finding you scored, whatever it scored: the flow splits the list on this number, so a low score demotes a finding to advisory context, while one you drop yourself reaches nobody.
 - `category` — which lens caught it, spelled exactly as above. `Reuse` covers both duplicated code and a missed utility; the implementation reviewer selects on it to report those findings separately.
-- `findings` — at least one finding scored 80 or above in one or more repos; each is listed in `findings`.
-- `clean` — the review ran on at least one repo with local changes and found no issues meeting the threshold; `findings` is empty.
+- `findings` — the review found at least one issue in one or more repos; each is listed in `findings`.
+- `clean` — the review ran on at least one repo with local changes and found no issues; `findings` is empty.
 - `skipped` — no affected repo had any local changes to review; `findings` is empty.
 - `blocked` — the diff could not be read at all: the repos you were given are not the ones the
   change landed in, or the working tree is in a state (an unresolved conflict, a detached or
