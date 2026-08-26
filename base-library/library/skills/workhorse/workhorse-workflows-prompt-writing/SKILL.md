@@ -1,5 +1,5 @@
 ---
-name: workhorse-prompt-writing
+name: workhorse-workflows-prompt-writing
 description: "Writing the prompt a workhorse turn dispatches — the four mechanics a section may serve (aim, inlined inputs, enforced binding rules, a rendered output contract), one prompt file per aim instead of mode variables, what never belongs in a prompt (commit protocol, skill menus, facts the cwd answers, defenses against upstream-prevented states), and the workflow-engineer audit that decides whether a section lives. Load when writing or reviewing a `prompts/*.md` under a workflow distribution, or when a prompt has grown sections nobody can tie to a check. For the node/state Python, load workhorse-engine; for general writing craft, farrier-skills-writing."
 applyTo: "**/workhorse_workflows/**/prompts/*.md"
 tags: [standards, docs]
@@ -82,6 +82,16 @@ source of truth that drifts:
 - **Skill and layer menus.** A `find_by_tags(...)` listing restates what the installed
   skills already advertise through the repo's own instruction mechanism and their
   frontmatter; the model decides what to load.
+- **Pre-resolved standards, inlined.** The same mistake with the loading done for the
+  model: the flow matching service metadata against skill tags and pasting the winners
+  into the prompt. Selection needs knowledge only the turn has — a service can mix
+  languages, so which standard binds is a property of the *file being edited*, decided
+  at the moment of the edit, not once at dispatch. And the timing is wrong even when
+  the guess is right: an inlined blob sits at the top of a long implementation turn and
+  fades from attention (or is compacted away) exactly as the session reaches the edits
+  it was for, while a skill the model loads arrives adjacent to the work and can be
+  loaded again. Tags have one consumer — farrier, at install time, choosing what to
+  install into the repo; turn-time selection belongs to frontmatter and the model.
 - **Facts the cwd answers.** The agent runs at the repo root: it needs no
   {% raw %}`{{ repo.name }}`{% endraw %}, no layer-name labels, no directory tour a `ls` replaces.
 - **Machine-parsed shapes defended by prose.** If a parser reads `### Scenario N:`
