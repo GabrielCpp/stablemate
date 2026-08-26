@@ -19,12 +19,16 @@ from typing import Any
 
 import pytest
 
+from workhorse.pyflow import NodeNotRunError
+
 from workhorse_workflows.coder.dev import flow as dev_flow, nodes
 from workhorse_workflows.coder.shared.conversation import backbone
 from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.docs import flow as docs_flow
 from workhorse_workflows.coder.docs.flow import Docs
+from workhorse_workflows.coder.qa import flow as qa_flow
 from workhorse_workflows.coder.qa.flow import Qa
+from workhorse_workflows.coder.qa.nodes import run_qa_plan
 from workhorse_workflows.coder.review import flow as review_flow
 from workhorse_workflows.coder.review.flow import Review
 from workhorse_workflows.coder.shared.schemas.dev import DevResult, Lap
@@ -33,7 +37,12 @@ from workhorse_workflows.coder.shared.schemas.docs import (
     DocsProgress,
     DocsResult,
 )
-from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaLoop
+from workhorse_workflows.coder.shared.schemas.qa import (
+    LaneClock,
+    QaFlowResult,
+    QaLoop,
+    QaPlanRun,
+)
 from workhorse_workflows.coder.shared.schemas.review import (
     CodeReviewResult,
     ReviewLoop,
@@ -55,6 +64,16 @@ class _Spy:
         #: Which chains already have a conversation behind them. `None` — the default —
         #: is every chain, which is what a lane entered from the lane before it sees.
         self.open_chains: set[str] | None = None
+        #: What the last `run_qa_plan` recorded, for the states that read it back off the
+        #: engine rather than off the loop. `None` is a run that has not happened yet.
+        self.run: QaPlanRun | None = None
+
+    def output(self, node: Any) -> Any:
+        """What `Workflow.output` resolves to here — only `run_qa_plan` is ever asked for."""
+        assert node is run_qa_plan
+        if self.run is None:
+            raise NodeNotRunError("run_qa_plan has not run")
+        return self.run
 
     def session_id(self, key: str) -> str:
         """What `chain_session(key)` reports: the chain name itself stands in for an id."""
@@ -83,7 +102,7 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
     def fake_require_engine(self: Any) -> Any:
         # Asking whether a chain is open goes through the engine; no turn in these tests
         # reaches a real one, so the resolved id is the chain name itself.
-        return SimpleNamespace(session_id=seen.session_id)
+        return SimpleNamespace(session_id=seen.session_id, output=seen.output)
 
     for flow in (Docs, Qa, Dev, Review):
         monkeypatch.setattr(flow, "agent", fake_agent)
@@ -246,7 +265,7 @@ def test_no_lane_takes_a_session_id_as_a_parameter(spy: _Spy) -> None:
 
 
 def test_a_qa_plan_repair_lap_mirrors_the_docs_lane(spy: _Spy) -> None:
-    _repair_plan(_qa(), QaLoop(chain_laps=1))
+    _repair_plan(_qa(), QaLoop(clock=LaneClock(chain_laps=1)))
 
     assert spy.turns[0]["session"] == f"qa-plan-repair:{STORY}"
     assert spy.resets == []
@@ -254,7 +273,7 @@ def test_a_qa_plan_repair_lap_mirrors_the_docs_lane(spy: _Spy) -> None:
 
 def test_a_fifth_consecutive_qa_plan_lap_starts_over(spy: _Spy) -> None:
     flow = _qa()
-    _repair_plan(flow, QaLoop(chain_laps=flow.MAX_CHAIN_LAPS))
+    _repair_plan(flow, QaLoop(clock=LaneClock(chain_laps=qa_flow.MAX_CHAIN_LAPS)))
 
     assert spy.resets == [f"qa-plan-repair:{STORY}"]
 
@@ -264,12 +283,15 @@ def test_a_qa_plan_lap_that_failed_at_exactly_what_it_failed_at_before_starts_ov
 ) -> None:
     """The same signal `_repeating` escalates on: the repair was paid for and the suite
     fails identically, so the conversation that produced it has nothing left to give."""
+    spy.run = QaPlanRun(
+        status="failed",
+        ostler={"scenarios": {"SC-1": {"status": "failed", "assertions": 3, "failures": 1}}},
+    )
     _repair_plan(
         _qa(),
         QaLoop(
-            chain_laps=1,
-            run_failures=("SC-1",),
-            repaired_failures=("SC-1",),
+            clock=LaneClock(chain_laps=1),
+            repaired_failures=("SC-1:failed:3/1",),
             repaired_lap="QA-plan repair",
         ),
     )

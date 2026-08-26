@@ -201,13 +201,6 @@ class Coder(Workflow):
     operator_mode: str = "auto"
     #: Which environment QA runs against, passed through to `dev`, `docs` and `qa`.
     target_env: str = "local"
-    #: How long a story's QA lane is *expected* to spend inside agent turns, and how much of
-    #: that the plan lane is expected to take. Advisory — crossing one is logged, never
-    #: terminal. Restated here — as `target_env` and `operator_mode` are — only so an operator
-    #: can set them once on the run rather than per story; `Qa.qa_lane_budget_s` is where the
-    #: numbers are argued, and the two defaults move together.
-    qa_lane_budget_s: int = 3300
-    plan_lane_budget_s: int = 2400
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
     #: fill each one in for any node or sub-flow that declares a parameter of the same
@@ -503,9 +496,8 @@ class Coder(Workflow):
         """`qa_phase` + `decide_qa_outcome`: the four-way gate the whole loop turns on.
 
         `rescope` is the interesting arm. It sends the story back to `dev` carrying the
-        triage budget the QA flow spent — the YAML passed `triage_scope_count` in as a bare
-        rolling var and took it back out as an output for exactly this, and the re-entry
-        deliberately bypasses the seed so the count persists across the loop.
+        triage budget the QA flow spent, and the re-entry deliberately bypasses the seed
+        so the count persists across the loop.
 
         `preexisting` goes in for the same reason `document` takes it: QA builds its
         obligation packet from the same `HEAD..WORKTREE` diff, so without the snapshot an
@@ -523,9 +515,7 @@ class Coder(Workflow):
             epic=self._story_epic(epic),
             operator_mode=self.operator_mode,
             target_env=self.target_env,
-            qa_lane_budget_s=self.qa_lane_budget_s,
-            plan_lane_budget_s=self.plan_lane_budget_s,
-            triage_scope_count=triage,
+            triage_scope=triage,
             preexisting=self._preexisting(),
         )
         if result.status == "replan":

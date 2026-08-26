@@ -67,13 +67,14 @@ Divergences from the YAML, all deliberate:
 """
 from __future__ import annotations
 
+import logging
 import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, ClassVar, NamedTuple
 
-from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow
+from workhorse.pyflow import AgentTimeout, Await, Continue, Done, NodeNotRunError, Workflow
 from workhorse_workflows.coder.shared import paths, qa_support, roles
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.conversation import backbone
@@ -90,28 +91,30 @@ from workhorse_workflows.coder.shared.resolution import (
     resolver_args,
 )
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
-from workhorse_workflows.coder.qa.nodes.evidence import verify_qa_evidence
-from workhorse_workflows.coder.qa.nodes.hygiene import check_sentinel_ids, flush_root_screenshots
 from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
-from workhorse_workflows.coder.qa.nodes.qa import (
+from workhorse_workflows.coder.qa.nodes import (
     QA_SCRATCH_DIRNAME,
+    check_sentinel_ids,
     clear_qa_evidence,
+    detect_regression_suites,
     ensure_stack,
+    flush_root_screenshots,
     lint_qa_plan,
     qa_tools_catalog,
     run_qa_plan,
+    run_regression_suite,
     validate_qa_plan,
     verify_qa_dry_run,
-)
-from workhorse_workflows.coder.qa.nodes.regression import (
-    detect_regression_suites,
-    run_regression_suite,
+    verify_qa_evidence,
 )
 from workhorse_workflows.coder.shared.review import check_feedback
 from workhorse_workflows.coder.shared.scenarios import qa_only_scenarios
 from workhorse_workflows.coder.shared.story import prepare_story, stamp_specs
 from workhorse_workflows.coder.shared.schemas.dev import OperatorGate, OperatorResolution
 from workhorse_workflows.coder.shared.schemas.qa import (
+    AssessmentRecord,
+    AuditRecord,
+    FixWorklist,
     QaAssessment,
     QaAudit,
     QaContextRepair,
@@ -156,6 +159,116 @@ _SWITCHED = (
     "product was fixed, suspect how the plan reads it — an assertion that samples a value "
     "without waiting for it fails in the exact shape of a broken product."
 )
+
+#: The lane's wall-clock budgets, in seconds of agent turns — **advisory**. Crossing one is
+#: logged and nothing else: it never ends a story, never demotes a repair to a re-run,
+#: and never lets an unresolved audit refutation through as backlog work. Only the lap
+#: ceilings alongside them can end a QA loop.
+#:
+#: They were terminal, and that is the defect this replaced. A wall clock cannot tell a
+#: loop that is going nowhere from one that is three turns from green, so it cut both the
+#: same way — and what it cut was disproportionately the stories doing the *most* real
+#: repair work, because those are the ones that spend. Two live stories reached a green
+#: 41/41 runner and were still stamped "QA FAILED — needs manual review" with their
+#: dependents blocked, because the clock expired before the four post-run gates had
+#: signed off. A lap ceiling says "this was tried the agreed number of times", which is
+#: a statement about the work; a clock says only that the work was slow.
+#:
+#: Kept, and not deleted, because the number is still the honest signal an operator wants
+#: in the log and in telemetry — a story that ran 3× its budget is worth looking at, just
+#: not worth discarding. `ensure_stack` is outside both (see `QaLoop.lane_seconds`), as are
+#: `resolve_operator`, `apply_feedback` and `report_dev`.
+QA_LANE_BUDGET_S = 3300
+PLAN_LANE_BUDGET_S = 2400
+
+#: The bounded retry budgets. Module constants, not fields: they are invariants of this
+#: flow's shape rather than anything a run gets to set.
+#:
+#: These are now the *only* things that can end a QA loop short of a verdict, so they
+#: carry weight the wall clock used to share. They were sized against a lane that would
+#: be cut off by the clock anyway, which made a generous ceiling meaningless; with the
+#: clock advisory, the ceiling is the whole policy and the code-fix one is raised from
+#: three to eight. A code fix is the lap most likely to be *working* — each one is a
+#: named failing check against a green-when-fixed suite — and three of them is well
+#: inside the range where a story is still converging.
+MAX_QA_REWORKS = 8
+MAX_CONTEXT_REWORKS = 3
+#: Trips through the gate that get a resolver turn before every further block goes
+#: straight to a human — the same shape `dev`'s `MAX_PLAN_BLOCKS` and `review`'s
+#: `MAX_REVIEW_BLOCKS` have, and it became load-bearing the moment the resolver was
+#: allowed to *answer*. An escalating resolver bounds itself: the `Await` underneath it
+#: is what ends the lap. An answering one hands the flow straight back to
+#: `read_operator`, so a block whose answer does not clear the underlying failure
+#: returns to this gate unchanged and is answered again, forever, with no human ever
+#: reached. This is not a cap on how many times QA may block — there is none, and the
+#: budget is spent on an answer exactly as it is on an escalation, so a resolver that
+#: keeps answering the same block walks toward a person rather than lapping behind one.
+MAX_QA_BLOCKS = 3
+#: The two QA-plan budgets are deliberately separate. `MAX_PLAN_REWORKS` bounds the
+#: gates that judge the plan (the post-run assessment and the audit);
+#: `MAX_PLAN_VALIDATION_REWORKS` bounds repairs of a `qa_plan.py` that does not import.
+#: See `QaLoop.plan_judgement_rework` for the story that split them.
+#:
+#: The judgement budget was cut to three when a spent plan-lane clock would demote the
+#: plan to the runner anyway — running a slightly worse plan beat spending the lane's
+#: whole wall clock on judgement, since the plan nodes were 1527 of a QA lane's ~1800
+#: minutes against 2.9% for actually running the plan. That demotion is gone with the
+#: clock, so the trade is no longer "one more lap versus a run"; it is "one more lap
+#: versus no verdict". Raised to six. Every one of these laps buys a repair of a plan
+#: that has actually been *executed*.
+#: `MAX_PLAN_VALIDATION_REWORKS` is left alone: a `qa_plan.py` that will not import
+#: cannot be run *at all*, so those laps are not a quality trade, and each is `power="low"`.
+MAX_PLAN_REWORKS = 6
+MAX_PLAN_VALIDATION_REWORKS = 3
+#: And the ceiling on their *product*. The two budgets above are spent independently, so
+#: nothing stopped a story alternating between them: three schema repairs and four
+#: judgement repairs is seven laps that every individual guard considers legal, and a
+#: live story reached thirteen turns of `plan-qa` that way. This bounds the sum, so the
+#: stacked budgets can no longer multiply.
+#:
+#: It is a *sum* and not a product, which is the whole point. Two constraints fix it.
+#: Below, it must leave room for three schema repairs and two blocking audits to all be
+#: legal — a ceiling under five lets a run of typos starve the reader, which is what
+#: `test_schema_repairs_cannot_starve_the_semantic_plan_gate` exists to catch. Above, it
+#: must stay under `MAX_PLAN_REWORKS + MAX_PLAN_VALIDATION_REWORKS`, or it is inert: at
+#: the stacked maximum no interleaving can ever reach it. It rose from five with
+#: `MAX_PLAN_REWORKS`, to one below that stacked maximum of nine. The lane's wall clock
+#: is held by the per-turn caps on the three plan nodes, not here.
+MAX_TOTAL_PLAN_LAPS = 8
+#: Not a spend ceiling — a *blocking* ceiling, and the only one of these that changes what
+#: a finding means rather than how many are affordable. Nothing stands downstream of the
+#: audit, so a plan-scoped refutation it raises can only be closed by another plan repair,
+#: and the
+#: auditor samples the riskiest evidence rather than enumerating everything — which means
+#: each repair is judged against a bar that moves. A live story died of exactly that: three
+#: audits, three *different* genuine gaps, each closed, the fourth lap out of budget and
+#: escalated a plan whose runner had passed every time. Past this many
+#: plan-scoped refutations the audit stops blocking: its findings still get written and
+#: filed as backlog work, and the story lands on the verdict its evidence supports.
+#: Product contradictions and findings whose repair is a test or the stack are unaffected
+#: — those route to loops with ceilings of their own.
+MAX_BLOCKING_AUDITS = 2
+MAX_SETUP_REWORKS = 2
+#: How many turns one scenario in the per-scenario fix worklist may have before the flow
+#: stops paying for it and lets the scored suite judge it as written.
+#:
+#: Deliberately small. The dry run this budget is spent on is one scenario against a stack
+#: that is already up, so two attempts that both come back refused are two attempts that
+#: had the runner's own output in front of them and still did not land — and the remaining
+#: scenarios in the worklist have not been looked at once. Exhausting it is not a give-up
+#: and never ends the run: the item is carried into the scored re-run unproved, where it
+#: either passes or comes back as a failure the code-fix budget above answers for. What
+#: does escalate is a *repeated identical* refusal, which is the same signal
+#: `repaired_failures` carries one loop out.
+MAX_FIX_ITEM_REWORKS = 2
+MAX_REGRESSION_FIXES = 3
+MAX_TRIAGE_SCOPES = 2
+#: How many consecutive laps `repair_plan` may spend on one session chain before it
+#: starts a fresh conversation. Continuity is what stops each lap re-deriving the plan it
+#: is editing, but a conversation that has been wrong four times running is no longer a
+#: head start — it is a transcript of four rejected repairs, and the compaction that keeps
+#: it in the window summarises the wrong turns as readily as the right ones.
+MAX_CHAIN_LAPS = 4
 
 
 def _finding(passed: bool, notes: str) -> str:
@@ -225,6 +338,36 @@ def _failure_signature(result: QaPlanRun) -> tuple[str, ...]:
             if isinstance(outcome, dict) and outcome.get("status") != "passed"
         )
     )
+
+
+def _last_run(flow: Qa) -> QaPlanRun | None:
+    """The latest `run_qa_plan` payload the run recorded — `None` before the first run.
+
+    The two fingerprints below used to be copied onto the loop at the `run` state and read
+    back out of the checkpoint many states later. They are pure functions of this payload,
+    so a copy is a second place for them to be wrong: every rejoin that forgot to blank one
+    left a later guard comparing against a run that is no longer the one being reacted to.
+    Read back through the engine there is only ever the latest run to describe.
+
+    `None` and not a raise, because the plan lane runs before any suite does — the first
+    authoring turn asks what the last run failed at and the honest answer is "nothing yet".
+    """
+    try:
+        return flow.output(run_qa_plan)
+    except NodeNotRunError:
+        return None
+
+
+def _run_failures(flow: Qa) -> tuple[str, ...]:
+    """What the latest QA run failed at, as `_failure_signature` renders it."""
+    result = _last_run(flow)
+    return _failure_signature(result) if result is not None else ()
+
+
+def _failed_scenarios(flow: Qa) -> tuple[str, ...]:
+    """The ids alone of the scenarios the latest QA run did not pass."""
+    result = _last_run(flow)
+    return _failed_scenario_ids(result) if result is not None else ()
 
 
 def _failed_scenario_ids(result: QaPlanRun) -> tuple[str, ...]:
@@ -314,6 +457,85 @@ def _route_findings(findings: Sequence[QaFinding]) -> RoutedFindings:
     )
 
 
+def _repeating(loop: QaLoop, lap: str, failures: tuple[str, ...]) -> bool:
+    """Has the last repair left the run failing at exactly what it failed at before?
+
+    The guards below each bound a *count* of laps. This bounds their usefulness: once a
+    repair has been paid for and the suite fails identically — same scenarios, same
+    assertion depth — the next lap buys the same turn and the same re-run for the same
+    answer. See `QaLoop.repaired_failures` for the story it comes from.
+
+    `lap` is what makes it one loop's question rather than both loops'. The plan loop and
+    the fix loop stamp the same field, and a plan repair hands its findings to the fix
+    loop without re-running the suite — so a fix loop that compared the raw fingerprint
+    would call its own first visit a stall, on the strength of a code fix nobody made.
+    """
+    return bool(failures) and loop.repaired_lap == lap and failures == loop.repaired_failures
+
+def _rejection(loop: QaLoop, kind: str) -> str:
+    """This refusal as one comparable line: which gate raised it, and what it said.
+
+    The notes are whitespace-normalised because they are a validator's or a dry-run
+    gate's rendered output, and a re-wrapped identical complaint is an identical
+    complaint. `kind` is in the key for the reason `_repeating` takes a `lap`: two gates
+    share this field, and a schema refusal that reads like a dry-run refusal is not one.
+    """
+    return f"{kind}: {' '.join(loop.plan_validation_notes.split())}"
+
+def _escalation(
+    flow: Qa,
+    loop: QaLoop,
+    result: OperatorResolution | None = None,
+    findings: Sequence[Finding] = (),
+) -> OperatorGate:
+    """The gate body for this block — see `coder.shared.escalation`.
+
+    `findings` is what the blocking gate saw, and it is passed here only for the ones
+    `_route_findings` could not send anywhere: a finding with an owner has already gone
+    to that owner, so anything reaching the operator is evidence nobody could act on.
+    """
+    return escalation(
+        flow,
+        block_kind="qa",
+        where=(
+            f"last lap: {loop.repaired_lap or 'none'}; "
+            f"{loop.qa_rework} code rework, {loop.plan_rework} plan repair, "
+            f"{loop.context_rework} context repair, {loop.setup_rework} setup repair"
+        ),
+        notes=loop.block_notes,
+        number=loop.escalations,
+        result=result,
+        findings=findings,
+    )
+
+def _note_lane_budget(loop: QaLoop, logger: logging.Logger) -> None:
+    """Log a QA lane over its advisory wall-clock budget. Never decides anything.
+
+    Called from the guards that used to *end* on this comparison. What replaced the
+    branch is this line, and the line is the point: the number stays visible to an
+    operator reading the log or the telemetry, while the decision to stop belongs to the
+    lap ceilings, which know whether the loop is converging. See `QA_LANE_BUDGET_S`.
+    """
+    if loop.clock.seconds >= QA_LANE_BUDGET_S:
+        logger.info(
+            "the QA lane has spent %.0fs of its %ds advisory budget — continuing, the "
+            "lap ceilings decide when this story stops",
+            loop.clock.seconds,
+            QA_LANE_BUDGET_S,
+            extra={"activity": True},
+        )
+
+def _note_plan_budget(loop: QaLoop, logger: logging.Logger) -> None:
+    """The same, for the plan lane. See `_note_lane_budget` and `PLAN_LANE_BUDGET_S`."""
+    if loop.clock.plan_seconds >= PLAN_LANE_BUDGET_S:
+        logger.info(
+            "the QA plan lane has spent %.0fs of its %ds advisory budget — continuing, "
+            "the plan-lap ceilings decide when this plan stops",
+            loop.clock.plan_seconds,
+            PLAN_LANE_BUDGET_S,
+            extra={"activity": True},
+        )
+
 class Qa(Workflow):
     """Run a story's QA plan, gate the evidence, audit the pass, and bound every retry."""
 
@@ -347,132 +569,20 @@ class Qa(Workflow):
     #: one classification turn a `blocked` run still buys: a stack that never came up
     #: says nothing about the product, so ending on it would report a verdict about the
     #: harness.
-    first_verdict: bool = False
+    stop_at_first_verdict: bool = False
     #: The parent's rescope budget, seeded in and handed back bumped. The one piece of loop
     #: state this isolated flow does not own.
-    triage_scope_count: int = 0
+    triage_scope: int = 0
     #: `snapshot_worktree_state`'s reading from before this story's first dev turn — the
     #: paths that were already dirty then, with their bytes. The obligation packet drops the
     #: ones that still match, so QA does not write scenarios for an earlier story's
     #: abandoned work. Empty drops nothing, which is the pre-snapshot behaviour.
     preexisting: tuple[str, ...] = ()
-    #: The lane's wall-clock budgets, in seconds of agent turns — **advisory**. Crossing one
-    #: is logged and nothing else: it never ends a story, never demotes a repair to a re-run,
-    #: and never lets an unresolved audit refutation through as backlog work. Only the lap
-    #: ceilings below can end a QA loop.
-    #:
-    #: They were terminal, and that is the defect this replaced. A wall clock cannot tell a
-    #: loop that is going nowhere from one that is three turns from green, so it cut both the
-    #: same way — and what it cut was disproportionately the stories doing the *most* real
-    #: repair work, because those are the ones that spend. Two live stories reached a green
-    #: 41/41 runner and were still stamped "QA FAILED — needs manual review" with their
-    #: dependents blocked, because the clock expired before the four post-run gates had
-    #: signed off. A lap ceiling says "this was tried the agreed number of times", which is
-    #: a statement about the work; a clock says only that the work was slow.
-    #:
-    #: Kept as `--param` fields, and not deleted, because the number is still the honest
-    #: signal an operator wants in the log and in telemetry — a story that ran 3× its budget
-    #: is worth looking at, just not worth discarding. Fields and not `ClassVar`s like the
-    #: lap budgets below for the same old reason: those are invariants of the flow's shape,
-    #: while "a story's QA should fit in an hour" is a per-run policy that lands in the
-    #: checkpoint. `ensure_stack` is outside both (see `QaLoop.lane_seconds`), as are
-    #: `resolve_operator`, `apply_feedback` and `report_dev`.
-    qa_lane_budget_s: int = 3300
-    plan_lane_budget_s: int = 2400
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
     #: fill each one in for any node or sub-flow that declares a parameter of the same
     #: name and was not passed one; see `Workflow.injects`.
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
-
-    #: The bounded retry budgets. All `ClassVar`, because none of them is a var the YAML
-    #: declared — each guard carries a branch literal. See the module docstring.
-    #:
-    #: These are now the *only* things that can end a QA loop short of a verdict, so they
-    #: carry weight the wall clock used to share. They were sized against a lane that would
-    #: be cut off by the clock anyway, which made a generous ceiling meaningless; with the
-    #: clock advisory, the ceiling is the whole policy and the code-fix one is raised from
-    #: three to eight. A code fix is the lap most likely to be *working* — each one is a
-    #: named failing check against a green-when-fixed suite — and three of them is well
-    #: inside the range where a story is still converging.
-    MAX_QA_REWORKS: ClassVar[int] = 8
-    MAX_CONTEXT_REWORKS: ClassVar[int] = 3
-    #: Trips through the gate that get a resolver turn before every further block goes
-    #: straight to a human — the same shape `dev`'s `MAX_PLAN_BLOCKS` and `review`'s
-    #: `MAX_REVIEW_BLOCKS` have, and it became load-bearing the moment the resolver was
-    #: allowed to *answer*. An escalating resolver bounds itself: the `Await` underneath it
-    #: is what ends the lap. An answering one hands the flow straight back to
-    #: `read_operator`, so a block whose answer does not clear the underlying failure
-    #: returns to this gate unchanged and is answered again, forever, with no human ever
-    #: reached. This is not a cap on how many times QA may block — there is none, and the
-    #: budget is spent on an answer exactly as it is on an escalation, so a resolver that
-    #: keeps answering the same block walks toward a person rather than lapping behind one.
-    MAX_QA_BLOCKS: ClassVar[int] = 3
-    #: The two QA-plan budgets are deliberately separate. `MAX_PLAN_REWORKS` bounds the
-    #: gates that judge the plan (the post-run assessment and the audit);
-    #: `MAX_PLAN_VALIDATION_REWORKS` bounds repairs of a `qa_plan.py` that does not import.
-    #: See `QaLoop.plan_judgement_rework` for the story that split them.
-    #:
-    #: The judgement budget was cut to three when a spent plan-lane clock would demote the
-    #: plan to the runner anyway — running a slightly worse plan beat spending the lane's
-    #: whole wall clock on judgement, since the plan nodes were 1527 of a QA lane's ~1800
-    #: minutes against 2.9% for actually running the plan. That demotion is gone with the
-    #: clock, so the trade is no longer "one more lap versus a run"; it is "one more lap
-    #: versus no verdict". Raised to six. Every one of these laps buys a repair of a plan
-    #: that has actually been *executed*.
-    #: `MAX_PLAN_VALIDATION_REWORKS` is left alone: a `qa_plan.py` that will not import
-    #: cannot be run *at all*, so those laps are not a quality trade, and each is `power="low"`.
-    MAX_PLAN_REWORKS: ClassVar[int] = 6
-    MAX_PLAN_VALIDATION_REWORKS: ClassVar[int] = 3
-    #: And the ceiling on their *product*. The two budgets above are spent independently, so
-    #: nothing stopped a story alternating between them: three schema repairs and four
-    #: judgement repairs is seven laps that every individual guard considers legal, and a
-    #: live story reached thirteen turns of `plan-qa` that way. This bounds the sum, so the
-    #: stacked budgets can no longer multiply.
-    #:
-    #: It is a *sum* and not a product, which is the whole point. Two constraints fix it.
-    #: Below, it must leave room for three schema repairs and two blocking audits to all be
-    #: legal — a ceiling under five lets a run of typos starve the reader, which is what
-    #: `test_schema_repairs_cannot_starve_the_semantic_plan_gate` exists to catch. Above, it
-    #: must stay under `MAX_PLAN_REWORKS + MAX_PLAN_VALIDATION_REWORKS`, or it is inert: at
-    #: the stacked maximum no interleaving can ever reach it. It rose from five with
-    #: `MAX_PLAN_REWORKS`, to one below that stacked maximum of nine. The lane's wall clock
-    #: is held by the per-turn caps on the three plan nodes, not here.
-    MAX_TOTAL_PLAN_LAPS: ClassVar[int] = 8
-    #: Not a spend ceiling — a *blocking* ceiling, and the only one of these that changes what
-    #: a finding means rather than how many are affordable. Nothing stands downstream of the
-    #: audit, so a plan-scoped refutation it raises can only be closed by another plan repair,
-    #: and the
-    #: auditor samples the riskiest evidence rather than enumerating everything — which means
-    #: each repair is judged against a bar that moves. A live story died of exactly that: three
-    #: audits, three *different* genuine gaps, each closed, the fourth lap out of budget and
-    #: escalated a plan whose runner had passed every time. Past this many
-    #: plan-scoped refutations the audit stops blocking: its findings still get written and
-    #: filed as backlog work, and the story lands on the verdict its evidence supports.
-    #: Product contradictions and findings whose repair is a test or the stack are unaffected
-    #: — those route to loops with ceilings of their own.
-    MAX_BLOCKING_AUDITS: ClassVar[int] = 2
-    MAX_SETUP_REWORKS: ClassVar[int] = 2
-    #: How many turns one scenario in the per-scenario fix worklist may have before the flow
-    #: stops paying for it and lets the scored suite judge it as written.
-    #:
-    #: Deliberately small. The dry run this budget is spent on is one scenario against a stack
-    #: that is already up, so two attempts that both come back refused are two attempts that
-    #: had the runner's own output in front of them and still did not land — and the remaining
-    #: scenarios in the worklist have not been looked at once. Exhausting it is not a give-up
-    #: and never ends the run: the item is carried into the scored re-run unproved, where it
-    #: either passes or comes back as a failure the code-fix budget above answers for. What
-    #: does escalate is a *repeated identical* refusal, which is the same signal
-    #: `repaired_failures` carries one loop out.
-    MAX_FIX_ITEM_REWORKS: ClassVar[int] = 2
-    MAX_REGRESSION_FIXES: ClassVar[int] = 3
-    MAX_TRIAGE_SCOPES: ClassVar[int] = 2
-    #: How many consecutive laps `repair_plan` may spend on one session chain before it
-    #: starts a fresh conversation. Continuity is what stops each lap re-deriving the plan it
-    #: is editing, but a conversation that has been wrong four times running is no longer a
-    #: head start — it is a transcript of four rejected repairs, and the compaction that keeps
-    #: it in the window summarises the wrong turns as readily as the right ones.
-    MAX_CHAIN_LAPS: ClassVar[int] = 4
 
     def setup(self) -> StoryPaths:
         """Resolve the slug to the story path, its spec dir and its `qa/` directory, and
@@ -523,7 +633,7 @@ class Qa(Workflow):
         return Done(result)
 
     def _first_verdict_ends(self, loop: QaLoop) -> Done:
-        """`first_verdict`'s terminal: report the verdict as it stands, `inconclusive`.
+        """`stop_at_first_verdict`'s terminal: report the verdict as it stands, `inconclusive`.
 
         `inconclusive` and not a new status, because the vocabulary is closed and this
         is exactly what its existing arm means — the flow ends without repairing,
@@ -587,10 +697,11 @@ class Qa(Workflow):
             "plan_rework_total": loop.plan_rework_total,
             "plan_judgement_rework": loop.plan_judgement_rework,
         }
+        verdicts = loop.assessment.dimensions() | loop.audit.dimensions()
         return (
             self.labels()
             | counter_labels(carried, "qa", self.BUDGET_LABELS)
-            | verdict_labels(carried, "qa", QaLoop.VERDICT_LABELS)
+            | verdict_labels(verdicts, "qa", tuple(verdicts))
         )
 
     # ── context ───────────────────────────────────────────────────────────────────────
@@ -608,7 +719,7 @@ class Qa(Workflow):
         """
         if not self.ctx.story_path:
             self.logger.info("no story to QA — nothing to run")
-            return Done(QaFlowResult(triage_scope=self.triage_scope_count))
+            return Done(QaFlowResult(triage_scope=self.triage_scope))
         # A re-QA of a story that was already QA'd — after a fix, after an operator answer,
         # after a resume — must not resume the previous pass's repair conversation: it
         # describes a plan and a diff that have both been rewritten since.
@@ -620,7 +731,7 @@ class Qa(Workflow):
             okf,
             self.build_context,
             loop=QaLoop(
-                triage_scope=self.triage_scope_count,
+                triage_scope=self.triage_scope,
                 docs_recheck_required=False,
             ),
         )
@@ -659,7 +770,7 @@ class Qa(Workflow):
             context_notes=_finding(result.status == "passed", result.notes),
             # Zeroed with the chain itself, so the next chain gets a whole budget rather than
             # inheriting a count of laps that belonged to a conversation that no longer exists.
-            chain_laps=0,
+            clock=loop.clock.model_copy(update={"chain_laps": 0}),
             # And for the same reason: a refusal of the plan that answered the old diff says
             # nothing about the plan that answers this one. See `QaLoop.plan_rejections`.
             plan_rejections=(),
@@ -670,7 +781,7 @@ class Qa(Workflow):
             # a state routing back here changed what the diff obligates, and the plan that
             # answered the old obligations must not be the one that runs.
             return Continue(result, self.stack, loop=loop.update(plan_authored=False))
-        if loop.context_rework >= self.MAX_CONTEXT_REWORKS:
+        if loop.context_rework >= MAX_CONTEXT_REWORKS:
             return self._exhausted(loop, f"{loop.context_rework} OKF-context repair")
         return Continue(result, self.repair_context, loop=loop)
 
@@ -833,11 +944,11 @@ class Qa(Workflow):
         """
         self.logger.info("repairing the QA plan for %s", self.ctx.story_slug,
                          extra={"activity": True})
-        laps = loop.chain_laps
-        if laps >= self.MAX_CHAIN_LAPS or self._repeating(loop, "QA-plan repair"):
+        laps = loop.clock.chain_laps
+        if laps >= MAX_CHAIN_LAPS or _repeating(loop, "QA-plan repair", _run_failures(self)):
             self.reset_session(self._chain)
             laps = 0
-        loop = loop.update(chain_laps=laps + 1)
+        loop = loop.update(clock=loop.clock.model_copy(update={"chain_laps": laps + 1}))
         overran = ""
         repaired: tuple[str, ...] = ()
         result: QaPlanResult | None = None
@@ -883,7 +994,7 @@ class Qa(Workflow):
         return self._validated(
             loop,
             overran=overran,
-            dry_run=tuple(sorted({*loop.failed_scenarios, *repaired})),
+            dry_run=tuple(sorted({*_failed_scenarios(self), *repaired})),
         )
 
     def _standing_plan(self) -> bool:
@@ -944,9 +1055,10 @@ class Qa(Workflow):
         impl = self.output(resolve_impl_context)
         tools = self.call(qa_tools_catalog, self.docs_path)
         spec_abs = Path(self.ctx.spec_dir) if self.ctx.spec_dir else None
+        failed = _failed_scenarios(self)
         failed_assertions = (
             qa_support.failed_assertions(qa_support.scored_run_log(spec_abs))
-            if spec_abs and loop.failed_scenarios
+            if spec_abs and failed
             else {}
         )
         return {
@@ -971,13 +1083,13 @@ class Qa(Workflow):
             ],
             "failed_scenarios": [
                 {"id": scenario, "failed_assertions": failed_assertions.get(scenario, [])}
-                for scenario in loop.failed_scenarios
+                for scenario in failed
             ],
             "context_status": loop.context_status,
             "context_notes": loop.context_notes,
             "plan_validation_notes": loop.plan_validation_notes,
-            "run_assessment_notes": loop.assessment_notes,
-            "audit_notes": loop.audit_notes,
+            "run_assessment_notes": loop.assessment.notes,
+            "audit_notes": loop.audit.notes,
             "evidence_notes": loop.qa.notes,
             "qa_tools": tools.tools,
         }
@@ -1102,7 +1214,7 @@ class Qa(Workflow):
             # an `apply_fixes` lap, a grounding repair — buys a fresh `power="high"` authoring
             # turn. What bounds that is `MAX_CONTEXT_REWORKS`, the ceiling on the rebuilds
             # themselves, not the clock: a rejoin cannot happen without one.
-            self._note_plan_budget(loop)
+            _note_plan_budget(loop, self.logger)
             return Continue(status, self.plan, loop=loop)
         return Continue(status, self.run, loop=loop)
 
@@ -1117,18 +1229,16 @@ class Qa(Workflow):
         reads `block_notes`, which is prose — and `_guard_setup` compares it against the
         bundle the last setup fixer was handed. See `QaLoop.setup_problems`.
 
-        A `failed` run carries the equivalent for the repair loops: the scenarios it failed
-        and how far each got, which `_repeating` compares against what the last repair was
-        handed. See `QaLoop.repaired_failures`. The bare ids go alongside it: they are the
-        set the next repair turn must dry-run before the suite is spent on it again.
+        What a `failed` run leaves behind is on the recorded payload rather than on the
+        loop: `_run_failures` fingerprints the scenarios it failed and how far each got,
+        which `_repeating` compares against what the last repair was handed (see
+        `QaLoop.repaired_failures`), and `_failed_scenarios` reads the bare ids back out of
+        the same payload — the set the next repair turn must dry-run before the suite is
+        spent on it again.
         """
         self.logger.info("running the QA plan", extra={"activity": True})
         result = self.call(run_qa_plan, self.ctx.spec_dir, self.docs_path)
-        loop = loop.with_qa(result).update(
-            blocked_problems=_blocked_problems(result),
-            run_failures=_failure_signature(result),
-            failed_scenarios=_failed_scenario_ids(result),
-        )
+        loop = loop.with_qa(result).update(blocked_problems=_blocked_problems(result))
         if result.status == "passed":
             # A green runner leaves the assessment sieve nothing to classify: every arm
             # below its refusal check routes a failure, a block or a disposition, and
@@ -1140,7 +1250,7 @@ class Qa(Workflow):
             # loop fields stay blank, which is the documented "this gate has not run".
             self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
             return Continue(result, self.verify_evidence, loop=loop)
-        if self.first_verdict and result.status == "failed":
+        if self.stop_at_first_verdict and result.status == "failed":
             # The first red *is* the report in this mode, and the classification turn
             # the assessment sieve would spend on it decides nothing the report reads:
             # every disposition it could return either enters a repair this mode
@@ -1195,18 +1305,20 @@ class Qa(Workflow):
             return self._refused(assessment, loop.charged(time.monotonic() - started),
                                  "the QA run assessment")
         loop = loop.charged(time.monotonic() - started).update(
-            assessment_notes=_finding(assessment.disposition == "confirmed", assessment.notes),
-            assessment_disposition=assessment.disposition or "",
-            assessment_failure_class=assessment.failure_class or "",
+            assessment=AssessmentRecord(
+                notes=_finding(assessment.disposition == "confirmed", assessment.notes),
+                disposition=assessment.disposition or "",
+                failure_class=assessment.failure_class or "",
+            ),
         )
 
-        if self.first_verdict:
+        if self.stop_at_first_verdict:
             # Only a run the mode could not end on its own reaches this sieve — `run`
             # ends a plain `failed` before it, so this is a `blocked` or otherwise
             # unreadable run, and this turn is the one classification the mode still
             # budgets for it. Environment failures keep the setup loop — the harness is
             # not the product — and everything else is reported as it stands; see the
-            # `first_verdict` field.
+            # `stop_at_first_verdict` field.
             if (
                 assessment.disposition == "repair_setup"
                 or loop.qa.status == "blocked"
@@ -1267,14 +1379,14 @@ class Qa(Workflow):
         )
         loop = loop.with_qa(result)
         if result.status == "passed":
-            if self.first_verdict:
+            if self.stop_at_first_verdict:
                 # Straight to the hygiene gates: the audit exists to refute a pass into
                 # a repair, and this mode reports rather than repairs. The deterministic
                 # evidence gate above still ran — a pass this mode reports is still one
                 # whose artifacts exist on disk.
                 return Continue(result, self.finalize, loop=loop)
             return Continue(result, self.audit, loop=loop)
-        if self.first_verdict:
+        if self.stop_at_first_verdict:
             return self._first_verdict_ends(loop)
         if result.status in {"failed", "blocked"}:
             return Continue(result, self.backlog, loop=loop)
@@ -1320,11 +1432,14 @@ class Qa(Workflow):
             return self._refused(result, loop.charged(time.monotonic() - started),
                                  "the QA audit")
         loop = loop.charged(time.monotonic() - started).update(
-            audit_notes=_finding(
-                result.verdict == "stands" and result.refutation_class == "none", result.notes
+            audit=AuditRecord(
+                notes=_finding(
+                    result.verdict == "stands" and result.refutation_class == "none",
+                    result.notes,
+                ),
+                verdict=result.verdict or "",
+                refutation_class=result.refutation_class or "",
             ),
-            audit_verdict=result.verdict or "",
-            audit_refutation_class=result.refutation_class or "",
         )
         if result.verdict == "stands" and result.refutation_class == "none":
             return Continue(result, self.backlog, loop=loop)
@@ -1339,7 +1454,7 @@ class Qa(Workflow):
         elsewhere = self._routed(result, loop, result.findings, result.notes)
         if elsewhere is not None:
             return elsewhere
-        if loop.audit_rework > self.MAX_BLOCKING_AUDITS:
+        if loop.audit_rework > MAX_BLOCKING_AUDITS:
             self.logger.info(
                 "the audit has refuted this pass %d times with plan-only findings — filing "
                 "this one as backlog work rather than spending another plan repair",
@@ -1347,7 +1462,7 @@ class Qa(Workflow):
                 extra={"activity": True},
             )
             return Continue(result, self.backlog, loop=loop)
-        self._note_lane_budget(loop)
+        _note_lane_budget(loop, self.logger)
         return self._guard_plan(result, loop)
 
     # ── what happens to the verdict ───────────────────────────────────────────────────
@@ -1396,8 +1511,8 @@ class Qa(Workflow):
                 "spec_dir": self.ctx.spec_dir,
                 "qa_dir": self.ctx.qa_dir,
                 "qa_notes": loop.qa.notes,
-                "triage_scope_count": loop.triage_scope,
-                "max_triage_scopes": str(self.MAX_TRIAGE_SCOPES),
+                "triage_scope": loop.triage_scope,
+                "max_triage_scopes": str(MAX_TRIAGE_SCOPES),
             },
         )
         if triage.blocked:
@@ -1409,7 +1524,7 @@ class Qa(Workflow):
         loop = loop.charged(time.monotonic() - started).update(
             failure_class=triage.qa_failure_class or ""
         )
-        if loop.triage_scope >= self.MAX_TRIAGE_SCOPES:
+        if loop.triage_scope >= MAX_TRIAGE_SCOPES:
             return self._fixable(triage, loop)
         if triage.triage_action == "rescope":
             self.logger.info("triage rescoped the story — handing back to dev")
@@ -1551,7 +1666,7 @@ class Qa(Workflow):
                 run,
                 loop.update(regression_fix_applied=False, regression_reqa_pending=True),
             )
-        if loop.regression_fix >= self.MAX_REGRESSION_FIXES:
+        if loop.regression_fix >= MAX_REGRESSION_FIXES:
             # `mark-regression-unresolved.py`, then the flags are cleared and the story
             # falls through to the ordinary QA-fix loop.
             unresolved = QaResult(
@@ -1644,7 +1759,7 @@ class Qa(Workflow):
         result = self.call(check_sentinel_ids, self.ctx.story_slug)
         loop = loop.with_qa(result)
         if result.status != "passed":
-            if self.first_verdict:
+            if self.stop_at_first_verdict:
                 return self._first_verdict_ends(loop)
             return self._guard_qa(result, loop)
         if self.target_env == "dev":
@@ -1719,7 +1834,7 @@ class Qa(Workflow):
         exhausted rather than as blocked on the one thing it is actually blocked on.
 
         When the run reported *which* scenarios failed, this node does not run the fixer at
-        all: it seeds `fix_worklist` and hands the lap to `fix_item`, which takes them one at
+        all: it seeds `QaLoop.fix` and hands the lap to `fix_item`, which takes them one at
         a time and proves each one green before the next starts. The rework is charged here,
         once, because the whole worklist is one rework — the split is about how the lap is
         spent, not about buying more of them.
@@ -1729,11 +1844,12 @@ class Qa(Workflow):
         mid-flight note. Those briefs are not a list of red scenarios and cannot be walked
         as one.
         """
-        if loop.failed_scenarios:
+        failed = _failed_scenarios(self)
+        if failed:
             self.logger.info(
                 "splitting the fix pass into %d per-scenario item(s): %s",
-                len(loop.failed_scenarios),
-                ", ".join(loop.failed_scenarios),
+                len(failed),
+                ", ".join(failed),
                 extra={"activity": True},
             )
             return Continue(
@@ -1742,9 +1858,7 @@ class Qa(Workflow):
                 loop=loop.update(
                     qa_rework=loop.qa_rework + 1,
                     docs_recheck_required=True,
-                    fix_worklist=loop.failed_scenarios,
-                    fix_item_rework=0,
-                    fix_item_problems=(),
+                    fix=FixWorklist(items=failed),
                 ),
             )
         self.logger.info("applying QA fixes", extra={"activity": True})
@@ -1788,14 +1902,14 @@ class Qa(Workflow):
         is a fixer working with no new information, and that goes to the operator gate with
         the worklist still on the loop so a resume continues it.
         """
-        if not loop.fix_worklist:
+        if not loop.fix.items:
             return Continue(loop.qa, self.build_context, loop=loop)
-        item = loop.fix_worklist[0]
+        item = loop.fix.items[0]
         self.logger.info(
             "fixing QA scenario %s (%d left, attempt %d)",
             item,
-            len(loop.fix_worklist),
-            loop.fix_item_rework + 1,
+            len(loop.fix.items),
+            loop.fix.rework + 1,
             extra={"activity": True},
         )
         started = time.monotonic()
@@ -1809,21 +1923,23 @@ class Qa(Workflow):
             self.logger.info("scenario %s is green in its dry run", item)
             return self._next_item(result, loop)
         problem = f"{item}: {gate.notes}"
-        loop = loop.update(fix_item_problems=(*loop.fix_item_problems, problem))
-        if problem in loop.fix_item_problems[:-1]:
+        loop = loop.update(
+            fix=loop.fix.model_copy(update={"problems": (*loop.fix.problems, problem)})
+        )
+        if problem in loop.fix.problems[:-1]:
             self.logger.info(
                 "scenario %s was refused for the identical reason twice; escalating: %s",
                 item,
                 gate.notes,
             )
             return self._gate(gate, loop.update(qa=result))
-        loop = loop.update(fix_item_rework=loop.fix_item_rework + 1)
-        if loop.fix_item_rework >= self.MAX_FIX_ITEM_REWORKS:
+        loop = loop.update(fix=loop.fix.model_copy(update={"rework": loop.fix.rework + 1}))
+        if loop.fix.rework >= MAX_FIX_ITEM_REWORKS:
             self.logger.info(
                 "scenario %s has had its %d attempts; carrying it into the scored run as "
                 "written and letting that run judge it",
                 item,
-                loop.fix_item_rework,
+                loop.fix.rework,
             )
             return self._next_item(result, loop)
         return Continue(result, self.fix_item, loop=loop)
@@ -1840,8 +1956,8 @@ class Qa(Workflow):
         replaced only on the way out, where the fixer's own status is what `build_context`
         and the loop behind it react to.
         """
-        rest = loop.fix_worklist[1:]
-        loop = loop.update(fix_worklist=rest, fix_item_rework=0, fix_item_problems=())
+        rest = loop.fix.items[1:]
+        loop = loop.update(fix=loop.fix.popped())
         if rest:
             return Continue(result, self.fix_item, loop=loop)
         return Continue(result, self.build_context, loop=loop.update(qa=result))
@@ -1880,7 +1996,7 @@ class Qa(Workflow):
                 "qa_scratch_dir": QA_SCRATCH_DIRNAME,
                 "scenario": item,
                 "failed_assertions": failed_assertions.get(item, []),
-                "remaining_scenarios": list(loop.fix_worklist[1:]),
+                "remaining_scenarios": list(loop.fix.items[1:]),
                 "qa_notes": loop.qa.notes,
             },
             session=backbone(self),
@@ -1985,7 +2101,7 @@ class Qa(Workflow):
         # `Await` writes its `questions` over this file with `write_text`, so the body it is
         # handed has to *contain* the note the resolver just wrote there — which is what
         # `_escalation` does, on top of saying what was tried and what would unblock it.
-        gate = self._escalation(loop, result)
+        gate = _escalation(self, loop, result)
         return Await(context_path(self), gate.body, self.read_operator, loop=loop)
 
     def read_operator(self, loop: QaLoop) -> Continue | Done:
@@ -2044,7 +2160,7 @@ class Qa(Workflow):
             # means the answer did not reach the block. Going round for another lap re-runs
             # a fix against an instruction already known not to work.
             return self._refused(result, loop, "the operator-guided QA fix")
-        if loop.qa_rework >= self.MAX_QA_REWORKS:
+        if loop.qa_rework >= MAX_QA_REWORKS:
             self.logger.info("operator-guided rework loop is out of QA reworks — escalating")
             return self._exhausted(loop, f"{loop.qa_rework} operator-guided rework")
         return Continue(result, self.build_context, loop=loop)
@@ -2105,41 +2221,22 @@ class Qa(Workflow):
             )
         return None
 
-    def _repeating(self, loop: QaLoop, lap: str) -> bool:
-        """Has the last repair left the run failing at exactly what it failed at before?
-
-        The guards below each bound a *count* of laps. This bounds their usefulness: once a
-        repair has been paid for and the suite fails identically — same scenarios, same
-        assertion depth — the next lap buys the same turn and the same re-run for the same
-        answer. See `QaLoop.repaired_failures` for the story it comes from.
-
-        `lap` is what makes it one loop's question rather than both loops'. The plan loop and
-        the fix loop stamp the same field, and a plan repair hands its findings to the fix
-        loop without re-running the suite — so a fix loop that compared the raw fingerprint
-        would call its own first visit a stall, on the strength of a code fix nobody made.
-        """
-        return (
-            bool(loop.run_failures)
-            and loop.repaired_lap == lap
-            and loop.run_failures == loop.repaired_failures
-        )
-
     def _guard_plan(self, result: object, loop: QaLoop) -> Continue | Await | Done:
         """Spend the post-run component of the QA-plan judgement budget.
 
         Like both guards below, this returns to `repair_plan` and not to `plan`: a finding
         against one scenario is not a reason to resample the seven the gate already passed.
         """
-        if self._repeating(loop, "QA-plan repair"):
+        if _repeating(loop, "QA-plan repair", _run_failures(self)):
             return self._stalled(result, loop, "QA-plan repair")
-        if loop.plan_judgement_rework >= self.MAX_PLAN_REWORKS:
+        if loop.plan_judgement_rework >= MAX_PLAN_REWORKS:
             return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
         return self._plan_lap(
             result,
             loop.with_lap(
                 "QA-plan repair",
                 plan_rework=loop.plan_rework + 1,
-                repaired_failures=loop.run_failures,
+                repaired_failures=_run_failures(self),
             ),
         )
 
@@ -2165,30 +2262,20 @@ class Qa(Workflow):
         if stalled is not None:
             return stalled
         loop = self._recorded(loop, "dry-run refusal")
-        if loop.plan_judgement_rework >= self.MAX_PLAN_REWORKS:
+        if loop.plan_judgement_rework >= MAX_PLAN_REWORKS:
             return self._exhausted(loop, f"{loop.plan_judgement_rework} QA-plan repair")
         return self._plan_lap(
             gate,
             loop.with_lap(
                 "QA-plan repair",
                 plan_rework=loop.plan_rework + 1,
-                repaired_failures=loop.run_failures,
+                repaired_failures=_run_failures(self),
             ),
         )
 
-    def _rejection(self, loop: QaLoop, kind: str) -> str:
-        """This refusal as one comparable line: which gate raised it, and what it said.
-
-        The notes are whitespace-normalised because they are a validator's or a dry-run
-        gate's rendered output, and a re-wrapped identical complaint is an identical
-        complaint. `kind` is in the key for the reason `_repeating` takes a `lap`: two gates
-        share this field, and a schema refusal that reads like a dry-run refusal is not one.
-        """
-        return f"{kind}: {' '.join(loop.plan_validation_notes.split())}"
-
     def _recorded(self, loop: QaLoop, kind: str) -> QaLoop:
         """The same loop, remembering that the plan lane was sent back on this."""
-        return loop.update(plan_rejections=(*loop.plan_rejections, self._rejection(loop, kind)))
+        return loop.update(plan_rejections=(*loop.plan_rejections, _rejection(loop, kind)))
 
     def _rejected(self, gate: object, loop: QaLoop, kind: str) -> Continue | Await | None:
         """Escalate a pre-run rejection the plan lane has already answered once.
@@ -2206,7 +2293,7 @@ class Qa(Workflow):
         it by burning three more agent turns says it later and less clearly. It is an `Await`
         and never an ending — the gate can send the story straight back around.
         """
-        problem = self._rejection(loop, kind)
+        problem = _rejection(loop, kind)
         if problem not in loop.plan_rejections:
             return None
         self.logger.info(
@@ -2239,7 +2326,7 @@ class Qa(Workflow):
             "the last %s left the QA run failing identically (%s) — escalating instead of "
             "spending another lap",
             lap,
-            "; ".join(loop.run_failures),
+            "; ".join(_run_failures(self)),
             extra={"activity": True},
         )
         self.logger.info(
@@ -2272,7 +2359,7 @@ class Qa(Workflow):
             "the %s left the QA run failing identically (%s) — trying a %s before the "
             "operator, because a repair that moved nothing refutes the hypothesis class",
             spent,
-            "; ".join(loop.run_failures),
+            "; ".join(_run_failures(self)),
             other,
             extra={"activity": True},
         )
@@ -2306,7 +2393,7 @@ class Qa(Workflow):
         if stalled is not None:
             return stalled
         loop = self._recorded(loop, "QA-plan schema refusal")
-        if loop.plan_validation_rework >= self.MAX_PLAN_VALIDATION_REWORKS:
+        if loop.plan_validation_rework >= MAX_PLAN_VALIDATION_REWORKS:
             return self._exhausted(
                 loop, f"{loop.plan_validation_rework} QA-plan schema repair"
             )
@@ -2323,12 +2410,12 @@ class Qa(Workflow):
         this lap would make the total — a flow that stops *after* spending its last lap has
         paid for a turn it will not use.
 
-        The lap count is the only ceiling here. `plan_lane_budget_s` used to be a second one,
+        The lap count is the only ceiling here. `PLAN_LANE_BUDGET_S` used to be a second one,
         which is what let a plan lane that was still making progress be cut off mid-repair;
         it is now advisory and only logged. See `_note_plan_budget`.
         """
-        self._note_plan_budget(loop)
-        if loop.plan_rework_total > self.MAX_TOTAL_PLAN_LAPS:
+        _note_plan_budget(loop, self.logger)
+        if loop.plan_rework_total > MAX_TOTAL_PLAN_LAPS:
             self.logger.info(
                 "the QA plan has had %d repair laps across every gate — ending the flow",
                 loop.plan_rework_total - 1,
@@ -2345,9 +2432,9 @@ class Qa(Workflow):
         `power="high"` turn under a 2400s timeout to reproduce that. See
         `QaLoop.setup_problems` for the run this comes from.
         """
-        if loop.setup_rework >= self.MAX_SETUP_REWORKS:
+        if loop.setup_rework >= MAX_SETUP_REWORKS:
             return self._exhausted(loop, f"{loop.setup_rework} QA-setup repair")
-        self._note_lane_budget(loop)
+        _note_lane_budget(loop, self.logger)
         if loop.blocked_problems and loop.blocked_problems == loop.setup_problems:
             self.logger.info(
                 "the QA setup fix left the identical blocked bundle (%s) — escalating",
@@ -2365,11 +2452,11 @@ class Qa(Workflow):
         code, so one verification-only attempt is cheap and often decisive. `code`,
         `environment` and an untriaged blank earn nothing.
         """
-        if self._repeating(loop, "code fix"):
+        if _repeating(loop, "code fix", _run_failures(self)):
             return self._stalled(result, loop, "code fix")
-        loop = loop.with_lap("code fix", repaired_failures=loop.run_failures)
-        self._note_lane_budget(loop)
-        if loop.qa_rework < self.MAX_QA_REWORKS:
+        loop = loop.with_lap("code fix", repaired_failures=_run_failures(self))
+        _note_lane_budget(loop, self.logger)
+        if loop.qa_rework < MAX_QA_REWORKS:
             return Continue(result, self.apply_fixes, loop=loop)
         if loop.bonus_used or loop.failure_class != "evidence":
             return self._exhausted(loop, f"{loop.qa_rework} code rework")
@@ -2397,7 +2484,7 @@ class Qa(Workflow):
         """
         if self.target_env == "dev":
             return Continue(result, self.report_dev, loop=loop)
-        if loop.failure_class == "product" and loop.triage_scope < self.MAX_TRIAGE_SCOPES:
+        if loop.failure_class == "product" and loop.triage_scope < MAX_TRIAGE_SCOPES:
             self.logger.info(
                 "triage called this a product failure — returning the story to the dev lane",
                 extra={"activity": True},
@@ -2445,64 +2532,10 @@ class Qa(Workflow):
         constant for why an *answering* resolver makes the difference load-bearing.
         """
         loop = loop.update(escalations=loop.escalations + 1)
-        if self.operator_mode in {"human", "operator"} or loop.escalations > self.MAX_QA_BLOCKS:
-            gate = self._escalation(loop)
+        if self.operator_mode in {"human", "operator"} or loop.escalations > MAX_QA_BLOCKS:
+            gate = _escalation(self, loop)
             return Await(context_path(self), gate.body, self.read_operator, loop=loop)
         return Continue(result, self.resolve_operator, loop=loop)
-
-    def _escalation(
-        self,
-        loop: QaLoop,
-        result: OperatorResolution | None = None,
-        findings: Sequence[Finding] = (),
-    ) -> OperatorGate:
-        """The gate body for this block — see `coder.shared.escalation`.
-
-        `findings` is what the blocking gate saw, and it is passed here only for the ones
-        `_route_findings` could not send anywhere: a finding with an owner has already gone
-        to that owner, so anything reaching the operator is evidence nobody could act on.
-        """
-        return escalation(
-            self,
-            block_kind="qa",
-            where=(
-                f"last lap: {loop.repaired_lap or 'none'}; "
-                f"{loop.qa_rework} code rework, {loop.plan_rework} plan repair, "
-                f"{loop.context_rework} context repair, {loop.setup_rework} setup repair"
-            ),
-            notes=loop.block_notes,
-            number=loop.escalations,
-            result=result,
-            findings=findings,
-        )
-
-    def _note_lane_budget(self, loop: QaLoop) -> None:
-        """Log a QA lane over its advisory wall-clock budget. Never decides anything.
-
-        Called from the guards that used to *end* on this comparison. What replaced the
-        branch is this line, and the line is the point: the number stays visible to an
-        operator reading the log or the telemetry, while the decision to stop belongs to the
-        lap ceilings, which know whether the loop is converging. See `qa_lane_budget_s`.
-        """
-        if loop.lane_seconds >= self.qa_lane_budget_s:
-            self.logger.info(
-                "the QA lane has spent %.0fs of its %ds advisory budget — continuing, the "
-                "lap ceilings decide when this story stops",
-                loop.lane_seconds,
-                self.qa_lane_budget_s,
-                extra={"activity": True},
-            )
-
-    def _note_plan_budget(self, loop: QaLoop) -> None:
-        """The same, for the plan lane. See `_note_lane_budget` and `plan_lane_budget_s`."""
-        if loop.plan_lane_seconds >= self.plan_lane_budget_s:
-            self.logger.info(
-                "the QA plan lane has spent %.0fs of its %ds advisory budget — continuing, "
-                "the plan-lap ceilings decide when this plan stops",
-                loop.plan_lane_seconds,
-                self.plan_lane_budget_s,
-                extra={"activity": True},
-            )
 
     def _exhausted(self, loop: QaLoop, spent: str = "") -> Continue | Await:
         """Out of budget — hand the block to the operator gate. There is no other exit.

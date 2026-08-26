@@ -25,7 +25,12 @@ from workhorse_workflows.coder.shared.schemas.docs import (
     DocumentationGate,
     DocumentationReview,
 )
-from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaLoop
+from workhorse_workflows.coder.shared.schemas.qa import (
+    AssessmentRecord,
+    AuditRecord,
+    QaFlowResult,
+    QaLoop,
+)
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.kit.telemetry import (
     counter_labels,
@@ -79,8 +84,7 @@ def test_epic_edit_reports_reworks_and_omits_defaulted_absent_counters():
 
 def test_a_recorded_verdict_reaches_the_labels():
     loop = QaLoop(
-        assessment_disposition="repair_plan",
-        assessment_failure_class="plan",
+        assessment=AssessmentRecord(disposition="repair_plan", failure_class="plan"),
     )
     labels = _sealed(Qa).state_labels({"loop": loop})
     assert labels["qa.assessment_disposition"] == "repair_plan"
@@ -94,10 +98,10 @@ def test_verdicts_are_forgotten_with_the_notes_they_summarise():
     behind would let a span claim `revise` for a finding already forgotten — the two are
     the same statement in two forms."""
     loop = QaLoop(
-        assessment_disposition="repair_plan",
-        assessment_notes="the plan does not test the story",
-        audit_verdict="refuted",
-        audit_refutation_class="plan-defect",
+        assessment=AssessmentRecord(
+            disposition="repair_plan", notes="the plan does not test the story"
+        ),
+        audit=AuditRecord(verdict="refuted", refutation_class="plan-defect"),
         # A budget is not a finding: `cleared` must not reset the counters, or the loop
         # it bounds would never end.
         plan_rework=2,
@@ -105,9 +109,9 @@ def test_verdicts_are_forgotten_with_the_notes_they_summarise():
         docs_recheck_required=True,
     )
     cleared = loop.cleared()
-    assert cleared.assessment_disposition == ""
-    assert cleared.assessment_notes == ""
-    assert cleared.audit_verdict == "" and cleared.audit_refutation_class == ""
+    assert cleared.assessment.disposition == ""
+    assert cleared.assessment.notes == ""
+    assert cleared.audit.verdict == "" and cleared.audit.refutation_class == ""
     assert cleared.plan_rework == 2
     assert cleared.plan_rework_total == 3
     assert cleared.docs_recheck_required is True

@@ -19,7 +19,7 @@ becomes one model, because the set is what the script actually returns.
 """
 from __future__ import annotations
 
-from typing import Any, ClassVar, Literal
+from typing import Any, Literal
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 
@@ -540,6 +540,135 @@ class SetupResult(CoderResult):
 # ── what the flow threads, and what it returns ────────────────────────────────────────
 
 
+class AssessmentRecord(CoderResult):
+    """What the loop remembers of the last execution-assessment turn.
+
+    Three fields that are one statement in two forms — the diagnostics the next `plan_qa`
+    turn is briefed from, and the same reading as the two closed vocabularies a span
+    dimension can hold — so they are written together, cleared together, and read together.
+    Flat on the loop they were three names a caller had to keep in step by hand, and a
+    `cleared()` that blanked the notes and left the disposition behind would have let a span
+    claim `repair_plan` for a finding already forgotten.
+
+    **Nothing branches on the verdicts.** Each gate branches on its own fresh result; a
+    stale disposition deciding a later transition is the bug `qa.flow._finding` describes.
+    They are recorded because the counters alone are a cost and not a diagnosis: "four
+    plan-QA attempts" says a story was expensive, "four attempts, every one ending
+    `repair_plan`" says which gate made it so.
+
+    Blank means the gate has not run yet, which is distinct from a gate that ran and found
+    nothing wrong.
+    """
+
+    #: What the turn found, kept only when it failed — see `qa.flow._finding`.
+    notes: str = ""
+    disposition: QaDisposition | Literal[""] = ""
+    failure_class: QaFailureClass | Literal[""] = ""
+
+    def dimensions(self) -> dict[str, str]:
+        """The two verdicts under the flat names the telemetry store classifies by suffix.
+
+        `groom`'s profiler decides a span attribute is a verdict dimension by its suffix
+        (`_disposition`, `_failure_class`), so grouping these onto a sub-model must not
+        rename them on the way out — `qa.assessment.disposition` ends in neither and would
+        be silently classified as nothing.
+        """
+        return {
+            "assessment_disposition": self.disposition,
+            "assessment_failure_class": self.failure_class,
+        }
+
+
+class AuditRecord(CoderResult):
+    """The same three fields for the independent audit — see `AssessmentRecord`."""
+
+    notes: str = ""
+    verdict: QaAuditVerdict | Literal[""] = ""
+    refutation_class: QaRefutationClass | Literal[""] = ""
+
+    def dimensions(self) -> dict[str, str]:
+        """The audit's two verdicts under their flat, suffix-classified names."""
+        return {
+            "audit_verdict": self.verdict,
+            "audit_refutation_class": self.refutation_class,
+        }
+
+
+class FixWorklist(CoderResult):
+    """The per-scenario fix worklist, and where in it the flow is.
+
+    `apply_fixes` seeds `items` from `qa.flow._failed_scenarios` and `fix_item` pops the head
+    as each one is proved green, so a checkpoint taken mid-worklist resumes at the item that
+    was in flight rather than at the whole batch again. Empty `items` means there is no
+    per-scenario pass running.
+
+    The split is the point: a whole-report fix turn re-reads every finding on every lap and
+    proves nothing until a full scored suite run at the end, so one wrong guess costs a
+    rerun of everything. One scenario, dry-run green before the next one starts, costs one
+    scenario.
+
+    The two counters belong to the *head*, which is why they travel with it: every pop
+    reseats all three at once, and three flat fields let a pop reset two of them and carry
+    the third onto an item that never earned it.
+    """
+
+    items: tuple[str, ...] = ()
+    #: How many turns the head has already had. Zero on each pop, because the budget is per
+    #: item — a worklist of six scenarios is not six times harder than one, and a shared
+    #: counter would starve whatever came last.
+    rework: int = 0
+    #: The dry-run refusals the head has already produced, in order. A second *identical*
+    #: refusal is the same signal `QaLoop.repaired_failures` carries one loop out: the fixer
+    #: ran, and the gate refused it for exactly the same reason, so the next lap has no new
+    #: information to work from and the item escalates instead.
+    problems: tuple[str, ...] = ()
+
+    def popped(self) -> FixWorklist:
+        """The worklist with the head proved green — the rest of it, on a clean slate."""
+        return FixWorklist(items=self.items[1:])
+
+
+class LaneClock(CoderResult):
+    """What this lane has spent: wall-clock seconds, and how long the current chain is.
+
+    `qa.flow.QA_LANE_BUDGET_S` and `PLAN_LANE_BUDGET_S` are the advisory numbers the two
+    clocks are reported against — they are logged when crossed and decide nothing.
+
+    **Accumulated as deltas, never derived from a start timestamp.** A lane that stored when
+    it began and subtracted `now` would come back from a resume — or from a run parked
+    overnight at the operator gate — already over budget, and would report an hour of effort
+    it never spent. What is being measured is effort, and a charged delta is the only form
+    of it that survives a checkpoint honestly.
+
+    Deliberately not blanked by `QaLoop.cleared()`, unlike the gate diagnostics: a re-planned
+    story has no findings against it yet, but the hour it already spent is still gone.
+    `ensure_stack` is charged to neither clock — it is `INFRA_NODES` and can legitimately
+    wait forty minutes for a stack to boot, which is not effort this flow can spend less of.
+    """
+
+    #: Seconds spent inside agent turns, and how much of that the plan lane (`plan`,
+    #: `repair_plan`) took. The plan lane is a slice of the lane, not a sibling of it.
+    seconds: float = 0.0
+    plan_seconds: float = 0.0
+
+    #: Consecutive repair laps that have run on the story's QA-plan session chain, so
+    #: `repair_plan` can end a conversation that has grown longer than it is worth. Reset to
+    #: 0 whenever the chain is, which is what makes it *consecutive* rather than a total —
+    #: every rejoin through `build_context` ends the chain, because the diff the plan answers
+    #: has changed. It lives on the loop because it must survive a resume: a counter kept
+    #: anywhere else would restart at 0 mid-loop and give a stale chain a fresh budget.
+    chain_laps: int = 0
+
+    def charged(self, seconds: float, *, plan: bool) -> LaneClock:
+        """The same clock with one turn's wall-clock added to the lane it was spent in."""
+        return self.model_copy(
+            update={
+                "seconds": self.seconds + seconds,
+                "plan_seconds": self.plan_seconds + (seconds if plan else 0.0),
+            }
+        )
+
+
 class QaLoop(CoderResult):
     """Everything the QA flow carries from gate to gate — one state parameter, not eighteen.
 
@@ -567,38 +696,19 @@ class QaLoop(CoderResult):
     context_status: Literal["", "passed", "invalid"] = ""
     context_notes: str = ""
 
-    #: The three gate diagnostics `clear-qa-gate-state.py` blanked before each plan turn.
+    #: The first of the three gate diagnostics `clear-qa-gate-state.py` blanked before each
+    #: plan turn; the other two travel on the records below.
     plan_validation_notes: str = ""
-    assessment_notes: str = ""
-    audit_notes: str = ""
+
+    #: What the last execution-assessment and independent-audit turns found, each with the
+    #: verdicts that summarise it. See `AssessmentRecord`.
+    assessment: AssessmentRecord = AssessmentRecord()
+    audit: AuditRecord = AuditRecord()
 
     #: The triager's class, which is what the one-shot bonus pass is granted on. Blank until
     #: a triage turn runs — the YAML never declared this var, so an untriaged loop reads it
     #: as unset and earns no bonus.
     failure_class: QaTriageClass | Literal[""] = ""
-
-    #: The last discrete verdict from each of the three agent gates, carried for telemetry
-    #: and for the give-up record. **Nothing branches on these** — each gate branches on its
-    #: own fresh result, and a stale disposition deciding a later transition is exactly the
-    #: bug the `_finding` docstring describes. They are recorded because the counters alone
-    #: are a cost and not a diagnosis: "four plan-QA attempts" says a story was expensive,
-    #: "four attempts, every one ending `revise`" says which gate made it so.
-    #:
-    #: Blank means the gate has not run yet, which is distinct from a gate that ran and
-    #: found nothing wrong.
-    assessment_disposition: QaDisposition | Literal[""] = ""
-    assessment_failure_class: QaFailureClass | Literal[""] = ""
-    audit_verdict: QaAuditVerdict | Literal[""] = ""
-    audit_refutation_class: QaRefutationClass | Literal[""] = ""
-
-    #: Which of the above are worth a span dimension. Each is a closed vocabulary of a
-    #: handful of words, so the label cardinality they add is bounded.
-    VERDICT_LABELS: ClassVar[tuple[str, ...]] = (
-        "assessment_disposition",
-        "assessment_failure_class",
-        "audit_verdict",
-        "audit_refutation_class",
-    )
 
     #: The bounded budgets. Each was a `{value: 0}` var with a `seed`/`incr` node pair, except
     #: `plan_validation_rework` — see the flow's `_guard_plan_validation`.
@@ -612,7 +722,7 @@ class QaLoop(CoderResult):
     #: close. Not a spend counter like the rest — nothing is charged to it and no repair is
     #: skipped because of it. It exists because the audit is the *last* gate, so a fresh
     #: plan finding it raises on its third pass has nothing downstream to catch what it
-    #: waives; see `Qa.MAX_BLOCKING_AUDITS`.
+    #: waives; see `qa.flow.MAX_BLOCKING_AUDITS`.
     audit_rework: int = 0
 
     #: The runtime requirements the *latest* blocked QA run named, sorted — the runner's own
@@ -631,39 +741,9 @@ class QaLoop(CoderResult):
     #: is the signal, and it goes to the operator rather than round again.
     setup_problems: tuple[str, ...] = ()
 
-    #: What the *latest* failing QA run failed at, as a sorted fingerprint — one entry per
-    #: non-passing scenario, carrying its status and its assertion/failure counts. Written
-    #: only by `run` (and blanked by it on any other status), so it always describes the run
-    #: the flow is currently reacting to. Empty for a run that passed, blocked, or was
-    #: invalid: none of those is a repairable failure, and the counters below bound them.
-    run_failures: tuple[str, ...] = ()
-    #: The ids alone of the scenarios that latest failing run did not pass, sorted. Written
-    #: and blanked exactly where `run_failures` is, and derived from the same payload.
-    #:
-    #: The fingerprint above answers "did the last repair move anything"; this answers "what
-    #: must the repair turn prove it fixed", which is a different question and needs the ids
-    #: without the counts glued to them. `_plan_args` hands them to `repair-qa-plan.md` as the
-    #: dry-run contract, and `verify_qa_dry_run` reads the scratch evidence back.
-    failed_scenarios: tuple[str, ...] = ()
-    #: The per-scenario fix worklist, and where in it the flow is. `apply_fixes` seeds this
-    #: from `failed_scenarios` and `fix_item` pops the head as each one is proved green, so a
-    #: checkpoint taken mid-worklist resumes at the item that was in flight rather than at the
-    #: whole batch again. Empty means there is no per-scenario pass running.
-    #:
-    #: The split is the point: a whole-report fix turn re-reads every finding on every lap and
-    #: proves nothing until a full scored suite run at the end, so one wrong guess costs a
-    #: rerun of everything. One scenario, dry-run green before the next one starts, costs one
-    #: scenario.
-    fix_worklist: tuple[str, ...] = ()
-    #: How many turns the *head* of `fix_worklist` has already had. Reset to zero on each pop,
-    #: because the budget is per item — a worklist of six scenarios is not six times harder
-    #: than one, and a shared counter would starve whatever came last.
-    fix_item_rework: int = 0
-    #: The dry-run refusals the head of the worklist has already produced, in order. A second
-    #: *identical* refusal is the same signal `repaired_failures` carries one loop out: the
-    #: fixer ran, and the gate refused it for exactly the same reason, so the next lap has no
-    #: new information to work from and the item escalates instead.
-    fix_item_problems: tuple[str, ...] = ()
+    #: The per-scenario fix pass, when one is running. See `FixWorklist`.
+    fix: FixWorklist = FixWorklist()
+
     #: The rejections the *plan lane* has already been sent back on, in order — one entry
     #: per pre-run refusal, carrying which gate raised it and what it said.
     #:
@@ -772,31 +852,9 @@ class QaLoop(CoderResult):
     #: explicitly establishes False for a fresh, known-clean QA pass.
     docs_recheck_required: bool = True
 
-    #: Wall-clock seconds this lane has spent inside agent turns, and how much of that the
-    #: plan lane (`plan`, `repair_plan`) took. `Qa.qa_lane_budget_s` and
-    #: `Qa.plan_lane_budget_s` are the advisory numbers they are reported against — they are
-    #: logged when crossed and decide nothing.
-    #:
-    #: **Accumulated as deltas, never derived from a start timestamp.** A lane that stored
-    #: when it began and subtracted `now` would come back from a resume — or from a run
-    #: parked overnight at the operator gate — already over budget, and would report an hour
-    #: of effort it never spent. What is being measured is effort, and a charged delta is the
-    #: only form of it that survives a checkpoint honestly.
-    #:
-    #: Deliberately not blanked by `cleared()`, unlike the gate diagnostics: a re-planned
-    #: story has no findings against it yet, but the hour it already spent is still gone.
-    #: `ensure_stack` is charged to neither — it is `INFRA_NODES` and can legitimately wait
-    #: forty minutes for a stack to boot, which is not effort this flow can spend less of.
-    lane_seconds: float = 0.0
-    plan_lane_seconds: float = 0.0
-
-    #: Consecutive repair laps that have run on the story's QA-plan session chain, so
-    #: `repair_plan` can end a conversation that has grown longer than it is worth. Reset to
-    #: 0 whenever the chain is, which is what makes it *consecutive* rather than a total —
-    #: every rejoin through `build_context` ends the chain, because the diff the plan answers
-    #: has changed. It lives here because it must survive a resume: a counter kept anywhere
-    #: else would restart at 0 mid-loop and give a stale chain a fresh budget.
-    chain_laps: int = 0
+    #: What this lane has spent, and how long its current QA-plan session chain is.
+    #: See `LaneClock`.
+    clock: LaneClock = LaneClock()
 
     @property
     def plan_rework_total(self) -> int:
@@ -865,12 +923,7 @@ class QaLoop(CoderResult):
         `plan` charges the plan lane as well as the whole one — the plan lane is a slice of
         the lane, not a sibling of it, so a plan turn is spent twice over by design.
         """
-        return self.model_copy(
-            update={
-                "lane_seconds": self.lane_seconds + seconds,
-                "plan_lane_seconds": self.plan_lane_seconds + (seconds if plan else 0.0),
-            }
-        )
+        return self.model_copy(update={"clock": self.clock.charged(seconds, plan=plan)})
 
     def require_docs_recheck(self) -> QaLoop:
         """Mark a possible as-built mutation; this taint is monotonic within the flow."""
@@ -891,9 +944,8 @@ class QaLoop(CoderResult):
             update={
                 "qa": QaResult(),
                 "plan_validation_notes": "",
-                "assessment_notes": "",
-                "audit_notes": "",
-                **dict.fromkeys(self.VERDICT_LABELS, ""),
+                "assessment": AssessmentRecord(),
+                "audit": AuditRecord(),
             }
         )
 
@@ -904,7 +956,7 @@ class QaLoop(CoderResult):
         `"{{ qa_result.notes }} | Assessment: {{ qa_assessment.notes }}"`, rendered once here
         because four YAML nodes rendered it identically.
         """
-        return f"{self.qa.notes} | Assessment: {self.assessment_notes}"
+        return f"{self.qa.notes} | Assessment: {self.assessment.notes}"
 
 
 class QaFlowResult(CoderResult):

@@ -40,6 +40,7 @@ from workhorse.runner.failure import BackendInvocationError
 from ostler import Ostler
 from ostler.qa import QaOutcome
 
+from workhorse_workflows.coder.qa import flow as qa_flow
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes import evidence as evidence_nodes
 from workhorse_workflows.coder.qa.nodes import qa as qa_nodes
@@ -922,7 +923,7 @@ def test_a_blank_story_ends_exhausted_without_running_anything(
     okf = ostler()
     agent = _Agent(docs)
 
-    result = drive_flow(Qa(story="", triage_scope_count=1), env(), agent)
+    result = drive_flow(Qa(story="", triage_scope=1), env(), agent)
 
     assert result.status == "inconclusive", result
     assert result.triage_scope == 1
@@ -1193,7 +1194,7 @@ def test_distinct_schema_refusals_still_spend_the_whole_schema_budget(
     ):
         drive_flow(Qa(story=STORY), env(), agent)
 
-    assert agent.counts()["repair-qa-plan"] == Qa.MAX_PLAN_VALIDATION_REWORKS, agent.counts()
+    assert agent.counts()["repair-qa-plan"] == qa_flow.MAX_PLAN_VALIDATION_REWORKS, agent.counts()
 
 
 def test_validation_and_judgement_spend_separate_plan_budgets(
@@ -1413,7 +1414,7 @@ def test_the_stacked_plan_budgets_cannot_multiply(
     # One author turn per charged lap, plus the draft that opened the lane — the draft is
     # deliberately free, because charging it would price the lane at one lap less than the
     # ceiling names.
-    assert agent.planned() == Qa.MAX_TOTAL_PLAN_LAPS + 1, agent.counts()
+    assert agent.planned() == qa_flow.MAX_TOTAL_PLAN_LAPS + 1, agent.counts()
 
 
 def test_a_plan_turn_cut_at_its_budget_is_repaired_rather_than_failing_the_run(
@@ -1455,7 +1456,7 @@ def test_a_plan_lane_past_its_wall_clock_budget_carries_on(
 ) -> None:
     """A spent wall-clock budget is advisory: the lane behaves exactly as if it had room.
 
-    `plan_lane_budget_s=0` is the seam — the first plan turn charges a real, tiny delta, so
+    A zero `PLAN_LANE_BUDGET_S` is the seam — the first plan turn charges a real, tiny delta, so
     every plan-lane comparison is past by the time `_validated` decides what to do next. It
     used to demote a parsing plan straight to the runner and give up on one that would not
     import; now it decides nothing at all.
@@ -1463,7 +1464,8 @@ def test_a_plan_lane_past_its_wall_clock_budget_carries_on(
     okf = ostler()
     agent = _Agent(docs)
 
-    result = drive_flow(Qa(story=STORY, plan_lane_budget_s=0), env(), agent)
+    with patch.object(qa_flow, "PLAN_LANE_BUDGET_S", 0):
+        result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
     assert agent.counts()["repair-qa-plan"] == 0, agent.counts()
@@ -1490,12 +1492,13 @@ def test_a_plan_lane_past_its_budget_still_repairs_a_plan_that_will_not_import(
     # "3 QA-plan schema repair" phrase has no live equivalent — the repair count below is
     # what still proves this is the schema ceiling, not the lap ceiling, that stopped it.
     with (
+        patch.object(qa_flow, "PLAN_LANE_BUDGET_S", 0),
         patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
         pytest.raises(_Parked),
     ):
-        drive_flow(Qa(story=STORY, plan_lane_budget_s=0), env(), agent)
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert agent.counts()["repair-qa-plan"] == Qa.MAX_PLAN_VALIDATION_REWORKS, agent.counts()
+    assert agent.counts()["repair-qa-plan"] == qa_flow.MAX_PLAN_VALIDATION_REWORKS, agent.counts()
 
 
 def test_a_context_rebuild_past_the_plan_budget_still_authors_against_it(
@@ -1517,7 +1520,8 @@ def test_a_context_rebuild_past_the_plan_budget_still_authors_against_it(
     okf = ostler(fail_runs=1)
     agent = _Agent(docs, assessment_class="product")
 
-    result = drive_flow(Qa(story=STORY, plan_lane_budget_s=0), env(), agent)
+    with patch.object(qa_flow, "PLAN_LANE_BUDGET_S", 0):
+        result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
     assert agent.counts()["apply-qa-fixes"] == 1, agent.counts()
@@ -1542,12 +1546,13 @@ def test_a_spent_plan_budget_after_the_run_still_repairs_the_failing_plan(
     seen: list[str] = []
 
     with (
+        patch.object(qa_flow, "PLAN_LANE_BUDGET_S", 0),
         patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
         pytest.raises(_Parked),
     ):
-        drive_flow(Qa(story=STORY, plan_lane_budget_s=0), env(), agent)
+        drive_flow(Qa(story=STORY), env(), agent)
 
-    assert agent.counts()["repair-qa-plan"] == Qa.MAX_PLAN_REWORKS, agent.counts()
+    assert agent.counts()["repair-qa-plan"] == qa_flow.MAX_PLAN_REWORKS, agent.counts()
     assert len(seen) == 1 and "plan repair" in seen[0], seen
 
 
@@ -1766,7 +1771,7 @@ def test_a_stack_nobody_can_repair_gives_up_instead_of_spinning(
 
     # Two repairs before the setup budget is spent, and the gate is what it hands off to —
     # every lap after that re-escalates without spending another repair.
-    assert agent.counts()["setup-fix"] == Qa.MAX_SETUP_REWORKS, agent.counts()
+    assert agent.counts()["setup-fix"] == qa_flow.MAX_SETUP_REWORKS, agent.counts()
     assert agent.counts()["resolve-operator"] > 1, agent.counts()
     assert all("setup repair" in body for body in seen), seen
 
@@ -1806,7 +1811,7 @@ def test_a_setup_fix_that_changes_nothing_is_not_asked_a_second_time(
 
     counts = agent.counts()
     assert counts["setup-fix"] == 1, counts
-    assert counts["setup-fix"] < Qa.MAX_SETUP_REWORKS, counts
+    assert counts["setup-fix"] < qa_flow.MAX_SETUP_REWORKS, counts
     # And the block reached a person on every lap instead of another repair attempt.
     assert counts["resolve-operator"] > 1, counts
     assert len(seen) > 1, "the identical bundle must escalate more than once"
@@ -1841,10 +1846,10 @@ def test_a_packet_that_stays_unmappable_bounds_the_operator_gate(
         drive_flow(Qa(story=STORY), env(), agent)
 
     counts = agent.counts()
-    assert counts["apply-qa-fixes"] >= Qa.MAX_QA_REWORKS, counts
+    assert counts["apply-qa-fixes"] >= qa_flow.MAX_QA_REWORKS, counts
     # The resolver is what `MAX_QA_BLOCKS` bounds — every gate lap past it goes straight to a
     # person, which is why the escalations below keep coming while this number stops.
-    assert counts["resolve-operator"] == Qa.MAX_QA_BLOCKS, counts
+    assert counts["resolve-operator"] == qa_flow.MAX_QA_BLOCKS, counts
     # `context_rework` never moves — the packet never gets repaired — so the context loop's
     # own repair attempts plateau, unlike the unbounded gate/apply pair above.
     assert counts["repair-qa-context"] < counts["apply-qa-fixes"], counts
@@ -1896,14 +1901,14 @@ def test_a_fixer_that_reports_blocked_reaches_the_operator(
     # the fixer just earns the next escalation. The *resolver* is what stops — past
     # `MAX_QA_BLOCKS` the gate spends no more turns on it and asks a person directly.
     assert len(seen) == counts["apply-qa-fixes"], counts
-    assert counts["resolve-operator"] == Qa.MAX_QA_BLOCKS, counts
+    assert counts["resolve-operator"] == qa_flow.MAX_QA_BLOCKS, counts
     # Each gate is the composed escalation body, numbered, carrying the resolver's note.
     assert [f"**Escalation #{n} " in body for n, body in enumerate(seen, 1)] == [
         True
     ] * len(seen), seen
     # Only while the resolver still gets a turn: past `MAX_QA_BLOCKS` the gate composes the
     # body without one, so there is no resolver note in it to carry.
-    assert all(ESCALATION_NOTE.strip() in body for body in seen[: Qa.MAX_QA_BLOCKS]), seen
+    assert all(ESCALATION_NOTE.strip() in body for body in seen[: qa_flow.MAX_QA_BLOCKS]), seen
 
 
 def test_a_resolver_that_grounds_its_answer_settles_a_qa_block(
@@ -1989,7 +1994,7 @@ def test_the_evidence_gate_invalidates_a_pass_it_cannot_verify(
     assert agent.counts()["audit-qa"] == 0, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
     # The draft, plus one plan turn per judgement rework the gate is entitled to spend.
-    assert agent.planned() == Qa.MAX_PLAN_REWORKS + 1, agent.counts()
+    assert agent.planned() == qa_flow.MAX_PLAN_REWORKS + 1, agent.counts()
     assert len(seen) == 1 and "plan repair" in seen[0], seen
 
 
@@ -2009,9 +2014,9 @@ def test_an_audit_that_refutes_the_pass_turns_it_into_a_product_failure(
 
     # Every subsequent pass is refuted the same way, so the fix loop runs out its budget
     # and escalates instead of stopping.
-    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
+    assert agent.counts()["apply-qa-fixes"] == qa_flow.MAX_QA_REWORKS, agent.counts()
     # One triage per lap, plus the one on the lap the ceiling refuses to grant.
-    assert agent.counts()["triage-qa"] == Qa.MAX_QA_REWORKS + 1, agent.counts()
+    assert agent.counts()["triage-qa"] == qa_flow.MAX_QA_REWORKS + 1, agent.counts()
     assert len(seen) == 1 and "code rework" in seen[0], seen
 
 
@@ -2074,7 +2079,7 @@ def test_a_fix_that_leaves_the_run_failing_identically_is_not_repeated(
     # The operator gate runs the same fixer prompt, so count the laps of the *fix loop* —
     # the ones carrying no operator answer — rather than every invocation of it.
     unaided = agent.fix_args()
-    assert len(unaided) < Qa.MAX_QA_REWORKS, agent.counts()
+    assert len(unaided) < qa_flow.MAX_QA_REWORKS, agent.counts()
     # The stall bought exactly one plan repair — the untried class — and that lap is the
     # whole difference between this ending and the one the docstring above describes.
     assert agent.counts()["repair-qa-plan"] == 1, agent.counts()
@@ -2178,7 +2183,7 @@ def test_a_fix_that_gets_the_run_further_still_earns_its_next_lap(
         scenarios=tuple(
             {"copy-link": {"status": "failed", "assertions": depth, "failures": 1}}
             # One deeper journey per lap the ceiling allows, and one for the lap it refuses.
-            for depth in range(3, 3 + 2 * (Qa.MAX_QA_REWORKS + 1), 2)
+            for depth in range(3, 3 + 2 * (qa_flow.MAX_QA_REWORKS + 1), 2)
         ),
     )
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
@@ -2187,7 +2192,7 @@ def test_a_fix_that_gets_the_run_further_still_earns_its_next_lap(
     with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
         drive_flow(Qa(story=STORY), env(), agent)
 
-    assert len(agent.fix_args()) == Qa.MAX_QA_REWORKS, agent.counts()
+    assert len(agent.fix_args()) == qa_flow.MAX_QA_REWORKS, agent.counts()
     assert len(seen) == 1, seen
 
 
@@ -2274,7 +2279,7 @@ def test_a_scenario_that_spends_its_budget_is_carried_into_the_scored_run(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
-    assert agent.counts()["fix-qa-scenario"] == Qa.MAX_FIX_ITEM_REWORKS, agent.counts()
+    assert agent.counts()["fix-qa-scenario"] == qa_flow.MAX_FIX_ITEM_REWORKS, agent.counts()
     assert "resolve-operator" not in agent.counts(), agent.counts()
 
 
@@ -2344,7 +2349,7 @@ def test_a_product_class_triage_past_its_budget_stops_bouncing_to_dev(
     seen: list[str] = []
 
     with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
-        drive_flow(Qa(story=STORY, triage_scope_count=Qa.MAX_TRIAGE_SCOPES), env(), agent)
+        drive_flow(Qa(story=STORY, triage_scope=qa_flow.MAX_TRIAGE_SCOPES), env(), agent)
 
     assert len(seen) == 1, seen
 
@@ -2368,7 +2373,7 @@ def test_the_fix_loop_grants_one_bonus_pass_only_for_an_evidence_failure(
     with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
         drive_flow(Qa(story=STORY), env(), agent)
 
-    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS + 1, agent.counts()
+    assert agent.counts()["apply-qa-fixes"] == qa_flow.MAX_QA_REWORKS + 1, agent.counts()
     assert len(seen) == 1, seen
 
 
@@ -2386,7 +2391,7 @@ def test_a_code_failure_earns_no_bonus_pass(
     with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
         drive_flow(Qa(story=STORY), env(), agent)
 
-    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
+    assert agent.counts()["apply-qa-fixes"] == qa_flow.MAX_QA_REWORKS, agent.counts()
     assert len(seen) == 1, seen
 
 
@@ -2487,7 +2492,7 @@ def test_the_operator_is_asked_again_after_a_guided_lap_that_does_not_clear_the_
     # give-up.
     assert result.status == "passed", result
     # Every lap is a real ask; only the first `MAX_QA_BLOCKS` of them buy a resolver turn.
-    assert agent.counts()["resolve-operator"] == Qa.MAX_QA_BLOCKS, agent.counts()
+    assert agent.counts()["resolve-operator"] == qa_flow.MAX_QA_BLOCKS, agent.counts()
     assert len(seen) >= agent.counts()["resolve-operator"], seen
 
 
@@ -2561,8 +2566,8 @@ def test_each_exhaustion_names_the_budget_it_spent(
         patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
     ):
         drive_flow(Qa(story=STORY), env(), _Agent(docs, escalate=True))
-    assert f"{Qa.MAX_PLAN_REWORKS} plan repair" in seen[0], seen
-    assert okf.runs == Qa.MAX_PLAN_REWORKS + 1
+    assert f"{qa_flow.MAX_PLAN_REWORKS} plan repair" in seen[0], seen
+    assert okf.runs == qa_flow.MAX_PLAN_REWORKS + 1
 
     ostler(fail_runs=99)
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
@@ -2572,7 +2577,7 @@ def test_each_exhaustion_names_the_budget_it_spent(
         patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
-    assert f"{Qa.MAX_QA_REWORKS} code rework" in seen[0], seen
+    assert f"{qa_flow.MAX_QA_REWORKS} code rework" in seen[0], seen
 
     # A dev target reworks nothing and has no code to rework, so there is no operator-
     # answerable question to gate on — it is still the one legitimate terminal exit in this
@@ -2622,10 +2627,10 @@ def test_a_spent_rescope_budget_makes_triage_fix_in_place(
         pytest.raises(_Parked),
         patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
     ):
-        drive_flow(Qa(story=STORY, triage_scope_count=2), env(), agent)
+        drive_flow(Qa(story=STORY, triage_scope=2), env(), agent)
 
-    assert agent.counts()["triage-qa"] == Qa.MAX_QA_REWORKS + 1, agent.counts()
-    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
+    assert agent.counts()["triage-qa"] == qa_flow.MAX_QA_REWORKS + 1, agent.counts()
+    assert agent.counts()["apply-qa-fixes"] == qa_flow.MAX_QA_REWORKS, agent.counts()
 
 
 # ------------------------------------------------------------------- routing a gate's findings
@@ -2682,8 +2687,8 @@ def test_an_audit_refuting_on_a_product_test_gap_sends_the_fixer_not_the_planner
     ):
         drive_flow(Qa(story=STORY), env(), agent)
 
-    assert f"{Qa.MAX_QA_REWORKS} code rework" in seen[0], seen
-    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
+    assert f"{qa_flow.MAX_QA_REWORKS} code rework" in seen[0], seen
+    assert agent.counts()["apply-qa-fixes"] == qa_flow.MAX_QA_REWORKS, agent.counts()
     assert agent.counts()["repair-qa-plan"] == 0, agent.counts()
     brief = agent.args_for("apply-qa-fixes")[0]["qa_notes"]
     assert "AC9" in brief and "fetch" in brief, brief
@@ -2717,8 +2722,8 @@ def test_an_extend_plan_naming_a_product_test_gap_sends_the_fixer(
     ):
         drive_flow(Qa(story=STORY), env(), agent)
 
-    assert f"{Qa.MAX_QA_REWORKS} code rework" in seen[0], seen
-    assert agent.counts()["apply-qa-fixes"] == Qa.MAX_QA_REWORKS, agent.counts()
+    assert f"{qa_flow.MAX_QA_REWORKS} code rework" in seen[0], seen
+    assert agent.counts()["apply-qa-fixes"] == qa_flow.MAX_QA_REWORKS, agent.counts()
     assert agent.counts()["repair-qa-plan"] == 0, agent.counts()
 
 
@@ -2748,7 +2753,7 @@ def test_a_plan_scoped_audit_finding_still_goes_to_the_plan_author(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
-    assert agent.counts()["repair-qa-plan"] == Qa.MAX_BLOCKING_AUDITS, agent.counts()
+    assert agent.counts()["repair-qa-plan"] == qa_flow.MAX_BLOCKING_AUDITS, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
 
 
@@ -2772,7 +2777,7 @@ def test_a_refutation_naming_no_findings_still_takes_the_prose_path(
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
-    assert agent.counts()["repair-qa-plan"] == Qa.MAX_BLOCKING_AUDITS, agent.counts()
+    assert agent.counts()["repair-qa-plan"] == qa_flow.MAX_BLOCKING_AUDITS, agent.counts()
     assert agent.counts()["apply-qa-fixes"] == 0, agent.counts()
 
 
@@ -2817,8 +2822,8 @@ def test_an_audit_refuting_on_plan_scope_forever_stops_blocking(
     assert result.status == "passed", result
     # The ceiling is on *blocking*, not on running: the audit still ran the lap it stopped
     # blocking on, and its findings still reached the filer.
-    assert agent.counts()["audit-qa"] == Qa.MAX_BLOCKING_AUDITS + 1, agent.counts()
-    assert agent.counts()["repair-qa-plan"] == Qa.MAX_BLOCKING_AUDITS, agent.counts()
+    assert agent.counts()["audit-qa"] == qa_flow.MAX_BLOCKING_AUDITS + 1, agent.counts()
+    assert agent.counts()["repair-qa-plan"] == qa_flow.MAX_BLOCKING_AUDITS, agent.counts()
 
 
 def test_a_dev_target_reports_a_product_test_finding_rather_than_fixing_it(
@@ -3129,13 +3134,13 @@ def test_a_standing_valid_plan_is_adopted_without_an_authoring_turn(
     assert agent.args_for("plan-qa") == [], agent.counts()
 
 
-def test_first_verdict_finishes_a_green_run_with_no_post_run_agent_turns(
+def test_stop_at_first_verdict_finishes_a_green_run_with_no_post_run_agent_turns(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`first_verdict`: a pass is still gated deterministically, and only deterministically.
+    """`stop_at_first_verdict`: a pass is still gated deterministically, and only deterministically.
 
     The evidence gate and the sentinel check both run — a pass this mode reports is one
     whose artifacts exist on disk — but the audit exists to refute a pass into a repair,
@@ -3144,20 +3149,20 @@ def test_first_verdict_finishes_a_green_run_with_no_post_run_agent_turns(
     okf = ostler()
     agent = _Agent(docs)
 
-    result = drive_flow(Qa(story=STORY, first_verdict=True), env(), agent)
+    result = drive_flow(Qa(story=STORY, stop_at_first_verdict=True), env(), agent)
 
     assert result.status == "passed", result
     assert agent.counts() == {"plan-qa": 1}, agent.counts()
     assert (okf.contexts, okf.runs, okf.vets) == (1, 1, 1)
 
 
-def test_first_verdict_reports_the_first_red_without_entering_repair(
+def test_stop_at_first_verdict_reports_the_first_red_without_entering_repair(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`first_verdict`: the first red is the report, and no agent reads it first.
+    """`stop_at_first_verdict`: the first red is the report, and no agent reads it first.
 
     `report_dev` is the precedent — a mode that does not own the outcome reports what it
     saw, and reporting is the terminal action. The flow ends `inconclusive` (nothing was
@@ -3169,16 +3174,16 @@ def test_first_verdict_reports_the_first_red_without_entering_repair(
     okf = ostler(fail_runs=99)
     agent = _Agent(docs)
 
-    result = drive_flow(Qa(story=STORY, first_verdict=True), env(), agent)
+    result = drive_flow(Qa(story=STORY, stop_at_first_verdict=True), env(), agent)
 
     assert result.status == "inconclusive", result
     assert result.qa.status == "failed", result
     # One plan, one run — and not a single classification, repair or triage turn.
     assert agent.counts() == {"plan-qa": 1}, agent.counts()
-    assert okf.runs == 1, "the red run was retried — first_verdict must not repair"
+    assert okf.runs == 1, "the red run was retried — stop_at_first_verdict must not repair"
 
 
-def test_first_verdict_still_repairs_the_environment(
+def test_stop_at_first_verdict_still_repairs_the_environment(
     docs: Path,
     ostler: Callable[..., _Ostler],
     write: Callable[[Path, str], Path],
@@ -3186,7 +3191,7 @@ def test_first_verdict_still_repairs_the_environment(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`first_verdict` reports verdicts about the product, never about the harness.
+    """`stop_at_first_verdict` reports verdicts about the product, never about the harness.
 
     A blocked run says nothing about the product, so ending on it would report the
     stack's failure as the story's. The setup loop keeps its job, and the retried run's
@@ -3199,7 +3204,7 @@ def test_first_verdict_still_repairs_the_environment(
     )
     agent = _Agent(docs, setup="ready")
 
-    result = drive_flow(Qa(story=STORY, first_verdict=True), env(), agent)
+    result = drive_flow(Qa(story=STORY, stop_at_first_verdict=True), env(), agent)
 
     assert result.status == "passed", result
     assert agent.counts()["setup-fix"] == 1, agent.counts()

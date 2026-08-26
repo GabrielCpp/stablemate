@@ -34,7 +34,7 @@ the story path. The QA report is `{{ workhorse_var('spec_dir') }}/qa.md` (machin
 
 ### Rescope budget (read this — it changes your decision)
 
-- Rescopes already spent on this story: **{{ workhorse_var('triage_scope_count') }}**
+- Rescopes already spent on this story: **{{ workhorse_var('triage_scope') }}**
 - Maximum rescopes allowed: **{{ workhorse_var('max_triage_scopes') }}**
 
 If spent **>=** maximum, you have **no rescope budget left**: you must NOT choose `rescope`. File

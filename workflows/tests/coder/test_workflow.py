@@ -235,9 +235,7 @@ class _StubFlow(Workflow):
     operator_mode: str = ""
     target_env: str = ""
     sandbox: bool = False
-    qa_lane_budget_s: int = 0
-    plan_lane_budget_s: int = 0
-    triage_scope_count: int = 0
+    triage_scope: int = 0
     repo: str = ""
     branch: str = ""
     session_turns: int = 0
@@ -353,7 +351,7 @@ class _Sub:
             # routes on other than `passed` reached it because the story did not pass.
             qa=QaResult(status="passed" if status == "passed" else "failed"),
             qa_rework=1,
-            triage_scope=child.triage_scope_count,
+            triage_scope=child.triage_scope,
             operator_notes="",
             docs_recheck_required=self.qa_docs_recheck_required,
         )
@@ -1342,7 +1340,7 @@ def test_the_triage_budget_survives_a_rescope_back_to_dev(
             return QaFlowResult(
                 status="rescope" if nth == 1 else "passed",
                 qa=QaResult(status="passed"),
-                triage_scope=child.triage_scope_count + 1,
+                triage_scope=child.triage_scope + 1,
             )
 
     sub = _Rescoping(repo).install(monkeypatch)
@@ -1350,7 +1348,7 @@ def test_the_triage_budget_survives_a_rescope_back_to_dev(
 
     drive_flow(Coder(), run_env, _Agent())
 
-    assert [c.triage_scope_count for c in sub.calls_to("Qa")] == [0, 1], sub.calls
+    assert [c.triage_scope for c in sub.calls_to("Qa")] == [0, 1], sub.calls
     assert sub.calls.count("Dev") == 2, sub.calls
     # One seed for two QA entries: `prepare` was not re-entered.
     assert _output(run_env, prepare_story)["story_slug"] == "STORY-1"
@@ -1377,7 +1375,7 @@ def test_a_product_class_refix_sends_the_story_back_through_dev(
             return QaFlowResult(
                 status="refix" if nth == 1 else "passed",
                 qa=QaResult(status="passed"),
-                triage_scope=child.triage_scope_count + 1,
+                triage_scope=child.triage_scope + 1,
             )
 
     sub = _Refixing(repo).install(monkeypatch)
@@ -1385,7 +1383,7 @@ def test_a_product_class_refix_sends_the_story_back_through_dev(
     drive_flow(Coder(), env(), _Agent())
 
     assert sub.calls.count("Dev") == 2, sub.calls
-    assert [c.triage_scope_count for c in sub.calls_to("Qa")] == [0, 1], sub.calls
+    assert [c.triage_scope for c in sub.calls_to("Qa")] == [0, 1], sub.calls
 
 
 def test_a_give_up_names_the_rework_count_in_its_failure_message(
