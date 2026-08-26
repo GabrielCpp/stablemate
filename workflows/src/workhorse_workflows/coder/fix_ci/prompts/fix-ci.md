@@ -2,7 +2,7 @@
 
 You are running the **fix CI** stage of the autonomous epic workflow.
 
-The pull request for epic `{{ ci_epic }}` (branch `feat/{{ ci_epic }}`) is **failing its GitHub checks**. Your job is to make the CI green by fixing the underlying problem and committing the fix on this branch. A later step pushes your commit and re-checks CI — do **not** push yourself.
+The pull request for epic `{{ ci_epic }}` (branch `{{ ci_branch }}`) is **failing its GitHub checks**. Your job is to make the CI green by fixing the underlying problem and committing the fix on this branch. A later step pushes your commit and re-checks CI — do **not** push yourself.
 
 ## What CI reported
 {{ ci_summary }}
@@ -11,7 +11,7 @@ The pull request for epic `{{ ci_epic }}` (branch `feat/{{ ci_epic }}`) is **fai
 
 ## Steps
 
-1. **Confirm you are on the epic branch.** Run `git branch --show-current`; it must be `{{ ci_epic }}`. If not, stop and report failure (do not switch branches).
+1. **Confirm you are on the epic branch.** Run `git branch --show-current`; it must be `{{ ci_branch }}`. If not, stop and report failure (do not switch branches).
 2. **Get the real failure.** Inspect the failing runs via the **Actions REST API**, not `gh pr checks` / `gh run view` — those read the *check-runs* resource, which a fine-grained PAT cannot access (HTTP 403 "Resource not accessible by personal access token"). The `ci_summary` above lists the failing workflow(s) as `name#<run-id>(conclusion)`. For each run id:
    - `timeout 60 gh api repos/{owner}/{repo}/actions/runs/<run-id>/jobs --jq '.jobs[] | {name, conclusion, failed_steps: [.steps[] | select(.conclusion=="failure") | .name]}'` to see which job/step failed (`{owner}/{repo}` are auto-substituted from the origin remote).
    - `timeout 120 gh api repos/{owner}/{repo}/actions/jobs/<job-id>/logs` for that job's full log text (this endpoint IS readable with Actions:Read; `gh run view --log` is not).

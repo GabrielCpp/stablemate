@@ -62,6 +62,20 @@ def epic_branch(epic: str) -> str:
     return f"feat/{epic}" if epic else ""
 
 
+def branch_epic(branch: str) -> str:
+    """The epic an epic branch belongs to — `epic_branch` read the other way.
+
+    A flow handed the branch still owes the bare epic to anything that names the work
+    rather than the ref: the `Epic:` trailer a CI-fix commit carries is the epic, and a
+    trailer reading `feat/EPIC-1` matches no epic in the backlog. Deriving it beats
+    carrying a second parameter that has to agree with the first.
+
+    Only the prefix `epic_branch` mints is stripped, so a branch that never came from it
+    is returned whole rather than silently reshaped.
+    """
+    return branch.removeprefix("feat/")
+
+
 #: An Actions run in any of these states is red. `cancelled` and `stale` are included
 #: deliberately: neither is evidence the branch is good, and treating them as green is how
 #: a broken pipeline reads as a passing one.
@@ -398,6 +412,7 @@ def push_ci_fix(logger: logging.Logger, repo_dir: str, branch: str) -> PushOutco
 
 
 __all__ = [
+    "branch_epic",
     "epic_branch",
     "poll_pr_checks",
     "push_ci_fix",

@@ -41,7 +41,8 @@ from workhorse_workflows.coder.fix_ci.flow import FixCi
 from workhorse_workflows.coder.shared import ci as ci_nodes
 from workhorse_workflows.coder.shared.ci import push_ci_fix, select_ci_repo
 
-BRANCH = "feat/EPIC-1"
+EPIC = "EPIC-1"
+BRANCH = f"feat/{EPIC}"
 
 #: One settled Actions run set, as `_poll_runs` reports it: `(total, pending, failed,
 #: names)`. `_watch` turns the first into `failed` with the names as its summary — which is
@@ -288,7 +289,11 @@ def test_a_red_branch_is_fixed_pushed_and_re_polled_until_it_is_green(
     assert result.status == "passed", result
 
     assert len(turn.calls) == 1, turn.calls
-    assert turn.calls[0] == {"ci_epic": BRANCH, "ci_summary": "build#7(failure)"}
+    assert turn.calls[0] == {
+        "ci_branch": BRANCH,
+        "ci_epic": EPIC,
+        "ci_summary": "build#7(failure)",
+    }, "the branch is the ref to check out; the epic is what the commit trailer names"
     node = turn.nodes[0]
     assert node.cwd == str(workspace["api"])
     assert node.add_dirs == [

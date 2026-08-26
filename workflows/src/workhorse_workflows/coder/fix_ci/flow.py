@@ -31,7 +31,12 @@ from typing import ClassVar
 
 from workhorse.pyflow import Continue, Done, NodeNotRunError, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths, roles
-from workhorse_workflows.coder.shared.ci import poll_pr_checks, push_ci_fix, select_ci_repo
+from workhorse_workflows.coder.shared.ci import (
+    branch_epic,
+    poll_pr_checks,
+    push_ci_fix,
+    select_ci_repo,
+)
 from workhorse_workflows.coder.shared.story import resolve_workspace_dirs
 from workhorse_workflows.coder.shared.schemas.ci import CiChecks, CiLoop, FixCiResult
 from workhorse_workflows.coder.shared.schemas.story import WorkspaceDirs
@@ -149,6 +154,11 @@ class FixCi(Workflow):
         `cwd` is the picked repo, which is what lets workhorse resolve a repo-specific
         flavor override from `<repo>/.agents/flavors/coder/fix-ci.md`. It does **not**
         push: `push` below does, so credential handling stays in one place.
+
+        The branch and the epic are separate arguments because the prompt needs both and
+        they are not interchangeable: the ref to stay on is `feat/<epic>`, the `Epic:`
+        trailer is `<epic>`. One argument standing in for both is what put `feat/feat/`
+        into the branch line and a ref into the trailer of every CI-fix commit.
         """
         turn = roles.turn(self, "fix-ci")
         result = self.agent(
@@ -159,7 +169,12 @@ class FixCi(Workflow):
             returns=FixCiResult,
             cwd=loop.repo_dir,
             add_dirs=list(self.ctx.dirs),
-            args=turn.args | {"ci_epic": self.branch, "ci_summary": summary},
+            args=turn.args
+            | {
+                "ci_branch": self.branch,
+                "ci_epic": branch_epic(self.branch),
+                "ci_summary": summary,
+            },
             session=self._session(loop.repo),
         )
         if result.blocked:
