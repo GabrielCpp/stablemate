@@ -10,8 +10,9 @@ no repo-root resolution of its own for it.
 One divergence is *not* repaired here, and it is a finding rather than a preference:
 `verify_review_resolution` looks for the settlement sidecars at a hardcoded
 `docs/specs/<slug>`, where the story spine resolves a spec dir through ostler's `spec_path`.
-A repo whose specs live elsewhere gets a pass-through gate instead of a settlement — which is
-the script's behavior, and changing it here would change which stories the gate binds on.
+A repo whose specs live elsewhere has its verdict looked for where it did not write one, and
+the gate answers `needs_changes` for as long as its budget lasts — which is the script's
+directory, and changing it here would change which stories the gate binds on.
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ import logging
 
 from ostler import Ostler
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.schemas.dev import ImplResult, ImplStatus
+from workhorse_workflows.coder.shared.schemas.dev import ImplResult
 from workhorse_workflows.coder.shared.schemas.review import Feedback, ReviewContext
 from workhorse_workflows.kit import (
     find_docs_root,
@@ -84,9 +85,9 @@ def clear_review_resolution(
     green, and a fresh set of required fixes reaches QA having never been applied.
 
     Clearing here rather than teaching the ids to be unique: the sidecars are outputs of one
-    cycle, and a cycle that has not written its own verdict yet has none. An absent resolution
-    is already the pass-through case in `verify_review_resolution`, so the first pass of a
-    cycle behaves exactly as it does on a story reviewed for the first time.
+    cycle, and a cycle that has not written its own verdict yet has none. The apply turn that
+    follows writes this cycle's, which is what `verify_review_resolution` then reads — so the
+    first pass of a cycle behaves exactly as it does on a story reviewed for the first time.
     """
     docs_root = find_docs_root(docs_path, repo_dir)
     if not story_slug:
@@ -113,8 +114,6 @@ def verify_review_resolution(
     logger: logging.Logger,
     docs_path: str = "",
     story_slug: str = "",
-    claimed_status: ImplStatus = "applied",
-    claimed_notes: str = "",
     repo_dir: str = "",
 ) -> ImplResult:
     """Fail-closed gate over `apply-review`'s self-reported result. It can only downgrade.
@@ -133,20 +132,24 @@ def verify_review_resolution(
       gaming case, or simply not done yet → `needs_changes`, re-applying only those;
     * ostler hard-errored on a malformed verdict → `needs_changes`, surfacing why rather
       than spinning on fabricated progress;
-    * no verdict sidecar at all → the claim passes through unchanged, so a repo that does
-      not emit one keeps the prior behavior instead of being over-blocked.
+    * no verdict sidecar at all → `needs_changes`, naming the missing file. The turn is
+      bound to write one, so its absence is a turn that did not finish its contract, and the
+      loop re-runs it. It used to pass the turn's own claim through instead, which made the
+      one thing this gate exists to stop — an `applied` nobody verified — reachable by
+      writing no verdict at all.
     """
     docs_root = find_docs_root(docs_path, repo_dir)
     slug = story_slug
     spec_dir = docs_root / "docs" / "specs" / slug
     if not slug or not (spec_dir / RESOLUTION_FILE).is_file():
-        logger.info(
-            "no %s for %r — passing claimed status %r through",
-            RESOLUTION_FILE,
-            slug,
-            claimed_status,
+        logger.warning("no %s for %r — the apply turn wrote no verdict", RESOLUTION_FILE, slug)
+        return ImplResult(
+            status="needs_changes",
+            notes=(
+                f"review settlement: no {RESOLUTION_FILE} was written, so nothing was "
+                "verified — re-applying."
+            ),
         )
-        return ImplResult(status=claimed_status, notes=claimed_notes)
 
     plan = Ostler(docs_root).settle_review(slug, write=True)
     if plan.error:
@@ -208,7 +211,7 @@ def check_feedback(logger: logging.Logger, run_dir: str = "") -> Feedback:
         return Feedback()
     content, scope = polled
     logger.info("feedback present (scope=%s)", scope)
-    return Feedback(present=True, scope=scope, content=content)
+    return Feedback(present=True, content=content)
 
 
 __all__ = [

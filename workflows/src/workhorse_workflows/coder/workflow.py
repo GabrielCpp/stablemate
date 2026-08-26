@@ -48,7 +48,7 @@ workflow = (
             "refine-plan": {"status": "complete"},
             "implement-plan": {"status": "complete"},
             "dev-fix": {"status": "fixed"},
-            "code-review": {"status": "approved"},
+            "code-review": {"status": "clean"},
             "review-implementation": {"status": "approved"},
             "apply-review": {"status": "applied"},
             "document-story": {"status": "passed"},

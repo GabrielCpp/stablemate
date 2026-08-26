@@ -40,6 +40,7 @@ from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder.review.flow import Review
 from workhorse_workflows.coder.shared.review import resolve_review_context
+from workhorse_workflows.coder.shared.schemas.review import ReviewResult
 
 STORY = "STORY-1"
 EPIC = "EPIC-1"
@@ -174,10 +175,10 @@ class _Agent:
     """A scripted stand-in for the flow's five prompts, writing what each claims to write.
 
     The knobs are the flow's branches: `needs_changes` makes the first N implementation
-    reviews demand rework, `apply_status` is what every apply turn *claims* (which the
-    settlement gate is free to overrule), `settle` makes the apply turn write a real
-    `review-resolution.json` so that gate has something to verify, `evidence_after` is the
-    apply pass from which it also writes the artifact that verdict cites, `review_blocked`
+    reviews demand rework, `settle` makes the apply turn write a real
+    `review-resolution.json` so the settlement gate has something to verify,
+    `settle_blocked` makes that verdict report the finding unresolvable, `evidence_after` is
+    the apply pass from which it also writes the artifact the verdict cites, `review_blocked`
     makes the first N implementation reviews report they could not reach a verdict, and
     `explode` raises on a named prompt — a run killed mid-turn. There is no "answer directly" knob:
     the resolver always escalates to a human, per `resolve_review`'s contract — see the
@@ -190,8 +191,8 @@ class _Agent:
         *,
         needs_changes: int = 0,
         review_blocked: int = 0,
-        apply_status: str = "applied",
         settle: bool = False,
+        settle_blocked: bool = False,
         evidence_after: int = 1,
         explode: set[str] | None = None,
         resolver_answers: bool = False,
@@ -199,8 +200,8 @@ class _Agent:
         self.docs = docs
         self.needs_changes = needs_changes
         self.review_blocked = review_blocked
-        self.apply_status = apply_status
         self.settle = settle
+        self.settle_blocked = settle_blocked
         self.evidence_after = evidence_after
         #: Whether the resolver settles the block itself rather than parking on it — the
         #: `answered` arm, which writes the operator's answer where a human would have.
@@ -231,7 +232,7 @@ class _Agent:
 
     def _code_review(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {
-            "status": "ok",
+            "status": "findings",
             "findings": [
                 {
                     "target": "api-service/link.go:12",
@@ -244,7 +245,7 @@ class _Agent:
                     "target": "api-service/path.go:4",
                     "issue": "re-derives the canonical path",
                     "repair": "call the shared path helper",
-                    "category": "Missed Utility",
+                    "category": "Reuse",
                     "score": 82,
                 },
             ],
@@ -259,7 +260,7 @@ class _Agent:
         return {"status": "approved", "notes": "matches the acceptance criteria"}
 
     def _apply_review(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """Claim a status, and — when asked — leave a real verdict for ostler to settle."""
+        """Leave a verdict for ostler to settle — the only thing the loop reads back."""
         if self.settle:
             spec = self.docs / SPEC_REL
             if nth >= self.evidence_after:
@@ -267,11 +268,13 @@ class _Agent:
             (spec / "review-resolution.json").write_text(
                 json.dumps(
                     {
-                        "status": "applied",
+                        "status": "blocked" if self.settle_blocked else "applied",
                         "findings": [
                             {
                                 "id": "F1",
-                                "disposition": "addressed",
+                                "disposition": (
+                                    "blocked" if self.settle_blocked else "addressed"
+                                ),
                                 "artifacts": ["evidence.md"],
                             }
                         ],
@@ -282,12 +285,12 @@ class _Agent:
             )
         if data.get("operator_feedback"):
             # The two sites handed an answer from outside — the operator resolution and the
-            # feedback note. `apply_status` is the *loop's* claim: a turn that has just been
-            # told what to do is not still blocked on being told, and a fake that says it is
-            # asks the operator the same question forever, which is now a real loop rather
-            # than a discarded result.
+            # feedback note. Those two do read the turn's own status, and a turn that has
+            # just been told what to do is not still blocked on being told: a fake that says
+            # it is asks the operator the same question forever.
             return {"status": "applied", "notes": f"applied what the operator said (pass {nth})"}
-        return {"status": self.apply_status, "notes": f"apply pass {nth}"}
+        # The rework loop discards this: `verify_review_resolution` is what it believes.
+        return {"status": "applied", "notes": f"apply pass {nth}"}
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if self.resolver_answers:
@@ -355,7 +358,7 @@ def test_an_approved_review_stamps_the_specs_and_stops(
 
     result = drive_flow(Review(story=STORY), run_env, agent)
 
-    assert result.status == "approved", result
+    assert isinstance(result, ReviewResult), result
     assert agent.counts() == {
         "code-review": 1,
         "review-implementation": 1,
@@ -393,7 +396,7 @@ def test_the_implementation_reviewer_is_handed_both_feeder_verdicts(
     handed = agent.args_for("review-implementation")[0]
     assert handed["code_review_result"]["findings_summary"] == "one minor finding (pass 1)"
     # The reuse hunt is a lens of that one pass now, so its findings ride in the same model.
-    assert handed["code_review_result"]["findings"][1]["category"] == "Missed Utility"
+    assert handed["code_review_result"]["findings"][1]["category"] == "Reuse"
     # And each finding keeps the half that lets a fixer act on it rather than an operator.
     assert handed["code_review_result"]["findings"][1]["repair"] == "call the shared path helper"
 
@@ -450,11 +453,11 @@ def test_needs_changes_applies_once_and_exits_without_a_re_review(
     Deliberate, and the YAML's: re-running the reviewer here is what let it re-litigate
     settled findings and move the goalposts, so the deterministic settle *is* the re-verify.
     """
-    agent = _Agent(docs, needs_changes=1)
+    agent = _Agent(docs, needs_changes=1, settle=True)
 
     result = drive_flow(Review(story=STORY), env(), agent)
 
-    assert result.status == "approved", result
+    assert isinstance(result, ReviewResult), result
     assert agent.counts()["apply-review"] == 1, agent.counts()
     assert agent.counts()["review-implementation"] == 1, agent.counts()
     # The applier is handed the reviewer's brief, and nothing else.
@@ -476,13 +479,13 @@ def test_the_apply_loop_is_bounded_and_then_reaches_the_operator(
     same shared prompt — and the flow re-enters at `start` with a fresh budget and a fresh
     read of the code.
     """
-    agent = _Agent(docs, needs_changes=1, apply_status="needs_changes")
+    agent = _Agent(docs, needs_changes=1)
     seen: list[str] = []
 
     with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY), env(), agent)
 
-    assert result.status == "approved", result
+    assert isinstance(result, ReviewResult), result
     assert agent.counts()["apply-review"] == 4, agent.counts()
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
     assert agent.args_for("resolve-operator")[0]["block_kind"] == "review"
@@ -497,14 +500,18 @@ def test_a_blocked_settlement_escalates_without_spending_the_budget(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`blocked` is a finding nobody can settle, so re-applying it is not the answer."""
-    agent = _Agent(docs, needs_changes=1, apply_status="blocked")
+    """`blocked` is a finding nobody can settle, so re-applying it is not the answer.
+
+    The verdict reports the finding unresolvable and ostler's ledger says so; the block is
+    the ledger's, not the turn's own claim about itself.
+    """
+    agent = _Agent(docs, needs_changes=1, settle=True, settle_blocked=True)
     seen: list[str] = []
 
     with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY), env(), agent)
 
-    assert result.status == "approved", result
+    assert isinstance(result, ReviewResult), result
     # One apply, straight to the operator, then the resolution apply.
     assert agent.counts()["apply-review"] == 2, agent.counts()
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
@@ -531,7 +538,7 @@ def test_a_reviewer_that_cannot_reach_a_verdict_escalates_instead_of_reworking(
     with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY), env(), agent)
 
-    assert result.status == "approved", result
+    assert isinstance(result, ReviewResult), result
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
     # Only the apply that carries the operator's answer — the rework budget went unspent.
     assert agent.counts()["apply-review"] == 1, agent.counts()
@@ -559,7 +566,7 @@ def test_a_resolver_that_grounds_its_answer_settles_a_review_block(
     with patch.object(pyflow_driver, "wait_for_answer", never):
         result = drive_flow(Review(story=STORY), env(), agent)
 
-    assert result.status == "approved", result
+    assert isinstance(result, ReviewResult), result
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
     assert "STATUS: CONSUMED" in (docs / CONTEXT_REL).read_text()
 
@@ -576,13 +583,13 @@ def test_repeated_operator_cycles_never_give_up(
     a human instead — the same "no dead end" contract `dev` settled. The story only finishes
     once the human's answer actually fixes it, not because the flow gave up asking.
     """
-    agent = _Agent(docs, needs_changes=99, apply_status="blocked")
+    agent = _Agent(docs, needs_changes=99)
     seen: list[str] = []
 
     def answered(path: Path, **kwargs: Any) -> None:
         seen.append(path.read_text(encoding="utf-8"))
         if len(seen) >= Review.MAX_REVIEW_BLOCKS + 2:
-            agent.apply_status = "applied"
+            agent.needs_changes = 0
         path.write_text(
             "STATUS: ANSWERED\n\nDrop the retry; log it instead.\n", encoding="utf-8"
         )
@@ -590,7 +597,7 @@ def test_repeated_operator_cycles_never_give_up(
     with patch.object(pyflow_driver, "wait_for_answer", answered):
         result = drive_flow(Review(story=STORY), env(), agent)
 
-    assert result.status == "approved", result
+    assert isinstance(result, ReviewResult), result
     assert agent.counts()["resolve-operator"] == Review.MAX_REVIEW_BLOCKS, agent.counts()
     assert len(seen) == Review.MAX_REVIEW_BLOCKS + 2, seen
 
@@ -606,18 +613,17 @@ def test_the_settlement_gate_overrules_an_unproven_applied_claim(
 ) -> None:
     """The anti-gaming gate, driven through the real `ostler edit settle-review`.
 
-    Both apply turns *claim* `applied`. The first cites an artifact that is not on disk, so
-    ostler's per-finding verification leaves the finding open and the gate downgrades the
-    claim to `needs_changes`; the second writes the artifact and the same claim is allowed
-    through. The flow's branch therefore never reads the turn's own status — which is the
-    whole point of the node overwriting `impl_result` in the YAML.
+    Both apply turns write a verdict claiming `applied`. The first cites an artifact that is
+    not on disk, so ostler's per-finding verification leaves the finding open and the gate
+    answers `needs_changes`; the second writes the artifact and the same verdict is allowed
+    through. The flow's branch never reads the turn's own reply at all — which is the whole
+    point of the node overwriting `impl_result` in the YAML.
     """
-    agent = _Agent(docs, needs_changes=1, apply_status="applied", settle=True,
-                   evidence_after=2)
+    agent = _Agent(docs, needs_changes=1, settle=True, evidence_after=2)
 
     result = drive_flow(Review(story=STORY), env(), agent)
 
-    assert result.status == "approved", result
+    assert isinstance(result, ReviewResult), result
     assert agent.counts()["apply-review"] == 2, agent.counts()
 
     # ostler wrote the per-finding ledger, and the story status followed it.
@@ -627,23 +633,29 @@ def test_the_settlement_gate_overrules_an_unproven_applied_claim(
     assert "Review fixes applied" in (docs / STORY_REL / "story.md").read_text()
 
 
-def test_a_story_with_no_verdict_sidecar_passes_the_claim_through(
+def test_a_story_with_no_verdict_sidecar_is_re_applied_not_believed(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """No `review-resolution.json` at all means the prior behavior, not an over-block.
+    """No `review-resolution.json` at all is a turn that did not finish its contract.
 
-    A repo whose apply prompt does not emit a verdict keeps working; the gate binds only
-    where there is something to verify.
+    It used to pass the turn's own claim through, which made the one thing this gate exists
+    to stop — an `applied` nobody verified — reachable by writing no verdict at all. The
+    rework budget is spent re-applying instead, and the block that follows is the operator's.
     """
-    agent = _Agent(docs, needs_changes=1, apply_status="applied")
+    agent = _Agent(docs, needs_changes=1)
+    seen: list[str] = []
 
-    result = drive_flow(Review(story=STORY), env(), agent)
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Review(story=STORY), env(), agent)
 
-    assert result.status == "approved", result
+    assert isinstance(result, ReviewResult), result
     assert not (docs / SPEC_REL / "review-settlement.json").exists()
+    # The whole rework budget, then the operator — never a settlement nobody verified.
+    assert agent.counts()["apply-review"] == Review.MAX_REVIEW_REWORKS + 1, agent.counts()
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
 
 
 def test_a_previous_cycles_settlement_cannot_settle_this_ones_findings(
@@ -669,11 +681,13 @@ def test_a_previous_cycles_settlement_cannot_settle_this_ones_findings(
         encoding="utf-8",
     )
 
-    agent = _Agent(docs, needs_changes=1, apply_status="applied")
+    agent = _Agent(docs, needs_changes=1)
+    seen: list[str] = []
 
-    result = drive_flow(Review(story=STORY), env(), agent)
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Review(story=STORY), env(), agent)
 
-    assert result.status == "approved", result
+    assert isinstance(result, ReviewResult), result
     # Neither stale sidecar survived into the round, so nothing settled on last round's proof.
     assert not (spec / "review-resolution.json").exists()
     assert not (spec / "review-settlement.json").exists()
@@ -696,12 +710,12 @@ def test_human_operator_modes_wait_on_the_story_context_file(
     `await_operator.py` put them and where the operator is reading the story they are about.
     """
     seen: list[str] = []
-    agent = _Agent(docs, needs_changes=1, apply_status="blocked")
+    agent = _Agent(docs, needs_changes=1)
 
     with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY, operator_mode=operator_mode), env(), agent)
 
-    assert result.status == "approved", result
+    assert isinstance(result, ReviewResult), result
     assert agent.counts()["resolve-operator"] == 0, agent.counts()
     assert len(seen) == 1 and "the handler ignores the timeout" in seen[0], seen
 
@@ -716,12 +730,12 @@ def test_the_resolver_always_escalates_to_the_human(
     behalf, exactly as `dev` settled it. See the module docstring.
     """
     seen: list[str] = []
-    agent = _Agent(docs, needs_changes=1, apply_status="blocked")
+    agent = _Agent(docs, needs_changes=1)
 
     with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY), env(), agent)
 
-    assert result.status == "approved", result
+    assert isinstance(result, ReviewResult), result
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
     # The composed gate, not the block summary alone: the human arrives to the escalation
     # number, what the resolver ruled out, and the resolver's own note carried forward.
@@ -757,7 +771,7 @@ def test_dropped_feedback_buys_exactly_one_rework_pass(
 
     result = drive_flow(Review(story=STORY), run_env, agent)
 
-    assert result.status == "approved", result
+    assert isinstance(result, ReviewResult), result
     assert agent.counts()["review-implementation"] == 2, agent.counts()
     assert agent.counts()["apply-review"] == 1, agent.counts()
     # The feedback *is* the work: no stale findings go in alongside it.
@@ -798,19 +812,14 @@ def test_a_run_killed_mid_review_resumes_on_the_review_state(
     resume = read_resume(checkpoint)
     assert resume.state == "review", resume
     assert resume.flow == "Review", resume
-    # Only what the transition actually bound is checkpointed; `review_rework` keeps its
-    # default on the way back in, which is the same 0 the killed run was carrying.
-    assert sorted(resume.params) == [
-        "code_review",
-        "review_blocks",
-        "session_turns",
-    ], resume.params
-    assert resume.params.pop("review_blocks") == 0
-    assert resume.params.pop("session_turns") == 0
+    # Both of the state's parameters are checkpointed, counters included: the lap is one
+    # object, so a resume cannot pick up some of the budget and default the rest.
+    assert sorted(resume.params) == ["code_review", "loop"], resume.params
+    assert resume.params["loop"] == {"rework": 0, "blocks": 0, "session_turns": 0}
     assert resume.params["code_review"]["findings_summary"] == "one minor finding (pass 1)"
 
     agent = _Agent(docs)
     result = drive_flow(Review(**resume.inputs), env(run_dir=run_dir), agent, resume)
 
-    assert result.status == "approved", result
+    assert isinstance(result, ReviewResult), result
     assert agent.counts() == {"review-implementation": 1}, agent.counts()

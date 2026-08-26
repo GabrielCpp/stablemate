@@ -27,8 +27,9 @@ which the dev lane left open in this run's directory — because a finding is a 
 change code somebody just wrote and the turn that wrote it already knows why the line is
 there. Nothing is threaded in to make that happen: the key is derived from the story slug,
 and a lane with no dev lane in front of it simply finds no chain and runs cold. That also makes the cheap power tier sufficient
-for an apply, which is where this lane's cost was. `max_session_turns` bounds the conversation
-across both lanes — the count arrives with `DevResult.session_turns` and keeps going here.
+for an apply, which is where this lane's cost was. `MAX_SESSION_TURNS` bounds the conversation
+across both lanes — the count arrives as `inherited_turns` from `DevResult.session_turns`,
+seeds `ReviewLoop.session_turns` in `start`, and keeps going here.
 
 Divergences from the YAML, all deliberate:
 
@@ -36,13 +37,15 @@ Divergences from the YAML, all deliberate:
   `surveyor` and `dev` settled it. `resolve_review` below investigates and always `Await`s —
   it does not read a `decision` field to choose between looping and waiting, because there is
   no loop it could choose instead: a block always parks. `_gate` decides only whether the
-  resolver gets a turn first (`review_blocks` below `MAX_REVIEW_BLOCKS`) or the block goes
+  resolver gets a turn first (`ReviewLoop.blocks` below `MAX_REVIEW_BLOCKS`) or the block goes
   straight to a human — never whether to wait at all. The consume half of `await_operator.py`
   is `read_operator_context`, a node.
-* `review_rework_count` was a var with `seed`/`incr` nodes; it is the `review_rework`
-  parameter. The re-seed that `apply_review_resolved → reset_review` performed is the
-  transition back to `start` not carrying it. `review_blocks` is the cumulative outer
-  budget that does survive that transition, so repeated operator cycles terminate.
+* `review_rework_count` was a var with `seed`/`incr` nodes; it is `ReviewLoop.rework`. The
+  re-seed that `apply_review_resolved → reset_review` performed is that field going back to
+  zero on the transition to `start`. `ReviewLoop.blocks` is the cumulative outer budget that
+  does survive that transition, so repeated operator cycles terminate. All three counters
+  travel as one `ReviewLoop`, so a state signature says how many things it threads rather
+  than how many integers happen to be in flight.
 * `guard_review`'s comment cites `vars.max_review_reworks`, which neither this flow nor any
   caller declares — the literal `"3"` on the branch is the only budget there is. It is
   `MAX_REVIEW_REWORKS` here, a `ClassVar` rather than an input, so the port does not invent
@@ -54,7 +57,11 @@ Divergences from the YAML, all deliberate:
   sat in the run context for the flow's lifetime. `self.output` reads only *node* outputs,
   and an agent turn is not a node, so the model travels as a state parameter. It is the one
   genuinely large thing this flow checkpoints, and it is checkpointed because the state that
-  consumes it is also the state the feedback loop and the operator loop return to.
+  consumes it is also the state the feedback loop returns to. The operator arm does not
+  carry it: every path out of that arm goes back to `start`, which reviews the new code
+  from scratch, so a copy threaded through the gate would be a stale one nobody reads.
+  Node outputs — the operator's answer, a polled feedback note — are read back with
+  `self.output` rather than threaded at all.
 """
 from __future__ import annotations
 
@@ -95,6 +102,7 @@ from workhorse_workflows.coder.shared.schemas.dev import (
 )
 from workhorse_workflows.coder.shared.schemas.review import (
     CodeReviewResult,
+    ReviewLoop,
     ReviewResult,
     ReviewVerdict,
 )
@@ -104,6 +112,11 @@ from workhorse_workflows.kit.telemetry import counter_labels
 #: `timeout: infinity` — the resolver stands in for a human and must not be cut off
 #: mid-resolution. A finite number of seconds here caps it.
 UNBOUNDED = float("inf")
+
+#: How many turns the story's conversation carries before it is recycled — the same number
+#: and the same reasoning as `dev`'s. A constant rather than a field: nobody sets it, and a
+#: `--param` nobody passes is an input in name only.
+MAX_SESSION_TURNS = 8
 
 
 class Review(Workflow):
@@ -129,13 +142,11 @@ class Review(Workflow):
     #: The PR to comment on. Empty lets the reviewer derive one from the branch, and no
     #: open PR at all is fine — the review runs against local changes either way.
     pr_number: str = ""
-    #: How many turns that conversation had already spent before this flow entered it.
-    #: Carried from `DevResult.session_turns` so the recycle threshold bounds the whole
-    #: conversation rather than each lane's share of it.
-    session_turns: int = 0
-    #: How many turns the story's conversation carries before it is recycled — the same
-    #: default and the same reasoning as `dev`'s. 0 never recycles.
-    max_session_turns: int = 8
+    #: How many turns the story's conversation had already spent before this flow entered
+    #: it. Carried from `DevResult.session_turns` so the recycle threshold bounds the whole
+    #: conversation rather than each lane's share of it. A run-frozen input: `start` seeds
+    #: `ReviewLoop.session_turns` from it, and every lap after that counts onto the loop.
+    inherited_turns: int = 0
 
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
@@ -179,16 +190,23 @@ class Review(Workflow):
         """Which story this run is on — the YAML's `labels:` block."""
         return {"work_id": self.ctx.story_slug} if self.ctx.story_slug else {}
 
-    #: The local rework and cumulative operator-cycle budgets.
-    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("review_rework", "review_blocks")
-
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
-        """The same, plus which review round the next state is on."""
-        return self.labels() | counter_labels(params, "review", self.BUDGET_LABELS)
+        """The same, plus which review round the next state is on.
+
+        Every transition but the first carries a `ReviewLoop`, so all three budgets are in
+        hand here and no state has to stash a copy of them. `setup` and the first entry to
+        `start` run before any loop exists, and simply report nothing.
+        """
+        loop = params.get("loop")
+        if not isinstance(loop, ReviewLoop):
+            return self.labels()
+        return self.labels() | counter_labels(
+            loop.model_dump(), "review", ReviewLoop.COUNT_LABELS
+        )
 
     # --- the feeder review ---------------------------------------------------
 
-    def start(self, review_blocks: int = 0, session_turns: int = 0) -> Continue:
+    def start(self, loop: ReviewLoop | None = None) -> Continue:
         """Review the diff — bugs, the coding standard, and reuse — in one pass.
 
         A PR is not required: uncommitted working-tree edits and story-branch commits are
@@ -207,7 +225,12 @@ class Review(Workflow):
         re-entry here is a fresh review round, not a continuation of the one that got
         blocked — so each entry looks at the code with no memory of the last round's
         findings, whether that is the first entry or the fifth.
+
+        No loop is the first entry, and it is where the three budgets are seeded: the two
+        rework counters at zero, and the conversation's turn count at whatever the dev lane
+        already spent. The operator arm re-enters carrying one, and keeps it.
         """
+        lap = loop or ReviewLoop(session_turns=self.inherited_turns)
         self.logger.info("reviewing %s", self.ctx.story_slug, extra={"activity": True})
         # Before the findings that the round's settlement will be checked against exist. Here
         # rather than in `setup` because the operator loop re-enters this state without it,
@@ -242,28 +265,20 @@ class Review(Workflow):
                 "implementation reviewer is the binding verdict and still runs",
                 code_review.findings_summary or "no reason given",
             )
-        return Continue(
-            code_review,
-            self.review,
-            code_review=code_review,
-            review_blocks=review_blocks,
-            session_turns=session_turns,
-        )
+        return Continue(code_review, self.review, code_review=code_review, loop=lap)
 
     # --- the review loop ----------------------------------------------------
 
     def review(
-        self,
-        code_review: CodeReviewResult,
-        review_rework: int = 0,
-        review_blocks: int = 0,
-        session_turns: int = 0,
+        self, code_review: CodeReviewResult, loop: ReviewLoop
     ) -> Continue | Await:
         """Review the implementation against the story, and route on the verdict.
 
         `review_implementation` + `stamp_specs_review` + `decide_impl`. Only `approved` exits
-        the loop; `needs_changes` and a blank alike take the YAML's `default:` arm, which is
-        the rework guard — a reviewer that did not speak has not approved anything.
+        the loop, `blocked` goes to the operator, and `needs_changes` takes the rework guard.
+        There is no fourth arm: the verdict is a required `Literal`, so a reviewer that did
+        not speak is a parse failure the runner retries rather than a blank this state has to
+        read an intent into.
 
         The stamp runs on every pass, including the one the feedback loop returns for, which
         is the YAML's wiring: the review turn can rewrite spec docs and the frontmatter that
@@ -289,41 +304,16 @@ class Review(Workflow):
         )
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         if result.status == "approved":
-            return Continue(
-                result,
-                self.poll_feedback,
-                code_review=code_review,
-                review_rework=review_rework,
-                review_blocks=review_blocks,
-                session_turns=session_turns,
-            )
+            return Continue(result, self.poll_feedback, code_review=code_review, loop=loop)
         if result.blocked:
             # A reviewer that could not reach a verdict is not a reviewer demanding changes:
             # the apply turn would be handed nothing to act on, and each futile lap ends
             # back here with the same reason. Straight to the gate, rework budget unspent.
-            return self._gate(
-                result,
-                result.notes,
-                code_review,
-                review_blocks,
-                session_turns=session_turns,
-            )
-        return self._guard(
-            result,
-            result.notes,
-            code_review,
-            review_rework,
-            review_blocks,
-            session_turns,
-        )
+            return self._gate(result, result.notes, loop)
+        return self._guard(result, result.notes, code_review, loop)
 
     def apply(
-        self,
-        notes: str,
-        code_review: CodeReviewResult,
-        review_rework: int,
-        review_blocks: int = 0,
-        session_turns: int = 0,
+        self, notes: str, code_review: CodeReviewResult, loop: ReviewLoop
     ) -> Continue | Await:
         """Resolve the findings, then let ostler decide whether they are actually resolved.
 
@@ -336,10 +326,13 @@ class Review(Workflow):
         reviewer here is what let it re-litigate settled findings and move the goalposts, and
         the deterministic settle is the re-verify. `blocked` escalates that one finding to
         the operator. Anything else spends a rework and re-applies only what is still open.
+
+        The turn's own reply is dropped rather than bound: what it wrote that matters is the
+        verdict file, and the gate reads that.
         """
-        turns = self._spend_turn(session_turns)
+        spent = self._spend_turn(loop)
         turn = roles.turn(self, "apply-review")
-        claim = self.agent(
+        self.agent(
             turn.prompt,
             returns=ImplResult,
             power=self._apply_power(),
@@ -353,82 +346,40 @@ class Review(Workflow):
                 "review_notes": notes,
             },
         )
-        # The branch below reads the *settled* status, never the turn's own claim: the YAML
-        # overwrote `impl_result` with the verifier's output for exactly this reason.
-        settled = self.call(
-            verify_review_resolution,
-            self.docs_path,
-            self.ctx.story_slug,
-            claim.status,
-            claim.notes,
-        )
+        # The branch below reads the *settled* status, never the turn's own claim, which is
+        # why the claim is not even bound: the YAML overwrote `impl_result` with the
+        # verifier's output for exactly this reason, and a turn that wrote no verdict has
+        # produced nothing to settle.
+        settled = self.call(verify_review_resolution, self.docs_path, self.ctx.story_slug)
         if settled.status == "applied":
-            return Continue(
-                settled,
-                self.poll_feedback,
-                code_review=code_review,
-                review_rework=review_rework,
-                review_blocks=review_blocks,
-                session_turns=turns,
-            )
+            return Continue(settled, self.poll_feedback, code_review=code_review, loop=spent)
         if settled.blocked:
-            return self._gate(
-                settled,
-                notes,
-                code_review,
-                review_blocks,
-                where="applying the review findings",
-                session_turns=turns,
-            )
+            return self._gate(settled, notes, spent, where="applying the review findings")
         return self._guard(
             settled,
             notes,
             code_review,
-            review_rework + 1,
-            review_blocks,
-            turns,
+            spent.model_copy(update={"rework": spent.rework + 1}),
         )
 
     def _guard(
-        self,
-        result: object,
-        notes: str,
-        code_review: CodeReviewResult,
-        review_rework: int,
-        review_blocks: int,
-        session_turns: int = 0,
+        self, result: object, notes: str, code_review: CodeReviewResult, loop: ReviewLoop
     ) -> Continue | Await:
         """`guard_review`: another apply pass, or the operator.
 
         Not a state — the routing half of a branch, called from the two states that can
         decide the review stage is stuck. `_`-prefixed so state discovery does not pick it up.
         """
-        if review_rework >= self.MAX_REVIEW_REWORKS:
-            return self._gate(
-                result,
-                notes,
-                code_review,
-                review_blocks,
-                session_turns=session_turns,
-            )
-        return Continue(
-            result,
-            self.apply,
-            notes=notes,
-            code_review=code_review,
-            review_rework=review_rework,
-            review_blocks=review_blocks,
-            session_turns=session_turns,
-        )
+        if loop.rework >= self.MAX_REVIEW_REWORKS:
+            return self._gate(result, notes, loop)
+        return Continue(result, self.apply, notes=notes, code_review=code_review, loop=loop)
 
     def _gate(
         self,
         result: object,
         notes: str,
-        code_review: CodeReviewResult,
-        review_blocks: int,
+        loop: ReviewLoop,
         where: str = "the implementation-review stage",
-        session_turns: int = 0,
     ) -> Continue | Await:
         """`gate_review`: hand the block to the resolver, or straight to a human.
 
@@ -436,38 +387,27 @@ class Review(Workflow):
         unresolvable. Both are real: an unsatisfiable finding may need a product decision
         that no amount of re-applying will produce. There is no dead end here — a block
         always reaches a human eventually, either through the resolver or directly once
-        `review_blocks` is spent — never a terminal failure.
+        `loop.blocks` is spent — never a terminal failure.
+
+        The code review does not travel down this arm. Every path out of it ends at `start`,
+        which runs a fresh one against whatever the operator's answer changed; carrying the
+        old findings through four more states would only hand them to a turn that replaces
+        them.
         """
-        if self.operator_mode in {"human", "operator"} or review_blocks >= self.MAX_REVIEW_BLOCKS:
-            gate = self._escalation(notes, review_blocks, where=where)
+        if self.operator_mode in {"human", "operator"} or loop.blocks >= self.MAX_REVIEW_BLOCKS:
+            gate = self._escalation(notes, loop.blocks, where=where)
             return Await(
-                context_path(self),
-                gate.body,
-                self.read_operator,
-                notes=notes,
-                code_review=code_review,
-                review_blocks=review_blocks,
-                session_turns=session_turns,
+                context_path(self), gate.body, self.read_operator, notes=notes, loop=loop
             )
-        return Continue(
-            result,
-            self.resolve_review,
-            notes=notes,
-            code_review=code_review,
-            review_blocks=review_blocks,
-            where=where,
-            session_turns=session_turns,
-        )
+        return Continue(result, self.resolve_review, notes=notes, loop=loop, where=where)
 
     # --- the operator arm ---------------------------------------------------
 
     def resolve_review(
         self,
         notes: str,
-        code_review: CodeReviewResult,
-        review_blocks: int = 0,
+        loop: ReviewLoop,
         where: str = "the implementation-review stage",
-        session_turns: int = 0,
     ) -> Continue | Await:
         """Resolve a review block from what is already written down, or park for the operator.
 
@@ -491,73 +431,49 @@ class Review(Workflow):
                 self, block_kind="review", notes=notes, docs_path=self.docs_path
             ),
         )
+        spent = loop.model_copy(update={"blocks": loop.blocks + 1})
         if answered(self, result, "review"):
-            return Continue(
-                result,
-                self.read_operator,
-                notes=notes,
-                code_review=code_review,
-                review_blocks=review_blocks + 1,
-                session_turns=session_turns,
-            )
+            return Continue(result, self.read_operator, notes=notes, loop=spent)
         # See `dev.flow.resolve_plan`: the escalating resolver's note is already in this
         # file and `Await` writes over it, so the body handed here carries that note
         # forward along with what the resolver tried.
         return Await(
             context_path(self),
-            self._escalation(notes, review_blocks, result, where=where).body,
+            self._escalation(notes, loop.blocks, result, where=where).body,
             self.read_operator,
             notes=notes,
-            code_review=code_review,
-            review_blocks=review_blocks + 1,
-            session_turns=session_turns,
+            loop=spent,
         )
 
-    def read_operator(
-        self,
-        notes: str,
-        code_review: CodeReviewResult,
-        review_blocks: int = 0,
-        session_turns: int = 0,
-    ) -> Continue:
+    def read_operator(self, notes: str, loop: ReviewLoop) -> Continue:
         """Consume the answer and apply it as the work.
 
         The consume half of `await_operator.py`. Unlike `dev`'s copy there is no scope
         branch: `await_operator_review` went to `apply_review_resolved` unconditionally, so
         an epic-scoped answer to a review block is applied as a story-level fix. Preserved
         rather than harmonised, and recorded as a finding — the two gates genuinely differ.
+
+        The answer itself is not threaded on: it is a node output, and `apply_resolved` reads
+        it back off this node rather than being handed a second copy to checkpoint.
         """
         answer = self.call(read_operator_context, self.ctx.story_path)
-        return Continue(
-            answer,
-            self.apply_resolved,
-            notes=notes,
-            operator_context=answer.content,
-            code_review=code_review,
-            review_blocks=review_blocks,
-            session_turns=session_turns,
-        )
+        return Continue(answer, self.apply_resolved, notes=notes, loop=loop)
 
-    def apply_resolved(
-        self,
-        notes: str,
-        operator_context: str,
-        code_review: CodeReviewResult,
-        review_blocks: int = 0,
-        session_turns: int = 0,
-    ) -> Continue | Await:
+    def apply_resolved(self, notes: str, loop: ReviewLoop) -> Continue | Await:
         """Apply the operator's resolution, then start the review over with a fresh budget.
 
         `apply_review_resolved` + `reset_review`. Going back to `start` re-runs both feeder
         reviews against the new code, which is what the YAML did and what makes the answer
-        binding rather than asserted: the same reviewer has to look again.
+        binding rather than asserted: the same reviewer has to look again. `reset_review` is
+        the rework counter going back to zero on that transition; the block budget does not,
+        which is what makes repeated operator cycles terminate.
 
         A turn that reports it could not apply the answer goes back to the operator instead
         of re-entering the loop: re-reviewing unchanged code produces the same findings and
         the same block, one full review round later. The operator is told it was their own
         answer that could not be applied, which is a different question from the original.
         """
-        turns = self._spend_turn(session_turns)
+        spent = self._spend_turn(loop)
         turn = roles.turn(self, "apply-review")
         result = self.agent(
             turn.prompt,
@@ -571,30 +487,22 @@ class Review(Workflow):
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "review_notes": notes,
-                "operator_feedback": operator_context,
+                "operator_feedback": self.output(read_operator_context).content,
             },
         )
         if result.blocked:
             return self._gate(
                 result,
                 result.notes or notes,
-                code_review,
-                review_blocks,
+                spent,
                 where="applying the operator's own resolution",
-                session_turns=turns,
             )
-        return Continue(
-            result, self.start, review_blocks=review_blocks, session_turns=turns
-        )
+        return Continue(result, self.start, loop=spent.model_copy(update={"rework": 0}))
 
     # --- the non-blocking feedback checkpoint -------------------------------
 
     def poll_feedback(
-        self,
-        code_review: CodeReviewResult,
-        review_rework: int,
-        review_blocks: int = 0,
-        session_turns: int = 0,
+        self, code_review: CodeReviewResult, loop: ReviewLoop
     ) -> Continue | Done:
         """Did a human drop a note into the run's inbox while the run was busy?
 
@@ -602,28 +510,18 @@ class Review(Workflow):
         the inbox replies to the oldest outstanding message, so one drop buys exactly one
         rework pass. No feedback — the common case — ends the flow and the caller proceeds
         to QA.
+
+        The note is not threaded on: polling records it as this node's output, and
+        `apply_feedback` reads it back from there rather than carrying a second copy.
         """
         feedback = self.call(check_feedback, str(self.run_dir))
         if not feedback.present:
             return Done(ReviewResult())
         self.logger.info("operator feedback found — one rework pass", extra={"activity": True})
-        return Continue(
-            feedback,
-            self.apply_feedback,
-            content=feedback.content,
-            code_review=code_review,
-            review_rework=review_rework,
-            review_blocks=review_blocks,
-            session_turns=session_turns,
-        )
+        return Continue(feedback, self.apply_feedback, code_review=code_review, loop=loop)
 
     def apply_feedback(
-        self,
-        content: str,
-        code_review: CodeReviewResult,
-        review_rework: int,
-        review_blocks: int = 0,
-        session_turns: int = 0,
+        self, code_review: CodeReviewResult, loop: ReviewLoop
     ) -> Continue | Await:
         """Rework against the operator's notes, then re-review.
 
@@ -637,7 +535,8 @@ class Review(Workflow):
         still parks, because the alternative is re-reviewing code the feedback never
         reached and reporting the story approved over it.
         """
-        turns = self._spend_turn(session_turns)
+        content = self.output(check_feedback).content
+        spent = self._spend_turn(loop)
         turn = roles.turn(self, "apply-review")
         result = self.agent(
             turn.prompt,
@@ -658,19 +557,10 @@ class Review(Workflow):
             return self._gate(
                 result,
                 result.notes or content,
-                code_review,
-                review_blocks,
+                spent,
                 where="applying the operator's feedback note",
-                session_turns=turns,
             )
-        return Continue(
-            result,
-            self.review,
-            code_review=code_review,
-            review_rework=review_rework,
-            review_blocks=review_blocks,
-            session_turns=turns,
-        )
+        return Continue(result, self.review, code_review=code_review, loop=spent)
 
     # --- shared -------------------------------------------------------------
 
@@ -692,7 +582,7 @@ class Review(Workflow):
     def _escalation(
         self,
         notes: str,
-        review_blocks: int,
+        blocks: int,
         result: OperatorResolution | None = None,
         where: str = "the implementation-review stage",
         findings: Sequence[Finding] = (),
@@ -707,7 +597,7 @@ class Review(Workflow):
             block_kind="review",
             where=where,
             notes=notes,
-            number=review_blocks,
+            number=blocks,
             result=result,
             findings=findings,
         )
@@ -751,19 +641,16 @@ class Review(Workflow):
         """
         return story_chain(self.ctx.story_slug)
 
-    def _spend_turn(self, session_turns: int) -> int:
+    def _spend_turn(self, loop: ReviewLoop) -> ReviewLoop:
         """Count one apply turn onto the implementer conversation, recycling it when full.
 
-        A threaded 0 means no apply turn has run yet in this flow, so the count starts from
-        what the dev lane spent (`session_turns` the field). Every later lap threads the
-        returned value, which is ≥ 1.
+        The lap comes back with the new count on it, so the three apply states thread one
+        value rather than reconciling a returned integer against the bundle they were given.
         """
-        return spend_turn(
-            self,
-            self._impl_chain(),
-            session_turns or self.session_turns,
-            self.max_session_turns,
+        spent = spend_turn(
+            self, self._impl_chain(), loop.session_turns, MAX_SESSION_TURNS
         )
+        return loop.model_copy(update={"session_turns": spent})
 
 
 __all__ = ["Review"]

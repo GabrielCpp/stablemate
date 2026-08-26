@@ -123,15 +123,18 @@ def test_the_review_lane_parses_the_loose_findings_it_used_to_declare() -> None:
     """`CodeReviewResult.findings` was `list[dict[str, Any]]`.
 
     The prompt's own keys still parse — extras are ignored — so the change is not a break
-    in what the turn may say, only in what the router may believe about it.
+    in what the turn may say, only in what the router may believe about it. `category` is
+    the exception and it is deliberate: it is a closed vocabulary the implementation
+    reviewer selects on, so a finding that omits it is a parse failure the runner retries,
+    not a finding that silently arrives uncategorised.
     """
     result = CodeReviewResult.model_validate(
         {
             "status": "blocked",
             "findings": [
                 {"target": "api/db.go:20", "issue": "n+1", "repair": "batch the query",
-                 "severity": "high"},
-                {"issue": "naming"},
+                 "category": "Bug", "severity": "high"},
+                {"issue": "naming", "category": "Standard"},
             ],
         }
     )
@@ -163,14 +166,14 @@ def test_the_shape_the_review_prompt_emits_is_actionable() -> None:
                     "target": "api-service/internal/link/path.go:14",
                     "issue": "re-derives the canonical path",
                     "repair": "call pkg/urlpath.Canonical",
-                    "category": "Missed Utility",
+                    "category": "Reuse",
                     "score": 84,
                 },
             ],
         }
     )
     assert len(result.actionable) == 2
-    assert [f.category for f in result.findings] == ["Bug", "Missed Utility"]
+    assert [f.category for f in result.findings] == ["Bug", "Reuse"]
     assert [f.score for f in result.findings] == [92, 84]
 
 

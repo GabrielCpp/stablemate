@@ -31,6 +31,7 @@ from workhorse_workflows.coder.shared.schemas.docs import DocsProgress, DocsResu
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaLoop
 from workhorse_workflows.coder.shared.schemas.review import (
     CodeReviewResult,
+    ReviewLoop,
 )
 
 STORY = "STORY-1"
@@ -360,8 +361,8 @@ def _apply_review(flow: Review, **kwargs: Any) -> None:
     with pytest.raises(_Reached):
         flow.apply(
             notes="the handler ignores the timeout",
-            code_review=CodeReviewResult(status="ok"),
-            review_rework=0,
+            code_review=CodeReviewResult(status="clean"),
+            loop=ReviewLoop(),
             **kwargs,
         )
 
@@ -405,16 +406,16 @@ def test_a_standalone_pr_review_has_no_implementer_to_resume_and_pays_for_it(
 def test_the_apply_turns_keep_counting_from_what_the_dev_lane_spent(spy: _Spy) -> None:
     """The cap bounds the *conversation*, not each lane's share of it. A review that
     restarted the count would hand the recycler a context twice as long as it agreed to."""
-    flow = _review(session_turns=7, max_session_turns=8)
+    flow = _review()
 
-    assert flow._spend_turn(0) == 8
+    assert flow._spend_turn(ReviewLoop(session_turns=7)).session_turns == 8
     assert spy.resets == []
 
 
 def test_a_conversation_that_fills_up_inside_the_review_lane_is_recycled(spy: _Spy) -> None:
     """Where the cap is reached is not where it is owned: the dev lane can hand over a
     conversation already at the threshold, and the next apply turn opens a fresh one."""
-    flow = _review(session_turns=8, max_session_turns=8)
+    flow = _review()
 
-    assert flow._spend_turn(0) == 1
+    assert flow._spend_turn(ReviewLoop(session_turns=8)).session_turns == 1
     assert spy.resets == [f"story:{STORY}"]

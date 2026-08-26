@@ -237,6 +237,7 @@ class _StubFlow(Workflow):
     repo: str = ""
     branch: str = ""
     session_turns: int = 0
+    inherited_turns: int = 0
 
 
 class _Sub:
@@ -331,7 +332,7 @@ class _Sub:
         return DevResult(status=self.dev_status, operator_notes="rescope to the epic")
 
     def _review(self, child: _StubFlow) -> ReviewResult:
-        return ReviewResult(status="approved", notes="")
+        return ReviewResult(notes="")
 
     def _docs(self, child: _StubFlow) -> DocsResult:
         return DocsResult(
@@ -502,7 +503,7 @@ def test_no_lane_is_handed_a_conversation_but_the_turn_count_threads(
 
     drive_flow(Coder(), env(), _Agent())
 
-    assert sub.calls_to("Review")[0].session_turns == 3
+    assert sub.calls_to("Review")[0].inherited_turns == 3
     # `_StubFlow` declares every keyword the handoffs pass and forbids extras, so a graph
     # that started naming a conversation again would fail construction right here.
     assert "session_id" not in _StubFlow.model_fields

@@ -397,7 +397,7 @@ class Coder(Workflow):
             docs_path=self.docs_path,
             epic=self._story_epic(epic),
             operator_mode=self.operator_mode,
-            session_turns=session_turns,
+            inherited_turns=session_turns,
         )
         return Continue(result, self.document, epic=epic, triage=triage)
 
