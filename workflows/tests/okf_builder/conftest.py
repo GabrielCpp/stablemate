@@ -76,7 +76,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # The smallest installed skill `prepare._references_ok` accepts: the references corpus
     # is a run precondition (a build whose prompts point at pages that do not exist is
     # blocked, not degraded), so a repo without it never gets past `start`.
-    references = root / ".claude/skills/ostler-documentation/references"
+    references = root / ".claude/skills/ostler-okf/references"
     (references / "node-types").mkdir(parents=True)
     (references / "node-types" / "concept.md").write_text("# concept\n", encoding="utf-8")
     (references / "bullet-grammar.md").write_text("# bullet grammar\n", encoding="utf-8")

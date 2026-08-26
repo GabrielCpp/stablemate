@@ -105,12 +105,12 @@ def test_every_check_signature_reaches_the_prompt() -> None:
 
 
 def test_a_check_bearing_code_loads_the_falsifiability_bar_and_others_do_not() -> None:
-    """The skill is conditional, so both directions are asserted — a guard that always
+    """The reference is conditional, so both directions are asserted — a guard that always
 
-    fires costs every repair turn the load, and one that never fires silently drops the
+    fires costs every repair turn the read, and one that never fires silently drops the
     standard the check-bearing fragments are written against.
     """
-    bar = "falsifiable-verification"
+    bar = "ostler-okf/references/falsifiable-verification.md"
 
     assert bar in render("main/prompts/repair.md", _context("undeclared-obligation"), WORKFLOW_DIR)
     assert bar not in render("main/prompts/repair.md", _context("missing-placement"), WORKFLOW_DIR)
