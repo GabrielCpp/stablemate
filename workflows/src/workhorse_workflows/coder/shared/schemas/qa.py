@@ -269,28 +269,48 @@ class FailureAttribution(CoderResult):
 
 
 class RegressionRun(CoderResult):
-    """`run-regression-suite.py` — the committed journey suites' own verdict.
+    """`run_regression_suite` — the committed journey suites' own verdict.
 
-    `status` defaults to `passed`, which reads wrong for a gate until you see what the
-    script means by it: every "nothing to run" path — no Makefile, no `e2e-journeys`
-    target, no `maestro_flows/`, an unknown platform — is a *skip*, and a skip is `passed`.
-    A repo with no regression suite is not a repo that failed one. Only a real non-zero
-    suite exit is `failed`, and only an unreachable stack or emulator is `blocked`.
+    Five states, not ostler's four, because two different things used to arrive here as
+    `passed`. **`skipped` is a fact**: no service declares a `regression:` command, or the
+    suite it names contains no flows — a repo with no regression suite has not failed one,
+    and the story proceeds. **`error` is a defect**: the declared command could not be run
+    at all, because the tool it names is absent or the service directory it needs does not
+    exist. Reported as a pass, that is a gate silently deleting itself — the repo believes
+    it runs journeys on every story and no journey has run for weeks. So `error` blocks.
 
-    The script emitted this twice — once as `regression_run` and once, status and notes
-    only, as `qa_result` — so the shared `blocked → setup_fix` loop would pick it up.
-    `as_qa_result()` is that mirror, made explicit and defined once.
+    `blocked` keeps its own meaning between them: the runner ran and the *stack under test*
+    was unreachable or hung, which the shared setup-repair loop exists to fix. Only a real
+    non-zero suite exit is `failed`.
+
+    `as_qa_result()` is the mirror the `blocked → setup_fix` loop reads, which knows only
+    ostler's four states — see there for how the two new ones cross that boundary.
     """
 
-    status: Literal["passed", "failed", "blocked"] = "passed"
+    status: Literal["passed", "failed", "blocked", "skipped", "error"] = "skipped"
     failing_tests: list[str] = []
     log_path: str = ""
     notes: str = ""
     failure_attribution: list[FailureAttribution] = []
 
     def as_qa_result(self) -> QaResult:
-        """The story's running verdict, as the YAML's duplicated `qa_result` key had it."""
-        return QaResult(status=self.status, notes=self.notes)
+        """The story's running verdict, in the four states everything downstream routes on.
+
+        A skip is a pass to that vocabulary and a broken runner is a block — but the word
+        this model actually holds is prefixed onto the notes rather than dropped, because
+        the notes are what briefs the report turn and what an operator reads at the gate.
+        "regression error: `make regression` could not be run" and "the stack was not
+        reachable" are the same `blocked` here and two different repairs in the repo.
+        """
+        mirrored: QaStatus = "passed" if self.status == "skipped" else (
+            "blocked" if self.status == "error" else self.status
+        )
+        notes = (
+            f"regression {self.status}: {self.notes}"
+            if self.status in {"skipped", "error"}
+            else self.notes
+        )
+        return QaResult(status=mirrored, notes=notes)
 
 
 # ── the agent turns' replies ──────────────────────────────────────────────────────────
@@ -659,12 +679,21 @@ class LaneClock(CoderResult):
     #: anywhere else would restart at 0 mid-loop and give a stale chain a fresh budget.
     chain_laps: int = 0
 
-    def charged(self, seconds: float, *, plan: bool) -> LaneClock:
+    #: How many plan-lane turns were cut at their wall-clock cap. The flow keeps what such a
+    #: turn wrote and validates it, which is the right call on a file that is the deliverable
+    #: — but a turn that overruns is the loudest fact about a story's cost, and validating its
+    #: half-written plan is indistinguishable from validating a finished one once the log has
+    #: scrolled. Counted here so a checkpoint and a span say whether the lane was cut once or
+    #: is being cut every lap. Nothing branches on it; the lap ceilings bound the loop.
+    overruns: int = 0
+
+    def charged(self, seconds: float, *, plan: bool, overran: bool = False) -> LaneClock:
         """The same clock with one turn's wall-clock added to the lane it was spent in."""
         return self.model_copy(
             update={
                 "seconds": self.seconds + seconds,
                 "plan_seconds": self.plan_seconds + (seconds if plan else 0.0),
+                "overruns": self.overruns + (1 if overran else 0),
             }
         )
 
@@ -917,13 +946,16 @@ class QaLoop(CoderResult):
             }
         )
 
-    def charged(self, seconds: float, *, plan: bool = False) -> QaLoop:
+    def charged(self, seconds: float, *, plan: bool = False, overran: bool = False) -> QaLoop:
         """The same loop with one turn's wall-clock added to the lane it was spent in.
 
         `plan` charges the plan lane as well as the whole one — the plan lane is a slice of
         the lane, not a sibling of it, so a plan turn is spent twice over by design.
+        `overran` records that this is one of the turns the cap cut short.
         """
-        return self.model_copy(update={"clock": self.clock.charged(seconds, plan=plan)})
+        return self.model_copy(
+            update={"clock": self.clock.charged(seconds, plan=plan, overran=overran)}
+        )
 
     def require_docs_recheck(self) -> QaLoop:
         """Mark a possible as-built mutation; this taint is monotonic within the flow."""

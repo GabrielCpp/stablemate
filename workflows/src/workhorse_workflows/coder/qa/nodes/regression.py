@@ -9,11 +9,18 @@ Both are deliberately generous, and in opposite ways from the QA gates around th
 * The detector **fails open**. An unreadable `plan-context.json` resolves no suites, which
   skips the whole regression step. It is a router, not a verdict, and a story whose services
   run no journeys must not be blocked by a file it never had reason to write.
-* The runner treats **"nothing to run" as `passed`**. A service that declares no
-  `regression:` command has no regression suite, and a repo with no suite has not failed
-  one. Only a real non-zero exit is `failed`; only an unreachable stack, device or emulator
-  is `blocked`, which routes to the shared setup-repair loop rather than burning the
-  regression-fix budget on something the fix agent cannot act on.
+* The runner reports **"nothing to run" as `skipped`**, not as a pass. A service that
+  declares no `regression:` command has no regression suite, and a repo with no suite has
+  not failed one — but it has not proved anything either, and the two used to arrive
+  downstream wearing the same word. Only a real non-zero exit is `failed`; an unreachable
+  stack, device or emulator is `blocked`, which routes to the shared setup-repair loop
+  rather than burning the regression-fix budget on something the fix agent cannot act on.
+
+  A declared command that **could not be run at all** — its tool is absent, its service
+  directory does not exist — is `error`, and `error` blocks. That is the one generosity
+  this node does not extend: a repo that wrote `regression:` down believes its journeys
+  run on every story, and a runner that cannot start reported as a pass is that gate
+  deleting itself quietly.
 
 **What runs comes out of the repo, not out of this file** (invariant 1). Each service's
 `regression:` key in `agents.yml` is resolved through the same `gate_command` ladder as
@@ -36,7 +43,7 @@ import re
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.dev import gate_command
@@ -70,8 +77,12 @@ NOTHING_TO_RUN_RE = re.compile(
     r"do not contain any Flow files|no tests? (files? )?found|no tests to run", re.IGNORECASE
 )
 
-#: Worst-first, so `min` over this order picks the status that must win a merge.
-STATUS_ORDER = {"blocked": 0, "failed": 1, "passed": 2}
+#: Worst-first, so `min` over this order picks the status that must win a merge. `error`
+#: outranks everything: a suite that could not be run is the one result that says nothing
+#: about the code, and a merge that let a sibling's green hide it would restore exactly the
+#: silence the status was added to break. A `skipped` service is the weakest claim there is,
+#: so any real result outranks it.
+STATUS_ORDER = {"error": 0, "blocked": 1, "failed": 2, "passed": 3, "skipped": 4}
 
 
 def _sanitize_label(label: str) -> str:
@@ -79,12 +90,21 @@ def _sanitize_label(label: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]", "-", label).strip("-")
 
 
-def _run(command: str, cwd: Path, timeout: int) -> tuple[int | None, str]:
-    """Run a declared suite command, returning `(returncode, combined output)`.
+class _Outcome(NamedTuple):
+    """What running one suite command produced.
 
-    A `None` returncode means the command never produced one — it timed out, or the tool it
-    names is not installed. Both are `blocked` to the caller, and both keep the output.
+    `returncode` is `None` when the command produced none. `started` is what separates the
+    two ways that happens: a command that ran and was killed at `SUITE_TIMEOUT` has a hung
+    stack under it (`blocked`), and one that never started has no tool (`error`).
     """
+
+    returncode: int | None
+    output: str
+    started: bool = True
+
+
+def _run(command: str, cwd: Path, timeout: int) -> _Outcome:
+    """Run a declared suite command, returning what came of it."""
     try:
         result = subprocess.run(
             shlex.split(command),
@@ -94,7 +114,7 @@ def _run(command: str, cwd: Path, timeout: int) -> tuple[int | None, str]:
             timeout=timeout,
             check=False,
         )
-        return result.returncode, (result.stdout or "") + (result.stderr or "")
+        return _Outcome(result.returncode, (result.stdout or "") + (result.stderr or ""))
     except subprocess.TimeoutExpired as exc:
         stdout = (
             exc.stdout.decode("utf-8", "replace")
@@ -104,9 +124,9 @@ def _run(command: str, cwd: Path, timeout: int) -> tuple[int | None, str]:
             exc.stderr.decode("utf-8", "replace")
             if isinstance(exc.stderr, bytes) else (exc.stderr or "")
         )
-        return None, stdout + stderr
+        return _Outcome(None, stdout + stderr)
     except (FileNotFoundError, ValueError) as exc:
-        return None, f"could not run {command!r}: {exc}"
+        return _Outcome(None, f"could not run {command!r}: {exc}", started=False)
 
 
 def _tail(output: str, n: int = 30) -> str:
@@ -129,32 +149,47 @@ def _write_log(qa_dir: str, name: str, output: str, logger: logging.Logger) -> s
 
 
 def _run_one(suite: RegressionSuite, qa_dir: str, logger: logging.Logger) -> RegressionRun:
-    """One service's declared journey command, classified into passed/failed/blocked."""
+    """One service's declared journey command, in the five states the model carries.
+
+    `skipped` when there was nothing to run, `error` when the command could not be run at
+    all, `blocked` when it ran against a stack that was unreachable or hung, and
+    `passed`/`failed` on the exit code it actually produced.
+    """
     label = suite.label
     cwd = Path(suite.cwd)
     if not suite.command:
         return RegressionRun(notes=f"no regression command declared for {label} — skipped")
     if not cwd.is_dir():
         return RegressionRun(
-            status="blocked", notes=f"{label}: service directory {suite.cwd} does not exist"
+            status="error",
+            notes=f"{label}: service directory {suite.cwd} does not exist, so `{suite.command}` "
+            "could not be run",
         )
 
-    returncode, output = _run(suite.command, cwd, SUITE_TIMEOUT)
+    returncode, output, started = _run(suite.command, cwd, SUITE_TIMEOUT)
     log_path = _write_log(
         qa_dir, f"regression-run-{_sanitize_label(label)}.log", output, logger
     )
 
+    if not started:
+        return RegressionRun(
+            status="error",
+            log_path=log_path,
+            notes=f"`{suite.command}` could not be started ({label}) — see the output",
+        )
     if returncode is None:
         return RegressionRun(
             status="blocked",
             log_path=log_path,
             notes=(
-                f"`{suite.command}` did not complete within {SUITE_TIMEOUT}s or could not "
-                f"start ({label}) — the stack may be hung, or the tool absent"
+                f"`{suite.command}` did not complete within {SUITE_TIMEOUT}s ({label}) — "
+                "the stack under test may be hung"
             ),
         )
     if returncode == 0:
-        return RegressionRun(log_path=log_path, notes=f"`{suite.command}` exited 0 ({label})")
+        return RegressionRun(
+            status="passed", log_path=log_path, notes=f"`{suite.command}` exited 0 ({label})"
+        )
     if NOTHING_TO_RUN_RE.search(output):
         return RegressionRun(
             log_path=log_path, notes=f"nothing to run for {label} — skipped"
@@ -300,8 +335,9 @@ def run_regression_suite(
 ) -> RegressionRun:
     """Run the declared journey suites and report their own verdict.
 
-    No LLM judgment anywhere: a clean exit is `passed`, a real suite failure is `failed`, and
-    "the stack under test isn't reachable" is `blocked`.
+    No LLM judgment anywhere: a clean exit is `passed`, a real suite failure is `failed`,
+    "the stack under test isn't reachable" is `blocked`, "there was nothing to run" is
+    `skipped`, and "the declared command could not be started" is `error`.
     """
     resolved = [RegressionSuite.model_validate(s) for s in (suites or [])]
     if not resolved:

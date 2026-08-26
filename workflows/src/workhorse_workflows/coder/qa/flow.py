@@ -28,9 +28,10 @@ Divergences from the YAML, all deliberate:
 * `repair_qa_context` declared two output keys on one agent node. It returns a two-field
   model here (`QaContextRepair`), because the driver builds one output key per top-level
   field — see `shared/schemas/qa.py`. No other agent turn in the four workflows has this shape.
-* **an empty `story_path` ends the flow `exhausted`, it does not fail it.** `docs` raises on
-  the same condition; `qa`'s `decide_qa_story` routed to `mark_qa_exhausted`, and the parent
-  graph's `decide_qa_outcome` has an arm for it. Preserved as the YAML had it.
+* **an empty `story_path` fails the flow**, as it does in `docs`. The YAML ended the run
+  `exhausted` on it — a status that says the story was QA'd and could not be carried, when
+  what happened is that the story was never found. A resolver that cannot be resolved is a
+  defect in whatever asked for this slug, and `exhausted` files it against the story.
 * the budgets are `ClassVar` ints. None is declared in `flows.qa.vars` — the guards carry
   branch literals and the comments cite `vars.max_*`
   names that do not exist. Same inert-var finding as `dev`'s `max_validate_reworks`;
@@ -72,9 +73,17 @@ import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, ClassVar, NamedTuple
+from typing import Any, ClassVar, NamedTuple, Protocol
 
-from workhorse.pyflow import AgentTimeout, Await, Continue, Done, NodeNotRunError, Workflow
+from workhorse.pyflow import (
+    AgentTimeout,
+    Await,
+    Continue,
+    Done,
+    NodeNotRunError,
+    Workflow,
+    WorkflowFailed,
+)
 from workhorse_workflows.coder.shared import paths, qa_support, roles
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.conversation import backbone
@@ -482,6 +491,16 @@ def _rejection(loop: QaLoop, kind: str) -> str:
     """
     return f"{kind}: {' '.join(loop.plan_validation_notes.split())}"
 
+class _ReportState(Protocol):
+    """A terminal report state, as `_blocked_report` resumes it: one keyword, the loop.
+
+    Spelled as a protocol rather than a `Callable` because `Await` forwards its resume
+    parameters by name, and a `Callable[[QaLoop], ...]` names none of them.
+    """
+
+    def __call__(self, loop: QaLoop) -> Await | Done: ...
+
+
 def _escalation(
     flow: Qa,
     loop: QaLoop,
@@ -592,8 +611,17 @@ class Qa(Workflow):
         slug, and handed-off lanes share the run's chain directory, so naming the key is
         all it takes to land in the conversation an earlier lane left. A lane run on its
         own finds no chain and starts cold.
+
+        A slug that resolves to no story path stops here. There is nothing for the rest of
+        this flow to read, and the exit that used to be taken instead — `Done`, `exhausted`
+        — is a verdict on a story nobody ever opened.
         """
         ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
+        if not ctx.story_path:
+            raise WorkflowFailed(
+                f"no story path for {self.story!r} — the story could not be resolved, so "
+                "there is nothing to QA."
+            )
         return ctx
 
     def labels(self) -> dict[str, str]:
@@ -676,6 +704,7 @@ class Qa(Workflow):
         "regression_fix",
         "triage_scope",
         "audit_rework",
+        "plan_overruns",
     )
 
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
@@ -696,6 +725,7 @@ class Qa(Workflow):
         carried = loop.model_dump() | {
             "plan_rework_total": loop.plan_rework_total,
             "plan_judgement_rework": loop.plan_judgement_rework,
+            "plan_overruns": loop.clock.overruns,
         }
         verdicts = loop.assessment.dimensions() | loop.audit.dimensions()
         return (
@@ -706,20 +736,18 @@ class Qa(Workflow):
 
     # ── context ───────────────────────────────────────────────────────────────────────
 
-    def start(self) -> Continue | Done:
+    def start(self) -> Continue:
         """Clear the last run's evidence and decode what this story actually touched.
 
-        `decide_qa_story` + `clear_qa_evidence` + `resolve_qa_context` + `detect_qa_okf`.
-        All deterministic, and the one branch guards `setup`'s own output.
+        `decide_qa_story` + `clear_qa_evidence` + `resolve_qa_context` + `detect_qa_okf`,
+        all deterministic and unbranched — the story `decide_qa_story` used to guard for is
+        `setup`'s precondition now, and this state is only reached with one.
 
         `resolve_qa_context` is `resolve-impl-context.py` again — the same node `dev` and
         `docs` run — read here for the repo paths every agent turn is granted and the source
         roots the obligation packet is built from. Re-deriving it rather than reading the dev
         phase's copy is what makes a standalone re-QA of an already-built story work.
         """
-        if not self.ctx.story_path:
-            self.logger.info("no story to QA — nothing to run")
-            return Done(QaFlowResult(triage_scope=self.triage_scope))
         # A re-QA of a story that was already QA'd — after a fix, after an operator answer,
         # after a resume — must not resume the previous pass's repair conversation: it
         # describes a plan and a diff that have both been rewritten since.
@@ -907,7 +935,7 @@ class Qa(Workflow):
                 extra={"activity": True},
             )
             overran = _OVERRAN_PLAN
-        loop = loop.charged(time.monotonic() - started, plan=True)
+        loop = loop.charged(time.monotonic() - started, plan=True, overran=bool(overran))
         if drafted is not None and drafted.blocked:
             return self._refused(drafted, loop, "the QA planner")
         proved: tuple[str, ...] = ()
@@ -984,7 +1012,7 @@ class Qa(Workflow):
                 extra={"activity": True},
             )
             overran = _OVERRAN_REPAIR
-        loop = loop.charged(time.monotonic() - started, plan=True)
+        loop = loop.charged(time.monotonic() - started, plan=True, overran=bool(overran))
         if result is not None and result.blocked:
             # Every lap here is a *repair*, so the scenario it could not repair is the same
             # one the next lap would be handed. The validation tail would find the plan still
@@ -1539,13 +1567,13 @@ class Qa(Workflow):
             )
         return self._fixable(triage, loop)
 
-    def report_dev(self, loop: QaLoop) -> Done:
+    def report_dev(self, loop: QaLoop) -> Await | Done:
         """`target_env=dev`: we do not own the code, so write the findings out and stop.
 
         `report_qa_dev` + `mark_qa_exhausted`. The `inconclusive` default status is not a
         judgement on the report — it is how the parent's `decide_qa_fail` learns the story
-        did not pass. This is the one legitimate terminal exit left in this flow: a dev
-        target has no code to rework, so there is no operator-answerable question to gate on.
+        did not pass. A dev target has no code to rework, so this is the flow's terminal
+        state for a story it could not carry: what it owes is the write-up.
         """
         turn = roles.turn(self, "report-qa-dev")
         report = self.agent(
@@ -1563,14 +1591,7 @@ class Qa(Workflow):
             },
         )
         if report.blocked:
-            # Advisory, deliberately: the findings are already written down in `qa_dir`, and
-            # this turn only summarises them into a tracker. Gating a `dev` run's terminal
-            # act on the summary would park a story whose actual output already landed.
-            self.logger.warning(
-                "the QA report turn reported it could not write the summary (%s) — the "
-                "findings themselves are already in %s",
-                report.notes or "no reason given", self.ctx.qa_dir,
-            )
+            return self._blocked_report(report, loop, self.report_dev)
         self.logger.info("QA findings reported: %s", report.notes)
         return self._ends(
             QaFlowResult(
@@ -1640,6 +1661,11 @@ class Qa(Workflow):
         change invalidates the primary QA evidence that was captured before it — so a green
         regression run *after* a fix sends the story back through primary QA, once, and the
         `reqa_pending` flag is what stops that from repeating forever.
+
+        `skipped` travels with `passed` and `error` with `blocked` — see `RegressionRun` for
+        why the runner distinguishes them at all when this state routes them in pairs: the
+        pairing is about what happens next, and the word is about what an operator reading
+        the notes is told happened.
         """
         suites = self.output(detect_regression_suites)
         run = self.call(
@@ -1649,7 +1675,7 @@ class Qa(Workflow):
             [suite.model_dump() for suite in suites.suites],
         )
         loop = loop.with_qa(run.as_qa_result())
-        if run.status == "passed":
+        if run.status in {"passed", "skipped"}:
             if loop.regression_fix_applied:
                 return Continue(
                     run,
@@ -1661,7 +1687,10 @@ class Qa(Workflow):
                 self.finalize,
                 loop=loop.update(regression_fix_applied=False, regression_reqa_pending=False),
             )
-        if run.status == "blocked":
+        if run.status in {"blocked", "error"}:
+            # Both to the setup loop, and for the same reason it exists: neither an
+            # unreachable stack nor a `regression:` command that will not start is anything
+            # the regression *fixer* can act on, and the story does not proceed on either.
             return self._guard_setup(
                 run,
                 loop.update(regression_fix_applied=False, regression_reqa_pending=True),
@@ -1775,16 +1804,13 @@ class Qa(Workflow):
             )
         )
 
-    def report_dev_pass(self, loop: QaLoop) -> Done:
+    def report_dev_pass(self, loop: QaLoop) -> Await | Done:
         """`target_env=dev`: summarise what passed to the tracker, then finish green.
 
-        The one turn in this lane whose verdict is deliberately not routed. It is reached
-        only after the story has already passed every binding gate, and all it does is write
-        that outcome up for the tracker — so a turn that cannot write the summary has not
-        found anything wrong with the story, and parking a *passed* story on an operator to
-        ask about a report would hold the whole single-threaded queue behind a note. It is
-        logged instead, at warning, so the missing report is visible to whoever goes looking
-        for it rather than silently absent.
+        The turn is reached only after the story has already passed every binding gate, so
+        it decides nothing about the story — but the tracker entry is the whole output of a
+        `dev` target's QA, and a run that ends without it has passed a story nobody can read
+        the verdict of. So a blocked write parks like any other block rather than logging.
         """
         turn = roles.turn(self, "report-qa-dev-pass")
         report = self.agent(
@@ -1802,11 +1828,7 @@ class Qa(Workflow):
             },
         )
         if report.blocked:
-            self.logger.warning(
-                "the dev-pass report could not be written (%s) — the story passed its gates "
-                "and finishes green regardless",
-                report.notes or "no reason given",
-            )
+            return self._blocked_report(report, loop, self.report_dev_pass)
         return self._ends(
             QaFlowResult(
                 status="passed",
@@ -2520,6 +2542,30 @@ class Qa(Workflow):
             qa=loop.qa.model_copy(update={"notes": f"{what} reported it cannot proceed: {reason}"})
         )
         return self._gate(result, loop)
+
+    def _blocked_report(
+        self, report: QaReport, loop: QaLoop, resume: _ReportState
+    ) -> Await:
+        """A report turn that could not write its summary parks the story on the operator.
+
+        Straight to a person, not through `_gate`: the resolver answers a *question* by
+        quoting what already settles it, and "the write failed" is not one — and the two
+        states this is reached from are terminal, so the gate's own resume path (apply the
+        answer as a QA fix, then re-enter `build_context`) would re-QA a story that has
+        already been judged. The resume here re-dispatches the same turn instead. Nothing
+        underneath it has moved: the findings are on disk, and what the operator clears is
+        whatever stopped the write.
+        """
+        reason = report.notes or "no reason given"
+        self.logger.info("the QA report could not be written; escalating: %s", reason)
+        loop = loop.update(
+            escalations=loop.escalations + 1,
+            qa=loop.qa.model_copy(
+                update={"notes": f"the QA report could not be written: {reason}"}
+            ),
+        )
+        gate = _escalation(self, loop)
+        return Await(context_path(self), gate.body, resume, loop=loop)
 
     def _gate(self, result: object, loop: QaLoop) -> Continue | Await:
         """`gate_qa`: hand the block to the auto-operator, or halt for a human.

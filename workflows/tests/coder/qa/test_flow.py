@@ -500,11 +500,11 @@ class _Suite:
         self.fail_runs = fail_runs
         self.calls: list[str] = []
 
-    def __call__(self, command: str, cwd: Path, timeout: int) -> tuple[int | None, str]:
+    def __call__(self, command: str, cwd: Path, timeout: int) -> regression_nodes._Outcome:
         self.calls.append(command)
         if len(self.calls) <= self.fail_runs:
-            return 1, "FAIL journeys/login.spec.ts › logs a user in\n"
-        return 0, "12 passed\n"
+            return regression_nodes._Outcome(1, "FAIL journeys/login.spec.ts › logs a user in\n")
+        return regression_nodes._Outcome(0, "12 passed\n")
 
 
 # --------------------------------------------------------------------------- the agent
@@ -907,26 +907,24 @@ def test_one_clean_pass_through_every_gate(
     assert (docs / SPEC_REL / "qa" / "qa-run.ndjson").is_file()
 
 
-def test_a_blank_story_ends_exhausted_without_running_anything(
+def test_a_story_that_cannot_be_resolved_fails_the_run_without_spending_a_turn(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`decide_qa_story`'s empty arm: `inconclusive`, not a failure, and no turns spent.
+    """An unresolvable story is a defect in whatever asked for this slug, and fails as one.
 
-    There is nothing here to escalate — no story means no block for an operator to look
-    at — so this is the one terminal `Done` left in the flow, not a route to the gate. The
-    seeded rescope budget is handed straight back, because this flow never got far enough
-    to spend it.
+    Not a status: ending `exhausted` says the story was QA'd and could not be carried,
+    when what happened is that it was never found. Nothing is spent proving that — the
+    raise is `setup`'s, before the first turn.
     """
     okf = ostler()
     agent = _Agent(docs)
 
-    result = drive_flow(Qa(story="", triage_scope=1), env(), agent)
+    with pytest.raises(WorkflowFailed, match="no story path"):
+        drive_flow(Qa(story="", triage_scope=1), env(), agent)
 
-    assert result.status == "inconclusive", result
-    assert result.triage_scope == 1
     assert agent.calls == []
     assert (okf.contexts, okf.runs) == (0, 0)
 
