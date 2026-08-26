@@ -40,7 +40,7 @@ from workhorse_workflows.coder.shared.qa_support import (
     failed_assertions,
     scored_run_log,
 )
-from workhorse_workflows.coder.shared.schemas.qa import QaResult
+from workhorse_workflows.coder.shared.schemas.qa import QaResult, QaStatus
 
 #: The runner-written proof, relative to the story's spec dir.
 EVIDENCE_FILE = "qa-evidence.json"
@@ -50,9 +50,15 @@ EVIDENCE_FILE = "qa-evidence.json"
 #: rendered from some other run — is a pass nobody can check by hand.
 REPORT = REPORT_FILE
 
-#: The three machine statuses that are preserved verbatim. Anything else claimed —
-#: including nothing at all — is `invalid`, because an unstated verdict is not a verdict.
-PASSTHROUGH_STATUSES = frozenset({"failed", "blocked", "invalid"})
+#: The three machine statuses that are preserved verbatim, keyed by what the runner
+#: spelled. Anything else claimed — including nothing at all — is `invalid`, because an
+#: unstated verdict is not a verdict. A map rather than a set because the value is the arm
+#: `QaResult.status` carries, and the lookup is what makes that a typed answer.
+PASSTHROUGH_STATUSES: dict[str, QaStatus] = {
+    "failed": "failed",
+    "blocked": "blocked",
+    "invalid": "invalid",
+}
 
 #: What a criterion is allowed to be. Each kind carries its own extra proof obligation.
 CRITERION_KINDS = ("behavioral", "parity", "data-entry", "transient")
@@ -511,7 +517,7 @@ def verify_qa_evidence(
     # Only a runner pass is eligible for evidence verification. Preserve the other
     # three machine statuses exactly; a missing status is itself invalid.
     if claimed != "passed":
-        status = claimed if claimed in PASSTHROUGH_STATUSES else "invalid"
+        status = PASSTHROUGH_STATUSES.get(claimed, "invalid")
         logger.info("claimed status '%s' is not 'passed' — passing through as '%s'", claimed, status)
         return QaResult(status=status, notes=claimed_notes)
 

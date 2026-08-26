@@ -104,7 +104,7 @@ is the only source of truth, so do not include a verdict here.
 
 ```json
 {
-  "status": "",
+  "status": "attempted",
   "notes": "Per-failure summary: what was wrong, what you changed (app code or spec), and how you verified it locally. If a failure could not be fixed, say which one and why."
 }
 ```
@@ -112,8 +112,8 @@ is the only source of truth, so do not include a verdict here.
 - Wrap the result under `regression_fix_result` (this is how the workflow captures your output).
 - `notes` must be a non-empty string covering every failure from the inputs above, not just the
   first one.
-- `status` is empty on any turn that changed something — a claim of success is not trusted here,
-  and only the next deterministic suite run decides whether the fix worked. It exists for the
+- `status` is `"attempted"` on any turn that did the work — it is not a claim of success, and
+  only the next deterministic suite run decides whether the fix worked. It exists for the
   opposite claim; see below.
 
 ## Stop Conditions
@@ -124,13 +124,12 @@ Stop and report a blocker in `notes` if:
 - required emulator/services, fixtures, or credentials are unavailable
 - a fix would require broad replanning outside this story's surface
 
-### `status` — how you say you cannot judge this at all
+### `status`
 
-Leave `status` empty on any turn that reached a verdict, however unwelcome. Set it to
-`"blocked"` **only** when nothing in this repository would let you reach one, because what is
-missing is external to it: a credential or deployment you cannot perform, a product decision
-present in neither the story nor the plan, or work that lives in another repo. A `blocked`
-turn ends the loop and hands the story to an operator, so it must name that specific
-dependency in `notes` and say what you attempted before concluding it. A hard judgement is
-not a blocked one — the fields above exist to carry an unfavourable verdict, and reaching for
-`blocked` to avoid picking one takes the decision away from the only stage allowed to make it.
+`"attempted"` on any turn that did the work, whatever you think it achieved — the suite judges
+that, not this field. `"blocked"` **only** when nothing in this repository would let you
+attempt the fixes at all, because what is missing is external to it: a credential or deployment
+you cannot perform, a product decision present in neither the story nor the plan, or work that
+lives in another repo. A `blocked` turn hands the story to an operator, so it must name that
+dependency in `notes` and say what you attempted before concluding it. A fix you doubt is still
+an attempt; reaching for `blocked` to hedge it takes the decision away from the suite.

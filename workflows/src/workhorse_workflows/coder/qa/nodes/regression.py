@@ -36,6 +36,7 @@ import re
 import shlex
 import subprocess
 from pathlib import Path
+from typing import Literal
 
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.dev import gate_command
@@ -230,6 +231,7 @@ def _attribute_failures(result: RegressionRun, index: list) -> RegressionRun:
             and item.get("path")
             and _same_test_path(test_path, str(item["path"]))
         ]
+        classification: Literal["impacted", "outside-impact", "unattributed"]
         if any(item.get("impacted") is True for item in owners):
             classification = "impacted"
         elif owners:

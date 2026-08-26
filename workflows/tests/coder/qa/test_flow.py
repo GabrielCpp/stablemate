@@ -525,14 +525,14 @@ class _Agent:
         disposition: str = "confirmed",
         repair_plans: int = 0,
         failure_class: str = "none",
-        objective: str = "yes",
+        objective: bool = True,
         assessment_class: str = "none",
         assessment_findings: list[dict[str, str]] | None = None,
         audit: tuple[str, str] = ("stands", "none"),
         audit_findings: list[dict[str, str]] | None = None,
         triage: tuple[str, str] = ("qa_fix", "code"),
-        setup: str = "fixed",
-        qa_fix: str = "fixed",
+        setup: str = "ready",
+        qa_fix: str = "passed",
         escalate: bool = False,
         scope: str = "story",
         explode: set[str] | None = None,
@@ -689,7 +689,7 @@ class _Agent:
         for scenario in self.plan_proves:
             self._prove(data, scenario, self.plan_dry_run)
         return {
-            "status": "planned",
+            "status": "done",
             "notes": f"plan pass {nth}",
             "proved_scenarios": list(self.plan_proves),
         }
@@ -719,7 +719,7 @@ class _Agent:
 
         The proof is the scratch run log the flow's dry-run gate reads: one out-dir per
         scenario the brief named, holding the assertions that scenario recorded. A fake that
-        only returned `{"status": "planned"}` would stand in for a turn the gate refuses, so
+        only returned `{"status": "done"}` would stand in for a turn the gate refuses, so
         every repair lap in this suite would be a gate failure rather than the loop under
         test. `self.dry_run` is what lets a test ask for the refused shapes on purpose.
         """
@@ -728,7 +728,7 @@ class _Agent:
         for scenario in scenarios:
             self._prove(data, scenario, self.dry_run)
         return {
-            "status": "planned",
+            "status": "done",
             "notes": f"plan pass {nth}",
             "repaired_scenarios": scenarios,
         }
@@ -739,11 +739,12 @@ class _Agent:
         failed = data["runner_status"] == "failed"
         plan_lap = failed and nth <= self.repair_plans
         return {
+            "status": "assessed",
             "disposition": "repair_plan" if plan_lap else self.disposition,
             "failure_class": ("plan" if plan_lap else self.assessment_class)
             if failed
             else self.failure_class,
-            "objective_reached": "no" if failed else self.objective,
+            "objective_reached": False if failed else self.objective,
             "findings": self.assessment_findings,
             "notes": f"assessment pass {nth}",
         }
@@ -751,6 +752,7 @@ class _Agent:
     def _audit_qa(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         verdict, refutation = self.audit
         return {
+            "status": "audited",
             "verdict": verdict,
             "refutation_class": refutation,
             "findings": self.audit_findings,
@@ -759,7 +761,11 @@ class _Agent:
 
     def _triage_qa(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         action, failure_class = self.triage
-        return {"triage_action": action, "qa_failure_class": failure_class}
+        return {
+            "status": "triaged",
+            "triage_action": action,
+            "qa_failure_class": failure_class,
+        }
 
     def _apply_qa_fixes(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"status": self.qa_fix, "notes": f"fix pass {nth}"}
@@ -775,7 +781,7 @@ class _Agent:
         return {"status": self.qa_fix, "notes": f"scenario {scenario} pass {nth}"}
 
     def _fix_regression(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        return {"notes": f"regression fix pass {nth}"}
+        return {"status": "attempted", "notes": f"regression fix pass {nth}"}
 
     def _setup_fix(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"status": self.setup, "notes": f"setup pass {nth}"}
@@ -1659,7 +1665,7 @@ def test_a_setup_repair_mid_run_returns_to_the_runner_not_to_a_second_plan(
     monkeypatch.setattr(
         qa_stack, "ensure_stack", lambda *a, **k: {"ready": "yes", "entry_url": "http://x"}
     )
-    agent = _Agent(docs, setup="fixed")
+    agent = _Agent(docs, setup="ready")
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
@@ -1682,7 +1688,7 @@ def test_a_stack_that_will_not_come_up_is_repaired_and_retried(
     ostler()
     results = [{"ready": "no", "failed_step": "health"}, {"ready": "yes", "entry_url": "http://x"}]
     monkeypatch.setattr(qa_stack, "ensure_stack", lambda *a, **k: results.pop(0))
-    agent = _Agent(docs, setup="fixed")
+    agent = _Agent(docs, setup="ready")
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
@@ -1716,7 +1722,7 @@ def test_the_setup_fixer_is_briefed_with_why_the_stack_would_not_come_up(
         {"ready": "yes", "entry_url": "http://x"},
     ]
     monkeypatch.setattr(qa_stack, "ensure_stack", lambda *a, **k: results.pop(0))
-    agent = _Agent(docs, setup="fixed")
+    agent = _Agent(docs, setup="ready")
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
@@ -1789,7 +1795,7 @@ def test_a_setup_fix_that_changes_nothing_is_not_asked_a_second_time(
     """
     ostler(blocked_problems=["target 'web' requires the Playwright Python package"])
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "60")
-    agent = _Agent(docs, setup="fixed", escalate=True)
+    agent = _Agent(docs, setup="ready", escalate=True)
     seen: list[str] = []
 
     with (
@@ -3191,7 +3197,7 @@ def test_first_verdict_still_repairs_the_environment(
     monkeypatch.setattr(
         qa_stack, "ensure_stack", lambda *a, **k: {"ready": "yes", "entry_url": "http://x"}
     )
-    agent = _Agent(docs, setup="fixed")
+    agent = _Agent(docs, setup="ready")
 
     result = drive_flow(Qa(story=STORY, first_verdict=True), env(), agent)
 

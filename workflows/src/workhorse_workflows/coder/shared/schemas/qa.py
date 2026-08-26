@@ -23,6 +23,35 @@ from typing import Any, ClassVar, Literal
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 
+#: What a QA run came to. Ostler's four states, and the only vocabulary the rolling verdict
+#: is ever written from — every gate that hands the loop a verdict writes one of these.
+QaStatus = Literal["passed", "failed", "blocked", "invalid"]
+
+#: `qa-story.md`'s reading of a run it managed to read: whether the runner's own result can
+#: be trusted for routing, and if not, which stage repairs what. See `QaAssessment`.
+QaDisposition = Literal["confirmed", "repair_plan", "extend_plan", "repair_setup"]
+
+#: The same turn's account of *why*, on the axis the flow routes on: `product` fails the
+#: story deterministically, `environment` reaches setup, `plan` and `evidence` reach the
+#: plan author, and `none` is the assessment of a run that failed at nothing.
+QaFailureClass = Literal["none", "product", "plan", "environment", "evidence"]
+
+#: `audit-qa.md`'s verdict on a pass that already cleared the gate, and what a refutation
+#: says the pass was wrong about.
+QaAuditVerdict = Literal["stands", "refuted"]
+QaRefutationClass = Literal["none", "product-contradiction", "plan-defect", "evidence-defect"]
+
+#: `triage-qa.md`'s two answers: whether the story's acceptance criteria were amended, and
+#: what the remaining failure needs. The class is what the one bonus verification pass is
+#: granted on, which is why `evidence` is separate from `code`, and it is what returns a
+#: story to the dev lane, which is why `product` is separate from both.
+QaTriageAction = Literal["rescope", "qa_fix"]
+QaTriageClass = Literal["code", "product", "evidence", "environment"]
+
+#: What the whole flow hands its parent. Not a QA verdict — a routing answer, which is why
+#: it is a vocabulary of its own rather than a widening of `QaStatus`. See `QaFlowResult`.
+QaFlowStatus = Literal["passed", "inconclusive", "replan", "rescope", "refix"]
+
 
 class QaResult(CoderResult):
     """The story's running QA verdict — ostler's four states, plus the blank before one.
@@ -36,7 +65,7 @@ class QaResult(CoderResult):
     The runner's raw payload is **not** a field here — see `QaPlanRun` below for why.
     """
 
-    status: str = ""
+    status: QaStatus | Literal[""] = ""
     notes: str = ""
 
 
@@ -85,7 +114,7 @@ class QaPlanValidation(CoderResult):
     ostler, so a missing answer is a failure to validate, not a pass.
     """
 
-    status: str = "invalid"
+    status: Literal["passed", "invalid"] = "invalid"
     notes: str = ""
     ostler: dict[str, Any] = {}
 
@@ -104,7 +133,7 @@ class DryRunGate(CoderResult):
     `scenarios` is what was demanded; `verified` is what the scratch evidence proved.
     """
 
-    status: str = "failed"
+    status: Literal["passed", "failed"] = "failed"
     notes: str = ""
     scenarios: list[str] = []
     verified: list[str] = []
@@ -150,7 +179,7 @@ class StackStatus(CoderResult):
     they are recorded for a human killing a leaked stack, never arithmetic.
     """
 
-    ready: str = "no"
+    ready: Literal["yes", "no", "none"] = "no"
     app_pid: str = ""
     app_pgid: str = ""
     entry_url: str = ""
@@ -167,7 +196,7 @@ class StackTornDown(CoderResult):
     `skipped` case, and it is the leave-it-up policy the reuse doctrine already states.
     """
 
-    torn_down: str = "no"
+    torn_down: Literal["yes", "no", "skipped"] = "no"
     notes: str = ""
 
 
@@ -235,7 +264,7 @@ class FailureAttribution(CoderResult):
 
     test: str = ""
     path: str = ""
-    classification: str = ""
+    classification: Literal["impacted", "outside-impact", "unattributed"] = "unattributed"
     nodes: list[str] = []
 
 
@@ -253,7 +282,7 @@ class RegressionRun(CoderResult):
     `as_qa_result()` is that mirror, made explicit and defined once.
     """
 
-    status: str = "passed"
+    status: Literal["passed", "failed", "blocked"] = "passed"
     failing_tests: list[str] = []
     log_path: str = ""
     notes: str = ""
@@ -273,10 +302,13 @@ class RegressionRun(CoderResult):
 class ContextRepair(CoderResult):
     """The repair half of `qa/prompts/repair-qa-context.md` — did the obligation packet heal?
 
-    `repaired` re-runs the build; anything else, blank included, goes to the operator gate.
+    `repaired` re-runs the build; `blocked` goes to the operator gate. Two arms and no
+    default: a turn that will not say which of the two it managed has not reported, and the
+    parse retry that buys is a cheaper answer than the silent trip to the operator a blank
+    used to take.
     """
 
-    status: str = ""
+    status: Literal["repaired", "blocked"]
     notes: str = ""
 
 
@@ -288,9 +320,15 @@ class QaContextRepair(CoderResult):
     keys are the two fields, each typed as the model the prompt actually specifies. Nothing
     about the driver had to change to carry this; it is the shape `_outputs_for` already
     implied, and the port is the first place that shape was needed.
+
+    The repair half carries no default for the same reason its `status` does not: it is the
+    half the turn is dispatched for, and a reply that omits it is a parse failure rather than
+    a repair nobody performed. The verdict half is the rolling `QaResult`, which does default
+    — the turn writes it so a blocked repair carries its reason into the operator gate, and
+    the loop already holds one when it does not.
     """
 
-    qa_context_repair: ContextRepair = ContextRepair()
+    qa_context_repair: ContextRepair
     qa_result: QaResult = QaResult()
 
 
@@ -318,7 +356,7 @@ class QaPlanResult(CoderResult):
     unit scenario has nothing worth proving — but a named id with no green log behind it is.
     """
 
-    status: str = ""
+    status: Literal["done", "blocked"]
     notes: str = ""
     repaired_scenarios: list[str] = []
     proved_scenarios: list[str] = []
@@ -393,12 +431,17 @@ class QaAssessment(CoderResult):
     `status` carries the one answer no disposition spells: `blocked`, for a turn that could
     not judge the run at all. It is separate because every `disposition` value classifies a
     run this turn *did* read, and each routes the story to a budget that is then spent on it.
+    `assessed` is the other arm — the turn reached a reading, and the three fields below are
+    it. They are `None` on a `blocked` turn and never read there, because the flow answers a
+    refusal before it reads any of them; what none of them has is a *classification* default,
+    since the arms a silent reply used to take (`repair_plan`, `plan`, an unreached objective)
+    each spent a real repair budget on a judgement nobody made.
     """
 
-    status: str = ""
-    disposition: str = "repair_plan"
-    failure_class: str = "plan"
-    objective_reached: str = "no"
+    status: Literal["assessed", "blocked"]
+    disposition: QaDisposition | None = None
+    failure_class: QaFailureClass | None = None
+    objective_reached: bool | None = None
     findings: list[QaFinding] = []
     notes: str = "QA run assessment produced no valid result."
 
@@ -407,9 +450,10 @@ class QaAudit(CoderResult):
     """`audit-qa.md` — an adversarial second read of a pass that already cleared the gate.
 
     `verdict` is `stands` or `refuted`, and `refutation_class` narrows a refutation to a
-    product contradiction (the story is wrong), a plan defect or an evidence defect. A blank
-    reply defaults to `refuted`/`plan-defect`, which spends a plan rework rather than
-    shipping an unaudited pass.
+    product contradiction (the story is wrong), a plan defect or an evidence defect. Neither
+    has a classification default: both are `None` on the `blocked` turn that named no verdict
+    — and unread there — where the arms a blank used to take (`refuted`/`plan-defect`) spent a
+    plan rework on a refutation nobody wrote.
 
     `findings` names who repairs each gap the auditor found. `refutation_class` is the coarse
     classification and routes the product case on its own; the findings are what keep an
@@ -420,9 +464,9 @@ class QaAudit(CoderResult):
     verdict about the evidence rather than an admission there was none to judge.
     """
 
-    status: str = ""
-    verdict: str = "refuted"
-    refutation_class: str = "plan-defect"
+    status: Literal["audited", "blocked"]
+    verdict: QaAuditVerdict | None = None
+    refutation_class: QaRefutationClass | None = None
     findings: list[QaFinding] = []
     notes: str = "Independent QA audit produced no valid result."
 
@@ -431,18 +475,19 @@ class QaTriage(CoderResult):
     """`triage-qa.md` — are the findings in-AC fixes, or a scope the author must re-derive?
 
     The YAML declared these as two bare scalar outputs rather than one object; here they are
-    two fields of one model, which produces the same two keys. Both defaults are the YAML's
-    and both are deliberately safe: never rescope on a malformed answer, and never let one
-    earn the verification-only bonus pass.
+    two fields of one model, which produces the same two keys. Neither carries a classification
+    default: the two safe arms it used to take (`qa_fix`, `code`) are judgements, and taking
+    one on a turn that could not read the findings bills a loop for a decision nobody made.
+    They are `None` on that turn instead, and the flow answers its refusal before reading
+    either.
 
-    `status` is the triager refusing to sort at all, which neither default covers: both of
-    them are *classifications*, and picking one on a turn that could not read the findings
-    bills a loop for a judgement nobody made.
+    `status` is the triager refusing to sort at all, which is what the vocabulary above
+    cannot spell, and `triaged` is the turn that did.
     """
 
-    status: str = ""
-    triage_action: str = "qa_fix"
-    qa_failure_class: str = "code"
+    status: Literal["triaged", "blocked"]
+    triage_action: QaTriageAction | None = None
+    qa_failure_class: QaTriageClass | None = None
     #: Only read on a refusal, and that is why it exists at all: a triage that sorted the
     #: findings said everything it had to say in the two fields above, but one that could
     #: not sort them has said nothing anywhere else — and the escalation it raises would
@@ -460,7 +505,7 @@ class QaReport(CoderResult):
     because the run record is the only place that absence would otherwise show up.
     """
 
-    status: str = ""
+    status: Literal["reported", "blocked"]
     notes: str = ""
 
 
@@ -470,22 +515,25 @@ class RegressionFix(CoderResult):
     A claim of success is still not read: the suite is simply re-run, and
     `run_regression_suite` is the only thing that decides whether the fix worked. `status`
     exists for the opposite claim — a fixer saying it *cannot* get there, which the re-run
-    can only translate into another red suite and another identical lap.
+    can only translate into another red suite and another identical lap. So `attempted` is
+    not a claim of success: it is the turn saying it did work and the suite may judge it.
     """
 
-    status: str = ""
+    status: Literal["attempted", "blocked"]
     notes: str = ""
 
 
 class SetupResult(CoderResult):
     """`setup-fix.md` — the repair attempt on a stack manifest that would not come up.
 
-    `unfixable` is the YAML's default and escalates to the operator gate. That is the right
-    way round for a bounded loop: a fixer that exhausted its retries and said nothing must
-    not be read as "ready" and sent back to `ensure_stack` to fail again.
+    `unfixable` escalates to the operator gate, and it was the YAML's default for a bounded
+    loop's sake: a fixer that said nothing must not be read as "ready" and sent back to
+    `ensure_stack` to fail again. It is a required arm now instead, which answers the same
+    worry earlier — an unparsed reply buys a retry turn rather than ending the repair loop on
+    a verdict the fixer never gave.
     """
 
-    status: str = "unfixable"
+    status: Literal["ready", "unfixable"]
     notes: str = ""
 
 
@@ -516,7 +564,7 @@ class QaLoop(CoderResult):
 
     #: `validate_qa_okf_context`'s verdict on the obligation packet, and its reasons. These
     #: two deliberately survive `cleared()`: `clear-qa-gate-state.py` never blanked them.
-    context_status: str = ""
+    context_status: Literal["", "passed", "invalid"] = ""
     context_notes: str = ""
 
     #: The three gate diagnostics `clear-qa-gate-state.py` blanked before each plan turn.
@@ -527,7 +575,7 @@ class QaLoop(CoderResult):
     #: The triager's class, which is what the one-shot bonus pass is granted on. Blank until
     #: a triage turn runs — the YAML never declared this var, so an untriaged loop reads it
     #: as unset and earns no bonus.
-    failure_class: str = ""
+    failure_class: QaTriageClass | Literal[""] = ""
 
     #: The last discrete verdict from each of the three agent gates, carried for telemetry
     #: and for the give-up record. **Nothing branches on these** — each gate branches on its
@@ -538,10 +586,10 @@ class QaLoop(CoderResult):
     #:
     #: Blank means the gate has not run yet, which is distinct from a gate that ran and
     #: found nothing wrong.
-    assessment_disposition: str = ""  #: confirmed | repair_plan | extend_plan | repair_setup
-    assessment_failure_class: str = ""  #: none | product | plan | environment | evidence
-    audit_verdict: str = ""  #: stands | refuted
-    audit_refutation_class: str = ""  #: none | product-contradiction | plan-defect | evidence-defect
+    assessment_disposition: QaDisposition | Literal[""] = ""
+    assessment_failure_class: QaFailureClass | Literal[""] = ""
+    audit_verdict: QaAuditVerdict | Literal[""] = ""
+    audit_refutation_class: QaRefutationClass | Literal[""] = ""
 
     #: Which of the above are worth a span dimension. Each is a closed vocabulary of a
     #: handful of words, so the label cardinality they add is bounded.
@@ -878,7 +926,7 @@ class QaFlowResult(CoderResult):
     own.
     """
 
-    status: str = "inconclusive"
+    status: QaFlowStatus = "inconclusive"
     qa: QaResult = QaResult()
     qa_rework: int = 0
     triage_scope: int = 0
@@ -893,22 +941,30 @@ __all__ = [
     "FailureAttribution",
     "QaAssessment",
     "QaAudit",
+    "QaAuditVerdict",
     "QaCleared",
     "QaContextRepair",
+    "QaDisposition",
+    "QaFailureClass",
     "QaFlowResult",
+    "QaFlowStatus",
     "QaLoop",
     "QaPlanResult",
+    "QaPlanRun",
     "QaPlanValidation",
+    "QaRefutationClass",
     "QaReport",
     "QaResult",
-    "QaPlanRun",
     "QaRunResult",
+    "QaStatus",
     "QaToolCatalog",
     "QaTriage",
+    "QaTriageAction",
+    "QaTriageClass",
     "RegressionFix",
+    "RegressionRun",
     "RegressionSuite",
     "RegressionSuites",
-    "RegressionRun",
     "ScreenshotFlush",
     "SetupResult",
     "StackStatus",

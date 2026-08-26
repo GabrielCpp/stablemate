@@ -152,9 +152,9 @@ classified the findings and what you changed:
 
 ```json
 {
-  "status": "",
+  "status": "triaged" | "blocked",
   "triage_action": "rescope" | "qa_fix",
-  "qa_failure_class": "code" | "evidence" | "environment",
+  "qa_failure_class": "code" | "product" | "evidence" | "environment",
   "notes": ""
 }
 ```
@@ -162,7 +162,10 @@ classified the findings and what you changed:
 - `triage_action` must be exactly `"rescope"` or `"qa_fix"` (lowercase).
 - Use `"rescope"` **only** if you amended the ACs and have budget left; otherwise `"qa_fix"`.
 - `qa_failure_class` classifies WHAT the remaining failure needs (lowercase, exactly one of):
-  - `"code"` — a product code/test change is still required to satisfy an AC.
+  - `"code"` — a QA-side code/test change is still required to satisfy an AC: the scenario,
+    its fixtures, or a driver the QA lane owns.
+  - `"product"` — the product itself does not meet an AC that stands. This returns the story to
+    the dev lane, which owns product code, instead of patching it from inside QA.
   - `"evidence"` — the product code is already correct and all build/test gates are green; what
     remains is ONLY evidence work: capturing/refreshing screenshots or outputs, widening sweep
     coverage, re-running a driver to completion, or fixing an evidence-artifact schema/shape.
@@ -178,7 +181,7 @@ Example final response (after the markdown summary):
 
 ```json
 {
-  "status": "",
+  "status": "triaged",
   "triage_action": "qa_fix",
   "qa_failure_class": "evidence",
   "notes": ""
@@ -196,13 +199,12 @@ Example final response (after the markdown summary):
   2) when this story touched the surface — fixing forward is the goal — but never grow the story
   past your rescope budget.
 
-### `status` — how you say you cannot judge this at all
+### `status`
 
-Leave `status` empty on any turn that reached a verdict, however unwelcome. Set it to
-`"blocked"` **only** when nothing in this repository would let you reach one, because what is
-missing is external to it: a credential or deployment you cannot perform, a product decision
-present in neither the story nor the plan, or work that lives in another repo. A `blocked`
-turn ends the loop and hands the story to an operator, so it must name that specific
-dependency in `notes` and say what you attempted before concluding it. A hard judgement is
-not a blocked one — the fields above exist to carry an unfavourable verdict, and reaching for
-`blocked` to avoid picking one takes the decision away from the only stage allowed to make it.
+`"triaged"` on any turn that sorted the findings, however unwelcome the answer. `"blocked"`
+**only** when nothing in this repository would let you sort them, because what is missing is
+external to it: a credential or deployment you cannot perform, a product decision present in
+neither the story nor the plan, or work that lives in another repo. A `blocked` turn hands the
+story to an operator, so it must name that dependency in `notes`, and it omits `triage_action`
+and `qa_failure_class` — there is nothing classified. A hard judgement is not a blocked one:
+those two fields carry every unfavourable answer there is.

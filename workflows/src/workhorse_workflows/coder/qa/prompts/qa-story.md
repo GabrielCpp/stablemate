@@ -62,8 +62,8 @@ an absence asserted without a listing costs a repair lap that cannot converge �
 planner to produce files that are already there.
 
 For a failed run, distinguish a trustworthy product failure from a broken selector, wait,
-fixture, assertion, or journey design. For a passed run, `objective_reached` is `yes` only when the
-full chain and terminal proof are present. A structurally valid plan that never exercised its
+fixture, assertion, or journey design. For a passed run, `objective_reached` is `true` only when
+the full chain and terminal proof are present. A structurally valid plan that never exercised its
 objective requires repair or extension, never a pass.
 
 For acceptance criteria with universal language — `every`, `all`, `throughout`, `any
@@ -151,7 +151,7 @@ Choose one disposition:
 `failure_class` is exactly `none`, `product`, `plan`, `environment`, or `evidence`. It describes
 the assessment. `product` deterministically creates a failed QA result even if a weak runner
 assertion reported passed; no agent output can directly create a pass.
-`objective_reached` is exactly `yes` or `no`.
+`objective_reached` is a JSON boolean: `true` when every objective the plan set was observed.
 
 ## Commit What You Wrote
 
@@ -184,10 +184,10 @@ level, with no wrapper object around them. Any other shape fails to parse and th
 
 ```json
 {
-  "status": "",
+  "status": "assessed",
   "disposition": "extend_plan",
   "failure_class": "evidence",
-  "objective_reached": "no",
+  "objective_reached": false,
   "findings": [
     {
       "id": "S1",
@@ -223,13 +223,14 @@ the next pass until the story's budget runs out.
 
 This assessment is routing and diagnosis only, never a replacement QA verdict.
 
-### `status` — how you say you cannot judge this at all
+### `status`
 
-Leave `status` empty on any turn that reached a verdict, however unwelcome. Set it to
-`"blocked"` **only** when nothing in this repository would let you reach one, because what is
-missing is external to it: a credential or deployment you cannot perform, a product decision
-present in neither the story nor the plan, or work that lives in another repo. A `blocked`
-turn ends the loop and hands the story to an operator, so it must name that specific
-dependency in `notes` and say what you attempted before concluding it. A hard judgement is
-not a blocked one — the fields above exist to carry an unfavourable verdict, and reaching for
-`blocked` to avoid picking one takes the decision away from the only stage allowed to make it.
+`"assessed"` on any turn that reached a reading of the run, however unwelcome. `"blocked"`
+**only** when nothing in this repository would let you reach one, because what is missing is
+external to it: a credential or deployment you cannot perform, a product decision present in
+neither the story nor the plan, or work that lives in another repo. A `blocked` turn hands the
+story to an operator, so it must name that dependency in `notes` and say what you attempted
+before concluding it, and it omits `disposition`, `failure_class` and `objective_reached` —
+there is no reading to classify. A hard judgement is not a blocked one: those three fields
+carry every unfavourable verdict there is, and reaching for `blocked` to avoid picking one
+takes the decision away from the only stage allowed to make it.

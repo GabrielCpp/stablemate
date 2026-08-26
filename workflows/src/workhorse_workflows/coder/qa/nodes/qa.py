@@ -21,6 +21,7 @@ import logging
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Literal
 
 from ostler import Ostler
 from ostler.qa import runbook, stack
@@ -38,14 +39,31 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     QaCleared,
     QaPlanValidation,
     QaPlanRun,
+    QaStatus,
     QaToolCatalog,
     StackStatus,
     StackTornDown,
 )
 
-#: The four states `ostler qa run` is allowed to report. Anything else is `invalid` —
-#: a runner that answered something unrecognized has not established a verdict.
-RUN_STATUSES = frozenset({"passed", "failed", "blocked", "invalid"})
+#: The four states `ostler qa run` is allowed to report, keyed by what it spelled.
+#: Anything else is `invalid` — a runner that answered something unrecognized has not
+#: established a verdict. A map rather than a set because the value is the arm the running
+#: verdict carries, and the lookup is what makes that a typed answer.
+RUN_STATUSES: dict[str, QaStatus] = {
+    "passed": "passed",
+    "failed": "failed",
+    "blocked": "blocked",
+    "invalid": "invalid",
+}
+
+#: The three answers a teardown can end on, keyed the same way, and `no` for anything else.
+#: Nothing branches on any of them: the field is the run record's account of whether the
+#: stack it started is still up.
+TEARDOWN_STATES: dict[str, Literal["yes", "no", "skipped"]] = {
+    "yes": "yes",
+    "no": "no",
+    "skipped": "skipped",
+}
 
 #: How long one `secrets:` mint recipe may take. Generous because a recipe may lease a
 #: password or sign in against an emulator, and short enough that a recipe waiting on a
@@ -327,7 +345,9 @@ def teardown_stack(
     """
     root = find_docs_root(docs_path, repo_dir)
     outcome = runbook.cmd_stack_down(root, logger=logger)
-    torn = str(outcome.data.get("torn_down") or outcome.status or "no")
+    torn = TEARDOWN_STATES.get(
+        str(outcome.data.get("torn_down") or outcome.status or "no"), "no"
+    )
     logger.info("QA stack teardown: %s", torn)
     return StackTornDown(torn_down=torn, notes=outcome.message)
 
@@ -410,9 +430,7 @@ def run_qa_plan(
         return QaPlanRun(status="blocked", notes=f"QA secret refresh failed: {error}")
     with scoped_envs(minted):
         outcome = Ostler(docs_root).qa_run(plan, spec=spec_dir)
-    status = outcome.status.lower()
-    if status not in RUN_STATUSES:
-        status = "invalid"
+    status = RUN_STATUSES.get(outcome.status.lower(), "invalid")
     notes = notes_for(outcome, f"Ostler QA run returned {status}.")
     logger.info("ostler qa run for %s returned status=%s", spec_dir, status)
     return QaPlanRun(status=status, notes=notes, ostler=outcome.data)

@@ -98,6 +98,10 @@ def test_the_narrowed_finding_lists_still_answer_actionable() -> None:
     reading it by name is what lets them keep the type they need.
     """
     assessment = QaAssessment(
+        status="assessed",
+        disposition="repair_plan",
+        failure_class="plan",
+        objective_reached=False,
         findings=[
             QaFinding(scope="product-test", target="web/tests/todo.spec.ts:40",
                       issue="no assertion", repair="assert the row disappears"),

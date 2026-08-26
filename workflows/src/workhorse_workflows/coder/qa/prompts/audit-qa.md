@@ -234,7 +234,7 @@ Return JSON only:
 
 ```json
 {
-  "status": "",
+  "status": "audited",
   "verdict": "refuted",
   "refutation_class": "evidence-defect",
   "findings": [
@@ -274,13 +274,14 @@ it bills a replan that cannot write the assertion, and the identical gap comes b
 next pass. Classifying it honestly is what makes the refutation actionable rather than a
 finding the run rediscovers until its budget runs out.
 
-### `status` — how you say you cannot judge this at all
+### `status`
 
-Leave `status` empty on any turn that reached a verdict, however unwelcome. Set it to
-`"blocked"` **only** when nothing in this repository would let you reach one, because what is
-missing is external to it: a credential or deployment you cannot perform, a product decision
-present in neither the story nor the plan, or work that lives in another repo. A `blocked`
-turn ends the loop and hands the story to an operator, so it must name that specific
-dependency in `notes` and say what you attempted before concluding it. A hard judgement is
-not a blocked one — the fields above exist to carry an unfavourable verdict, and reaching for
-`blocked` to avoid picking one takes the decision away from the only stage allowed to make it.
+`"audited"` on any turn that reached a verdict, however unwelcome. `"blocked"` **only** when
+nothing in this repository would let you reach one, because what is missing is external to it:
+a credential or deployment you cannot perform, a product decision present in neither the story
+nor the plan, or work that lives in another repo. A `blocked` turn hands the story to an
+operator, so it must name that dependency in `notes` and say what you attempted before
+concluding it, and it omits `verdict` and `refutation_class` — there was nothing to judge. A
+hard judgement is not a blocked one: `refuted` is the field for a pass that does not hold, and
+reaching for `blocked` to avoid saying so takes the decision away from the only stage allowed
+to make it.

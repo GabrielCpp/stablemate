@@ -1190,14 +1190,14 @@ class Qa(Workflow):
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         if assessment.blocked:
             # Ahead of the dispositions, because a turn that could not read the run has no
-            # standing to classify it — and `repair_plan`, the default a silent reply takes,
-            # would bill the plan author for a judgement nobody made.
+            # standing to classify it: `blocked` is the one arm that says so, and every
+            # other disposition below reads as a judgement this turn actually made.
             return self._refused(assessment, loop.charged(time.monotonic() - started),
                                  "the QA run assessment")
         loop = loop.charged(time.monotonic() - started).update(
             assessment_notes=_finding(assessment.disposition == "confirmed", assessment.notes),
-            assessment_disposition=assessment.disposition,
-            assessment_failure_class=assessment.failure_class,
+            assessment_disposition=assessment.disposition or "",
+            assessment_failure_class=assessment.failure_class or "",
         )
 
         if self.first_verdict:
@@ -1218,8 +1218,8 @@ class Qa(Workflow):
         if assessment.disposition == "repair_setup":
             return self._guard_setup(assessment, loop)
         if assessment.disposition != "confirmed":
-            # repair_plan, extend_plan, and a blank taking the YAML's `default:`. The
-            # disposition says the plan did not carry the story; the findings say who
+            # `repair_plan` or `extend_plan` — `repair_setup` and `confirmed` are already
+            # spent. The disposition says the plan did not carry the story; the findings say who
             # repairs what, and `extend_plan` in particular is routinely a missing assertion
             # in a committed test file, which no replan can add.
             elsewhere = self._routed(assessment, loop, assessment.findings, assessment.notes)
@@ -1244,7 +1244,7 @@ class Qa(Workflow):
         if assessment.failure_class != "none":
             return self._guard_plan(assessment, loop)
 
-        if assessment.objective_reached != "yes":
+        if not assessment.objective_reached:
             return self._guard_plan(assessment, loop)
 
         # `decide_qa_run`. `blocked` and `invalid` were both sieved out above; the YAML's
@@ -1323,8 +1323,8 @@ class Qa(Workflow):
             audit_notes=_finding(
                 result.verdict == "stands" and result.refutation_class == "none", result.notes
             ),
-            audit_verdict=result.verdict,
-            audit_refutation_class=result.refutation_class,
+            audit_verdict=result.verdict or "",
+            audit_refutation_class=result.refutation_class or "",
         )
         if result.verdict == "stands" and result.refutation_class == "none":
             return Continue(result, self.backlog, loop=loop)
@@ -1407,7 +1407,7 @@ class Qa(Workflow):
             return self._refused(triage, loop.charged(time.monotonic() - started),
                                  "the QA triage")
         loop = loop.charged(time.monotonic() - started).update(
-            failure_class=triage.qa_failure_class
+            failure_class=triage.qa_failure_class or ""
         )
         if loop.triage_scope >= self.MAX_TRIAGE_SCOPES:
             return self._fixable(triage, loop)

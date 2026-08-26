@@ -72,7 +72,11 @@ from workhorse_workflows.coder.shared.story import prepare_fix_story, prepare_st
 from workhorse_workflows.coder.shared.schemas.ci import CiChecks, CiStatus
 from workhorse_workflows.coder.shared.schemas.dev import DevResult
 from workhorse_workflows.coder.shared.schemas.docs import DocsResult, DocsStatus
-from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaResult
+from workhorse_workflows.coder.shared.schemas.qa import (
+    QaFlowResult,
+    QaFlowStatus,
+    QaResult,
+)
 from workhorse_workflows.coder.shared.schemas.pr import MergeOutcome
 from workhorse_workflows.coder.shared.schemas.review import ReviewResult
 from workhorse_workflows.coder.main import Coder
@@ -260,8 +264,8 @@ class _Sub:
         docs_status: DocsStatus = "passed",
         docs_notes: str = "",
         docs_authored_nodes: list[str] | None = None,
-        qa_status: str = "passed",
-        qa_statuses: list[str] | None = None,
+        qa_status: QaFlowStatus = "passed",
+        qa_statuses: list[QaFlowStatus] | None = None,
         qa_docs_recheck_required: bool = False,
         ci_status: CiStatus = "passed",
         explode: set[str] | None = None,
@@ -273,8 +277,8 @@ class _Sub:
         self.docs_status: DocsStatus = docs_status
         self.docs_notes = docs_notes
         self.docs_authored_nodes = docs_authored_nodes or []
-        self.qa_status = qa_status
-        self.qa_statuses = qa_statuses or []
+        self.qa_status: QaFlowStatus = qa_status
+        self.qa_statuses: list[QaFlowStatus] = qa_statuses or []
         self.qa_docs_recheck_required = qa_docs_recheck_required
         self.ci_status: CiStatus = ci_status
         self.explode = explode or set()
@@ -345,7 +349,9 @@ class _Sub:
         status = self.qa_statuses.pop(0) if self.qa_statuses else self.qa_status
         return QaFlowResult(
             status=status,
-            qa=QaResult(status=status),
+            # The rolling verdict is a QA status, not a routing one: anything the parent
+            # routes on other than `passed` reached it because the story did not pass.
+            qa=QaResult(status="passed" if status == "passed" else "failed"),
             qa_rework=1,
             triage_scope=child.triage_scope_count,
             operator_notes="",
