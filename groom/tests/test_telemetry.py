@@ -27,6 +27,7 @@ from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceRequest,
 )
+from opentelemetry.proto.trace.v1.trace_pb2 import Status
 
 from groom import alerts, discovery, notify, otlp, projection, state, store
 from groom import app as groom_app
@@ -79,7 +80,7 @@ def _trace_request(specs: list[dict], resource: dict | None = None) -> bytes:
         for name in spec.get("events", []):
             span.events.add().name = name
         if spec.get("error"):
-            span.status.code = 2
+            span.status.code = Status.StatusCode.STATUS_CODE_ERROR
         if spec.get("terminal"):
             kv = span.attributes.add()
             kv.key, kv.value.string_value = "workhorse.terminal", spec["terminal"]

@@ -1264,8 +1264,11 @@ def _profile_time_partition(
 
     points = sorted({start_ts, end_ts, *events})
     active: Counter[str] = Counter()
-    totals: Counter[str] = Counter()
-    waits: Counter[str] = Counter()
+    # Seconds, not a count: a `Counter` here is an int-valued mapping that happens to
+    # accept `+=` on a float, so every duration accumulated below would be silently
+    # truncated the moment anything read it as the int its type says it is.
+    totals: defaultdict[str, float] = defaultdict(float)
+    waits: defaultdict[str, float] = defaultdict(float)
     for left, right in zip(points, points[1:], strict=False):
         for category, delta in events.get(left, []):
             active[category] += delta
