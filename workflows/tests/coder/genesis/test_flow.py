@@ -29,7 +29,7 @@ import json
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 import pytest
 from ruamel.yaml import YAML
@@ -43,9 +43,26 @@ from workhorse_workflows.coder.genesis.flow import Genesis
 from workhorse_workflows.coder.genesis import nodes as genesis_nodes
 from workhorse_workflows.coder.shared.schemas.genesis import GenesisReport
 
+class _Params(TypedDict):
+    """The shape of `PARAMS`, spelled out so `Genesis(**PARAMS)` is checked key by key.
+
+    A plain `dict[str, str]` splats as "every parameter might receive a `str`", which is
+    wrong about the tuple-typed ones and says nothing about the rest.
+    """
+
+    service: str
+    service_root: str
+    packs: str
+    scaffolds: str
+    init_cmd: str
+    marker: str
+    markers: str
+    gates: str
+
+
 #: The stack-shaped inputs. Genesis carries none of this knowledge itself — every value
 #: here is written through verbatim, which is what `scripts/check_public.py` asserts.
-PARAMS = {
+PARAMS: _Params = {
     "service": "api",
     "service_root": "api",
     "packs": "go-service",

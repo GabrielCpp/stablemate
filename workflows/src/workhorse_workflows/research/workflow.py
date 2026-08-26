@@ -304,7 +304,7 @@ class Research(Workflow):
         escalation: str,
         notes: str,
         budget: Budget,
-        failed_criteria: list[dict[str, Any]] | None = None,
+        failed_criteria: list[FailedCriterion] | None = None,
     ) -> Continue:
         """Hand an exhausted repair budget to the lead, as a gate-level question.
 
@@ -456,7 +456,7 @@ class Research(Workflow):
             self.build,
             gate_id=gate_id,
             gate_doc_path=gate_doc_path,
-            design=design.model_dump(mode="json"),
+            design=design,
             budget=budget,
         )
 
@@ -536,8 +536,8 @@ class Research(Workflow):
             self.submit,
             gate_id=gate_id,
             gate_doc_path=gate_doc_path,
-            design=design.model_dump(mode="json"),
-            build=build.model_dump(mode="json"),
+            design=design,
+            build=build,
             budget=budget,
         )
 
@@ -618,7 +618,7 @@ class Research(Workflow):
             self.build,
             gate_id=gate_id,
             gate_doc_path=gate_doc_path,
-            design=design.model_dump(mode="json"),
+            design=design,
             budget=budget.built(),
             fix_reason=f"{reason}\n\n{detail}".strip(),
         )
@@ -659,8 +659,8 @@ class Research(Workflow):
                 self.await_result,
                 gate_id=gate_id,
                 gate_doc_path=gate_doc_path,
-                design=design.model_dump(mode="json"),
-                build=build.model_dump(mode="json"),
+                design=design,
+                build=build,
                 job_dir=job.job_dir,
                 budget=budget,
             )
@@ -793,8 +793,8 @@ class Research(Workflow):
                 self.await_result,
                 gate_id=gate_id,
                 gate_doc_path=gate_doc_path,
-                design=design.model_dump(mode="json"),
-                build=build.model_dump(mode="json"),
+                design=design,
+                build=build,
                 job_dir=job_dir,
                 budget=budget,
                 seen_multiple=overrun_multiple,
@@ -922,7 +922,7 @@ class Research(Workflow):
         )
         if check.status == "approved":
             return Continue(check, self.record_pass, gate_id=gate_id, budget=budget)
-        failed = [criterion.model_dump(mode="json") for criterion in check.failed_criteria]
+        failed = check.failed_criteria
         if check.status == "killed":
             return Continue(
                 check,
@@ -978,9 +978,7 @@ class Research(Workflow):
             self.lead_review,
             gate_id=gate_id,
             gate_doc_path=gate_doc_path,
-            failed_criteria=[
-                criterion.model_dump(mode="json") for criterion in failed_criteria
-            ],
+            failed_criteria=failed_criteria,
             notes=notes,
             escalation="",
             budget=budget,
@@ -1022,9 +1020,7 @@ class Research(Workflow):
                 self.lead_review,
                 gate_id=gate_id,
                 gate_doc_path=gate_doc_path,
-                failed_criteria=[
-                    c.model_dump(mode="json") for c in (failed_criteria or [])
-                ],
+                failed_criteria=failed_criteria or [],
                 notes=notes,
                 escalation=escalation,
                 budget=budget.granted_review(),
@@ -1052,7 +1048,7 @@ class Research(Workflow):
                 self.revive,
                 gate_id=gate_id,
                 gate_doc_path=gate_doc_path,
-                review=review.model_dump(mode="json"),
+                review=review,
                 budget=budget,
             )
         if review.verdict == "new_direction":
@@ -1061,7 +1057,7 @@ class Research(Workflow):
                 self.new_direction,
                 gate_id=gate_id,
                 gate_doc_path=gate_doc_path,
-                review=review.model_dump(mode="json"),
+                review=review,
                 budget=budget,
             )
         # No verdict the loop can act on. That is a question for a person, not a reason
@@ -1074,7 +1070,7 @@ class Research(Workflow):
             self.lead_review,
             gate_id=gate_id,
             gate_doc_path=gate_doc_path,
-            failed_criteria=[c.model_dump(mode="json") for c in (failed_criteria or [])],
+            failed_criteria=failed_criteria or [],
             notes=notes,
             escalation=escalation,
             budget=budget,
@@ -1206,7 +1202,7 @@ class Research(Workflow):
             return Continue(
                 review,
                 self.extend,
-                review=review.model_dump(mode="json"),
+                review=review,
                 budget=budget,
             )
         return self._blocked(

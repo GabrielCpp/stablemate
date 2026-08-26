@@ -95,11 +95,13 @@ def _run(command: str, cwd: Path, timeout: int) -> tuple[int | None, str]:
         )
         return result.returncode, (result.stdout or "") + (result.stderr or "")
     except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout if isinstance(exc.stdout, str) else (exc.stdout or b"").decode(
-            "utf-8", "replace"
+        stdout = (
+            exc.stdout.decode("utf-8", "replace")
+            if isinstance(exc.stdout, bytes) else (exc.stdout or "")
         )
-        stderr = exc.stderr if isinstance(exc.stderr, str) else (exc.stderr or b"").decode(
-            "utf-8", "replace"
+        stderr = (
+            exc.stderr.decode("utf-8", "replace")
+            if isinstance(exc.stderr, bytes) else (exc.stderr or "")
         )
         return None, stdout + stderr
     except (FileNotFoundError, ValueError) as exc:

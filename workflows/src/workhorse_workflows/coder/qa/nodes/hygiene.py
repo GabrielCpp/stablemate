@@ -20,7 +20,7 @@ import logging
 import re
 from pathlib import Path
 
-from unidiff import PatchSet
+from unidiff.patch import PatchSet
 from unidiff.errors import UnidiffParseError
 from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.coder.shared.blueprint import blueprint

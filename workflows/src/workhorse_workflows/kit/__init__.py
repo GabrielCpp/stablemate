@@ -105,7 +105,10 @@ _NAMES: dict[str, str] = {
     "run_tool": "workhorse_workflows.kit.tools",
 }
 
-__all__ = sorted(_NAMES)
+# Computed from the same map `__getattr__` resolves against, so the export list cannot
+# drift from what this module actually exports. A checker wants a literal here — the
+# literal is the duplicate that would drift.
+__all__ = sorted(_NAMES)  # pyright: ignore[reportUnsupportedDunderAll]
 
 
 def __getattr__(name: str):

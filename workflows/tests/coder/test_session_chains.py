@@ -231,8 +231,8 @@ def test_a_qa_plan_lap_that_failed_at_exactly_what_it_failed_at_before_starts_ov
         _qa(),
         QaLoop(
             chain_laps=1,
-            run_failures=["SC-1"],
-            repaired_failures=["SC-1"],
+            run_failures=("SC-1",),
+            repaired_failures=("SC-1",),
             repaired_lap="QA-plan repair",
         ),
     )

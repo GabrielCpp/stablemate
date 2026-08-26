@@ -112,10 +112,11 @@ def recall(spec_path: Path, key: str | None) -> OkfContextResult | None:
         return None
     if not isinstance(stamp, dict) or stamp.get("fingerprint") != key:
         return None
+    recorded = stamp.get("ostler")
     return OkfContextResult(
         status=str(stamp.get("status", "invalid")),
         notes=str(stamp.get("notes", "")),
-        ostler=stamp.get("ostler") if isinstance(stamp.get("ostler"), dict) else {},
+        ostler=recorded if isinstance(recorded, dict) else {},
     )
 
 

@@ -42,13 +42,14 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypedDict, cast
 
 from workhorse.pyflow import (
     Await,
     Continue,
     Done,
     NodeNotRunError,
+    Transition,
     Workflow,
     WorkflowFailed,
 )
@@ -121,6 +122,26 @@ UNBOUNDED = float("inf")
 #: it, so enforcing a shape would fail a run over a prefix letter (the coder's docs review
 #: learned that the expensive way; see `coder/docs/flow.py::_review_finding_problems`).
 AUDIT_FINDING_FIELDS = ("id", "target", "issue", "repair")
+
+
+class StoryParams(TypedDict):
+    """The story-loop parameters every state in that loop passes on unchanged.
+
+    A `TypedDict` rather than a `dict[str, object]`: the bag is splatted into the next
+    state as `**story`, so its value types *are* that state's parameter types. Widened
+    to `object`, every one of those arguments is unassignable and the checker has to be
+    told to look away at ~100 call sites — which is the same as not checking the hop
+    that carries the whole loop's state.
+    """
+
+    epic: str
+    story_slug: str
+    story_dir: str
+    story_path: str
+    mockup: str
+    cov_reworks: int
+    split_resolves: int
+    parked: list[str]
 
 
 def _format_audit_finding(finding: AuditFinding) -> str:
@@ -333,7 +354,7 @@ class Author(Workflow):
         cov_reworks: int,
         split_resolves: int,
         parked: Sequence[str] = (),
-    ) -> dict[str, object]:
+    ) -> StoryParams:
         """The story-loop parameters every state in it passes on unchanged.
 
         `cov_reworks` and `split_resolves` are the two budgets that belong to the *epic*
@@ -368,7 +389,14 @@ class Author(Workflow):
     ) -> Continue:
         """Design the surface first, but only when a covered seed is tagged `frontend`."""
         gate = self.call(check_mockup_needed, story_slug)
-        target = self.design_mockup if gate.required else self.write_story
+        # Annotated as a bare callable because the two branches are different states with
+        # different signatures, and a union of them binds to no single `Continue[P]`. The
+        # kwargs below are checked where the branch is resolved instead: `bind_params`
+        # matches them against the state it actually dispatches to.
+        target = cast(
+            "Callable[..., Transition]",
+            self.design_mockup if gate.required else self.write_story,
+        )
         return Continue(
             gate,
             target,
@@ -773,7 +801,10 @@ class Author(Workflow):
             epic, story_slug, story_dir, story_path, result.mockup, cov_reworks, split_resolves,
             parked,
         )
-        return Continue(result, self.write_story, **story)
+        # ty reads a `TypedDict` splat against a `ParamSpec` field by field and matches
+        # each value against the *callable* parameter rather than the named one; pyright
+        # checks the same call correctly, and it is the check that keeps this hop honest.
+        return Continue(result, self.write_story, **story)  # ty: ignore[invalid-argument-type]
 
     def write_story(
         self,
@@ -956,7 +987,7 @@ class Author(Workflow):
         self,
         result: object,
         notes: str,
-        story: dict[str, object],
+        story: StoryParams,
         reworks: int,
         resolves: int,
         audit_reworks: int,
@@ -982,7 +1013,7 @@ class Author(Workflow):
         )
 
     def _gate_story(
-        self, result: object, notes: str, story: dict[str, object], resolves: int
+        self, result: object, notes: str, story: StoryParams, resolves: int
     ) -> Continue | Await:
         """`gate_write_story` + `guard_write_story_resolve`: resolver, human, or park it.
 
@@ -999,19 +1030,19 @@ class Author(Workflow):
         which is visible scope left undone rather than a queue silently stopped. A `human`
         operator mode still awaits, because there blocking is the entire point.
         """
-        context = paths.story_context(str(story["story_dir"]))
+        context = paths.story_context(story["story_dir"])
         if self.operator_mode == "human":
             return Await(self._abs(context), notes, self.write_story, **story, reworks=0, resolves=resolves)
         if resolves >= MAX_WRITE_STORY_RESOLVES:
-            slug = str(story["story_slug"])
-            parked = [*(story["parked"] if isinstance(story["parked"], list) else []), slug]
+            slug = story["story_slug"]
+            parked = [*story["parked"], slug]
             self.logger.warning(
                 "parking story '%s' after %d autonomous resolutions: %s", slug, resolves, notes
             )
             return Continue(
                 result,
                 self.next_story,
-                epic=str(story["epic"]),
+                epic=story["epic"],
                 cov_reworks=story["cov_reworks"],
                 split_resolves=story["split_resolves"],
                 parked=parked,

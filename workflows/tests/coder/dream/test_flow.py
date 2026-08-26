@@ -210,7 +210,10 @@ def test_run_dir_is_settable_by_its_documented_param_name_and_by_its_field_name(
     then refuses its own resume.
     """
     assert Dream(run_dir=str(past_run)).reflect_on == str(past_run)
-    assert Dream(reflect_on=str(past_run)).reflect_on == str(past_run)
+    # The field-name spelling is the half `populate_by_name` buys, and a checker reading
+    # the synthesized `__init__` only ever sees the alias — which is what this asserts is
+    # not the whole story.
+    assert Dream(reflect_on=str(past_run)).reflect_on == str(past_run)  # pyright: ignore[reportCallIssue]
     assert Dream(run_dir=str(past_run)).model_dump(mode="json")["reflect_on"] == str(past_run)
 
 

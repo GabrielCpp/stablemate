@@ -322,10 +322,13 @@ def write_agents_yml(
 
     # The dev lane's gates, keyed on the service name — the narrower of the two keys
     # `service_declaration` accepts, so two services in one monorepo can differ.
-    declared = dict(
-        pair.partition("=")[::2] for pair in gates if "=" in pair
-    )
-    declared = {k.strip(): v.strip() for k, v in declared.items() if k.strip() and v.strip()}
+    # A pair with no `=` partitions to an empty command and is dropped by the same
+    # emptiness test that drops `gate=` and `=command`.
+    declared = {
+        gate.strip(): command.strip()
+        for gate, _, command in (pair.partition("=") for pair in gates)
+        if gate.strip() and command.strip()
+    }
     if declared and service:
         if not isinstance(data.get("services"), dict):
             data["services"] = {}
