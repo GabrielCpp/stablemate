@@ -39,6 +39,7 @@ from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
+from workhorse_workflows.coder.dev import nodes
 from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.shared.schemas.dev import PlanResult
 from workhorse_workflows.coder.shared.dev import (
@@ -820,7 +821,7 @@ def test_a_service_path_nobody_can_repair_never_gives_up(
 
     def answered(path: Path, **kwargs: Any) -> None:
         seen.append(path.read_text(encoding="utf-8"))
-        if len(seen) >= Dev.MAX_PLAN_BLOCKS + 2:
+        if len(seen) >= nodes.MAX_PLAN_BLOCKS + 2:
             agent.bad_paths = 0
         path.write_text(
             "STATUS: ANSWERED\nSCOPE: story\n\nUse the staging bucket.\n", encoding="utf-8"
@@ -832,8 +833,8 @@ def test_a_service_path_nobody_can_repair_never_gives_up(
     assert result.status == "ready", result
     # The resolver only ever gets `MAX_PLAN_BLOCKS` turns; every later block still reaches a
     # human, which `seen` outgrowing that count proves without a resolver call to match it.
-    assert agent.counts()["resolve-operator"] == Dev.MAX_PLAN_BLOCKS, agent.counts()
-    assert len(seen) == Dev.MAX_PLAN_BLOCKS + 2, seen
+    assert agent.counts()["resolve-operator"] == nodes.MAX_PLAN_BLOCKS, agent.counts()
+    assert len(seen) == nodes.MAX_PLAN_BLOCKS + 2, seen
     assert agent.counts()["implement-plan"] > 0, agent.counts()
 
 
@@ -898,7 +899,7 @@ def test_an_answered_block_still_spends_the_resolver_budget(
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
-    assert agent.counts()["resolve-operator"] == Dev.MAX_PLAN_BLOCKS, agent.counts()
+    assert agent.counts()["resolve-operator"] == nodes.MAX_PLAN_BLOCKS, agent.counts()
     assert len(seen) == 1, seen
 
 
@@ -1073,7 +1074,7 @@ def test_a_plan_no_operator_can_unblock_never_gives_up_either(
 
     def answered(path: Path, **kwargs: Any) -> None:
         seen.append(path.read_text(encoding="utf-8"))
-        if len(seen) >= Dev.MAX_PLAN_BLOCKS + 2:
+        if len(seen) >= nodes.MAX_PLAN_BLOCKS + 2:
             agent.blocked = 0
         path.write_text(
             "STATUS: ANSWERED\nSCOPE: story\n\nUse the staging bucket.\n", encoding="utf-8"
@@ -1083,8 +1084,8 @@ def test_a_plan_no_operator_can_unblock_never_gives_up_either(
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
-    assert agent.counts()["resolve-operator"] == Dev.MAX_PLAN_BLOCKS, agent.counts()
-    assert len(seen) == Dev.MAX_PLAN_BLOCKS + 2, seen
+    assert agent.counts()["resolve-operator"] == nodes.MAX_PLAN_BLOCKS, agent.counts()
+    assert len(seen) == nodes.MAX_PLAN_BLOCKS + 2, seen
     assert agent.counts()["implement-plan"] > 0, agent.counts()
 
 
@@ -1108,7 +1109,7 @@ def test_human_operator_mode_never_gives_up_either(
 
     def answered(path: Path, **kwargs: Any) -> None:
         seen.append(path.read_text(encoding="utf-8"))
-        if len(seen) >= Dev.MAX_PLAN_BLOCKS + 2:
+        if len(seen) >= nodes.MAX_PLAN_BLOCKS + 2:
             agent.blocked = 0
         path.write_text(
             "STATUS: ANSWERED\nSCOPE: story\n\nUse the staging bucket.\n", encoding="utf-8"
@@ -1121,7 +1122,7 @@ def test_human_operator_mode_never_gives_up_either(
     assert agent.counts()["resolve-operator"] == 0, agent.counts()
     # More asks than the resolver's own cap, with zero resolver turns — proof this mode was
     # never tied to that counter at all, not just given a larger one.
-    assert len(seen) == Dev.MAX_PLAN_BLOCKS + 2, seen
+    assert len(seen) == nodes.MAX_PLAN_BLOCKS + 2, seen
 
 
 def test_an_unanswered_context_file_is_not_treated_as_an_answer(
@@ -1192,6 +1193,7 @@ def test_a_gate_no_repair_lap_can_satisfy_never_gives_up_either(
     run finishes once something actually clears the gate.
     """
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "240")
+    monkeypatch.setattr(nodes, "MAX_FIX_LAPS", 2)
     agent = _Agent(docs, fix_gate=None)
     seen: list[str] = []
 
@@ -1204,7 +1206,7 @@ def test_a_gate_no_repair_lap_can_satisfy_never_gives_up_either(
         )
 
     with patch.object(pyflow_driver, "wait_for_answer", answered):
-        result = drive_flow(Dev(story=STORY, max_fix_laps=2), env(), agent)
+        result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
     assert agent.counts()["dev-fix"] == 4, agent.counts()
@@ -1236,10 +1238,12 @@ def test_a_run_killed_mid_implement_resumes_on_that_layer(
     resume = read_resume(checkpoint)
     assert resume.state == "implement", resume
     assert resume.flow == "Dev", resume
-    # The cursor and the story conversation's turn count: the layer loop's
-    # `operator_context`/`impl_blocks` are still at their defaults on a first pass, so
-    # nothing carries them into the checkpoint.
-    assert resume.params == {"index": 0, "session_turns": 1}, resume.params
+    # The cursor and the repair lap: the layer loop's `operator_context`/`impl_blocks` are
+    # still at their defaults on a first pass, so nothing carries them into the checkpoint.
+    assert resume.params == {
+        "index": 0,
+        "lap": {"fix_lap": 0, "session_turns": 1, "digest": ""},
+    }, resume.params
 
     agent = _Agent(docs)
     result = drive_flow(Dev(**resume.inputs), env(run_dir=run_dir), agent, resume)

@@ -18,11 +18,12 @@ from typing import Any
 
 import pytest
 
+from workhorse_workflows.coder.dev import nodes
 from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.review.flow import Review
-from workhorse_workflows.coder.shared.schemas.dev import DevResult
+from workhorse_workflows.coder.shared.schemas.dev import DevResult, Lap
 from workhorse_workflows.coder.shared.schemas.docs import DocsProgress, DocsResult
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaLoop
 from workhorse_workflows.coder.shared.schemas.review import (
@@ -57,7 +58,7 @@ class _Spy:
 def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
     """Replace the two engine seams on both flows, plus the helpers that need a run.
 
-    `_dirs` and the argument builders read node outputs, which only exist inside a
+    `dirs` and the argument builders read node outputs, which only exist inside a
     driven run. They are stubbed because they are inputs to the turn, not the subject of
     it; `agent` and `reset_session` are the surface every assertion below reads.
     """
@@ -79,8 +80,12 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
         monkeypatch.setattr(flow, "agent", fake_agent)
         monkeypatch.setattr(flow, "reset_session", fake_reset)
         monkeypatch.setattr(flow, "logger", property(lambda _: logging.getLogger("test")))
-        monkeypatch.setattr(flow, "_dirs", lambda _: [])
         monkeypatch.setattr(flow, "_require_engine", fake_require_engine)
+    for flow in (Docs, Qa, Review):
+        monkeypatch.setattr(flow, "_dirs", lambda _: [])
+    # The dev lane's helpers are module functions rather than methods — same seam, one
+    # level out.
+    monkeypatch.setattr(nodes, "dirs", lambda _: [])
     monkeypatch.setattr(Docs, "_author_args", lambda *a, **k: {})
     monkeypatch.setattr(Qa, "_plan_args", lambda *a, **k: {})
     return seen
@@ -184,15 +189,16 @@ def test_every_lane_names_the_same_conversation_without_being_handed_anything(
         monkeypatch.setattr(flow_cls, "call", lambda _self, _node, *a, **k: ctx)
 
     for flow, chain in (
-        (_docs(), "_story_chain"),
-        (_qa(), "_story_chain"),
-        (_dev(), "_story_chain"),
+        (_docs(), lambda f: f._story_chain()),
+        (_qa(), lambda f: f._story_chain()),
+        # The dev lane derives it in `nodes` rather than on the class; the key is the same.
+        (_dev(), lambda f: nodes.backbone(f)),
         # The review lane names the same key from the other side: the conversation it
         # rejoins is the implementer's.
-        (_review(), "_impl_chain"),
+        (_review(), lambda f: f._impl_chain()),
     ):
         flow.setup()
-        assert getattr(flow, chain)() == f"story:{STORY}"
+        assert chain(flow) == f"story:{STORY}"
 
     assert seeded == []
 
@@ -294,7 +300,7 @@ def test_applying_a_product_note_is_not_the_fix_worklist(spy: _Spy) -> None:
 
 def _refine(flow: Dev, worklist: str) -> None:
     with pytest.raises(_Reached):
-        flow._refine(review_notes="", operator_context="", worklist=worklist)
+        nodes.refine(flow, review_notes="", operator_context="", worklist=worklist)
 
 
 def test_the_re_planning_loops_never_share_a_conversation(spy: _Spy) -> None:
@@ -315,7 +321,7 @@ def test_a_repair_lap_runs_on_the_story_conversation(spy: _Spy, monkeypatch) -> 
     context spends its first minutes re-reading a diff it has only just met."""
     flow = _dev()
     layer = SimpleNamespace(cwd="/tmp/api", service="api-service")
-    monkeypatch.setattr(Dev, "_layer", property(lambda _: layer))
+    monkeypatch.setattr(nodes, "current_layer", lambda _: layer)
     monkeypatch.setattr(
         Dev,
         "output",
@@ -326,7 +332,7 @@ def test_a_repair_lap_runs_on_the_story_conversation(spy: _Spy, monkeypatch) -> 
     monkeypatch.setattr(Dev, "call", lambda *a, **k: SimpleNamespace(paths=[]))
 
     with pytest.raises(_Reached):
-        flow.fix(index=0, fix_lap=0)
+        flow.fix(index=0, lap=Lap())
 
     assert spy.turns[0]["prompt"] == "dev/prompts/dev-fix.md"
     assert spy.turns[0]["session"] == f"story:{STORY}"
@@ -335,7 +341,7 @@ def test_a_repair_lap_runs_on_the_story_conversation(spy: _Spy, monkeypatch) -> 
 def test_ending_the_dev_flow_ends_every_plan_chain(spy: _Spy) -> None:
     """The story chain is not reset here: it is left open under a key the next lane
     derives for itself, so that lane resumes the conversation rather than reopening one."""
-    done = _dev()._ends(DevResult())
+    done = nodes.ends(_dev(), DevResult())
 
     assert isinstance(done.result, DevResult)
     assert spy.resets == [
