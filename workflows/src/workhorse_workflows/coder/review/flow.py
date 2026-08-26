@@ -66,9 +66,10 @@ Divergences from the YAML, all deliberate:
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, Workflow
+from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.conversation import spend_turn, story_chain
 from workhorse_workflows.coder.shared.dev import (
@@ -153,6 +154,22 @@ def findings_block(findings: Sequence[ReviewFinding]) -> str:
     )
 
 
+def require_story_file(ctx: StoryPaths) -> None:
+    """Fail the run when the slug did not resolve to a story file that exists.
+
+    Every review turn is dispatched with this path and edits nothing else, so a blank or
+    absent one is a bad input rather than something an agent can work around. Checked here,
+    once, instead of asked of each prompt: a turn told to "return blocked if the path is
+    blank" is being asked to report a fact the flow already holds, and reports it three
+    laps and one operator gate later than this does.
+    """
+    if not ctx.story_path or not Path(ctx.story_path).is_file():
+        raise WorkflowFailed(
+            f"story '{ctx.story_slug}' did not resolve to a story file "
+            f"({ctx.story_path or 'no path'}); nothing to review."
+        )
+
+
 class Review(Workflow):
     """Review one story's implementation, and settle every finding it raises."""
 
@@ -211,6 +228,7 @@ class Review(Workflow):
         """
         self.call(resolve_workspace_dirs, self.docs_path)
         ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
+        require_story_file(ctx)
         self.call(resolve_review_context, ctx.spec_dir, self.repo, self.docs_path)
         # The instruction files the implementer was handed, decoded off the plan projection
         # the dev lane left on the spec dir. Handing the reviewer the standard the code was
@@ -240,7 +258,7 @@ class Review(Workflow):
 
     # --- the feeder review ---------------------------------------------------
 
-    def start(self, loop: ReviewLoop | None = None) -> Continue:
+    def start(self, loop: ReviewLoop | None = None) -> Continue | Await:
         """Review the diff — bugs, the coding standard, and reuse — in one pass.
 
         A PR is not required: uncommitted working-tree edits and story-branch commits are
@@ -269,7 +287,7 @@ class Review(Workflow):
         # Before the findings that the round's settlement will be checked against exist. Here
         # rather than in `setup` because the operator loop re-enters this state without it,
         # and that re-entry is a fresh review round like any other.
-        self.call(clear_review_resolution, self.docs_path, self.ctx.story_slug)
+        self.call(clear_review_resolution, self.ctx.spec_dir, self.ctx.story_slug)
         self.reset_session(self._feeder_chain)
         turn = roles.turn(self, "code-review")
         code_review = self.agent(
@@ -290,14 +308,17 @@ class Review(Workflow):
             },
         )
         if code_review.blocked:
-            # Advisory input, not a gate: `review-implementation.md` below is the binding
-            # verdict and it runs against the diff either way. A turn that could not read
-            # the diff is worth saying out loud and worth not pretending produced
-            # findings — it is not worth stopping the run to ask a human about.
-            self.logger.warning(
-                "the code-review pass reported it could not run (%s) — the "
-                "implementation reviewer is the binding verdict and still runs",
-                code_review.findings_summary or "no reason given",
+            # `blocked` here is not "no findings" — it is a pass that could not read the
+            # diff at all: the repos it was given are not the ones the change landed in, or
+            # the tree is in a state no review of it would mean anything in. Running the
+            # binding reviewer over that anyway produces a verdict on nothing, and logging
+            # the warning was the run's only record that it had. It goes to the operator
+            # like every other block, and their answer re-enters here for a fresh pass.
+            return self._gate(
+                code_review,
+                code_review.findings_summary or "the code-review pass could not read the diff",
+                lap,
+                where="the code-review pass",
             )
         return Continue(code_review, self.review, code_review=code_review, loop=lap)
 
@@ -390,7 +411,9 @@ class Review(Workflow):
         # why the claim is not even bound: the YAML overwrote `impl_result` with the
         # verifier's output for exactly this reason, and a turn that wrote no verdict has
         # produced nothing to settle.
-        settled = self.call(verify_review_resolution, self.docs_path, self.ctx.story_slug)
+        settled = self.call(
+            verify_review_resolution, self.ctx.spec_dir, self.docs_path, self.ctx.story_slug
+        )
         if settled.status == "applied":
             return Continue(settled, self.poll_feedback, code_review=code_review, loop=spent)
         if settled.blocked:

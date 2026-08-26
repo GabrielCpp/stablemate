@@ -184,7 +184,8 @@ class _Agent:
     `review-resolution.json` so the settlement gate has something to verify,
     `settle_blocked` makes that verdict report the finding unresolvable, `evidence_after` is
     the apply pass from which it also writes the artifact the verdict cites, `review_blocked`
-    makes the first N implementation reviews report they could not reach a verdict, and
+    makes the first N implementation reviews report they could not reach a verdict,
+    `code_review_blocked` does the same for the first N code-review passes, and
     `explode` raises on a named prompt — a run killed mid-turn. There is no "answer directly" knob:
     the resolver always escalates to a human, per `resolve_review`'s contract — see the
     module docstring.
@@ -196,6 +197,7 @@ class _Agent:
         *,
         needs_changes: int = 0,
         review_blocked: int = 0,
+        code_review_blocked: int = 0,
         settle: bool = False,
         settle_blocked: bool = False,
         evidence_after: int = 1,
@@ -205,6 +207,7 @@ class _Agent:
         self.docs = docs
         self.needs_changes = needs_changes
         self.review_blocked = review_blocked
+        self.code_review_blocked = code_review_blocked
         self.settle = settle
         self.settle_blocked = settle_blocked
         self.evidence_after = evidence_after
@@ -236,6 +239,12 @@ class _Agent:
     # -- one handler per prompt -------------------------------------------
 
     def _code_review(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        if nth <= self.code_review_blocked:
+            return {
+                "status": "blocked",
+                "findings": [],
+                "findings_summary": "api-service is mid-rebase — the diff is a conflict",
+            }
         return {
             "status": "findings",
             "findings": [
@@ -584,6 +593,34 @@ def test_a_reviewer_that_cannot_reach_a_verdict_escalates_instead_of_reworking(
     assert agent.counts()["apply-review"] == 1, agent.counts()
     (gate,) = seen
     assert "the story's acceptance criteria contradict" in gate, gate
+
+
+def test_a_code_review_that_could_not_read_the_diff_escalates(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`blocked` from the code review is not "nothing to report" — it is no review at all.
+
+    It used to log a warning and run the binding reviewer anyway, which produced a verdict
+    over a diff nobody had read and left that fact nowhere but the log. It goes to the
+    operator, whose answer re-enters at `start` and buys a fresh code-review pass.
+    """
+    agent = _Agent(docs, code_review_blocked=1)
+    seen: list[str] = []
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Review(story=STORY), env(), agent)
+
+    assert isinstance(result, ReviewResult), result
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
+    # The blocked pass, then the one the operator's answer bought.
+    assert agent.counts()["code-review"] == 2, agent.counts()
+    # The implementation reviewer only ever saw the diff the second pass could read.
+    assert agent.counts()["review-implementation"] == 1, agent.counts()
+    (gate,) = seen
+    assert "mid-rebase" in gate, gate
 
 
 def test_a_resolver_that_grounds_its_answer_settles_a_review_block(

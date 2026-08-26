@@ -7,17 +7,17 @@ own fourth copy of the repo-root walk. It now polls the run's own `inbox.jsonl`
 (`Workflow.run_dir`) through `workhorse_workflows.kit.poll_run_inbox`, so this module carries
 no repo-root resolution of its own for it.
 
-One divergence is *not* repaired here, and it is a finding rather than a preference:
-`verify_review_resolution` looks for the settlement sidecars at a hardcoded
-`docs/specs/<slug>`, where the story spine resolves a spec dir through ostler's `spec_path`.
-A repo whose specs live elsewhere has its verdict looked for where it did not write one, and
-the gate answers `needs_changes` for as long as its budget lasts — which is the script's
-directory, and changing it here would change which stories the gate binds on.
+The sidecar nodes take the spec dir as an argument rather than rebuilding it. They used to
+hardcode `docs/specs/<slug>`, where the story spine resolves one through ostler's `spec_path`
+— so a repo whose specs live elsewhere had its verdict looked for where it never wrote one,
+and the gate answered `needs_changes` for as long as its budget lasted. One resolution, made
+once on the spine, passed down.
 """
 from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 
 from ostler import Ostler
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -71,9 +71,8 @@ def resolve_review_context(
 @blueprint.node
 def clear_review_resolution(
     logger: logging.Logger,
-    docs_path: str = "",
+    spec_dir: str = "",
     story_slug: str = "",
-    repo_dir: str = "",
 ) -> ImplResult:
     """Delete the previous cycle's resolution verdict and settlement ledger.
 
@@ -89,14 +88,13 @@ def clear_review_resolution(
     follows writes this cycle's, which is what `verify_review_resolution` then reads — so the
     first pass of a cycle behaves exactly as it does on a story reviewed for the first time.
     """
-    docs_root = find_docs_root(docs_path, repo_dir)
     if not story_slug:
         logger.warning("no story_slug given — nothing to clear")
         return ImplResult(status="applied", notes="")
-    spec_dir = docs_root / "docs" / "specs" / story_slug
+    specs = Path(spec_dir)
     cleared = []
     for name in (RESOLUTION_FILE, SETTLEMENT_FILE):
-        stale = spec_dir / name
+        stale = specs / name
         if stale.is_file():
             stale.unlink()
             cleared.append(name)
@@ -112,6 +110,7 @@ def clear_review_resolution(
 @blueprint.node
 def verify_review_resolution(
     logger: logging.Logger,
+    spec_dir: str = "",
     docs_path: str = "",
     story_slug: str = "",
     repo_dir: str = "",
@@ -140,8 +139,8 @@ def verify_review_resolution(
     """
     docs_root = find_docs_root(docs_path, repo_dir)
     slug = story_slug
-    spec_dir = docs_root / "docs" / "specs" / slug
-    if not slug or not (spec_dir / RESOLUTION_FILE).is_file():
+    specs = Path(spec_dir)
+    if not slug or not (specs / RESOLUTION_FILE).is_file():
         logger.warning("no %s for %r — the apply turn wrote no verdict", RESOLUTION_FILE, slug)
         return ImplResult(
             status="needs_changes",
@@ -160,7 +159,7 @@ def verify_review_resolution(
         )
 
     try:
-        ledger = json.loads((spec_dir / SETTLEMENT_FILE).read_text(encoding="utf-8"))
+        ledger = json.loads((specs / SETTLEMENT_FILE).read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         logger.warning("settlement ledger unreadable after settle-review (%s)", exc)
         return ImplResult(

@@ -13,9 +13,9 @@ The workflow supplies these values. Use them exactly as given:
 - Story path: `{{ workhorse_var('story_path') }}`
 - Spec artifact directory: `{{ workhorse_var('spec_dir') }}`
 
-Apply review fixes **only** to the story at the story path above. Do NOT search the repository, git history, or branch state to guess which story to fix, and do NOT substitute a different story. If the story path above is blank or the file does not exist, return `status: "blocked"` (structured output below) with notes saying the workflow did not provide a usable story path — that hands it to the operator. Do not pick a story yourself.
+Apply review fixes **only** to the story at the story path above. Do NOT search the repository, git history, or branch state to guess which story to fix, and do NOT substitute a different story. Do not pick a story yourself.
 
-If `{{ workhorse_var('spec_dir') }}` is blank, derive `<story-name>` from the story folder name in the story path above. The review report is `{{ workhorse_var('spec_dir') }}/review.md`.
+The review report is `{{ workhorse_var('spec_dir') }}/review.md`.
 
 ### Review Notes
 

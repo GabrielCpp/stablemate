@@ -13,6 +13,7 @@ assertion reads is the call the state was about to make.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -173,7 +174,7 @@ def test_ending_the_docs_flow_ends_its_chain(spy: _Spy) -> None:
 
 
 def test_every_lane_names_the_same_conversation_without_being_handed_anything(
-    spy: _Spy, monkeypatch: pytest.MonkeyPatch
+    spy: _Spy, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """The key is derived from the story slug, and that is the whole transport.
 
@@ -183,7 +184,12 @@ def test_every_lane_names_the_same_conversation_without_being_handed_anything(
     what makes replaying one lane honest instead of answering out of memory.
     """
     seeded: list[tuple[str, str]] = []
-    ctx = SimpleNamespace(story_slug=STORY, story_path="", spec_dir="", qa_dir="")
+    # A real file: the review lane's `setup` refuses a slug that resolved to no story.
+    story_md = tmp_path / "story.md"
+    story_md.write_text("# Story\n", encoding="utf-8")
+    ctx = SimpleNamespace(
+        story_slug=STORY, story_path=str(story_md), spec_dir="", qa_dir=""
+    )
     for flow_cls in (Docs, Qa, Dev, Review):
         monkeypatch.setattr(
             flow_cls,
