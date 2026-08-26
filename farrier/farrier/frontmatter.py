@@ -200,7 +200,10 @@ def split_front_matter(content: str) -> tuple[dict[str, str], str]:
     the indented lines of a nested ``metadata:`` block as top-level keys of their own.
     """
     tokens = _tokens(content)
-    if not tokens or tokens[0].type != "front_matter":
+    # A `front_matter` token always carries a line map; the check is what says so to a
+    # reader of `tokens[0].map` two lines down, and a token stream without one has no
+    # fence this function can honour anyway.
+    if not tokens or tokens[0].type != "front_matter" or not tokens[0].map:
         return {}, content
     body = "\n".join(
         content.replace("\r\n", "\n").replace("\r", "\n").split("\n")[tokens[0].map[1]:]
@@ -280,6 +283,6 @@ def front_matter_end(content: str) -> int:
     it, which would push the fence off line 1 and turn parsed metadata into prose.
     """
     tokens = _tokens(content)
-    if not tokens or tokens[0].type != "front_matter":
+    if not tokens or tokens[0].type != "front_matter" or not tokens[0].map:
         return 0
     return tokens[0].map[1]
