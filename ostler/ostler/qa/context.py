@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from unidiff import PatchSet
+from unidiff.patch import PatchSet
 from unidiff.errors import UnidiffParseError
 
 from ostler import graph as graph_mod

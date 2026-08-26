@@ -37,6 +37,7 @@ import threading
 import time
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 from ostler import backlog
 from ostler.model import Graph
@@ -240,7 +241,7 @@ def table(existing: Iterable[str], min_len: int = HANDLE_MIN) -> dict[str, str]:
 _ID_TOKEN = re.compile(rf"\b[A-Za-z][A-Za-z0-9_]{{0,15}}-[{_CROCKFORD}]{{{ULID_LEN}}}\b")
 
 
-def shorten(data, handles: dict[str, str]):
+def shorten(data: Any, handles: dict[str, str]) -> Any:
     """*data* with every id in *handles* replaced by its handle, in strings and inside containers.
 
     Works on a JSON row, a list of them, or a line of human output alike, so the CLI has one

@@ -20,10 +20,12 @@ Two layers, deliberately kept separate:
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
 import yaml
 from markdown_it import MarkdownIt
+from markdown_it.token import Token
 from markdown_it import rules_inline
 from markdown_it.tree import SyntaxTreeNode
 from mdit_py_plugins.front_matter import front_matter_plugin
@@ -72,32 +74,36 @@ def _normalize(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
-def _iter_inline(tokens):
-    """Yield every ``inline`` token in a flat token stream, with its block line span."""
+def _iter_inline(tokens: Iterable[Token]) -> Iterator[tuple[Token, int]]:
+    """Yield every ``inline`` token in a flat token stream, with the line its block starts on.
+
+    The line comes out here rather than being read off ``tok.map`` at the call site because
+    this filter is what established it is not ``None``.
+    """
     for tok in tokens:
         if tok.type == "inline" and tok.map:
-            yield tok
+            yield tok, tok.map[0]
 
 
-def iter_links(text: str):
+def iter_links(text: str) -> Iterator[tuple[str, str, int]]:
     """Yield ``(text, href, line)`` for every markdown link **outside code**; ``line`` is 1-based.
 
     A link inside a fenced block or an inline-code span is not a ``link_open`` token, so the
     exclusion is structural rather than the blank-out-the-code-first approximation it replaces
     (which could not tell ``strategies[idx](x)`` in a snippet from a link).
     """
-    for tok in _iter_inline(_MD.parse(_normalize(text))):
-        depth, line = 0, tok.map[0]
+    for tok, start in _iter_inline(_MD.parse(_normalize(text))):
+        depth, line = 0, start
         label: list[str] = []
         href = ""
         for child in tok.children or ():
             if child.type == "link_open":
                 if not depth:
-                    href, label = child.attrGet("href") or "", []
+                    href, label = str(child.attrGet("href") or ""), []
                     # `srcpos` indexes the block's own source, which is what the inline rules
                     # were handed, so the newlines before it are the lines before it.
                     pos = child.meta.get("srcpos")
-                    line = tok.map[0] + (tok.content[:pos].count("\n") if pos else 0)
+                    line = start + (tok.content[:pos].count("\n") if pos else 0)
                 depth += 1
             elif child.type == "link_close":
                 depth -= 1

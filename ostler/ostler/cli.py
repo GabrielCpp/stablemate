@@ -1633,7 +1633,8 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
             return 2
     if c == "list":
         return _emit(
-            query_mod.list_entities(graph, args.etype, args.epic, args.status),
+            # `list`'s own `--type` is `required=True` â€” unlike `search`'s, which is a filter.
+            query_mod.list_entities(graph, str(args.etype), args.epic, args.status),
             args.json,
         )
     if c == "search":

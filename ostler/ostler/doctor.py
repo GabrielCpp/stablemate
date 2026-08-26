@@ -581,7 +581,8 @@ def _check_conformance(graph: Graph, f: list[Finding]) -> None:
                                  f"{rel}: Concept has no non-empty `type` in frontmatter",
                                  path=rel, line=1))
                 continue
-            schema = schema_by_base.get(registry.base_type(declared))
+            base = registry.base_type(declared)
+            schema = schema_by_base.get(base) if base else None
             if schema:
                 for msg in schemas.validate(fm, schema):
                     f.append(Finding("warn", "schema", f"{rel}: {msg}", path=rel))

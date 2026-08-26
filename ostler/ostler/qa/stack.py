@@ -391,7 +391,7 @@ def ensure_stack(
     can say what broke and not merely which step did.
     """
     app_cwd = manifest.get("app_cwd") or "."
-    repo_root = repo_root or manifest.get("repo_root") or app_cwd
+    root = repo_root or manifest.get("repo_root") or app_cwd
     entry_url = manifest.get("entry_url", "")
     health_path = manifest.get("health_path") or "/"
     identity = manifest.get("identity", "")
@@ -429,7 +429,7 @@ def ensure_stack(
     if launch_cmd:
         # adopt=False: ensure_stack owns the reuse decision above; the launch itself must
         # always run (and be self-freshening) once we have decided not to adopt.
-        res = boot_app(launch_cmd, entry_url, health_path, app_cwd, repo_root,
+        res = boot_app(launch_cmd, entry_url, health_path, app_cwd, root,
                        identity, timeout_s, adopt=False, logger=logger, clock=clock)
         if res["boot_ok"] != "yes":
             # Report boot's *own* reason, not the step name. "the launch command did not

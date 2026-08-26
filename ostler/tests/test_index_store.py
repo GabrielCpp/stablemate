@@ -39,12 +39,16 @@ import importlib
 import os
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from ostler._vendor.stablemate_core import config as core_config
 
 from conftest import write
+
+if TYPE_CHECKING:  # the seam below resolves at runtime; the annotation need not
+    from ostler.index import IndexStore
 
 class _Seam:
     """`ostler.index`, imported on first use.
@@ -82,7 +86,7 @@ def make_repo(root: Path, *, doc: str = "one\n") -> Path:
     return root
 
 
-def store(root: Path, directory: Path, **kwargs) -> index.IndexStore:
+def store(root: Path, directory: Path, **kwargs: object) -> IndexStore:
     return index.IndexStore(root, directory=directory, **kwargs)
 
 

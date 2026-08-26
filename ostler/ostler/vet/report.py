@@ -61,7 +61,7 @@ def build_report(*, slug: str, state: str, screenshot: str, manifest: str, regio
     )
     return VetReport(
         slug=slug, state=state, screenshot=screenshot, manifest=manifest, regions=regions,
-        cdp_url=cdp_url, manifest_errors=manifest_errors,
+        cdpUrl=cdp_url, manifestErrors=manifest_errors,
         config={"iouThreshold": iou_threshold}, summary=summary,
         matched=match_result.matched, missing=match_result.missing,
         unexpected=match_result.unexpected, unlabeled=match_result.unlabeled,

@@ -158,11 +158,14 @@ def _collection(subject: str, size: int) -> dict[str, Any]:
     items: list[Any] = [{"i": i} for i in range(size)]
     steps = _steps(subject)
     last = steps[-1] if steps else None
+    if last is None:
+        return _set_path({}, subject, items)
     if isinstance(last, _harness._Wild | _harness.Filter):
         marker = "[*]" if isinstance(last, _harness._Wild) else "[?("
         parent = subject[: subject.rfind(marker)]
         if isinstance(last, _harness.Filter):
-            items = [_set_path(item, last.key, last.value) for item in items]
+            key, value = last.key, last.value
+            items = [_set_path(item, key, value) for item in items]
         return _set_path({}, parent, items)
     return _set_path({}, subject, items)
 

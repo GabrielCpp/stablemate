@@ -396,7 +396,7 @@ def _typed(value: CheckValue, declared: str) -> bool:
     if not isinstance(value, _TYPES[declared]):
         return False
     if declared == "str[]":
-        return all(isinstance(item, str) for item in value)  # ty: ignore[not-iterable]
+        return isinstance(value, list) and all(isinstance(item, str) for item in value)
     return True
 
 

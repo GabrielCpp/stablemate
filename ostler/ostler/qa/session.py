@@ -829,7 +829,7 @@ def _expand(
 ) -> str:
     """Expand ``{{key}}`` and ``{{env.name}}`` substitutions in a command string."""
 
-    def _sub(m: re.Match) -> str:
+    def _sub(m: re.Match[str]) -> str:
         token = m.group(1).strip()
         if token.startswith("env."):
             return env.get(token[4:], "")

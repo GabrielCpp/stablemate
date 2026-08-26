@@ -32,7 +32,12 @@ Browser = ostler_qa_browser.Browser
 
 
 def _browser(tmp_path: Path, at_ms: int = 0, secrets: Any = (), **target: object) -> Any:
-    declared = {"browser": None, "permissions": None, "recording": None, "viewport": None}
+    declared: dict[str, object] = {
+        "browser": None,
+        "permissions": None,
+        "recording": None,
+        "viewport": None,
+    }
     declared.update(target)
     return Browser(
         SimpleNamespace(**declared),

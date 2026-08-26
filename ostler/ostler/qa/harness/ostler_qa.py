@@ -999,7 +999,7 @@ def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, An
     scenario shape error. A subject naming something no path can address (a CLI's
     "entries in the ledger") leaves an already-extracted collection counted as it is.
     """
-    document = observed
+    document: Any = observed
     reader = getattr(document, "json", None)
     if callable(reader):
         document = reader()
@@ -1007,11 +1007,13 @@ def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, An
         resolved, document = _resolve_path(document, args["subject"])
         if not resolved:
             return False, {"subject": args["subject"], "present": False}, args["equals"]
-    found = (
-        document
-        if isinstance(document, int) and not isinstance(document, bool)
-        else len(document)
-    )
+    if isinstance(document, bool):
+        # A bool is an int in Python, so it would otherwise be *returned as the count* —
+        # `equals=1` satisfied by a product that answered `true`. It is neither a count nor
+        # something with a length, so it is red, and red with a reason rather than a
+        # `TypeError` raised out of the verifier.
+        return False, {"subject": args["subject"], "countable": False}, args["equals"]
+    found = document if isinstance(document, int) else len(document)
     return found == args["equals"], found, args["equals"]
 
 

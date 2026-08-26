@@ -40,7 +40,13 @@ def _atoms(path: Path) -> list[str]:
 
 def _recorder(tmp_path: Path) -> DisplayRecorder:
     session = SimpleNamespace(qa_dir=tmp_path, offset_ms=lambda: 0, append=lambda record: None)
-    return DisplayRecorder(session, "web", width=320, height=240, fps=5)  # ty: ignore[invalid-argument-type]
+    return DisplayRecorder(
+        session,  # ty: ignore[invalid-argument-type]  # pyright: ignore[reportArgumentType]
+        "web",
+        width=320,
+        height=240,
+        fps=5,
+    )
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is not installed")
@@ -119,7 +125,7 @@ def test_the_recorder_never_films_whatever_screen_display_happens_to_name(
 
     session = SimpleNamespace(qa_dir=tmp_path, offset_ms=lambda: 0, append=lambda record: None)
     declared = DisplayRecorder(
-        session,  # ty: ignore[invalid-argument-type]
+        session,  # ty: ignore[invalid-argument-type]  # pyright: ignore[reportArgumentType]
         "web",
         width=320,
         height=240,
@@ -165,4 +171,7 @@ def test_window_mode_is_refused_where_it_cannot_work_rather_than_filmed_wrong(
     monkeypatch.setattr(drivers.sys, "platform", "darwin")
     driver = SimpleNamespace(target={}, launcher=None)
     with pytest.raises(drivers.DriverBlocked, match="Linux-only"):
-        drivers.PythonDriver._start_window_recorder(driver, {"required": True, "mode": "window"})  # ty: ignore[invalid-argument-type]
+        drivers.PythonDriver._start_window_recorder(
+            driver,  # ty: ignore[invalid-argument-type]  # pyright: ignore[reportArgumentType]
+            {"required": True, "mode": "window"},
+        )
