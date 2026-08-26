@@ -59,6 +59,10 @@ agents:
 # All selected packs are merged (union).
 # ---------------------------------------------------------------------------
 packs:
+  # `general` (the cross-cutting craft) and `stablemate` (the toolchain) come
+  # from the base library and belong in every repo; the rest is the stack.
+  - general
+  - stablemate
   - go
   - flutter
   - shared-lifecycle

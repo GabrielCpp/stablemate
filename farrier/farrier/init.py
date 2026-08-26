@@ -44,8 +44,17 @@ agents:
 
 # Named bundles from the library's packs/ directory, without the .yml suffix. A pack
 # selects skills, prompts, roots and scaffold ids, and may include other packs; all
-# the packs listed here are merged. An empty list renders nothing — fill it in.
-packs: []
+# the packs listed here are merged.
+#
+# The two seeded here are the base library's, and every repo takes both: `general`
+# is the cross-cutting craft a repo owes whatever it is written in (architecture,
+# testing, accessibility, vertical slicing, bug diagnosis, code review) and
+# `stablemate` is the toolchain that reads it (farrier, ostler, groom, workhorse).
+# Add the stack pack for what this repo is built with — `go`, `flutter`,
+# `python-workflow`, `react-router`, `pulumi`, `infra` — beneath them.
+packs:
+  - general
+  - stablemate
 
 # Individual selections ADDED on top of what the packs pull in (globs allowed).
 # skills:

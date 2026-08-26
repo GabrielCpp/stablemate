@@ -25,9 +25,10 @@ def test_init_writes_a_config_the_installer_can_read(tmp_path: Path) -> None:
 
     config = yaml.safe_load((repo / "agents.yml").read_text(encoding="utf-8"))
     assert config["agents"] == {"claude": True}
-    # Present but empty: the selection is the one thing the operator has to fill in,
-    # and an absent key would read as "farrier decides".
-    assert config["packs"] == []
+    # Seeded with the base library's two rather than left empty: every repo takes both,
+    # so an operator who fills in nothing else still gets the craft contracts and the
+    # toolchain. The stack pack is the part only they can name.
+    assert config["packs"] == ["general", "stablemate"]
 
 
 def test_init_needs_no_library_configured(tmp_path: Path, monkeypatch) -> None:
@@ -66,7 +67,7 @@ def test_init_force_replaces_an_existing_config(tmp_path: Path) -> None:
     assert run(["init", "--repo", str(repo), "--force"]) == 0
 
     config = yaml.safe_load((repo / "agents.yml").read_text(encoding="utf-8"))
-    assert config["packs"] == []
+    assert config["packs"] == ["general", "stablemate"]
 
 
 def test_init_rejects_a_repo_path_that_is_not_a_directory(tmp_path: Path) -> None:

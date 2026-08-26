@@ -37,6 +37,13 @@ agents:
 # Packs are cumulative: all selected packs are merged before installation.
 # ─────────────────────────────────────────────────────────────────────────────
 packs:
+  # The base library's two, which every repo takes: `general` is the
+  # cross-cutting craft (architecture, testing, accessibility, vertical
+  # slicing, bug diagnosis, code review) and `stablemate` is the toolchain
+  # (farrier, ostler, groom, workhorse) that reads it.
+  - general
+  - stablemate
+
   # Repo-specific pack — skills and prompts for this repository
   - myrepo
 
