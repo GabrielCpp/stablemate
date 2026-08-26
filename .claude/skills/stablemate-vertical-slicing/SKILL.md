@@ -3,7 +3,7 @@ name: stablemate-vertical-slicing
 description: "Tracer-bullet story slicing — the first story is a walking skeleton (the thinnest end-to-end path through every layer, observable in the running system), and every later story widens that path; no story is a horizontal layer. Load when splitting an epic into stories or reviewing a split."
 metadata:
   generated_by: farrier
-  source: library/skills/stablemate/vertical-slicing/SKILL.md
+  source: library/skills/vertical-slicing/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-vertical-slicing/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [planning]

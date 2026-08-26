@@ -3,7 +3,7 @@ description: "Take a plan as the goal, cut a git worktree for it under the machi
 argument-hint: "<path to the plan> [branch name]"
 metadata:
   generated_by: farrier
-  source: library/prompts/stablemate/implement-plan-worktree.md
+  source: library/prompts/implement-plan-worktree.md
   resolve: "farrier source .claude/commands/stablemate-implement-plan-worktree.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---

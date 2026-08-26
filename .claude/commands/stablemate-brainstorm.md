@@ -3,7 +3,7 @@ description: "Generate a wide field of genuinely distinct options for a problem,
 argument-hint: "[the problem, question or space to generate options for]"
 metadata:
   generated_by: farrier
-  source: library/prompts/stablemate/brainstorm.md
+  source: library/prompts/brainstorm.md
   resolve: "farrier source .claude/commands/stablemate-brainstorm.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---

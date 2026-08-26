@@ -3,7 +3,7 @@ name: stablemate-diagnosing-bugs
 description: "Diagnosis discipline for a hard bug, a flake, or a performance regression — build a loop that goes red on this bug before forming any hypothesis, then reproduce and minimise, rank 3–5 falsifiable hypotheses, instrument one variable at a time behind a tagged prefix, and land the fix behind a regression test at a confirmed seam. Names the seams that exist here: pytest at the node seam by substitution, ostler doctor/graph/trace for a graph defect, groom status/logs/transcript/loops for what a live run actually did, workhorse control status for a process. Load when something is broken, throwing, failing intermittently or slower than it was, when a fix has already been attempted and did not hold, or when a coder run gives up on a QA gate."
 metadata:
   generated_by: farrier
-  source: library/skills/stablemate/diagnosing-bugs/SKILL.md
+  source: library/skills/diagnosing-bugs/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-diagnosing-bugs/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [tests, standards, cli]
@@ -164,7 +164,7 @@ Before calling it done:
   diagnosing near this code starts where you finished.
 
 Then ask what would have prevented it. If the answer is a gate this repo could have had, that
-is a `make check` and a skill, not a note — see [[repo-docs]] and [[agent-writing]]. Make the
+is a `make check` and a skill, not a note — see [[ostler-repo-docs]] and [[farrier-skills-writing]]. Make the
 recommendation *after* the fix is in: you know more now than when you started.
 
 ## A coder QA `give_up` is a bug report, not a state
@@ -193,7 +193,8 @@ story.
 - **The bug is in a workflow node** — the node contract, substitution-based testing, failure
   routing → [[workhorse-scripting]].
 - **The bug is in the doc graph** — a dangling reference, an orphan seed, a `doctor` error code
-  and its remedy → [[ostler]].
+  and its remedy → [[ostler-cli]] for the tool, [[ostler-okf]] for the format under
+  `docs/features/`.
 - **The evidence is in a run's telemetry** — spans, turn records, what each `groom` subcommand
   answers → [[groom-telemetry]].
 - **The loop reads a structured document** — parse it, never regex it → [[structured-parsing]].

@@ -3,7 +3,7 @@ description: "Take a plan as the goal and implement it right here — on the bra
 argument-hint: "<path to the plan>"
 metadata:
   generated_by: farrier
-  source: library/prompts/stablemate/implement-plan-here.md
+  source: library/prompts/implement-plan-here.md
   resolve: "farrier source .claude/commands/stablemate-implement-plan-here.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---

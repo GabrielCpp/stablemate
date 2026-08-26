@@ -3,7 +3,7 @@ name: stablemate-farrier-setup
 description: "Farrier setup guide — install, configure library, write agents.yml, scaffold new services with `farrier scaffold`, bind skills to local CLAUDE.md files via localInstructions."
 metadata:
   generated_by: farrier
-  source: library/skills/stablemate/farrier-setup/SKILL.md
+  source: library/skills/farrier/farrier-setup/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-farrier-setup/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [codegen]
@@ -61,7 +61,9 @@ agents:
   copilot: false
 
 packs:
-  - <pack-name>              # bundles from agents/packs/*.yml
+  - general                  # base library: the cross-cutting craft
+  - stablemate               # base library: the toolchain
+  - <stack-pack>             # what this repo is built with — see Available Packs
 ```
 
 The repo's name is its **directory** name, kebab-cased. It is not configurable:
@@ -213,32 +215,23 @@ instead — regenerate to remove it rather than editing it.
 
 ## Available Packs
 
-The pack list lives in `agents/packs/*.yml`; each pack's `description:` field
-is the source of truth. Current packs:
+Every repo selects the base library's two: **`general`** — the cross-cutting
+craft it owes whatever it is written in (architecture, testing, accessibility,
+vertical slicing, bug diagnosis, code review) — and **`stablemate`**, the
+toolchain that reads them (farrier, ostler, groom, workhorse). On top of those
+goes one **stack** pack for what the repo is built with: `go`, `flutter`,
+`react-router`, `react-native`, `python-workflow`, `pulumi`, `infra`.
 
-| Pack | Contents |
-|------|----------|
-| `agent-library` | library maintenance skill + update-skill prompt (includes `stablemate`) |
-| `stablemate` | toolchain skills — coder-workflow, code-review, workhorse-scripting, farrier-setup, ostler, groom |
-| `product-planning` | story-docs + write-epics-and-stories skills, product-planning prompts |
-| `shared-lifecycle` | planning, review, validation prompts |
-| `shared-docs` | docs/misc prompts + standard `docs/` scaffold |
-| `qa` | shared QA planning prompts (per-stack QA skills ship with stack packs) |
-| `go` | Go backend skills + fix prompts |
-| `flutter` | Flutter app skills + prompts (pair with `ui`) |
-| `react-router` | React Router web app skills (pair with `ui`) |
-| `react-native` | React Native app skills |
-| `python-workflow` | Python CLI, testing, workhorse workflow scripting skills |
-| `pulumi` | Pulumi infrastructure skills (pair with `infra`) |
-| `infra` | GCP CI/IAM conventions, dev-stack hardening, CLI anti-hang rules |
-| `ui` | accessibility contract, design-system methodology, Superdesign workflow |
-| `research` | autonomous researcher skills, gate-loop prompts, generic research workflow |
+The full catalog, including the shared lifecycle/docs/QA/research packs and why
+over-selecting is free, is in
+[references/packs.md](references/packs.md).
 
 ## Typical Setup Sequence
 
 1. Install farrier: `pipx install farrier`
 2. Set library: `farrier config set-library /path/to/example-org/agents`
-3. `farrier init` at the repo root, then fill in `packs:`
+3. `farrier init` at the repo root, then fill in `packs:` — `general` and
+   `stablemate` always, plus the stack pack for what the repo is built with
 4. Seed the repo layout: `farrier scaffold` to list what's available, then
    e.g. `farrier scaffold shared-docs` and `farrier scaffold go-service
    --param dir=api` for each service folder
