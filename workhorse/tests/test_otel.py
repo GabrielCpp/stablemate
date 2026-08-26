@@ -17,17 +17,13 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
-import importlib
 import json
 import socket
 import tempfile
 from pathlib import Path
 
-otel = importlib.import_module("workhorse.otel")
-records = importlib.import_module("workhorse.records")
-reload = importlib.import_module("workhorse.reload")
-usage = importlib.import_module("workhorse.runner.usage")
-artifacts = importlib.import_module("workhorse.artifacts")
+from workhorse import artifacts, otel, records, reload
+from workhorse.runner import usage
 
 
 def _event(node: str, seq: int, phase: records.NodePhase, **extra):

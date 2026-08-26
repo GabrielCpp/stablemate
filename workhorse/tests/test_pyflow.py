@@ -306,7 +306,11 @@ def test_a_transition_that_does_not_match_the_next_signature_fails_at_transition
             def start(self) -> Transition:
                 # The mismatch is the subject of the test: `finish` takes `count`, and
                 # the checker is told to allow the call the runtime must reject.
-                return Continue(None, self.finish, wrong=1)  # ty: ignore[missing-argument, unknown-argument]
+                return Continue(  # ty: ignore[missing-argument]
+                    None,
+                    self.finish,
+                    wrong=1,  # ty: ignore[unknown-argument]  # pyright: ignore[reportCallIssue]
+                )
 
             def finish(self, count: int) -> Transition:
                 return Done(count)

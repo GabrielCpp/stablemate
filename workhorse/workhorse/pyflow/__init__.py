@@ -42,7 +42,7 @@ from workhorse.pyflow.errors import (
     WorkflowFrozenError,
 )
 from workhorse.pyflow.registry import Registry
-from workhorse.pyflow.transitions import Await, Continue, Done
+from workhorse.pyflow.transitions import Await, Continue, Done, Transition
 from workhorse.pyflow.workflow import StateSpec, Workflow, state
 
 __all__ = [
@@ -56,6 +56,7 @@ __all__ = [
     "PyflowError",
     "Registry",
     "StateSpec",
+    "Transition",
     "UnknownNodeError",
     "UnknownStateError",
     "Workflow",

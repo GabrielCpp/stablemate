@@ -236,7 +236,7 @@ class ProcessSupervisor:
                         resilience.exec_retry_base_s * (2 ** (attempt - 1)),
                         resilience.exec_retry_cap_s,
                     )
-                    code = errno.errorcode.get(exc.errno, str(exc.errno))
+                    code = errno.errorcode.get(exc.errno or 0, str(exc.errno))
                     print(
                         f"[{node_id}] ⏳ agent CLI '{cmd[0]}' unavailable ({code}) — likely "
                         f"self-updating; retry {attempt}/{resilience.exec_retry_max} "

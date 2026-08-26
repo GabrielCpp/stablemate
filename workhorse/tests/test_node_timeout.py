@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from _fakes import FakeBackend, FakeClock
@@ -19,8 +20,8 @@ from workhorse.context import WorkflowContext
 from workhorse.runner.spec import AgentNode
 
 
-def _node(timeout="__unset__") -> AgentNode:
-    kw = {} if timeout == "__unset__" else {"timeout": timeout}
+def _node(timeout: float | str | None = "__unset__") -> AgentNode:
+    kw: dict[str, Any] = {} if timeout == "__unset__" else {"timeout": timeout}
     return AgentNode(
         type="agent",
         id="implement",
@@ -33,7 +34,7 @@ def _node(timeout="__unset__") -> AgentNode:
 def _run_capturing(node):
     """Run the node, capturing the prompt-render ctx and the timeout that reaches
     the invocation layer. Returns (render_ctx, invoke_timeout)."""
-    seen = {"ctx": None, "timeout": None}
+    seen: dict[str, Any] = {"ctx": None, "timeout": None}
 
     def fake_render(tmpl, ctx, wdir):
         seen["ctx"] = ctx

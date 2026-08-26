@@ -22,9 +22,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-gitstate = importlib.import_module("workhorse.gitstate")
-logsetup = importlib.import_module("workhorse.logsetup")
-otel = importlib.import_module("workhorse.otel")
+from workhorse import gitstate, logsetup, otel
 
 HAVE_GIT = shutil.which("git") is not None
 

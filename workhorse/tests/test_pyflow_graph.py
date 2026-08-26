@@ -38,7 +38,7 @@ from workhorse.pyflow import (  # noqa: E402
 )
 from workhorse.manifest import ManifestContext  # noqa: E402
 from workhorse.pyflow.dot import to_dot  # noqa: E402
-from workhorse.pyflow.graph import preflight, registry_graphs, state_graph  # noqa: E402
+from workhorse.pyflow.graph import StateNode, preflight, registry_graphs, state_graph  # noqa: E402
 
 
 class RegistryAt(Registry):
@@ -152,10 +152,21 @@ def _graph(cls: type[Workflow]):
     return state_graph(cls)
 
 
-def _edges(cls: type[Workflow], name: str) -> set[tuple[str, str]]:
+def _state(cls: type[Workflow], name: str) -> StateNode:
+    """The named state, or a failure that says which one was missing.
+
+    `FlowGraph.state` returns `None` for a name it does not carry — the right answer
+    for the reader, and never the answer a test here is asserting about. Unwrapping it
+    once means a typo in a state name fails as "no state 'reveiw'" rather than as an
+    attribute error on `None` ten lines later.
+    """
     node = _graph(cls).state(name)
     assert node is not None, name
-    return {(edge.target, edge.kind) for edge in node.edges}
+    return node
+
+
+def _edges(cls: type[Workflow], name: str) -> set[tuple[str, str]]:
+    return {(edge.target, edge.kind) for edge in _state(cls, name).edges}
 
 
 # --------------------------------------------------------------------------- reading
@@ -166,7 +177,7 @@ def test_both_arms_of_a_branch_become_edges():
 
 
 def test_a_state_that_can_end_is_terminal_and_still_has_its_other_edge():
-    node = _graph(Sample).state("retry")
+    node = _state(Sample, "retry")
     assert node.terminal
     assert {edge.target for edge in node.edges} == {"start"}
 
@@ -176,7 +187,7 @@ def test_an_await_edge_is_read_from_the_third_argument():
 
 
 def test_edge_labels_name_the_parameters_the_transition_binds():
-    start = _graph(Sample).state("start")
+    start = _state(Sample, "start")
     by_target = {edge.target: edge.params for edge in start.edges}
     assert by_target["review"] == ("verdict",)
     # Positional: read off the target's own signature, the way the driver binds it.
@@ -185,15 +196,15 @@ def test_edge_labels_name_the_parameters_the_transition_binds():
 
 def test_node_calls_and_prompt_paths_are_collected():
     graph = _graph(Sample)
-    assert graph.state("start").calls == ("measure",)
-    assert graph.state("review").prompts == ("prompts/review.md",)
+    assert _state(Sample, "start").calls == ("measure",)
+    assert _state(Sample, "review").prompts == ("prompts/review.md",)
     assert graph.prompts() == (("review", "prompts/review.md"),)
 
 
 def test_a_seam_inside_a_private_helper_is_attributed_to_the_state():
     graph = _graph(Factored)
-    assert graph.state("start").calls == ("measure",)
-    assert graph.state("start").prompts == ("prompts/record.md",)
+    assert _state(Factored, "start").calls == ("measure",)
+    assert _state(Factored, "start").prompts == ("prompts/record.md",)
     # The helper is not a node of its own — nothing runs it but the state.
     assert {node.name for node in graph.states} == {"start", "finish"}
     # …and preflight therefore still checks the prompt exists.
@@ -201,7 +212,7 @@ def test_a_seam_inside_a_private_helper_is_attributed_to_the_state():
 
 
 def test_helpers_that_call_each_other_do_not_loop_the_reader():
-    assert _graph(Factored).state("finish").calls == ("measure",)
+    assert _state(Factored, "finish").calls == ("measure",)
 
 
 def test_an_alias_is_never_a_second_state():
@@ -211,7 +222,7 @@ def test_an_alias_is_never_a_second_state():
 
 
 def test_a_target_the_source_cannot_name_is_reported_as_dynamic():
-    edges = _graph(Dynamic).state("start").edges
+    edges = _state(Dynamic, "start").edges
     assert len(edges) == 1
     assert edges[0].dynamic
     # …and it stops reachability rather than pretending to reach everything.
@@ -257,7 +268,7 @@ def test_preflight_reports_a_transition_to_something_that_is_not_a_state():
         def start(self) -> Transition:
             # `self.output` is a method of the engine, not a state — which is the
             # thing preflight has to notice, so the checker is told to allow it.
-            return Continue(None, self.output)  # ty: ignore[missing-argument]
+            return Continue(None, self.output)  # ty: ignore[missing-argument]  # pyright: ignore[reportCallIssue, reportArgumentType]
 
         def finish(self) -> Transition:
             return Done(None)

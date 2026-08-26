@@ -71,7 +71,8 @@ def test_done_marker_pins_the_seq_it_completed_under():
         # before is recognisably stale: its seq no longer matches the checkpoint's.
         w.write_state_checkpoint("record", {}, inputs={})
         cp = json.loads((w.run_dir / "checkpoint.json").read_text())
-        assert cp["seq"] == 2 and w.read_done("record")["seq"] == 1
+        stale = w.read_done("record")
+        assert stale is not None and cp["seq"] == 2 and stale["seq"] == 1
 
 
 if __name__ == "__main__":
