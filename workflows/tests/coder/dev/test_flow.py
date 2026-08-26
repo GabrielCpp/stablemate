@@ -243,6 +243,7 @@ class _Agent:
         explode: set[str] | None = None,
         impl_blocked: int = 0,
         repo_relative_plans: bool = False,
+        unwritten_plans: int = 0,
     ) -> None:
         self.docs = docs
         self.services = services if services is not None else SERVICES
@@ -258,6 +259,9 @@ class _Agent:
         #: the turn was holding when it wrote the file — while writing the file itself
         #: exactly where it belongs.
         self.repo_relative_plans = repo_relative_plans
+        #: The first N plan turns report a structure whose plan files they never wrote —
+        #: the failure the path gate exists for.
+        self.unwritten_plans = unwritten_plans
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         self.plans = 0
@@ -300,11 +304,12 @@ class _Agent:
         services = GHOST if self.plans <= self.bad_paths else self.services
         spec = Path(data["spec_dir"])
         spec.mkdir(parents=True, exist_ok=True)
-        for svc in services:
-            (spec / svc["plan_file"]).write_text(
-                f"# Plan for {svc['repo']}::{svc['path']}\n",
-                encoding="utf-8",
-            )
+        if self.plans > self.unwritten_plans:
+            for svc in services:
+                (spec / svc["plan_file"]).write_text(
+                    f"# Plan for {svc['repo']}::{svc['path']}\n",
+                    encoding="utf-8",
+                )
         if self.repo_relative_plans:
             services = [
                 {**svc, "plan_file": (spec / svc["plan_file"]).relative_to(self.docs).as_posix()}
@@ -711,6 +716,30 @@ def test_an_unresolvable_service_path_reworks_the_plan(
     assert agent.counts()["refine-plan"] == 1, agent.counts()
     assert "ghost" in agent.args_for("refine-plan")[0]["review_notes"]
     # The gate's verdict is the node's, recorded: the second validation passed.
+    assert _output(run_env, record_plan)["status"] == "valid"
+
+
+def test_a_plan_whose_files_were_never_written_reworks_the_plan(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A structure naming plan files the turn did not write is a plan defect, not a prompt.
+
+    The implementer is handed the plan as content, so an unwritten file used to arrive as an
+    empty string and the turn invented the work. It is the gate's now: one refine lap, and
+    the second turn writes them.
+    """
+    agent = _Agent(docs, unwritten_plans=1)
+    run_env = env()
+
+    result = drive_flow(Dev(story=STORY), run_env, agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["refine-plan"] == 1, agent.counts()
+    notes = agent.args_for("refine-plan")[0]["review_notes"]
+    assert "plan-api.md" in notes and "not readable" in notes, notes
     assert _output(run_env, record_plan)["status"] == "valid"
 
 

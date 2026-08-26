@@ -249,6 +249,33 @@ def _plan_context(
     return on_disk, path is None or not path.exists()
 
 
+def _dispatched_plan_problems(
+    doc: dict[str, Any], repos: dict[str, dict], spec_abs: Path
+) -> list[str]:
+    """Every plan file the dispatcher will hand an implementer, opened to prove it is there.
+
+    The dispatch list is the authority rather than the `services` block, because they are
+    not the same set: a service marked `new_service` still gets a layer, and a plan naming
+    no service at all still gets the repo-root fallback layer — both of which used to walk
+    past this check and reach the implement turn with a plan that did not exist.
+
+    Opened, not `exists()`-ed, because the failure the implementer sees is a read: a
+    directory, a broken symlink and a file nobody may read all pass an existence check and
+    none of them is a plan.
+    """
+    problems: list[str] = []
+    for entry in build_dispatch_list(doc, repos, fallback=not (doc.get("services") or [])):
+        plan_file = entry.get("plan_file") or "plan.md"
+        try:
+            (spec_abs / plan_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            problems.append(
+                f"{entry['service']}: plan file '{plan_file}' is not readable in the spec "
+                f"dir ({exc.strerror or exc})"
+            )
+    return problems
+
+
 @blueprint.node
 def record_plan(
     logger: logging.Logger,
@@ -289,10 +316,14 @@ def record_plan(
     logger.info("wrote plan-context.json projection (%d service(s))", len(doc["services"]))
 
     services = doc["services"]
+    # Every plan file an implementer will be handed, checked here rather than where it is
+    # read: this is the deterministic gate the planner loops back to, and a plan file that
+    # was never written is exactly what it is for.
+    errors: list[str] = _dispatched_plan_problems(doc, repos, spec_abs)
     if not services:
-        return PlanValidation(status="valid", document=doc)
-
-    errors: list[str] = []
+        return PlanValidation(
+            status="invalid" if errors else "valid", errors=errors, document=doc
+        )
 
     # The published artifact contract, applied to what we just wrote. It is no longer
     # policing an agent's typing — it is the one check that catches this writer drifting
@@ -318,7 +349,6 @@ def record_plan(
     for svc in services:
         repo_name = svc.get("repo", "")
         svc_path = svc.get("path", "")
-        plan_file = svc.get("plan_file", "")
         label = f"{repo_name}::{svc_path}"
 
         if repo_name not in repos:
@@ -339,9 +369,6 @@ def record_plan(
         if problems:
             errors.extend(problems)
             continue
-
-        if plan_file and not (spec_abs / plan_file).exists():
-            errors.append(f"{label}: plan file '{plan_file}' not found in spec dir")
 
     return PlanValidation(
         status="invalid" if errors else "valid", errors=errors, document=doc
@@ -430,17 +457,20 @@ def read_plan_text(spec_dir: str, plan_file: str, logger: logging.Logger) -> str
 
     The implementer is handed a plan, not a filename: how the planning lane split the work
     across services and what it called each file is planning-side mechanics, and reading
-    the file back costs the turn a serial tool call before the first edit. Degrading, like
-    `_instruction_files`: an unreadable or unnamed file returns "" (logged), and the prompt
-    falls back to naming the path for the agent to read itself.
+    the file back costs the turn a serial tool call before the first edit.
+
+    It does not degrade. A plan file that is missing here means the step that was supposed
+    to write it did not, and the honest answer to that is to stop: the fallback this used
+    to take handed the implementer a prompt naming a path it could not read either, and
+    what came back was a turn that had invented the work.
+
+    `record_plan` is the gate that catches this before an implementer is paid for it, and
+    the dev lane runs it over the whole dispatch list. Reaching the exception below is a
+    defect in the lane that got here without one.
     """
-    if not spec_dir or not plan_file:
-        return ""
-    try:
-        return (Path(spec_dir) / plan_file).read_text(encoding="utf-8")
-    except OSError:
-        logger.warning("plan file '%s' not readable — passing the path only", plan_file)
-        return ""
+    path = Path(spec_dir) / (plan_file or "plan.md")
+    logger.debug("inlining the plan at %s", path)
+    return path.read_text(encoding="utf-8")
 
 
 @blueprint.node
