@@ -1,8 +1,0 @@
-description: >
-  Cross-language testing skills — the universal contract for a test that can
-  actually fail. Stack packs (go, flutter, python-workflow, react-router,
-  pulumi) include this so the language-neutral test-design rules ride along with
-  the concrete runner mechanics, the same way the architecture pack carries the
-  ports-and-adapters contract and the ui pack the accessibility one.
-skills:
-  - testing/*

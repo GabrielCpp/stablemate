@@ -1,0 +1,12 @@
+skills:
+  - architecture/*
+  - testing/*
+  - ui/*
+  - vertical-slicing
+  - diagnosing-bugs
+  - code-review
+prompts:
+  - grill
+  - brainstorm
+  - implement-plan-worktree
+  - implement-plan-here

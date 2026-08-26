@@ -1,0 +1,134 @@
+# Skill mechanics
+
+The skill-specific branch of [`farrier-skills-writing`](../SKILL.md): what changes when the document
+is a **skill** or a **prompt** in this library. Everything else about writing it is the
+universal reference in `SKILL.md`. The library's layout, pack selection and install
+mechanics belong to [[farrier-agent-library]] — this file covers only what bears on the writing.
+
+## The two forms, and the invocation each buys
+
+The library holds two document forms, and the choice between them is the
+context-load/cognitive-load trade in its concrete form:
+
+| | **Skill** | **Prompt** |
+| --- | --- | --- |
+| Source | `library/skills/<group>/<name>/SKILL.md` | `library/prompts/<group>/<name>.md` |
+| Installs as | a skill the agent selects | a slash command the human types |
+| Reached by | the model, autonomously, off its `description` | the human, by name, only |
+| Costs | **context load** — the description is loaded every turn | **cognitive load** — you are the index that remembers it |
+| Scoped by | `applyTo` globs | nothing; it fires when typed |
+
+**Pick by when the material is needed, not by how big it is.**
+
+- Knowledge that applies *while doing a kind of work* — writing a node, reading a format,
+  modelling a surface — is a **skill**. The agent must reach it on its own, because you will
+  not be there to type anything.
+- A procedure invoked *at a moment* is a **prompt**. `grill` and `implement-plan-here` are
+  the shape: the moment a design is ready to interrogate, or a plan is ready to build,
+  never matched an `applyTo`, and a skill loaded on file-glob would have fired at every
+  wrong time and never at the right one.
+
+A prompt costs nothing on every turn it does not fire, which is the whole reason it exists.
+Reaching for a skill "so the agent can find it" spends permanent context on discoverability
+you may not need.
+
+## The no-lateral-call rule
+
+**A prompt may point at skills. A skill never instructs running a prompt.**
+
+The direction is not stylistic — it follows from reachability. A prompt is a human entry
+point; a skill firing one inverts control, launching a procedure the human did not ask for at
+a moment they did not choose. And a skill that says "now run `/commit`" has hidden a hard
+dependency behind a name the model cannot resolve on its own.
+
+When two prompts need the same material, it lives in neither: push it to a skill they both
+point at, or to a plain file under the package's `docs/`. `make check-skills` enforces this
+direction.
+
+There is no router skill here, and there should not be: every skill in this library is
+model-invoked, so the agent already reaches them by description. A router exists to cure
+piled-up cognitive load from *user-invoked* skills, which this library does not have.
+
+## Frontmatter
+
+Farrier reads four keys off a `SKILL.md`, and **`tags` is required** — `make check-library`
+fails without it:
+
+```yaml
+---
+name: workhorse-scripting
+description: "…the pointer. Written to the bar in SKILL.md; ends on a 'Load when…' clause."
+applyTo: "**/workhorse_workflows/**/*.py, **/nodes/**/*.py, **/workflow.py"
+tags: [backend, standards, tests]
+---
+```
+
+A prompt takes `description` plus the optional slash-command keys farrier passes through —
+`argument-hint`, `model`, `allowed-tools` — and may interpolate `$ARGUMENTS` in its body.
+
+**Quote every `description` and `applyTo`.** Unquoted, YAML reads punctuation as syntax and
+the loss is silent: a leading `*` opens an alias, `{` opens a flow mapping, a `#` truncates
+the line, `&` becomes an anchor. The failure does not error — the skill still installs, with
+its description replaced by a plausible-looking fallback and its tags gone, so it silently
+stops matching tag queries. That is the entire reason `make check-library` exists; read
+`farrier/farrier/library_check.py` if you want the full list of shapes.
+
+`name` is unique library-wide and the group segment is stripped on install, so the installed
+name already carries the consuming repo's prefix. Do not repeat the group in the name:
+`ostler`, not `stablemate-ostler`.
+
+## Disclosure: `references/` and `scripts/`
+
+Progressive disclosure has a concrete form here. A skill directory may hold two asset
+directories beside its `SKILL.md`, and farrier ships them to the same relative path in the
+generated output:
+
+```
+library/skills/stablemate/<name>/
+  SKILL.md
+  references/<topic>.md      # disclosed reference, reached by a link from the body
+  scripts/<tool>.sh          # arrives verbatim and executable
+```
+
+Three properties to write against:
+
+1. **Link relatively, from the body.** `[references/topic.md](references/topic.md)` resolves
+   both in the library and after install, because the renderer preserves the relative path.
+   A pointer is what makes the file reachable at all — an asset nothing links to is material
+   with no pointer, and `make check-skills` fails it.
+2. **The pointer still does its two jobs.** Say what is over there and name the branches that
+   reach it. "See the reference for details" is a dead end: an agent cannot tell whether
+   following it is worth the turn.
+3. **Assets need the directory form.** `skill_assets` returns nothing for a flat `<name>.md`
+   source, and the renderer refuses to emit assets into a flat output layout. A skill that
+   discloses must be a directory with a `SKILL.md`.
+
+`scripts/` earns its place when a procedure's commands would otherwise be retyped by the
+agent out of a fenced block — a check, a harness, a setup wizard. A fenced block the agent
+copies is a script with no source of truth.
+
+## What to split, and when
+
+Two cuts, both spending one of the two loads — so both have to earn it:
+
+- **By branch** (the common one): a section only some runs reach becomes a
+  `references/*.md`. Inline what every branch needs.
+- **By sequence**: split a run of steps where the visible later steps tempt the agent to rush
+  the one in front of it. This only works across a real context boundary — a hand-off or a
+  subagent dispatch. Splitting into a file the same agent reads inline clears nothing.
+- **Into a second skill**: only when the new one needs *independent reach* — its own trigger,
+  its own `applyTo`, or another skill must point at it. You pay a permanently loaded
+  description for that reach, so a topic that is merely long is a `references/` file, not a
+  new skill.
+
+## After the edit
+
+The `.claude/`, `.codex/` and `.github/` copies are **generated** and carry a `do_not_edit`
+metadata key. Edit the library source, then re-install — see [[farrier-agent-library]] for the
+command and for adding the skill to `base-library/packs/stablemate.yml`, without which it
+ships to nobody.
+
+```bash
+make check-skills        # sprawl budget, disclosure reachable, no skill driving a prompt
+make check-library       # the frontmatter fence parses, and tags survived it
+```

@@ -1,0 +1,83 @@
+# Plain `feature` docs — prose with no enumerable surface
+
+Read this when what you have to document is a **narrative reference** — why a subsystem exists,
+how its pieces fit, how to run it — rather than a surface with screens, commands, endpoints and
+behaviours to enumerate. That is the built-in `feature` type, and it has its own create flow.
+
+If the thing *does* have an enumerable surface, use the UI-profile types instead: a `feature` doc
+holding a hand-written list of commands is a `cli` that was not modelled.
+
+## Creating one
+
+1. **Check it does not already exist**, so you do not create a duplicate:
+   ```bash
+   ostler list --type feature --json
+   ostler search <slug> --type feature --json      # or: ostler trace <slug>
+   ```
+
+2. **Scaffold it through ostler** — this allocates the id and writes conformant frontmatter, which
+   is why it is never a hand-written file:
+   ```bash
+   ostler create feature <slug> --title "<Human title>" [--area <area>] [--route <path>]
+   ```
+   It writes `docs/features/<area>/<slug>.md` (or flat `docs/features/<slug>.md` with no `--area`):
+   ```markdown
+   ---
+   type: feature
+   id: <allocated-id>
+   slug: <slug>
+   title: <Human title>
+   area: <area>        # only if --area given
+   route: <path>       # only if --route given
+   ---
+   # <Human title>
+   ```
+   `--json` captures the allocated id (`{"ok": true, "id": "...", ...}`).
+
+3. **Author the body by editing the scaffolded `.md` directly.** The body is the sanctioned
+   hand-edit surface — ostler does not manage it.
+
+4. **Gate it:**
+   ```bash
+   ostler doctor      # non-zero exit on an error-level break — safe to gate the story on
+   ```
+
+## Updating one
+
+There is **no `ostler set` or update verb for the built-in `feature` type**, and that is expected:
+
+- **Refresh the docs** → edit the body prose in place. The normal case; no ostler call. Re-run
+  `ostler doctor` afterwards.
+- **Change the frontmatter identity** (title, area, route) → hand-edit those keys, but **preserve
+  `type`, `id` and `slug`** — they are the graph identity. Never renumber the id.
+- **Move or rename** so references follow → go through ostler, so links stay consistent (dry-run by
+  default, `--write` applies):
+  ```bash
+  ostler edit rename <old-slug> <new-slug> --write
+  ostler edit relink <old-path> <new-path> --write
+  ```
+- **Re-scaffold from scratch** → `ostler delete feature <slug>`, then `ostler create feature …`.
+
+## What the doc should contain
+
+An as-built reference a future agent or human can act on — not a changelog. A shape that works:
+
+- **Context** — why the feature exists; the problem it solves and the intended outcome.
+- **Constraints** — the load-bearing rules (stack, security, invariants) that must not be broken.
+- **Architecture** — package and module layout, the key files and their roles, the main flow.
+- **Interfaces** — the commands, routes or APIs it exposes.
+- **Non-goals and risks** — what it deliberately does not do; the known failure modes.
+- **Verification** — how to run it and confirm it works end to end.
+
+The three content rules from the parent `SKILL.md` still bind: the book not a changelog,
+spec-complete, and spec not implementation.
+
+## The legacy caveat
+
+Some `docs/features/*.md` predate the format and were hand-authored **with no frontmatter** —
+straight to the `# Title`. Those are **not** valid OKF Concepts and fail `ostler doctor`'s schema
+checks. To bring one under management, add the required `type: feature` / `slug` / `title`
+frontmatter that `ostler create feature` would have generated — either by scaffolding a fresh
+feature and moving the prose across, or through ostler's one-time migration
+(`scripts/okf_migrate.py` in the ostler package). When you touch such a file, prefer making it
+conformant over leaving it orphaned from the graph.
