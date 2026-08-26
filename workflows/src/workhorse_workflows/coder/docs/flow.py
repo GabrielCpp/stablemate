@@ -67,17 +67,22 @@ from workhorse_workflows.coder.shared.docs import (
     classify_documentation_context,
     detect_okf_docs,
     documentation_obligations,
+    features_root,
     verify_story_documentation,
 )
-from workhorse_workflows.coder.shared.conversation import story_chain
-from workhorse_workflows.coder.shared.escalation import escalation
+from workhorse_workflows.coder.shared.conversation import backbone
+from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.resolution import (
     RESOLVER_POWER,
     answered,
     resolver_args,
 )
 from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
-from workhorse_workflows.coder.shared.story import prepare_story, resolve_workspace_dirs
+from workhorse_workflows.coder.shared.story import (
+    prepare_story,
+    resolve_workspace_dirs,
+    workspace_dirs,
+)
 from workhorse_workflows.coder.shared.schemas.docs import (
     ContextClassification,
     DocsProgress,
@@ -195,17 +200,6 @@ class Docs(Workflow):
         exists to avoid, inverted.
         """
         return f"docs-repair:{self.ctx.story_slug}"
-
-    def _story_chain(self) -> str:
-        """The backbone conversation this story's primary turn runs on.
-
-        One key per story, derived from the slug alone, so this lane continues whatever
-        conversation an earlier lane in the run left under it rather than opening a cold
-        one — and opens a cold one when there is no earlier lane.
-        Distinct from `_chain`: that names the narrower, intentionally-isolated repair
-        loop, and stays untouched by this one.
-        """
-        return story_chain(self.ctx.story_slug)
 
     def _ends(self, result: DocsResult) -> Done:
         """End the flow, and the story's repair chain with it.
@@ -344,8 +338,8 @@ class Docs(Workflow):
             # medium: folding a known change into an existing graph, against a schema and a
             # gate that will check the result. Not a discovery task.
             power="medium",
-            session=self._story_chain(),
-            add_dirs=self._dirs(),
+            session=backbone(self),
+            add_dirs=workspace_dirs(self),
             args=turn.args | self._author_args(gate_notes, review_notes, obligations),
         )
         return self._authored(
@@ -420,7 +414,7 @@ class Docs(Workflow):
                 # against a book its own first attempt already edited.
                 timeout=2700,
                 retries=0,
-                add_dirs=self._dirs(),
+                add_dirs=workspace_dirs(self),
                 args=turn.args | self._author_args(gate_notes, review_notes, obligations),
                 session=self._chain,
             )
@@ -459,7 +453,7 @@ class Docs(Workflow):
             "story_slug": self.ctx.story_slug,
             "epic": self.epic,
             "docs_path": self.docs_path,
-            "features_root": self._features_root,
+            "features_root": features_root(self),
             "epic_path": self._epic_path,
             "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
             "context_mode": classification.mode,
@@ -562,7 +556,7 @@ class Docs(Workflow):
                 build_okf_context,
                 self.ctx.spec_dir,
                 self.ctx.story_path,
-                self._features_root,
+                features_root(self),
                 tuple(classification.source_roots),
                 "HEAD",
                 "WORKTREE",
@@ -682,12 +676,12 @@ class Docs(Workflow):
             # high: judging whether prose describes the system as built is the harder half
             # of documenting it.
             power="high",
-            add_dirs=self._dirs(),
+            add_dirs=workspace_dirs(self),
             args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "docs_path": self.docs_path,
-                "features_root": self._features_root,
+                "features_root": features_root(self),
                 "epic_path": self._epic_path,
                 "author_status": author.status,
                 "author_notes": author.notes,
@@ -870,7 +864,7 @@ class Docs(Workflow):
                 number=1,
                 findings=findings,
             )
-            return Await(self._context, gate.body, self.read_author, **carried)
+            return Await(context_path(self), gate.body, self.read_author, **carried)
         return Continue(None, self.resolve_author, **carried)
 
     def resolve_author(
@@ -904,7 +898,7 @@ class Docs(Workflow):
             # accountable party, with full tool access, on the flow's costliest decision.
             power=RESOLVER_POWER,
             timeout=UNBOUNDED,
-            add_dirs=self._dirs(),
+            add_dirs=workspace_dirs(self),
             args=resolver_args(
                 self, block_kind="docs", notes=notes, docs_path=self.docs_path
             ),
@@ -963,11 +957,6 @@ class Docs(Workflow):
             consulted=True,
         )
 
-    @property
-    def _context(self) -> Path:
-        """The file an `Await` writes its questions into: `<story-folder>/context.md`."""
-        return paths.story_context_path(self.ctx.story_path)
-
     def _obligations(self, classification: ContextClassification) -> DocumentationObligations:
         """Build the diff packet and read the grounding worklist off it, before authoring.
 
@@ -989,7 +978,7 @@ class Docs(Workflow):
             build_okf_context,
             self.ctx.spec_dir,
             self.ctx.story_path,
-            self._features_root,
+            features_root(self),
             tuple(classification.source_roots),
             "HEAD",
             "WORKTREE",
@@ -1006,20 +995,10 @@ class Docs(Workflow):
         )
 
     @property
-    def _features_root(self) -> str:
-        """Where the OKF feature docs live, as the detector resolved it."""
-        return self.output(detect_okf_docs).features_root
-
-    @property
     def _epic_path(self) -> str:
         """The parent epic whose user journeys this story advances."""
         root = Path(find_docs_root(self.docs_path, self.repo_dir))
         return f"{paths.epic_dir_rel(root, self.ctx.story_epic)}/epic.md"
-
-    def _dirs(self) -> list[str]:
-        """Every directory this run's agent turns may read."""
-        return list(self.output(resolve_workspace_dirs).dirs)
-
 
 def _format_finding(finding: DocumentationFinding) -> str:
     """One structured reviewer finding as the repair prompt's line protocol."""

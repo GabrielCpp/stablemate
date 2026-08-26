@@ -76,14 +76,14 @@ from typing import Any, ClassVar, NamedTuple
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow
 from workhorse_workflows.coder.shared import paths, qa_support, roles
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
-from workhorse_workflows.coder.shared.conversation import story_chain
+from workhorse_workflows.coder.shared.conversation import backbone
 from workhorse_workflows.coder.shared.dev import (
     plan_summary,
     read_operator_context,
     resolve_impl_context,
 )
-from workhorse_workflows.coder.shared.docs import detect_okf_docs
-from workhorse_workflows.coder.shared.escalation import escalation
+from workhorse_workflows.coder.shared.docs import detect_okf_docs, features_root
+from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.resolution import (
     RESOLVER_POWER,
     answered,
@@ -500,17 +500,6 @@ class Qa(Workflow):
         """
         return f"qa-plan-repair:{self.ctx.story_slug}"
 
-    def _story_chain(self) -> str:
-        """The backbone conversation this story's primary turns run on.
-
-        One key per story, derived from the slug alone, so this lane continues whatever
-        conversation an earlier lane in the run left under it rather than opening a cold
-        one — and opens a cold one when there is no earlier lane.
-        Distinct from `_chain`/`_WORKLISTS`: those name the narrower,
-        intentionally-isolated repair loops, and stay untouched by this one.
-        """
-        return story_chain(self.ctx.story_slug)
-
     #: The repair loops that run on a chain of their own, as the worklist half of their key.
     #: `fix_regression` builds its this way; the plan-repair chain is `_chain`, which several
     #: states reset on its own. The fix loop is deliberately absent: it runs on the story's
@@ -655,7 +644,7 @@ class Qa(Workflow):
             build_okf_context,
             self.ctx.spec_dir,
             self.ctx.story_path,
-            self._features_root,
+            features_root(self),
             tuple(impl.qa_source_roots),
             "HEAD",
             "WORKTREE",
@@ -787,7 +776,7 @@ class Qa(Workflow):
                 # obligation packet that both already exist. (A standing validated plan
                 # never reaches this turn any more — it is adopted above.)
                 power="medium",
-                session=self._story_chain(),
+                session=backbone(self),
                 # 20 min. Without a cap this node inherits the run's 3600s watchdog, and it
                 # used it: over four days its longest turns were exactly 60.0 min, and two
                 # thirds of the whole node's wall clock was spent past the 15-min mark by the
@@ -1184,7 +1173,7 @@ class Qa(Workflow):
             # medium: judging a runner's output against a plan that already passed two
             # gates. The adversarial read is `audit_qa`'s job, at high.
             power="medium",
-            session=self._story_chain(),
+            session=backbone(self),
             add_dirs=self._dirs(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
@@ -1398,7 +1387,7 @@ class Qa(Workflow):
             # medium: sorting findings into in-AC and adjacent, against a story whose ACs
             # are written down.
             power="medium",
-            session=self._story_chain(),
+            session=backbone(self),
             add_dirs=self._dirs(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
@@ -1449,7 +1438,7 @@ class Qa(Workflow):
             returns=QaReport,
             # medium: summarising findings that are already written down, into a tracker.
             power="medium",
-            session=self._story_chain(),
+            session=backbone(self),
             add_dirs=self._dirs(),
             args=turn.args | {
                 "story_path": self.ctx.story_path,
@@ -1688,7 +1677,7 @@ class Qa(Workflow):
             returns=QaReport,
             # medium: the same summarising job as `report_qa_dev`, on a green story.
             power="medium",
-            session=self._story_chain(),
+            session=backbone(self),
             add_dirs=self._dirs(),
             args=turn.args | {
                 "story_path": self.ctx.story_path,
@@ -1764,7 +1753,7 @@ class Qa(Workflow):
             qa_notes=loop.qa.notes,
             operator_feedback=None,
             power="high",
-            session=self._story_chain(),
+            session=backbone(self),
         )
         loop = loop.charged(time.monotonic() - started).update(
             qa=result, qa_rework=loop.qa_rework + 1, docs_recheck_required=True
@@ -1894,7 +1883,7 @@ class Qa(Workflow):
                 "remaining_scenarios": list(loop.fix_worklist[1:]),
                 "qa_notes": loop.qa.notes,
             },
-            session=self._story_chain(),
+            session=backbone(self),
         )
 
     # ── the setup-repair loop ─────────────────────────────────────────────────────────
@@ -1997,7 +1986,7 @@ class Qa(Workflow):
         # handed has to *contain* the note the resolver just wrote there — which is what
         # `_escalation` does, on top of saying what was tried and what would unblock it.
         gate = self._escalation(loop, result)
-        return Await(self._context, gate.body, self.read_operator, loop=loop)
+        return Await(context_path(self), gate.body, self.read_operator, loop=loop)
 
     def read_operator(self, loop: QaLoop) -> Continue | Done:
         """Consume the answer and route on the scope the answerer chose.
@@ -2042,7 +2031,7 @@ class Qa(Workflow):
             qa_notes=loop.qa.notes,
             operator_feedback=content,
             power="medium",
-            session=self._story_chain(),
+            session=backbone(self),
         )
         loop = loop.charged(time.monotonic() - started).update(
             qa=result,
@@ -2458,7 +2447,7 @@ class Qa(Workflow):
         loop = loop.update(escalations=loop.escalations + 1)
         if self.operator_mode in {"human", "operator"} or loop.escalations > self.MAX_QA_BLOCKS:
             gate = self._escalation(loop)
-            return Await(self._context, gate.body, self.read_operator, loop=loop)
+            return Await(context_path(self), gate.body, self.read_operator, loop=loop)
         return Continue(result, self.resolve_operator, loop=loop)
 
     def _escalation(
@@ -2570,16 +2559,6 @@ class Qa(Workflow):
             args=turn.args | args,
             session=session,
         )
-
-    @property
-    def _features_root(self) -> str:
-        """Where the OKF feature docs live, as `detect_qa_okf` resolved it."""
-        return self.output(detect_okf_docs).features_root
-
-    @property
-    def _context(self) -> Path:
-        """The file an `Await` writes its questions into: `<story-folder>/context.md`."""
-        return paths.story_context_path(self.ctx.story_path)
 
     def _dirs(self) -> list[str]:
         """The repos this story's plan touches — every agent turn's `add_dirs`.

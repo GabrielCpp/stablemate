@@ -55,7 +55,6 @@ Divergences from the YAML, all deliberate:
 """
 from __future__ import annotations
 
-from pathlib import Path
 from typing import ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
@@ -75,7 +74,7 @@ from workhorse_workflows.coder.shared.dev import (
     resolve_impl_context,
     select_next_layer,
 )
-from workhorse_workflows.coder.shared.escalation import escalation
+from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.queue import commit_story
 from workhorse_workflows.coder.shared.story import prepare_fix_story, resolve_workspace_dirs
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
@@ -388,17 +387,8 @@ class Fix(Workflow):
             story=self._story,
         )
         return Await(
-            self._context, gate.body, self.read_operator_impl, impl_blocks=impl_blocks + 1
+            context_path(self, self._story.story_path), gate.body, self.read_operator_impl, impl_blocks=impl_blocks + 1
         )
-
-    @property
-    def _context(self) -> Path:
-        """The file an `Await` writes its questions into: `<story-folder>/context.md`.
-
-        The drained item's own story folder, not the run's — this flow has a new story per
-        iteration, so the question lands beside the item it is about.
-        """
-        return paths.story_context_path(self._story.story_path)
 
     def _qa(self) -> QaResult:
         """`qa-fix-item.md`, which `check_fix` and `recheck_fix` ran with identical arguments.

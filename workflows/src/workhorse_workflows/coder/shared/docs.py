@@ -22,6 +22,7 @@ from git.exc import GitError
 from ostler import Ostler, path as okf_path
 from ostler.model import Graph
 from ostler import refs as refs_mod
+from workhorse.pyflow import Workflow
 from workhorse_workflows.kit import find_docs_root, load_json
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.docs import (
@@ -662,10 +663,20 @@ def documentation_obligations(
     )
 
 
+def features_root(flow: Workflow) -> str:
+    """Where the OKF feature docs live, as `detect_okf_docs` resolved it in `setup`.
+
+    Read back off the recorded output rather than threaded, so the two lanes that render it
+    into a prompt cannot disagree with the detection the run already made.
+    """
+    return flow.output(detect_okf_docs).features_root
+
+
 __all__ = [
     "classify_documentation_context",
     "detect_okf_docs",
     "documentation_obligations",
+    "features_root",
     "ungrounded_refs",
     "verify_story_documentation",
 ]

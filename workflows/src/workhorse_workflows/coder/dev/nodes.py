@@ -16,20 +16,19 @@ branch.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from workhorse.pyflow import Await, Continue, Done
 
-from workhorse_workflows.coder.shared import paths, roles
-from workhorse_workflows.coder.shared.conversation import spend_turn, story_chain
+from workhorse_workflows.coder.shared import roles
+from workhorse_workflows.coder.shared.conversation import backbone, spend_turn
 from workhorse_workflows.coder.shared.dev import (
     declared_gates,
     read_plan_text,
     resolve_impl_context,
     select_next_layer,
 )
-from workhorse_workflows.coder.shared.escalation import escalation
+from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.resolution import RESOLVER_POWER, resolver_args
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 from workhorse_workflows.coder.shared.schemas.dev import (
@@ -41,7 +40,7 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     OperatorResolution,
     PlanResult,
 )
-from workhorse_workflows.coder.shared.story import resolve_workspace_dirs
+from workhorse_workflows.coder.shared.story import workspace_dirs
 
 if TYPE_CHECKING:
     from workhorse_workflows.coder.dev.flow import Dev
@@ -86,20 +85,6 @@ def repair_chain(flow: Dev, worklist: str) -> str:
     return f"plan-{worklist}:{flow.ctx.story_slug}"
 
 
-def backbone(flow: Dev) -> str:
-    """The story's primary conversation: planning, implementation and every repair turn.
-
-    One key per story, derived from the slug alone, so this lane and every lane after it
-    name the same conversation without being handed anything. Distinct from
-    `repair_chain`, which names the narrower, intentionally-isolated plan-repair loops.
-
-    A fixer in a fresh context spends its first minutes reading the code the implementer
-    wrote minutes earlier, and then reports on a diff it has only just met. `spend` is
-    what keeps that shared conversation from growing without end.
-    """
-    return story_chain(flow.ctx.story_slug)
-
-
 def spend(flow: Dev, lap: Lap) -> Lap:
     """Count one turn onto the story conversation, recycling it when it is full."""
     turns = spend_turn(flow, backbone(flow), lap.session_turns, MAX_SESSION_TURNS)
@@ -119,24 +104,6 @@ def ends(flow: Dev, result: DevResult, session_turns: int = 0) -> Done:
         flow.reset_session(repair_chain(flow, worklist))
     result.session_turns = session_turns
     return Done(result)
-
-
-def dirs(flow: Dev) -> list[str]:
-    """Every directory this run's agent turns may read.
-
-    Resolved once in `setup` and read back here, because an agent turn runs with one
-    service repo as its cwd while the story, spec and plan files it works against live in
-    the docs root.
-    """
-    return list(flow.output(resolve_workspace_dirs).dirs)
-
-
-def context_path(flow: Dev) -> Path:
-    """The file an `Await` writes its questions into: `<story-folder>/context.md`.
-
-    Next to the story, so the operator answering is reading the story it is about.
-    """
-    return paths.story_context_path(flow.ctx.story_path)
 
 
 def current_layer(flow: Dev) -> DispatchEntry:
@@ -189,7 +156,7 @@ def resolver_turn(flow: Dev, block_kind: str, notes: str) -> OperatorResolution:
         returns=OperatorResolution,
         power=RESOLVER_POWER,
         timeout=UNBOUNDED,
-        add_dirs=dirs(flow),
+        add_dirs=workspace_dirs(flow),
         args=resolver_args(
             flow, block_kind=block_kind, notes=notes, docs_path=flow.docs_path
         ),
@@ -289,7 +256,7 @@ def refine(
         turn.prompt,
         returns=PlanResult,
         power=power,
-        add_dirs=dirs(flow),
+        add_dirs=workspace_dirs(flow),
         args=turn.args | {
             "story_slug": flow.ctx.story_slug,
             "epic": flow.epic,
@@ -338,7 +305,7 @@ def implement_layer(flow: Dev, operator_context: str) -> ImplResult:
         power="high",
         session=backbone(flow),
         cwd=layer.cwd,
-        add_dirs=dirs(flow),
+        add_dirs=workspace_dirs(flow),
         args=turn.args | {
             "story_slug": flow.ctx.story_slug,
             "epic": flow.epic,
@@ -366,10 +333,7 @@ __all__ = [
     "MAX_SESSION_TURNS",
     "MAX_VALIDATE_REWORKS",
     "UNBOUNDED",
-    "backbone",
-    "context_path",
     "current_layer",
-    "dirs",
     "ends",
     "escalate",
     "gate_impl",

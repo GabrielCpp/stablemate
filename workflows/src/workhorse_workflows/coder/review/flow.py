@@ -59,7 +59,6 @@ Divergences from the YAML, all deliberate:
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow
@@ -70,7 +69,7 @@ from workhorse_workflows.coder.shared.dev import (
     read_operator_context,
     resolve_impl_context,
 )
-from workhorse_workflows.coder.shared.escalation import escalation
+from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.resolution import (
     RESOLVER_POWER,
     answered,
@@ -86,6 +85,7 @@ from workhorse_workflows.coder.shared.story import (
     prepare_story,
     resolve_workspace_dirs,
     stamp_specs,
+    workspace_dirs,
 )
 from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.shared.schemas.dev import (
@@ -223,7 +223,7 @@ class Review(Workflow):
             power="medium",
             session=self._feeder_chain,
             cwd=self._docs_repo,
-            add_dirs=self._dirs(),
+            add_dirs=workspace_dirs(self),
             args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "affected_repo_paths": self._repos,
@@ -277,7 +277,7 @@ class Review(Workflow):
             # high: the binding judgement on whether the story was actually implemented.
             power="high",
             cwd=self._docs_repo,
-            add_dirs=self._dirs(),
+            add_dirs=workspace_dirs(self),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
                 "epic": self.epic,
@@ -343,7 +343,7 @@ class Review(Workflow):
             turn.prompt,
             returns=ImplResult,
             power=self._apply_power(),
-            add_dirs=self._dirs(),
+            add_dirs=workspace_dirs(self),
             session=self._impl_chain(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
@@ -441,7 +441,7 @@ class Review(Workflow):
         if self.operator_mode in {"human", "operator"} or review_blocks >= self.MAX_REVIEW_BLOCKS:
             gate = self._escalation(notes, review_blocks, where=where)
             return Await(
-                self._context,
+                context_path(self),
                 gate.body,
                 self.read_operator,
                 notes=notes,
@@ -486,7 +486,7 @@ class Review(Workflow):
             # finding nobody else could settle.
             power=RESOLVER_POWER,
             timeout=UNBOUNDED,
-            add_dirs=self._dirs(),
+            add_dirs=workspace_dirs(self),
             args=resolver_args(
                 self, block_kind="review", notes=notes, docs_path=self.docs_path
             ),
@@ -504,7 +504,7 @@ class Review(Workflow):
         # file and `Await` writes over it, so the body handed here carries that note
         # forward along with what the resolver tried.
         return Await(
-            self._context,
+            context_path(self),
             self._escalation(notes, review_blocks, result, where=where).body,
             self.read_operator,
             notes=notes,
@@ -563,7 +563,7 @@ class Review(Workflow):
             turn.prompt,
             returns=ImplResult,
             power=self._apply_power(),
-            add_dirs=self._dirs(),
+            add_dirs=workspace_dirs(self),
             session=self._impl_chain(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
@@ -643,7 +643,7 @@ class Review(Workflow):
             turn.prompt,
             returns=ImplResult,
             power=self._apply_power(),
-            add_dirs=self._dirs(),
+            add_dirs=workspace_dirs(self),
             session=self._impl_chain(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
@@ -689,11 +689,6 @@ class Review(Workflow):
         """The coding standards the implementer built against — see `setup`."""
         return list(self.output(resolve_impl_context).impl_instruction_paths)
 
-    @property
-    def _context(self) -> Path:
-        """The file an `Await` writes its questions into: `<story-folder>/context.md`."""
-        return paths.story_context_path(self.ctx.story_path)
-
     def _escalation(
         self,
         notes: str,
@@ -716,10 +711,6 @@ class Review(Workflow):
             result=result,
             findings=findings,
         )
-
-    def _dirs(self) -> list[str]:
-        """Every directory this run's agent turns may read."""
-        return list(self.output(resolve_workspace_dirs).dirs)
 
     @property
     def _feeder_chain(self) -> str:

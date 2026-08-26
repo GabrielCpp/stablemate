@@ -24,7 +24,7 @@ import logging
 from pathlib import Path
 
 from ostler import Ostler, markdown, path as okf_path, registry
-from workhorse.pyflow import WorkflowFailed
+from workhorse.pyflow import Workflow, WorkflowFailed
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import stubs
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -158,6 +158,17 @@ def resolve_workspace_dirs(
     return WorkspaceDirs(dirs=dirs)
 
 
+def workspace_dirs(flow: Workflow) -> list[str]:
+    """Every directory this run's agent turns may read, off the recorded `setup` output.
+
+    Resolved once and read back rather than threaded, because an agent turn runs with one
+    service repo as its cwd while the story, spec and plan files it works against live in
+    the docs root. Lanes whose `add_dirs` is narrower than the workspace — qa grants only
+    the repos the plan touches — do not come through here.
+    """
+    return list(flow.output(resolve_workspace_dirs).dirs)
+
+
 @blueprint.node
 def stamp_specs(
     logger: logging.Logger, docs_path: str = "", story_slug: str = "", repo_dir: str = ""
@@ -232,4 +243,10 @@ def prepare_fix_story(
     return prepare_story(logger, docs_path=docs_path, story=story, epic=epic, repo_dir=repo_dir)
 
 
-__all__ = ["prepare_fix_story", "prepare_story", "resolve_workspace_dirs", "stamp_specs"]
+__all__ = [
+    "prepare_fix_story",
+    "prepare_story",
+    "resolve_workspace_dirs",
+    "stamp_specs",
+    "workspace_dirs",
+]

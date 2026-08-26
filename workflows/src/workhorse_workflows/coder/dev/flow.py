@@ -34,6 +34,8 @@ from typing import Any, ClassVar
 from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.coder.dev import nodes
 from workhorse_workflows.coder.shared import paths, roles
+from workhorse_workflows.coder.shared.conversation import backbone
+from workhorse_workflows.coder.shared.escalation import context_path
 from workhorse_workflows.coder.shared.dev import (
     GATE_ORDER,
     branch_code_repos,
@@ -51,6 +53,7 @@ from workhorse_workflows.coder.shared.story import (
     prepare_story,
     resolve_workspace_dirs,
     stamp_specs,
+    workspace_dirs,
 )
 from workhorse_workflows.coder.shared.schemas.dev import (
     DevResult,
@@ -138,8 +141,8 @@ class Dev(Workflow):
             # high: authors the plan, including high-stakes prod operations (deploys,
             # security-group / egress changes) — worth the stronger reasoning.
             power="high",
-            session=nodes.backbone(self),
-            add_dirs=nodes.dirs(self),
+            session=backbone(self),
+            add_dirs=workspace_dirs(self),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
                 "epic": self.epic,
@@ -184,7 +187,7 @@ class Dev(Workflow):
         # human reading the block summary instead of the investigation.
         gate = nodes.escalate(self, notes, plan_blocks, result)
         return Await(
-            nodes.context_path(self),
+            context_path(self),
             gate.body,
             self.read_operator,
             notes=notes,
@@ -358,7 +361,7 @@ class Dev(Workflow):
         only the entry boundary is cut.
         """
         if not impl_blocks and not operator_context:
-            self.reset_session(nodes.backbone(self))
+            self.reset_session(backbone(self))
             lap = lap.model_copy(update={"session_turns": 0})
         lap = nodes.spend(self, lap)
         result = nodes.implement_layer(self, operator_context)
@@ -439,7 +442,7 @@ class Dev(Workflow):
             returns=FixResult,
             power="high" if stalled or lap.fix_lap >= 2 else "low",
             cwd=layer.cwd,
-            add_dirs=nodes.dirs(self),
+            add_dirs=workspace_dirs(self),
             args=turn.args | {
                 # Dumped rather than passed as a model: everything in `args` is
                 # checkpointed, and a checkpoint holds JSON.
@@ -453,7 +456,7 @@ class Dev(Workflow):
                 "epic": self.epic,
                 "story_slug": self.ctx.story_slug,
             },
-            session=nodes.backbone(self),
+            session=backbone(self),
         )
         if result.blocked:
             return nodes.gate_impl(
@@ -499,7 +502,7 @@ class Dev(Workflow):
             self, notes, impl_blocks, result, block_kind="implementation", where=where
         )
         return Await(
-            nodes.context_path(self),
+            context_path(self),
             gate.body,
             self.read_operator_impl,
             index=index,

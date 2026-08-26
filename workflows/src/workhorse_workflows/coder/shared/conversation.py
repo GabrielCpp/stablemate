@@ -38,6 +38,16 @@ def story_chain(slug: str) -> str:
     return f"story:{slug}"
 
 
+def backbone(flow: Workflow) -> str:
+    """The chain the story on this flow's `ctx` runs its primary turns on.
+
+    The one-liner every lane held its own copy of. Derived from the slug on `ctx`, so a
+    lane names the conversation an earlier lane left without being handed anything, and
+    stays distinct from the narrower repair chains each lane keys for itself.
+    """
+    return story_chain(flow.ctx.story_slug)
+
+
 def spend_turn(flow: Workflow, chain: str, turns: int, cap: int) -> int:
     """Count one turn onto `chain`, recycling it when it is full.
 
@@ -55,4 +65,4 @@ def spend_turn(flow: Workflow, chain: str, turns: int, cap: int) -> int:
     return turns + 1
 
 
-__all__ = ["spend_turn", "story_chain"]
+__all__ = ["backbone", "spend_turn", "story_chain"]

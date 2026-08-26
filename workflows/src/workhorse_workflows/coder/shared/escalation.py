@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 from workhorse.pyflow import Workflow
@@ -209,4 +210,15 @@ def escalation(
     )
 
 
-__all__ = ["compose_escalation", "escalation"]
+def context_path(flow: Workflow, story_path: str = "") -> Path:
+    """The file an `Await` writes its questions into: `<story-folder>/context.md`.
+
+    Next to the story, so whoever answers is reading the story it is about. `story_path`
+    overrides `flow.ctx` for the one lane whose `ctx` is not the story being asked about:
+    the backlog drain has a new story per iteration, and the question belongs beside the
+    item it is about rather than beside the run.
+    """
+    return paths.story_context_path(story_path or flow.ctx.story_path)
+
+
+__all__ = ["compose_escalation", "context_path", "escalation"]

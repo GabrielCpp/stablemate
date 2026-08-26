@@ -18,10 +18,13 @@ from typing import Any
 
 import pytest
 
-from workhorse_workflows.coder.dev import nodes
+from workhorse_workflows.coder.dev import flow as dev_flow, nodes
+from workhorse_workflows.coder.shared.conversation import backbone
 from workhorse_workflows.coder.dev.flow import Dev
+from workhorse_workflows.coder.docs import flow as docs_flow
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.qa.flow import Qa
+from workhorse_workflows.coder.review import flow as review_flow
 from workhorse_workflows.coder.review.flow import Review
 from workhorse_workflows.coder.shared.schemas.dev import DevResult, Lap
 from workhorse_workflows.coder.shared.schemas.docs import DocsProgress, DocsResult
@@ -81,11 +84,11 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
         monkeypatch.setattr(flow, "reset_session", fake_reset)
         monkeypatch.setattr(flow, "logger", property(lambda _: logging.getLogger("test")))
         monkeypatch.setattr(flow, "_require_engine", fake_require_engine)
-    for flow in (Docs, Qa, Review):
-        monkeypatch.setattr(flow, "_dirs", lambda _: [])
-    # The dev lane's helpers are module functions rather than methods — same seam, one
-    # level out.
-    monkeypatch.setattr(nodes, "dirs", lambda _: [])
+    monkeypatch.setattr(Qa, "_dirs", lambda _: [])
+    # Everywhere else the helper is a shared module function, so the seam is the name each
+    # module imported it under rather than an attribute on the class.
+    for module in (docs_flow, review_flow, dev_flow, nodes):
+        monkeypatch.setattr(module, "workspace_dirs", lambda _: [])
     monkeypatch.setattr(Docs, "_author_args", lambda *a, **k: {})
     monkeypatch.setattr(Qa, "_plan_args", lambda *a, **k: {})
     return seen
@@ -189,10 +192,10 @@ def test_every_lane_names_the_same_conversation_without_being_handed_anything(
         monkeypatch.setattr(flow_cls, "call", lambda _self, _node, *a, **k: ctx)
 
     for flow, chain in (
-        (_docs(), lambda f: f._story_chain()),
-        (_qa(), lambda f: f._story_chain()),
+        (_docs(), backbone),
+        (_qa(), backbone),
         # The dev lane derives it in `nodes` rather than on the class; the key is the same.
-        (_dev(), lambda f: nodes.backbone(f)),
+        (_dev(), backbone),
         # The review lane names the same key from the other side: the conversation it
         # rejoins is the implementer's.
         (_review(), lambda f: f._impl_chain()),
@@ -281,8 +284,8 @@ def test_the_fix_loop_and_the_operator_guided_lap_are_one_conversation(spy: _Spy
     already tried. Both run on the story's backbone chain, which also means a fix lap
     resumes an implement session threaded in from a prior stage rather than a cold one."""
     flow = _qa()
-    _apply(flow, session=flow._story_chain())
-    _apply(flow, session=flow._story_chain())
+    _apply(flow, session=backbone(flow))
+    _apply(flow, session=backbone(flow))
 
     assert [turn["session"] for turn in spy.turns] == [f"story:{STORY}"] * 2
 
