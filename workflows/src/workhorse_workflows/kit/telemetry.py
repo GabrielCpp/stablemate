@@ -11,7 +11,13 @@ reported. Verdicts are restricted by their callers to closed, low-cardinality vo
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
+
+#: The closed vocabulary `progress_verdict` answers in. Named so the models that record
+#: a verdict can type the field with it instead of restating the six words.
+ProgressVerdict = Literal[
+    "cleared", "first_pass", "reduced", "regressed", "stalled", "churned"
+]
 
 
 def counter_labels(
@@ -38,7 +44,9 @@ def verdict_labels(
     return labels
 
 
-def progress_verdict(previous: Sequence[str] | None, current: Sequence[str]) -> str:
+def progress_verdict(
+    previous: Sequence[str] | None, current: Sequence[str]
+) -> ProgressVerdict:
     """Classify what one pass of a bounded rework loop did to its outstanding findings.
 
     A counter says a story was *expensive*; it cannot say whether the expense bought

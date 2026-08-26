@@ -10,21 +10,25 @@ from __future__ import annotations
 
 from typing import ClassVar, Literal
 
+from pydantic import BaseModel, Field
+
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
-from workhorse_workflows.kit.telemetry import progress_verdict
+from workhorse_workflows.kit.telemetry import ProgressVerdict, progress_verdict
 
 
 class OkfDetection(CoderResult):
     """`detect-okf-docs.py` — are this repo's docs managed by an OKF graph at all?
 
     The cheap pre-gate in front of an agent turn: most repos the coder runs against do not
-    use ostler, and `document_story` has nothing to do there. `has_okf` is `yes`, `no` or
-    `invalid`, and each arm is distinct — `no` ends the flow successfully as
-    "not applicable", `invalid` fails it, because a graph that is configured and will not
-    load is a broken repo rather than an unmanaged one.
+    use ostler, and `document_story` has nothing to do there. Each arm is distinct — `no`
+    ends the flow successfully as "not applicable", `invalid` fails it, because a graph
+    that is configured and will not load is a broken repo rather than an unmanaged one.
+
+    Python-produced, so the field carries the pessimistic default: a node that returned
+    without deciding has found no book, which is the arm that costs nothing.
     """
 
-    has_okf: str = "no"
+    has_okf: Literal["yes", "no", "invalid"] = "no"
     features_root: str = ""
     reason: str = ""
 
@@ -32,14 +36,18 @@ class OkfDetection(CoderResult):
 class ContextClassification(CoderResult):
     """`classify-documentation-context.py` — deterministic diff mapping, or semantic review?
 
-    `mode` is `local` when every affected source root lives inside the docs repo's own git
-    worktree, which is what makes a diff-to-OKF mapping possible; `semantic` otherwise, and
-    then doctor plus an independent review turn is the authority instead. Anything else fails
-    the flow — the YAML's `default:` arm — because a mode nothing recognises means the
-    classifier itself is broken.
+    `local` when every affected source root lives inside the docs repo's own git worktree,
+    which is what makes a diff-to-OKF mapping possible; `semantic` when they do not, and
+    then doctor plus an independent review turn is the authority instead.
+
+    `error` is neither, and it is the reason this is a three-word vocabulary. Reading the
+    worktree can *fail* — a git binary that is not there, a repository the process cannot
+    open — and answering that with `semantic` silently turns the grounding gate off for
+    the rest of the story while reporting a mode the flow believes. An error is reported
+    as one, and the flow refuses rather than gates half a book.
     """
 
-    mode: str = "semantic"
+    mode: Literal["local", "semantic", "error"] = "semantic"
     source_roots: list[str] = []
     notes: str = ""
 
@@ -66,13 +74,17 @@ class WorktreeSnapshot(CoderResult):
 class DocumentationResult(CoderResult):
     """`docs/prompts/document-story.md` — the story folded into the as-built OKF book.
 
-    `status` is `documented`, `not_required` or `blocked`, and a blank takes the YAML's
-    `default:` arm, which is `blocked` — an author that did not speak has not documented
-    anything. `nodes` is the OKF node ids it claims to have touched, and the grounding gate
-    below checks that claim against the diff rather than taking it.
+    Agent-produced, so `status` is required and closed: there is no blank to take a
+    default arm, because a reply that does not carry one of these three words is a parse
+    failure the runner answers with a retry turn.
+
+    `nodes` is the OKF node ids the author claims to have touched. Advisory: the gate
+    reads the book's own diff for the nodes this story is answerable for, and adds these
+    to it rather than believing them — an author that names nothing has still edited
+    whatever it edited.
     """
 
-    status: str = ""
+    status: Literal["documented", "not_required", "blocked"]
     nodes: list[str] = []
     notes: str = ""
 
@@ -80,8 +92,8 @@ class DocumentationResult(CoderResult):
 class DocumentationGate(CoderResult):
     """`verify-story-documentation.py` — the fail-closed conformance and grounding gate.
 
-    `status` is `passed` or `invalid`; a blank takes the YAML's `default:` arm, which is the
-    rework guard, so nothing but an explicit pass reaches the reviewer. The two counts are
+    Python-produced, and the default is the rework guard, so nothing but an explicit pass
+    reaches the reviewer. The two counts are
     diagnostics: how many changed production units the packet saw, and how many doctor errors
     landed on a node this story actually affected.
 
@@ -93,7 +105,7 @@ class DocumentationGate(CoderResult):
     ones back. Empty on `passed`.
     """
 
-    status: str = ""
+    status: Literal["passed", "invalid"] = "invalid"
     notes: str = ""
     changed_code_count: int = 0
     doctor_error_count: int = 0
@@ -120,8 +132,10 @@ class DocumentationFinding(Finding):
     a finding carrying a target and a repair is something a fixer can act on, and one
     carrying neither is what a block hands to the operator instead of round the loop again.
 
-    `kind` is intentionally closed: it lets static tests and later deterministic tooling tell a
-    node-type problem from an overclaim rather than scraping prose.
+    `kind` is intentionally closed *and required*: it lets static tests and later
+    deterministic tooling tell a node-type problem from an overclaim rather than scraping
+    prose, and a default would have quietly filed every finding whose kind the reviewer
+    omitted under whichever word the default named.
     """
 
     id: str = ""
@@ -134,19 +148,18 @@ class DocumentationFinding(Finding):
         "grounding",
         "verify-overclaim",
         "author-decision",
-    ] = "overclaim"
+    ]
 
 
 class DocumentationReview(CoderResult):
     """`docs/prompts/review-story-documentation.md` — an independent read of what was written.
 
-    `status` is `approved`, `revise` or `blocked`. A blank takes `revise`, the YAML's
-    `default:`, which spends a rework rather than approving or failing. A `revise` verdict
-    must carry structured findings; the free-form `notes` is a summary, not the repair
-    contract.
+    Agent-produced, so `status` is required and closed, for the reason
+    `DocumentationResult` gives. A `revise` verdict must carry structured findings; the
+    free-form `notes` is a summary, not the repair contract.
     """
 
-    status: str = ""
+    status: Literal["approved", "revise", "blocked"]
     findings: list[DocumentationFinding] = []
     notes: str = ""
 
@@ -171,10 +184,13 @@ class DocsProgress(CoderResult):
     between lanes as nonsense.
     """
 
-    gate_verdict: str = ""  #: passed | invalid
-    review_disposition: str = ""  #: approved | revise | blocked
-    gate_progress_verdict: str = ""  #: see `kit.telemetry.progress_verdict`
-    review_progress_verdict: str = ""  #: idem, over the semantic lane
+    #: Each verdict keeps `""` in its union: this is a threaded state parameter, so a
+    #: resume arrives holding whatever the checkpoint before it wrote, and "no pass of this
+    #: lane has decided anything yet" is a value the model has to be able to hold.
+    gate_verdict: Literal["", "passed", "invalid"] = ""
+    review_disposition: Literal["", "approved", "revise", "blocked"] = ""
+    gate_progress_verdict: ProgressVerdict | Literal[""] = ""
+    review_progress_verdict: ProgressVerdict | Literal[""] = ""
 
     gate_failures: int = 0
     review_findings: int = 0
@@ -218,7 +234,7 @@ class DocsProgress(CoderResult):
         ids = list(gate.failures)
         return self.model_copy(
             update={
-                "gate_verdict": gate.status or "invalid",
+                "gate_verdict": gate.status,
                 "gate_failures": len(ids),
                 "gate_progress_verdict": progress_verdict(self.gate_ids or None, ids),
                 "gate_ids": ids,
@@ -234,12 +250,66 @@ class DocsProgress(CoderResult):
         ids = [finding.id for finding in review.findings] if review.status == "revise" else []
         return self.model_copy(
             update={
-                "review_disposition": review.status or "revise",
+                "review_disposition": review.status,
                 "review_findings": len(ids),
                 "review_progress_verdict": progress_verdict(self.review_ids or None, ids),
                 "review_ids": ids,
             }
         )
+
+
+class DocsLoop(BaseModel):
+    """Everything one documentation pass carries into the next, as one state parameter.
+
+    A bare `BaseModel` rather than a `CoderResult`, for the reason `ReviewLoop` gives:
+    nothing returns it and no agent fills it in, so it wants neither the dropped nulls nor
+    the `blocked` reading those buy.
+
+    These eight values travelled as eight keyword arguments through nine signatures, and
+    every state that merely passed them along had to name all eight — which is how
+    `_blocked` came to omit one of them and reset the reviewer's budget by accident. A
+    bundle makes a reset something written down (`model_copy(update=...)`) rather than
+    something spelled by omission.
+    """
+
+    #: Grounding-gate failures spent on this story.
+    rework: int = 0
+
+    #: Reviewer revisions, counted separately — see `Docs._rework` for the run that forced
+    #: the split. Reset when a ratified answer arrives, because the passes before it were
+    #: spent arguing about a question that had no answer yet.
+    review_rework: int = 0
+
+    #: Trips through the author gate, resolver answers included. Never reset: it is what
+    #: walks a lapping resolver toward a person, the same shape `ReviewLoop.blocks` has.
+    blocks: int = 0
+
+    #: The last gate's rework brief and the last review's findings, carried rather than
+    #: reset: a second gate failure still shows the author what the reviewer said the first
+    #: time.
+    gate_notes: str = ""
+    review_notes: str = ""
+
+    #: The grounding worklist as it stands — what `start` computed, minus what each pass
+    #: closed. Shrinks, which is right for an author being told what is left to do.
+    obligations: tuple[str, ...] = ()
+
+    #: Every node any pass named, accumulated rather than replaced. A repair lap that
+    #: correctly concludes a finding needs no edit names nothing, and scoring the gate on
+    #: that one lap read it as an author that had never spoken.
+    authored_nodes: tuple[str, ...] = ()
+
+    #: What each gate last decided, and whether the rework it forced bought anything.
+    progress: DocsProgress = Field(default_factory=DocsProgress)
+
+    #: Both budgets, as span dimensions. Bare names here; `Docs.state_labels` supplies the
+    #: `docs.` prefix.
+    COUNT_LABELS: ClassVar[tuple[str, ...]] = ("rework", "review_rework", "blocks")
+
+
+#: How a documentation pass ended, as the caller reads it. Named because `Coder` and its
+#: tests both hand a value in, and an alias is what keeps the four words in one place.
+DocsStatus = Literal["passed", "not_applicable", "blocked", "failed"]
 
 
 class DocsResult(CoderResult):
@@ -250,18 +320,20 @@ class DocsResult(CoderResult):
     required post-mutation recheck contain it by failing that story and taking the next one;
     the `failed story` call site still treats it as fatal.
 
-    Everything else still raises out of the flow rather than returning, because the YAML's
-    `documentation_failed` was a `type: fail` — so `failed`, the `default:` the four call
-    sites declared, is only ever reached when the sub-flow produced no value at all.
+    Everything else raises out of the flow rather than returning, so `failed` — the
+    pessimistic default this Python-produced status carries — is only ever reached when the
+    sub-flow produced no value at all.
     """
 
-    status: str = "failed"
+    status: DocsStatus = "failed"
     notes: str = ""
     authored_nodes: list[str] = []
 
 
 __all__ = [
     "ContextClassification",
+    "DocsLoop",
+    "DocsStatus",
     "DocsProgress",
     "DocsResult",
     "DocumentationFinding",

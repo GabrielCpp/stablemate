@@ -19,6 +19,7 @@ from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.author.epic_edit.flow import EpicEdit
 from workhorse_workflows.coder.shared.schemas.docs import (
+    DocsLoop,
     DocsProgress,
     DocumentationFinding,
     DocumentationGate,
@@ -190,7 +191,9 @@ def test_the_gate_verdict_is_forgotten_with_the_failures_it_summarises():
 def test_only_a_revise_leaves_a_worklist_for_the_next_pass():
     """`approved` and `blocked` both end the flow, so neither leaves findings outstanding —
     even if the reviewer attached some to explain itself."""
-    finding = DocumentationFinding(id="D1", target="docs/features/widget.md#links")
+    finding = DocumentationFinding(
+        id="D1", kind="overclaim", target="docs/features/widget.md#links"
+    )
     revised = DocsProgress().after_review(
         DocumentationReview(status="revise", findings=[finding])
     )
@@ -207,7 +210,7 @@ def test_docs_reports_its_gates_and_whether_the_rework_bought_anything():
         gate_failures=2,
         gate_progress_verdict="stalled",
     )
-    labels = _sealed(Docs).state_labels({"rework": 2, "progress": progress})
+    labels = _sealed(Docs).state_labels({"loop": DocsLoop(rework=2, progress=progress)})
     assert labels["work_id"] == "04-tabs"
     assert labels["docs.rework"] == "2"
     assert labels["docs.gate_verdict"] == "invalid"

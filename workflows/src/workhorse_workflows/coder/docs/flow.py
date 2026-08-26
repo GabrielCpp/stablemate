@@ -52,7 +52,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.kit import find_docs_root
@@ -85,6 +85,7 @@ from workhorse_workflows.coder.shared.story import (
 )
 from workhorse_workflows.coder.shared.schemas.docs import (
     ContextClassification,
+    DocsLoop,
     DocsProgress,
     DocsResult,
     DocumentationFinding,
@@ -93,6 +94,7 @@ from workhorse_workflows.coder.shared.schemas.docs import (
     DocumentationReview,
 )
 from workhorse_workflows.coder.shared.schemas._base import Finding
+from workhorse_workflows.coder.shared.schemas.okf import OkfContextResult
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.kit.telemetry import counter_labels, verdict_labels
@@ -168,6 +170,12 @@ class Docs(Workflow):
     #: for the run that forced the split.
     MAX_REVIEW_REWORKS: ClassVar[int] = 3
 
+    #: Trips through the author gate that get a resolver turn before every further block
+    #: goes straight to the caller — not a cap on how many times documentation may block;
+    #: there isn't one. Each trip buys the reviewer a fresh budget, so this is what bounds
+    #: the repair-and-block pair. See `_blocked`.
+    MAX_DOCS_BLOCKS: ClassVar[int] = 3
+
     #: Repair laps that ride one session chain before it is started over. A chain is worth
     #: keeping because lap N+1 already knows what lap N edited and why; past a handful of
     #: laps that value is mostly compaction summary, and a conversation that has been
@@ -212,14 +220,13 @@ class Docs(Workflow):
         self.reset_session(self._chain)
         return Done(result)
 
-    #: The two budgets, split because the grounding gate and the reviewer fail for
-    #: unrelated reasons — see `_rework`. Which one a story spent is the whole point of
-    #: keeping them apart, and it is invisible unless both are labelled.
-    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("rework", "review_rework")
-
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
         """The same, plus which attempt of which budget the next state is on, what each gate
         last decided, and whether the pass that decided it bought anything.
+
+        The two rework budgets are split because the grounding gate and the reviewer fail
+        for unrelated reasons — see `_rework`. Which one a story spent is the whole point of
+        keeping them apart, and it is invisible unless both are labelled.
 
         A verdict labels the spans opened *after* it — the author turn a `revise` forced,
         not the review turn that said the word. That is the useful direction, and the same
@@ -228,14 +235,17 @@ class Docs(Workflow):
         rather than dropping it at the transition — `groom profile` aggregates agent-turn
         spans only, and `verify` spends no turn, so a gate verdict is visible exactly
         because the next author turn inherits it.
+
+        `setup` and the first entry to `start` run before any loop exists, and report
+        nothing but the story.
         """
-        base = self.labels() | counter_labels(params, "docs", self.BUDGET_LABELS)
-        progress = params.get("progress")
-        if not isinstance(progress, DocsProgress):
-            return base
-        carried = progress.model_dump()
+        loop = params.get("loop")
+        if not isinstance(loop, DocsLoop):
+            return self.labels()
+        carried = loop.progress.model_dump()
         return (
-            base
+            self.labels()
+            | counter_labels(loop.model_dump(), "docs", DocsLoop.COUNT_LABELS)
             | counter_labels(carried, "docs", DocsProgress.COUNT_LABELS)
             | verdict_labels(carried, "docs", DocsProgress.VERDICT_LABELS)
         )
@@ -243,15 +253,15 @@ class Docs(Workflow):
     def start(self) -> Continue | Done:
         """Decide whether there is a book to document into, and how the diff can be read.
 
-        `decide_documentation_story` + `resolve_documentation_context` +
-        `detect_documentation_okf` + `decide_documentation_okf` +
-        `classify_documentation_context`. Four of the five are deterministic and the fifth is
-        a guard on `setup`'s own output, so they are one state.
-
         The three OKF arms are genuinely distinct: `no` ends the flow successfully — most
         repos the coder runs against are not managed by an OKF graph and there is nothing to
         document into — while `invalid` fails it, because a graph that is configured and will
         not load is a broken repo rather than an unmanaged one.
+
+        A classification of `error` fails here for the same reason. It says the worktree
+        could not be read at all, which is not a mode to gate in: `semantic` would turn the
+        grounding gate off and report a story documented on the strength of prose nobody
+        checked against the code.
         """
         # Whatever is left of an earlier pass's repair conversation describes a book and a
         # diff that have both moved since. Entry is the one place that is knowable.
@@ -273,59 +283,28 @@ class Docs(Workflow):
         classification = self.call(
             classify_documentation_context, self.docs_path, tuple(impl.qa_source_roots)
         )
+        if classification.mode == "error":
+            raise WorkflowFailed(
+                f"the documentation context could not be read: {classification.notes}"
+            )
         # The grounding worklist, before the author turn rather than after it. The gate
         # computes the same join from the same packet; paying for it once here is what
         # keeps the author from re-deriving it by hand, which it does badly and at length.
         obligations = self._obligations(classification)
         return Continue(
-            okf,
-            self.document,
-            obligations=tuple(obligations.refs),
-            delta_refs=tuple(obligations.refs),
+            okf, self.document, loop=DocsLoop(obligations=tuple(obligations.refs))
         )
 
-    def document(
-        self,
-        rework: int = 0,
-        review_rework: int = 0,
-        gate_notes: str = "",
-        review_notes: str = "",
-        progress: DocsProgress | None = None,
-        obligations: tuple[str, ...] = (),
-        delta_refs: tuple[str, ...] = (),
-        authored_nodes: tuple[str, ...] = (),
-        consulted: bool = False,
-    ) -> Continue | Await | Done:
+    def document(self, loop: DocsLoop) -> Continue | Await | Done:
         """Write the story into the book — the one agent turn this flow spends per pass.
 
-        `document_story` + `decide_documentation_result`. `not_required` is a real answer and
-        proceeds to the gate exactly like `documented` does, because "this story changed
-        nothing the book describes" is a claim the grounding gate can check.
-
-        A blank status taking the YAML's `default:` arm still fails the flow: an author that
-        did not speak has not documented anything, and there is no rework brief to hand it.
-        `blocked` is the opposite case and no longer fails — the author *did* speak, and what
-        it said is that the book cannot be made true of this code. It comes back as a
-        `blocked` `DocsResult` for the caller to place; see `Coder.blocked_docs` for why
-        that is one story's finding rather than the whole run's.
-
-        The two notes parameters carry the previous pass's gate and review findings, and are
-        threaded rather than reset, because under the YAML both were vars that persisted
-        across the loop — a second gate failure still shows the author what the reviewer said
-        the first time.
-
-        `progress` is threaded the same way and read by nothing but `state_labels`. It is
-        optional rather than defaulted to an instance for two reasons: a shared mutable
-        default is a hazard, and an added *optional* parameter is what keeps an in-flight
-        checkpoint resumable — `coerce_params` raises on a parameter it does not know, so a
-        state that stopped accepting the ones already written would fail every resume.
-
-        `delta_refs` is the *unnarrowed* worklist `start` computed, threaded alongside
-        `obligations` rather than folded into it. `obligations` shrinks as the gate closes
-        items, which is right for an author being told what is left to do and wrong for a
-        reviewer being told what this story is answerable for: a scope that shrinks every pass
-        would keep re-legalizing the findings it had just ruled out of bounds. This one
-        never narrows, and `review` is its only reader.
+        `not_required` is a real answer and proceeds to the gate exactly like `documented`
+        does, because "this story changed nothing the book describes" is a claim the
+        grounding gate can check. `blocked` is the third and last answer the contract
+        admits: the author *did* speak, and what it said is that the book cannot be made
+        true of this code. It comes back as a `blocked` `DocsResult` for the caller to
+        place; see `Coder.blocked_docs` for why that is one story's finding rather than the
+        whole run's.
 
         This state is the *first pass only*. A gate failure or a reviewer refusal goes to
         `repair`, which edits the nodes the findings cite instead of re-authoring the book.
@@ -340,31 +319,11 @@ class Docs(Workflow):
             power="medium",
             session=backbone(self),
             add_dirs=workspace_dirs(self),
-            args=turn.args | self._author_args(gate_notes, review_notes, obligations),
+            args=turn.args | self._author_args(loop),
         )
-        return self._authored(
-            result,
-            rework=rework,
-            review_rework=review_rework,
-            gate_notes=gate_notes,
-            review_notes=review_notes,
-            progress=progress,
-            delta_refs=delta_refs,
-            consulted=consulted,
-        )
+        return self._authored(result, loop)
 
-    def repair(
-        self,
-        rework: int = 0,
-        review_rework: int = 0,
-        gate_notes: str = "",
-        review_notes: str = "",
-        progress: DocsProgress | None = None,
-        obligations: tuple[str, ...] = (),
-        delta_refs: tuple[str, ...] = (),
-        authored_nodes: tuple[str, ...] = (),
-        consulted: bool = False,
-    ) -> Continue | Await | Done:
+    def repair(self, loop: DocsLoop) -> Continue | Await | Done:
         """Edit the nodes the findings cite, and leave every other node alone.
 
         Every pass after the first used to re-enter `document`, whose brief is "write this
@@ -375,7 +334,7 @@ class Docs(Workflow):
         own prompt) only helps if the artifact under review stops moving underneath it, which
         is what this state is for.
 
-        Same signature, same result, same gate as `document`: only the instruction and the
+        Same brief, same result, same gate as `document`: only the instruction and the
         power tier differ.
 
         The laps also share one conversation. Under a clean context per turn, lap N+1 is
@@ -395,12 +354,13 @@ class Docs(Workflow):
         """
         self.logger.info("repairing the documentation for %s", self.ctx.story_slug,
                          extra={"activity": True})
-        progress = progress or DocsProgress()
-        laps = progress.chain_laps
-        if laps >= self.MAX_CHAIN_LAPS or progress.gate_progress_verdict == "stalled":
+        laps = loop.progress.chain_laps
+        if laps >= self.MAX_CHAIN_LAPS or loop.progress.gate_progress_verdict == "stalled":
             self.reset_session(self._chain)
             laps = 0
-        progress = progress.model_copy(update={"chain_laps": laps + 1})
+        loop = loop.model_copy(
+            update={"progress": loop.progress.model_copy(update={"chain_laps": laps + 1})}
+        )
         overran = ""
         try:
             turn = roles.turn(self, "repair-documentation")
@@ -415,7 +375,7 @@ class Docs(Workflow):
                 timeout=2700,
                 retries=0,
                 add_dirs=workspace_dirs(self),
-                args=turn.args | self._author_args(gate_notes, review_notes, obligations),
+                args=turn.args | self._author_args(loop),
                 session=self._chain,
             )
         except AgentTimeout:
@@ -426,25 +386,12 @@ class Docs(Workflow):
             )
             overran = _OVERRAN_REPAIR
             # Not a claim about the book: the nodes this pass touched are unknown, and the
-            # ones every earlier pass named are carried in `authored_nodes` regardless. The
-            # gate reads the graph, not this.
+            # ones every earlier pass named are carried on the loop regardless. The gate
+            # reads the graph, not this.
             result = DocumentationResult(status="documented", notes=_OVERRAN_REPAIR)
-        return self._authored(
-            result,
-            overran=overran,
-            rework=rework,
-            review_rework=review_rework,
-            gate_notes=gate_notes,
-            review_notes=review_notes,
-            progress=progress,
-            delta_refs=delta_refs,
-            authored_nodes=authored_nodes,
-            consulted=consulted,
-        )
+        return self._authored(result, loop, overran=overran)
 
-    def _author_args(
-        self, gate_notes: str, review_notes: str, obligations: tuple[str, ...]
-    ) -> dict[str, object]:
+    def _author_args(self, loop: DocsLoop) -> dict[str, object]:
         """The brief `document` and `repair` share — same inputs, different instruction."""
         classification = self.output(classify_documentation_context)
         return {
@@ -458,24 +405,13 @@ class Docs(Workflow):
             "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
             "context_mode": classification.mode,
             "context_notes": classification.notes,
-            "gate_notes": _prompt_note(gate_notes),
-            "review_notes": _prompt_note(review_notes),
-            "obligations": list(obligations),
+            "gate_notes": _prompt_note(loop.gate_notes),
+            "review_notes": _prompt_note(loop.review_notes),
+            "obligations": list(loop.obligations),
         }
 
     def _authored(
-        self,
-        result: DocumentationResult,
-        *,
-        rework: int,
-        review_rework: int,
-        gate_notes: str,
-        review_notes: str,
-        progress: DocsProgress | None,
-        delta_refs: tuple[str, ...],
-        authored_nodes: tuple[str, ...] = (),
-        consulted: bool = False,
-        overran: str = "",
+        self, result: DocumentationResult, loop: DocsLoop, *, overran: str = ""
     ) -> Continue | Await | Done:
         """The tail both author turns share: the contract on the answer, then the gate.
 
@@ -489,89 +425,51 @@ class Docs(Workflow):
         do.
         """
         # `blocked` on the derived property, not the literal: an author that answered
-        # `unfixable` or `invalid` said the same thing, and the raise below would otherwise
-        # kill the run over which synonym it reached for.
+        # `unfixable` or `invalid` said the same thing, and one arm should not turn on
+        # which synonym it reached for.
         if result.blocked:
             self.logger.info(
                 "documentation author blocked on %s: %s", self.ctx.story_slug, result.notes
             )
-            return self._blocked(
-                result.notes,
-                consulted=consulted,
-                rework=rework,
-                gate_notes=gate_notes,
-                progress=progress,
-                delta_refs=delta_refs,
-                authored_nodes=authored_nodes,
-            )
-        if result.status not in {"documented", "not_required"}:
-            raise WorkflowFailed(
-                f"documentation author reported {result.status or 'nothing'}: {result.notes}"
-            )
+            return self._blocked(result.notes, loop)
         return Continue(
             result,
             self.verify,
             author=result,
-            rework=rework,
-            review_rework=review_rework,
-            gate_notes=gate_notes,
-            review_notes=review_notes,
-            progress=progress,
-            delta_refs=delta_refs,
-            authored_nodes=tuple(dict.fromkeys((*authored_nodes, *result.nodes))),
-            consulted=consulted,
+            loop=loop.model_copy(
+                update={
+                    "authored_nodes": tuple(
+                        dict.fromkeys((*loop.authored_nodes, *result.nodes))
+                    )
+                }
+            ),
             overran=overran,
         )
 
     def verify(
-        self,
-        author: DocumentationResult,
-        rework: int,
-        gate_notes: str,
-        review_notes: str,
-        review_rework: int = 0,
-        progress: DocsProgress | None = None,
-        delta_refs: tuple[str, ...] = (),
-        authored_nodes: tuple[str, ...] = (),
-        consulted: bool = False,
-        overran: str = "",
+        self, author: DocumentationResult, loop: DocsLoop, overran: str = ""
     ) -> Continue | Await | Done:
         """Check the claim against the diff before any reviewer reads a word of it.
-
-        `decide_documentation_context_mode` + `build_documentation_context` +
-        `validate_documentation_context` + `verify_story_documentation` +
-        `decide_documentation_gate`.
 
         In `local` mode the diff is mapped onto the graph deterministically and the gate
         demands *direct* grounding for every changed production unit. In `semantic` mode
         there is no worktree to diff against, so the packet is skipped and doctor plus the
-        review turn is the authority. A blank gate status takes the YAML's `default:` arm,
-        which is the rework guard — nothing but an explicit pass reaches the reviewer.
+        review turn is the authority. Nothing but an explicit pass reaches the reviewer.
         """
         classification = self.output(classify_documentation_context)
-        build_status = ""
-        validate_status = ""
-        if classification.mode == "local":
-            build = self.call(
-                build_okf_context,
-                self.ctx.spec_dir,
-                self.ctx.story_path,
-                features_root(self),
-                tuple(classification.source_roots),
-                "HEAD",
-                "WORKTREE",
-                self.docs_path,
-                preexisting=tuple(self.preexisting),
+        mode = classification.mode
+        if mode == "error":
+            raise WorkflowFailed(
+                f"the documentation context could not be read: {classification.notes}"
             )
+        build_status: Literal["", "passed", "invalid"] = ""
+        validate_status: Literal["", "passed", "invalid"] = ""
+        if mode == "local":
+            build = self._okf_packet(classification)
             build_status = build.status
             validate_status = self.call(
                 validate_okf_context, self.ctx.spec_dir, build.status, self.docs_path
             ).status
-        elif classification.mode != "semantic":
-            raise WorkflowFailed(
-                f"documentation context mode {classification.mode!r} is not one this flow "
-                "knows how to gate."
-            )
 
         gate = self.call(
             verify_story_documentation,
@@ -580,28 +478,29 @@ class Docs(Workflow):
             author.status,
             build_status,
             validate_status,
-            classification.mode,
-            # Every node any pass named, not only this one's — see `_authored`. The `or`
-            # is for a checkpoint written before this parameter existed, whose resume
-            # arrives here with nothing accumulated.
-            authored_nodes or tuple(author.nodes),
+            mode,
+            # Every node any pass named, not only this one's — see `_authored`.
+            loop.authored_nodes,
             preexisting=tuple(self.preexisting),
         )
-        progress = (progress or DocsProgress()).after_gate(gate)
+        loop = loop.model_copy(update={"progress": loop.progress.after_gate(gate)})
         if gate.status == "passed":
+            # The worklist empties with the gate that closed it: `obligations` is what the
+            # author still owes, and a pass means nothing. A reviewer-driven repair lap
+            # downstream of here must not re-open items the gate already ratified.
             return Continue(
                 gate,
                 self.review,
                 author=author,
-                rework=rework,
-                review_rework=review_rework,
-                gate_notes=gate.notes,
-                review_notes=review_notes,
-                progress=progress,
-                delta_refs=delta_refs,
-                authored_nodes=authored_nodes,
-                consulted=consulted,
+                loop=loop.model_copy(
+                    update={"gate_notes": gate.notes, "obligations": ()}
+                ),
             )
+        # `overran` is set when the turn that just ran was cut at its wall-clock budget
+        # rather than finishing. The findings below are still the findings — doctor read the
+        # book on disk — but the next turn has to be told that its own worklist is
+        # half-applied, or it reads the repeat as its edits having failed and starts over.
+        notes = f"{overran}\n\n{gate.notes}".strip() if overran else gate.notes
         # No escape hatch for a shrinking failure set. The gate used to waive the budget
         # while `gate_progress_verdict == "reduced"`, which is exactly the shape a batched
         # worklist produces — twelve errors closed per lap out of a hundred and twenty,
@@ -609,65 +508,53 @@ class Docs(Workflow):
         # doctor itself, so a lap that does not converge is a lap that is not going to —
         # which is a block, not a failure: `_blocked` below, the same arm `review`'s own
         # convergence exhaustion takes a few lines down. A workflow does not give up.
-        if rework >= self.MAX_REWORKS:
+        if loop.rework >= self.MAX_REWORKS:
             return self._blocked(
                 (
                     f"documentation did not converge in {self.MAX_REWORKS + 1} grounding "
-                    f"passes ({progress.gate_progress_verdict}): {gate.notes or review_notes}"
+                    f"passes ({loop.progress.gate_progress_verdict}): "
+                    f"{gate.notes or loop.review_notes}"
                 ),
-                consulted=consulted,
-                rework=rework,
-                gate_notes=f"{overran}\n\n{gate.notes}".strip() if overran else gate.notes,
-                progress=progress,
-                delta_refs=delta_refs,
-                authored_nodes=authored_nodes,
+                loop.model_copy(update={"gate_notes": notes}),
             )
         # The `G:` identities are the still-ungrounded references, in the inventory's own
         # spelling — the same worklist `start` computed, minus what this pass closed.
-        # `overran` is set when the turn that just ran was cut at its budget rather than
-        # finishing. The findings below are still the findings — doctor read the book on
-        # disk — but the next turn has to be told that its own worklist is half-applied, or
-        # it reads the repeat as its edits having failed and starts over.
         return self._rework(
             gate,
-            rework + 1,
-            review_rework,
-            f"{overran}\n\n{gate.notes}".strip() if overran else gate.notes,
-            review_notes,
-            progress,
-            obligations=tuple(
-                failure[2:] for failure in gate.failures if failure.startswith("G:")
+            loop.model_copy(
+                update={
+                    "rework": loop.rework + 1,
+                    "gate_notes": notes,
+                    "obligations": tuple(
+                        failure[2:]
+                        for failure in gate.failures
+                        if failure.startswith("G:")
+                    ),
+                }
             ),
-            delta_refs=delta_refs,
-            authored_nodes=authored_nodes,
-            consulted=consulted,
         )
 
     def review(
-        self,
-        author: DocumentationResult,
-        rework: int,
-        gate_notes: str,
-        review_notes: str,
-        review_rework: int = 0,
-        progress: DocsProgress | None = None,
-        delta_refs: tuple[str, ...] = (),
-        authored_nodes: tuple[str, ...] = (),
-        consulted: bool = False,
+        self, author: DocumentationResult, loop: DocsLoop
     ) -> Continue | Await | Done:
         """An independent read of what was written, downstream of a gate it cannot bypass.
 
-        `review_story_documentation` + `decide_documentation_review`. `blocked` ends the
-        flow — the reviewer is saying the story cannot be documented as it stands, which no
-        number of rework passes will change — but it ends it with a verdict rather than a
-        failure, for the reason `document` gives. `revise`, and a blank taking the YAML's
-        `default:`, spends a rework instead.
+        `blocked` ends the flow — the reviewer is saying the story cannot be documented as
+        it stands, which no number of rework passes will change — but it ends it with a
+        verdict rather than a failure, for the reason `document` gives. `revise` spends a
+        rework instead.
 
         **Spending the last rework is the same answer, not a worse one.** A reviewer still
         saying `revise` on the final pass is a reviewer saying the book cannot be made true
         of this code within this budget, which is what `blocked` means; raising instead
         killed the *run*. Returning `blocked` lets `Coder.blocked_docs` contain the finding
         to this story, including when a post-QA mutation made the final recheck mandatory.
+
+        The scope the reviewer is handed is the *unnarrowed* worklist `start` computed, read
+        back off the one record that holds it. `loop.obligations` shrinks as the gate closes
+        items, which is right for an author being told what is left to do and wrong for a
+        reviewer being told what this story is answerable for: a scope that shrinks every
+        pass would keep re-legalizing the findings it had just ruled out of bounds.
         """
         turn = roles.turn(self, "review-story-documentation")
         result = self.agent(
@@ -685,9 +572,9 @@ class Docs(Workflow):
                 "epic_path": self._epic_path,
                 "author_status": author.status,
                 "author_notes": author.notes,
-                "gate_notes": gate_notes,
-                "review_notes": review_notes,
-                "obligations": list(delta_refs),
+                "gate_notes": loop.gate_notes,
+                "review_notes": loop.review_notes,
+                "obligations": list(self.output(documentation_obligations).refs),
             },
         )
         if result.status == "approved":
@@ -696,37 +583,28 @@ class Docs(Workflow):
                 DocsResult(
                     status="passed",
                     notes=result.notes,
-                    authored_nodes=list(authored_nodes),
+                    authored_nodes=list(loop.authored_nodes),
                 )
             )
         if result.blocked:
             self.logger.info(
                 "documentation review blocked on %s: %s", self.ctx.story_slug, result.notes
             )
-            return self._blocked(
-                result.notes,
-                # A reviewer that refused still names what it read as wrong. Those findings
-                # are what an operator needs to rule on, and without them the gate says only
-                # that documentation is impossible, not which contradiction made it so.
-                findings=result.actionable,
-                consulted=consulted,
-                rework=rework,
-                gate_notes=gate_notes,
-                progress=progress,
-                delta_refs=delta_refs,
-                authored_nodes=authored_nodes,
-            )
+            # A reviewer that refused still names what it read as wrong. Those findings are
+            # what an operator needs to rule on, and without them the gate says only that
+            # documentation is impossible, not which contradiction made it so.
+            return self._blocked(result.notes, loop, findings=result.actionable)
         finding_problems = _review_finding_problems(result)
-        if result.status == "revise" and finding_problems:
+        if finding_problems:
             raise WorkflowFailed(
                 "documentation reviewer requested revisions with invalid structured findings: "
                 + "; ".join(finding_problems)
             )
         # After the structural check, so a malformed `revise` still fails on its findings
         # rather than being scored on them.
-        progress = (progress or DocsProgress()).after_review(result)
+        loop = loop.model_copy(update={"progress": loop.progress.after_review(result)})
         notes = _review_notes(result)
-        if review_rework >= self.MAX_REVIEW_REWORKS:
+        if loop.review_rework >= self.MAX_REVIEW_REWORKS:
             self.logger.warning(
                 "documentation review did not converge for %s in %d passes — blocking: %s",
                 self.ctx.story_slug,
@@ -737,41 +615,24 @@ class Docs(Workflow):
                 (
                     f"documentation review did not converge in "
                     f"{self.MAX_REVIEW_REWORKS + 1} passes "
-                    f"({progress.review_progress_verdict}): "
-                    f"{notes or gate_notes or 'no notes'}"
+                    f"({loop.progress.review_progress_verdict}): "
+                    f"{notes or loop.gate_notes or 'no notes'}"
                 ),
-                consulted=consulted,
-                rework=rework,
-                gate_notes=gate_notes,
-                progress=progress,
-                delta_refs=delta_refs,
-                authored_nodes=authored_nodes,
+                loop,
             )
         return self._rework(
-            result, rework, review_rework + 1, gate_notes, notes, progress,
-            delta_refs=delta_refs,
-            authored_nodes=authored_nodes,
-            consulted=consulted,
+            result,
+            loop.model_copy(
+                update={"review_rework": loop.review_rework + 1, "review_notes": notes}
+            ),
         )
 
-    def _rework(
-        self,
-        result: object,
-        rework: int,
-        review_rework: int,
-        gate_notes: str,
-        review_notes: str,
-        progress: DocsProgress | None = None,
-        obligations: tuple[str, ...] = (),
-        delta_refs: tuple[str, ...] = (),
-        authored_nodes: tuple[str, ...] = (),
-        consulted: bool = False,
-    ) -> Continue:
+    def _rework(self, result: object, loop: DocsLoop) -> Continue:
         """`guard_documentation`'s other half: send the author back with what it must fix.
 
-        Not a state — the routing half of a branch, called from the two states that can
-        decide the documentation is not good enough. `_`-prefixed so state discovery does not
-        pick it up.
+        Not a state — the routing half of a branch, called from the three sites that can
+        decide the documentation is not good enough yet. `_`-prefixed so state discovery
+        does not pick it up.
 
         **The two counters are deliberately separate**, which the YAML's single
         `documentation_rework_count` was not. The grounding gate is deterministic — it names
@@ -787,33 +648,12 @@ class Docs(Workflow):
         Where it sends the author is `repair`, not `document`: a finding against three
         bullets is not a reason to rewrite the nodes the gate and the reviewer both passed.
         """
-        return Continue(
-            result,
-            self.repair,
-            rework=rework,
-            review_rework=review_rework,
-            gate_notes=gate_notes,
-            review_notes=review_notes,
-            progress=progress,
-            obligations=obligations,
-            delta_refs=delta_refs,
-            authored_nodes=authored_nodes,
-            consulted=consulted,
-        )
+        return Continue(result, self.repair, loop=loop)
 
     # ── the author gate ───────────────────────────────────────────────────────────────
 
     def _blocked(
-        self,
-        notes: str,
-        *,
-        consulted: bool,
-        rework: int,
-        gate_notes: str,
-        progress: DocsProgress | None,
-        delta_refs: tuple[str, ...],
-        authored_nodes: tuple[str, ...],
-        findings: Sequence[Finding] = (),
+        self, notes: str, loop: DocsLoop, *, findings: Sequence[Finding] = ()
     ) -> Continue | Await | Done:
         """A block ends the flow — but not before the author it belongs to gets a say.
 
@@ -831,57 +671,41 @@ class Docs(Workflow):
         this state. So in `auto` the resolver answers in the author's stead, and the story
         gets one more repair lap on the ratified answer.
 
-        One consult per flow. `consulted` is threaded through every state rather than kept
-        beside the run, because a second block after a guided lap is the loop this guard
-        exists to stop: the review budget is spent by then, so the next review would block
-        again immediately and the pair would cycle forever.
+        `MAX_DOCS_BLOCKS` caps the *resolver*, not the block, exactly as the other lanes
+        cap theirs. Each consult buys the reviewer a fresh budget (`read_author` resets it
+        explicitly), so the pair cannot cycle: the laps are bounded by the reset count, and
+        the story walks toward a person once they are spent.
 
         `human`/`operator` mode still parks — someone asked to be asked.
 
         `findings` reaches the gate body but deliberately not `carried`: it is evidence for
-        whoever reads the escalation, and putting it in the checkpoint would widen every
-        downstream state's parameters — which *are* the checkpoint — for a value none of them
-        read.
+        whoever reads the escalation, and putting it in the checkpoint would widen the
+        state's parameters — which *are* the checkpoint — for a value nothing downstream
+        reads.
         """
-        if consulted:
+        if loop.blocks >= self.MAX_DOCS_BLOCKS:
             return self._ends(DocsResult(status="blocked", notes=notes))
-        carried: dict[str, Any] = {
-            "notes": notes,
-            "rework": rework,
-            "gate_notes": gate_notes,
-            "progress": progress,
-            "delta_refs": delta_refs,
-            "authored_nodes": authored_nodes,
-        }
+        loop = loop.model_copy(update={"blocks": loop.blocks + 1})
+        carried: dict[str, Any] = {"notes": notes, "loop": loop}
         if self.operator_mode in {"human", "operator"}:
             gate = escalation(
                 self,
                 block_kind="docs",
-                where=f"the docs stage, after {rework} rework pass(es)",
+                where=f"the docs stage, after {loop.rework} rework pass(es)",
                 notes=notes,
-                # One consult per flow (`consulted` returns above), so a docs block is
-                # always this story's first documentation escalation.
-                number=1,
+                number=loop.blocks,
                 findings=findings,
             )
             return Await(context_path(self), gate.body, self.read_author, **carried)
         return Continue(None, self.resolve_author, **carried)
 
-    def resolve_author(
-        self,
-        notes: str = "",
-        rework: int = 0,
-        gate_notes: str = "",
-        progress: DocsProgress | None = None,
-        delta_refs: tuple[str, ...] = (),
-        authored_nodes: tuple[str, ...] = (),
-    ) -> Continue | Done:
+    def resolve_author(self, notes: str, loop: DocsLoop) -> Continue | Done:
         """Stand in for the author who wrote the specs, and ratify what the book contradicts.
 
         The same resolver `qa`, `dev` and `review` reach, on `block_kind="docs"`, and this
         is the lane whose answering arm was never removed — the port kept it because a docs
         block is so often a question the documents themselves already answer. What the
-        resolver may answer *from* is now written down (`shared/resolution.py`): a decision
+        resolver may answer *from* is written down (`shared/resolution.py`): a decision
         record, a repo rule, an installed skill, an acceptance criterion. Having done so it
         amends the authored documents, so the decision is the product's and not this run's.
 
@@ -906,39 +730,35 @@ class Docs(Workflow):
         if not answered(self, result, "docs"):
             self.logger.info("the documentation resolver escalated — blocking the story")
             return self._ends(DocsResult(status="blocked", notes=notes))
-        return Continue(
-            result,
-            self.read_author,
-            notes=notes,
-            rework=rework,
-            gate_notes=gate_notes,
-            progress=progress,
-            delta_refs=delta_refs,
-            authored_nodes=authored_nodes,
-        )
+        return Continue(result, self.read_author, notes=notes, loop=loop)
 
-    def read_author(
-        self,
-        notes: str = "",
-        rework: int = 0,
-        gate_notes: str = "",
-        progress: DocsProgress | None = None,
-        delta_refs: tuple[str, ...] = (),
-        authored_nodes: tuple[str, ...] = (),
-    ) -> Continue | Done:
+    def read_author(self, notes: str, loop: DocsLoop) -> Continue | Done:
         """Take the ratified decision off `context.md` and spend one repair lap on it.
 
-        An `epic`-scoped answer is not something this flow can act on — it says the epic's
-        premise was wrong, which no edit to one story's documentation reaches — so it comes
-        back as the block's verdict, carrying the answer as the notes `Coder.blocked_docs`
-        puts into the failure.
+        An unanswered file ends the flow blocked. Both arms into this state believe an
+        answer landed — the resolver said `answered`, or the driver's `Await` returned
+        because the file was touched — so a file that says otherwise means the answer was
+        never written, and re-entering the loop with the empty brief would spend a repair
+        lap on a ratification nobody made.
 
-        `review_rework` resets. The reviewer's budget was spent arguing about a question
-        that had no ratified answer; now there is one, and re-entering with nothing left to
-        spend would block again on the next pass without the author ever seeing it. The
-        budget is bounded either way, because `consulted` makes this the only reset.
+        An `epic`-scoped answer is not something this flow can act on either — it says the
+        epic's premise was wrong, which no edit to one story's documentation reaches — so it
+        comes back as the block's verdict, carrying the answer as the notes
+        `Coder.blocked_docs` puts into the failure.
+
+        The reviewer's budget resets. It was spent arguing about a question that had no
+        ratified answer; now there is one, and re-entering with nothing left to spend would
+        block again on the next pass without the author ever seeing it. The reset is written
+        down rather than implied by omission, and `MAX_DOCS_BLOCKS` is what bounds how many
+        times it can happen.
         """
         answer = self.call(read_operator_context, self.ctx.story_path)
+        if not answer.answered:
+            self.logger.warning(
+                "no answer landed on the context file for %s — blocking the story",
+                self.ctx.story_slug,
+            )
+            return self._ends(DocsResult(status="blocked", notes=notes))
         if answer.scope == "epic":
             self.logger.info("the author scoped the documentation block to the epic")
             return self._ends(DocsResult(status="blocked", notes=answer.content or notes))
@@ -947,34 +767,17 @@ class Docs(Workflow):
         )
         return self._rework(
             answer,
-            rework,
-            0,
-            gate_notes,
-            brief,
-            progress,
-            delta_refs=delta_refs,
-            authored_nodes=authored_nodes,
-            consulted=True,
+            loop.model_copy(update={"review_rework": 0, "review_notes": brief}),
         )
 
-    def _obligations(self, classification: ContextClassification) -> DocumentationObligations:
-        """Build the diff packet and read the grounding worklist off it, before authoring.
+    def _okf_packet(self, classification: ContextClassification) -> OkfContextResult:
+        """Map this story's code diff onto the OKF graph, and write the packet beside it.
 
-        `local` mode only: `semantic` mode has no worktree to diff, and the node says so
-        rather than returning an empty worklist that would read as "nothing to ground".
-        The packet is rebuilt in `verify` against the tree the author left behind — this
-        one is the *before* picture and is deliberately not reused as the gate's input.
+        `_obligations` and `verify` both want it — the *before* picture and the *after* one
+        — and the eight arguments that say which diff and which graph are the same both
+        times. Spelling them twice is how the two pictures drift apart.
         """
-        if classification.mode != "local":
-            return self.call(
-                documentation_obligations,
-                self.docs_path,
-                self.ctx.spec_dir,
-                classification.mode,
-                "",
-                preexisting=tuple(self.preexisting),
-            )
-        build = self.call(
+        return self.call(
             build_okf_context,
             self.ctx.spec_dir,
             self.ctx.story_path,
@@ -985,12 +788,24 @@ class Docs(Workflow):
             self.docs_path,
             preexisting=tuple(self.preexisting),
         )
+
+    def _obligations(self, classification: ContextClassification) -> DocumentationObligations:
+        """Build the diff packet and read the grounding worklist off it, before authoring.
+
+        `local` mode only: `semantic` mode has no worktree to diff, and the node says so
+        rather than returning an empty worklist that would read as "nothing to ground".
+        The packet is rebuilt in `verify` against the tree the author left behind — this
+        one is the *before* picture and is deliberately not reused as the gate's input.
+        """
+        build_status = ""
+        if classification.mode == "local":
+            build_status = self._okf_packet(classification).status
         return self.call(
             documentation_obligations,
             self.docs_path,
             self.ctx.spec_dir,
             classification.mode,
-            build.status,
+            build_status,
             preexisting=tuple(self.preexisting),
         )
 

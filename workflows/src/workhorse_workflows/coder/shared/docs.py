@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
-from git.exc import GitError
+from git.exc import GitError, InvalidGitRepositoryError, NoSuchPathError
 from ostler import Ostler, path as okf_path
 from ostler.model import Graph
 from ostler import refs as refs_mod
@@ -32,7 +32,7 @@ from workhorse_workflows.coder.shared.schemas.docs import (
     OkfDetection,
 )
 from workhorse_workflows.coder.shared.worktree import untouched_since
-from workhorse_workflows.kit import open_repo
+from workhorse_workflows.kit import open_repo, trunk_base
 
 #: Where the diff-to-OKF obligation packet lands, relative to the story's spec dir.
 CONTEXT_FILE = "qa-okf-context.json"
@@ -175,12 +175,23 @@ def _affected_doc_nodes(packet: dict[str, Any], author_nodes: list[str]) -> set[
 def story_touched_lines(
     root: Path, paths: set[str], logger: logging.Logger
 ) -> dict[str, set[int] | None]:
-    """Which lines of each doc file this story's own edits landed on.
+    """Which lines of each doc file this branch's own edits landed on.
 
-    The story's doc work is what stands between `HEAD` and the worktree, the same contract
-    `snapshot_worktree_state` documents. `None` for a path means *undecidable* — git could
-    not be read, or the file is untracked and therefore new in its entirety — and every
-    consumer here reads `None` as "charge the story for all of it".
+    The diff is taken against `trunk_base` — the branch's merge base with the default
+    branch — and not against `HEAD`. The author commits as it goes, so by the time the gate
+    runs the worktree is routinely clean and a `HEAD` diff reported that the story had
+    touched no line of the book at all. Every doctor error then fell outside the "lines
+    this story moved" test, and a gate whose whole job is to refuse an undocumented story
+    passed it.
+
+    Taking the branch rather than the story does widen it: a second story on the same
+    branch is charged for the first one's doc lines. That is the safe direction — the cost
+    is a repair lap on a node somebody already fixed, against a gate that otherwise reports
+    nothing at all.
+
+    `None` for a path means *undecidable* — git could not be read, or the file is untracked
+    and therefore new in its entirety — and every consumer here reads `None` as "charge the
+    story for all of it".
     """
     unknown: dict[str, set[int] | None] = {path: None for path in paths}
     if not paths:
@@ -191,7 +202,9 @@ def story_touched_lines(
         rels = {(root / path).resolve().relative_to(base).as_posix(): path for path in paths}
         untracked = set(repo.untracked_files)
         tracked = sorted(rel for rel in rels if rel not in untracked)
-        diff = repo.git.diff("-U0", "HEAD", "--", *tracked) if tracked else ""
+        diff = (
+            repo.git.diff("-U0", trunk_base(base), "--", *tracked) if tracked else ""
+        )
     except (GitError, OSError, TypeError, ValueError, RuntimeError) as exc:
         logger.info("could not read this story's doc diff at %s (%s)", root, exc)
         return unknown
@@ -326,12 +339,16 @@ def _spill_doctor_errors(spec_root: Path, note: str, logger: logging.Logger) -> 
     return path
 
 
-def _clear_doctor_errors(spec_root: Path, logger: logging.Logger) -> None:
-    """Remove a previous pass's spill file, so nothing points at a list that no longer holds."""
-    try:
-        (spec_root / DOCTOR_ERRORS_FILE).unlink(missing_ok=True)
-    except OSError as exc:
-        logger.info("could not remove %s (%s)", spec_root / DOCTOR_ERRORS_FILE, exc)
+def _clear_doctor_errors(spec_root: Path) -> None:
+    """Remove a previous pass's spill file, so nothing points at a list that no longer holds.
+
+    Deliberately not guarded. A spill file left behind is a worklist the *next* pass hands
+    the author as if it were current — it names errors this pass already closed, and the
+    author spends a repair lap chasing them. Swallowing the `OSError` logged a line nobody
+    reads and then produced exactly that. If the file cannot be removed the story cannot be
+    gated honestly, and the run says so where it happened.
+    """
+    (spec_root / DOCTOR_ERRORS_FILE).unlink(missing_ok=True)
 
 
 @blueprint.node
@@ -414,6 +431,11 @@ def classify_documentation_context(
     leave the rest unchecked. So the whole gate falls back to doctor plus an independent
     review turn instead.
 
+    A docs root that is *not a repository* is one of those cases and classifies as
+    `semantic`. Failing to read a repository that is there is not: it used to arrive at the
+    same answer, which turned the grounding gate off for the rest of the story while
+    reporting a mode the flow believed. That case answers `error`, and the flow refuses.
+
     The returned roots are re-expressed relative to the worktree, which is what
     `ostler qa context` wants.
     """
@@ -423,8 +445,14 @@ def classify_documentation_context(
         # worktree" below — stated here rather than arriving as a `TypeError` from `Path`.
         working_dir = open_repo(docs_root).working_tree_dir
         worktree = Path(working_dir).resolve() if working_dir else None
-    except (GitError, OSError, TypeError, ValueError, RuntimeError):
+    except (InvalidGitRepositoryError, NoSuchPathError):
         worktree = None
+    except (GitError, OSError, TypeError, ValueError, RuntimeError) as exc:
+        logger.warning("could not read the docs worktree at %s (%s)", docs_root, exc)
+        return ContextClassification(
+            mode="error",
+            notes=f"the docs worktree at {docs_root} could not be read: {exc}",
+        )
 
     normalized: list[str] = []
     external: list[str] = []
@@ -455,10 +483,10 @@ def verify_story_documentation(
     logger: logging.Logger,
     docs_path: str = "",
     spec_dir: str = "",
-    author_status: str = "blocked",
-    build_status: str = "invalid",
-    validation_status: str = "invalid",
-    context_mode: str = "local",
+    author_status: Literal["documented", "not_required", "blocked"] = "blocked",
+    build_status: Literal["", "passed", "invalid"] = "invalid",
+    validation_status: Literal["", "passed", "invalid"] = "invalid",
+    context_mode: Literal["local", "semantic"] = "local",
     author_nodes: tuple[str, ...] = (),
     repo_dir: str = "",
     preexisting: tuple[str, ...] = (),
@@ -468,8 +496,7 @@ def verify_story_documentation(
     Four things have to hold, and every failure is collected rather than short-circuited so
     the author's rework brief names all of them at once:
 
-    1. the author reports `documented` or `not_required`, and a `documented` claim names the
-       nodes it touched;
+    1. the author reports `documented` or `not_required`;
     2. in local mode, the packet was built and validated;
     3. every changed production unit in the packet is *directly* grounded — its symbols
        carry exact `path::symbol` reasons, or the file itself is owned. Broad surface
@@ -500,9 +527,6 @@ def verify_story_documentation(
     if author_status not in {"documented", "not_required"}:
         problems.append(f"documentation author status is {author_status!r}")
         failures.append("S:author-status")
-    if author_status == "documented" and not nodes:
-        problems.append("documentation author did not identify affected OKF nodes")
-        failures.append("S:author-nodes")
     if context_mode == "local" and build_status != "passed":
         problems.append("diff-to-OKF context generation did not pass")
         failures.append("S:context-build")
@@ -579,7 +603,7 @@ def verify_story_documentation(
                 "`ostler doctor` yourself until the affected nodes are clean."
             )
         else:
-            _clear_doctor_errors(spec_root, logger)
+            _clear_doctor_errors(spec_root)
         problems.append(note)
         # The message is excluded from the identity on purpose: a doctor error whose prose
         # was reworded is the same defect, and a pass that only changed the wording did not
@@ -590,7 +614,7 @@ def verify_story_documentation(
             for item in doctor_errors
         )
     else:
-        _clear_doctor_errors(spec_root, logger)
+        _clear_doctor_errors(spec_root)
 
     changed = len(packet.get("changedCode", []))
     if problems:

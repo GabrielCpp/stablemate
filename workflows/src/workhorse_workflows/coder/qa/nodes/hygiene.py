@@ -25,7 +25,7 @@ from unidiff.errors import UnidiffParseError
 from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.qa import QaResult, ScreenshotFlush
-from workhorse_workflows.kit import diff_text, list_tracked_files, merge_base
+from workhorse_workflows.kit import diff_text, list_tracked_files, trunk_base
 
 #: What counts as a screenshot at the repo root.
 IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif"})
@@ -163,15 +163,6 @@ def flush_root_screenshots(
 # --- sentinel IDs ------------------------------------------------------------
 
 
-def _base_ref(root: Path) -> str:
-    """The ref to diff against: the merge base with the default branch, else `HEAD~1`."""
-    for branch in ("origin/master", "origin/main", "master", "main"):
-        base = merge_base(root, "HEAD", branch)
-        if base:
-            return base
-    return "HEAD~1"
-
-
 def _added_lines(root: Path, base_ref: str) -> list[tuple[str, int, str]]:
     """`(filename, lineno, content)` for every `+` line between `base_ref` and `HEAD`.
 
@@ -235,7 +226,7 @@ def check_sentinel_ids(
     root = find_repo_root(repo_dir)
 
     try:
-        base_ref = _base_ref(root)
+        base_ref = trunk_base(root)
     except Exception:
         logger.warning("could not determine base ref — skipping sentinel gate")
         return QaResult(

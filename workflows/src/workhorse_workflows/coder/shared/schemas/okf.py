@@ -10,7 +10,7 @@ serves both.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
@@ -24,7 +24,7 @@ class OkfContextResult(CoderResult):
     summary of it and the packet itself is what the next gate reads off disk.
     """
 
-    status: str = "invalid"
+    status: Literal["passed", "invalid"] = "invalid"
     notes: str = ""
     ostler: dict[str, Any] = {}
 

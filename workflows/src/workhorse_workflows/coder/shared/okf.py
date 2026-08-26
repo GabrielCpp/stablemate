@@ -24,6 +24,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
+from typing import Literal
 
 from git.exc import GitError
 from ostler import Ostler
@@ -114,7 +115,10 @@ def recall(spec_path: Path, key: str | None) -> OkfContextResult | None:
         return None
     recorded = stamp.get("ostler")
     return OkfContextResult(
-        status=str(stamp.get("status", "invalid")),
+        # Narrowed rather than trusted: the stamp is a file on disk, and the field it
+        # feeds admits two words. Anything else the file holds is a stamp this code did
+        # not write, which is the same evidence as a failed build.
+        status="passed" if stamp.get("status") == "passed" else "invalid",
         notes=str(stamp.get("notes", "")),
         ostler=recorded if isinstance(recorded, dict) else {},
     )
@@ -226,7 +230,7 @@ def build_okf_context(
         story_file=story_file or None,
         exclude_paths=inherited,
     )
-    status = "passed" if outcome.ok else "invalid"
+    status: Literal["passed", "invalid"] = "passed" if outcome.ok else "invalid"
     logger.info("qa context build for spec_dir=%s: status=%s", spec_dir, status)
     notes = notes_for(
         outcome,
@@ -253,7 +257,9 @@ def validate_okf_context(
     """
     docs_root = find_docs_root(docs_path, repo_dir)
     outcome = Ostler(docs_root).qa_context_validate(spec=spec_dir)
-    status = "passed" if outcome.ok and build_status == "passed" else "invalid"
+    status: Literal["passed", "invalid"] = (
+        "passed" if outcome.ok and build_status == "passed" else "invalid"
+    )
     notes = notes_for(
         outcome,
         "QA OKF context is valid." if status == "passed" else "QA OKF context is invalid.",

@@ -28,7 +28,11 @@ from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.review import flow as review_flow
 from workhorse_workflows.coder.review.flow import Review
 from workhorse_workflows.coder.shared.schemas.dev import DevResult, Lap
-from workhorse_workflows.coder.shared.schemas.docs import DocsProgress, DocsResult
+from workhorse_workflows.coder.shared.schemas.docs import (
+    DocsLoop,
+    DocsProgress,
+    DocsResult,
+)
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaLoop
 from workhorse_workflows.coder.shared.schemas.review import (
     CodeReviewResult,
@@ -122,7 +126,7 @@ def _review(**kwargs: Any) -> Review:
 
 def _repair(flow: Docs, progress: DocsProgress) -> None:
     with pytest.raises(_Reached):
-        flow.repair(progress=progress)
+        flow.repair(DocsLoop(progress=progress))
 
 
 def _repair_plan(flow: Qa, loop: QaLoop) -> None:

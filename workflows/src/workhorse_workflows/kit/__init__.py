@@ -67,6 +67,7 @@ _NAMES: dict[str, str] = {
         "set_identity",
         "short_sha",
         "show_file",
+        "trunk_base",
     )
 } | {
     name: "workhorse_workflows.kit.github"
@@ -156,6 +157,7 @@ if TYPE_CHECKING:  # the names above, for a reader and a type checker
         set_identity,
         short_sha,
         show_file,
+        trunk_base,
     )
     from workhorse_workflows.kit.github import (  # noqa: F401
         find_open_pr,

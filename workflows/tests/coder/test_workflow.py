@@ -71,7 +71,7 @@ from workhorse_workflows.coder.shared.queue import (
 from workhorse_workflows.coder.shared.story import prepare_fix_story, prepare_story
 from workhorse_workflows.coder.shared.schemas.ci import CiChecks, CiStatus
 from workhorse_workflows.coder.shared.schemas.dev import DevResult
-from workhorse_workflows.coder.shared.schemas.docs import DocsResult
+from workhorse_workflows.coder.shared.schemas.docs import DocsResult, DocsStatus
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaResult
 from workhorse_workflows.coder.shared.schemas.pr import MergeOutcome
 from workhorse_workflows.coder.shared.schemas.review import ReviewResult
@@ -257,7 +257,7 @@ class _Sub:
         changes: bool = True,
         leave_dirty: bool = False,
         dev_status: Literal["ready", "replan"] = "ready",
-        docs_status: str = "passed",
+        docs_status: DocsStatus = "passed",
         docs_notes: str = "",
         docs_authored_nodes: list[str] | None = None,
         qa_status: str = "passed",
@@ -270,7 +270,7 @@ class _Sub:
         self.changes = changes
         self.leave_dirty = leave_dirty
         self.dev_status: Literal["ready", "replan"] = dev_status
-        self.docs_status = docs_status
+        self.docs_status: DocsStatus = docs_status
         self.docs_notes = docs_notes
         self.docs_authored_nodes = docs_authored_nodes or []
         self.qa_status = qa_status

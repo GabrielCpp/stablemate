@@ -109,9 +109,9 @@ def test_the_narrowed_finding_lists_still_answer_actionable() -> None:
     review = DocumentationReview(
         status="revise",
         findings=[
-            DocumentationFinding(id="D1", target="okf/api.md", issue="stale",
-                                 repair="cite the new handler"),
-            DocumentationFinding(id="D2", target="okf/api.md"),
+            DocumentationFinding(id="D1", kind="overclaim", target="okf/api.md",
+                                 issue="stale", repair="cite the new handler"),
+            DocumentationFinding(id="D2", kind="overclaim", target="okf/api.md"),
         ],
     )
     # `actionable` answers in the shared vocabulary, not each lane's — the id and the

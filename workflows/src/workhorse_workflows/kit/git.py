@@ -293,6 +293,25 @@ def merge_base(path: str | Path, *refs: str) -> str | None:
     return out or None
 
 
+#: Where trunk is looked for, most-authoritative first. A remote name is preferred over a
+#: local branch of the same name because a local `main` can be arbitrarily stale.
+TRUNK_CANDIDATES = ("origin/master", "origin/main", "master", "main")
+
+
+def trunk_base(path: str | Path) -> str:
+    """The ref a branch's own work starts after: its merge base with trunk, else ``HEAD~1``.
+
+    A branch's diff is what stands between this ref and the worktree. ``HEAD`` is not that
+    ref — an agent that commits as it goes leaves a clean worktree, and diffing against
+    ``HEAD`` then reports that the branch changed nothing.
+    """
+    for branch in TRUNK_CANDIDATES:
+        base = merge_base(path, "HEAD", branch)
+        if base:
+            return base
+    return "HEAD~1"
+
+
 def merge_ref(path: str | Path, ref: str) -> bool:
     """Merge ``ref`` into the current branch. True on success, False on conflict.
 

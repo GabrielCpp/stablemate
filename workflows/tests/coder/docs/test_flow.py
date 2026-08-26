@@ -19,6 +19,7 @@ that decides whether the loop can converge at all.
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import logging
 import subprocess
@@ -169,12 +170,12 @@ def alongside(
 class _Agent:
     """The flow's two turns, scripted on the two axes the states branch on.
 
-    `author_status`/`author_nodes` are the claim the gate checks — `nodes_after` is the pass
-    from which the author starts naming what it touched, which is how a gate failure and its
-    recovery are separable; `nodes_until` is the pass after which it stops naming any, which
-    is the honest repair lap that found nothing left to edit. `review_status` is the
-    reviewer's verdict, `approve_after` the
-    pass it stops asking for revisions on.
+    `author_status`/`author_nodes` are the claim the author reports; the node list is
+    advisory, and `nodes_until` is the pass after which it names none — the honest repair
+    lap that found nothing left to edit. `review_status` is the reviewer's verdict,
+    `approve_after` the pass it stops asking for revisions on. A gate verdict is not one of
+    these axes: nothing the author can say makes the gate refuse, so a test that needs a
+    refusal stages one with `_stage_gate`.
 
     `findings_per_pass` varies the reviewer's worklist across passes — the axis a
     *progress* verdict is measured on, where every other axis here is measured per pass.
@@ -194,7 +195,6 @@ class _Agent:
         *,
         author_status: str = "documented",
         author_nodes: tuple[str, ...] = ("docs/features/widget.md",),
-        nodes_after: int = 1,
         nodes_until: int | None = None,
         review_status: str = "approved",
         approve_after: int = 1,
@@ -211,7 +211,6 @@ class _Agent:
     ) -> None:
         self.author_status = author_status
         self.author_nodes = author_nodes
-        self.nodes_after = nodes_after
         self.nodes_until = nodes_until
         self.review_status = review_status
         self.approve_after = approve_after
@@ -266,7 +265,7 @@ class _Agent:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s in self.AUTHOR_STEMS]
 
     def _document_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        named = nth >= self.nodes_after and (self.nodes_until is None or nth <= self.nodes_until)
+        named = self.nodes_until is None or nth <= self.nodes_until
         return {
             "status": self.author_status,
             "nodes": list(self.author_nodes) if named else [],
@@ -510,19 +509,57 @@ def test_the_reviewer_is_handed_the_unnarrowed_story_delta(
 
 # --------------------------------------------------------------------------- the gate
 
+#: One registry name per staged gate; see `_stage_gate`.
+_GATE_NAMES = itertools.count(1)
 
-def test_a_documented_claim_naming_no_nodes_is_sent_back(
+
+def _stage_gate(
+    monkeypatch: pytest.MonkeyPatch, *, passes_on: int | None, note: str = "not grounded"
+) -> list[tuple[Any, ...]]:
+    """Stage the grounding gate's verdict on a schedule: red until `passes_on`, or forever.
+
+    The gate's own judgement is under test a few tests down, against a real book and a real
+    `ostler doctor`. What the loop tests need is the *verdict* on a schedule, and since the
+    gate stopped scoring the author's self-reported node list — it reads the branch's book
+    diff now — no reply the scripted author can give makes it refuse. Staging it is what is
+    left, and it is the seam `test_a_shrinking_failure_set_no_longer_waives_the_grounding_budget`
+    already opens.
+
+    The failure identity is the same every pass, so the progress verdict a stalled lane
+    carries is the real one and not an artefact of the stub. Returns each call's positional
+    arguments in order, which is how a test reads what the flow handed the gate.
+    """
+    seen: list[tuple[Any, ...]] = []
+
+    def _gate(*args: Any, **kwargs: Any) -> DocumentationGate:
+        seen.append(args)
+        if passes_on is not None and len(seen) >= passes_on:
+            return DocumentationGate(status="passed", notes="")
+        return DocumentationGate(
+            status="invalid", notes=note, failures=["G:api/widget.go::Widget"]
+        )
+
+    # A node's name is its identity in the blueprint's registry and a second registration
+    # under one name is a definition error, so each staged gate gets its own.
+    _gate.__name__ = f"_staged_gate_{next(_GATE_NAMES)}"
+    monkeypatch.setattr(docs_flow, "verify_story_documentation", blueprint.node(_gate))
+    return seen
+
+
+def test_a_failed_gate_reworks_before_the_reviewer_ever_runs(
     docs: Path,
     elsewhere: Path,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The gate's cheapest check, and the one the reviewer could never make.
+    """The gate is upstream of the reviewer, and its brief reaches the author verbatim.
 
-    An author that says it documented the story but cannot name a node it touched has
-    reported success without evidence. That is a rework brief, not a review.
+    A book the gate refuses is not a book worth a `power="high"` semantic read: the
+    reviewer would spend its budget on prose whose claims are not grounded yet.
     """
-    agent = _Agent(nodes_after=2)
+    _stage_gate(monkeypatch, passes_on=2, note="one symbol is not directly grounded")
+    agent = _Agent()
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
@@ -531,7 +568,7 @@ def test_a_documented_claim_naming_no_nodes_is_sent_back(
     # The reviewer never saw the first pass: the gate is upstream of it.
     assert agent.counts()["review-story-documentation"] == 1, agent.counts()
     # And the second author pass was told exactly what was wrong with the first.
-    assert "did not identify affected OKF nodes" in agent.author_args()[1]["gate_notes"]
+    assert "one symbol is not directly grounded" in agent.author_args()[1]["gate_notes"]
 
 
 def test_a_repair_turn_cut_at_its_budget_is_gated_rather_than_failing_the_run(
@@ -539,6 +576,7 @@ def test_a_repair_turn_cut_at_its_budget_is_gated_rather_than_failing_the_run(
     elsewhere: Path,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An overrun `repair-documentation` goes straight to the gate, because the book is a file.
 
@@ -547,7 +585,8 @@ def test_a_repair_turn_cut_at_its_budget_is_gated_rather_than_failing_the_run(
     doctor over those is worth more than a dead run. The next lap continues the same session,
     so all it needs is to be told that its own worklist is half-applied.
     """
-    agent = _Agent(nodes_after=3, cut={"repair-documentation"}, cut_pass=2)
+    _stage_gate(monkeypatch, passes_on=3, note="one symbol is not directly grounded")
+    agent = _Agent(cut={"repair-documentation"}, cut_pass=2)
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
@@ -558,7 +597,7 @@ def test_a_repair_turn_cut_at_its_budget_is_gated_rather_than_failing_the_run(
     brief = agent.author_args()[2]["gate_notes"]
     assert brief.startswith("Your previous turn was stopped at its wall-clock budget"), brief
     # And the gate's own findings are still under it — the prefix explains them, not replaces.
-    assert "did not identify affected OKF nodes" in brief, brief
+    assert "one symbol is not directly grounded" in brief, brief
 
 
 def test_a_repair_lap_with_nothing_left_to_edit_keeps_the_nodes_already_named(
@@ -566,25 +605,26 @@ def test_a_repair_lap_with_nothing_left_to_edit_keeps_the_nodes_already_named(
     elsewhere: Path,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The nodes accumulate across passes; the last pass does not replace them.
 
     `repair`'s brief is "edit the nodes these findings cite", so a lap that correctly
     concludes the finding needs no edit — the symbol was deleted, or is grounded elsewhere
-    already — answers `documented` with an empty node list. Scoring the gate on that one
-    lap read it as an author that had named nothing and failed the story on a check meant
-    for an author that never spoke, discarding every earlier pass's work.
+    already — answers `documented` with an empty node list. The nodes are what scopes the
+    gate's doctor reading, so taking the last lap's list as the answer would narrow that
+    reading to nothing and stop scoring every node an earlier pass had written.
     """
-    agent = _Agent(nodes_until=1, approve_after=2)
+    seen = _stage_gate(monkeypatch, passes_on=2)
+    agent = _Agent(nodes_until=1)
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
     assert result.status == "passed", result
     assert agent.authored() == 2, agent.counts()
-    # The second pass named nothing and the gate still passed it, so the reviewer ran twice
-    # rather than the flow reworking on a check the repair could never satisfy.
-    assert agent.counts()["review-story-documentation"] == 2, agent.counts()
-    assert "did not identify affected OKF nodes" not in agent.author_args()[1]["gate_notes"]
+    # The second author pass named nothing, and the gate still read the node the first one
+    # wrote rather than an empty scope.
+    assert [call[7] for call in seen] == [("docs/features/widget.md",)] * 2, seen
 
 
 def test_the_grounding_failure_names_the_symbols_not_the_files(
@@ -1037,12 +1077,14 @@ def test_an_author_that_did_not_speak_fails_the_flow(
 ) -> None:
     """A blank status fails, and does not spend a rework.
 
-    There is no brief to hand a second author pass — the first one did not say what stopped
-    it — so looping would be spending turns on the same silence.
+    The refusal is the schema's, not the flow's: `status` is a required `Literal`, so a
+    reply carrying none of its three words never becomes a `DocumentationResult` at all.
+    There is nothing for a second author pass to be told — the first one did not say what
+    stopped it — so looping would be spending turns on the same silence.
     """
     agent = _Agent(author_status="")
 
-    with pytest.raises(WorkflowFailed, match="documentation author reported nothing"):
+    with pytest.raises(WorkflowFailed, match="is not a DocumentationResult"):
         drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
     assert agent.counts()["document-story"] == 1, agent.counts()
@@ -1147,17 +1189,18 @@ def test_an_escalating_resolver_blocks_without_parking_the_queue(
     assert result.status == "blocked", result
 
 
-def test_the_author_is_consulted_once_and_a_second_block_stands(
+def test_the_author_is_consulted_on_a_budget_and_the_block_after_it_stands(
     docs: Path,
     elsewhere: Path,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """One consult per flow, or a resolver and an author can argue until the run dies.
+    """The cap is on the resolver, not the block — `MAX_DOCS_BLOCKS` consults, then it stands.
 
-    The guided lap is the author's answer being applied. If the book still cannot be written
-    with it in hand, re-asking the same resolver the same question buys another identical
-    answer — that deadlock is what the second block reports.
+    Each guided lap is the author's answer being applied. If the book still cannot be
+    written with it in hand, re-asking the same resolver the same question buys another
+    identical answer — so the budget runs out and the deadlock is what the block reports,
+    exactly as `MAX_PLAN_BLOCKS` and `MAX_QA_BLOCKS` bound their own lanes.
     """
     agent = _Agent(author_status="blocked", resolver_decision="answered", resolver_answer="Pick A.")
 
@@ -1166,8 +1209,8 @@ def test_the_author_is_consulted_once_and_a_second_block_stands(
     assert result.status == "blocked", result
     assert agent.counts() == {
         "document-story": 1,
-        "resolve-operator": 1,
-        "repair-documentation": 1,
+        "resolve-operator": Docs.MAX_DOCS_BLOCKS,
+        "repair-documentation": Docs.MAX_DOCS_BLOCKS,
     }, agent.counts()
 
 
@@ -1221,7 +1264,9 @@ def test_operator_mode_human_still_waits_for_a_person(
 
     assert result.status == "blocked", result
     assert agent.counts()["resolve-operator"] == 0, agent.counts()
-    assert seen == [docs / STORY_REL / "context.md"], seen
+    # Once per block, on the same budget the resolver spends in `auto` — a person who keeps
+    # answering a question the book still cannot be written with is in the same deadlock.
+    assert seen == [docs / STORY_REL / "context.md"] * Docs.MAX_DOCS_BLOCKS, seen
 
 
 # --------------------------------------------------------------------------- the reviewer
@@ -1275,27 +1320,26 @@ def test_a_blocked_review_fails_rather_than_reworking(
     assert agent.counts()["document-story"] == 1, agent.counts()
 
 
-def test_a_reviewer_that_says_unfixable_takes_the_same_arm_as_one_that_says_blocked(
+def test_a_reviewer_reaching_for_a_synonym_of_blocked_is_refused_by_the_schema(
     docs: Path,
     elsewhere: Path,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The four refusal words are one signal, and the flow must not sort them by spelling.
+    """The refusal words are one signal, and the flow no longer has to sort them by spelling.
 
-    `blocked`, `unfixable`, `not_passed` and `invalid` are the same answer — a turn saying it
-    cannot get there from here. Branching on the literal `"blocked"` meant a reviewer that
-    reached for one of the other three fell through to the revision arm, which spends the
-    whole rework budget re-asking a question already answered, and then blocks anyway three
-    expensive passes later.
+    `unfixable`, `not_passed` and `invalid` used to reach `status` and fall through to the
+    revision arm, which spends the whole rework budget re-asking a question already
+    answered and blocks anyway three expensive passes later. The arm reading
+    `CoderResult.blocked` caught them; the closed `Literal` means they never arrive, which
+    is the earlier and cheaper of the two places to say so.
     """
     agent = _Agent(review_status="unfixable")
 
-    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+    with pytest.raises(WorkflowFailed, match="is not a DocumentationReview"):
+        drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
-    assert result.status == "blocked", result
     assert agent.counts()["repair-documentation"] == 0, agent.counts()
-    assert agent.counts()["resolve-operator"] == 1, agent.counts()
 
 
 class _RefusesWithEvidence(_Agent):
@@ -1356,6 +1400,7 @@ def test_only_the_first_pass_authors_and_every_pass_after_it_repairs(
     elsewhere: Path,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Both the gate and the reviewer send the book to `repair`, not back to `document`.
 
@@ -1364,7 +1409,8 @@ def test_only_the_first_pass_authors_and_every_pass_after_it_repairs(
     `power="high"` reviewer meets a changed book each round and, correctly, finds a
     different real defect in it. Only the first pass may be an authoring pass.
     """
-    agent = _Agent(nodes_after=2, approve_after=3)
+    _stage_gate(monkeypatch, passes_on=2)
+    agent = _Agent(approve_after=3)
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
@@ -1394,8 +1440,12 @@ def test_a_revision_request_with_an_empty_finding_fails_the_flow(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A nonempty findings list cannot bypass the actionable-fields gate."""
-    agent = _Agent(approve_after=99, review_findings=[{}])
+    """A nonempty findings list cannot bypass the actionable-fields gate.
+
+    `kind` is required and closed, so the finding carries one — everything the repair turn
+    would actually act on is still blank, which is what the gate below reads.
+    """
+    agent = _Agent(approve_after=99, review_findings=[{"kind": "overclaim"}])
 
     with pytest.raises(
         WorkflowFailed,
@@ -1462,14 +1512,16 @@ def test_a_gate_that_never_passes_is_bounded_on_its_own_budget(
     elsewhere: Path,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An author that never names a node never reaches the reviewer — and still blocks, not fails.
+    """A book the gate never passes never reaches the reviewer — and still blocks, not fails.
 
     The exhausted grounding budget is a `blocked` verdict, not an exception, the same
     distinction `test_the_loop_is_bounded_at_four_passes` draws for the reviewer's own budget:
-    the resolver is consulted once in the author's stead before the story ends blocked.
+    the resolver is consulted in the author's stead before the story ends blocked.
     """
-    agent = _Agent(nodes_after=99)
+    _stage_gate(monkeypatch, passes_on=None)
+    agent = _Agent()
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
@@ -1488,6 +1540,7 @@ def test_the_gates_failure_does_not_spend_the_reviewers_budget(
     elsewhere: Path,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """One mechanical grounding fix must not cost a semantic round.
 
@@ -1499,7 +1552,8 @@ def test_the_gates_failure_does_not_spend_the_reviewers_budget(
     `power="high"` read, and letting the cheap loop draw on the expensive one's budget
     starves it.
     """
-    agent = _Agent(nodes_after=2, approve_after=4)
+    _stage_gate(monkeypatch, passes_on=2)
+    agent = _Agent(approve_after=4)
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
@@ -1579,9 +1633,11 @@ def test_the_grounding_lane_carries_its_own_verdict_into_the_block(
     elsewhere: Path,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An author that never names a node is handed the identical brief every pass."""
-    agent = _Agent(nodes_after=99)
+    """A gate handing back the identical failure every pass says so in the block's notes."""
+    _stage_gate(monkeypatch, passes_on=None)
+    agent = _Agent()
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
@@ -1663,10 +1719,11 @@ def test_a_run_killed_mid_review_resumes_without_re_documenting(
     resume = read_resume(checkpoint)
     assert resume.state == "review", resume
     assert resume.flow == "Docs", resume
-    assert resume.params["rework"] == 0, resume.params
+    loop = resume.params["loop"]
+    assert loop["rework"] == 0, loop
     assert resume.params["author"]["nodes"] == ["docs/features/widget.md"], resume.params
-    assert resume.params["progress"]["gate_verdict"] == "passed", resume.params
-    assert resume.params["progress"]["gate_progress_verdict"] == "cleared", resume.params
+    assert loop["progress"]["gate_verdict"] == "passed", loop
+    assert loop["progress"]["gate_progress_verdict"] == "cleared", loop
 
     agent = _Agent()
     result = drive_flow(Docs(**resume.inputs), env(run_dir=run_dir), agent, resume)
@@ -1707,7 +1764,7 @@ def test_a_run_killed_mid_rework_resumes_knowing_what_was_outstanding(
     checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
     assert resume.state == "repair", resume
-    progress = resume.params["progress"]
+    progress = resume.params["loop"]["progress"]
     assert progress["review_disposition"] == "revise", progress
     assert progress["review_ids"] == ["D1", "D2"], progress
     assert progress["review_findings"] == 2, progress
