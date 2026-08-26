@@ -48,14 +48,9 @@ what you wrote:
 ## Output
 Respond with JSON only after the epic and its stories are updated:
 ```json
-{"status": "done|blocked", "notes": "<one-line summary of what was re-grounded>"}
+{"status": "done|blocked", "notes": "<one-line summary of what was re-grounded, or the specific thing the operator's answer left undecided>"}
 ```
 
-- `done` — the epic, its stories and the queue now match what the operator stated, and every
-  claim you wrote is grounded in something you read.
-- `blocked` — **the answer does not let you re-ground the epic**, and rewriting it anyway would
-  mean inventing the missing half. The answer contradicts what the repository actually contains,
-  it settles a different question than the one that blocked the story, or the re-grounding needs
-  a decision it does not make. The workflow re-reads this epic's stories immediately after this
-  stage, so an epic rewritten around a guess is executed as though it were ground truth — hand
-  it back instead. Name in `notes` the specific thing the answer left undecided.
+Report `blocked` rather than rewriting the epic around a guess: the workflow re-reads these
+stories immediately after this stage, so an epic grounded in an invention is executed as
+though it were ground truth.

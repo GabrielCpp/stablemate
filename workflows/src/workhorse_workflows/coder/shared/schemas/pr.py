@@ -3,21 +3,21 @@
 Ported from the main graph's `open_pr` / `merge` / `flag_ci_fail` / `flag_merge_fail` nodes
 and story mode's `open_story_pr`.
 
-**One tri-state stays a string here, for the reason `schemas/ci.py` records.** `merge_status`
-is `merged | unavailable | failed`, and `decide_merge`'s `default:` arm is `guard_merge` —
-the *pessimistic* one — so a blank must route the way `failed` does. A pair of bools cannot
-express that without inventing a third, so the port keeps the string and writes the branch
-as `if status in (...)` with a comment naming the arm the blank falls into.
+**Both tri-states are `Literal`s, and both are Python-produced, so both carry a default**
+(`_base.py`). `merge_status` is `merged | unavailable | failed` and defaults to the
+pessimistic arm: a merge nobody could report on must route the way a failed one does, and
+`guard_merge` is where `failed` goes. `story_pr` is `opened | exists | skipped` and nothing
+branches on it — its node's only successor is the terminal — but it stays three arms rather
+than a bool because it is a *report*: "I opened one" and "one was already open" are the
+whole of what it is read for.
 
-`story_pr` is a tri-state too (`opened | exists | skipped`) but nothing branches on it: its
-node's only successor is the terminal. It stays a string because it is a *report*, not a
-router — collapsing it to a bool would throw away the difference between "I opened one" and
-"one was already open", which is the whole of what the field is read for.
-
-`should_gate` and the two `*_flagged` fields are the ordinary two-state case and are bools:
-each is `yes`/`no` in the YAML with a blank that means `no`, which is what a bool already is.
+`MergeFixResult.status` is the module's one **agent**-produced status, so it is required and
+has no default. `should_gate` and the two `*_flagged` fields are the ordinary two-state case
+and are bools.
 """
 from __future__ import annotations
+
+from typing import Literal
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
@@ -44,7 +44,7 @@ class MergeOutcome(CoderResult):
     conflict, a branch behind base, branch protection — and it is the arm the blank joins.
     """
 
-    merge_status: str = ""
+    merge_status: Literal["merged", "unavailable", "failed"] = "failed"
     base_branch: str = ""
 
 
@@ -56,7 +56,7 @@ class StoryPr(CoderResult):
     carries every PR that exists now, opened this run or not.
     """
 
-    story_pr: str = "skipped"
+    story_pr: Literal["opened", "exists", "skipped"] = "skipped"
     pr_urls: list[str] = []
 
 

@@ -57,7 +57,7 @@ on loop 2's list, not resolved silently here.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from workhorse.pyflow import (
     Await,
@@ -182,9 +182,8 @@ class Coder(Workflow):
     built ships in the same commit as the story that filed it.
     """
 
-    #: `epic` (walk the queue) or `story` (one named slug). Anything else takes the
-    #: YAML `default:` arm, which was `init_base` — the epic path.
-    mode: str = "epic"
+    #: `epic` (walk the queue) or `story` (one named slug).
+    mode: Literal["epic", "story"] = "epic"
     #: The docs repo root, when the planning documents live in a checkout of their own
     #: rather than beside the code. Blank walks up from `repo_dir`.
     docs_path: str = ""
@@ -198,9 +197,9 @@ class Coder(Workflow):
     #: `auto` lets the sub-flows resolve their own blocks; `human` escalates to a human.
     #: The shipped legacy value `operator` remains an alias for `human`.
     #: It does not reach the CI gate, which is always human — see `_ci_gate`.
-    operator_mode: str = "auto"
+    operator_mode: Literal["auto", "human", "operator"] = "auto"
     #: Which environment QA runs against, passed through to `dev`, `docs` and `qa`.
-    target_env: str = "local"
+    target_env: Literal["local", "dev"] = "local"
 
     #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
     #: fill each one in for any node or sub-flow that declares a parameter of the same
@@ -429,8 +428,8 @@ class Coder(Workflow):
         epic: str = "",
         triage: int = 0,
         notes: str = "",
-        resume_at: str = "document",
-        attempts: int | str = 0,
+        resume_at: Literal["document", "give_up", "finalize"] = "document",
+        attempts: int = 0,
     ) -> Await:
         """The docs phase would not pass the story: the run parks for a human, not ends failed.
 
@@ -479,8 +478,8 @@ class Coder(Workflow):
         self,
         epic: str = "",
         triage: int = 0,
-        resume_at: str = "document",
-        attempts: int | str = 0,
+        resume_at: Literal["document", "give_up", "finalize"] = "document",
+        attempts: int = 0,
     ) -> Continue:
         """The consume half of the docs gate: re-document on the operator's fix."""
         self.logger.info(
@@ -572,7 +571,7 @@ class Coder(Workflow):
         )
         return Continue(result, self.select_story, epic=epic)
 
-    def give_up(self, epic: str = "", attempts: int | str = 0) -> Continue:
+    def give_up(self, epic: str = "", attempts: int = 0) -> Continue:
         """`decide_qa_fail` → `failed_docs`: the dev-target report ends here; the run stops.
 
         Real QA exhaustion no longer reaches this method: every budget the QA sub-flow can

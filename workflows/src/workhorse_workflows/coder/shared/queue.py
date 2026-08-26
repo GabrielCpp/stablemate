@@ -692,7 +692,7 @@ def prune_epic(
 # ── story selection ───────────────────────────────────────────────────────────────
 
 
-def _progress_fields(report: dict | str) -> tuple[str, str]:
+def _progress_fields(report: dict | str) -> tuple[str, int]:
     """Queue progress for the dashboard, through the shared worklist snapshot.
 
     The story queue *is* a worklist — `report['done']` finished items plus the
@@ -702,13 +702,13 @@ def _progress_fields(report: dict | str) -> tuple[str, str]:
     the labels simply carry no progress.
     """
     if not isinstance(report, dict):
-        return "", ""
+        return "", 0
     done = int(report.get("done") or 0)
     remaining = [str(s) for s in (report.get("remaining") or [])]
     items = [wl.WorkItem(id=f"__done_{i}", status="done") for i in range(done)]
     items += [wl.WorkItem(id=s, status="pending") for s in remaining]
     snap = wl.snapshot(items)
-    return snap.progress, str(snap.remaining)
+    return snap.progress, snap.remaining
 
 
 def _next_story_report(okf: Ostler, epic: str, skip: set[str]) -> dict | str:
@@ -768,9 +768,9 @@ def select_story(
     * `blocked` — set the epic aside for this run and move to the next one. Its committed
       work stays on its branch, unmerged; a later run picks it up again.
 
-    `has_story` is still returned for anything reading it, but it is the outcome — not its
-    absence — that decides whether an epic is merged. Conflating the two is what merged an
-    epic with 20 of 21 stories unbuilt after one story gave up on QA.
+    It is the outcome — not the mere absence of a story — that decides whether an epic is
+    merged. Conflating the two is what merged an epic with 20 of 21 stories unbuilt after
+    one story gave up on QA.
     """
     if not epic:
         logger.warning("no epic supplied to select_story")
@@ -852,7 +852,6 @@ def select_story(
     logger.info("selected story '%s' in epic '%s'", slug, epic)
     return found.model_copy(
         update={
-            "has_story": True,
             "story_outcome": "story",
             "story_path": str(nxt.get("path") or ""),
             "spec_dir": spec_dir,

@@ -8,19 +8,21 @@ walked front-to-back, each epic's stories are walked in dependency order, and ev
 outcome — passed, given up, or set aside — is recorded back onto the queue so the next
 pass sees it.
 
-**The `yes`/`no` scalars become bools, and `story_outcome` does not.** That is `ci.py`'s
-rule applied again: a two-state answer whose blank means "no" is a bool, and a tri-state
-whose YAML `default:` arm is the pessimistic one stays a string. `has_epic`,
-`epic_blocked`, `pruned`, `committed` and `has_story` are all the former.
-`story_outcome` is `story | done | blocked`, and the whole reason `select-next-story.py`
-exists in its current form is that conflating its arms merged an epic with 20 of 21
-stories unbuilt — so it stays a string, and it defaults to `blocked`, never to `done`.
+**The `yes`/`no` scalars are bools, and the tri-states are `Literal`s.** A two-state
+answer whose blank means "no" is a bool: `has_epic`, `epic_blocked`, `pruned` and
+`committed`. A status is a `Literal`, defaulted or not by who produces it (`_base.py`).
+Every status in this module but `WorktreeSettled`'s is Python-produced, so it carries a
+default and the default is the pessimistic arm — `story_outcome` defaults to `blocked`,
+never to `done`, because conflating its arms is what merged an epic with 20 of 21 stories
+unbuilt.
 
-`StoryPick` keeps `has_story` alongside `story_outcome` even though the outcome subsumes
-it. The YAML emitted both, the labels and anything reading the run record still see both,
-and dropping the redundant one would be a narrowing.
+`has_story` is gone. It answered `story_outcome == "story"` and nothing else, and a
+second field saying the same thing is a second field to get wrong: the whole defect the
+outcome exists to prevent is a reader that treats "no story" as one answer.
 """
 from __future__ import annotations
+
+from typing import Literal
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
@@ -98,19 +100,18 @@ class StoryPick(CoderResult):
     `blocked` so an unanswered selection can never be the reason an epic is merged.
 
     `progress` and `remaining_count` are the shared worklist snapshot — `"3/12"` and
-    `"9"` — folded into every outcome so the run's labels carry queue progress whichever
+    `9` — folded into every outcome so the run's labels carry queue progress whichever
     way the selection went.
     """
 
-    has_story: bool = False
-    story_outcome: str = "blocked"
+    story_outcome: Literal["story", "done", "blocked"] = "blocked"
     story_path: str = ""
     spec_dir: str = ""
     story_slug: str = ""
     epic: str = ""
     reason: str = ""
     progress: str = ""
-    remaining_count: str = ""
+    remaining_count: int = 0
 
 
 class EpicBlocked(CoderResult):
@@ -186,7 +187,7 @@ class WorktreeSettled(CoderResult):
     reason to commit a stranger's changes under this story's name.
     """
 
-    status: str = ""
+    status: Literal["settled", "blocked"]
     notes: str = ""
 
 
@@ -215,7 +216,7 @@ class ReplanResult(CoderResult):
     queue the next pick reads, not the turn's summary of itself.
     """
 
-    status: str = ""
+    status: Literal["done", "blocked"]
     notes: str = ""
 
 
