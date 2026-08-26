@@ -52,6 +52,7 @@ _NAMES: dict[str, str] = {
         # node that must tell "nothing to commit" from "git said no" still imports only
         # from the kit, rather than reaching past it into gitpython.
         "GitError",
+        "head_sha",
         "is_ancestor",
         "list_tracked_files",
         "local_branch_exists",
@@ -140,6 +141,7 @@ if TYPE_CHECKING:  # the names above, for a reader and a type checker
         diff_text,
         fetch_reset,
         GitError,
+        head_sha,
         is_ancestor,
         list_tracked_files,
         local_branch_exists,

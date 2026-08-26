@@ -11,6 +11,8 @@ here. Nothing on disk carried the strings — they existed only to be compared b
 """
 from __future__ import annotations
 
+from typing import Literal
+
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
 
@@ -22,13 +24,22 @@ class TargetClassification(CoderResult):
     (missing or empty). `service_state` is `existing` when the declared marker file is
     already in place, `absent` otherwise; with no marker declared it reads `absent`,
     which sends the run through the skeleton step.
+
+    Both defaults are the arm that does the most work: a node the resilience ladder could
+    not answer classifies as `absent`, which routes the run through full genesis rather
+    than through the config-only refresh that would skip every step that makes a repo.
+
+    `markers` is the marker list resolved once here — the `markers` param when it is set,
+    otherwise the singular `marker` — so `config` and `verify` read one answer back
+    instead of each re-deciding the fallback for itself.
     """
 
     ok: bool = False
     target_dir: str = ""
-    target_state: str = "absent"
-    service_state: str = "absent"
+    target_state: Literal["absent", "partial", "existing"] = "absent"
+    service_state: Literal["existing", "absent"] = "absent"
     service: str = ""
+    markers: list[str] = []
     note: str = ""
 
 

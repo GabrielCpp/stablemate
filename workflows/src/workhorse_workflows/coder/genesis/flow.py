@@ -105,7 +105,8 @@ class Genesis(Workflow):
     init_cmd: str = ""
     #: The file that proves the init worked (e.g. `"go.mod"`).
     marker: str = ""
-    #: Comma-separated service markers for `agents.yml`. Falls back to `marker`.
+    #: Comma-separated service markers for `agents.yml`. Empty falls back to `marker`,
+    #: resolved once by `resolve_genesis_target` and read back off its result.
     markers: str = ""
     #: Workflows to register in `agents.yml`.
     workflows: str = "coder"
@@ -131,7 +132,12 @@ class Genesis(Workflow):
         exactly where a *new* service gets added.
         """
         found = self.call(
-            resolve_genesis_target, self.target, self.service, self.service_root, self.marker
+            resolve_genesis_target,
+            self.target,
+            self.service,
+            self.service_root,
+            self.marker,
+            self._split(self.markers),
         )
         if not found.ok:
             raise WorkflowFailed(found.note or "no usable genesis target")
@@ -172,7 +178,7 @@ class Genesis(Workflow):
             found.service,
             self._split(self.packs),
             self.service_root,
-            self._split(self.markers or self.marker),
+            found.markers,
             self._split(self.workflows),
             self._split(self.scaffolds),
             self._split(self.assistants),
@@ -225,12 +231,15 @@ class Genesis(Workflow):
         fixed more reliably than the tool that already produced them. The operator re-runs
         with corrected params instead.
         """
+        found = self._target()
         report = self.call(
-            validate_genesis,
-            self._target().target_dir,
-            self.service_root,
-            self._split(self.markers or self.marker),
+            validate_genesis, found.target_dir, self.service_root, found.markers
         )
+        # Logged rather than raised: a warning is a legibility problem, not a broken repo,
+        # and the one that matters most — ostler could not be imported, so the binding
+        # check did not run — is otherwise invisible in a run that reports success.
+        for warning in report.warnings.splitlines():
+            self.logger.warning("%s", warning)
         if not report.valid:
             raise WorkflowFailed(f"genesis target is invalid: {report.errors}")
         return Done(report)

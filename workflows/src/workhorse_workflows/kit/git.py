@@ -231,6 +231,17 @@ def commit_all(path: str | Path, message: str) -> bool:
     return True
 
 
+def head_sha(path: str | Path, ref: str = "HEAD") -> str:
+    """The full commit sha for ``ref``, or "" when it can't be resolved.
+
+    "" is the honest answer for an unborn HEAD, which is a state a freshly-initialised
+    repo is legitimately in rather than an error to raise on."""
+    try:
+        return open_repo(path).git.rev_parse(ref).strip()
+    except GitError:
+        return ""
+
+
 def short_sha(path: str | Path, ref: str = "HEAD") -> str:
     """The abbreviated commit sha for ``ref`` (``git rev-parse --short``), or "" when
     it can't be resolved."""

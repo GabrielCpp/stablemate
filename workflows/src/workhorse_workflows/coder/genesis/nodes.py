@@ -1,8 +1,5 @@
 """Genesis's deterministic work: classify the target, make a repo, configure it, check it.
 
-Ports `resolve-genesis-target.py`, `genesis-git-init.py`, `write-genesis-agents-yml.py`,
-`init-genesis-skeleton.py`, `install-genesis-farrier.py` and `validate-genesis.py`.
-
 **Genesis carries zero stack knowledge, and that is enforced, not aspired to.** Every
 stack-specific value — which packs to install, which scaffold to render, the service root,
 the init command, the marker files — arrives as a flow parameter and is written through
@@ -10,35 +7,44 @@ verbatim. `scripts/check_public.py` asserts no base workflow may depend on the p
 overlay, and the stack packs live there; a base workflow that knew `go` meant `go.mod`
 would be a base workflow that knows the overlay's contents.
 
-Two shapes are worth naming before reading further:
+Three shapes are worth naming before reading further:
 
 * **Repo state and service state are tracked separately.** A monorepo grows one service at
   a time, so keying the skeleton step on the *repo* would mean the second run into an
   existing monorepo (adding `web` beside `api`) sees `existing`, skips the skeleton, and no
   second service could ever be created.
-* **Two external commands run through `_run`, and git through `_git`**, both module-level
-  so a test can replace them by attribute. The YAML's scripts called `subprocess.run`
-  inline, which was fine for a subprocess node and is not for an in-process one.
+* **External work goes through the kit** — `run_tool` for farrier, `kit.git` for git,
+  `load_json` for the agents-context file. Only `git init` keeps a local shim, because the
+  kit opens repos rather than creating them, and only `init_cmd` keeps its own
+  `subprocess` call, because it is an operator-supplied shell string rather than an argv.
+* **Only `verify` gates.** Every node between it and `classify` records what it found and
+  returns; none of them fails the run. That is deliberate: the checks `verify` runs are
+  the main loop's actual preconditions, so a per-step abort would stop the run at a
+  symptom and report it instead of at the precondition that is broken, and an operator
+  reading a failure would get one step's stderr rather than the whole list of what is
+  missing.
 
-The scripts' remediation sentences are kept verbatim in the notes. They are the only thing
-an operator reading a failed genesis run has, and several name the exact `--params` to
-re-run with.
+Every remediation sentence in a note is there for one reader — the operator looking at a
+failed genesis run — and several name the exact `--params` to re-run with.
 """
 from __future__ import annotations
 
 import copy
 import io
-import json
 import logging
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Literal
 
+from git import Repo
+from git.exc import GitError
 from ostler import path as okf_path
 from ostler.model import find_root
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 from ruamel.yaml.scalarstring import ScalarString
+from workhorse_workflows.kit import commit_all, head_sha, load_json, run_tool
 from workhorse_workflows.coder.shared.contract import service_problems
 from workhorse_workflows.coder.shared import stubs
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -56,22 +62,17 @@ from workhorse_workflows.coder.shared.schemas.genesis import (
 ASSISTANTS = ("claude", "codex", "copilot")
 
 
-def _run(args: list[str], cwd: Path, timeout: int = 300) -> subprocess.CompletedProcess:
-    """An external CLI, captured. Module-level so a test can replace it by attribute."""
-    return subprocess.run(args, cwd=str(cwd), capture_output=True, text=True,
-                          check=False, timeout=timeout)
+def _git_init(target: Path) -> str:
+    """`git init` in `target`, or the reason it could not be done.
 
-
-def _git(target: Path, *args: str) -> subprocess.CompletedProcess:
-    """`git` in `target`, captured, never raising on a non-zero exit."""
-    return subprocess.run(["git", *args], cwd=str(target), capture_output=True,
-                          text=True, check=False, timeout=30)
-
-
-def _head_sha(target: Path) -> str:
-    """The current HEAD, or `""` when HEAD is unborn."""
-    result = _git(target, "rev-parse", "HEAD")
-    return result.stdout.strip() if result.returncode == 0 else ""
+    The one git call with no kit equivalent: every helper in `kit.git` opens a repo that
+    already exists, and this is the call that makes one.
+    """
+    try:
+        Repo.init(str(target))
+    except GitError as exc:
+        return str(exc).strip()
+    return ""
 
 
 # ── classify ──────────────────────────────────────────────────────────────────
@@ -84,6 +85,7 @@ def resolve_genesis_target(
     service: str = "",
     service_root: str = "",
     marker: str = "",
+    markers: Sequence[str] = (),
 ) -> TargetClassification:
     """Classify the target before anything mutates it, so genesis is safe to re-run.
 
@@ -102,6 +104,12 @@ def resolve_genesis_target(
     the whole flow runs against an empty path: every step no-ops with a note, and the run
     still reaches the conventions agent, burning a model call to discover there is nothing
     there.
+
+    The `markers`/`marker` fallback is resolved here and published on the result, so the
+    two states that write marker lists — the `agents.yml` merge and `verify` — read one
+    answer rather than each re-deciding it. `marker` is the file this run's init has to
+    produce; `markers` is the full set the repo declares, and a single-service genesis
+    passes only the former.
     """
     if not target:
         logger.error("no target directory was provided")
@@ -112,6 +120,7 @@ def resolve_genesis_target(
 
     root = Path(target).expanduser().resolve()
     state = _classify(root)
+    declared_markers = [m for m in markers if m] or ([marker] if marker else [])
 
     # Keyed on this service's marker, independent of repo state — see the docstring.
     service_dir = (root / service_root) if service_root else root
@@ -134,11 +143,18 @@ def resolve_genesis_target(
         target_state=state,
         service_state=service_state,
         service=service,
+        markers=declared_markers,
         note=note,
     )
 
 
-def _classify(target: Path) -> str:
+def _classify(target: Path) -> Literal["absent", "partial", "existing"]:
+    """Which of the three states the target directory is in, by what is on disk.
+
+    Order matters: an `agents.yml` settles it before emptiness is consulted, so a repo
+    that has been configured and then emptied of everything else still reads `existing`
+    and is not re-scaffolded over.
+    """
     if (target / "agents.yml").is_file():
         return "existing"
     if not target.exists() or not any(target.iterdir()):
@@ -177,7 +193,7 @@ def genesis_git_init(logger: logging.Logger, target_dir: str = "") -> GitInit:
     target.mkdir(parents=True, exist_ok=True)
 
     if (target / ".git").exists():
-        sha = _head_sha(target)
+        sha = head_sha(target)
         if sha:
             logger.info("%s is already a git repo at %s", target, sha[:8])
             return GitInit(ready=True, initial_commit=sha,
@@ -185,9 +201,9 @@ def genesis_git_init(logger: logging.Logger, target_dir: str = "") -> GitInit:
         # A .git with an unborn HEAD still needs the initial commit below.
         logger.info("%s has .git but an unborn HEAD — landing the initial commit", target)
     else:
-        result = _git(target, "init", "-q")
-        if result.returncode != 0:
-            return GitInit(note=f"git init failed: {result.stderr.strip()}")
+        failure = _git_init(target)
+        if failure:
+            return GitInit(note=f"git init failed: {failure}")
 
     # A commit needs *something* tracked. A README is the least surprising choice and the
     # file a human opening the new repo looks for first.
@@ -195,12 +211,18 @@ def genesis_git_init(logger: logging.Logger, target_dir: str = "") -> GitInit:
     if not readme.exists():
         readme.write_text(f"# {target.name}\n", encoding="utf-8")
 
-    _git(target, "add", "-A")
-    result = _git(target, "commit", "-q", "-m", "Initial commit")
-    if result.returncode != 0 and not _head_sha(target):
-        return GitInit(note=f"initial commit failed: {(result.stderr or result.stdout).strip()}")
+    # `commit_all` is the right shape here and nowhere else in the coder: a genesis target
+    # is a directory this run is making, so there is no concurrent work for `git add -A`
+    # to sweep up. It raises when git refuses and returns False on an empty tree, and
+    # neither is fatal while HEAD resolves — a re-run over an already-committed repo takes
+    # exactly that path.
+    try:
+        commit_all(target, "Initial commit")
+    except GitError as exc:
+        if not head_sha(target):
+            return GitInit(note=f"initial commit failed: {str(exc).strip()}")
 
-    sha = _head_sha(target)
+    sha = head_sha(target)
     logger.info("initialised %s at %s", target, sha[:8])
     return GitInit(
         ready=True,
@@ -263,6 +285,31 @@ def write_agents_yml(
 
     scaffold_ids = [s for s in (entry.partition(":")[0].strip() for entry in scaffolds) if s]
 
+    # `gates` arrives as text an operator typed, and both of the ways it can be wrong used
+    # to end in an empty `services:` block with nothing said about it. Parse it into the
+    # pairs that survive and the entries that did not, so `note` can name them.
+    declared: dict[str, str] = {}
+    malformed: list[str] = []
+    for pair in gates:
+        gate, _, command = pair.partition("=")
+        if gate.strip() and command.strip():
+            declared[gate.strip()] = command.strip()
+        elif pair.strip():
+            malformed.append(pair.strip())
+
+    drops: list[str] = []
+    unknown = [name for name in assistants if name and name not in ASSISTANTS]
+    if unknown:
+        drops.append(f"assistant(s) {', '.join(unknown)} dropped — farrier installs "
+                     f"{', '.join(ASSISTANTS)} and nothing else")
+    if malformed:
+        drops.append(f"gate(s) {', '.join(malformed)} dropped — a gate is written "
+                     f"'<gate>=<command>' and both halves have to be non-empty")
+    if declared and not service:
+        drops.append(f"gate(s) {', '.join(sorted(declared))} dropped — a services: block is "
+                     f"keyed on a service name and none was passed; re-run with "
+                     f"--params '{{\"service\":\"<name>\", ...}}' to declare them")
+
     # The repo's name is its directory name — NOT the service's. One monorepo holds many
     # services, and two things key off this: `resolve_workspace` keys the workspace on it
     # (so `record_plan` resolves services under it), and farrier derives the
@@ -322,13 +369,6 @@ def write_agents_yml(
 
     # The dev lane's gates, keyed on the service name — the narrower of the two keys
     # `service_declaration` accepts, so two services in one monorepo can differ.
-    # A pair with no `=` partitions to an empty command and is dropped by the same
-    # emptiness test that drops `gate=` and `=command`.
-    declared = {
-        gate.strip(): command.strip()
-        for gate, _, command in (pair.partition("=") for pair in gates)
-        if gate.strip() and command.strip()
-    }
     if declared and service:
         if not isinstance(data.get("services"), dict):
             data["services"] = {}
@@ -340,7 +380,10 @@ def write_agents_yml(
                 entry.setdefault(gate, command)
 
     if data == before and path.is_file():
-        note = f"agents.yml for repo '{repo_name}' already carries this service; left untouched"
+        note = _with_drops(
+            f"agents.yml for repo '{repo_name}' already carries this service; left untouched",
+            drops,
+        )
         logger.info("%s", note)
         return AgentsYml(path="agents.yml", note=note)
 
@@ -356,8 +399,19 @@ def write_agents_yml(
             f"service_roots: {', '.join(workspace.get('service_roots') or []) or '<none>'}; "
             f"service_markers: {', '.join(workspace.get('service_markers') or []) or '<none>'}; "
             f"gates: {', '.join(sorted(declared)) or '<none>'})")
+    note = _with_drops(note, drops)
     logger.info("%s", note)
     return AgentsYml(written=True, path="agents.yml", note=note)
+
+
+def _with_drops(note: str, drops: Sequence[str]) -> str:
+    """`note` with whatever this merge threw away appended, one line each.
+
+    On the note rather than in the log, because the note is what a failed run reports and
+    what the operator reads; a dropped gate is a config that silently did not take, and it
+    surfaces weeks later as a lane that runs no tests.
+    """
+    return "\n".join([note, *drops]) if drops else note
 
 
 def _yaml(source: str = "") -> YAML:
@@ -530,7 +584,7 @@ def install_farrier(
 
     notes: list[str] = []
     if not skip_install:
-        result = _run(["farrier", "install", "--repo", str(target)], target)
+        result = run_tool(["farrier", "install", "--repo", str(target)], target)
         if result.returncode != 0:
             detail = (result.stderr or result.stdout).strip()
             return FarrierInstall(note=f"farrier install failed: {detail}")
@@ -543,7 +597,7 @@ def install_farrier(
         args = ["farrier", "scaffold", scaffold_id, "--repo", str(target)]
         if dir_param.strip():
             args += ["--param", f"dir={dir_param.strip()}"]
-        result = _run(args, target)
+        result = run_tool(args, target)
         if result.returncode != 0:
             detail = (result.stderr or result.stdout).strip()
             return FarrierInstall(
@@ -607,7 +661,7 @@ def validate_genesis(
     if not (target / ".git").exists():
         errors.append(f"no .git at {target} — ostler will bind to an ancestor repo, and "
                       f"branch-author.py cannot cut a branch")
-    elif not _has_commit(target):
+    elif not head_sha(target):
         errors.append(f"{target} has an unborn HEAD (no commit) — there is nothing for a "
                       f"branch to point at")
 
@@ -632,7 +686,7 @@ def validate_genesis(
     if not ctx_path.is_file():
         errors.append(f"no {ctx_path.relative_to(target)} — farrier install did not run, so "
                       f"resolve-impl-context.py will resolve every skill to nothing")
-    elif not _instructions(ctx_path):
+    elif not load_json(ctx_path, "agents-context", logger).get("instructions"):
         errors.append(
             f"{ctx_path.relative_to(target)} has an empty 'instructions' map — the "
             f"implementation stage would run with no skills and still report success"
@@ -668,18 +722,6 @@ def _ostler_root(target: Path) -> Path | None:
     try:
         return Path(find_root(target)).resolve()
     except (OSError, ValueError, RuntimeError):
-        return None
-
-
-def _has_commit(target: Path) -> bool:
-    return bool(_head_sha(target))
-
-
-def _instructions(ctx_path: Path) -> object:
-    """The `instructions` map from an agents-context file, or a falsy value."""
-    try:
-        return (json.loads(ctx_path.read_text(encoding="utf-8")) or {}).get("instructions")
-    except (OSError, json.JSONDecodeError, ValueError):
         return None
 
 

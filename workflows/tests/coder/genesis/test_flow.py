@@ -3,7 +3,7 @@
 Genesis is the flow with the least to stub: `resolve_genesis_target`, `genesis_git_init`,
 `write_agents_yml`, `init_skeleton` and `validate_genesis` all run for real against a temp
 directory, and the skeleton step runs a real shell command. The one seam is
-`nodes.genesis._run` — the `farrier` CLI, which is not installed in a test — and the fake
+`nodes.genesis.run_tool` — the `farrier` CLI, which is not installed in a test — and the fake
 below does what farrier does rather than only reporting success: `install` writes
 `.agents/agents-context.json`, and each scaffold seeds the directory it names. Everything
 `validate_genesis` then asserts is a file some step actually produced.
@@ -95,9 +95,7 @@ class _Farrier:
         self.seed_docs = seed_docs
         self.calls: list[list[str]] = []
 
-    def __call__(
-        self, args: list[str], cwd: Path, timeout: int = 300
-    ) -> subprocess.CompletedProcess:
+    def __call__(self, args: list[str], cwd: Path) -> subprocess.CompletedProcess:
         self.calls.append(list(args))
         target = Path(args[args.index("--repo") + 1])
         if args[1] == "install":
@@ -133,7 +131,7 @@ class _NoAgent:
 @pytest.fixture
 def farrier(monkeypatch: pytest.MonkeyPatch) -> _Farrier:
     fake = _Farrier()
-    monkeypatch.setattr(genesis_nodes, "_run", fake)
+    monkeypatch.setattr(genesis_nodes, "run_tool", fake)
     return fake
 
 
@@ -312,7 +310,7 @@ def test_an_invalid_repo_fails_the_run_with_no_repair_turn(
     """Genesis is pure bootstrapping: an invalid target fails the run directly, carrying
     the validator's own words, rather than handing the errors to a repair turn that could
     only guess at a tooling failure the tool itself already reported."""
-    monkeypatch.setattr(genesis_nodes, "_run", _Farrier(seed_docs=False))
+    monkeypatch.setattr(genesis_nodes, "run_tool", _Farrier(seed_docs=False))
 
     with pytest.raises(WorkflowFailed) as exc:
         _run(drive_flow, env(), target)
@@ -327,7 +325,7 @@ def test_a_failed_farrier_install_still_fails_at_verify(
 ) -> None:
     """A failed install leaves no skills and no docs tree — the flow routes straight to
     the validator, which reports the missing context file as an error."""
-    monkeypatch.setattr(genesis_nodes, "_run", _Farrier(install_ok=False))
+    monkeypatch.setattr(genesis_nodes, "run_tool", _Farrier(install_ok=False))
 
     with pytest.raises(WorkflowFailed) as exc:
         _run(drive_flow, env(), target)
@@ -356,7 +354,7 @@ def test_a_run_killed_in_the_farrier_step_resumes_on_that_state_alone(
                 raise RuntimeError("killed while running farrier")
             return real_farrier(*a, **kw)
 
-    monkeypatch.setattr(genesis_nodes, "_run", _Killed())
+    monkeypatch.setattr(genesis_nodes, "run_tool", _Killed())
 
     run_env = env()
     run_dir = run_env.writer.run_dir
@@ -368,7 +366,7 @@ def test_a_run_killed_in_the_farrier_step_resumes_on_that_state_alone(
     assert resume.state == "farrier", resume
     assert resume.flow == "Genesis", resume
 
-    monkeypatch.setattr(genesis_nodes, "_run", real_farrier)
+    monkeypatch.setattr(genesis_nodes, "run_tool", real_farrier)
     result = drive_flow(
         Genesis(**resume.inputs), env(run_dir=run_dir), _NoAgent(), resume
     )
