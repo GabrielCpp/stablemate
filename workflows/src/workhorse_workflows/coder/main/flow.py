@@ -45,14 +45,15 @@ in story mode neither `select_epic` nor `select_story` ever runs. The queue epic
 as a state parameter rather than read back through a guarded `self.output`, so a resumed
 run does not have to re-derive it.
 
-**The backlog drain is nested here as well as being a flow.** `fix/flow.py` is the
-standalone drain; states `drain` through `fix_recheck` below are the same seven steps run
-*inside* a story's run, right after that story goes green, which is what the YAML did at
-lines 859–1144. They are not a `handoff` to `Fix` because the two differ in their far end:
-the standalone flow documents and commits each drained item on its own, while the nested
-copy leaves both to the story's own `final_docs` and commit, so one commit covers the story
-and everything drained behind it. The duplication is the YAML's and it is preserved; it is
-on loop 2's list, not resolved silently here.
+**The backlog drain is the `fix` flow, handed off to.** A story that goes green drains
+whatever it filed on the way, and `drain` below is one `handoff` — not a second copy of
+the loop. The copy that used to live here was the YAML's, seven states of it, and it had
+drifted: it implemented only the first service a fix's plan dispatched, and it swallowed
+a blocked implementer rather than escalating. Both are gone with the copy.
+
+The two flows still differ at the far end, and that difference is `Fix`'s, not this
+file's: `Fix` documents and commits each drained item itself. This story's own final
+documentation pass and commit run behind it, over whatever is left.
 """
 from __future__ import annotations
 
@@ -70,26 +71,14 @@ from workhorse.pyflow import (
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.dev import Dev
 from workhorse_workflows.coder.docs import Docs
-from workhorse_workflows.coder.fix import BLOCKED_NOTE
+from workhorse_workflows.coder.fix import Fix
 from workhorse_workflows.coder.fix_ci import FixCi
 from workhorse_workflows.coder.qa import Qa
 from workhorse_workflows.coder.qa.nodes import teardown_stack
 from workhorse_workflows.coder.review import Review
-from workhorse_workflows.coder.shared.backlog import (
-    mark_fix_blocked,
-    prune_fix_item,
-    seed_fix_story,
-    select_fix_item,
-)
 from workhorse_workflows.coder.shared.ci import epic_branch, poll_pr_checks, push_ci_fix
 from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
 from workhorse_workflows.kit.telemetry import counter_labels
-from workhorse_workflows.coder.shared.dev import (
-    branch_code_repos,
-    plan_summary,
-    resolve_impl_context,
-    select_next_layer,
-)
 from workhorse_workflows.coder.main.nodes.pr import (
     flag_ci_failure,
     flag_merge_failure,
@@ -110,15 +99,9 @@ from workhorse_workflows.coder.shared.queue import (
     select_story,
     stamp_story_passed,
 )
-from workhorse_workflows.coder.shared.story import (
-    prepare_fix_story,
-    prepare_story,
-    resolve_workspace_dirs,
-)
-from workhorse_workflows.coder.shared.schemas.dev import DispatchEntry, ImplResult, PlanResult
+from workhorse_workflows.coder.shared.story import prepare_story, resolve_workspace_dirs
 from workhorse_workflows.coder.shared.schemas.docs import DocsResult
 from workhorse_workflows.coder.shared.schemas.pr import MergeFixResult
-from workhorse_workflows.coder.shared.schemas.qa import QaResult
 from workhorse_workflows.coder.shared.schemas.queue import ReplanResult, WorktreeSettled
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
 
@@ -627,162 +610,27 @@ class Coder(Workflow):
             artifacts={"spec_dir": str(self._story.spec_dir)},
         )
 
-    # ── the backlog drain, nested inside the story ────────────────────────────────────
+    # ── the backlog drain ─────────────────────────────────────────────────────────────
 
     def drain(self, epic: str = "", docs_recheck_required: bool = True) -> Continue:
-        """`decide_post_sentinel` + `select_fix_item` + `seed_fix_story` + the seeding.
+        """Hand the backlog to the `fix` flow, which drains it to dry and returns.
 
-        The draw does not touch the backlog file — a bullet leaves it only at `_fix_prune`
-        or `_fix_flag`, at the far end of the iteration — so a resumed run re-draws the same
-        item rather than skipping it.
-
-        `prepare_fix_story` rather than `prepare_story`: the drain runs in the *parent's*
-        run scope, so calling the same node would overwrite the record the commit below
-        reads to know which story it is committing. The YAML registered the script twice for
-        this reason and said so.
-
-        None of the drain's turns join the story's backbone conversation: the drain works
-        a different, unnamed fix story (`self._fix_story`, not `self._story`), and never
-        names that chain.
+        `Fix` documents and commits each item it drains, so nothing about the drained work
+        is left for this story to record. `docs_recheck_required` is carried through
+        untouched: it is QA's answer about *this story*, and the drain neither sets nor
+        clears it.
         """
-        pick = self.call(select_fix_item, self.docs_path)
-        if not pick.has_fix:
-            return Continue(
-                pick,
-                self.finalize,
-                epic=epic,
-                docs_recheck_required=docs_recheck_required,
-            )
-        self.logger.info("draining %s: %s", pick.fix_bullet_id, pick.fix_bullet_text)
-        seed = self.call(
-            seed_fix_story, pick.fix_bullet_id, pick.fix_bullet_text, "", "", self.docs_path
+        result = self.handoff(
+            Fix,
+            docs_path=self.docs_path,
+            target_env=self.target_env,
         )
-        self.call(prepare_fix_story, self.docs_path, seed.story_slug, seed.epic)
-        return Continue(seed, self.fix_plan, epic=epic)
-
-    def fix_plan(self, epic: str = "") -> Continue:
-        """`plan_fix` + `decide_plan_fix`: plan the one-AC fix story."""
-        fix = self._fix_story
-        self.logger.info("planning %s", fix.story_slug, extra={"activity": True})
-        turn = roles.turn(self, "plan-story")
-        result = self.agent(
-            turn.prompt,
-            returns=PlanResult,
-            # high: the same planner `dev` runs. A fix story is small, but the plan still
-            # decides what production code gets touched.
-            power="high",
-            add_dirs=self._dirs(),
-            args=turn.args
-            | {
-                "story_path": fix.story_path,
-                "spec_dir": fix.spec_dir,
-                "story_slug": fix.story_slug,
-                "epic": fix.story_epic,
-            },
+        return Continue(
+            result,
+            self.finalize,
+            epic=epic,
+            docs_recheck_required=docs_recheck_required,
         )
-        if result.status == "blocked":
-            return self._fix_flag(result, epic)
-        # The YAML's `default:` arm was `resolve_fix_impl_context`, not the give-up.
-        return Continue(result, self.fix_dispatch, epic=epic)
-
-    def fix_dispatch(self, epic: str = "") -> Continue:
-        """`resolve_fix_impl_context` + `branch_fix_code_repos` + `select_fix_layer`.
-
-        `branch_code_repos` is called with `spec_dir` alone here, as the YAML's nested copy
-        was — one argument where the `dev` flow passes more. A plan that dispatches no layer
-        at all is legitimate (a fix that changes only documents) and goes straight to QA.
-        """
-        fix = self._fix_story
-        self.call(resolve_impl_context, fix.spec_dir, self.target_env, self.docs_path)
-        self.call(branch_code_repos, fix.spec_dir)
-        pick = self.call(select_next_layer, fix.spec_dir, -1)
-        if not pick.has_layer:
-            self.logger.info("no service layer dispatched — checking the fix as it stands")
-            return Continue(pick, self.fix_check, epic=epic)
-        return Continue(pick, self.fix_implement, epic=epic)
-
-    def fix_implement(self, epic: str = "") -> Continue:
-        """`implement_fix`: the first dispatched layer, and only it.
-
-        Only it, because the nested drain has no loop back to `select_fix_layer` — the YAML
-        wired `implement_fix` straight to `check_fix`. A fix whose plan dispatches two
-        services gets one implemented and the other QA'd as if it had been. That is the
-        YAML's behavior, preserved, and it is on loop 2's list.
-
-        The three `impl_instruction_paths` / `qa_run_plan` / `verification_setup` arguments the `dev`
-        flow passes are absent here for the same reason: the nested copy did not pass them.
-        """
-        layer = self._fix_layer
-        fix = self._fix_story
-        self.logger.info("implementing %s", layer.service or "the fix", extra={"activity": True})
-        turn = roles.turn(self, "implement-plan")
-        result = self.agent(
-            turn.prompt,
-            returns=ImplResult,
-            # high: writes the production change.
-            power="high",
-            cwd=layer.cwd,
-            add_dirs=self._dirs(),
-            args=turn.args | {
-                "story_slug": fix.story_slug,
-                "epic": fix.story_epic,
-                "story_path": fix.story_path,
-                "spec_dir": fix.spec_dir,
-                "plan_file": layer.plan_file,
-                "service_path": layer.service_path,
-                "service_type": layer.type,
-                "verification": layer.verification,
-            },
-        )
-        return Continue(result, self.fix_check, epic=epic)
-
-    def fix_check(self, epic: str = "") -> Continue:
-        """`check_fix` + `decide_fix_check`: one QA turn on the drained item."""
-        result = self._fix_qa()
-        if result.status == "passed":
-            return self._fix_prune(result, epic)
-        return Continue(result, self.fix_apply, epic=epic, notes=result.notes)
-
-    def fix_apply(self, epic: str = "", notes: str = "") -> Continue:
-        """`apply_fix_once`: the single retry, on what the QA turn found.
-
-        `notes` crosses from one agent turn to the next, and agent turns are not nodes, so
-        it is threaded as a parameter — `self.output` cannot reach it.
-
-        No session chain, unlike the QA lane's fix loop: there is exactly one lap here, so
-        there is no second turn for a chain to hand anything to.
-        """
-        fix = self._fix_story
-        self.logger.info("applying QA fixes to the drained item", extra={"activity": True})
-        turn = roles.turn(self, "apply-qa-fixes")
-        result = self.agent(
-            turn.prompt,
-            returns=QaResult,
-            # high: this retry has to converge, because there is not a second one.
-            power="high",
-            add_dirs=self._dirs(),
-            args=turn.args | {
-                "story_slug": fix.story_slug,
-                "epic": fix.story_epic,
-                "story_path": fix.story_path,
-                "spec_dir": fix.spec_dir,
-                "qa_dir": fix.qa_dir,
-                "qa_notes": notes,
-            },
-        )
-        return Continue(result, self.fix_recheck, epic=epic)
-
-    def fix_recheck(self, epic: str = "") -> Continue:
-        """`recheck_fix` + `decide_recheck`: settle the item either way.
-
-        Only `passed` prunes; everything else, blank included, flags the bullet and moves
-        on. The drain never escalates to an operator — a stuck fix stays visible in the
-        backlog and stops costing the loop anything.
-        """
-        result = self._fix_qa()
-        if result.status == "passed":
-            return self._fix_prune(result, epic)
-        return self._fix_flag(result, epic)
 
     # ── the far end of a story ────────────────────────────────────────────────────────
 
@@ -1133,57 +981,6 @@ class Coder(Workflow):
         """
         return f"settle-worktree:{self._story.story_slug}"
 
-    def _fix_prune(self, result: object, epic: str) -> Continue:
-        """`prune_fix_item`: the drained fix shipped, so its bullet leaves the backlog."""
-        bullet = self.output(select_fix_item).fix_bullet_id
-        self.call(prune_fix_item, bullet, self.docs_path)
-        return Continue(
-            result,
-            self.drain,
-            epic=epic,
-            docs_recheck_required=True,
-        )
-
-    def _fix_flag(self, result: object, epic: str) -> Continue:
-        """`fix_give_up`: annotate the bullet in place and draw the next one."""
-        bullet = self.output(select_fix_item).fix_bullet_id
-        self.logger.info("flagging %s as blocked", bullet)
-        self.call(mark_fix_blocked, bullet, BLOCKED_NOTE, self.docs_path)
-        return Continue(
-            result,
-            self.drain,
-            epic=epic,
-            docs_recheck_required=True,
-        )
-
-    def _fix_qa(self) -> QaResult:
-        """`qa-fix-item.md`, which `check_fix` and `recheck_fix` ran with identical arguments.
-
-        Not `qa-story.md` — see `fix/flow.py`'s `_qa` for why that prompt cannot answer this
-        turn. The nested drain runs the same one.
-        """
-        fix = self._fix_story
-        self.logger.info("checking %s", fix.story_slug, extra={"activity": True})
-        turn = roles.turn(self, "qa-fix-item")
-        return self.agent(
-            turn.prompt,
-            returns=QaResult,
-            # high: the drain has no QA plan, no evidence gate and no audit behind it —
-            # this turn is the whole verdict on the fix.
-            power="high",
-            add_dirs=self._dirs(),
-            args=turn.args | {
-                "story_slug": fix.story_slug,
-                "epic": fix.story_epic,
-                "story_path": fix.story_path,
-                "spec_dir": fix.spec_dir,
-                "plan_services": self.call(plan_summary, fix.spec_dir).text,
-                "qa_dir": fix.qa_dir,
-                "docs_path": self.docs_path,
-                "target_env": self.target_env,
-            },
-        )
-
     def _story_epic(self, epic: str) -> str:
         """`prepare_story.story_epic or select_story.epic or epic` — the *story's* epic.
 
@@ -1233,12 +1030,3 @@ class Coder(Workflow):
         """The story this iteration is building, as `prepare_story` resolved it."""
         return self.output(prepare_story)
 
-    @property
-    def _fix_story(self) -> StoryPaths:
-        """The drained item's story — a *different* node id, see `drain`."""
-        return self.output(prepare_fix_story)
-
-    @property
-    def _fix_layer(self) -> DispatchEntry:
-        """The one service layer the drained fix implements, as `select_fix_layer` picked it."""
-        return self.output(select_next_layer).layer

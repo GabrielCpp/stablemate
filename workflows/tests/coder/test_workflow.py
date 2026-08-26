@@ -48,7 +48,7 @@ from workhorse.records import parse_checkpoint
 from workhorse_workflows.kit import commit_all, commit_paths, is_ancestor
 from workhorse_workflows.coder.main import flow as coder_main
 from workhorse_workflows.coder.shared import commits
-from workhorse_workflows.coder.shared.backlog import prune_fix_item, select_fix_item
+from workhorse_workflows.coder.shared.schemas.backlog import FixPick
 from workhorse_workflows.coder.shared.ci import poll_pr_checks
 from workhorse_workflows.coder.main.nodes.pr import (
     _epic_pr_title,
@@ -68,7 +68,7 @@ from workhorse_workflows.coder.shared.queue import (
     select_epic,
     stamp_story_passed,
 )
-from workhorse_workflows.coder.shared.story import prepare_fix_story, prepare_story
+from workhorse_workflows.coder.shared.story import prepare_story
 from workhorse_workflows.coder.shared.schemas.ci import CiChecks, CiStatus
 from workhorse_workflows.coder.shared.schemas.dev import DevResult
 from workhorse_workflows.coder.shared.schemas.docs import DocsResult, DocsStatus
@@ -221,7 +221,7 @@ def _story_message(package: str, slug: str) -> str:
 
 
 class _StubFlow(Workflow):
-    """Every keyword the graph's five handoffs pass, because `Workflow` forbids extras.
+    """Every keyword the graph's six handoffs pass, because `Workflow` forbids extras.
 
     Declaring them all on one base is what makes the boundary assertion work in both
     directions: a keyword the graph stops passing is silently fine, and a keyword it starts
@@ -243,7 +243,7 @@ class _StubFlow(Workflow):
 
 
 class _Sub:
-    """The five stand-ins, their call log, and the one file `dev` writes.
+    """The six stand-ins, their call log, and the one file `dev` writes.
 
     `dev` writing a file *and committing it* is not decoration: it is what the real dev
     lane does now that the workflow no longer commits on the agent's behalf, and
@@ -290,6 +290,7 @@ class _Sub:
             ("Docs", self._docs),
             ("Qa", self._qa),
             ("FixCi", self._fix_ci),
+            ("Fix", self._fix),
         ):
             monkeypatch.setattr(coder_main, name, self._flow(name, reply))
         return self
@@ -358,6 +359,10 @@ class _Sub:
 
     def _fix_ci(self, child: _StubFlow) -> CiChecks:
         return CiChecks(status=self.ci_status, summary="")
+
+    def _fix(self, child: _StubFlow) -> FixPick:
+        """The drain, run to dry — which is the only shape `Fix` ever returns to a parent."""
+        return FixPick(has_fix=False, reason="the backlog is dry")
 
 
 # --------------------------------------------------------------------------- the agent
@@ -460,7 +465,7 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
 ) -> None:
     """The whole loop in one pass: queue → story → PR → CI → merge → empty queue.
 
-    The four sub-flows come back in order. Clean QA reports that nothing changed after the
+    The five sub-flows come back in order. Clean QA reports that nothing changed after the
     first Docs pass, so the redundant final documentation handoff is skipped.
     """
     repo = epic()
@@ -470,7 +475,7 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
     result = drive_flow(Coder(), run_env, _Agent())
 
     assert result.has_epic is False, result
-    assert sub.calls == ["Dev", "Review", "Docs", "Qa"], sub.calls
+    assert sub.calls == ["Dev", "Review", "Docs", "Qa", "Fix"], sub.calls
     # The story built, and its work landed as one commit.
     assert _output(run_env, check_repos_clean)["clean"] is True
     assert _output(run_env, stamp_story_passed)["stamped"] is True
@@ -525,7 +530,7 @@ def test_a_qa_mutation_requires_final_documentation_before_commit(
 
     drive_flow(Coder(), env(), _Agent())
 
-    assert sub.calls == ["Dev", "Review", "Docs", "Qa", "Docs"], sub.calls
+    assert sub.calls == ["Dev", "Review", "Docs", "Qa", "Fix", "Docs"], sub.calls
     assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
 
 
@@ -1055,7 +1060,7 @@ def test_story_mode_cuts_its_own_branch_and_ends_at_its_own_pr(
     result = drive_flow(Coder(mode="story", story="STORY-1", epic=EPIC), run_env, _Agent())
 
     assert result.story_pr == "skipped", result
-    assert sub.calls == ["Dev", "Review", "Docs", "Qa"], sub.calls
+    assert sub.calls == ["Dev", "Review", "Docs", "Qa", "Fix"], sub.calls
     # The queue was never consulted, and the epic PR cluster was never entered.
     assert not (run_env.writer.run_dir / select_epic.__name__).exists()
     assert not (run_env.writer.run_dir / open_pr.__name__).exists()
@@ -1571,25 +1576,24 @@ def test_a_docs_handoff_that_merely_failed_parks_on_the_same_gate_a_block_does(
     assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
 
 
-# ------------------------------------------------------------------- the nested drain
+# ------------------------------------------------------------------------- the drain
 
 
-def test_a_drained_backlog_item_ships_in_the_storys_own_commit(
+def test_a_green_story_hands_the_backlog_to_the_fix_flow(
     epic: Callable[..., Path],
-    workspace: Path,
     write: Callable[[Path, str], Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     git: Callable[..., subprocess.CompletedProcess],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The drain nested inside the story, and the node id that keeps the two apart.
+    """The drain is one handoff, and it is `Fix` — not a second copy of the loop here.
 
-    `prepare_fix_story` exists because the nested drain runs in the *parent's* run scope: a
-    second `prepare_story` call would overwrite the record `commit` reads to know which
-    story it is committing, and the story would be committed under the drained item's slug.
-    Both records surviving side by side is the assertion, and the single commit covering
-    both is what the nesting is for.
+    The copy this graph used to carry implemented only the first service a fix's plan
+    dispatched and swallowed a blocked implementer; both defects left with it. Nothing of
+    the drained work is this story's to record, because `Fix` documents and commits each
+    item itself — so the assertion is that the parent spends no agent turn on it and its
+    own story commit is unchanged.
     """
     repo = epic()
     write(repo / "docs" / "backlog.md", BACKLOG)
@@ -1601,36 +1605,31 @@ def test_a_drained_backlog_item_ships_in_the_storys_own_commit(
 
     drive_flow(Coder(), run_env, agent)
 
-    # The drain ran, on the graph's own prompts rather than the `fix` flow's.
-    assert agent.calls == ["plan-story", "qa-fix-item"], agent.calls
-    # Two story records, not one overwriting the other.
+    assert sub.calls.count("Fix") == 1, sub.calls
+    assert agent.calls == [], agent.calls
     assert _output(run_env, prepare_story)["story_slug"] == "STORY-1"
-    assert _output(run_env, prepare_fix_story)["story_slug"] == FIX_SLUG
-    # The shipped item left the backlog, and everything landed in one commit.
-    assert _output(run_env, prune_fix_item)["pruned"] is True
-    assert BULLET not in (repo / "docs" / "backlog.md").read_text(encoding="utf-8")
     assert _output(run_env, check_repos_clean)["clean"] is True
-    assert sub.calls.count("Docs") == 2, sub.calls
     assert _dirty(repo) == "", _dirty(repo)
 
 
-def test_an_empty_backlog_skips_the_drain_entirely(
+def test_the_drain_runs_even_when_the_backlog_is_empty(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The draw is the loop's exit, and a repo with no backlog file takes it on the first pass."""
+    """The draw is `Fix`'s exit, not this graph's precondition.
+
+    The nested copy asked whether there was anything to drain before entering the loop;
+    the handoff does not, because the flow it hands to answers that on its first state and
+    returns. One handoff either way is what keeps the parent free of the question.
+    """
     repo = epic()
-    _Sub(repo).install(monkeypatch)
-    run_env = env()
-    agent = _Agent()
+    sub = _Sub(repo).install(monkeypatch)
 
-    drive_flow(Coder(), run_env, agent)
+    drive_flow(Coder(), env(), _Agent())
 
-    assert agent.calls == [], agent.calls
-    assert _output(run_env, select_fix_item)["has_fix"] is False
-    assert not (run_env.writer.run_dir / prepare_fix_story.__name__).exists()
+    assert sub.calls.count("Fix") == 1, sub.calls
 
 
 # --------------------------------------------------------------------------- resume
@@ -1669,7 +1668,7 @@ def test_a_run_killed_in_qa_resumes_on_qa_without_rebuilding_the_story(
 
     assert result.has_epic is False, result
     assert "Dev" not in sub.calls, sub.calls
-    assert sub.calls == ["Qa"], sub.calls
+    assert sub.calls == ["Qa", "Fix"], sub.calls
 
 
 # ----------------------------------------------------------------- the CI operator gate
