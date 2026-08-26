@@ -483,7 +483,7 @@ class Review(Workflow):
         """
         self.logger.info("resolving the review block", extra={"activity": True})
         result = self.agent(
-            "review/prompts/resolve-operator.md",
+            "shared/prompts/resolve-operator.md",
             returns=OperatorResolution,
             # smart, and unbounded: standing in for a human, with full tool access, on a
             # finding nobody else could settle.

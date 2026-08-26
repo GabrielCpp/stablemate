@@ -58,7 +58,7 @@ STORY_REL = f"docs/epics/{EPIC}/stories/{STORY}"
 CONTEXT_REL = f"{STORY_REL}/context.md"
 
 #: What an escalating resolver writes into `context.md` before it hands the block over —
-#: the shape `dev/prompts/resolve-operator.md` mandates for the escalated arm.
+#: the shape `shared/prompts/resolve-operator.md` mandates for the escalated arm.
 ESCALATION_NOTE = (
     "STATUS: AWAITING_OPERATOR\n\n"
     "Tried the staging bucket and the fixture; neither exists.\n"
@@ -359,7 +359,7 @@ class _Agent:
     def _escalate(self) -> None:
         """What an *escalating* resolver leaves behind — it does not write nothing.
 
-        `dev/prompts/resolve-operator.md` requires the escalated arm to write
+        `shared/prompts/resolve-operator.md` requires the escalated arm to write
         `STATUS: AWAITING_OPERATOR` into this same file, with what it tried and what the
         human must supply. Modelling that as "writes nothing" is what let the flow overwrite
         it unnoticed; see `test_an_escalating_resolver_leaves_its_note_for_the_human`.

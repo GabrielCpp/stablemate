@@ -152,7 +152,7 @@ def resolver_turn(flow: Dev, block_kind: str, notes: str) -> OperatorResolution:
     """
     flow.logger.info("resolving the %s block", block_kind, extra={"activity": True})
     return flow.agent(
-        "dev/prompts/resolve-operator.md",
+        "shared/prompts/resolve-operator.md",
         returns=OperatorResolution,
         power=RESOLVER_POWER,
         timeout=UNBOUNDED,

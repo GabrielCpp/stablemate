@@ -2104,7 +2104,7 @@ class Qa(Workflow):
         """
         self.logger.info("diagnosing the QA block for the operator", extra={"activity": True})
         result = self.agent(
-            "qa/prompts/resolve-operator.md",
+            "shared/prompts/resolve-operator.md",
             returns=OperatorResolution,
             # smart, and unbounded: a full-tool-access investigation ahead of the highest-
             # stakes decision in the flow.

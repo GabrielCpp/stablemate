@@ -45,14 +45,15 @@ built atop a rejected baseline, and the review nobody stopped to demand never ha
 An `Await` costs the same operator ten minutes it always would have; a give-up spent
 those ten minutes anyway; it just spent them after the run had already moved on.
 
-The auto-resolver a block routes through — each flow's own copy of
-`<flow>/prompts/resolve-operator.md` — **applies decisions; it does not make them.** It
-may write `STATUS: ANSWERED` and let the loop continue only when it can quote the thing
-that already settles the question — a record under `<docs-root>/docs/decisions/`, a
-convention in `AGENTS.md` or an installed skill, an acceptance criterion in the story's
-own spec — and it publishes that citation in the answer and in the run log. A question
-with a written answer costs a human nothing to be asked and teaches them nothing when
-they answer it the way the document already says.
+The auto-resolver a block routes through — one shared prompt,
+`coder/shared/prompts/resolve-operator.md`, rendered by every lane that gates —
+**applies decisions; it does not make them.** It may write `STATUS: ANSWERED` and let
+the loop continue only when it can quote the thing that already settles the question — a
+record under `<docs-root>/docs/decisions/`, a convention in `AGENTS.md` or an installed
+skill, an acceptance criterion in the story's own spec — and it publishes that citation
+in the answer and in the run log. A question with a written answer costs a human nothing
+to be asked and teaches them nothing when they answer it the way the document already
+says.
 
 A question *without* one is theirs by definition, and the resolver escalates: an unwritten
 product or scope call, two sources that genuinely conflict, anything needing a credential

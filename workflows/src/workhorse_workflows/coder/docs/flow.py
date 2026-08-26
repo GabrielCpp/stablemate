@@ -780,7 +780,7 @@ class Docs(Workflow):
         """
         self.logger.info("resolving the documentation block", extra={"activity": True})
         result = self.agent(
-            "docs/prompts/resolve-operator.md",
+            "shared/prompts/resolve-operator.md",
             returns=OperatorResolution,
             # smart, and unbounded: the same reasoning `qa` documents — standing in for the
             # accountable party, with full tool access, on the flow's costliest decision.

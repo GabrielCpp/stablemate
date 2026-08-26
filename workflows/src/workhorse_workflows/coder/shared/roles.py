@@ -38,9 +38,9 @@ rename here would break resumes and split every metric across two names for no g
 plan asks for.
 
 **A role is one key, not one file.** Each flow owns the envelopes it renders, in its own
-`prompts/`, so `plan-story` exists three times over — `dev/`, `fix/` and `main/` each hold
-a copy, free to diverge, and nothing checks that they agree. `turn` takes the calling flow
-for exactly that reason. What stays single is everything on the *override* side: `ROLES`,
+`prompts/`, so `apply-qa-fixes` exists twice over — `qa/` and `fix/` each hold a copy,
+free to diverge, and nothing checks that they agree. `turn` takes the calling flow for
+exactly that reason. What stays single is everything on the *override* side: `ROLES`,
 a repo's `agents.yml` `prompts:` block and `LIBRARY_SUBDIR` are keyed by role alone, so a
 repo replaces a body once and every flow's copy of that envelope picks it up.
 
@@ -49,6 +49,12 @@ The mechanics prompts are not roles and are absent from the registry below:
 path, since there is no body for a layer to swap. They are the state machine
 talking to itself — an operator gate's resolution, git surgery on a worktree — and a repo
 overriding them would be overriding the workflow, not describing itself.
+
+Which is also why the per-flow copy a role needs buys them nothing. `resolve-operator.md`
+is **one file**, `shared/prompts/resolve-operator.md`, rendered by every lane that gates:
+dev, review, qa and docs each pass the stage in `block_kind` and are otherwise asking the
+same question of the same record. Four copies free to diverge would only ever diverge by
+being forgotten — an edit made where the block was noticed and nowhere else.
 """
 from __future__ import annotations
 

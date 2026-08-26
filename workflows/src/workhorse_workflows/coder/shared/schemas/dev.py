@@ -284,7 +284,7 @@ class FixResult(CoderResult):
 
 
 class OperatorResolution(CoderResult):
-    """`<flow>/prompts/resolve-operator.md` — the resolver's report on a block.
+    """`shared/prompts/resolve-operator.md` — the resolver's report on a block.
 
     Note the field is `summary` here and `notes` in `author`'s copy of this model: the
     two prompts genuinely ask for different key names, and the port follows each prompt

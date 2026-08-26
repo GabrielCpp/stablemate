@@ -68,6 +68,15 @@ def test_every_prompt_is_a_role_or_declared_mechanics(directory: Path):
     assert stems - set(roles.ROLES) - MECHANICS == set()
 
 
+def test_the_operator_resolver_ships_exactly_once():
+    """Four lanes gate; one prompt answers. A second copy is a copy that drifts."""
+    copies = sorted(
+        f"{d.parent.name}/prompts" for d in PROMPT_DIRS if "resolve-operator" in _stems(d)
+    )
+
+    assert copies == ["shared/prompts"], copies
+
+
 def test_the_declared_mechanics_are_real_files():
     """So the set above cannot rot into a fiction that silently excuses a missing role."""
     shipped: set[str] = set()

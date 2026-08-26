@@ -43,13 +43,14 @@ RESOLVER_POWER = "smart"
 def resolver_args(
     flow: Workflow, *, block_kind: str, notes: str, docs_path: str
 ) -> dict[str, str]:
-    """The template arguments every `<flow>/prompts/resolve-operator.md` turn takes.
+    """The template arguments a `shared/prompts/resolve-operator.md` turn takes.
 
-    One builder rather than five near-identical dict literals, for the same reason
-    `escalation()` exists: the lanes differed only in `block_kind`, so a new argument —
+    One builder rather than four near-identical dict literals, for the same reason
+    `escalation()` exists: the lanes differ only in `block_kind`, so a new argument —
     `decisions_dir`, when the resolver was given a place to read decisions from and write
-    them to — otherwise has to be remembered at five call sites and is silently missing
-    from whichever one is forgotten.
+    them to — otherwise has to be remembered at four call sites and is silently missing
+    from whichever one is forgotten. The prompt those arguments render is single now too,
+    so the argument list and the document that consumes it move together.
 
     `docs_path` is passed rather than read off `flow` because it is not one of the engine's
     ambient parameters: each coder lane declares it as its own workflow input, so `Workflow`
