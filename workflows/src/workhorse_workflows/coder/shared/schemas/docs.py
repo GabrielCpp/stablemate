@@ -265,7 +265,7 @@ class DocsLoop(BaseModel):
     nothing returns it and no agent fills it in, so it wants neither the dropped nulls nor
     the `blocked` reading those buy.
 
-    These eight values travelled as eight keyword arguments through nine signatures, and
+    What it holds travelled as eight keyword arguments through nine signatures, and
     every state that merely passed them along had to name all eight — which is how
     `_blocked` came to omit one of them and reset the reviewer's budget by accident. A
     bundle makes a reset something written down (`model_copy(update=...)`) rather than
@@ -302,9 +302,41 @@ class DocsLoop(BaseModel):
     #: What each gate last decided, and whether the rework it forced bought anything.
     progress: DocsProgress = Field(default_factory=DocsProgress)
 
+    #: Repair turns cut at their wall-clock budget, consecutive or not. Never reset: a turn
+    #: that overran twice on one story spent an hour and a half producing no reply either
+    #: time, and the second one is not a fresh start just because a gate pass came between.
+    overruns: int = 0
+
     #: Both budgets, as span dimensions. Bare names here; `Docs.state_labels` supplies the
     #: `docs.` prefix.
-    COUNT_LABELS: ClassVar[tuple[str, ...]] = ("rework", "review_rework", "blocks")
+    COUNT_LABELS: ClassVar[tuple[str, ...]] = (
+        "rework",
+        "review_rework",
+        "blocks",
+        "overruns",
+    )
+
+
+class RepairOverran(BaseModel):
+    """What a repair turn cut at its wall-clock budget leaves in the checkpoint.
+
+    A cut turn produced no reply, so there is no author status to record — and minting one
+    is the defect this model exists to remove. The flow used to hand the gate a
+    `DocumentationResult(status="documented")` it had written itself, which is a claim
+    nobody made: downstream QA reads `documented` as an author's word that the story is in
+    the book, and a turn that was stopped mid-edit has said nothing of the kind.
+
+    So the outcome recorded is the one thing Python actually knows — that the turn ran out
+    of wall clock — and the flow re-dispatches the repair rather than gating a partial book
+    on a fabricated success.
+    """
+
+    status: Literal["overran"] = "overran"
+
+    #: Which overrun this is, so a checkpoint says whether the turn is cut once or reliably.
+    lap: int = 0
+
+    notes: str = ""
 
 
 #: How a documentation pass ended, as the caller reads it. Named because `Coder` and its
@@ -341,5 +373,6 @@ __all__ = [
     "DocumentationResult",
     "DocumentationReview",
     "OkfDetection",
+    "RepairOverran",
     "WorktreeSnapshot",
 ]

@@ -182,7 +182,8 @@ class _Agent:
     `explode_after` picks *which* pass dies, so a kill can be staged after a loop has
     already accumulated a baseline rather than only on the first turn. `cut`/`cut_pass` are
     the softer ending: the named prompt is stopped at its wall-clock budget on exactly that
-    pass, which is a turn that wrote something and never replied.
+    pass, which is a turn that wrote something and never replied. `cut_from` cuts it on that
+    pass and every one after — the turn that cannot finish inside its budget at all.
 
     The three `resolver_*` knobs script the author's say on a block: whether it decides at
     all, what it decided, and whether the decision is this story's or the whole epic's. The
@@ -205,6 +206,7 @@ class _Agent:
         explode_after: int = 1,
         cut: set[str] | None = None,
         cut_pass: int = 1,
+        cut_from: int | None = None,
         resolver_decision: str = "escalated",
         resolver_answer: str = "",
         resolver_scope: str = "story",
@@ -221,6 +223,7 @@ class _Agent:
         self.explode_after = explode_after
         self.cut = cut or set()
         self.cut_pass = cut_pass
+        self.cut_from = cut_from
         self.resolver_decision = resolver_decision
         self.resolver_answer = resolver_answer
         self.resolver_scope = resolver_scope
@@ -243,7 +246,10 @@ class _Agent:
             raise RuntimeError(f"killed during {stem}")
         handler = getattr(self, f"_{stem.replace('-', '_')}")
         answer = handler(data, nth)
-        if stem in self.cut and nth == self.cut_pass:
+        cut_now = nth == self.cut_pass or (
+            self.cut_from is not None and nth >= self.cut_from
+        )
+        if stem in self.cut and cut_now:
             # The transport-level signal, not the pyflow one: raising `AgentTimeout` here
             # would skip the engine's translation. `retries=0` on the node is what makes
             # this the first and only invocation.
@@ -571,19 +577,21 @@ def test_a_failed_gate_reworks_before_the_reviewer_ever_runs(
     assert "one symbol is not directly grounded" in agent.author_args()[1]["gate_notes"]
 
 
-def test_a_repair_turn_cut_at_its_budget_is_gated_rather_than_failing_the_run(
+def test_a_repair_turn_cut_at_its_budget_is_dispatched_again_rather_than_reported_done(
     docs: Path,
     elsewhere: Path,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An overrun `repair-documentation` goes straight to the gate, because the book is a file.
+    """An overrun `repair-documentation` is run again; it is never reported as an author.
 
-    The turn's reply is discarded either way — what the gate reads is the graph on disk. So a
-    turn stopped at its forty-five-minute cap has still landed the edits it finished, and
-    doctor over those is worth more than a dead run. The next lap continues the same session,
-    so all it needs is to be told that its own worklist is half-applied.
+    The flow used to mint a `documented` status for a turn that never replied and hand it to
+    the gate. In `semantic` mode that word is the only evidence there is, so a turn stopped
+    mid-edit went into the story's record as an author saying the book was written — which
+    downstream QA reads at face value. The turn is re-dispatched instead: the book on disk is
+    still the deliverable, so nothing it finished is lost, and all the next lap needs is to
+    be told that its own worklist is half-applied.
     """
     _stage_gate(monkeypatch, passes_on=3, note="one symbol is not directly grounded")
     agent = _Agent(cut={"repair-documentation"}, cut_pass=2)
@@ -591,13 +599,41 @@ def test_a_repair_turn_cut_at_its_budget_is_gated_rather_than_failing_the_run(
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
     assert result.status == "passed", result
-    assert agent.authored() == 3, agent.counts()
-    # The cut turn was not retried, and the pass after it was told why the errors repeat.
-    assert agent.counts()["repair-documentation"] == 2, agent.counts()
+    # Four author turns: the draft, the cut one, its re-dispatch, and the lap that passed.
+    assert agent.authored() == 4, agent.counts()
+    # The cut turn was not retried in place — the engine's `retries=0` holds.
+    assert agent.counts()["repair-documentation"] == 3, agent.counts()
     brief = agent.author_args()[2]["gate_notes"]
     assert brief.startswith("Your previous turn was stopped at its wall-clock budget"), brief
     # And the gate's own findings are still under it — the prefix explains them, not replaces.
     assert "one symbol is not directly grounded" in brief, brief
+
+
+def test_a_repair_turn_that_never_finishes_escalates_instead_of_lapping(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Re-dispatching a cut turn is bounded, and the bound is the author gate.
+
+    A repair that cannot finish inside forty-five minutes will not finish inside the next
+    forty-five either, and the honest reading of that is a story whose ungrounded set is too
+    large to repair in one turn — a decision, not a defect. So the overruns are counted and
+    spent, and the story goes to the block arm every other exhausted docs budget takes.
+    """
+    _stage_gate(monkeypatch, passes_on=None)
+    agent = _Agent(cut={"repair-documentation"}, cut_from=2)
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "blocked", result
+    assert "wall-clock budget" in result.notes, result.notes
+    # Every repair turn was cut, and the third one spent the budget rather than lapping.
+    assert agent.counts()["repair-documentation"] == Docs.MAX_REPAIR_OVERRUNS, agent.counts()
+    # It went to the author gate on the way out — the block arm, not a fabricated pass.
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
 
 
 def test_a_repair_lap_with_nothing_left_to_edit_keeps_the_nodes_already_named(

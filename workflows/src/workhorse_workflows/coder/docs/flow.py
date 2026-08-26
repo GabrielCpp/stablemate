@@ -92,6 +92,7 @@ from workhorse_workflows.coder.shared.schemas.docs import (
     DocumentationObligations,
     DocumentationResult,
     DocumentationReview,
+    RepairOverran,
 )
 from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.shared.schemas.okf import OkfContextResult
@@ -105,13 +106,23 @@ from workhorse_workflows.kit.telemetry import counter_labels, verdict_labels
 UNBOUNDED = float("inf")
 
 #: What the next repair turn is told when the one before it was cut at its wall-clock cap.
-#: Prefixed to the gate notes by `verify`, in the wording the QA lane already uses for the
+#: Prefixed to the gate notes by `_overran`, in the wording the QA lane already uses for the
 #: same situation: a cut is not a defect in what landed, so the brief stays "continue", and
-#: the errors underneath it are whatever doctor still reports after the partial edits.
+#: the errors underneath it are whatever doctor last reported.
 _OVERRAN_REPAIR = (
     "Your previous turn was stopped at its wall-clock budget; continue from where you "
     "were — the errors below are what is still red."
 )
+
+
+def _overran_brief(gate_notes: str) -> str:
+    """Prefix the standing rework brief with the cut, without stacking prefixes.
+
+    A story can overrun twice against the same gate notes, and a brief that opened with two
+    copies of the same paragraph would spend the turn's first attention on a repetition.
+    """
+    standing = gate_notes.removeprefix(_OVERRAN_REPAIR).strip()
+    return f"{_OVERRAN_REPAIR}\n\n{standing}".strip() if standing else _OVERRAN_REPAIR
 
 
 def _prompt_note(note: str) -> str:
@@ -182,14 +193,19 @@ class Docs(Workflow):
     #: wrong four times running is a worse starting point than an empty one.
     MAX_CHAIN_LAPS: ClassVar[int] = 4
 
-    def setup(self) -> StoryPaths:
-        """Resolve the slug to paths and the workspace to directories, and pick up the
-        conversation the lane before this one was having.
+    #: Repair turns cut at their wall-clock budget before the story escalates. A cut turn is
+    #: re-dispatched rather than gated, so without a bound a repair that cannot finish inside
+    #: 45 minutes would be re-dispatched forever; with one, the run walks toward the author
+    #: gate — which is what a turn that reliably overruns is: a story too large to document
+    #: in one pass, and a decision nobody has made yet.
+    MAX_REPAIR_OVERRUNS: ClassVar[int] = 3
 
-        Nothing is seeded to make that happen: the backbone key is derived from the story
-        slug, and handed-off lanes share the run's chain directory, so naming the key is
-        all it takes to land in the conversation an earlier lane left. A lane run on its
-        own finds no chain and starts cold.
+    def setup(self) -> StoryPaths:
+        """Resolve the slug to paths and the workspace to directories.
+
+        This lane names the story's backbone key like every other lane, but it does not
+        inherit what is under it: `start` drops both chains before the first turn — see
+        `_reset_chains` for the contamination that forced it.
         """
         self.call(resolve_workspace_dirs, self.docs_path)
         ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
@@ -208,6 +224,21 @@ class Docs(Workflow):
         exists to avoid, inverted.
         """
         return f"docs-repair:{self.ctx.story_slug}"
+
+    def _reset_chains(self) -> None:
+        """Drop both chains this flow's turns run on for the current story.
+
+        The repair chain, and the story backbone the author turn runs on. Dropping the
+        backbone is the part that is not obvious: every other lane joins it on purpose, to
+        reach the implementer that already read the code. Documentation re-entry is where
+        that stops paying. A docs pass runs again after a fix, after an operator answer,
+        after a resume — and the conversation it would resume describes a book and a set of
+        commits that have both been rewritten since, so the author no-ops on edits it
+        remembers making to a tree that no longer holds them. A cold turn re-reads the book
+        in front of it, which is the answer that is actually true.
+        """
+        self.reset_session(backbone(self))
+        self.reset_session(self._chain)
 
     def _ends(self, result: DocsResult) -> Done:
         """End the flow, and the story's repair chain with it.
@@ -263,9 +294,9 @@ class Docs(Workflow):
         grounding gate off and report a story documented on the strength of prose nobody
         checked against the code.
         """
-        # Whatever is left of an earlier pass's repair conversation describes a book and a
-        # diff that have both moved since. Entry is the one place that is knowable.
-        self.reset_session(self._chain)
+        # Whatever is left of an earlier pass describes a book and a diff that have both
+        # moved since. Entry is the one place that is knowable.
+        self._reset_chains()
         if not self.ctx.story_path:
             raise WorkflowFailed(
                 f"no story path for {self.story!r} — the story could not be resolved, so "
@@ -347,10 +378,8 @@ class Docs(Workflow):
         The turn is capped at 45 minutes. It iterates doctor itself over a worklist that can
         be the whole story's ungrounded set, so it is not a turn that can be sized by its
         instruction — but without a bound it inherits the run's watchdog and a single lap
-        can eat an hour. The cut is survivable for the same reason the QA lane's is: the
-        deliverable is the book on disk, not the reply, so `retries=0` and the gate below
-        re-runs doctor over whatever landed. The chain is what makes it cheap — the next lap
-        opens in the same session, prefixed with `_OVERRAN_REPAIR`.
+        can eat an hour. `retries=0`, because a retry would restart the turn against a book
+        its own first attempt already edited; what a cut turn gets instead is `_overran`.
         """
         self.logger.info("repairing the documentation for %s", self.ctx.story_slug,
                          extra={"activity": True})
@@ -361,7 +390,6 @@ class Docs(Workflow):
         loop = loop.model_copy(
             update={"progress": loop.progress.model_copy(update={"chain_laps": laps + 1})}
         )
-        overran = ""
         try:
             turn = roles.turn(self, "repair-documentation")
             result = self.agent(
@@ -379,17 +407,58 @@ class Docs(Workflow):
                 session=self._chain,
             )
         except AgentTimeout:
-            self.logger.info(
-                "the documentation repair turn was stopped at its budget — gating what it "
-                "wrote",
-                extra={"activity": True},
+            return self._overran(loop)
+        return self._authored(result, loop)
+
+    def _overran(self, loop: DocsLoop) -> Continue | Await | Done:
+        """Re-dispatch a repair turn that was cut at its wall-clock budget.
+
+        The turn produced no reply, so nothing was authored and no status was returned. This
+        state used to write one anyway — a `DocumentationResult(status="documented")` the
+        flow minted itself — and hand it to the gate. In `semantic` mode, where the gate has
+        no worktree to check the claim against, that word is the *only* evidence there is,
+        and it went into the story's record as the author's. Downstream QA reads it as a
+        story that is in the book. A turn stopped mid-edit said no such thing.
+
+        So the outcome recorded is `overran`, which is a thing Python observed rather than a
+        claim about the book, and the same repair is dispatched again — on a fresh chain,
+        because the conversation that ran out of clock is the one thing known not to be
+        converging, and told through `gate_notes` that its own worklist is half-applied. The
+        worklist itself is unchanged: doctor still reports whatever is still red.
+
+        A turn that reliably overruns walks to the author gate rather than lapping: past
+        `MAX_REPAIR_OVERRUNS` the story is too large to document in one pass, which is a
+        decision, not a defect. `_blocked` is the same arm every other exhausted docs budget
+        takes.
+        """
+        overruns = loop.overruns + 1
+        self.logger.info(
+            "the documentation repair turn was stopped at its budget (%d of %d) — "
+            "starting it over on a fresh conversation",
+            overruns,
+            self.MAX_REPAIR_OVERRUNS,
+            extra={"activity": True},
+        )
+        loop = loop.model_copy(update={"overruns": overruns})
+        if overruns >= self.MAX_REPAIR_OVERRUNS:
+            return self._blocked(
+                f"the documentation repair turn was cut at its wall-clock budget "
+                f"{overruns} times and never finished a pass — the story's ungrounded set "
+                f"is too large to repair in one turn.",
+                loop,
             )
-            overran = _OVERRAN_REPAIR
-            # Not a claim about the book: the nodes this pass touched are unknown, and the
-            # ones every earlier pass named are carried on the loop regardless. The gate
-            # reads the graph, not this.
-            result = DocumentationResult(status="documented", notes=_OVERRAN_REPAIR)
-        return self._authored(result, loop, overran=overran)
+        self.reset_session(self._chain)
+        return Continue(
+            RepairOverran(lap=overruns, notes=_OVERRAN_REPAIR),
+            self.repair,
+            loop=loop.model_copy(
+                update={
+                    "gate_notes": _overran_brief(loop.gate_notes),
+                    # The chain it would have counted against is gone.
+                    "progress": loop.progress.model_copy(update={"chain_laps": 0}),
+                }
+            ),
+        )
 
     def _author_args(self, loop: DocsLoop) -> dict[str, object]:
         """The brief `document` and `repair` share — same inputs, different instruction."""
@@ -411,7 +480,7 @@ class Docs(Workflow):
         }
 
     def _authored(
-        self, result: DocumentationResult, loop: DocsLoop, *, overran: str = ""
+        self, result: DocumentationResult, loop: DocsLoop
     ) -> Continue | Await | Done:
         """The tail both author turns share: the contract on the answer, then the gate.
 
@@ -443,11 +512,10 @@ class Docs(Workflow):
                     )
                 }
             ),
-            overran=overran,
         )
 
     def verify(
-        self, author: DocumentationResult, loop: DocsLoop, overran: str = ""
+        self, author: DocumentationResult, loop: DocsLoop
     ) -> Continue | Await | Done:
         """Check the claim against the diff before any reviewer reads a word of it.
 
@@ -496,11 +564,7 @@ class Docs(Workflow):
                     update={"gate_notes": gate.notes, "obligations": ()}
                 ),
             )
-        # `overran` is set when the turn that just ran was cut at its wall-clock budget
-        # rather than finishing. The findings below are still the findings — doctor read the
-        # book on disk — but the next turn has to be told that its own worklist is
-        # half-applied, or it reads the repeat as its edits having failed and starts over.
-        notes = f"{overran}\n\n{gate.notes}".strip() if overran else gate.notes
+        notes = gate.notes
         # No escape hatch for a shrinking failure set. The gate used to waive the budget
         # while `gate_progress_verdict == "reduced"`, which is exactly the shape a batched
         # worklist produces — twelve errors closed per lap out of a hundred and twenty,

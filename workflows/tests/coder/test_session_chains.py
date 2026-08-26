@@ -165,6 +165,20 @@ def test_a_stalled_docs_gate_drops_the_conversation_that_stalled(spy: _Spy) -> N
     assert spy.resets == [f"docs-repair:{STORY}"]
 
 
+def test_entering_the_docs_flow_drops_the_story_conversation_too(spy: _Spy) -> None:
+    """Docs is the one lane that does not inherit the backbone it names.
+
+    Every other lane joins it to reach the implementer that already read the code. A docs
+    pass runs *again* — after a fix, after an operator answer, after a resume — and the
+    conversation it would resume describes a book and a set of commits that have both been
+    rewritten since, so the author no-ops on edits it remembers making to a tree that no
+    longer holds them. Both chains go, and the author turn opens cold.
+    """
+    _docs()._reset_chains()
+
+    assert spy.resets == [f"story:{STORY}", f"docs-repair:{STORY}"]
+
+
 def test_ending_the_docs_flow_ends_its_chain(spy: _Spy) -> None:
     """A chain outliving its flow waits for the next entry to resume it, on a book that
     has moved. Every terminal goes through `_ends` so none can forget."""
@@ -186,6 +200,9 @@ def test_every_lane_names_the_same_conversation_without_being_handed_anything(
     key lands in the conversation the lane before it left — with nothing threaded in and
     nothing seeded. A lane run on its own finds no chain there and starts cold, which is
     what makes replaying one lane honest instead of answering out of memory.
+
+    Naming it is all this asserts. Docs names the same key and then drops what is under it
+    on entry — see `test_entering_the_docs_flow_drops_the_story_conversation_too`.
     """
     seeded: list[tuple[str, str]] = []
     # A real file: the review lane's `setup` refuses a slug that resolved to no story.
