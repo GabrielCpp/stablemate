@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -11,8 +12,8 @@ from paddock import paths, seeds
 from paddock.pointer import Pointer, PointerError
 
 
-def capture(repo: Path, data_dir: Path, store: Path, **kwargs: object) -> seeds.Captured:
-    return seeds.capture(repo, name="acme", data_dir=data_dir, store=store, **kwargs)  # ty: ignore[invalid-argument-type]
+def capture(repo: Path, data_dir: Path, store: Path, **kwargs: Any) -> seeds.Captured:
+    return seeds.capture(repo, name="acme", data_dir=data_dir, store=store, **kwargs)
 
 
 def test_capture_writes_a_pointer_and_a_zip(repo: Path, data_dir: Path, store: Path) -> None:

@@ -270,7 +270,10 @@ def test_every_greenfield_task_carries_a_backlog_with_bullets() -> None:
             sys.modules.pop(spec.name, None)
             REGISTRY.reset()
         declared = getattr(module, "FIXTURE", None)
-        if not isinstance(declared, gf.Fixture):
+        # `gf` is loaded from a path rather than imported, so `gf.Fixture` is not a name a
+        # checker can resolve — the `is None` half is what says the rest of this loop body
+        # runs on a fixture that exists.
+        if declared is None or not isinstance(declared, gf.Fixture):
             continue
         found += 1
         backlog = DATA / declared.backlog

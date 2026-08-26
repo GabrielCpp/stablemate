@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
 from paddock import loader, seeds
+from paddock.registry import Task
 from paddock.pointer import DIAGNOSTIC_MARKER, Pointer, ResultPointer
 from paddock.runner import Run, RunError, execute
 
@@ -34,15 +36,15 @@ def score(run):
 '''
 
 
-def prepare(repo: Path, data_dir: Path, store: Path, body: str = TASK) -> object:
+def prepare(repo: Path, data_dir: Path, store: Path, body: str = TASK) -> Task:
     seeds.capture(repo, name="acme", data_dir=data_dir, store=store)
     (data_dir / "tasks" / "demo.py").write_text(body, encoding="utf-8")
     return loader.load_named(data_dir, "demo")
 
 
-def run(repo: Path, data_dir: Path, store: Path, body: str = TASK, **kwargs: object):
+def run(repo: Path, data_dir: Path, store: Path, body: str = TASK, **kwargs: Any):
     task = prepare(repo, data_dir, store, body)
-    return execute(task, label="t1", data_dir=data_dir, store=store, **kwargs)  # ty: ignore[invalid-argument-type]
+    return execute(task, label="t1", data_dir=data_dir, store=store, **kwargs)
 
 
 def test_a_run_stages_the_repo_the_artifacts_and_the_ledger(
@@ -234,6 +236,7 @@ def test_a_scores_caveats_mark_the_pointer_note(
         'data={"caught": 2}, caveats=("operator gate parked: context.md",))',
     )
     result = run(repo, data_dir, store, body)
+    assert result.pointer_path is not None
     pointer = ResultPointer.load(result.pointer_path)
     assert pointer.caveats == ["operator gate parked: context.md"]
     assert pointer.note.startswith(DIAGNOSTIC_MARKER)
@@ -249,6 +252,7 @@ def test_a_failed_step_is_a_caveat_the_runner_derives_itself(
         '    raise RuntimeError("boom")',
     )
     result = run(repo, data_dir, store, body)
+    assert result.pointer_path is not None
     pointer = ResultPointer.load(result.pointer_path)
     # The step that raised and the one skipped behind it are different facts.
     assert pointer.caveats == ["step 'touch' failed", "step 'fan_out' skipped"]
@@ -290,6 +294,7 @@ def sneak(run):
     (run.project / "README.md").write_text("patched mid-round", encoding="utf-8")
 '''
     result = run(repo, data_dir, store, body, project=repo)
+    assert result.pointer_path is not None
     pointer = ResultPointer.load(result.pointer_path)
     assert [c for c in pointer.caveats if c.startswith("self-touched: ")]
     assert pointer.note.startswith(DIAGNOSTIC_MARKER)
@@ -308,7 +313,7 @@ def test_a_json_file_is_never_readable_half_written(
     passes on the rename.
     """
     handle = Run(
-        task=prepare(repo, data_dir, store),  # ty: ignore[invalid-argument-type]
+        task=prepare(repo, data_dir, store),
         label="t1",
         stage=tmp_path / "stage",
         repo=repo,
