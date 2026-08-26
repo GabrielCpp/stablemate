@@ -186,11 +186,19 @@ def conflicts(
     Repo-root-relative, sorted, and complete: an operator fixing these wants the whole
     list, not the first one, because each fix is a rename or a delete they have to
     decide on individually.
+
+    An output whose own render declares itself assumed-owned is exempt, for the reason
+    the ``ASSUMED_OWNED`` paths are: the aggregated AGENTS.md deliberately carries no
+    banner, so on the second install farrier would read the file it wrote itself as a
+    hand-written rules file and refuse. The declaration rides on the render rather than
+    on a path pattern because which directories get one is the repo's
+    ``localInstructions`` mapping, not a fixed list farrier could name here.
     """
     return sorted(
         path.relative_to(repo).as_posix()
-        for path in outputs
+        for path, content in outputs.items()
         if path.exists()
+        and not getattr(content, "assumed", False)
         and not is_assumed_owned(repo, path, managed)
         and not is_owned(path, repo)
     )

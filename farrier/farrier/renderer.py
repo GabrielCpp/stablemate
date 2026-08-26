@@ -57,10 +57,17 @@ class Rendered(str):
     thing that knows which library files it was joined from is the renderer that joined
     them. ``parts`` keeps each source's rendered text beside its path, which is what lets
     ``--check`` say *which half* of a two-source aggregate somebody edited.
+
+    ``assumed`` is the other half of carrying no banner: ownership is normally judged
+    by reading the file, and a file with nothing to read cannot be recognised as
+    farrier's on the *second* install. Without it the conflict check reads the
+    AGENTS.md farrier itself wrote as somebody's hand-written rules file and refuses to
+    install at all — see ``outputs.conflicts``.
     """
 
     executable: bool = False
     verbatim: bool = False
+    assumed: bool = False
     sources: tuple[str, ...] = ()
     parts: tuple[tuple[str, str], ...] = ()
 
@@ -70,12 +77,14 @@ class Rendered(str):
         *,
         executable: bool = False,
         verbatim: bool = False,
+        assumed: bool = False,
         sources: tuple[str, ...] = (),
         parts: tuple[tuple[str, str], ...] = (),
     ):
         rendered = super().__new__(cls, text)
         rendered.executable = executable
         rendered.verbatim = verbatim
+        rendered.assumed = assumed
         rendered.sources = sources
         rendered.parts = parts
         return rendered
@@ -957,6 +966,7 @@ class Renderer:
         # generated ones, carries none of its own — see Rendered.
         return Rendered(
             rendered,
+            assumed=True,
             sources=tuple(rel for rel, _ in parts),
             parts=tuple(parts),
         )
