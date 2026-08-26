@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -720,7 +719,7 @@ def _services_config(repo_dir: str = "") -> dict[str, dict]:
 
     ```yaml
     services:
-      <type-or-service>: {test: "…", lint: "…", smoke: "…", codegen: "…", tdd: required}
+      <type-or-service>: {test: "…", lint: "…", smoke: "…", codegen: "…"}
     ```
 
     The repo owns this. Which command exercises a service, and whether a missing test is a
@@ -879,11 +878,10 @@ def declared_gates(
         gate: gate_command(gate, service, service_type, where, repo_dir)
         for gate in GATE_ORDER
     }
-    tdd = tdd_mode(service, service_type, repo_dir)
     declared = {gate: cmd for gate, cmd in commands.items() if cmd}
     if not declared:
         logger.info("%s declares no gate command — nothing will be run after the turn", service)
-        return GateList(text="(nothing declared)", tdd=tdd)
+        return GateList(text="(nothing declared)")
     # Where, when it is not the checkout the turn is sitting in. A turn told
     # `test: go test ./...` and nothing else will run it from the repo root, watch it fail
     # for a reason that has nothing to do with its code, and start repairing the code.
@@ -893,7 +891,6 @@ def declared_gates(
         gates=list(declared),
         commands=list(declared.values()),
         text=", ".join(f"{gate}: `{cmd}`" for gate, cmd in declared.items()) + at,
-        tdd=tdd,
     )
 
 
@@ -1007,290 +1004,6 @@ def run_gate(
     )
 
 
-#: A file-ish token inside a longer string — something with an extension. Used only after an
-#: exact match has already failed, to read the path out of an answer that named the *test*
-#: and put its file in parentheses: `Test_Service_List (internal/expense/service_test.go)`.
-#: That is a more informative answer than the bare path, and it used to cost a repair lap.
-_PATHISH = re.compile(r"[\w./\\-]+\.[A-Za-z0-9]{1,8}")
-
-#: A dash-and-space that no shell command contains and that a turn writing an account of
-#: its work reaches for constantly: `make generate — pass`. Only the typographic dashes,
-#: never ASCII `--`, which is a flag prefix and an end-of-options marker.
-_ANNOTATED = re.compile(r"\s+[—–]\s+.*$")
-
-
-def _bare(command: str) -> str:
-    """One promised command with the outcome the turn wrote beside it cut off.
-
-    Asked for the commands that will be green, a turn answers in the register it has been
-    answering in all turn — an account of what it did — and writes
-    `cd api && make generate — pass`. The command is correct, the code is correct, and the
-    string is not runnable by anything: the shell reads the dash as an argument and exits
-    non-zero forever. No repair lap can fix it, so the loop spends its whole budget proving
-    a finished story broken. A benchmark run lost a completed implement turn to exactly
-    this, one lap after the same run lost one to the working directory.
-    """
-    return _ANNOTATED.sub("", command).strip()
-
-
-def _touched(promised: str, changed: list[str]) -> bool:
-    """Whether one promised path is anywhere in the diff.
-
-    Deliberately lenient in both directions: the turn may name a path relative to the
-    service while the diff is relative to its repo, or the other way round. A promise the
-    gate cannot match becomes a repair lap, and a repair lap spent on a path-prefix
-    disagreement is the most expensive way to be pedantic about one.
-
-    The same argument extends to a path *embedded* in a longer answer. The lenient reading
-    can only ever accept a promise the strict one rejects, and the cost of the two errors is
-    not symmetric: a wrongly-accepted promise is caught by the declared gates and by review
-    a few minutes later, where a wrongly-rejected one bills a repair turn against work that
-    was already correct and, at the end of the budget, a human's attention.
-    """
-    if _matches(promised, changed):
-        return True
-    return any(_matches(token, changed) for token in _PATHISH.findall(promised))
-
-
-def _matches(promised: str, changed: list[str]) -> bool:
-    """One candidate path against the diff, either way round the service prefix."""
-    promised = promised.strip().lstrip("./")
-    if not promised:
-        return False
-    return any(
-        path == promised or path.endswith("/" + promised) or promised.endswith("/" + path)
-        for path in (p.strip().lstrip("./") for p in changed)
-    )
-
-
-# Command shapes that run until they are stopped — dev servers, watchers, tails. A promise
-# gate can only read an exit code, so one of these can never be green: it waits out the
-# whole GATE_TIMEOUT and then reads as a broken promise over perfectly healthy code, and
-# the repair lap it triggers re-runs it for a second timeout. The envelope already tells
-# the turn not to promise them; this is the deterministic backstop for the turn that does.
-_NON_TERMINATING = re.compile(
-    r"(?:^|&&|;|\|)\s*(?:"
-    r"go\s+run\b"
-    r"|(?:npm|pnpm|bun)\s+(?:start\b|run\s+(?:dev|start|serve|watch)\b)"
-    r"|yarn\s+(?:dev|start|serve|watch)\b"
-    r"|flask\s+run\b|uvicorn\b|gunicorn\b|rails\s+s(?:erver)?\b|php\s+-S\b"
-    r"|tail\s+-\w*f\b|watch\s"
-    r")"
-    r"|&\s*$"
-)
-
-
-@blueprint.node
-def check_promises(
-    logger: logging.Logger,
-    cwd: str = "",
-    commands: list[str] | None = None,
-    files: list[str] | None = None,
-    changed: list[str] | None = None,
-    already_run: list[str] | None = None,
-    service: str = "",
-    repo_dir: str = "",
-) -> GateOutcome:
-    """Hold the implement turn to the exit conditions it stated before it began.
-
-    This is what makes goal setting worth a turn's tokens. The envelope asks the turn to
-    write down what "done" is — which commands will be green, which files will have changed
-    — and this node reads that back as a claim rather than as an intention: a command it
-    promised is run, a file it promised is looked for in the diff, and a gap is a
-    `FailureReport{source: "goal"}` into the same repair loop the declared gates feed.
-
-    `already_run` is what the declared gates just ran clean, so a promise that names one of
-    them costs nothing to keep — the alternative is running the test suite twice per layer
-    to check a claim the previous node already proved.
-
-    A turn that promised nothing is `skipped`, not failed. The check is a way of believing a
-    turn less, not a second place to demand ceremony from it.
-
-    A promise is also run from the repo root before it is called broken, because the turn and
-    this node do not share a working directory. Asked what will be green, a turn writes the
-    command the way a person would type it — `cd api && make generate` — and this node runs it
-    inside `api` already, where `cd api` exits 2 forever. No repair lap can fix that: the
-    command is correct, the code is correct, and the loop spends its whole budget proving it
-    before handing a human a story with nothing wrong with it. Trying the other directory is
-    one extra process on the failure path only.
-
-    For the same reason the outcome a turn writes beside a command is cut off before it is
-    run — see `_bare`. Both are the same mistake with the same price: a promise that is right
-    about the code and unrunnable as a string.
-    """
-    commands = [_bare(c) for c in (commands or []) if c and _bare(c)]
-    kept: list[str] = []
-    for command in commands:
-        if _NON_TERMINATING.search(command):
-            logger.warning(
-                "promised `%s` looks non-terminating (a server/watcher) — not running it: "
-                "a command that runs until stopped can never be green",
-                command,
-            )
-            continue
-        kept.append(command)
-    commands = kept
-    files = [f for f in (files or []) if f and f.strip()]
-    if not commands and not files:
-        logger.info("the turn stated no exit conditions — nothing to hold it to")
-        return GateOutcome(gate="goal", status="skipped", reason="no exit conditions stated")
-
-    if not cwd or not Path(cwd).expanduser().is_dir():
-        return GateOutcome(gate="goal", status="skipped", reason="no service directory")
-    where = service_dir(cwd, service)
-
-    proven = {c.strip() for c in (already_run or []) if c and c.strip()}
-    wheres = [where] + [d for d in (repo_dir,) if d and Path(d).expanduser().is_dir() and d != where]
-    for command in commands:
-        if command in proven:
-            logger.info("promised `%s` was already run clean by a declared gate", command)
-            continue
-        result = None
-        for candidate in wheres:
-            try:
-                result = subprocess.run(
-                    command,
-                    cwd=candidate,
-                    shell=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=GATE_TIMEOUT,
-                )
-            except subprocess.TimeoutExpired:
-                return GateOutcome(
-                    gate="goal",
-                    status="dirty",
-                    command=command,
-                    output=f"promised command timed out after {GATE_TIMEOUT}s",
-                    reason="timeout",
-                )
-            except (OSError, ValueError) as exc:
-                # A command that will not launch is the turn's own claim about its stack, and
-                # this node is not the place to adjudicate it — the declared gates are.
-                # `ValueError` is the same class of thing one layer earlier: a string the shell
-                # was never going to be handed, from a model that free-typed it.
-                logger.info("promised command '%s' could not be launched: %s", command, exc)
-                result = None
-                break
-            if result.returncode == 0:
-                break
-        if result is None:
-            continue
-        if result.returncode != 0:
-            output = (result.stdout + result.stderr).strip()
-            if len(output) > MAX_GATE_OUTPUT:
-                output = "…(truncated)…\n" + output[-MAX_GATE_OUTPUT:]
-            logger.warning("promised `%s` is not green (exit %s)", command, result.returncode)
-            return GateOutcome(
-                gate="goal",
-                status="dirty",
-                command=command,
-                output=(
-                    f"You stated `{command}` would be green when you were done. "
-                    f"It exits {result.returncode}.\n\n{output}"
-                ),
-                reason="a promised command is not green",
-            )
-
-    missing = [f for f in files if not _touched(f, changed or [])]
-    if missing:
-        logger.warning("%d promised file(s) are not in the diff", len(missing))
-        return GateOutcome(
-            gate="goal",
-            status="dirty",
-            output=(
-                "You stated you would change these files. Nothing in the diff matches "
-                "them:\n" + "\n".join(f"- {path}" for path in missing) + "\n\n"
-                "Either make the change you described, or say why it turned out to be "
-                "unnecessary."
-            ),
-            reason="a promised file was never touched",
-        )
-    return GateOutcome(gate="goal", status="clean", reason="the stated exit conditions hold")
-
-
-#: Service types for which "no test" is an acceptable answer rather than a defect. A
-#: directory of prose or of configuration has nothing a test could assert about it, and a
-#: gate that failed those would only teach the escape hatch to everybody else.
-TDD_EXEMPT_TYPES = ("docs", "config")
-
-
-def tdd_mode(service: str = "", service_type: str = "", repo_dir: str = "") -> str:
-    """What this service declares about tests: `required`, `encouraged` or `off`.
-
-    Off by default, and that is the invariant rather than an opinion about TDD: whether a
-    failing test comes first is a property of the service — a stack with no harness yet, an
-    infrastructure directory, a docs tree — and the repo is what knows it. A workflow that
-    defaulted to `required` would be imposing the belief this key exists to let the repo
-    hold.
-    """
-    declared = service_declaration(service, service_type, repo_dir).get("tdd")
-    mode = str(declared or "").strip().lower()
-    return mode if mode in ("required", "encouraged", "off") else "off"
-
-
-@blueprint.node
-def tdd_gate(
-    logger: logging.Logger,
-    cwd: str = "",
-    service: str = "",
-    service_type: str = "",
-    tests_added: list[str] | None = None,
-    no_test_reason: str = "",
-    changed: list[str] | None = None,
-    repo_dir: str = "",
-) -> GateOutcome:
-    """Check that a change to a service that requires tests actually came with one.
-
-    The argument for TDD with an agent is not that red-green is virtuous; it is that a
-    failing test is a concrete, machine-checked target, and that without one "green build"
-    and "build that tests nothing" are the same reading. That argument is adopted here as a
-    *mechanism*: as prose ("write the test first — MANDATORY") it is exactly the scar tissue
-    this lane is shedding, because the model half-complies and nothing can tell.
-
-    What is checked is stack-agnostic on purpose. This node does not know what a test file
-    looks like in any language — it reads the paths the turn itself reported under
-    `tests_added` and asserts they are really in the diff. A repo's own `test` command,
-    declared in `agents.yml` and run by `run_gate`, is what decides whether those tests
-    pass; this decides only whether they exist.
-
-    An exemption is a claim, not a flag: `no_test_reason` clears the gate only for a service
-    whose declared type has nothing to test, and is otherwise quoted back as the failure.
-    """
-    mode = tdd_mode(service, service_type, repo_dir)
-    if mode == "off":
-        return GateOutcome(gate="tdd", status="skipped", reason="this service declares no tdd key")
-
-    reported = [t.strip() for t in (tests_added or []) if t and t.strip()]
-    changed = changed or []
-    if reported:
-        unwritten = [t for t in reported if not _touched(t, changed)]
-        if not unwritten:
-            return GateOutcome(gate="tdd", status="clean", reason=f"{len(reported)} test file(s)")
-        problem = (
-            "You reported these test files, and the diff does not contain them:\n"
-            + "\n".join(f"- {path}" for path in unwritten)
-        )
-    elif no_test_reason and service_type in TDD_EXEMPT_TYPES:
-        logger.info("%s is a %s service — accepting '%s'", service, service_type, no_test_reason)
-        return GateOutcome(gate="tdd", status="clean", reason="exempt service type")
-    else:
-        problem = (
-            "No test covers this change. Add one that fails without it, then make it pass."
-            + (f"\n\nYou said: {no_test_reason}" if no_test_reason else "")
-        )
-
-    if mode == "encouraged":
-        # Logged, not enforced: `encouraged` is what a repo says while its harness is still
-        # being built, and failing a story on it would make the honest answer expensive.
-        logger.warning("tdd (encouraged) missed in %s: %s", service or cwd, problem)
-        return GateOutcome(gate="tdd", status="clean", reason="tdd encouraged — miss logged")
-    logger.warning("tdd (required) not satisfied in %s", service or cwd)
-    return GateOutcome(
-        gate="tdd", status="dirty", output=problem, reason="this service requires tests"
-    )
-
-
 @blueprint.node
 def changed_files(logger: logging.Logger, cwd: str = "", story_slug: str = "") -> ChangedFiles:
     """Which files this story has already written in one service checkout.
@@ -1304,11 +1017,9 @@ def changed_files(logger: logging.Logger, cwd: str = "", story_slug: str = "") -
     one's files as this one's.
 
     The untracked half is not a nicety. Nothing in this lane commits before the gates run,
-    and a new file — which is what a new test *is* — appears in `git diff HEAD` never. Both
-    gates that read this list check a claim against it (`goal`'s promised files, `tdd`'s
-    reported tests), so without it the honest answer "I added `handler_test.go`" reads as a
-    fabrication, laps until the budget is spent, and escalates a story that was correct.
-    `--exclude-standard` keeps build output and other ignored noise out.
+    and a new file — which is what a new test *is* — appears in `git diff HEAD` never. A
+    recycled conversation re-seeded without it is told the test it just wrote does not
+    exist. `--exclude-standard` keeps build output and other ignored noise out.
 
     Degrades to empty on anything unexpected. It is a courtesy to the next turn, which reads
     the code itself when told nothing; a service that is not a git checkout must not fail the
@@ -1369,7 +1080,6 @@ def read_operator_context(logger: logging.Logger, story_path: str = "") -> Opera
 __all__ = [
     "branch_code_repos",
     "changed_files",
-    "check_promises",
     "declared_gates",
     "declared_markers",
     "gate_command",
@@ -1382,6 +1092,4 @@ __all__ = [
     "run_gate",
     "select_next_layer",
     "service_declaration",
-    "tdd_gate",
-    "tdd_mode",
 ]

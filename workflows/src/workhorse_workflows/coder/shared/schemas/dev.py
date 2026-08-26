@@ -23,19 +23,31 @@ progress ledger:
   `plan-context.json` as a *projection* — one way, for readers outside the producing run
   (a later QA lane, `ostler artifact vet`, a human in the spec dir).
 
-The tri-states stay strings for the reason `schemas/ci.py` gives at length: each has three
-arms whose `default:` — the one a blank takes — is a *specific* one, and every branch below
-names the arm a blank falls into.
+A status an **agent** writes is a required `Literal`. The arms are closed and the model is
+told them, so a missing or misspelled one is a parse failure — which the runner already
+answers with a retry turn — rather than a blank that quietly takes whichever arm this
+module happened to pick. A status **Python** writes is a `Literal` with a default, because
+the producer is the same code that declares the arms and there is no model to hold to a
+contract.
 """
 from __future__ import annotations
 
 import hashlib
 import re
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
+
+
+#: What an implement-or-apply turn may report about itself. The arms are the union of the
+#: lanes that share this model: `done` from an implement turn, `applied` /
+#: `no_changes_needed` from the review lane's apply turn, `needs_changes` from the
+#: deterministic settlement gate that can only downgrade one, and `blocked` from any of
+#: them. Closed and required — a turn that cannot name which of these it did has not
+#: reported, and a parse failure buys a retry turn where a blank bought a wrong default.
+ImplStatus = Literal["done", "applied", "no_changes_needed", "needs_changes", "blocked"]
 
 
 class PlanService(CoderResult):
@@ -105,16 +117,18 @@ class PlanFixture(CoderResult):
 class PlanResult(CoderResult):
     """`dev/prompts/plan-story.md` and `dev/prompts/refine-plan.md` — the plan, or the blocker.
 
-    `status` is `done` or `blocked`. A blank takes the YAML's `default:` arm, which is
-    `done` — the plan gate is deliberately permissive, because depth and correctness are
-    enforced downstream by implementation review and by QA, not here.
+    `status` is `done` or `blocked`, and required: the turn either produced a plan or it
+    did not, and a plan turn that cannot say which has not answered. Only `blocked` is
+    branched on — the plan gate is deliberately permissive, because depth and correctness
+    are enforced downstream by implementation review and by QA, not here.
 
     The structural fields are the ones the turn used to hand-write into `plan-context.json`;
     see this module's header for why they moved. A malformed one is now a parse retry
     against a pydantic model rather than a workflow state.
     """
 
-    status: str = ""
+    #: Required: the turn either produced a plan or it did not.
+    status: Literal["done", "blocked"]
     summary: str = ""
 
     #: Every service this story changes, one entry each. An empty list is a legitimate
@@ -191,61 +205,6 @@ class PlanResult(CoderResult):
         return v
 
 
-class ExitConditions(CoderResult):
-    """What a turn said "done" would look like, before it started doing it.
-
-    Goal setting is only worth an agent's tokens if something checks the goal, and the
-    cheapest place to check one is Python: a claim written down in a schema is falsifiable,
-    where the same claim written into prose is a pep talk. So the envelope asks for this on
-    the turns that decide something — plan and implement — and the deterministic gate after
-    the turn compares the promise to the fact.
-
-    Nothing here is required. A turn that promises nothing is not failed for it; it simply
-    forfeits the check, and the declared gates still run. What is not allowed is promising a
-    command that then fails, or a file that was never written — that is a `FailureReport`
-    with `source: "goal"` into the same repair loop every other gate feeds.
-    """
-
-    #: The acceptance criteria this turn intends to satisfy, in the story's own words. Not
-    #: checked mechanically — carried forward to review and QA as the thing to check first.
-    criteria: list[str] = []
-    #: The commands the turn expects to be green when it is finished. Run verbatim, in the
-    #: service directory, minus any the declared gates have already run.
-    commands: list[str] = []
-    #: The files the turn expects to have touched, service-relative or repo-relative. Both
-    #: are matched leniently against the diff: a false accusation costs a whole repair lap.
-    files: list[str] = []
-
-    @model_validator(mode="before")
-    @classmethod
-    def _flatten(cls, data: Any) -> Any:
-        """Accept the per-criterion *list* a turn naturally writes, and merge it into one.
-
-        Asked for criteria, commands and files, a turn that satisfies four acceptance
-        criteria groups them — one object per criterion, each with the commands and files
-        that prove it. That is a better-organised answer than the flat one, and it is
-        exactly as checkable, because the gate runs every command and looks for every file
-        regardless of which criterion claimed it. Rejecting it cost a real run its whole
-        implement turn: six minutes of work, all gates already green, discarded on the
-        shape of the envelope rather than the content of the answer.
-
-        The grouping is what is dropped, not the promise. Nothing downstream reads which
-        command belonged to which criterion, so there is nothing here to preserve.
-        """
-        if not isinstance(data, list):
-            return data
-        merged: dict[str, list[str]] = {"criteria": [], "commands": [], "files": []}
-        for item in data:
-            if not isinstance(item, dict):
-                continue
-            for key, target in merged.items():
-                value = item.get(key)
-                for entry in [value] if isinstance(value, str) else value or []:
-                    if isinstance(entry, str) and entry.strip() and entry not in target:
-                        target.append(entry)
-        return merged
-
-
 class ImplResult(CoderResult):
     """`<flow>/prompts/implement-plan.md` — one service layer implemented, or the blocker.
 
@@ -255,21 +214,12 @@ class ImplResult(CoderResult):
     could not implement the plan was discarded here for the whole of this workflow's life,
     and the layer went on to lint a change nobody had written.
 
-    The three fields below are the same asymmetry applied to the optimistic half: rather
-    than believe `done`, the lane checks the turn's own account of what done would mean.
+    What "done" is worth checking against is the repo's own gates, which run after this
+    turn either way — not the turn's account of itself, which is the thing under suspicion.
     """
 
-    status: str = ""
+    status: ImplStatus
     notes: str = ""
-
-    #: What this turn promised before it began. Checked by `check_promises` afterwards.
-    exit_conditions: ExitConditions = ExitConditions()
-    #: The test files this turn wrote or extended, service-relative. The `tdd` gate reads
-    #: this against the diff; a repo that declares no `tdd:` key never asks for it.
-    tests_added: list[str] = []
-    #: Why there is no test, when there is none. An exemption is a claim the gate weighs
-    #: against the service's declared type, not a flag that switches the gate off.
-    no_test_reason: str = ""
 
 
 class FailureReport(CoderResult):
@@ -285,7 +235,7 @@ class FailureReport(CoderResult):
     evidence.
     """
 
-    #: Which gate failed: `lint`, `verify`, `regression`, `tdd`. Named rather than typed as
+    #: Which gate failed: `lint`, `test`, whatever the repo declared. Named rather than typed as
     #: an enum because a repo's `agents.yml` may declare gates this package has never heard
     #: of, and an unknown source is still a command with output — the generic arm handles it.
     source: str = ""
@@ -325,34 +275,12 @@ class FixResult(CoderResult):
     `fixed` and `failed` are not branched on; re-running the gate is what decides, and an
     agent's claim to have fixed something is not evidence that the gate agrees. `blocked` is
     branched on, and only to stop the laps — re-asking a turn that has just said it cannot
-    buys a budget and no repair.
+    buys a budget and no repair. All three are still required: which of them the turn
+    reports is the one thing only the turn knows.
     """
 
-    status: str = ""
+    status: Literal["fixed", "failed", "blocked"]
     notes: str = ""
-
-    #: Test files this repair wrote or extended, service-relative. The `tdd` gate re-runs
-    #: after the lap against the implement turn's report, which a repair turn cannot amend;
-    #: without this, a lap that adds the missing test still comes back failing the gate it
-    #: just satisfied. The flow merges these into the promise it re-checks.
-    tests_added: list[str] = []
-
-    #: Promised files this lap withdraws, having found the change genuinely unnecessary —
-    #: a generated file whose regeneration is a no-op, a path the plan turned out not to
-    #: need. The `goal` gate offers exactly two ways out ("make the change, or say why it
-    #: turned out to be unnecessary") and this is the second one: without it the second
-    #: half of that sentence is a lie, the gate is satisfiable only by an edit nobody
-    #: wants, and a correct turn laps until it escalates to a human who can only agree.
-    #: The reason belongs in `notes`, which is what the run log keeps.
-    retracted_files: list[str] = []
-
-    #: The same withdrawal for a promised *command*, and the half that is not symmetry for
-    #: its own sake: a command can be wrong in a way a file cannot. `go run ./cmd/server`
-    #: as an exit condition is a server that starts and then never exits — the gate waits
-    #: out its whole timeout, calls it dirty, and hands the lap a failure whose only honest
-    #: repair is "that command was never going to terminate". A real run spent ten minutes
-    #: per lap discovering that about code that was already finished.
-    retracted_commands: list[str] = []
 
 
 class OperatorResolution(CoderResult):
@@ -367,9 +295,9 @@ class OperatorResolution(CoderResult):
     #: a relic when the resolver was allowed to settle a block it could ground: `answered`
     #: means the answer is already written into `context.md` and the flow continues
     #: straight to its consume state, anything else means the flow parks for a human.
-    #: Defaulted to `""` — an unparseable or truncated turn escalates, which is the arm
-    #: that costs a round trip rather than the one that acts.
-    decision: str = ""
+    #: Required: a resolver that cannot name which of the two it did has not resolved
+    #: anything, and a parse retry is cheaper than either arm taken by accident.
+    decision: Literal["answered", "escalated"]
 
     summary: str = ""
 
@@ -419,9 +347,9 @@ class OperatorAnswer(CoderResult):
 class PlanValidation(CoderResult):
     """`record_plan` — the projection Python wrote, and whether it points at real services.
 
-    `status` is `valid` or `invalid`, and a blank takes `valid`: the YAML's `default:` arm
-    routed on to implementation, because a validator that cannot speak is not evidence of a
-    bad plan. `errors` is what the refiner is handed as its brief.
+    `status` is `valid` or `invalid`, and it defaults to `valid`: Python writes it, and a
+    validator that found nothing to say is not evidence of a bad plan. `errors` is what the
+    refiner is handed as its brief.
 
     `document` is the projected plan itself — the same mapping written to `plan-context.json`
     — so the states downstream of the gate hand the *value* to the dispatch nodes instead of
@@ -429,7 +357,7 @@ class PlanValidation(CoderResult):
     it (QA on a later run, the fix lane) passes nothing and reads the projection off disk.
     """
 
-    status: str = ""
+    status: Literal["valid", "invalid"] = "valid"
     errors: list[str] = []
     document: dict[str, Any] = {}
 
@@ -563,9 +491,9 @@ class LayerPick(CoderResult):
 class GateOutcome(CoderResult):
     """`run_gate` — one of a service's declared gate commands and what it said.
 
-    `status` is `clean`, `dirty` or `skipped`, and a blank reads as "move on". `skipped` is
-    the opt-out: a service adopts a gate by declaring its command in `agents.yml`, and one
-    that has declared nothing is never falsely failed.
+    `status` is `clean`, `dirty` or `skipped`, and it defaults to `skipped` — "move on".
+    `skipped` is the opt-out: a service adopts a gate by declaring its command in
+    `agents.yml`, and one that has declared nothing is never falsely failed.
 
     `gate` is which gate this was — `lint`, `test`, whatever the repo declared — and it
     becomes the `FailureReport.source` the repair turn reads, which is what lets one repair
@@ -573,7 +501,7 @@ class GateOutcome(CoderResult):
     """
 
     gate: str = ""
-    status: str = ""
+    status: Literal["clean", "dirty", "skipped"] = "skipped"
     command: str = ""
     output: str = ""
     reason: str = ""
@@ -591,10 +519,25 @@ class GateList(CoderResult):
     gates: list[str] = []
     commands: list[str] = []
     text: str = ""
-    #: What this service declares about tests — `required`, `encouraged` or `off`. Told to
-    #: the turn for the same reason the commands are: it is the repo's rule, and a turn that
-    #: is not told it either guesses or is failed by a gate it never heard of.
-    tdd: str = "off"
+
+
+class Lap(CoderResult):
+    """Where the repair loop is, as one state parameter.
+
+    The three numbers travel together through `implement → gates → fix` and mean nothing
+    apart: `fix_lap` is how much of the repair budget is spent, `session_turns` is how much
+    of the story's conversation is spent, and `digest` is the *previous* lap's evidence
+    fingerprint — two laps that digest the same mean the repair changed nothing the gate
+    can see. Bundled because three loose ints on five signatures leave their relationship
+    in the reader's head, and a checkpoint serializes a pydantic model natively.
+    """
+
+    #: Repair laps spent on the current gate failure, 0 before the first one.
+    fix_lap: int = 0
+    #: Turns spent on this story's backbone conversation, across implement and repair.
+    session_turns: int = 1
+    #: The previous lap's `FailureReport.digest`, blank on the first pass.
+    digest: str = ""
 
 
 class ChangedFiles(CoderResult):
@@ -618,7 +561,7 @@ class DevResult(CoderResult):
     the whole `OperatorAnswer`.
     """
 
-    status: str = "ready"
+    status: Literal["ready", "replan"] = "ready"
     operator_notes: str = ""
     #: How many turns that conversation had already spent when the flow ended. The review
     #: lane's apply turns join the same conversation and keep counting from here, so the
@@ -631,13 +574,14 @@ __all__ = [
     "ChangedFiles",
     "DevResult",
     "DispatchEntry",
-    "ExitConditions",
     "FailureReport",
     "FixResult",
     "ImplContext",
     "ImplResult",
+    "ImplStatus",
     "GateList",
     "GateOutcome",
+    "Lap",
     "LayerPick",
     "OperatorAnswer",
     "OperatorGate",

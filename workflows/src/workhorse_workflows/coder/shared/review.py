@@ -20,7 +20,7 @@ import logging
 
 from ostler import Ostler
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.schemas.dev import ImplResult
+from workhorse_workflows.coder.shared.schemas.dev import ImplResult, ImplStatus
 from workhorse_workflows.coder.shared.schemas.review import Feedback, ReviewContext
 from workhorse_workflows.kit import (
     find_docs_root,
@@ -113,7 +113,7 @@ def verify_review_resolution(
     logger: logging.Logger,
     docs_path: str = "",
     story_slug: str = "",
-    claimed_status: str = "applied",
+    claimed_status: ImplStatus = "applied",
     claimed_notes: str = "",
     repo_dir: str = "",
 ) -> ImplResult:
@@ -146,7 +146,7 @@ def verify_review_resolution(
             slug,
             claimed_status,
         )
-        return ImplResult(status=claimed_status or "applied", notes=claimed_notes)
+        return ImplResult(status=claimed_status, notes=claimed_notes)
 
     plan = Ostler(docs_root).settle_review(slug, write=True)
     if plan.error:

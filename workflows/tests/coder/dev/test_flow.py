@@ -40,7 +40,7 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder.dev.flow import Dev
-from workhorse_workflows.coder.shared.schemas.dev import FixResult, PlanResult
+from workhorse_workflows.coder.shared.schemas.dev import PlanResult
 from workhorse_workflows.coder.shared.dev import (
     plan_document,
     plan_summary,
@@ -239,10 +239,8 @@ class _Agent:
         resolver_answers: bool = False,
         bad_paths: int = 0,
         fix_gate: Path | None = None,
-        fix_tests: list[str] | None = None,
         explode: set[str] | None = None,
         impl_blocked: int = 0,
-        promise: dict[str, Any] | None = None,
         repo_relative_plans: bool = False,
     ) -> None:
         self.docs = docs
@@ -253,14 +251,8 @@ class _Agent:
         self.resolver_answers = resolver_answers
         self.bad_paths = bad_paths
         self.fix_gate = fix_gate
-        #: Test files the repair turn really writes, and reports back as `tests_added` —
-        #: the `tdd` gate's repair, which is a *new file* and so is untracked.
-        self.fix_tests = fix_tests
         self.explode = explode or set()
         self.impl_blocked = impl_blocked
-        #: What the implement turn states its exit conditions are — the promise the `goal`
-        #: gate then holds it to.
-        self.promise = promise or {}
         #: Report `plan_file` the other way it can legally be read — repo-relative, the form
         #: the turn was holding when it wrote the file — while writing the file itself
         #: exactly where it belongs.
@@ -348,23 +340,9 @@ class _Agent:
         self.impls += 1
         if self.impls <= self.impl_blocked:
             return {"status": "blocked", "notes": "the plan names a migration nobody has run"}
-        return {
-            "status": "done",
-            "notes": f"implemented {data['service_path']}",
-            **self.promise,
-        }
+        return {"status": "done", "notes": f"implemented {data['service_path']}"}
 
     def _dev_fix(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        if self.fix_tests is not None:
-            cwd = Path(data["report"]["cwd"])
-            for rel in self.fix_tests:
-                (cwd / rel).parent.mkdir(parents=True, exist_ok=True)
-                (cwd / rel).write_text("package api\n", encoding="utf-8")
-            return {
-                "status": "fixed",
-                "notes": "wrote the test the gate asked for",
-                "tests_added": list(self.fix_tests),
-            }
         if self.fix_gate is None:
             return {"status": "failed", "notes": "the finding is in vendored code"}
         self.fix_gate.write_text("", encoding="utf-8")
@@ -511,10 +489,10 @@ def test_a_checkpointed_plan_result_reads_back_under_the_old_field_name() -> Non
     and `extra="ignore"` is what makes the resilience ladder soft. The alias is what stops
     that same setting from eating a real answer on the one turn that produced it.
     """
-    legacy = PlanResult.model_validate({"qa_stack": {"profile": "seeded"}})
+    legacy = PlanResult.model_validate({"status": "done", "qa_stack": {"profile": "seeded"}})
 
     assert legacy.verification_setup == {"profile": "seeded"}
-    assert PlanResult(verification_setup={"profile": "new"}).verification_setup == {
+    assert PlanResult(status="done", verification_setup={"profile": "new"}).verification_setup == {
         "profile": "new"
     }
 
@@ -526,7 +504,10 @@ def test_the_fixtures_nested_in_the_setup_block_become_the_typed_list() -> None:
     later lane *calls*, lifted out of the prose beside it so `qa.fixture()` gets the name
     the story wrote rather than a name a turn paraphrased out of a dumped object.
     """
-    plan = {"verification_setup": {"profile": "seeded", "fixtures": [{"name": "signed_in"}]}}
+    plan = {
+        "status": "done",
+        "verification_setup": {"profile": "seeded", "fixtures": [{"name": "signed_in"}]},
+    }
 
     result = PlanResult.model_validate(plan)
 
@@ -539,7 +520,9 @@ def test_a_bare_string_fixture_is_the_fixture_it_names() -> None:
     """The same lift `shared_packages` gets, and for the same reason: `"signed_in"` says
     exactly what `{"name": "signed_in"}` says, and rejecting it spends a rework lap
     teaching a planner punctuation."""
-    result = PlanResult.model_validate({"qa_stack": {"fixtures": ["signed_in", "seeded_db"]}})
+    result = PlanResult.model_validate(
+        {"status": "done", "qa_stack": {"fixtures": ["signed_in", "seeded_db"]}}
+    )
 
     assert [(f.name, f.provides) for f in result.fixtures] == [
         ("signed_in", ""),
@@ -555,7 +538,10 @@ def test_a_bare_sentence_is_lifted_as_prose_rather_than_as_a_name() -> None:
     declaration to look up, and the lane it could not find it in was `agents.yml`.
     """
     result = PlanResult.model_validate(
-        {"fixtures": ["seeded_accounts", "an empty desk (DELETE /api/claims)"]}
+        {
+            "status": "done",
+            "fixtures": ["seeded_accounts", "an empty desk (DELETE /api/claims)"],
+        }
     )
 
     assert [(f.name, f.provides) for f in result.fixtures] == [
@@ -569,6 +555,7 @@ def test_an_explicit_fixture_list_is_not_overwritten_by_the_nested_one() -> None
     fallback for the documents that predate it, not a second opinion about them."""
     result = PlanResult.model_validate(
         {
+            "status": "done",
             "fixtures": [{"name": "typed", "provides": "an account"}],
             "verification_setup": {"fixtures": ["nested"]},
         }
@@ -661,12 +648,14 @@ def test_a_bare_string_shared_package_is_the_directory_it_names() -> None:
     a bare string in `services` still under-specifies (repo, plan_file) and stays a
     validation error the ladder re-asks about.
     """
-    plan = PlanResult.model_validate({"shared_packages": ["docs", {"path": "libs/core"}]})
+    plan = PlanResult.model_validate(
+        {"status": "done", "shared_packages": ["docs", {"path": "libs/core"}]}
+    )
 
     assert [pkg.path for pkg in plan.shared_packages] == ["docs", "libs/core"]
 
     with pytest.raises(ValidationError):
-        PlanResult.model_validate({"services": ["docs"]})
+        PlanResult.model_validate({"status": "done", "services": ["docs"]})
 
 
 def test_an_unauthored_story_is_refused_before_anything_is_planned(
@@ -1184,154 +1173,6 @@ def test_the_gate_lane_repairs_and_re_runs_until_clean(
     assert report["source"] == "lint", report
     assert report["command"] == "sh lint.sh", report
     assert report["cwd"] == str(workspace["api"]), report
-
-
-def test_a_turn_is_held_to_the_exit_conditions_it_stated(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """A promise the turn made and did not keep routes into the same one repair loop.
-
-    Nothing is declared in `agents.yml` here, so every command gate is `skipped` — which is
-    the point: the `goal` gate needs no command from the repo, because its evidence is the
-    turn's own words. The promised command is really run, so the second lap is green because
-    the repair turn really made it green.
-    """
-    marker = workspace["api"] / ".goal-ok"
-    # Absolute, because every layer of this story states the same promise and only one
-    # repair turn writes the marker — a relative path would hold `web` to `api`'s repair.
-    command = f"test -f {marker}"
-    agent = _Agent(
-        docs, fix_gate=marker, promise={"exit_conditions": {"commands": [command]}}
-    )
-
-    result = drive_flow(Dev(story=STORY), env(), agent)
-
-    assert result.status == "ready", result
-    assert agent.counts()["dev-fix"] == 1, agent.counts()
-    report = agent.args_for("dev-fix")[0]["report"]
-    assert report["source"] == "goal", report
-    assert report["command"] == command, report
-    assert "would be green" in report["output"]
-
-
-def test_a_test_less_story_is_caught_by_the_tdd_gate_and_repaired_in_the_same_loop(
-    docs: Path,
-    workspace: dict[str, Path],
-    write: Callable[[Path, str], Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """The whole of the TDD mechanism, end to end, on a story that arrives without a test.
-
-    `api` is a `go` service and the repo declares `tdd: required` for that type, so the
-    implement turn reporting no `tests_added` is `dirty` — not because this package knows
-    what a Go test looks like (it does not, invariant 1) but because the turn's own report
-    is empty. `web` declares nothing and is `skipped`, which is the opt-in half.
-
-    The repair is the ordinary `dev-fix` lap, and what it writes is a *new file*. That is
-    the case worth an end-to-end test rather than another unit one: nothing in this lane
-    commits before the gates run, so an untracked test is in no `git diff`, and until
-    `changed_files` learned to list them a correct repair looked exactly like a lie and
-    lapped until the budget escalated a story nobody needed to look at.
-    """
-    write(docs / "agents.yml", "services:\n  go:\n    tdd: required\n")
-    test_file = "internal/handler_test.go"
-    agent = _Agent(docs, fix_tests=[test_file])
-
-    result = drive_flow(Dev(story=STORY), env(), agent)
-
-    assert result.status == "ready", result
-    assert agent.counts()["dev-fix"] == 1, agent.counts()
-    report = agent.args_for("dev-fix")[0]["report"]
-    assert report["source"] == "tdd", report
-    assert "No test covers this change" in report["output"]
-    # The lap really wrote it, and the re-gate really saw it — an assertion about the file
-    # rather than about the status, because the status is what the fixer *claimed*.
-    assert (workspace["api"] / test_file).is_file()
-    # The turn was told the mode before it began, which is what makes the gate a contract
-    # rather than an ambush.
-    assert agent.args_for("implement-plan")[0]["tdd"] == "required"
-
-
-def test_a_turn_that_promised_nothing_is_not_held_to_anything(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """The check is forfeited, not failed — a lane that punished silence would only teach it."""
-    agent = _Agent(docs)
-
-    result = drive_flow(Dev(story=STORY), env(), agent)
-
-    assert result.status == "ready", result
-    assert agent.counts()["dev-fix"] == 0, agent.counts()
-
-
-def test_a_repair_lap_that_writes_the_missing_test_is_credited_with_it() -> None:
-    """The tests gate reads the implement turn's report, which a repair turn cannot amend.
-
-    Without this merge, a lap that writes exactly the test the gate asked for arrives back
-    at that gate with the same empty list and laps again until the budget escalates it.
-    """
-    promise = {"tests_added": ["handler_test.go"]}
-
-    merged = Dev._amended(promise, FixResult(status="fixed", tests_added=["store_test.go"]))
-    unchanged = Dev._amended(promise, FixResult(status="fixed"))
-
-    assert merged == {"tests_added": ["handler_test.go", "store_test.go"]}
-    assert unchanged is promise
-
-
-def test_a_repair_lap_may_retract_a_promised_file_it_verified_needed_no_change() -> None:
-    """The `goal` gate says "make the change, or say why it turned out to be unnecessary".
-
-    Only the first half was ever implemented, so the second half was a lie: a promise about
-    a generated file whose regeneration is a no-op could be satisfied only by hand-editing
-    generated output. A correct turn instead reported `blocked` and the story escalated to a
-    human whose only available answer was to agree with it — four turns spent on a promise
-    the lap had already verified. Retraction is that answer, recorded rather than argued.
-    """
-    promise = {"exit_conditions": {"files": ["pkg/api/types.gen.go", "pkg/store/expense.go"],
-                                   "commands": ["go build ./..."]}}
-
-    merged = Dev._amended(
-        promise, FixResult(status="fixed", retracted_files=["./pkg/api/types.gen.go"])
-    )
-
-    conditions = (merged or {})["exit_conditions"]
-    assert conditions["files"] == ["pkg/store/expense.go"]
-    # The commands half of the promise is untouched — a retraction withdraws one path, and
-    # a command the turn agreed was disqualifying stays disqualifying.
-    assert conditions["commands"] == ["go build ./..."]
-
-
-def test_a_repair_lap_may_retract_a_promised_command_that_could_never_be_green() -> None:
-    """A command can be wrong in a way a file cannot: it can fail to return.
-
-    A turn that promises `go run ./cmd/server` as an exit condition has promised a process
-    that runs until something stops it. The gate waits out its whole timeout, calls the
-    promise broken, and hands the lap a failure with no repair in it — the code was finished
-    before the first lap started. A benchmark run spent ten minutes per lap on exactly this.
-    """
-    promise = {
-        "exit_conditions": {
-            "files": ["pkg/store/expense.go"],
-            "commands": ["go build ./...", "cd api && go run ./cmd/server"],
-        }
-    }
-
-    merged = Dev._amended(
-        promise,
-        FixResult(status="fixed", retracted_commands=["cd api && go run ./cmd/server"]),
-    )
-
-    conditions = (merged or {})["exit_conditions"]
-    assert conditions["commands"] == ["go build ./..."]
-    assert conditions["files"] == ["pkg/store/expense.go"]
 
 
 def test_a_gate_no_repair_lap_can_satisfy_never_gives_up_either(

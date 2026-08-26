@@ -89,7 +89,6 @@ from workhorse_workflows.coder.shared.dev import (
     GATE_ORDER,
     branch_code_repos,
     changed_files,
-    check_promises,
     declared_gates,
     declared_markers,
     read_operator_context,
@@ -98,7 +97,6 @@ from workhorse_workflows.coder.shared.dev import (
     resolve_impl_context,
     run_gate,
     select_next_layer,
-    tdd_gate,
 )
 from workhorse_workflows.coder.shared.escalation import escalation
 from workhorse_workflows.coder.shared.failure import from_gate
@@ -569,15 +567,7 @@ class Dev(Workflow):
             return self._gate_impl(
                 result, result.notes, index, "the implementation turn", impl_blocks, turns
             )
-        return Continue(
-            result,
-            self.gates,
-            index=index,
-            session_turns=turns,
-            promise=result.model_dump(
-                include={"exit_conditions", "tests_added", "no_test_reason"}
-            ),
-        )
+        return Continue(result, self.gates, index=index, session_turns=turns)
 
     def _implement_classic(self, operator_context: str = "") -> ImplResult:
         """The `implement-plan.md` turn.
@@ -620,45 +610,8 @@ class Dev(Workflow):
                 "qa_run_plan": impl.qa_run_plan,
                 "verification_setup": impl.verification_setup,
                 "gates": gates.text,
-                "tdd": gates.tdd,
                 "operator_context": operator_context,
             },
-        )
-
-    def _claims(self, promise: dict[str, Any], already_run: list[str]) -> GateOutcome:
-        """Check the implement turn's own account of what it did against what it did.
-
-        Two gates that need no command from the repo, because their evidence is the turn's
-        own words: the exit conditions it stated before it began, and the tests it says it
-        wrote. Both are `skipped` where there is nothing to check — a turn that promised
-        nothing, a service that declares no `tdd:` key — so neither invents an obligation
-        the repo never took on.
-
-        They run only once the declared gates are green, and that order is deliberate: a
-        failing linter is the cheaper, more precise complaint, and holding a turn to a
-        promise about a build that does not compile is noise.
-        """
-        conditions = promise.get("exit_conditions") or {}
-        changed = self.call(changed_files, self._layer.cwd, self.ctx.story_slug).paths
-        outcome = self.call(
-            check_promises,
-            self._layer.cwd,
-            conditions.get("commands") or [],
-            conditions.get("files") or [],
-            changed=changed,
-            already_run=already_run,
-            service=self._layer.service,
-        )
-        if outcome.status == "dirty":
-            return outcome
-        return self.call(
-            tdd_gate,
-            self._layer.cwd,
-            self._layer.service,
-            self._layer.type,
-            promise.get("tests_added") or [],
-            str(promise.get("no_test_reason") or ""),
-            changed=changed,
         )
 
     def gates(
@@ -668,7 +621,6 @@ class Dev(Workflow):
         session_turns: int = 1,
         digest: str = "",
         impl_blocks: int = 0,
-        promise: dict[str, Any] | None = None,
     ) -> Continue | Await:
         """Run this service's deterministic gates, and route on the first one that says no.
 
@@ -686,7 +638,6 @@ class Dev(Workflow):
         what `fix` does with `stalled`.
         """
         outcome = GateOutcome()
-        ran: list[str] = []
         for gate in GATE_ORDER:
             outcome = self.call(
                 run_gate,
@@ -697,10 +648,6 @@ class Dev(Workflow):
             )
             if outcome.status == "dirty":
                 break
-            if outcome.command:
-                ran.append(outcome.command)
-        else:
-            outcome = self._claims(promise or {}, ran)
         if outcome.status != "dirty":
             return Continue(outcome, self.layer, index=index, session_turns=session_turns)
         report = from_gate(outcome, self._layer.cwd, fix_lap)
@@ -726,7 +673,6 @@ class Dev(Workflow):
             session_turns=session_turns,
             stalled=bool(digest) and report.digest == digest,
             impl_blocks=impl_blocks,
-            promise=promise,
             report=report.model_dump(),
         )
 
@@ -737,7 +683,6 @@ class Dev(Workflow):
         session_turns: int = 1,
         stalled: bool = False,
         impl_blocks: int = 0,
-        promise: dict[str, Any] | None = None,
         report: dict[str, Any] | None = None,
     ) -> Continue | Await:
         """Repair whatever the gate reported, then re-run the gates.
@@ -746,12 +691,8 @@ class Dev(Workflow):
         wrote this code is the cheapest turn to fix it, and a fixer in a fresh context
         spends its first minutes re-reading a diff it has only just met.
 
-        The report arrives through the transition, already clipped. It used to be rebuilt
-        from `run_gate`'s recorded output to keep a gate log out of the checkpoint, and that
-        stopped being possible once the gates stopped all being shell commands: `goal` and
-        `tdd` are answered by different nodes, so "the last thing `run_gate` said" is no
-        longer the thing that routed here. The old path is still the fallback, for a
-        checkpoint written before this change that resumes into this state.
+        The report arrives through the transition, already clipped, and falls back to
+        `run_gate`'s recorded output for a checkpoint written before it was threaded.
 
         The power ladder is low, low, then high: a linter or a failing assertion is
         mechanical work grounded in exact evidence, and only a lap that has demonstrably
@@ -804,54 +745,7 @@ class Dev(Workflow):
             session_turns=turns,
             digest=failure.digest,
             impl_blocks=impl_blocks,
-            promise=self._amended(promise, result),
         )
-
-    @staticmethod
-    def _amended(promise: dict[str, Any] | None, result: FixResult) -> dict[str, Any] | None:
-        """The promise the next `gates` pass re-checks, after this lap's amendments.
-
-        Both halves exist for the same reason: the claim gates read the *implement* turn's
-        own report, and a repair lap that has genuinely settled one of them has no other way
-        to say so — so it arrives back at the gate it just satisfied, unchanged, and laps
-        until the budget escalates it to a person who can only agree with it.
-
-        * `tests_added` credits tests this lap wrote, which is what the `tdd` gate is
-          looking for.
-        * `retracted_files` withdraws a promised path the lap found it did not need — the
-          "or say why it turned out to be unnecessary" the `goal` gate offers in writing.
-          A retraction is not free: it is recorded in the lap's `notes` and in the run log,
-          where an operator reading afterwards sees which promise was dropped and why.
-        * `retracted_commands` is the same for a command, and covers the one way a promise
-          can be unrepairable rather than merely unmet: a command that never terminates.
-          The gate waits out its timeout and calls it dirty, every lap, on code that is
-          already finished.
-        """
-        if not (result.tests_added or result.retracted_files or result.retracted_commands):
-            return promise
-        merged = dict(promise or {})
-        if result.tests_added:
-            already = list(merged.get("tests_added") or [])
-            merged["tests_added"] = already + [
-                t for t in result.tests_added if t not in already
-            ]
-        if result.retracted_files:
-            dropped = {f.strip().lstrip("./") for f in result.retracted_files if f.strip()}
-            conditions = dict(merged.get("exit_conditions") or {})
-            conditions["files"] = [
-                f
-                for f in (conditions.get("files") or [])
-                if f.strip().lstrip("./") not in dropped
-            ]
-            merged["exit_conditions"] = conditions
-        if result.retracted_commands:
-            dropped = {c.strip() for c in result.retracted_commands if c.strip()}
-            conditions = dict(merged.get("exit_conditions") or {})
-            conditions["commands"] = [
-                c for c in (conditions.get("commands") or []) if c.strip() not in dropped
-            ]
-            merged["exit_conditions"] = conditions
-        return merged
 
     # --- the implementation gate --------------------------------------------
 

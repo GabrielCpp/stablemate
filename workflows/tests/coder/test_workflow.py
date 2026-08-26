@@ -34,7 +34,7 @@ import logging
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import patch
 
 import pytest
@@ -256,7 +256,7 @@ class _Sub:
         *,
         changes: bool = True,
         leave_dirty: bool = False,
-        dev_status: str = "ready",
+        dev_status: Literal["ready", "replan"] = "ready",
         docs_status: str = "passed",
         docs_notes: str = "",
         docs_authored_nodes: list[str] | None = None,
@@ -269,7 +269,7 @@ class _Sub:
         self.repo = repo
         self.changes = changes
         self.leave_dirty = leave_dirty
-        self.dev_status = dev_status
+        self.dev_status: Literal["ready", "replan"] = dev_status
         self.docs_status = docs_status
         self.docs_notes = docs_notes
         self.docs_authored_nodes = docs_authored_nodes or []

@@ -3,10 +3,14 @@
 Identical in force to `author`'s and `research`'s, and here for the same two reasons,
 both about how workhorse *fails*:
 
-* **Every field has a default.** After the resilience ladder's last rung a node that
+* **A node's fields default.** After the resilience ladder's last rung a node that
   could not be answered emits its declared output keys as `null` and the run advances
   (`workhorse/docs/GUARDRAILS.md`, "Default to the next node"). A required field would
-  turn that soft failure into a hard one.
+  turn that soft failure into a hard one. The deliberate exception is the handful of
+  *agent-facing* statuses typed as required `Literal`s: the arms are closed and the model
+  is told them, so a missing one is a parse failure the runner answers with a retry turn
+  — which is the right answer for a turn that would otherwise get away with not saying
+  what it did.
 * **Unknown keys are ignored, nulls are dropped**, so a missing answer falls back to the
   field's own default instead of raising.
 

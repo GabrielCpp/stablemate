@@ -12,11 +12,13 @@ exited 0 and a `dirty` is one that really did not.
 from __future__ import annotations
 
 import logging
+import subprocess
 from pathlib import Path
 
 import pytest
 from workhorse_workflows.coder.shared.dev import (
     GATE_ORDER,
+    changed_files,
     declared_gates,
     declared_markers,
     gate_command,
@@ -87,13 +89,13 @@ def test_the_dispatch_id_is_decomposed_into_the_keys_a_repo_actually_writes(
         repo,
         "services:\n"
         "  go: {test: 'go test ./...'}\n"
-        "  api: {test: 'go test -tags integration ./...', tdd: required}\n",
+        "  api: {test: 'go test -tags integration ./...', lint: 'golangci-lint run'}\n",
     )
 
     for dispatch_id in ("acme::api", "acme::services/api"):
         declared = service_declaration(dispatch_id, "go", str(repo))
         assert declared["test"] == "go test -tags integration ./...", dispatch_id
-        assert declared["tdd"] == "required", dispatch_id
+        assert declared["lint"] == "golangci-lint run", dispatch_id
 
     assert service_keys("acme::services/api", "go") == [
         "acme::services/api",
@@ -304,3 +306,35 @@ def test_the_convention_looks_for_the_makefile_in_the_service_directory(
     )
 
     assert gates.commands == ["make test"]
+
+
+# --------------------------------------------------- what a recycled turn is re-seeded with
+
+
+def test_a_new_file_is_in_the_diff_the_gates_read(tmp_path: Path) -> None:
+    """A test file this story just added is *new*, and a new file is in no `git diff`.
+
+    Nothing in the dev lane commits before the gates run, so `git diff --name-only HEAD`
+    sees modifications and nothing else. `changed_files` is what re-seeds a recycled
+    conversation, and a re-seed missing the file the turn had just written told it its own
+    work did not exist.
+    """
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
+    (tmp_path / "handler.go").write_text("package api\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("build/\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "i"],
+        cwd=tmp_path,
+        check=True,
+    )
+    (tmp_path / "handler.go").write_text("package api\n\nfunc H() {}\n", encoding="utf-8")
+    (tmp_path / "handler_test.go").write_text("package api\n", encoding="utf-8")
+    (tmp_path / "build").mkdir()
+    (tmp_path / "build" / "out.bin").write_text("junk", encoding="utf-8")
+
+    paths = _call(changed_files, cwd=str(tmp_path)).paths
+
+    assert "handler_test.go" in paths, "a new file is invisible to the next turn"
+    assert "handler.go" in paths
+    assert not any(p.startswith("build/") for p in paths), "ignored output is not a change"
