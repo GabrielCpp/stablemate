@@ -210,6 +210,39 @@ Name the smallest directory or package when the exact file is not knowable yet, 
 Generated artifacts and migrations get their own lines, each with its generation command and
 the input that changes. Omit anything the story does not change.
 
+### Stages
+
+**Write this section when the story is big enough to build in more than one sitting** — the
+same phases an interactive session falls into by itself: make the contract exist, then make
+it real, then wire the surface to it. A small story is one stage and does not need the
+heading; do not manufacture phases to fill it.
+
+One `**Stage N — <name>**` line per phase, each with the units from **Changes** it covers and
+**how the implementer proves that stage works before moving on** — the command to run, the
+endpoint to hit, the screen to load. A stage nobody can check is not a stage, it is a pause.
+
+The implementer builds its todo list from these, so they are the story's real order of work:
+
+- **Stage 1 — the port and its contract.** `internal/<domain>/repository.go` +
+  `service.go`. Proven by the package's unit tests: `<the layer's test command>`.
+- **Stage 2 — the HTTP surface.** the controller + the regenerated client. Proven by
+  booting the API and posting the story's request once.
+
+### Testability (required)
+
+**Every plan says how the work it describes can be tested, and this is not optional.** The
+implementer is handed this plan verbatim and writes the tests from it, so a plan that
+describes only what to build hands the test suite to guesswork.
+
+Concretely: name the seam each unit in **Changes** is tested through (the port to fake, the
+fixture to record, the route to drive), and say what has to exist before that test can run —
+a seeded row, a migration, a captured payload, a running emulator. Where the honest answer is
+that a unit cannot be tested as designed, that is a design finding: say so here and change
+the design rather than planning untestable code.
+
+**Test Scenarios** below is the parsed contract; this section is how the implementer gets
+there.
+
 ### Blast Radius
 
 **Write this section only when the story changes a symbol, contract, validation rule,
@@ -296,6 +329,8 @@ exactly how.
 - [ ] `services` lists every service the story changes and nothing it does not; each path
       exists and carries the marker file its `type` implies.
 - [ ] Multi-service stories document implementation order and the integration contract.
+- [ ] The plan says how the work is tested — the seam per unit, and what has to exist first.
+- [ ] A story too big for one sitting carries **Stages**, each with the check that closes it.
 
 ❌ Don't plan for a layer this repo does not have — the "Instruction Set Resolution" list
 above is the whole set.
