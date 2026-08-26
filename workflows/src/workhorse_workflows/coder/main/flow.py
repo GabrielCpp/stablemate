@@ -982,8 +982,7 @@ class Coder(Workflow):
         gate = self.output(open_pr)
         summary = self.output(poll_pr_checks).summary
         self.handoff(
-            FixCi, repo="", branch=epic_branch(gate.ci_epic), ci_summary=summary,
-            docs_path=self.docs_path,
+            FixCi, repo="", branch=epic_branch(gate.ci_epic), docs_path=self.docs_path,
         )
         push = self.call(push_ci_fix, "", epic_branch(gate.ci_epic))
         if push.status in ("pushed", "unavailable"):

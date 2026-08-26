@@ -33,6 +33,7 @@ import logging
 import re
 import time
 from pathlib import Path
+from typing import Literal
 
 from github import GithubException
 from workhorse_workflows.kit import find_repo_root
@@ -136,7 +137,7 @@ def poll_pr_checks(
     watch_timeout: int = 1200,
     poll_interval: int = 30,
 ) -> CiChecks:
-    """Block until the PR's Actions runs settle, then report `passed`/`failed`/`unavailable`.
+    """Block until the PR's Actions runs settle, then report what they said.
 
     CI state is read from the **Actions runs** API rather than the check-runs resource. A
     fine-grained PAT cannot access check-runs at all ("Resource not accessible by personal
@@ -145,9 +146,14 @@ def poll_pr_checks(
     readable with it. Gating on Actions is what keeps a least-privilege token working, with
     no classic PAT and no GitHub App.
 
-    Every way of *not knowing* is `unavailable`, and the flow treats that as a pass-through
-    so offline, CI-less and read-blocked runs still complete. It is logged loudly at each
-    site so it is never silent.
+    **Not knowing splits in two.** `unavailable` is a fact about a repo that has no CI to
+    read — no branch, no origin, no open PR, no Actions runs, no token configured to look
+    with — and the flow proceeds past it, which is what lets an offline or CI-less run
+    complete. `blocked` is the API refusing or failing: a slug that resolves to no
+    reachable repository, a PR whose head SHA cannot be read, a token GitHub will not
+    accept for Actions. Those used to be `unavailable` too, so a token missing
+    `Actions:Read` reported a green gate for every repo in the workspace; the caller
+    escalates them now. Both are logged at each site, so neither is ever silent.
 
     The verdict is judged on the PR **head commit**, so stale runs on earlier commits of
     the branch cannot pollute it. `watch_timeout` (1200s) bounds the wait and
@@ -177,10 +183,15 @@ def poll_pr_checks(
 
     repo, slug = resolve_repo(root, token)
     if repo is None:
-        logger.info(
-            "origin '%s' is not a reachable github.com repo — cannot query CI for %s", slug, branch
-        )
-        return CiChecks(status="unavailable", summary="origin not a reachable github.com remote")
+        # A missing slug means the origin is not a github.com URL at all — a repo with no
+        # GitHub CI to read. A slug that resolved and then would not open means the API
+        # refused or could not be reached, which is a failure to look rather than a fact
+        # about the repo.
+        if not slug:
+            logger.info("origin is not a github.com repo — cannot query CI for %s", branch)
+            return CiChecks(status="unavailable", summary="origin not a github.com remote")
+        logger.warning("cannot reach github repo '%s' — CI for %s was never gated", slug, branch)
+        return CiChecks(status="blocked", summary=f"github repo {slug} is unreachable")
 
     pr = _resolve_pr(repo, pr_ref)
     if pr is None:
@@ -192,9 +203,11 @@ def poll_pr_checks(
     except GithubException:
         head_sha = ""
     if not head_sha:
-        logger.info("could not resolve head SHA for %s — cannot gate on CI", pr_ref)
+        # The PR is there and its head is unreadable, so there is a pipeline to gate on and
+        # no way to find out what it did.
+        logger.warning("could not resolve head SHA for %s — CI was never gated", pr_ref)
         return CiChecks(
-            status="unavailable", summary=f"could not resolve head SHA for {pr_ref}"
+            status="blocked", summary=f"could not resolve head SHA for {pr_ref}"
         )
 
     return _watch(logger, repo, branch, head_sha, watch_timeout, poll_interval)
@@ -296,21 +309,29 @@ def _watch(
 
 
 def _auth_failure(logger: logging.Logger, exc: GithubException, branch: str) -> CiChecks | None:
-    """`unavailable` when the token cannot read Actions, `None` when it is worth retrying."""
+    """`blocked` when the token cannot read Actions, `None` when it is worth retrying.
+
+    This was a pass-through, and it is the site that ruling was aimed at: a token without
+    `Actions:Read` produced one `unavailable` per repo, every one of which the loop walked
+    past, so a workspace whose CI could not be read at all reported the same as a workspace
+    whose CI was green. The permission is a thing a person grants, so the run stops for one.
+    """
     err = str(getattr(exc, "data", "") or exc)
     if getattr(exc, "status", None) not in (401, 403) and not AUTH_RE.search(err):
         return None
     reason = err.replace('"', "").strip()[:200] or "GitHub auth/permission error"
-    logger.info(
-        "cannot read Actions runs for %s — auth/permission error; treating as unavailable "
-        "(pass-through). Grant the token Actions:Read.",
+    logger.warning(
+        "cannot read Actions runs for %s — auth/permission error, so CI was never gated. "
+        "Grant the token Actions:Read.",
         branch,
     )
-    logger.info("%s", err)
-    return CiChecks(status="unavailable", summary=f"CI unreadable: {reason}")
+    logger.warning("%s", err)
+    return CiChecks(status="blocked", summary=f"CI unreadable: {reason}")
 
 
-def push_epic_branch(logger: logging.Logger, root: Path, branch: str) -> str:
+def push_epic_branch(
+    logger: logging.Logger, root: Path, branch: str
+) -> Literal["pushed", "unavailable", "failed"]:
     """Push `branch` from `root` over HTTPS: `pushed`, `unavailable` or `failed`.
 
     `push-epic.py`'s body, with its exit-code contract as a return value. The three

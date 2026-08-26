@@ -197,7 +197,10 @@ def test_every_workspace_repo_is_checked_once_and_the_loop_ends(
 
     assert _walk(run_env) == ["api", "web"]
     assert result.status == "unavailable", result
-    assert result.summary == "no workspace repo left to check"
+    assert result.summary == (
+        "no workspace repo left to check "
+        "(no CI verdict for api: no GitHub token; web: no GitHub token)"
+    ), "a repo that was never gated is named, not passed over in silence"
     assert turn.calls == [], "an unavailable verdict must never reach the fixer"
 
 
@@ -269,17 +272,14 @@ def test_a_red_branch_is_fixed_pushed_and_re_polled_until_it_is_green(
     Three things the states are responsible for are asserted here rather than in the nodes:
     the fixer runs with the *picked* repo as its cwd (which is what lets workhorse resolve
     `<repo>/.agents/flavors/coder/fix-ci.md`), it may read the whole workspace plus the docs
-    root, and the brief it is handed is the summary the poll just produced — **not** the
-    `ci_summary` input, which the flow accepts for interface parity and can never read.
+    root, and the brief it is handed is the summary the poll just produced.
     """
     github = _GitHub(monkeypatch, runs=[RED, GREEN])
     run_env = env()
     turn = _Turn()
 
     result = drive_flow(
-        FixCi(repo="api", branch=BRANCH, ci_summary="whatever the main graph knew"),
-        run_env,
-        turn,
+        FixCi(repo="api", branch=BRANCH), run_env, turn
     )
 
     assert github.polls == 2, "the push must be followed by a fresh poll"
@@ -382,8 +382,8 @@ def test_the_attempt_budget_is_shared_across_repos_not_reset_per_repo(
 
     `api` needs one fix to go green, so `web` reaches its own poll with the counter already
     at 1 and gets two fixes instead of three. The YAML calls `ci_attempts` a per-repo budget
-    and never resets it when `select_ci_repo` advances; the port preserves that and records
-    the mismatch in the progress ledger rather than quietly repairing it.
+    and never resets it when `select_ci_repo` advances; the pinned behaviour is lifetime,
+    and `CiLoop.attempts` says so.
     """
     _GitHub(monkeypatch, runs=[RED, GREEN, RED, RED, RED])
     run_env = env()
@@ -410,7 +410,8 @@ def test_a_run_killed_in_the_fixer_resumes_on_that_turn_alone(
     """`fix` holds nothing but the agent turn, so a resume re-runs the model call and no poll.
 
     The counters ride on the checkpoint as state parameters, which is what `processed_repos`
-    and `ci_attempts` were reaching for as JSON-encoded workflow vars — and `setup`'s
+    and `ci_attempts` were reaching for as JSON-encoded workflow vars, carried as one
+    `CiLoop` value — and `setup`'s
     workspace is carried in the resumed context rather than re-derived.
     """
     github = _GitHub(monkeypatch, runs=[RED, GREEN])
@@ -432,10 +433,13 @@ def test_a_run_killed_in_the_fixer_resumes_on_that_turn_alone(
     assert resume.state == "fix", resume
     assert resume.flow == "FixCi", resume
     assert resume.params == {
-        "repo": "api",
-        "repo_dir": str(workspace["api"]),
-        "processed": ["api"],
-        "attempts": 0,
+        "loop": {
+            "repo": "api",
+            "repo_dir": str(workspace["api"]),
+            "processed": ["api"],
+            "attempts": 0,
+            "unread": [],
+        },
         "summary": "build#7(failure)",
     }, resume.params
 

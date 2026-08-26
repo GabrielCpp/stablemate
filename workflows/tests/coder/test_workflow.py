@@ -69,7 +69,7 @@ from workhorse_workflows.coder.shared.queue import (
     stamp_story_passed,
 )
 from workhorse_workflows.coder.shared.story import prepare_fix_story, prepare_story
-from workhorse_workflows.coder.shared.schemas.ci import CiChecks
+from workhorse_workflows.coder.shared.schemas.ci import CiChecks, CiStatus
 from workhorse_workflows.coder.shared.schemas.dev import DevResult
 from workhorse_workflows.coder.shared.schemas.docs import DocsResult
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaResult
@@ -236,7 +236,6 @@ class _StubFlow(Workflow):
     triage_scope_count: int = 0
     repo: str = ""
     branch: str = ""
-    ci_summary: str = ""
     session_turns: int = 0
 
 
@@ -263,7 +262,7 @@ class _Sub:
         qa_status: str = "passed",
         qa_statuses: list[str] | None = None,
         qa_docs_recheck_required: bool = False,
-        ci_status: str = "passed",
+        ci_status: CiStatus = "passed",
         explode: set[str] | None = None,
     ) -> None:
         self.repo = repo
@@ -276,7 +275,7 @@ class _Sub:
         self.qa_status = qa_status
         self.qa_statuses = qa_statuses or []
         self.qa_docs_recheck_required = qa_docs_recheck_required
-        self.ci_status = ci_status
+        self.ci_status: CiStatus = ci_status
         self.explode = explode or set()
         self.calls: list[str] = []
         self.seen: list[_StubFlow] = []
