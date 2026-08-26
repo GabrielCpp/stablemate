@@ -303,7 +303,7 @@ def test_the_backfill_leaves_a_story_that_already_declares_dependencies_alone(
 def test_the_pack_fix_subscribes_the_captured_app_to_the_docs_pack(tmp_path: Path) -> None:
     """expense-split was captured subscribing to `product-planning` and `go` only.
 
-    The docs lane's prompts carry a `skill_load_ref` to `ostler-documentation`, which ships
+    The docs lane's prompts carry a `skill_load_ref` to `ostler-okf`, which ships
     in the `stablemate` pack — so without this every docs trial renders the prompt's
     placeholder text and measures the agent inventing a documentation doctrine.
     """

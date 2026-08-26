@@ -115,7 +115,7 @@ class Fixture:
     book: str = "docs/features"
     budget_s: float = BUDGET_S
     #: Packs to add to `agents.yml` when the capture is missing them. The docs lane's
-    #: prompts carry a `skill_load_ref` to `ostler-documentation`, which farrier ships in
+    #: prompts carry a `skill_load_ref` to `ostler-okf`, which farrier ships in
     #: the `stablemate` pack: without it the prompt renders its placeholder text and the
     #: agent improvises the doctrine it was supposed to be handed, so the flow is measured
     #: on inventing a standard rather than on applying one.
