@@ -284,11 +284,16 @@ endif
 """
 
 _REGEN_TARGETS = """
-.DEFAULT_GOAL := help
+# The target is `agent-help`, not `help`, and the default goal is only claimed when
+# nothing has yet: this file is included at the END of a repo's own Makefile, so a
+# `help` here would override the repo's and make would warn about it on every run.
+ifeq ($(.DEFAULT_GOAL),)
+.DEFAULT_GOAL := agent-help
+endif
 
 {phony}
 
-help: ## Show available targets
+agent-help: ## Show available targets
 \t@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \\
 \t\tawk 'BEGIN{{FS=":.*?## "}}{{printf "  \\033[36m%-22s\\033[0m %s\\n", $$1, $$2}}'
 
@@ -343,7 +348,7 @@ def render_agents_mk() -> str:
     at render time. See the comment above `agent_run_target` in the emitted file.
     """
     phony = (
-        ".PHONY: help agent-install agent-check farrier-run-hook "
+        ".PHONY: agent-help agent-install agent-check farrier-run-hook "
         "agent-workflows agent-runs agent-logs agent-stop agent-clean"
     )
     return (

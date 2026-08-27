@@ -229,11 +229,16 @@ $(foreach wf,$(AGENT_WORKFLOWS),$(eval $(call agent_run_target,$(wf))))
 .PHONY: $(addprefix agent-run-,$(AGENT_WORKFLOWS))
 endif
 
-.DEFAULT_GOAL := help
+# The target is `agent-help`, not `help`, and the default goal is only claimed when
+# nothing has yet: this file is included at the END of a repo's own Makefile, so a
+# `help` here would override the repo's and make would warn about it on every run.
+ifeq ($(.DEFAULT_GOAL),)
+.DEFAULT_GOAL := agent-help
+endif
 
-.PHONY: help agent-install agent-check farrier-run-hook agent-workflows agent-runs agent-logs agent-stop agent-clean
+.PHONY: agent-help agent-install agent-check farrier-run-hook agent-workflows agent-runs agent-logs agent-stop agent-clean
 
-help: ## Show available targets
+agent-help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 

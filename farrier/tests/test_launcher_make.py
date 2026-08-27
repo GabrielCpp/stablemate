@@ -45,7 +45,7 @@ def _make(at: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_the_generated_launcher_parses(launcher: Path):
-    result = _make(launcher, "help")
+    result = _make(launcher, "agent-help")
     assert result.returncode == 0, result.stderr
     assert "agent-install" in result.stdout
 
@@ -96,7 +96,7 @@ def test_an_unrelated_target_never_pays_for_discovery(launcher: Path):
     """Discovery shells out to pipx, and this file is included by the repo's root
     Makefile — so every `make <anything>` would pay for it if it were unconditional."""
     result = subprocess.run(
-        ["make", "-f", "agents.mk", "help", "FARRIER=/nonexistent-binary"],
+        ["make", "-f", "agents.mk", "agent-help", "FARRIER=/nonexistent-binary"],
         cwd=launcher, capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0, result.stderr

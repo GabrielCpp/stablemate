@@ -29,10 +29,21 @@ from farrier.install import render_agents_mk
 
 def test_regen_targets_always_present():
     mk = render_agents_mk()
-    assert "help:" in mk
+    assert "agent-help:" in mk
     assert "agent-install:" in mk
     assert "agent-check:" in mk
-    assert ".DEFAULT_GOAL := help" in mk
+
+
+def test_help_and_default_goal_are_left_to_the_including_makefile():
+    """This file is included at the end of a repo's own Makefile: a `help` target
+    here overrides the repo's (make warns on every invocation), and an unconditional
+    `.DEFAULT_GOAL` steals a bare `make`. The launcher only claims the default when
+    it is the only makefile in play."""
+    mk = render_agents_mk()
+    assert "\nhelp:" not in mk
+    assert ".DEFAULT_GOAL := help" not in mk
+    assert "ifeq ($(.DEFAULT_GOAL),)" in mk
+    assert ".DEFAULT_GOAL := agent-help" in mk
 
 
 def test_no_workflow_name_is_ever_written_into_the_file():
