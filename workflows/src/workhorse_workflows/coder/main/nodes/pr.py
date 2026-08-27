@@ -535,7 +535,7 @@ def open_story_pr(
         return StoryPr()
 
     description = commits.story_description(root, story_path, story_slug)
-    summary = _plan_summary(spec) if spec else ""
+    summary = _plan_summary_prose(spec) if spec else ""
     screenshots = _qa_screenshots(root, story_path)
 
     token = resolve_github_token(root)
@@ -586,8 +586,14 @@ def open_story_pr(
     return StoryPr(story_pr=status, pr_urls=pr_urls)
 
 
-def _plan_summary(spec_dir: Path) -> str:
-    """The plan's `## 1. Summary`, trimmed to its first two paragraphs."""
+def _plan_summary_prose(spec_dir: Path) -> str:
+    """The plan's `## 1. Summary`, trimmed to its first two paragraphs.
+
+    Not the `plan_summary` node in `shared/dev.py`, which the name used to suggest it was
+    a private copy of: that one renders the plan's *service structure* into a prompt for a
+    lane that did not plan the story. This reads the human prose off `plan.md` for a pull
+    request body, and there is nothing of one in the other.
+    """
     plan_file = spec_dir / "plan.md"
     if not plan_file.exists():
         return ""

@@ -375,15 +375,7 @@ class Coder(Workflow):
         not finishing — and neither is answerable by trying again unchanged, so both park
         for the operator rather than one parking and the other ending the run.
         """
-        result = self.handoff(
-            Docs,
-            story=self._story.story_slug,
-            docs_path=self.docs_path,
-            epic=self._story_epic(),
-            target_env=self.target_env,
-            preexisting=self._preexisting(),
-            operator_mode=self.operator_mode,
-        )
+        result = self._document()
         if not _documented(result):
             return Continue(result, self.blocked_docs, triage=triage,
                             notes=_docs_notes(result, "story"))
@@ -557,15 +549,7 @@ class Coder(Workflow):
         reading it is as often a `/loop` tick as a human, and "needs manual review" is not
         something a poller can act on.
         """
-        result = self.handoff(
-            Docs,
-            story=self._story.story_slug,
-            docs_path=self.docs_path,
-            epic=self._story_epic(),
-            target_env=self.target_env,
-            preexisting=self._preexisting(),
-            operator_mode=self.operator_mode,
-        )
+        result = self._document()
         if not _documented(result):
             return Continue(
                 result,
@@ -622,15 +606,7 @@ class Coder(Workflow):
             if self.mode == "epic":
                 return Continue(None, self.commit)
             return Continue(None, self.commit_pr)
-        result = self.handoff(
-            Docs,
-            story=self._story.story_slug,
-            docs_path=self.docs_path,
-            epic=self._story_epic(),
-            target_env=self.target_env,
-            preexisting=self._preexisting(),
-            operator_mode=self.operator_mode,
-        )
+        result = self._document()
         if not _documented(result):
             return Continue(
                 result,
@@ -942,6 +918,25 @@ class Coder(Workflow):
             + "Commit what belongs to this story, discard or set aside what does not, and "
             "touch this file when the run should re-read the tree.",
             self.dirty_operator,
+        )
+
+    def _document(self) -> DocsResult:
+        """The `Docs` handoff, identical at all three points the story reaches it.
+
+        `document`, `give_up` and `finalize` hand the book the same six arguments — the
+        story, where the book is, the story's epic, the environment, what was already dirty
+        and whether a block may be auto-resolved. They differ in what they do with the
+        answer, not in what they ask, and three copies of the argument list is three places
+        to update when the sub-flow gains a parameter.
+        """
+        return self.handoff(
+            Docs,
+            story=self._story.story_slug,
+            docs_path=self.docs_path,
+            epic=self._story_epic(),
+            target_env=self.target_env,
+            preexisting=self._preexisting(),
+            operator_mode=self.operator_mode,
         )
 
     def _settle_chain(self) -> str:
