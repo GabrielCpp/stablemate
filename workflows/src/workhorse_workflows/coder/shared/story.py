@@ -77,6 +77,45 @@ def _guard_authored(okf: Ostler, slug: str, logger: logging.Logger) -> None:
     )
 
 
+def guard_story_file(story: StoryPaths) -> None:
+    """Fail the run when the story a lane was pointed at is not a file it can read.
+
+    Every turn a per-story lane dispatches is handed the story path and the spec dir as
+    authoritative inputs, and is told to work the story they name. A slug that resolved to
+    nothing — no epic, a docs tree ostler could not read — arrives as an empty string, and
+    a path that resolved to a file nobody wrote arrives as a name; either way the turn that
+    got it invents the story rather than reading it.
+
+    Presence is the *flow's* obligation, not the agent's, so the check is here and once,
+    ahead of the first turn, rather than as a fallback arm in each prompt that renders it.
+    `dev` calls it on the slug it was run with and `fix` on the story it seeds for a
+    drained bullet; both hand the result to prompts that no longer carry the arm.
+
+    Opened, not `exists()`-ed, for the reason `shared/dev.py` opens plan files: the failure
+    a turn would hit is a read, and a directory, a broken symlink and a file nobody may
+    read all pass an existence check. The spec dir is only checked for presence — the
+    writing turns create it — but a blank one means `prepare_story` resolved nothing, and
+    every artifact path a lane derives from it would land at the filesystem root.
+    """
+    if not story.story_path:
+        raise WorkflowFailed(
+            f"no story path for {story.story_slug or '(no slug)'!r} — the slug did not "
+            "resolve to a story file, so there is nothing to work against."
+        )
+    if not story.spec_dir:
+        raise WorkflowFailed(
+            f"no spec dir for {story.story_slug or '(no slug)'!r} — the slug resolved to a "
+            "story but to no place to keep its plan, evidence and QA report."
+        )
+    try:
+        Path(story.story_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise WorkflowFailed(
+            f"story file '{story.story_path}' is not readable ({exc.strerror or exc}); "
+            "refusing to work against a story nobody wrote."
+        ) from exc
+
+
 @blueprint.node(stub=stubs.story_paths)
 def prepare_story(
     logger: logging.Logger,
@@ -244,6 +283,7 @@ def prepare_fix_story(
 
 
 __all__ = [
+    "guard_story_file",
     "prepare_fix_story",
     "prepare_story",
     "resolve_workspace_dirs",

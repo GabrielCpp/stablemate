@@ -16,16 +16,13 @@ verdict on the fix**. Exercise the change yourself and report what you observed.
 - Target environment: `{{ workhorse_var('target_env') }}`
 
 QA **only** the story at the story path above. Do not search the repository or git history
-to guess which item to check, and do not substitute a different one. If the path is blank or
-the file does not exist, return `blocked` and say so.
+to guess which item to check, and do not substitute a different one.
 
 ## Required Context
 
 Read:
 
 - `AGENTS.md`
-- this repo's developer / local-stack runbook, wherever it installs one; failing that,
-  `AGENTS.md` and the repo's own documented commands
 - the story file, for its acceptance criteria
 - the plan artifacts under the spec directory. Verify the services the fix touched, not
   the whole repository:

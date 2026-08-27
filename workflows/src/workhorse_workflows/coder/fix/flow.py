@@ -53,7 +53,11 @@ from workhorse_workflows.coder.shared.dev import (
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.failure import from_gate
 from workhorse_workflows.coder.shared.queue import commit_story
-from workhorse_workflows.coder.shared.story import prepare_fix_story, resolve_workspace_dirs
+from workhorse_workflows.coder.shared.story import (
+    guard_story_file,
+    prepare_fix_story,
+    resolve_workspace_dirs,
+)
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 from workhorse_workflows.coder.shared.schemas.dev import FailureReport, ImplResult
 from workhorse_workflows.coder.shared.schemas.qa import QaRunResult
@@ -118,6 +122,10 @@ class Fix(Workflow):
         The draw does not touch the backlog file — pruning and flagging happen at the far
         end of the iteration — which is what lets a resumed run re-draw the same item and
         land on the same story rather than skipping it.
+
+        `guard_story_file` is why the turns below are handed the story path and the spec dir
+        as facts: a seed that did not land on disk fails the run here, rather than reaching
+        a prompt that would have to decide what to do about a blank.
         """
         pick = self.call(select_fix_item, self.docs_path)
         if not pick.has_fix:
@@ -128,6 +136,7 @@ class Fix(Workflow):
             seed_fix_story, pick.fix_bullet_id, pick.fix_bullet_text, "", "", self.docs_path
         )
         story = self.call(prepare_fix_story, self.docs_path, seed.story_slug, seed.epic)
+        guard_story_file(story)
         return Continue(story, self.item)
 
     def item(

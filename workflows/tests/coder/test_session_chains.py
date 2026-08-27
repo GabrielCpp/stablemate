@@ -224,11 +224,13 @@ def test_every_lane_names_the_same_conversation_without_being_handed_anything(
     on entry — see `test_entering_the_docs_flow_drops_the_story_conversation_too`.
     """
     seeded: list[tuple[str, str]] = []
-    # A real file: the review lane's `setup` refuses a slug that resolved to no story.
+    # A real file and a real spec dir: a lane's `setup` refuses a slug that resolved to
+    # no story, and `prepare_story` never resolves one without the other.
     story_md = tmp_path / "story.md"
     story_md.write_text("# Story\n", encoding="utf-8")
+    spec_dir = tmp_path / "specs" / STORY
     ctx = SimpleNamespace(
-        story_slug=STORY, story_path=str(story_md), spec_dir="", qa_dir=""
+        story_slug=STORY, story_path=str(story_md), spec_dir=str(spec_dir), qa_dir=""
     )
     for flow_cls in (Docs, Qa, Dev, Review):
         monkeypatch.setattr(

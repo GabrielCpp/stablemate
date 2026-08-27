@@ -15,9 +15,9 @@ The workflow supplies these values. Use them exactly as given:
 - Story path: `{{ workhorse_var('story_path') }}`
 - Spec artifact directory: `{{ workhorse_var('spec_dir') }}`
 
-Apply QA fixes **only** to the story at the story path above. Do NOT search the repository, git history, or branch state to guess which story to fix, and do NOT substitute a different story. If the story path above is blank or the file does not exist, return `status: "blocked"` (structured output below) with notes saying the workflow did not provide a usable story path — that hands it to the operator. Do not pick a story yourself.
+Apply QA fixes **only** to the story at the story path above. Do NOT search the repository, git history, or branch state to guess which story to fix, and do NOT substitute a different story.
 
-If `{{ workhorse_var('spec_dir') }}` is blank, derive `<story-name>` from the story folder name in the story path above. The QA report is `{{ workhorse_var('spec_dir') }}/qa.md` and the QA evidence directory is the `qa/` subdirectory beside `story.md`.
+The QA report is `{{ workhorse_var('spec_dir') }}/qa.md` and the QA evidence directory is the `qa/` subdirectory beside `story.md`.
 
 ### Prior QA Notes
 
@@ -41,8 +41,6 @@ category.
 Read:
 
 - `AGENTS.md`
-- this repo's developer / local-stack runbook, wherever it installs one; failing that,
-  `AGENTS.md` and the repo's own documented commands
 - the story file
 - the parent `epic.md`
 - plan artifacts under `docs/specs/<story-name>/`
