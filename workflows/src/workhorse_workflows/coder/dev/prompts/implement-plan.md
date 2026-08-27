@@ -196,8 +196,8 @@ re-reads that line after this turn and sends the story back to you if it changed
 
 ## Commit Trailers
 
-Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
-`Story: {{ workhorse_var('story_slug') }}` as trailers, spelled exactly so — the run record
+Every commit you write carries `[{{ workhorse_var('epic') }}]` and
+`[{{ workhorse_var('story_slug') }}]` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 
 ## Machine-Readable Result (required)
