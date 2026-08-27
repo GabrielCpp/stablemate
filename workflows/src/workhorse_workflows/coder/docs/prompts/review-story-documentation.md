@@ -150,30 +150,6 @@ Each finding must name the file/anchor, classify the defect as one of `node-type
 state the smallest acceptable repair. Do not return a broad prose paragraph that the author must
 reinterpret.
 
-Return JSON only:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{"status": "approved", "findings": [], "notes": "The current OKF book fully covers the reviewed implementation delta."}
-```
-
-Use `status=revise` only with at least one structured finding in `findings`. Use
-`status=blocked` only when convergence requires a product or author decision. Never approve on
-the promise of a later documentation update.
-
-Each finding has this shape:
-
-```json
-{
-  "status": "revise",
-  "findings": [
-    {
-      "id": "D1",
-      "kind": "node-type",
-      "target": "docs/features/acme/gui/screens/editor.md#insert-widget",
-      "issue": "Browser click action is under ## Invocations.",
-      "repair": "Move it under ## Interactions as an interaction node."
-    }
-  ],
-  "notes": "One or two sentence summary; the findings list is the repair contract."
-}
-```
+{{ result_schema }}

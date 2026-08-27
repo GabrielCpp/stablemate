@@ -84,9 +84,24 @@ class DocumentationResult(CoderResult):
     whatever it edited.
     """
 
-    status: Literal["documented", "not_required", "blocked"]
-    nodes: list[str] = []
-    notes: str = ""
+    status: Literal["documented", "not_required", "blocked"] = Field(
+        description="`documented` when the current contracts are updated and `doctor` "
+        "reports no error on the affected nodes. `not_required` needs both a precise "
+        "explanation of why no observable contract changed and that every changed "
+        "production file was already directly grounded — a grounding bullet you had to add "
+        "makes the answer `documented`. `blocked` when the book cannot be made true of "
+        "this code without a decision that is not yours.",
+    )
+    nodes: list[str] = Field(
+        default=[],
+        description="Every OKF node you edited, by exact graph identity with its section "
+        "anchor preserved. Empty for `not_required`.",
+    )
+    notes: str = Field(
+        default="",
+        description="What you changed and why, in one or two sentences. Report unrelated "
+        "pre-existing doctor findings here rather than rewriting unrelated books.",
+    )
 
 
 class DocumentationGate(CoderResult):
@@ -138,7 +153,11 @@ class DocumentationFinding(Finding):
     omitted under whichever word the default named.
     """
 
-    id: str = ""
+    id: str = Field(
+        default="",
+        description="A stable handle for this finding — `D1`, `D2` — reused when you "
+        "restate it on a later pass.",
+    )
     kind: Literal[
         "node-type",
         "missing-node",
@@ -148,7 +167,7 @@ class DocumentationFinding(Finding):
         "grounding",
         "verify-overclaim",
         "author-decision",
-    ]
+    ] = Field(description="What class of defect this is, so the repair can be routed.")
 
 
 class DocumentationReview(CoderResult):
@@ -159,9 +178,20 @@ class DocumentationReview(CoderResult):
     free-form `notes` is a summary, not the repair contract.
     """
 
-    status: Literal["approved", "revise", "blocked"]
-    findings: list[DocumentationFinding] = []
-    notes: str = ""
+    status: Literal["approved", "revise", "blocked"] = Field(
+        description="`revise` only with at least one structured finding. `blocked` only "
+        "when convergence needs a product or author decision. Never approve on the promise "
+        "of a later documentation update.",
+    )
+    findings: list[DocumentationFinding] = Field(
+        default=[],
+        description="The repair contract the author works from — empty on `approved`.",
+    )
+    notes: str = Field(
+        default="",
+        description="A one or two sentence summary; the findings list, not this, is what "
+        "the author repairs from.",
+    )
 
 
 class DocsProgress(CoderResult):

@@ -212,58 +212,8 @@ Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_slug') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 
-Return JSON only:
+## Output
 
-```json
-{
-  "status": "audited",
-  "verdict": "refuted",
-  "refutation_class": "evidence-defect",
-  "findings": [
-    {
-      "id": "A1",
-      "scope": "product-test",
-      "target": "`AC9` / scenario `export-draft` / `editor-shell.browser.test.tsx`",
-      "issue": "AC9 claims no network call during export; the only proof is a static read of `exportDraft()`.",
-      "repair": "Add a fetch-spy assertion around the export action asserting zero requests."
-    }
-  ],
-  "notes": "Coverage is complete except for AC9, whose no-network clause is never exercised."
-}
-```
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-`verdict` is exactly `stands` or `refuted`. `refutation_class` is `none` only when the pass
-stands; otherwise use one of the three classes above with concrete scenario, assertion,
-obligation, and artifact references.
-
-A refutation — and a `stands` that still names a refutation class — must carry at least one
-finding, each with `id`, `target`, `issue` and `repair`. `notes` summarizes them; `findings`
-is what the repair is briefed from. `id` is any stable handle; reuse the same one when you
-restate a finding across passes. A pass that stands cleanly returns an empty list.
-
-Every finding names its `scope`, and the flow routes on that field rather than on your prose.
-The question the scope answers is **where the repair lives**:
-
-- `plan` — the repair is an edit inside `qa_plan.py` / `qa-plan.md`. Sent to the plan author.
-- `product-test` — the repair is an assertion, fixture or fix in product code or a committed
-  test the plan only cites. Sent to the fix loop, which edits the code.
-- `stack` — the repair is in the book's `runbook` node and the workflow's `ensure_stack` step: a
-  service, emulator, database, seed or aggregate command that must be up before the plan runs.
-
-Name the scope by where the repair lands, not by which gate found it. An evidence defect
-whose real repair is a missing test assertion is `product-test`, not `plan`: filed as `plan`
-it bills a replan that cannot write the assertion, and the identical gap comes back on the
-next pass. Classifying it honestly is what makes the refutation actionable rather than a
-finding the run rediscovers until its budget runs out.
-
-### `status`
-
-`"audited"` on any turn that reached a verdict, however unwelcome. `"blocked"` **only** when
-nothing in this repository would let you reach one, because what is missing is external to it:
-a credential or deployment you cannot perform, a product decision present in neither the story
-nor the plan, or work that lives in another repo. A `blocked` turn hands the story to an
-operator, so it must name that dependency in `notes` and say what you attempted before
-concluding it, and it omits `verdict` and `refutation_class` — there was nothing to judge. A
-hard judgement is not a blocked one: `refuted` is the field for a pass that does not hold, and
-reaching for `blocked` to avoid saying so takes the decision away from the only stage allowed
-to make it.
+{{ result_schema }}

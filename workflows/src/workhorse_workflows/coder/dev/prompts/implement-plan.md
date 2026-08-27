@@ -204,17 +204,9 @@ ties a commit back to its story through them.
 
 ## Machine-Readable Result (required)
 
-After implementing the story and running verification, return this exact JSON object as the LAST thing in your final response. The workflow captures it under the `impl_result` key — without it the node fails to parse and is retried:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{
-  "status": "done|blocked",
-  "notes": "<what you implemented and verified, or what blocked you>"
-}
-```
-
-- `status`: `"done"` only when the implementation is complete, verification passed, **and the touched layers were smoked (Step 5)**. Use `"blocked"` if you could not complete it or could not run it locally.
-- `notes`: a brief summary of what was implemented and verified, **including how you ran it locally and what you observed** (or the blocker).
+{{ result_schema }}
 
 ---
 

@@ -139,31 +139,8 @@ Append this scenario's outcome to the `## QA Fix Resolution` section of
 Do not set the story's **Status** to `QA passed`. The scored rerun makes that decision, and a
 hand-written verdict only forges the artifact the rerun exists to produce.
 
-## Structured Output Requirement
+## Output
 
-Return this exact JSON object as the LAST thing in your final response — these keys at its top
-level, with no wrapper object around them. Any other shape fails to parse and the node is
-retried:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{"status": "passed|failed|blocked", "notes": "What you changed, what the dry run showed, and anything left"}
-```
-
-- `status` is `"passed"`, `"failed"` or `"blocked"`, lowercase.
-- `notes` is a non-empty string naming the root cause, the files you changed and the dry-run
-  result.
-
-### `failed` versus `blocked` — the distinction is load-bearing
-
-`blocked` hands the story to an operator. `failed` sends this scenario round again, and the
-workflow — not you — decides how many times.
-
-- Report **`failed`** when the defect is real, in scope, and you did not finish it, including
-  when it is hard, when you ran out of ideas, or when your fix did not dry-run green. A
-  stubborn in-scope defect is not a blocker, and reaching for `blocked` to get out of
-  difficult work is the exact failure this stage exists to stop.
-- Report **`blocked`** only when no further attempt in this repository could succeed, because
-  what is missing is external to it: a credential or deployment you cannot perform, a product
-  decision present in neither the story nor the plan, or work in another repo.
-- A `blocked` report names that dependency and states what you attempted before concluding
-  it. "Blocked, cannot fix" is not actionable and comes straight back to you.
+{{ result_schema }}

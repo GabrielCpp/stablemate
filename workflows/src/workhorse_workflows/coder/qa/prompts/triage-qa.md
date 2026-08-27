@@ -128,49 +128,6 @@ Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_slug') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 
-## Structured Output Requirement
-
-Return this exact JSON object in your **final response**, after a short markdown summary of how you
-classified the findings and what you changed:
-
-```json
-{
-  "status": "triaged" | "blocked",
-  "triage_action": "rescope" | "qa_fix",
-  "qa_failure_class": "code" | "product" | "evidence" | "environment",
-  "notes": ""
-}
-```
-
-- `triage_action` must be exactly `"rescope"` or `"qa_fix"` (lowercase).
-- Use `"rescope"` **only** if you amended the ACs and have budget left; otherwise `"qa_fix"`.
-- `qa_failure_class` classifies WHAT the remaining failure needs (lowercase, exactly one of):
-  - `"code"` — a QA-side code/test change is still required to satisfy an AC: the scenario,
-    its fixtures, or a driver the QA lane owns.
-  - `"product"` — the product itself does not meet an AC that stands. This returns the story to
-    the dev lane, which owns product code, instead of patching it from inside QA.
-  - `"evidence"` — the product code is already correct and all build/test gates are green; what
-    remains is ONLY evidence work: capturing/refreshing screenshots or outputs, widening sweep
-    coverage, re-running a driver to completion, or fixing an evidence-artifact schema/shape.
-    Be strict: if ANY finding needs a code change, the class is `"code"`.
-  - `"environment"` — the dev stack/fixtures/emulator must be repaired or seeded before any
-    verdict is possible.
-  The workflow uses this to grant one extra verification-only pass instead of giving up when the
-  budget is exhausted but the only remaining work is `"evidence"` — classify honestly; a wrong
-  `"evidence"` label wastes the bonus pass, a wrong `"code"` label sends a finished story to
-  manual review.
-
-Example final response (after the markdown summary):
-
-```json
-{
-  "status": "triaged",
-  "triage_action": "qa_fix",
-  "qa_failure_class": "evidence",
-  "notes": ""
-}
-```
-
 ## Stop / safety rules
 
 - Never set the story status to `QA passed` — QA reruns and decides that.
@@ -182,12 +139,8 @@ Example final response (after the markdown summary):
   2) when this story touched the surface — fixing forward is the goal — but never grow the story
   past your rescope budget.
 
-### `status`
+## Output
 
-`"triaged"` on any turn that sorted the findings, however unwelcome the answer. `"blocked"`
-**only** when nothing in this repository would let you sort them, because what is missing is
-external to it: a credential or deployment you cannot perform, a product decision present in
-neither the story nor the plan, or work that lives in another repo. A `blocked` turn hands the
-story to an operator, so it must name that dependency in `notes`, and it omits `triage_action`
-and `qa_failure_class` — there is nothing classified. A hard judgement is not a blocked one:
-those two fields carry every unfavourable answer there is.
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
+
+{{ result_schema }}

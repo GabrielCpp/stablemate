@@ -289,6 +289,10 @@ def test_a_red_branch_is_fixed_pushed_and_re_polled_until_it_is_green(
     assert result.status == "passed", result
 
     assert len(turn.calls) == 1, turn.calls
+    # `result_schema` is the rendered output contract every role turn carries; the three
+    # arguments below are this lane's own.
+    rendered = turn.calls[0].pop("result_schema", None)
+    assert rendered is not None and "fixed" in rendered, rendered
     assert turn.calls[0] == {
         "ci_branch": BRANCH,
         "ci_epic": EPIC,

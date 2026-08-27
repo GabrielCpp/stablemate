@@ -23,17 +23,9 @@ The pull request for epic `{{ ci_epic }}` (branch `{{ ci_branch }}`) is **failin
    push and do **not** open/merge a PR — the workflow handles the push and re-check.
 
 ## Output
-Respond with JSON only after you have committed your fix (or concluded you cannot):
-```json
-{"status": "fixed|failed|blocked", "notes": "<what you changed, or why you couldn't>"}
-```
 
-- `fixed` — you found the failure, repaired it, verified the gate locally and committed.
-- `failed` — you understood the failure but this attempt did not repair it, or it looks like
-  infrastructure flake. Make no spurious commit and say what you tried; the workflow retries.
-- `blocked` — **nothing you can do in this repository would make CI green**, so another attempt
-  is the same attempt. The checks are unreadable to this token, the fix needs a credential or a
-  deployment you cannot perform, the failure lives in a repo you were not given, or CI can only
-  be made green by changing an observable contract — which this stage may not do, because no
-  story documentation context exists here. A `blocked` turn hands the epic to an operator, so
-  name the specific dependency in `notes` and say what you attempted before concluding it.
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
+
+{{ result_schema }}
+
+Answer after you have committed your fix, or concluded you cannot.

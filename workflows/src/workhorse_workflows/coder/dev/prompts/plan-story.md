@@ -312,44 +312,6 @@ ties a commit back to its story through them.
 
 ## Machine-Readable Result (required)
 
-After writing the plan artifacts, return this exact JSON object as the LAST thing in your final response — these keys at its top level, with no wrapper object around them. Any other shape fails to parse and the node is retried:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{
-  "status": "done|blocked",
-  "summary": "<one-line summary of the plan, or the blocker>",
-  "services": [
-    {
-      "repo": "api-service",
-      "path": "cmd/alert",
-      "type": "go",
-      "plan_file": "plan-api-service-alert.md"
-    },
-    {
-      "repo": "web-app",
-      "path": "packages/discover",
-      "type": "web-app",
-      "plan_file": "plan-web-app-discover.md"
-    }
-  ],
-  "implementation_order": ["api-service::cmd/alert", "web-app::packages/discover"],
-  "shared_packages": [{"repo": "api-service", "path": "pkg/db/alert", "type": "go-lib"}],
-  "verification_setup": {
-    "profile": "the stack/compose-profile/seed that renders this surface with realistic data",
-    "capable_of_rendering": "the surface this stack can actually show (not a thin/empty default)"
-  },
-  "fixtures": [
-    {"name": "signed_in_adjuster", "provides": "a session for an adjuster who may decide claims"}
-  ]
-}
-```
-
-- `status`: `"done"` when the plan artifacts are written and ready for review — including when
-  they were already there and you left them standing — or `"blocked"` if you could not produce
-  a plan at all.
-- `summary`: a one-line description of the plan (or the blocker).
-- the remaining keys are the plan's structure, described under "The plan's structure" above.
-  This is the only place the workflow learns which services the story changes, and it drives
-  the implementer's per-service iteration: a frontend-only story lists only its web service,
-  so the implementer never builds a backend one. A story that changes exactly one service in
-  one repo may return `services: []` — the implementer then gets one repo-root layer.
+{{ result_schema }}

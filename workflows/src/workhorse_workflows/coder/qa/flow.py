@@ -109,8 +109,9 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     QaLoop,
     QaPlanResult,
     QaReport,
-    QaResult,
     QaPlanRun,
+    QaResult,
+    QaRunResult,
     QaTriage,
     RegressionFix,
     SetupResult,
@@ -799,10 +800,10 @@ class Qa(Workflow):
         """
         self.logger.info("repairing the QA obligation packet", extra={"activity": True})
         started = time.monotonic()
-        turn = roles.turn(self, "repair-qa-context")
+        turn = roles.turn(self, "repair-qa-context", returns=QaContextRepair)
         reply = self.agent(
             turn.prompt,
-            returns=QaContextRepair,
+            returns=turn.returns,
             # medium: mechanical reconciliation of a diff against a graph, against a
             # validator that will re-check the result.
             power="medium",
@@ -884,10 +885,10 @@ class Qa(Workflow):
         started = time.monotonic()
         drafted: QaPlanResult | None = None
         try:
-            turn = roles.turn(self, "plan-qa")
+            turn = roles.turn(self, "plan-qa", returns=QaPlanResult)
             drafted = self.agent(
                 turn.prompt,
-                returns=QaPlanResult,
+                returns=turn.returns,
                 # medium: writing a runnable plan against a schema, from a story and an
                 # obligation packet that both already exist. (A standing validated plan
                 # never reaches this turn any more — it is adopted above.)
@@ -959,10 +960,10 @@ class Qa(Workflow):
         result: QaPlanResult | None = None
         started = time.monotonic()
         try:
-            turn = roles.turn(self, "repair-qa-plan")
+            turn = roles.turn(self, "repair-qa-plan", returns=QaPlanResult)
             result = self.agent(
                 turn.prompt,
-                returns=QaPlanResult,
+                returns=turn.returns,
                 # low: applying a named list of edits to a file that already exists is not
                 # the work that authoring the plan was, and paying the authoring tier for it
                 # is what tempted the turn to rewrite rather than repair.
@@ -1276,10 +1277,10 @@ class Qa(Workflow):
         on the same two loops: the plan rework, or the setup repair.
         """
         started = time.monotonic()
-        turn = roles.turn(self, "qa-story")
+        turn = roles.turn(self, "qa-story", returns=QaAssessment)
         assessment = self.agent(
             turn.prompt,
-            returns=QaAssessment,
+            returns=turn.returns,
             # medium: judging a runner's output against a plan that already passed two
             # gates. The adversarial read is `audit_qa`'s job, at high.
             power="medium",
@@ -1407,10 +1408,10 @@ class Qa(Workflow):
         takes the prose path to the plan, so this adds no new way to kill a passing run.
         """
         started = time.monotonic()
-        turn = roles.turn(self, "audit-qa")
+        turn = roles.turn(self, "audit-qa", returns=QaAudit)
         result = self.agent(
             turn.prompt,
-            returns=QaAudit,
+            returns=turn.returns,
             # high: adversarially re-judging captured evidence is only worth running on a
             # model that can actually refute a plausible-but-wrong pass.
             power="high",
@@ -1495,10 +1496,10 @@ class Qa(Workflow):
         than re-running QA against a story that changed underneath it.
         """
         started = time.monotonic()
-        turn = roles.turn(self, "triage-qa")
+        turn = roles.turn(self, "triage-qa", returns=QaTriage)
         triage = self.agent(
             turn.prompt,
-            returns=QaTriage,
+            returns=turn.returns,
             # medium: sorting findings into in-AC and adjacent, against a story whose ACs
             # are written down.
             power="medium",
@@ -1547,10 +1548,10 @@ class Qa(Workflow):
         did not pass. A dev target has no code to rework, so this is the flow's terminal
         state for a story it could not carry: what it owes is the write-up.
         """
-        turn = roles.turn(self, "report-qa-dev")
+        turn = roles.turn(self, "report-qa-dev", returns=QaReport)
         report = self.agent(
             turn.prompt,
-            returns=QaReport,
+            returns=turn.returns,
             # medium: summarising findings that are already written down, into a tracker.
             power="medium",
             session=backbone(self),
@@ -1704,10 +1705,10 @@ class Qa(Workflow):
         run = self.output(run_regression_suite)
         self.logger.info("fixing the regression suite", extra={"activity": True})
         started = time.monotonic()
-        turn = roles.turn(self, "fix-regression")
+        turn = roles.turn(self, "fix-regression", returns=RegressionFix)
         fix = self.agent(
             turn.prompt,
-            returns=RegressionFix,
+            returns=turn.returns,
             # high: reproducing and fixing real-stack journey failures.
             power="high",
             # 5400s: the journey suite alone takes 25-30 minutes, and 2400s forced three
@@ -1784,10 +1785,10 @@ class Qa(Workflow):
         `dev` target's QA, and a run that ends without it has passed a story nobody can read
         the verdict of. So a blocked write parks like any other block rather than logging.
         """
-        turn = roles.turn(self, "report-qa-dev-pass")
+        turn = roles.turn(self, "report-qa-dev-pass", returns=QaReport)
         report = self.agent(
             turn.prompt,
-            returns=QaReport,
+            returns=turn.returns,
             # medium: the same summarising job as `report_qa_dev`, on a green story.
             power="medium",
             session=backbone(self),
@@ -1967,10 +1968,10 @@ class Qa(Workflow):
         failed_assertions = (
             qa_support.failed_assertions(qa_support.scored_run_log(spec_abs)) if spec_abs else {}
         )
-        turn = roles.turn(self, "fix-qa-scenario")
-        return self.agent(
+        turn = roles.turn(self, "fix-qa-scenario", returns=QaRunResult)
+        reported = self.agent(
             turn.prompt,
-            returns=QaResult,
+            returns=turn.returns,
             # low, for the reason `repair_plan` is: this turn is handed one scenario, that
             # scenario's own failed assertions, and a stack that is already up, and it must
             # prove the fix with a dry run before the item leaves the worklist. The whole-
@@ -1995,6 +1996,10 @@ class Qa(Workflow):
             },
             session=backbone(self),
         )
+        # `QaRunResult` is what a turn can report; `QaResult` is the rolling verdict the
+        # gates route on. Converting here keeps the rendered contract free of the blank and
+        # of `invalid`, neither of which a fixer may write.
+        return QaResult(status=reported.status, notes=reported.notes)
 
     # ── the setup-repair loop ─────────────────────────────────────────────────────────
 
@@ -2019,10 +2024,10 @@ class Qa(Workflow):
         self.logger.info("repairing the QA stack", extra={"activity": True})
         impl = self.output(resolve_impl_context)
         started = time.monotonic()
-        turn = roles.turn(self, "setup-fix")
+        turn = roles.turn(self, "setup-fix", returns=SetupResult)
         result = self.agent(
             turn.prompt,
-            returns=SetupResult,
+            returns=turn.returns,
             # high: diagnosing and standing up a broken dev stack is non-trivial agentic
             # work; 2400s because compose, emulators, `npm ci` and browser installs are slow
             # but bounded.
@@ -2601,15 +2606,18 @@ class Qa(Workflow):
         }
         if operator_feedback is not None:
             args["operator_feedback"] = operator_feedback
-        turn = roles.turn(self, "apply-qa-fixes")
-        return self.agent(
+        turn = roles.turn(self, "apply-qa-fixes", returns=QaRunResult)
+        reported = self.agent(
             turn.prompt,
-            returns=QaResult,
+            returns=turn.returns,
             power=power,
             add_dirs=self._dirs(),
             args=turn.args | args,
             session=session,
         )
+        # Same boundary as `_fix_scenario`: the turn reports one of three, the gates read
+        # the rolling verdict.
+        return QaResult(status=reported.status, notes=reported.notes)
 
     def _dirs(self) -> list[str]:
         """The repos this story's plan touches — every agent turn's `add_dirs`.

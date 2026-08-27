@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from pydantic import Field
+
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 
 #: What a QA run came to. Ostler's four states, and the only vocabulary the rolling verdict
@@ -65,8 +67,12 @@ class QaResult(CoderResult):
     The runner's raw payload is **not** a field here — see `QaPlanRun` below for why.
     """
 
-    status: QaStatus | Literal[""] = ""
-    notes: str = ""
+    status: QaStatus | Literal[""] = Field(
+        default="",
+        description="The story's rolling QA verdict as the turn leaves it. `invalid` while "
+        "the plan or its context is being regenerated; `blocked` when the repair itself is.",
+    )
+    notes: str = Field(default="", description="One line on why the verdict stands there.")
 
 
 class QaPlanRun(QaResult):
@@ -102,8 +108,24 @@ class QaRunResult(CoderResult):
     could not grade it at all. `invalid` is a QA *plan*'s verdict and no turn here writes one.
     """
 
-    status: Literal["passed", "failed", "blocked"]
-    notes: str = ""
+    status: Literal["passed", "failed", "blocked"] = Field(
+        description="`passed` when every acceptance criterion is verified by something you "
+        "actually ran — a criterion you could not exercise is never a pass. `failed` when "
+        "the defect is real, in scope and you did not finish it, including when it is hard, "
+        "when you ran out of ideas, or when your fix did not verify; that sends the item "
+        "round again. `blocked` only when no further attempt in this repository could "
+        "succeed because what is missing is external to it: a credential or deployment you "
+        "cannot perform, a product decision present in neither the story nor the plan, or "
+        "work that lives in a repo you were not given. Reaching for `blocked` to get out of "
+        "difficult work is the exact failure this stage exists to stop.",
+    )
+    notes: str = Field(
+        default="",
+        description="What you ran, what you observed and what remains: the files changed, "
+        "the commands that exercised them, and for a non-pass the specific defect or the "
+        "missing dependency. This text is handed on to the turn that follows, so it has to "
+        "be enough to act on — \"blocked, cannot fix\" comes straight back to you.",
+    )
 
 
 class QaPlanValidation(CoderResult):
@@ -328,8 +350,14 @@ class ContextRepair(CoderResult):
     used to take.
     """
 
-    status: Literal["repaired", "blocked"]
-    notes: str = ""
+    status: Literal["repaired", "blocked"] = Field(
+        description="`repaired` when the grounding is fixed and the packet can be rebuilt. "
+        "`blocked` only when the repair needs an author or product decision, or a source "
+        "repository you were not given.",
+    )
+    notes: str = Field(
+        default="", description="What you repaired — or, when blocked, what it needs."
+    )
 
 
 class QaContextRepair(CoderResult):
@@ -348,8 +376,14 @@ class QaContextRepair(CoderResult):
     the loop already holds one when it does not.
     """
 
-    qa_context_repair: ContextRepair
-    qa_result: QaResult = QaResult()
+    qa_context_repair: ContextRepair = Field(
+        description="The repair itself: whether the obligation packet's grounding now holds."
+    )
+    qa_result: QaResult = Field(
+        default=QaResult(),
+        description="The story's QA verdict as this turn leaves it — `invalid` while the "
+        "context is being regenerated after a repair, `blocked` when the repair is.",
+    )
 
 
 class QaPlanResult(CoderResult):
@@ -376,10 +410,37 @@ class QaPlanResult(CoderResult):
     unit scenario has nothing worth proving — but a named id with no green log behind it is.
     """
 
-    status: Literal["done", "blocked"]
-    notes: str = ""
-    repaired_scenarios: list[str] = []
-    proved_scenarios: list[str] = []
+    status: Literal["done", "blocked"] = Field(
+        description="`done` when the plan is written. `blocked` only when no plan this "
+        "stage could write would be a real test of the story: the criteria name a surface, "
+        "device, service or credential that does not exist to drive, they contradict each "
+        "other or the code so that no scenario can assert either reading, or the coverage "
+        "lives in a repo you were not given. A plan that is merely hard to write is not "
+        "blocked. Never write scenarios you know cannot run and report `done` — a plan that "
+        "dry-runs green by asserting nothing is worse than no plan, because the run "
+        "continues on it.",
+    )
+    notes: str = Field(
+        default="",
+        description="What you wrote, or — on a repair — each finding you closed and how, "
+        "naming any you did not close and why. On `blocked`, the specific dependency and "
+        "what you attempted before concluding it.",
+    )
+    repaired_scenarios: list[str] = Field(
+        default=[],
+        description="On a repair turn, the id of every scenario whose code you changed, "
+        "added ones included: a scenario the last run passed can be broken by this turn and "
+        "nothing else would catch it. The dry-run gate reads the scratch log for each id, so "
+        "naming one you did not dry-run refuses the repair. Empty on a first draft, which "
+        "repaired nothing.",
+    )
+    proved_scenarios: list[str] = Field(
+        default=[],
+        description="On a first draft, the ids you dry-ran green, riskiest first — evidence "
+        "you point at rather than a claim you make, read from the same scratch logs. Empty "
+        "is allowed when nothing in the plan is worth proving; a named id with no green log "
+        "behind it is not.",
+    )
 
 
 class QaFinding(Finding):
@@ -428,11 +489,33 @@ class QaFinding(Finding):
     the surviving gates are still judged on.
     """
 
-    id: str = ""
-    scope: Literal["plan", "stack", "product-test"] = "plan"
-    #: See the class docstring. `coverage` is the fail-closed default and the only blocking
-    #: kind; the post-run gates report it and `_finding_line` renders it.
-    kind: Literal["coverage", "overclaim", "cosmetic"] = "coverage"
+    id: str = Field(
+        default="",
+        description="Any stable handle. Reuse the same one when you restate a finding "
+        "across passes.",
+    )
+    scope: Literal["plan", "stack", "product-test"] = Field(
+        default="plan",
+        description="Where the repair lives — the flow routes on this field rather than on "
+        "your prose. `plan`: an edit inside `qa_plan.py` / `qa-plan.md`, sent to the plan "
+        "author. `product-test`: an assertion, fixture or fix in product code or a "
+        "committed test the plan only cites, sent to the fix loop, which edits the code. "
+        "`stack`: the book's `runbook` node and the flow's stack step — a service, emulator, "
+        "database, seed or aggregate command that must be up before the plan runs. Name it "
+        "by where the repair lands, not by which gate found it: an evidence defect whose "
+        "real repair is a test assertion filed as `plan` bills a replan that cannot write "
+        "it, and the identical gap comes back on the next pass.",
+    )
+    #: `coverage` is the fail-closed default and the only blocking kind; the post-run gates
+    #: report it and `_finding_line` renders it.
+    kind: Literal["coverage", "overclaim", "cosmetic"] = Field(
+        default="coverage",
+        description="What breaks if the plan ships as it stands. `coverage`: an AC or OKF "
+        "obligation has no cited evidence that would catch it failing — the only kind that "
+        "refuses a plan. `overclaim`: a checkpoint asserts more than its cited test proves; "
+        "execution is unaffected, but the audit reads the plan's claims. `cosmetic`: counts, "
+        "wording, ordering, which no gate and no runner reads.",
+    )
 
 
 class QaAssessment(CoderResult):
@@ -458,12 +541,34 @@ class QaAssessment(CoderResult):
     each spent a real repair budget on a judgement nobody made.
     """
 
-    status: Literal["assessed", "blocked"]
-    disposition: QaDisposition | None = None
-    failure_class: QaFailureClass | None = None
-    objective_reached: bool | None = None
-    findings: list[QaFinding] = []
-    notes: str = "QA run assessment produced no valid result."
+    status: Literal["assessed", "blocked"] = Field(
+        description="`assessed` when you reached a reading of the run — the three fields "
+        "below are then that reading. `blocked` when you could not judge the run at all.",
+    )
+    disposition: QaDisposition | None = Field(
+        default=None,
+        description="What the run means for the story. `confirmed` carries it; each of the "
+        "others says the plan did not, and names which lane repairs it.",
+    )
+    failure_class: QaFailureClass | None = Field(
+        default=None, description="What the remaining failure needs, on a non-confirmed run."
+    )
+    objective_reached: bool | None = Field(
+        default=None,
+        description="Whether every objective the story set was observed, as a person using "
+        "the running app would observe it.",
+    )
+    findings: list[QaFinding] = Field(
+        default=[],
+        description="A `confirmed` disposition returns an empty list. Any other must carry "
+        "at least one finding: the disposition says the run did not carry the story, and "
+        "the findings say who repairs what. This is what the repair is briefed from.",
+    )
+    notes: str = Field(
+        default="QA run assessment produced no valid result.",
+        description="A summary of the findings — routing and diagnosis, never a replacement "
+        "QA verdict.",
+    )
 
 
 class QaAudit(CoderResult):
@@ -484,11 +589,29 @@ class QaAudit(CoderResult):
     verdict about the evidence rather than an admission there was none to judge.
     """
 
-    status: Literal["audited", "blocked"]
-    verdict: QaAuditVerdict | None = None
-    refutation_class: QaRefutationClass | None = None
-    findings: list[QaFinding] = []
-    notes: str = "Independent QA audit produced no valid result."
+    status: Literal["audited", "blocked"] = Field(
+        description="`audited` when you reached a verdict on the evidence. `blocked` when "
+        "there was none to judge — which is not the same as refuting it.",
+    )
+    verdict: QaAuditVerdict | None = Field(
+        default=None, description="Whether the pass survives an adversarial second read."
+    )
+    refutation_class: QaRefutationClass | None = Field(
+        default=None,
+        description="`none` only when the pass stands cleanly; otherwise what the "
+        "refutation is — a product contradiction, a plan defect, or an evidence defect — "
+        "with concrete scenario, assertion, obligation and artifact references.",
+    )
+    findings: list[QaFinding] = Field(
+        default=[],
+        description="A refutation — and a `stands` that still names a refutation class — "
+        "carries at least one finding; a pass that stands cleanly returns an empty list. "
+        "This is what the repair is briefed from.",
+    )
+    notes: str = Field(
+        default="Independent QA audit produced no valid result.",
+        description="A summary of the findings, in one or two sentences.",
+    )
 
 
 class QaTriage(CoderResult):
@@ -505,15 +628,41 @@ class QaTriage(CoderResult):
     cannot spell, and `triaged` is the turn that did.
     """
 
-    status: Literal["triaged", "blocked"]
-    triage_action: QaTriageAction | None = None
-    qa_failure_class: QaTriageClass | None = None
+    status: Literal["triaged", "blocked"] = Field(
+        description="`triaged` when you sorted the findings. `blocked` when you could not "
+        "sort them at all."
+    )
+    triage_action: QaTriageAction | None = Field(
+        default=None,
+        description="`rescope` only if you amended the acceptance criteria and have rescope "
+        "budget left; otherwise `qa_fix`, which is also the answer when every finding is "
+        "purely in-AC.",
+    )
+    qa_failure_class: QaTriageClass | None = Field(
+        default=None,
+        description="What the remaining failure needs. `code`: a QA-side code or test change "
+        "to satisfy an AC — the scenario, its fixtures, or a driver the QA lane owns. "
+        "`product`: the product itself does not meet an AC that stands, which returns the "
+        "story to the dev lane rather than patching it from inside QA. `evidence`: the "
+        "product code is already correct and every gate is green, and what remains is only "
+        "evidence work — capturing or refreshing screenshots, widening sweep coverage, "
+        "re-running a driver to completion, fixing an artifact's shape. Be strict: if any "
+        "finding needs a code change the class is `code`. `environment`: the stack, fixtures "
+        "or emulator must be repaired or seeded before any verdict is possible. The flow "
+        "grants one extra verification-only pass when an exhausted budget leaves only "
+        "`evidence` work, so classify honestly: a wrong `evidence` wastes that pass, and "
+        "a wrong `code` sends a finished story to manual review.",
+    )
     #: Only read on a refusal, and that is why it exists at all: a triage that sorted the
     #: findings said everything it had to say in the two fields above, but one that could
     #: not sort them has said nothing anywhere else — and the escalation it raises would
     #: otherwise reach the operator as "the QA triage reported it cannot proceed", with no
     #: sentence naming what stopped it.
-    notes: str = ""
+    notes: str = Field(
+        default="",
+        description="Read on a refusal: what stopped you from sorting the findings. A "
+        "triage that reached a verdict has said everything it needs to in the fields above.",
+    )
 
 
 class QaReport(CoderResult):
@@ -525,8 +674,18 @@ class QaReport(CoderResult):
     because the run record is the only place that absence would otherwise show up.
     """
 
-    status: Literal["reported", "blocked"]
-    notes: str = ""
+    status: Literal["reported", "blocked"] = Field(
+        description="`reported` once the comment file exists. `blocked` in the one case "
+        "where it cannot: the evidence you were pointed at is not there to read, or the "
+        "output path cannot be written. Never invent the comment's content from the story "
+        "alone — a tracker comment describing a QA run nobody performed is worse than no "
+        "comment, because it is read as a record.",
+    )
+    notes: str = Field(
+        default="",
+        description="The output path, and what the comment says. On `blocked`, what was "
+        "missing.",
+    )
 
 
 class RegressionFix(CoderResult):
@@ -539,8 +698,21 @@ class RegressionFix(CoderResult):
     not a claim of success: it is the turn saying it did work and the suite may judge it.
     """
 
-    status: Literal["attempted", "blocked"]
-    notes: str = ""
+    status: Literal["attempted", "blocked"] = Field(
+        description="`attempted` on any turn that did the work, whatever you think it "
+        "achieved — the next suite run judges that, not this field. `blocked` only when "
+        "nothing in this repository would let you attempt the fixes at all, because what is "
+        "missing is external to it: a credential or deployment you cannot perform, a product "
+        "decision present in neither the story nor the plan, or work in another repo. A fix "
+        "you doubt is still `attempted`.",
+    )
+    notes: str = Field(
+        default="",
+        description="Per failure — and every failure, not just the first: what was wrong, "
+        "what you changed in app code or spec, and how you verified it locally. Name any "
+        "failure you could not fix and why. On `blocked`, the specific dependency and what "
+        "you attempted before concluding it.",
+    )
 
 
 class SetupResult(CoderResult):
@@ -553,8 +725,20 @@ class SetupResult(CoderResult):
     a verdict the fixer never gave.
     """
 
-    status: Literal["ready", "unfixable"]
-    notes: str = ""
+    status: Literal["ready", "unfixable"] = Field(
+        description="`ready` when the environment is QA-capable now — services up and "
+        "verified, tools installed — and also when you conclude the blocker is not an "
+        "environment problem at all (the feature is genuinely broken or missing), so QA "
+        "re-runs and routes it to the code-fix loop. `unfixable` only for a true wall that "
+        "needs a human: a real credential or secret that cannot be generated locally, a "
+        "deployed or preview environment, or hardware. Prefer `ready` whenever you made the "
+        "stack runnable.",
+    )
+    notes: str = Field(
+        default="",
+        description="What was blocking QA, what you changed or started to fix it, and the "
+        "readiness proof — or, when unfixable, exactly which human-only resource is needed.",
+    )
 
 
 # ── what the flow threads, and what it returns ────────────────────────────────────────

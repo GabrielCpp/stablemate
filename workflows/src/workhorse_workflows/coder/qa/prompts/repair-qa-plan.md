@@ -286,33 +286,6 @@ ties a commit back to its story through them.
 
 ## Output
 
-Return JSON only:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{
-  "status": "done",
-  "notes": "R2: scenario `create-document` now asserts the new row after the dialog closes.",
-  "repaired_scenarios": ["create-document"]
-}
-```
-
-`notes` names each finding you closed and how. A finding you did not close is named there
-too, with why.
-
-`repaired_scenarios` lists the id of **every scenario whose code you changed**, added ones
-included. It is what the dry-run gate checks on top of the failing set, because a rewritten
-scenario the last run passed can be broken by this turn and nothing else would catch it. Name
-one you did not dry-run and the gate refuses the repair — the claim is checked against the
-scratch logs, never taken on its word.
-
-### When no repair of this plan would close the finding
-
-Return `{"status": "blocked", "notes": "...", "repaired_scenarios": []}` instead, and **only**
-when the finding cannot be closed by changing the plan at all: what it asks the plan to drive
-does not exist to be driven, the repair needs a credential, deployment or product decision that
-is in neither the story nor the plan, or it lives in a repo you were not given. A repair that is
-merely hard is not blocked — repair it. A repair budget that runs out is not an ending here, and
-neither is this: a `blocked` turn stops the alternation between planning and repair and hands
-the story to an operator, which is why `notes` must name the specific dependency and what you
-attempted. Never weaken or delete a scenario so the dry-run goes green — that closes the finding
-by deleting the question, and the run then proceeds as though it had been answered.
+{{ result_schema }}

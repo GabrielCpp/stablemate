@@ -170,18 +170,6 @@ Create it through `ostler` first — `timeout 30 ostler create spec <story-name>
 `<story-name>` is the folder name of `{{ workhorse_var('spec_dir') }}` — which stamps its `type:`
 frontmatter. Write the report **below the `---` block, leaving it in place**.
 
-Then return this exact JSON object in your **final response** (after the markdown report):
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{
-  "status": "ready" | "unfixable",
-  "notes": "What was blocking QA, what you changed/started to fix it, and the readiness proof — or, if unfixable, exactly what human-only resource (secret, deployed env, hardware) is required."
-}
-```
-
-- **`ready`** — the environment is now QA-capable (services up and verified, tools installed). The
-  workflow re-runs QA. Also use `ready` when you conclude the blocker is **not** an environment problem
-  (the feature is genuinely broken/missing) so QA re-runs and routes it to the code-fix loop.
-- **`unfixable`** — the blocker genuinely needs a human: a real credential/secret that cannot be
-  generated locally, a deployed/preview environment, or hardware. The workflow escalates to the
-  operator. Reserve this for true walls — prefer `ready` whenever you made the stack runnable.
+{{ result_schema }}

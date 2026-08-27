@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 #: The four spellings the coder workflow grew for one thing: this node cannot finish, and
 #: something outside it has to decide. They were four because each schema declared its own
@@ -84,14 +84,19 @@ class Finding(_Result):
     had never passed.
     """
 
-    #: Where the defect is — a repo-relative path, a `path:line`, or a spec/AC id. Any of
-    #: those is somewhere a fixer can go; prose describing a feeling is not.
-    target: str = ""
-    #: What is wrong there.
-    issue: str = ""
-    #: What has to change. Without this a finding names a problem and nominates nobody,
-    #: which is the shape that bills a repair budget and buys nothing.
-    repair: str = ""
+    target: str = Field(
+        default="",
+        description="Where the defect is, as one string: a repo-relative path, a "
+        "`repo/path:line`, or a spec/AC and scenario id. Required — a finding that names no "
+        "place to go is a complaint, and the machine downstream cannot route it.",
+    )
+    issue: str = Field(default="", description="What is wrong there.")
+    repair: str = Field(
+        default="",
+        description="The smallest acceptable change that closes it. Required for the same "
+        "reason as `target`: a finding that nominates no change bills a repair budget and "
+        "buys nothing.",
+    )
 
     @property
     def actionable(self) -> bool:

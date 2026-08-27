@@ -70,18 +70,6 @@ ties a commit back to its story through them.
 
 ## Return Format
 
-Return this exact JSON object as the LAST thing in your final response — these keys at its
-top level, with no wrapper object around them. Any other shape fails to parse and the node
-is retried:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{"status": "passed|failed|blocked", "notes": "what you ran, what you observed, and what remains"}
-```
-
-- `status`: `passed` when every acceptance criterion is verified by something you actually
-  ran; `failed` when the fix is wrong or incomplete; `blocked` when the environment, a
-  credential or a missing service stopped you from checking at all. A criterion you could
-  not exercise is never a pass.
-- `notes`: one paragraph — the commands run, the observations, and for a non-pass the
-  specific defect or the missing dependency. This text is handed verbatim to the single
-  retry that follows, so it has to be enough to act on.
+{{ result_schema }}

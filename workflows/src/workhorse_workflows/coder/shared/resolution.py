@@ -31,6 +31,7 @@ from workhorse.pyflow import Workflow
 
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
+from workhorse_workflows.coder.shared.schemas.render import schema_block
 from workhorse_workflows.kit import find_docs_root
 
 #: What the resolver turn is given: full tool access, no clock, and the strongest model the
@@ -62,6 +63,9 @@ def resolver_args(
         "decisions_dir": str(decisions_dir(docs_path, flow.repo_dir)),
         "block_kind": block_kind,
         "block_notes": notes,
+        # The resolver is not a role, so no `roles.turn` renders its contract. It is built
+        # here for the same reason the rest of this dict is: four lanes, one document.
+        "result_schema": schema_block(OperatorResolution),
     }
 
 

@@ -58,18 +58,6 @@ work, where a guess costs the review that would have caught it.
 
 ## Return Format
 
-Return this exact JSON object as the LAST thing in your final response — these keys at its top
-level, with no wrapper object around them. Any other shape fails to parse and the node is
-retried:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{"status": "done|applied|no_changes_needed|needs_changes|blocked", "notes": "what you changed, where, and how you exercised it"}
-```
-
-- `status`: `done` or `applied` when the repair is written and exercised; `no_changes_needed`
-  when the item was already fixed in the tree; `needs_changes` when you got part of the way and
-  the rest is still open; `blocked` for a stop condition above. There is no blank answer — a
-  turn that cannot name one of these five has not reported, and the node is retried.
-- `notes`: the files changed, the commands you ran to exercise them, and for a non-`done`
-  status the specific thing that stopped you. This text is handed to the operator gate and to
-  the QA turn that follows, so it has to be enough to act on.
+{{ result_schema }}

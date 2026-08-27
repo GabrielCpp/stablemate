@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from pydantic import Field
+
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
 
@@ -187,8 +189,19 @@ class WorktreeSettled(CoderResult):
     reason to commit a stranger's changes under this story's name.
     """
 
-    status: Literal["settled", "blocked"]
-    notes: str = ""
+    status: Literal["settled", "blocked"] = Field(
+        description="`settled` — every path you were shown is either committed or was "
+        "deliberately left, and the tree holds nothing of this story's that is not "
+        "recorded. `blocked` — something on that list needs a human: you cannot tell whose "
+        "it is, committing it would be wrong, or the commit itself failed. Return `blocked` "
+        "rather than guessing: the run parks for an operator, which costs ten minutes; a "
+        "commit of someone else's work under this story's name costs considerably more.",
+    )
+    notes: str = Field(
+        default="",
+        description="What you committed, per package — or which paths you left and why they "
+        "are not yours.",
+    )
 
 
 class StoryStamped(CoderResult):
@@ -216,8 +229,16 @@ class ReplanResult(CoderResult):
     queue the next pick reads, not the turn's summary of itself.
     """
 
-    status: Literal["done", "blocked"]
-    notes: str = ""
+    status: Literal["done", "blocked"] = Field(
+        description="`done` when the epic is re-grounded. `blocked` rather than rewriting it "
+        "around a guess: the workflow re-reads these stories immediately after this stage, "
+        "so an epic grounded in an invention is executed as though it were ground truth.",
+    )
+    notes: str = Field(
+        default="",
+        description="One line on what was re-grounded, or the specific thing the operator's "
+        "answer left undecided.",
+    )
 
 
 __all__ = [

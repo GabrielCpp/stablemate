@@ -77,20 +77,8 @@ Rules:
 - Do not add screenshots inline; reference the file path in `qa/`.
 - If the QA plan was missing or evidence is sparse, say so explicitly.
 
-## Structured Output Requirement
+## Output
 
-Return this exact JSON object in your **final response**:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{
-  "status": "reported",
-  "notes": "Jira comment written to <spec_dir>/qa/jira-comment.md — <one-line summary of failures>"
-}
-```
-
-- `status` is `"reported"` once the comment file exists
-- `notes` must name the output path and summarise what was found
-- `status` is `"blocked"` in the one case where it cannot: the evidence you were pointed at
-  is not there to read, or the output path cannot be written. Do **not** invent the comment's
-  content from the story alone — a tracker comment that describes a QA run nobody performed is
-  worse than no comment, because it is read as a record. `notes` names what was missing.
+{{ result_schema }}

@@ -187,13 +187,9 @@ ties a commit back to its story through them.
 
 ## Output
 
-Output JSON only:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{"status": "documented", "nodes": ["docs/features/acme/gui/screens/example.md#example-panel"], "notes": "D1 resolved: docs/features/acme/gui/screens/example.md#example-panel — moved under ## Interactions; G1 resolved: api/widget.go::Widget grounded on the same node."}
-```
+{{ result_schema }}
 
-`status` is one of `documented`, `not_required`, or `blocked`. `notes` must be the checklist:
-`D1 resolved: <file#anchor> — <evidence>; D2 resolved: ...`, naming any item you could not
-close and why. `nodes` lists every node you edited, by exact graph identity with its section
-anchor; for `not_required`, an empty list.
+`notes` must be the checklist: `D1 resolved: <file#anchor> — <evidence>; D2 resolved: ...`,
+naming any item you could not close and why.

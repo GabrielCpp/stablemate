@@ -81,20 +81,8 @@ Rules:
   `### Observations` section as a short bulleted list. Omit it if there is nothing to note.
 - Do not print the comment body in chat.
 
-## Structured Output Requirement
+## Output
 
-Return this exact JSON object in your **final response**:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{
-  "status": "reported",
-  "notes": "Jira comment written to <spec_dir>/qa/jira-comment.md — all ACs passed"
-}
-```
-
-- `status` is `"reported"` once the comment file exists
-- `notes` must name the output path and confirm that all ACs passed
-- `status` is `"blocked"` in the one case where it cannot: the evidence you were pointed at
-  is not there to read, or the output path cannot be written. Do **not** invent the comment's
-  content from the story alone — a tracker comment that describes a QA run nobody performed is
-  worse than no comment, because it is read as a record. `notes` names what was missing.
+{{ result_schema }}

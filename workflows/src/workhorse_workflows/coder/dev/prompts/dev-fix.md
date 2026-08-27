@@ -71,16 +71,8 @@ expectation is genuinely obsolete, say so explicitly in `notes`.
 
 ## Output
 
-Respond with JSON only, after you have re-run the gate locally:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{"status": "fixed|failed|blocked", "notes": "<what you changed, or why a finding remains>"}
-```
+{{ result_schema }}
 
-- `fixed` — the gate passes now in this directory.
-- `failed` — findings remain, but another lap over the same output could plausibly close
-  them.
-- `blocked` — **no lap of this stage can make the gate pass**: the command does not run here
-  at all, the fix demands a behaviour change this stage may not make, or it lives in a repo
-  you were not given. Say which, specifically, in `notes`. This ends the laps and hands the
-  block to whoever can decide it — it is not a way to stop trying.
+Re-run the gate locally before you answer.

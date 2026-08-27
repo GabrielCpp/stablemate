@@ -137,10 +137,10 @@ class Dev(Workflow):
         agent; one was tried and caught nothing actionable.
         """
         self.logger.info("planning %s", self.ctx.story_slug, extra={"activity": True})
-        turn = roles.turn(self, "plan-story")
+        turn = roles.turn(self, "plan-story", returns=PlanResult)
         result = self.agent(
             turn.prompt,
-            returns=PlanResult,
+            returns=turn.returns,
             # high: authors the plan, including high-stakes prod operations (deploys,
             # security-group / egress changes) — worth the stronger reasoning.
             power="high",
@@ -484,10 +484,10 @@ class Dev(Workflow):
         layer = nodes.current_layer(self)
         stalled = bool(lap.digest) and report.digest == lap.digest
         lap = nodes.spend(self, lap)
-        turn = roles.turn(self, "dev-fix")
+        turn = roles.turn(self, "dev-fix", returns=FixResult)
         result = self.agent(
             turn.prompt,
-            returns=FixResult,
+            returns=turn.returns,
             power="high" if stalled or lap.fix_lap >= 2 else "low",
             cwd=layer.cwd,
             add_dirs=workspace_dirs(self),

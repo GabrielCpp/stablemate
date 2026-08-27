@@ -60,12 +60,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 import yaml
+from pydantic import BaseModel
 from workhorse.pyflow import WorkflowFailed
 from workhorse.templates import BODY_PREFIX
+from workhorse_workflows.coder.shared.schemas.render import schema_block
 from workhorse_workflows.kit import find_repo_root
+
+T = TypeVar("T", bound=BaseModel)
 
 #: The package every coder flow sits one level under. `flow_dir` measures against it.
 PACKAGE = "workhorse_workflows.coder"
@@ -114,20 +118,26 @@ ROLES: dict[str, str] = {
 }
 
 @dataclass(frozen=True)
-class Turn:
-    """What a role resolves to: the envelope to render, and the args that find its body.
+class Turn(Generic[T]):
+    """What a role resolves to: the envelope, the args that find its body, and the model.
 
-    `args` is empty when no body was resolved, so a callsite reads the same either way —
-    `args=turn.args | {…}` — and an un-overridden role renders exactly the document it
-    rendered before this module existed.
+    `args` always carries `result_schema` — the output contract, rendered from `returns` —
+    and carries the body arguments too when a layer resolved one. A callsite reads the same
+    either way, `args=turn.args | {…}`.
+
+    **`returns` is handed back rather than taken and dropped.** The callsite passes it to
+    `self.agent(returns=turn.returns)`, so the class the prompt shows a schema for and the
+    class the reply is parsed into are one expression, and a prompt cannot end up rendering
+    the contract for a model nothing validates against.
     """
 
     prompt: str
     args: dict[str, Any]
+    returns: type[T]
 
 
-def turn(flow: Any, role: str) -> Turn:
-    """Resolve `role` to the envelope and the body arguments for one agent turn.
+def turn(flow: Any, role: str, *, returns: type[T]) -> Turn[T]:
+    """Resolve `role` to the envelope, the body arguments and the contract for one turn.
 
     Takes the calling flow, because a role no longer names one file: each flow owns its
     own copy of every envelope it renders, and which copy this is depends on who asked.
@@ -146,12 +156,10 @@ def turn(flow: Any, role: str) -> Turn:
         )
     body = _body(role, flow.repo_dir, flow.library_dirs)
     prompt = f"{flow_dir(flow)}/prompts/{role}.md"
-    if body is None:
-        return Turn(prompt, {})
-    return Turn(
-        prompt,
-        {"_body_dir": str(body.parent), "body_template": f"{BODY_PREFIX}/{body.name}"},
-    )
+    args: dict[str, Any] = {"result_schema": schema_block(returns)}
+    if body is not None:
+        args |= {"_body_dir": str(body.parent), "body_template": f"{BODY_PREFIX}/{body.name}"}
+    return Turn(prompt, args, returns)
 
 
 def flow_dir(flow: Any) -> str:

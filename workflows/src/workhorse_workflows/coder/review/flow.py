@@ -269,10 +269,10 @@ class Review(Workflow):
         # and that re-entry is a fresh review round like any other.
         self.call(clear_review_resolution, self.ctx.spec_dir, self.ctx.story_slug)
         self.reset_session(self._feeder_chain)
-        turn = roles.turn(self, "code-review")
+        turn = roles.turn(self, "code-review", returns=CodeReviewResult)
         code_review = self.agent(
             turn.prompt,
-            returns=CodeReviewResult,
+            returns=turn.returns,
             # medium: reads a diff and judges it against the standard the implementer
             # was given. Real judgement, but bounded by the diff in front of it.
             power="medium",
@@ -324,10 +324,10 @@ class Review(Workflow):
         trusted to filter.
         """
         must_fix, advisory = split_on_confidence(code_review.findings)
-        turn = roles.turn(self, "review-implementation")
+        turn = roles.turn(self, "review-implementation", returns=ReviewVerdict)
         result = self.agent(
             turn.prompt,
-            returns=ReviewVerdict,
+            returns=turn.returns,
             # high: the binding judgement on whether the story was actually implemented.
             power="high",
             cwd=self._docs_repo,
@@ -371,10 +371,10 @@ class Review(Workflow):
         verdict file, and the gate reads that.
         """
         spent = self._spend_turn(loop)
-        turn = roles.turn(self, "apply-review")
+        turn = roles.turn(self, "apply-review", returns=ImplResult)
         self.agent(
             turn.prompt,
-            returns=ImplResult,
+            returns=turn.returns,
             power=self._apply_power(),
             add_dirs=workspace_dirs(self),
             session=self._impl_chain(),
@@ -514,10 +514,10 @@ class Review(Workflow):
         answer that could not be applied, which is a different question from the original.
         """
         spent = self._spend_turn(loop)
-        turn = roles.turn(self, "apply-review")
+        turn = roles.turn(self, "apply-review", returns=ImplResult)
         result = self.agent(
             turn.prompt,
-            returns=ImplResult,
+            returns=turn.returns,
             power=self._apply_power(),
             add_dirs=workspace_dirs(self),
             session=self._impl_chain(),
@@ -577,10 +577,10 @@ class Review(Workflow):
         """
         content = self.output(check_feedback).content
         spent = self._spend_turn(loop)
-        turn = roles.turn(self, "apply-review")
+        turn = roles.turn(self, "apply-review", returns=ImplResult)
         result = self.agent(
             turn.prompt,
-            returns=ImplResult,
+            returns=turn.returns,
             power=self._apply_power(),
             add_dirs=workspace_dirs(self),
             session=self._impl_chain(),

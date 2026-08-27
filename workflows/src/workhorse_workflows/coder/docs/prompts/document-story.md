@@ -193,17 +193,6 @@ ties a commit back to its story through them.
 
 ## Output
 
-Output JSON only:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{"status": "documented", "nodes": ["docs/features/acme/gui/screens/example.md#example-panel"], "notes": "Updated the current OKF contracts and grounding for the reviewed implementation."}
-```
-
-`status` is one of `documented`, `not_required`, or `blocked`.
-`documented` means the full current contracts are updated and `doctor` has no error finding in
-the affected nodes. Report unrelated pre-existing findings but do not rewrite unrelated books.
-`not_required` requires both a precise explanation of why no observable contract changed **and**
-that every changed production file was already directly grounded — see step 3; a grounding
-bullet you had to add makes the answer `documented`.
-For `documented`, `nodes` must list every affected OKF node by exact graph identity, preserving
-section anchors. For `not_required`, return an empty `nodes` list.
+{{ result_schema }}

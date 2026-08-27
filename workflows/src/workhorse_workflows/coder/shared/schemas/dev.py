@@ -58,19 +58,31 @@ class PlanService(CoderResult):
     distinguishes it is which list it is in.
     """
 
-    #: Workspace repo name. Case is repaired against the workspace rather than rejected —
-    #: the planner tends to emit the human-facing brand and the key is the folder name.
-    repo: str = ""
-    #: Path from the repo root to the service directory; `.` for a repo-root service.
-    path: str = ""
-    #: The technology key *this repo's* skills and prompts gate on, not a remembered
-    #: taxonomy — it is read back out of the repo's own `agents.yml`.
-    type: str = ""
-    #: The per-service plan file, relative to the spec dir. Blank on a shared package.
-    plan_file: str = ""
-    #: The directory does not exist yet and implementation will scaffold it, so the path
-    #: and marker checks are skipped for this entry.
-    new_service: bool = False
+    #: Case is repaired against the workspace rather than rejected — the planner tends to
+    #: emit the human-facing brand, and the key is the folder name.
+    repo: str = Field(
+        default="", description="The workspace repo this service lives in."
+    )
+    path: str = Field(
+        default="",
+        description="Path from that repo's root to the service directory; `.` for a "
+        "repo-root service.",
+    )
+    type: str = Field(
+        default="",
+        description="The technology key this repo gates its skills and prompts on. Read it "
+        "out of the repo's own `agents.yml` rather than naming a taxonomy from memory.",
+    )
+    plan_file: str = Field(
+        default="",
+        description="The per-service plan file you wrote, relative to the spec dir. Blank "
+        "on a shared package, which has no plan of its own.",
+    )
+    new_service: bool = Field(
+        default=False,
+        description="True when the directory does not exist yet and implementation will "
+        "scaffold it, which is what waives the path and marker checks for this entry.",
+    )
 
 
 #: What `qa.fixture()` can spell. A bare string in a story's fixture list is the fixture's
@@ -106,10 +118,16 @@ class PlanFixture(CoderResult):
     thing that broke.
     """
 
-    #: The declared fixture's key, as `qa.fixture()` spells it.
-    name: str = ""
-    #: The state the fixture guarantees once it has run.
-    provides: str = ""
+    name: str = Field(
+        default="",
+        description="The fixture's key, as `qa.fixture()` spells it — resolved against the "
+        "repo's `agents.yml` `qa:` block, which is where the command itself lives.",
+    )
+    provides: str = Field(
+        default="",
+        description="The state this fixture guarantees once it has run, in the words a "
+        "scenario can assert against.",
+    )
 
 
 class PlanResult(CoderResult):
@@ -125,32 +143,50 @@ class PlanResult(CoderResult):
     against a pydantic model rather than a workflow state.
     """
 
-    #: Required: the turn either produced a plan or it did not.
-    status: Literal["done", "blocked"]
-    summary: str = ""
+    status: Literal["done", "blocked"] = Field(
+        description="`done` when the plan artifacts are written and ready for review, "
+        "including when they were already there and you left them standing. `blocked` when "
+        "you could not produce a plan at all.",
+    )
+    summary: str = Field(
+        default="",
+        description="One line describing the plan — or, when blocked, the blocker.",
+    )
 
-    #: Every service this story changes, one entry each. An empty list is a legitimate
-    #: single-service story: the dispatcher falls back to a repo-root layer.
-    services: list[PlanService] = []
-    #: Build order as `repo::path` keys — whatever defines a contract before whatever
-    #: implements it, and that before whatever consumes it.
-    implementation_order: list[str] = []
-    #: Non-service directories (libs, shared code) the plan changes.
-    shared_packages: list[PlanService] = []
-    #: The story's `## Verification setup`, machine-readable: `profile`, `fixtures`,
-    #: `capable_of_rendering`. Free-form by design — QA renders it, nothing branches on it.
+    services: list[PlanService] = Field(
+        default=[],
+        description="Every service this story changes, one entry each. This is the only "
+        "place the workflow learns which services the story touches, and it drives the "
+        "implementer's per-service iteration: a frontend-only story lists only its web "
+        "service. A story that changes exactly one service in one repo may return `[]` — "
+        "the implementer then gets one repo-root layer.",
+    )
+    implementation_order: list[str] = Field(
+        default=[],
+        description="Build order as `repo::path` keys: whatever defines a contract before "
+        "whatever implements it, and that before whatever consumes it.",
+    )
+    shared_packages: list[PlanService] = Field(
+        default=[],
+        description="Non-service directories — libraries, shared code — the plan also "
+        "changes. Same shape as a service, with no `plan_file`.",
+    )
     #: It was `qa_stack` until that name's near-homograph with `qa-stack.yml` — a different
     #: document with a different schema — was read as the same thing once too often. The old
     #: spelling stays *readable* because a checkpoint written before the rename is what a
     #: resume validates against, and `extra="ignore"` would drop it in silence.
     verification_setup: dict[str, Any] = Field(
-        default={}, validation_alias=AliasChoices("verification_setup", "qa_stack")
+        default={},
+        validation_alias=AliasChoices("verification_setup", "qa_stack"),
+        description="The story's `## Verification setup`, machine-readable: the `profile` "
+        "that renders this surface with realistic data, and what that stack is "
+        "`capable_of_rendering` — the surface it can actually show, not a thin default.",
     )
-    #: The fixtures this story's QA lane needs, typed out of the free-form block above.
-    #: The prose stays prose — a profile, a rendering capability, whatever else the planner
-    #: found worth saying — but the fixture list is the one part of it a later lane *acts*
-    #: on, so it is the one part that is a schema rather than a JSON dump in a prompt.
-    fixtures: list[PlanFixture] = []
+    fixtures: list[PlanFixture] = Field(
+        default=[],
+        description="The fixtures this story's QA lane needs, typed out of the block above. "
+        "The prose there stays prose; this list is the part a later lane acts on.",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -170,7 +206,10 @@ class PlanResult(CoderResult):
         if isinstance(nested, list):
             return {
                 **data,
-                "fixtures": [lift_fixture(item) if isinstance(item, str) else item for item in nested],
+                "fixtures": [
+                    lift_fixture(item) if isinstance(item, str) else item
+                    for item in nested
+                ],
             }
         return data
 
@@ -216,8 +255,19 @@ class ImplResult(CoderResult):
     turn either way — not the turn's account of itself, which is the thing under suspicion.
     """
 
-    status: ImplStatus
-    notes: str = ""
+    status: ImplStatus = Field(
+        description="`done` only when the implementation is complete, verification passed "
+        "and the touched layers were smoked. `applied` when the repair asked for is written "
+        "and exercised. `no_changes_needed` when the item was already fixed in the tree. "
+        "`needs_changes` when you got part of the way and the rest is still open. `blocked` "
+        "when you could not complete it or could not run it locally. There is no blank "
+        "answer: a turn that cannot name one of these has not reported, and it is retried.",
+    )
+    notes: str = Field(
+        default="",
+        description="What you implemented and verified, including how you ran it locally "
+        "and what you observed — or, when blocked, the blocker.",
+    )
 
 
 class FailureReport(CoderResult):
@@ -277,8 +327,19 @@ class FixResult(CoderResult):
     reports is the one thing only the turn knows.
     """
 
-    status: Literal["fixed", "failed", "blocked"]
-    notes: str = ""
+    status: Literal["fixed", "failed", "blocked"] = Field(
+        description="`fixed` — the gate passes now in this directory. `failed` — findings "
+        "remain, but another lap over the same output could plausibly close them. "
+        "`blocked` — no lap of this stage can make the gate pass: the command does not run "
+        "here at all, the fix demands a behaviour change this stage may not make, or it "
+        "lives in a repo you were not given. This ends the laps and hands the block to "
+        "whoever can decide it; it is not a way to stop trying.",
+    )
+    notes: str = Field(
+        default="",
+        description="What you changed — or, when a finding remains, which one and why. On "
+        "`blocked`, say specifically which of the three cases above applies.",
+    )
 
 
 class OperatorResolution(CoderResult):
@@ -289,31 +350,40 @@ class OperatorResolution(CoderResult):
     rather than unifying a name the model would then not emit.
     """
 
-    #: `answered` or `escalated`, and the only field a flow branches on. It stopped being
-    #: a relic when the resolver was allowed to settle a block it could ground: `answered`
-    #: means the answer is already written into `context.md` and the flow continues
-    #: straight to its consume state, anything else means the flow parks for a human.
-    #: Required: a resolver that cannot name which of the two it did has not resolved
-    #: anything, and a parse retry is cheaper than either arm taken by accident.
-    decision: Literal["answered", "escalated"]
+    #: The only field a flow branches on: `answered` continues straight to the consume
+    #: state, anything else parks for a human.
+    decision: Literal["answered", "escalated"] = Field(
+        description="`answered` only when you can quote something already written that "
+        "settles the question, and you have written the answer down. `escalated` for "
+        "everything else, including when you are not sure.",
+    )
 
-    summary: str = ""
+    summary: str = Field(
+        default="", description="One line: what was decided, or what is blocking."
+    )
 
-    #: One line per source that determined an `answered` decision — the file, and the rule
-    #: quoted from it. It is what makes an auto-resolution auditable: the operator reading
-    #: the log checks the citation rather than redoing the investigation. Empty on an
-    #: escalation, and empty on an `answered` turn is the resolver failing its own contract.
-    grounded: list[str] = []
+    grounded: list[str] = Field(
+        default=[],
+        description="One line per source that determined an `answered` decision — "
+        "`file:line`, and the rule quoted from it. Must be non-empty when you answer: it "
+        "is what lets an operator check your work later without redoing it. Empty when "
+        "you escalate.",
+    )
 
-    #: The `docs/decisions/` slug the resolver wrote or cited — see `shared.paths.decisions_dir`.
-    #: Carried for the log, not branched on.
-    record: str = ""
+    record: str = Field(
+        default="",
+        description="The decision-record slug you wrote, or the one you cited. Empty when "
+        "escalating.",
+    )
 
-    #: What the resolver attempted and ruled out, one line each. It is the diagnosis so
-    #: far, and without it the human who arrives at the gate re-runs every dead end the
-    #: resolver already paid for. Defaulted and never required: an older transcript parses
-    #: with it absent.
-    tried: list[str] = []
+    tried: list[str] = Field(
+        default=[],
+        description="What you investigated and ruled out, one concrete line each: the "
+        "command you ran and what it printed, the file you read and what it said, the "
+        "hypothesis you tested and why it was wrong. When you escalate this is published "
+        "verbatim in the gate a human reads — without it they re-run every dead end you "
+        "already paid for.",
+    )
 
 
 class OperatorGate(CoderResult):

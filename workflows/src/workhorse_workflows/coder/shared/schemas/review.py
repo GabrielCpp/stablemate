@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import ClassVar, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 
@@ -51,13 +51,18 @@ class ReviewFinding(Finding):
     `review-implementation.md` reads `Reuse` back out into its own reuse section.
     """
 
-    #: Which lens caught it. The reviewer says it, so there is no default to fall back to.
-    category: ReviewCategory
+    #: The reviewer says it, so there is no default to fall back to.
+    category: ReviewCategory = Field(
+        description="Which lens caught it. `Reuse` covers both duplicated code and a missed "
+        "utility; the implementation reviewer selects on it to report those separately.",
+    )
 
-    #: The 0-100 confidence the pass scored it. Every finding is reported whatever it
-    #: scored: the flow splits them at `MUST_FIX_CONFIDENCE`, so a low score demotes a
-    #: finding to advisory context rather than deleting it inside the turn that raised it.
-    score: int = 0
+    score: int = Field(
+        default=0,
+        description="The 0-100 confidence you scored it. Report every finding you scored, "
+        "whatever it scored: the flow splits the list on this number, so a low score demotes "
+        "a finding to advisory context, while one you drop yourself reaches nobody.",
+    )
 
 
 class CodeReviewResult(CoderResult):
@@ -77,9 +82,23 @@ class CodeReviewResult(CoderResult):
     evidence rather than silently stripped of it.
     """
 
-    status: CodeReviewStatus
-    findings: list[ReviewFinding] = []
-    findings_summary: str = ""
+    status: CodeReviewStatus = Field(
+        description="`findings` — the review found at least one issue in one or more repos. "
+        "`clean` — it ran on at least one repo with local changes and found nothing. "
+        "`skipped` — no affected repo had any local changes to review. `blocked` — the diff "
+        "could not be read at all: the repos you were given are not the ones the change "
+        "landed in, or the working tree is in a state (an unresolved conflict, a detached or "
+        "missing branch) that no review of it would mean anything. `clean` and `blocked` are "
+        "not the same answer — one says the diff is fine, the other that there was no diff "
+        "to judge.",
+    )
+    findings: list[ReviewFinding] = Field(
+        default=[], description="Empty for every status but `findings`."
+    )
+    findings_summary: str = Field(
+        default="",
+        description="One sentence on what was flagged — or what stopped you, on `blocked`.",
+    )
 
 
 class ReviewVerdict(CoderResult):
@@ -93,8 +112,22 @@ class ReviewVerdict(CoderResult):
     handed.
     """
 
-    status: ReviewStatus
-    notes: str = ""
+    status: ReviewStatus = Field(
+        description="`approved` — no Critical or Major findings from either review pass. "
+        "`needs_changes` — one or more require a fix before QA. `blocked` — you cannot reach "
+        "either verdict, because what is missing is outside this repository: the change "
+        "lives in a repo you were not given, judging it needs a product decision present in "
+        "neither the story nor the plan, or the working tree holds no diff that corresponds "
+        "to the story at all. An unwelcome verdict is not a blocked one — `needs_changes` "
+        "exists to carry it, and reaching for `blocked` to avoid picking one takes the "
+        "decision away from the only stage allowed to make it.",
+    )
+    notes: str = Field(
+        default="",
+        description="A brief summary of the findings from every review pass — the brief the "
+        "repair turn is handed, so each finding names where it is and what must change. On "
+        "`blocked`, the specific dependency and what you attempted before concluding it.",
+    )
 
 
 class ReviewContext(CoderResult):

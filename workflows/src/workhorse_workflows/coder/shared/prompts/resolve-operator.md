@@ -134,18 +134,6 @@ human, or by a resolver a human's own answer has just overruled it with.
 
 ## Output
 
-End your turn with exactly this JSON and nothing after it:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{"decision": "answered|escalated", "summary": "<one line: what was decided, or what is blocking>", "grounded": ["<file:line — the quoted rule that decided it>"], "record": "<the decision-record slug you wrote, or the one you cited; empty when escalating>", "tried": ["<one line per thing you checked and what it showed>"]}
-```
-
-`grounded` must be non-empty when `decision` is `answered`, and is what makes the answer
-auditable after the fact — an operator reading the log has to be able to check your work
-without redoing it.
-
-`tried` is what you investigated and **ruled out** — one line each, concrete: the command
-you ran and what it printed, the file you read and what it said, the hypothesis you tested
-and why it was wrong. When you escalate it is published verbatim in the gate the human
-reads, and it is the whole point of sending you first: without it, the person answering
-re-runs every dead end you already paid for.
+{{ result_schema }}

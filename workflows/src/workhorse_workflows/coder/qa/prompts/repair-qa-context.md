@@ -30,20 +30,8 @@ Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_slug') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 
-Return JSON only:
+## Output
 
-```json
-{
-  "qa_context_repair": {
-    "status": "repaired",
-    "notes": "Updated exact code/verify grounding for the reported mappings."
-  },
-  "qa_result": {
-    "status": "invalid",
-    "notes": "Context is being regenerated after grounding repair."
-  }
-}
-```
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-Use `qa_context_repair.status=blocked` and `qa_result.status=blocked` only when repair
-requires an author/product decision or unavailable source repository.
+{{ result_schema }}

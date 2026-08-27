@@ -28,11 +28,7 @@ Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
 ties a commit back to its story through them.
 
 ## Output
-Respond with JSON only after the epic and its stories are updated:
-```json
-{"status": "done|blocked", "notes": "<one-line summary of what was re-grounded, or the specific thing the operator's answer left undecided>"}
-```
 
-Report `blocked` rather than rewriting the epic around a guess: the workflow re-reads these
-stories immediately after this stage, so an epic grounded in an invention is executed as
-though it were ground truth.
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
+
+{{ result_schema }}

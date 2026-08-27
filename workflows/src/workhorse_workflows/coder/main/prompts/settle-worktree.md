@@ -39,14 +39,6 @@ either yours or a stranger's.
 
 ## Output
 
-Respond with JSON only:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{"status": "settled|blocked", "notes": "<what you committed, per package — or which paths you left and why they are not yours>"}
-```
-
-`settled` means every path above is either committed or was deliberately left, and the tree holds
-nothing of this story's that is not recorded. `blocked` means something on that list needs a human:
-you cannot tell whose it is, committing it would be wrong, or the commit itself failed. Return
-`blocked` rather than guessing — the run parks for an operator, which costs ten minutes; a commit
-of someone else's work under this story's name costs considerably more.
+{{ result_schema }}

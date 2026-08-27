@@ -324,10 +324,10 @@ class Docs(Workflow):
         `repair`, which edits the nodes the findings cite instead of re-authoring the book.
         """
         self.logger.info("documenting %s", self.ctx.story_slug, extra={"activity": True})
-        turn = roles.turn(self, "document-story")
+        turn = roles.turn(self, "document-story", returns=DocumentationResult)
         result = self.agent(
             turn.prompt,
-            returns=DocumentationResult,
+            returns=turn.returns,
             # medium: folding a known change into an existing graph, against a schema and a
             # gate that will check the result. Not a discovery task.
             power="medium",
@@ -374,10 +374,10 @@ class Docs(Workflow):
             update={"progress": loop.progress.model_copy(update={"chain_laps": laps + 1})}
         )
         try:
-            turn = roles.turn(self, "repair-documentation")
+            turn = roles.turn(self, "repair-documentation", returns=DocumentationResult)
             result = self.agent(
                 turn.prompt,
-                returns=DocumentationResult,
+                returns=turn.returns,
                 # low: applying a named list of edits to nodes that already exist. Paying the
                 # authoring tier for it is part of what tempted the turn to re-author.
                 power="low",
@@ -603,10 +603,10 @@ class Docs(Workflow):
         reviewer being told what this story is answerable for: a scope that shrinks every
         pass would keep re-legalizing the findings it had just ruled out of bounds.
         """
-        turn = roles.turn(self, "review-story-documentation")
+        turn = roles.turn(self, "review-story-documentation", returns=DocumentationReview)
         result = self.agent(
             turn.prompt,
-            returns=DocumentationReview,
+            returns=turn.returns,
             # high: judging whether prose describes the system as built is the harder half
             # of documenting it.
             power="high",

@@ -40,17 +40,7 @@ If you cannot safely resolve the merge (e.g. the conflict needs a product decisi
 > Note: a refusal caused purely by branch protection (required reviews, or required CI checks that never ran) is **not** something you can resolve here. If `git status` shows the branch is already up to date with `{{ ci_base }}` and there are no conflicts **and Step 0 found no stale-duplicate remote to remediate either**, report `failed` with that observation so the workflow escalates to the operator rather than committing a no-op.
 
 ## Output
-Respond with JSON only after you have committed your resolution (or concluded you cannot):
-```json
-{"status": "fixed|failed|blocked", "notes": "<what you resolved (content merge, or Step 0 stale-duplicate remediation — say which), or why you couldn't>"}
-```
 
-- `fixed` — the branches merge cleanly now and the resolution is committed.
-- `failed` — this attempt did not finish the resolution, but another one on the same two branches
-  plausibly would.
-- `blocked` — **no attempt of this stage can resolve it.** Both sides of a conflict are
-  deliberate and choosing between them is a product decision present in neither branch, the
-  divergence is a history rewrite rather than a content conflict, or resolving it needs work in a
-  repo you were not given. Resolving a conflict wrongly corrupts code silently rather than
-  failing loudly, so hand it to an operator instead of guessing: name in `notes` exactly which
-  files and which decision you could not make, and what you attempted first.
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
+
+{{ result_schema }}

@@ -88,6 +88,7 @@ from workhorse_workflows.coder.shared.story import prepare_story, resolve_worksp
 from workhorse_workflows.coder.shared.schemas.docs import DocsResult
 from workhorse_workflows.coder.shared.schemas.pr import MergeFixResult
 from workhorse_workflows.coder.shared.schemas.queue import ReplanResult, WorktreeSettled
+from workhorse_workflows.coder.shared.schemas.render import schema_block
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
 
 
@@ -519,10 +520,10 @@ class Coder(Workflow):
         of a sub-flow's return value, and a sub-flow's node records are in its own subscope.
         """
         self.logger.info("replanning epic %s", self._queue_epic(epic), extra={"activity": True})
-        turn = roles.turn(self, "replan-epic")
+        turn = roles.turn(self, "replan-epic", returns=ReplanResult)
         result = self.agent(
             turn.prompt,
-            returns=ReplanResult,
+            returns=turn.returns,
             # high: highest blast radius in the workflow — it rewrites the epic, its
             # stories and the queue from one operator answer.
             power="high",
@@ -715,6 +716,7 @@ class Coder(Workflow):
                 "story_slug": story.story_slug,
                 "epic": self._queue_epic(epic),
                 "dirty_paths": "\n".join(state.dirty),
+                "result_schema": schema_block(WorktreeSettled),
             },
             session=self._settle_chain(),
         )
@@ -852,7 +854,11 @@ class Coder(Workflow):
             # high: a wrong conflict resolution silently corrupts code.
             power="high",
             add_dirs=self._dirs(),
-            args={"ci_epic": gate.ci_epic, "ci_base": gate.ci_base},
+            args={
+                "ci_epic": gate.ci_epic,
+                "ci_base": gate.ci_base,
+                "result_schema": schema_block(MergeFixResult),
+            },
             # Rework two is the same two branches still refusing to merge, and the turn that
             # resolved half the conflicts is the one that knows which half.
             session=f"merge-fix:{gate.ci_epic}",

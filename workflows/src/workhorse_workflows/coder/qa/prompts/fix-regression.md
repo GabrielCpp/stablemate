@@ -79,26 +79,6 @@ Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_slug') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 
-## Structured Output Requirement
-
-Return this exact JSON object in your **final response** (after a short markdown summary). This
-step does **not** decide pass/fail — the workflow re-runs the deterministic suite next and that run
-is the only source of truth, so do not include a verdict here.
-
-```json
-{
-  "status": "attempted",
-  "notes": "Per-failure summary: what was wrong, what you changed (app code or spec), and how you verified it locally. If a failure could not be fixed, say which one and why."
-}
-```
-
-- Wrap the result under `regression_fix_result` (this is how the workflow captures your output).
-- `notes` must be a non-empty string covering every failure from the inputs above, not just the
-  first one.
-- `status` is `"attempted"` on any turn that did the work — it is not a claim of success, and
-  only the next deterministic suite run decides whether the fix worked. It exists for the
-  opposite claim; see below.
-
 ## Stop Conditions
 
 Stop and report a blocker in `notes` if:
@@ -107,12 +87,11 @@ Stop and report a blocker in `notes` if:
 - required emulator/services, fixtures, or credentials are unavailable
 - a fix would require broad replanning outside this story's surface
 
-### `status`
+## Output
 
-`"attempted"` on any turn that did the work, whatever you think it achieved — the suite judges
-that, not this field. `"blocked"` **only** when nothing in this repository would let you
-attempt the fixes at all, because what is missing is external to it: a credential or deployment
-you cannot perform, a product decision present in neither the story nor the plan, or work that
-lives in another repo. A `blocked` turn hands the story to an operator, so it must name that
-dependency in `notes` and say what you attempted before concluding it. A fix you doubt is still
-an attempt; reaching for `blocked` to hedge it takes the decision away from the suite.
+This step does **not** decide pass/fail — the workflow re-runs the deterministic suite next
+and that run is the only source of truth, so do not include a verdict here.
+
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
+
+{{ result_schema }}

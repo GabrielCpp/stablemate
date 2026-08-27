@@ -161,10 +161,10 @@ class Fix(Workflow):
         self.logger.info(
             "fixing %s (lap %d)", self._story.story_slug, lap + 1, extra={"activity": True}
         )
-        turn = roles.turn(self, "fix-item")
+        turn = roles.turn(self, "fix-item", returns=ImplResult)
         result = self.agent(
             turn.prompt,
-            returns=ImplResult,
+            returns=turn.returns,
             # high: this turn is both the plan and the production change.
             power="high",
             add_dirs=self._dirs(),
@@ -261,10 +261,10 @@ class Fix(Workflow):
         recheck, and asking is what a block is for.
         """
         self.logger.info("applying QA fixes to the drained item", extra={"activity": True})
-        turn = roles.turn(self, "apply-qa-fixes")
+        turn = roles.turn(self, "apply-qa-fixes", returns=QaRunResult)
         result = self.agent(
             turn.prompt,
-            returns=QaRunResult,
+            returns=turn.returns,
             # high: this retry has to converge, because there is not a second one.
             power="high",
             add_dirs=self._dirs(),
@@ -433,10 +433,10 @@ class Fix(Workflow):
         `passed | failed | blocked` verdict, not an assessment's disposition.
         """
         self.logger.info("checking %s", self._story.story_slug, extra={"activity": True})
-        turn = roles.turn(self, "qa-fix-item")
+        turn = roles.turn(self, "qa-fix-item", returns=QaRunResult)
         return self.agent(
             turn.prompt,
-            returns=QaRunResult,
+            returns=turn.returns,
             # high: the drain has no QA plan, no evidence gate and no audit behind it — this
             # turn is the whole verdict on the fix.
             power="high",

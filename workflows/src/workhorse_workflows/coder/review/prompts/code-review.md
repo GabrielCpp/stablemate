@@ -65,33 +65,6 @@ Do not report any of these — they are the false positives this pass exists to 
 
 ## Output
 
-Return this JSON as your final response:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{
-  "status": "findings" | "clean" | "skipped" | "blocked",
-  "findings": [
-    {
-      "target": "<repo>/<path relative to that repo>:<line>",
-      "issue": "<what is wrong>",
-      "repair": "<what to change>",
-      "category": "Bug" | "Standard" | "Reuse",
-      "score": 0
-    }
-  ],
-  "findings_summary": "<one-sentence summary of what was flagged, or 'No issues found.', or 'No local changes to review.'>"
-}
-```
-
-- `target` and `repair` are both required of every finding. A finding that names no place to go, or names no change to make, is not evidence — it is a complaint, and the machine downstream cannot route it. `target` is one string: the repo, the file within it and the line, e.g. `api-service/internal/link/store.go:118`.
-- `score` — the 0-100 confidence you scored it. Report **every** finding you scored, whatever it scored: the flow splits the list on this number, so a low score demotes a finding to advisory context, while one you drop yourself reaches nobody.
-- `category` — which lens caught it, spelled exactly as above. `Reuse` covers both duplicated code and a missed utility; the implementation reviewer selects on it to report those findings separately.
-- `findings` — the review found at least one issue in one or more repos; each is listed in `findings`.
-- `clean` — the review ran on at least one repo with local changes and found no issues; `findings` is empty.
-- `skipped` — no affected repo had any local changes to review; `findings` is empty.
-- `blocked` — the diff could not be read at all: the repos you were given are not the ones the
-  change landed in, or the working tree is in a state (an unresolved conflict, a detached or
-  missing branch) that no review of it would mean anything. `clean` and `blocked` are not the
-  same answer — one says the diff is fine, the other says there was no diff to judge — and the
-  binding reviewer downstream is handed this verdict as prose. `findings` is empty and
-  `findings_summary` names what stopped you.
+{{ result_schema }}

@@ -174,13 +174,8 @@ Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_slug') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 
-## Return Format
+## Output
 
-Return this exact JSON object as the LAST thing in your final response — these keys at its top level, with no wrapper object around them. Any other shape fails to parse and the node is retried:
+Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
-```json
-{"status": "applied|no_changes_needed|blocked", "notes": "Summary of fixes applied or reason no changes were needed"}
-```
-
-- **status**: `"applied"` when fixes are made, `"no_changes_needed"` if the review had no required findings to fix, or `"blocked"` if a finding could not be resolved.
-- **notes**: A brief summary of what was fixed or what the review verdict was.
+{{ result_schema }}

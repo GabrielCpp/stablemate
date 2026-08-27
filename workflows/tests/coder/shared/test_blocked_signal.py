@@ -19,6 +19,7 @@ from workhorse_workflows.coder.shared.schemas.docs import (
     DocumentationReview,
 )
 from workhorse_workflows.coder.shared.schemas.qa import QaAssessment, QaFinding
+from workhorse_workflows.coder.shared.schemas.render import schema_block
 from workhorse_workflows.coder.shared.schemas.review import CodeReviewResult
 
 
@@ -187,12 +188,18 @@ def test_the_review_prompt_asks_for_the_keys_the_model_reads() -> None:
     A shape-check on hand-written JSON only proves the model parses what this file typed.
     The document the agent is handed is the one that has to name `target` and `repair`, and
     must not go back to naming the keys the model drops on the floor.
+
+    It cannot drift any more, because the prompt no longer *has* a contract to drift: it
+    renders `{{ result_schema }}`, which the turn fills from the same model this file
+    validates against. So the assertion moved to where the two are joined — the prompt
+    delegates, and what the delegation produces names the keys.
     """
     prompt = (
         pathlib.Path(__file__).resolve().parents[3]
         / "src/workhorse_workflows/coder/review/prompts/code-review.md"
     ).read_text()
-    body = prompt.split("Return this JSON as your final response:")[1]
+    assert "{{ result_schema }}" in prompt
+    body = schema_block(CodeReviewResult)
     for key in ("target", "issue", "repair", "category", "score"):
         assert f'"{key}"' in body, key
     for dropped in ("required_fix", '"repo"', '"file"', '"line"'):

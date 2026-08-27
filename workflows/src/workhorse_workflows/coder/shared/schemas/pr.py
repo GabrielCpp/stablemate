@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from pydantic import Field
+
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
 
@@ -88,8 +90,22 @@ class MergeFixResult(CoderResult):
     the remaining reworks would each re-ask a turn that has already answered.
     """
 
-    status: str = ""
-    notes: str = ""
+    status: Literal["fixed", "failed", "blocked"] = Field(
+        description="`fixed` — the branches merge cleanly now and the resolution is "
+        "committed. `failed` — this attempt did not finish the resolution, but another one "
+        "on the same two branches plausibly would. `blocked` — no attempt of this stage can "
+        "resolve it: both sides of a conflict are deliberate and choosing between them is a "
+        "product decision present in neither branch, the divergence is a history rewrite "
+        "rather than a content conflict, or resolving it needs work in a repo you were not "
+        "given. Resolving a conflict wrongly corrupts code silently rather than failing "
+        "loudly, so hand it to an operator instead of guessing.",
+    )
+    notes: str = Field(
+        default="",
+        description="What you resolved — a content merge, or stale-duplicate remediation; "
+        "say which. On `blocked`, exactly which files and which decision you could not make, "
+        "and what you attempted first.",
+    )
 
 
 __all__ = [

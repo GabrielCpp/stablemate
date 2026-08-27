@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 from workhorse_workflows.coder.shared.schemas.story import WorkspaceDirs
@@ -90,8 +90,22 @@ class FixCiResult(CoderResult):
     the remaining attempts on it just re-asks a turn that has already answered.
     """
 
-    status: Literal["fixed", "failed", "blocked"]
-    notes: str = ""
+    status: Literal["fixed", "failed", "blocked"] = Field(
+        description="`fixed` — you found the failure, repaired it, verified the gate locally "
+        "and committed. `failed` — you understood the failure but this attempt did not "
+        "repair it, or it looks like infrastructure flake; make no spurious commit, and the "
+        "workflow retries. `blocked` — nothing you can do in this repository would make CI "
+        "green, so another attempt is the same attempt: the checks are unreadable to this "
+        "token, the fix needs a credential or a deployment you cannot perform, the failure "
+        "lives in a repo you were not given, or CI can only be made green by changing an "
+        "observable contract, which this stage may not do because no story documentation "
+        "context exists here.",
+    )
+    notes: str = Field(
+        default="",
+        description="What you changed, or what you tried and why it did not work. On "
+        "`blocked`, the specific dependency and what you attempted before concluding it.",
+    )
 
 
 class CiLoop(BaseModel):

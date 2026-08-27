@@ -280,10 +280,10 @@ def refine(
     is also why `power` differs, and why `worklist` does — the loops lap on unrelated
     things, so each resumes its own conversation and neither inherits the other's.
     """
-    turn = roles.turn(flow, role)
+    turn = roles.turn(flow, role, returns=PlanResult)
     return flow.agent(
         turn.prompt,
-        returns=PlanResult,
+        returns=turn.returns,
         power=power,
         add_dirs=workspace_dirs(flow),
         args=turn.args | {
@@ -326,10 +326,10 @@ def implement_layer(flow: Dev, operator_context: str) -> ImplResult:
     layer = current_layer(flow)
     impl = flow.output(resolve_impl_context)
     gates = flow.call(declared_gates, layer.cwd, layer.service, service_type=layer.type)
-    turn = roles.turn(flow, "implement-plan")
+    turn = roles.turn(flow, "implement-plan", returns=ImplResult)
     return flow.agent(
         turn.prompt,
-        returns=ImplResult,
+        returns=turn.returns,
         # high: writes the production change, across whatever the plan touches.
         power="high",
         session=backbone(flow),

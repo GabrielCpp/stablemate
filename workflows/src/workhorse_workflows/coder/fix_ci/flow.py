@@ -160,13 +160,13 @@ class FixCi(Workflow):
         trailer is `<epic>`. One argument standing in for both is what put `feat/feat/`
         into the branch line and a ref into the trailer of every CI-fix commit.
         """
-        turn = roles.turn(self, "fix-ci")
+        turn = roles.turn(self, "fix-ci", returns=FixCiResult)
         result = self.agent(
             turn.prompt,
             # medium: reads failing job logs and the diff, and makes a narrow repair —
             # bounded diagnosis rather than design.
             power="medium",
-            returns=FixCiResult,
+            returns=turn.returns,
             cwd=loop.repo_dir,
             add_dirs=list(self.ctx.dirs),
             args=turn.args
