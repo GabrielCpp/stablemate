@@ -1678,23 +1678,43 @@ def test_a_run_killed_in_qa_resumes_on_qa_without_rebuilding_the_story(
 _test_bp = Blueprint("test")
 
 
-def _red_ci(polls: list[str], green: dict[str, bool]) -> Any:
-    """`poll_pr_checks`, red until the operator answers the gate.
+#: What the seamed poll below should say on its next call. A module-level cell rather
+#: than a closure because the blueprint registers a node *by name*: stamping a second
+#: `poll_pr_checks` for a second test is a duplicate-name error, so there is one node and
+#: each test re-points it.
+_ci_seam: dict[str, Any] = {}
+
+
+@_test_bp.node
+def _seamed_poll_pr_checks(logger: Any, repo_dir: str = "", branch: str = "") -> CiChecks:
+    seam = _ci_seam
+    polls: list[str] = seam["polls"]
+    polls.append(branch)
+    if seam["green"]["yes"]:
+        return CiChecks(status="passed", summary="")
+    return CiChecks(status=seam["verdict"], summary=seam["summary"])
+
+
+def _red_ci(
+    polls: list[str],
+    green: dict[str, bool],
+    verdict: CiStatus = "failed",
+    summary: str = "the unit suite is red",
+) -> Any:
+    """`poll_pr_checks`, not green until the operator answers the gate.
+
+    `verdict` is what "not green" means for a given test — `failed` for a branch whose
+    suite is red, `blocked` for checks this token cannot read at all — because the two take
+    different routes to the same gate and only one of them spends the repair budget.
 
     Stamped by a blueprint of its own and monkeypatched over the graph's global, which the
-    engine resolves by the stamp — so the node id, the artifact directory and the reply
-    schema are the real ones, and the state that calls it, the counter it spends and the
-    gate above it are untouched.
+    engine resolves by the stamp — so the call goes through the real node machinery with
+    the real reply schema, and the state that calls it, the counter it spends and the gate
+    above it are untouched. Only the node's *name* is the seam's own, which is why a test
+    driving it reads the gate's behaviour rather than `self.output(poll_pr_checks)`.
     """
-
-    @_test_bp.node
-    def poll_pr_checks(logger: Any, repo_dir: str = "", branch: str = "") -> CiChecks:
-        polls.append(branch)
-        if green["yes"]:
-            return CiChecks(status="passed", summary="")
-        return CiChecks(status="failed", summary="the unit suite is red")
-
-    return poll_pr_checks
+    _ci_seam.update(polls=polls, green=green, verdict=verdict, summary=summary)
+    return _seamed_poll_pr_checks
 
 
 def _answers(seen: list[str], green: dict[str, bool]) -> Callable[..., None]:
@@ -1752,6 +1772,43 @@ def test_red_ci_spends_its_three_attempts_and_then_escalates_to_a_human(
     assert len(seen) == 1, seen
     assert "after 3 automated attempt(s)" in seen[0], seen[0]
     assert (repo / "docs" / "epics" / EPIC / "ci-operator-context.md").is_file()
+
+
+def test_unreadable_ci_parks_at_once_instead_of_spending_a_repair_lap(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`blocked` is not `failed` and is not `unavailable`: it is the gate, on the first poll.
+
+    A poll that could not read the checks says nothing about the branch, so a fixer turn
+    has nothing to repair and the next poll re-reads the same refusal — three laps spent to
+    reach the gate the first refusal already earned. And it is not the tolerated arm
+    either: passing it through the way a CI-less repo passes through would merge an epic
+    whose pipeline nobody has seen.
+    """
+    repo = epic()
+    sub = _Sub(repo).install(monkeypatch)
+    polls: list[str] = []
+    green = {"yes": False}
+    monkeypatch.setattr(
+        coder_main,
+        "poll_pr_checks",
+        _red_ci(polls, green, "blocked", "CI unreadable: 403 on Actions"),
+    )
+    run_env = env()
+    seen: list[str] = []
+
+    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, green)):
+        result = drive_flow(Coder(), run_env, _Agent())
+
+    assert result.has_epic is False, result
+    assert len(polls) == 2, "one refusal, then the operator's answer re-polls green"
+    assert sub.calls.count("FixCi") == 0, sub.calls
+    assert len(seen) == 1, seen
+    assert "after 0 automated attempt(s)" in seen[0], seen[0]
+    assert "403 on Actions" in seen[0], seen[0]
 
 
 # -------------------------------------------------------------- the merge operator gate

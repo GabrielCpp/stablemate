@@ -740,9 +740,13 @@ class Coder(Workflow):
     def ci(self, ci_rework: int = 0, merge_rework: int = 0) -> Continue | Await:
         """Is the epic's PR green?
 
-        `unavailable` passes through to the merge, and that is the deliberate design rather
-        than an oversight — offline, CI-less and read-blocked runs still complete, and the
-        node logs the reason loudly at each site so it is never silent.
+        Not knowing splits in two here, exactly as it does in the poll that produces it.
+        `unavailable` is a repo with nothing to gate on — no origin, no token, no open PR,
+        no Actions runs — and it passes through to the merge, which is what lets an offline
+        bind-mounted clone finish; it is logged at the site so it is never a silent
+        `passed`. `blocked` is CI that exists and could not be read, and no fixer turn
+        repairs a credential or an unreachable repo, so it parks for a person on the spot
+        rather than spending the rework budget re-reading the same refusal.
 
         Both counters are seeded by this state's own defaults, which is what `reset_ci` was:
         it seeded `ci_rework_count` *and* `merge_rework_count` in one node, because the
@@ -750,6 +754,17 @@ class Coder(Workflow):
         """
         gate = self.output(open_pr)
         checks = self.call(poll_pr_checks, "", epic_branch(gate.ci_epic))
+        if checks.blocked:
+            self.logger.warning(
+                "CI for %s could not be read (%s) — parking it for an operator",
+                gate.ci_epic, checks.summary,
+            )
+            return self._ci_gate(gate.ci_epic, ci_rework, checks.summary, merge_rework)
+        if checks.status == "unavailable":
+            self.logger.warning(
+                "no CI verdict for %s (%s) — merging without one",
+                gate.ci_epic, checks.summary,
+            )
         if checks.status in ("passed", "unavailable"):
             return Continue(checks, self.merge, merge_rework=merge_rework)
         # `failed`, and every other verdict: the guard decides whether a lap is left.
@@ -771,6 +786,11 @@ class Coder(Workflow):
             FixCi, repo="", branch=epic_branch(gate.ci_epic), docs_path=self.docs_path,
         )
         push = self.call(push_ci_fix, "", epic_branch(gate.ci_epic))
+        if push.status == "unavailable":
+            self.logger.warning(
+                "nothing to push the %s fix to (%s) — re-polling anyway",
+                gate.ci_epic, push.notes,
+            )
         if push.status in ("pushed", "unavailable"):
             return Continue(push, self.ci, ci_rework=ci_rework + 1, merge_rework=merge_rework)
         return self._ci_gate(gate.ci_epic, ci_rework, summary, merge_rework)
@@ -794,6 +814,11 @@ class Coder(Workflow):
         """
         gate = self.output(open_pr)
         outcome = self.call(merge_pr, gate.ci_epic, gate.ci_base)
+        if outcome.merge_status == "unavailable":
+            self.logger.warning(
+                "no PR to merge for %s — taking the next epic with the branch unmerged",
+                gate.ci_epic,
+            )
         if outcome.merge_status in ("merged", "unavailable"):
             # The epic's merge is settled; the next epic's conflicts are a different worklist.
             self.reset_session(f"merge-fix:{gate.ci_epic}")
@@ -835,6 +860,11 @@ class Coder(Workflow):
             self.logger.info("the merge resolver reported it cannot decide: %s", result.notes)
             return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework)
         push = self.call(push_ci_fix, "", gate.ci_epic)
+        if push.status == "unavailable":
+            self.logger.warning(
+                "nothing to push the %s merge resolution to (%s) — re-merging anyway",
+                gate.ci_epic, push.notes,
+            )
         if push.status in ("pushed", "unavailable"):
             return Continue(push, self.merge, merge_rework=merge_rework + 1)
         return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework)
