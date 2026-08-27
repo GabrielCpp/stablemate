@@ -546,9 +546,13 @@ class _SymbolTable:
 
 
 #: The namespace label separating this product's keys from every other one's. Bump the suffix
-#: when the *payload* changes shape in a way an older reader would get wrong; the grammar
-#: version and the epoch cover the two ways the *answer* can move.
-_SYMBOLS_NAMESPACE = "symbols/1"
+#: when the *payload* changes shape in a way an older reader would get wrong — and when the
+#: *extraction logic* changes what it declares for the same bytes. The grammar version and the
+#: epoch cover the other ways the answer can move, but the epoch's ostler version only moves on
+#: a release, which an editable install never sees: a logic change left at `symbols/1` kept
+#: serving pre-change tables to every long-lived checkout. (2: Go struct fields and interface
+#: methods joined `declared_names`.)
+_SYMBOLS_NAMESPACE = "symbols/2"
 
 #: One extraction, and the store it was made under. Keyed on the path as well as the content and
 #: the grammar, because the path is what a repeated citation repeats — two paths holding the same
