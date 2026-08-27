@@ -21,6 +21,25 @@ Working on the workflows themselves wants a checkout of the
 The shape came from an internal workflow-as-python-state-machine design brief, which
 shipped and is now kept only for its reasoning.
 
+## The workflows
+
+- **`hello-world`** — two states, one agent turn; the install check and the smallest
+  example to copy when [shipping your own](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md#shipping-your-own-outside-this-repo).
+- **`author`** — turns product intent into the repo's OKF book: epics, stories with
+  acceptance criteria, seeds and coverage, as a normalized docs graph ostler validates.
+  What it writes is what `coder`'s QA later holds the running app to.
+- **`coder`** — implements stories from that book, then examines each one from three
+  independent evidence bases — tests against the story's intent, review against the
+  skills' engineering standards, QA of the live app against the book with the code not
+  in the room. The reasoning is in the workspace README's
+  [methodology section](https://github.com/GabrielCpp/stablemate#the-methodology-three-evidence-bases-none-of-them-the-implementers).
+- **`okf-builder`** — backfills an OKF book for an existing codebase, grounding every
+  claim in the file it read it from, so a brownfield repo can reach the same contract.
+- **`research`** — runs experiment gates: a protocol is designed, made runnable,
+  submitted as a detached measurement job, waited on across resumes, and its artifacts
+  classified deterministically — for measurements an agent turn is the wrong container
+  for.
+
 ## Authoring authority
 
 Author is allowed to define previously unspecified behavior when the epic and story put that
