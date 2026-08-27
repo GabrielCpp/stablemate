@@ -21,6 +21,8 @@ behavior the exit code was reaching for:
 from __future__ import annotations
 
 import logging
+import shutil
+import subprocess
 from pathlib import Path
 
 from ostler import Ostler, markdown, path as okf_path, registry
@@ -28,7 +30,13 @@ from workhorse.pyflow import Workflow, WorkflowFailed
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import stubs
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.schemas.story import SpecsStamped, StoryPaths, WorkspaceDirs
+from workhorse_workflows.coder.shared.schemas.story import (
+    PlanScrub,
+    SpecsStamped,
+    StoryPaths,
+    WorkspaceDirs,
+    WorktreeSnapshot,
+)
 from workhorse_workflows.kit import resolve_workspace
 
 
@@ -208,6 +216,130 @@ def workspace_dirs(flow: Workflow) -> list[str]:
     return list(flow.output(resolve_workspace_dirs).dirs)
 
 
+GIT_TIMEOUT = 60
+
+
+def _code_repos(docs_path: str, repo_dir: str, workspace_file: str) -> list[Path]:
+    """The workspace repos the clean-tree gate covers: everything but the docs root.
+
+    The docs root is exempt on purpose — the plan turn's whole output (plan.md, the
+    per-service plan files) lands there.
+    """
+    docs_root = find_docs_root(docs_path, repo_dir).resolve()
+    repos = resolve_workspace(workspace_file, repo_dir)
+    return [
+        path
+        for repo in repos.values()
+        if (path := Path(repo["path"])).is_dir() and path.resolve() != docs_root
+    ]
+
+
+def _git(repo: Path, *args: str) -> str | None:
+    """One git read in `repo`, or None when it cannot answer — a caller skips, never guesses."""
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=GIT_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout if result.returncode == 0 else None
+
+
+def _porcelain_paths(porcelain: str) -> dict[str, str]:
+    """Porcelain lines keyed by the path they name, rename targets included.
+
+    A rename line names two paths; both belong to the entry, so both key it. Quoted
+    paths (spaces, unicode) lose their quotes so the keys match git's plain arguments.
+    """
+    entries: dict[str, str] = {}
+    for line in porcelain.splitlines():
+        if len(line) < 4:
+            continue
+        for part in line[3:].split(" -> "):
+            entries[part.strip('"')] = line
+    return entries
+
+
+@blueprint.node
+def snapshot_worktrees(
+    logger: logging.Logger, docs_path: str = "", repo_dir: str = "", workspace_file: str = ""
+) -> WorktreeSnapshot:
+    """Record each code repo's `git status --porcelain` before the plan turn runs.
+
+    Pre-existing dirt — an operator's half-finished edit — is captured here so the scrub
+    after the turn leaves it alone: only what *appears* between the two readings is the
+    turn's, and only that is reverted.
+    """
+    status: dict[str, str] = {}
+    for repo in _code_repos(docs_path, repo_dir, workspace_file):
+        out = _git(repo, "status", "--porcelain")
+        if out is None:
+            logger.warning("cannot read git status in %s — the clean-tree gate skips it", repo)
+            continue
+        status[str(repo)] = out
+    return WorktreeSnapshot(status=status)
+
+
+@blueprint.node
+def scrub_plan_mutations(
+    logger: logging.Logger,
+    before: dict[str, str] | None = None,
+    docs_path: str = "",
+    repo_dir: str = "",
+    workspace_file: str = "",
+) -> PlanScrub:
+    """Revert whatever the plan turn wrote into the code repos.
+
+    Planning reads code; it does not write it. The prompt no longer says so — this gate is
+    what enforces it: any path that shows up dirty in a code repo after the turn and was
+    not dirty before it is put back (tracked paths restored from HEAD, new untracked paths
+    deleted), and the discarded diff goes to the log. The docs repo is exempt — the plan
+    artifacts land there. A path already dirty at snapshot time is someone else's and is
+    left exactly as found.
+    """
+    before = before or {}
+    reverted: dict[str, str] = {}
+    for repo in _code_repos(docs_path, repo_dir, workspace_file):
+        key = str(repo)
+        if key not in before:
+            continue
+        out = _git(repo, "status", "--porcelain")
+        if out is None:
+            logger.warning("cannot read git status in %s — the clean-tree gate skips it", repo)
+            continue
+        prior = _porcelain_paths(before[key])
+        fresh = {
+            path: line for path, line in _porcelain_paths(out).items() if path not in prior
+        }
+        if not fresh:
+            continue
+        tracked = sorted(p for p, line in fresh.items() if not line.startswith("??"))
+        untracked = sorted(p for p, line in fresh.items() if line.startswith("??"))
+        diff = _git(repo, "diff", "HEAD", "--", *tracked) if tracked else ""
+        if tracked and _git(repo, "checkout", "HEAD", "--", *tracked) is None:
+            logger.warning("could not restore %s in %s", tracked, repo)
+        for path in untracked:
+            target = repo / path
+            if target.is_dir():
+                shutil.rmtree(target, ignore_errors=True)
+            else:
+                target.unlink(missing_ok=True)
+        record = "\n".join(sorted(set(fresh.values())))
+        if diff:
+            record += "\n" + diff[:4000]
+        reverted[key] = record
+        logger.warning(
+            "the plan turn modified %s — reverted, planning must not touch code:\n%s",
+            repo,
+            record,
+        )
+    return PlanScrub(reverted=reverted)
+
+
 @blueprint.node
 def stamp_specs(
     logger: logging.Logger, docs_path: str = "", story_slug: str = "", repo_dir: str = ""
@@ -287,6 +419,8 @@ __all__ = [
     "prepare_fix_story",
     "prepare_story",
     "resolve_workspace_dirs",
+    "scrub_plan_mutations",
+    "snapshot_worktrees",
     "stamp_specs",
     "workspace_dirs",
 ]

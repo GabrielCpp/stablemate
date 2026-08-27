@@ -54,6 +54,8 @@ from workhorse_workflows.coder.shared.story import (
     guard_story_file,
     prepare_story,
     resolve_workspace_dirs,
+    scrub_plan_mutations,
+    snapshot_worktrees,
     stamp_specs,
     workspace_dirs,
 )
@@ -141,6 +143,7 @@ class Dev(Workflow):
         agent; one was tried and caught nothing actionable.
         """
         self.logger.info("planning %s", self.ctx.story_slug, extra={"activity": True})
+        snapshot = self.call(snapshot_worktrees, self.docs_path)
         turn = roles.turn(self, "plan-story", returns=PlanResult)
         result = self.agent(
             turn.prompt,
@@ -160,6 +163,10 @@ class Dev(Workflow):
                 "markers": self.call(declared_markers).text,
             },
         )
+        # Planning reads code; it does not write it. The prompt no longer says so — this
+        # gate is what enforces it: anything the turn left in a code repo's working tree
+        # is reverted (docs repo exempt, its artifacts land there; pre-snapshot dirt kept).
+        self.call(scrub_plan_mutations, snapshot.status)
         # The plan agent writes plan.md / plan-<svc>.md as free-form markdown, so the
         # frontmatter that makes them OKF Concepts is only as reliable as the model's
         # memory. Stamp it mechanically instead of trusting the prompt.

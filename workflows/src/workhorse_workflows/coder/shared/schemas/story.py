@@ -41,6 +41,28 @@ class WorkspaceDirs(CoderResult):
     dirs: list[str] = []
 
 
+class WorktreeSnapshot(CoderResult):
+    """`snapshot_worktrees` — `git status --porcelain` per code repo, keyed by repo path.
+
+    The docs repo is not in here: plan artifacts land there on purpose, so the clean-tree
+    gate has nothing to say about it. A repo whose status could not be read is absent
+    rather than blank, and the scrub skips what it cannot compare.
+    """
+
+    status: dict[str, str] = {}
+
+
+class PlanScrub(CoderResult):
+    """`scrub_plan_mutations` — what the post-plan-turn clean-tree gate reverted.
+
+    Keyed by repo path; the value is the porcelain lines that appeared during the turn,
+    followed by the diff that was thrown away. Empty means the turn kept to reading, which
+    is the normal case.
+    """
+
+    reverted: dict[str, str] = {}
+
+
 class SpecsStamped(CoderResult):
     """`stamp-specs.py` — how many spec docs were given an OKF `type` this pass.
 
@@ -53,4 +75,4 @@ class SpecsStamped(CoderResult):
     stamped: int = 0
 
 
-__all__ = ["SpecsStamped", "StoryPaths", "WorkspaceDirs"]
+__all__ = ["PlanScrub", "SpecsStamped", "StoryPaths", "WorkspaceDirs", "WorktreeSnapshot"]

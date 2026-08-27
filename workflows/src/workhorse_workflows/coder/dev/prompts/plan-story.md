@@ -1,5 +1,3 @@
-IMPORTANT: The plan MUST NOT include code snippets, patches, line-by-line edits, or direct instructions to modify source files during the planning stage. Plans may identify expected files, affected functions or contracts, dependencies, risks, and verification steps so the implementation agent can work safely. Implementation happens separately after plan review.
-
 # Planning
 
 ## Provided Inputs (authoritative — do not rediscover)
