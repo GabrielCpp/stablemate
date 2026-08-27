@@ -75,6 +75,16 @@ Linux/macOS killpg difference the portability skill uses as its example."""
 tier 2 — runs one scenario per subprocess in its own group, so a scenario that wedges is killed \
 as a tree and cannot leave a browser or a server behind. Same lifecycle as session.py above, on \
 the executing side of it."""
+"workhorse/workhorse/job.py" = """
+tier 2 — the detached bounded supervisor: a measurement runs in its own session so it survives \
+the spawning CLI, and overruns are reaped as a group (killpg, SIGKILL). The cgroup and \
+/proc reads are how the supervisor meters what it contains, and every one degrades when the \
+kernel interface is absent."""
+"groom/groom/localfs.py" = """
+the liveness probe's zombie refinement: `os.kill(pid, 0)` cannot tell a zombie from a live run, \
+so where `/proc/<pid>/stat` exists the state code disambiguates. On any platform without it the \
+read fails and the probe already answers alive — the portable behaviour is the fallback, not a \
+missing branch."""
 
 # ---------------------------------------------------------------------------------------
 
