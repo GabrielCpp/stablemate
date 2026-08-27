@@ -48,8 +48,6 @@ divergence — and read that scenario's function in `{{ workhorse_var('spec_dir'
 Read:
 
 - `AGENTS.md`
-- this repo's developer / local-stack runbook, wherever it installs one; failing that,
-  `AGENTS.md` and the repo's own documented commands
 - the story file, and the plan artifacts beside it
 - `qa.md`, limited to this scenario's findings
 - the coding standards that govern the files you edit, loaded for those files at the
@@ -125,7 +123,7 @@ Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_slug') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 
-## Story Status
+## Record What You Resolved
 
 Append this scenario's outcome to the `## QA Fix Resolution` section of
 `{{ workhorse_var('spec_dir') }}/qa.md`:
@@ -136,8 +134,9 @@ Append this scenario's outcome to the `## QA Fix Resolution` section of
   - Verification:
 ```
 
-Do not set the story's **Status** to `QA passed`. The scored rerun makes that decision, and a
-hand-written verdict only forges the artifact the rerun exists to produce.
+Do not set the story's **Status** to `QA passed`. The queue matches that line to decide whether a
+story is ever selected again; the scored rerun makes that call, and a hand-written verdict only
+forges the artifact the rerun exists to produce.
 
 ## Output
 

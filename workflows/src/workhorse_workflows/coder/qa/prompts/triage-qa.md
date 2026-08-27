@@ -24,13 +24,10 @@ The workflow supplies these. Use them exactly as given:
 - QA evidence directory: `{{ workhorse_var('qa_dir') }}`
 
 Triage **only** the story at the story path above. Do NOT search the repo, git history, or branch
-state to guess a different story. If the story path is blank or missing, say in your `notes` that the
-workflow did not provide a usable story path — that hands it to the operator. Do not pick a
-story yourself.
+state to guess a different story.
 
-If `{{ workhorse_var('spec_dir') }}` is blank, derive `<story-name>` from the story folder name in
-the story path. The QA report is `{{ workhorse_var('spec_dir') }}/qa.md` (machine verdict in
-`qa.json`); the evidence is in the `qa/` directory beside `story.md`.
+The QA report is `{{ workhorse_var('spec_dir') }}/qa.md` (machine verdict in `qa.json`); the
+evidence is in the `qa/` directory beside `story.md`.
 
 ### Rescope budget (read this — it changes your decision)
 
@@ -51,8 +48,6 @@ will not loop forever. (A deterministic guard enforces this too, but decide hone
 Read:
 
 - `AGENTS.md`
-- this repo's developer / local-stack runbook, wherever it installs one; failing that,
-  `AGENTS.md` and the repo's own documented commands
 - the story file (especially its `## Acceptance Criteria`)
 - the parent `epic.md` (to judge what is *this* story vs a sibling/other epic)
 - `qa.md` / `qa.json` and the captured evidence under the `qa/` directory

@@ -531,52 +531,6 @@ from a suite that skipped every case. Assert something the command **prints abou
 behaviour itself** — the value, the count, the status — or drive the surface and assert on what
 it shows.
 
-## The Ways A Plan Gets Sent Back
-
-These are the rejections this lane actually issues, read off its own history. Each is a
-scenario that *runs green* and still does not prove what it claims — which is why none of them
-is caught by executing the plan, and why every one of them costs a full suite run and a repair
-lap when it ships. Walk your own scenarios against this list before you answer.
-
-- **Claimed but never exercised.** `covers=` names an obligation the journey never reaches.
-  The scenario passes mechanically and the obligation is untested. For every id in `covers=`,
-  point at the step that actually causes the behaviour it names.
-- **Half-covered clause.** The criterion says `http://` *and* `https://`, both locales, or
-  "the same name after a restart", and one branch is asserted. A conjunction is covered when
-  every conjunct is; a disjunction, when each arm has its own scenario or its own assertion.
-- **Non-discriminating assertion.** It would pass under the very failure it claims to catch:
-  an unanchored `grep -c`, a substring that also appears in the framework's *partial-failure*
-  output, a helper that never checks `returncode`. Ask what would have to break for this
-  assertion to go red, and if the answer is "nothing this story could do", rewrite it.
-- **The evidence proves a neighbour.** The cited test exercises a different method, route or
-  component than the obligation — `Put` where the obligation is `PutIfGenerationMatch`, a
-  stubbed `<Outlet/>` where it is the real page. Neighbouring is not covering.
-- **Negative-only proof.** Asserting an error banner is *absent* is not asserting the content
-  rendered. Prove the positive claim; absence of a failure marker is not presence of a result.
-- **An oracle over a field the runner never writes.** Deriving a verdict from a key that does
-  not exist in the evidence the runner emits yields a vacuous pass. Assert against the record
-  shapes the runner documents, and dry-run it — this one shows up immediately.
-- **The error path nobody triggers.** An obligation whose evidence is a failure response, with
-  no scenario that causes the failure. Cause it: revoke the token, break the precondition,
-  send the conflicting write.
-- **Partial state comparison.** Checking three known objects instead of inventorying the set,
-  so an extra or missing artifact passes unseen. Compare the whole collection when the claim
-  is about the collection.
-- **A terminal proof the runner cannot reach.** "Observe that the chart renders", an OCR read,
-  a colour judged by eye. If no assertion in the harness can make it, it is not a proof —
-  express it as something the runner can decide, or say in `qa-plan.md` why it cannot be.
-- **A fixture that only works once.** It mutates shared state and passes on the first run and
-  fails on the second. Every scenario must be re-runnable against the stack it just ran on.
-- **Timing asserted without waiting.** A confirmation, a redirect or a background write
-  asserted the instant after the action. Wait for the observable condition, not a sleep, and
-  never for a fixed number of seconds chosen by trial.
-- **Evidence written somewhere else.** Artifacts left in a rehearsal or repair directory, so
-  the run-owned ledger and manifest the evidence gate reads are missing. The scored run is the
-  one that writes evidence; a dry run is `--out-dir` scratch and counts for nothing.
-- **A scenario that confounds its own assertion.** Steps that self-heal, retry destructively,
-  or fall back to a second path make the final assertion inconclusive — it cannot say which
-  path produced the result. One scenario, one causal story.
-
 ## Dry-Run Every Scenario You Write
 
 The stack is up **before** this turn, precisely so you can find out whether what you wrote

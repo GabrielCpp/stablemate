@@ -34,7 +34,14 @@ MECHANICS = {"resolve-operator", "settle-worktree", "fix-merge"}
 
 
 def _stems(directory: Path) -> set[str]:
-    return {p.stem for p in directory.glob("*.md")}
+    """The envelopes in a prompt directory — the `_`-prefixed partials are not envelopes.
+
+    Two sibling prompts dispatched for two different reasons stay two files, and the text
+    they share moves into a partial one `{% include %}`s. That file is never a role and is
+    never rendered on its own, so it neither satisfies a role nor has to be declared as
+    mechanics.
+    """
+    return {p.stem for p in directory.glob("*.md") if not p.stem.startswith("_")}
 
 
 def _flow(name: str, repo_dir: Path, library_dirs: tuple[str, ...] = ()) -> object:

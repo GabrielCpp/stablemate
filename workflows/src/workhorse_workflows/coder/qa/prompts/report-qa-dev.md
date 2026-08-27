@@ -6,30 +6,7 @@ agent: agent
 
 QA ran against the DEV environment and found failures. This code is owned by another developer — fixing it is not your job. Your job is to write a clear, actionable Jira comment that tells the story's author exactly what failed and how to reproduce it, then terminate cleanly.
 
-## Inputs (authoritative — do not rediscover)
-
-- Story path: `{{ workhorse_var('story_path') }}`
-- Spec artifact directory: `{{ workhorse_var('spec_dir') }}`
-- QA failure notes: `{{ workhorse_var('qa_notes') }}`
-
-## What to write
-
-Read:
-
-- `{{ workhorse_var('spec_dir') }}/qa-report.md` — the runner's per-AC account of the run:
-  each criterion's verdict, the step every covering assertion ran in, its check, observed and
-  expected values, and the files behind it. A failed assertion's row already carries the
-  observed value and the expected one; an UNPROVEN criterion says why nothing looked at it
-- `{{ workhorse_var('spec_dir') }}/qa-plan.md` — the runbook that was executed
-- `{{ workhorse_var('spec_dir') }}/qa.md` — the assessment of the run, when present
-- `{{ workhorse_var('spec_dir') }}/qa-evidence.json` — captured evidence (if present)
-- Any files under `{{ workhorse_var('qa_dir') }}` the report links — screenshots, assertion
-  files, command output
-- `{{ workhorse_var('story_path') }}` — to confirm the acceptance criteria
-
-Produce one file: `{{ workhorse_var('qa_dir') }}/jira-comment.md`
-
-The comment must be self-contained and copy-paste ready into Jira. Structure it as:
+{% include "_dev-report-brief.md" %}
 
 ```markdown
 ## ❌ QA FAIL — DEV

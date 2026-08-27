@@ -15,9 +15,9 @@ The workflow supplies these values. Use them exactly as given:
 - Story path: `{{ workhorse_var('story_path') }}`
 - Spec artifact directory: `{{ workhorse_var('spec_dir') }}`
 
-Apply QA fixes **only** to the story at the story path above. Do NOT search the repository, git history, or branch state to guess which story to fix, and do NOT substitute a different story. If the story path above is blank or the file does not exist, return `status: "blocked"` (structured output below) with notes saying the workflow did not provide a usable story path — that hands it to the operator. Do not pick a story yourself.
+Apply QA fixes **only** to the story at the story path above. Do NOT search the repository, git history, or branch state to guess which story to fix, and do NOT substitute a different story.
 
-If `{{ workhorse_var('spec_dir') }}` is blank, derive `<story-name>` from the story folder name in the story path above. The QA report is `{{ workhorse_var('spec_dir') }}/qa.md` and the QA evidence directory is the `qa/` subdirectory beside `story.md`.
+The QA report is `{{ workhorse_var('spec_dir') }}/qa.md` and the QA evidence directory is the `qa/` subdirectory beside `story.md`.
 
 ### Prior QA Notes
 
@@ -41,8 +41,6 @@ category.
 Read:
 
 - `AGENTS.md`
-- this repo's developer / local-stack runbook, wherever it installs one; failing that,
-  `AGENTS.md` and the repo's own documented commands
 - the story file
 - the parent `epic.md`
 - plan artifacts under `docs/specs/<story-name>/`
@@ -127,13 +125,9 @@ Append or update this section in:
 
 ## Story Status
 
-Update the story `## Implementation Status` section:
-
-- Set **Status** to `QA fixes applied` if all fixable QA failures are resolved and verification passes.
-- Set **Status** to `Blocked` if any required QA failure cannot be resolved.
-- Add verification commands and remaining follow-ups.
-
-Do not set **Status** to `QA passed`; the QA stage must rerun and make that decision.
+Do not set the story's **Status** to `QA passed`. The queue matches that line to decide whether a
+story is ever selected again, and the only thing entitled to write it is the scored rerun that
+follows you — a hand-written verdict retires the story without the QA it claims.
 
 ## Stop Conditions
 

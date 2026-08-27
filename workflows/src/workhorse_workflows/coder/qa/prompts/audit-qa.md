@@ -178,6 +178,55 @@ component was documented in, not a threshold you had to pick. The thresholds abo
 floor for a screen whose components the book has not placed yet; when a vet report covers the
 screen, quote its verdict rather than re-deriving one from the digest.
 
+## Where a green scenario still fails to prove its claim
+
+These are the plan defects this lane has actually had to send back, read off its own
+history. Every one of them *runs green* — which is why the runner's pass is not evidence
+against them, and why sampling the scenarios behind an obligation is the only thing that
+finds one. What you find here is a `plan-defect`; quote the scenario and the step.
+
+- **Claimed but never exercised.** `covers=` names an obligation the journey never reaches.
+  The scenario passes mechanically and the obligation is untested. For every id in `covers=`,
+  point at the step that actually causes the behaviour it names.
+- **Half-covered clause.** The criterion says `http://` *and* `https://`, both locales, or
+  "the same name after a restart", and one branch is asserted. A conjunction is covered when
+  every conjunct is; a disjunction, when each arm has its own scenario or its own assertion.
+- **Non-discriminating assertion.** It would pass under the very failure it claims to catch:
+  an unanchored `grep -c`, a substring that also appears in the framework's *partial-failure*
+  output, a helper that never checks `returncode`. Ask what would have to break for this
+  assertion to go red; if the answer is "nothing this story could do", it proved nothing.
+- **The evidence proves a neighbour.** The cited test exercises a different method, route or
+  component than the obligation — `Put` where the obligation is `PutIfGenerationMatch`, a
+  stubbed `<Outlet/>` where it is the real page. Neighbouring is not covering.
+- **Negative-only proof.** Asserting an error banner is *absent* is not asserting the content
+  rendered. Prove the positive claim; absence of a failure marker is not presence of a result.
+- **An oracle over a field the runner never writes.** Deriving a verdict from a key that does
+  not exist in the evidence the runner emits yields a vacuous pass. Only the record shapes the
+  runner documents can carry an assertion.
+- **The error path nobody triggers.** An obligation whose evidence is a failure response, with
+  no scenario that causes the failure — no revoked token, no broken precondition, no
+  conflicting write — so nothing ever observed the response the obligation is about.
+- **Partial state comparison.** Checking three known objects instead of inventorying the set,
+  so an extra or missing artifact passes unseen. A claim about a collection is proven only by
+  inventorying the collection.
+- **A terminal proof the runner cannot reach.** "Observe that the chart renders", an OCR read,
+  a colour judged by eye. If no assertion in the harness can make it, it is not a proof, and
+  unless `qa-plan.md` says why the claim is undecidable by the runner the obligation stands
+  unproven.
+- **A fixture that only works once.** It mutates shared state and passes on the first run and
+  fails on the second. Every scenario must be re-runnable against the stack it just ran on.
+- **Timing asserted without waiting.** A confirmation, a redirect or a background write
+  asserted the instant after the action, or behind a fixed sleep chosen by trial. The proof is
+  only as good as the wait before it, and that wait is an observable condition.
+- **Evidence written somewhere else.** Artifacts left in a rehearsal or repair directory, so
+  the run-owned ledger and manifest the evidence gate reads are missing. The scored run is the
+  one that writes evidence; a dry run is `--out-dir` scratch and counts for nothing.
+- **A scenario that confounds its own assertion.** Steps that self-heal, retry destructively,
+  or fall back to a second path make the final assertion inconclusive — it cannot say which
+  path produced the result. One scenario, one causal story.
+
+## Classify what survives
+
 Return `stands` only when no concrete refutation survives. A refutation must be classified:
 
 - `plan-defect`: the frozen plan did not actually test a required objective;
