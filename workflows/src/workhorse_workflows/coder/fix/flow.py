@@ -68,11 +68,6 @@ BLOCKED_NOTE = "blocked in fix loop (QA still failing after one retry)"
 #: fourth reading of its own output is not going to be read into submission.
 MAX_FIX_LAPS = 3
 
-#: What the turn is handed on its first pass, when no gate has run yet. A literal rather
-#: than an empty string because the prompt inlines it unconditionally — an input the flow
-#: owns is always supplied, and a `{% if %}` arm in the prompt would be the flow's
-#: obligation pushed onto the agent.
-NO_GATE_REPORT = "None. No gate has run against this item yet — this is the first pass."
 
 
 def render_gate(report: FailureReport) -> str:
@@ -137,7 +132,7 @@ class Fix(Workflow):
 
     def item(
         self,
-        gate_report: str = NO_GATE_REPORT,
+        gate_report: str = "",
         operator_context: str = "",
         impl_blocks: int = 0,
         lap: int = 0,
@@ -154,18 +149,25 @@ class Fix(Workflow):
         failed. It is a block like any other now — it parks on the story's `context.md` and
         re-enters this state with the answer in hand.
 
-        `gate_report` is the failure a gate found on the previous lap, already rendered;
-        `operator_context` is what an answered block said. Both are always supplied, and
-        both are blank-by-content rather than blank-by-absence on the ordinary first pass.
+        `gate_report` is also which of the two prompts this is. A blank one is the first
+        pass — plan the repair and write it — and a rendered one is a gate that went red,
+        which is a different job with a different input and so a different file. The flow
+        knows which it is dispatching, so it names the prompt rather than describing both
+        arrivals to the agent and asking it to sniff which one it got.
+
+        `operator_context` is what an answered block said, and is not a third arrival: it
+        is ground truth added to whichever of the two laps parked on the question.
         """
         self.logger.info(
             "fixing %s (lap %d)", self._story.story_slug, lap + 1, extra={"activity": True}
         )
-        turn = roles.turn(self, "fix-item", returns=ImplResult)
+        repair = bool(gate_report)
+        turn = roles.turn(self, "fix-item-repair" if repair else "fix-item", returns=ImplResult)
         result = self.agent(
             turn.prompt,
             returns=turn.returns,
-            # high: this turn is both the plan and the production change.
+            # high: the first pass is both the plan and the production change, and a
+            # repair lap is the same code under a gate that already objected once.
             power="high",
             add_dirs=self._dirs(),
             # The repair laps and the operator's answers are one conversation: the turn
@@ -178,9 +180,11 @@ class Fix(Workflow):
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
                 "bullet_text": self.output(select_fix_item).fix_bullet_text,
-                "gate_report": gate_report,
                 "operator_context": operator_context,
-            },
+            }
+            # Only the repair prompt renders it, and only it is ever handed it: an
+            # argument a template never reads is one a reader has to go and check.
+            | ({"gate_report": gate_report} if repair else {}),
         )
         if result.blocked:
             return self._gate_impl(result, gate_report, impl_blocks, lap)
@@ -218,7 +222,7 @@ class Fix(Workflow):
         return Continue(self._story, self.check)
 
     def read_operator_impl(
-        self, gate_report: str = NO_GATE_REPORT, impl_blocks: int = 0, lap: int = 0
+        self, gate_report: str = "", impl_blocks: int = 0, lap: int = 0
     ) -> Continue:
         """Consume the operator's answer and re-enter the turn with it in hand.
 
@@ -279,7 +283,7 @@ class Fix(Workflow):
             },
         )
         if result.status == "blocked":
-            return self._gate_impl(result, NO_GATE_REPORT, impl_blocks, 0)
+            return self._gate_impl(result, "", impl_blocks, 0)
         return Continue(result, self.recheck)
 
     def recheck(self) -> Continue:
@@ -482,4 +486,4 @@ class Fix(Workflow):
         return list(self.ctx.dirs)
 
 
-__all__ = ["BLOCKED_NOTE", "MAX_FIX_LAPS", "NO_GATE_REPORT", "Fix", "render_gate"]
+__all__ = ["BLOCKED_NOTE", "MAX_FIX_LAPS", "Fix", "render_gate"]

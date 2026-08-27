@@ -22,20 +22,14 @@ is no separate planning pass ahead of you and no second implementation pass behi
 Fix **only** the item above, against the story at that path. Do not search the backlog or git
 history for something else to repair, and do not substitute a different item.
 
-### Gate Report
+{% if operator_context %}
+### Operator answer (authoritative ground truth)
 
-{{ workhorse_var('gate_report') }}
-
-If that section names a failing command, this is a repair lap: the change you already wrote is
-in the tree and a gate rejected it. Re-run the named command in the directory it names, repair
-what it printed, and leave the rest of the change alone.
-
-### Operator Context
+You parked this turn on a question and an operator answered it. Treat the following as fact:
+it overrides any earlier assumption in the item, the story or the code.
 
 {{ workhorse_var('operator_context') }}
-
-If that section is non-empty, it is the answer to a question this turn parked on earlier.
-Treat it as settled and proceed.
+{% endif %}
 
 ## Scope
 

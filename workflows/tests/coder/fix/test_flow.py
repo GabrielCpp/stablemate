@@ -186,6 +186,15 @@ class _Agent:
             makefile.unlink()
         return {"status": "done", "notes": f"paginated the widget list on pass {nth}"}
 
+    def _fix_item_repair(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """The repair lap: the same writer, counted as one pass further on.
+
+        Two prompts, one worker — the flow dispatches a different file for a red gate, and
+        what the scripted agent does about it is what it did before: write the next pass,
+        and stop leaving a red Makefile behind once the `gate_red` budget is spent.
+        """
+        return self._fix_item(data, nth + self.counts()["fix-item"])
+
     def _qa_fix_item(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if nth <= self.qa_fails:
             return {"status": "failed", "notes": f"page two is still empty (check {nth})"}
@@ -314,17 +323,18 @@ def test_one_item_is_seeded_fixed_checked_pruned_and_committed(
     assert (workspace["api"] / "pagination.go").is_file()
 
 
-def test_the_turn_is_handed_the_item_and_an_empty_first_pass_gate_report(
+def test_the_first_pass_is_handed_the_item_and_no_gate_report_at_all(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`fix-item.md` renders four flow-owned values, and none of them has a fallback arm.
+    """`fix-item.md` is the first-lap prompt, and a first lap has no gate to report.
 
-    The prompt inlines `gate_report` and `operator_context` unconditionally, so the flow owes
-    both on the first pass too — blank by *content*, never by absence. This is the assertion
-    that says the flow pays that debt.
+    The two arrivals used to share one file, which is why the turn was handed a literal
+    saying no gate had run and a paragraph teaching it to tell the two apart from that
+    string. The flow knows which lap it is dispatching, so it names the prompt — and an
+    argument the first-lap template never reads is not passed to it either.
     """
     agent = _Agent(workspace)
 
@@ -333,8 +343,9 @@ def test_the_turn_is_handed_the_item_and_an_empty_first_pass_gate_report(
     first = agent.args_for("fix-item")[0]
     assert first["bullet_text"] == TEXT, first
     assert first["story_path"].endswith("story.md"), first
-    assert "no gate has run" in first["gate_report"].lower(), first
+    assert "gate_report" not in first, first
     assert first["operator_context"] == "", first
+    assert agent.counts()["fix-item-repair"] == 0, agent.counts()
 
 
 def test_the_drain_keeps_going_until_the_section_is_empty(
@@ -385,9 +396,10 @@ def test_a_red_gate_buys_a_repair_lap_and_hands_the_turn_its_output(
     result = drive_flow(Fix(), env(), agent)
 
     assert result.has_fix is False, result
-    assert agent.counts()["fix-item"] == 2, agent.counts()
+    assert agent.counts()["fix-item"] == 1, agent.counts()
+    assert agent.counts()["fix-item-repair"] == 1, agent.counts()
 
-    lap = agent.args_for("fix-item")[1]["gate_report"]
+    lap = agent.args_for("fix-item-repair")[0]["gate_report"]
     assert "Repair lap 1" in lap, lap
     assert "make lint" in lap, lap
     assert "undefined: pageSize" in lap, lap
@@ -421,9 +433,12 @@ def test_a_gate_still_red_when_the_laps_run_out_parks_rather_than_giving_up(
     assert f"after {MAX_FIX_LAPS} repair lap(s)" in gate, gate
     assert "undefined: pageSize" in gate, gate
 
-    # Three laps inside the budget, then the turn the operator's answer re-enters.
-    assert agent.counts()["fix-item"] == MAX_FIX_LAPS + 1, agent.counts()
-    assert "Twenty per page" in agent.args_for("fix-item")[-1]["operator_context"]
+    # Three laps inside the budget, then the turn the operator's answer re-enters. The first
+    # is the first-pass prompt and every one after it is the repair prompt — the answer is
+    # ground truth added to a lap, not a third arrival with a file of its own.
+    counts = agent.counts()
+    assert counts["fix-item"] + counts["fix-item-repair"] == MAX_FIX_LAPS + 1, counts
+    assert "Twenty per page" in agent.args_for("fix-item-repair")[-1]["operator_context"]
     assert BULLET not in _backlog(docs), _backlog(docs)
 
 
