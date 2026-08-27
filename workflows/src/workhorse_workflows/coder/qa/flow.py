@@ -752,9 +752,9 @@ class Qa(Workflow):
         This is the loop's join point — six states route back here, because a product fix, an
         operator answer or a regression fix can all change what the diff obligates.
         """
-        # The join point ends the repair chain for the same reason it clears `plan_authored`
-        # below: every state that routes back here changed what the diff obligates, so the
-        # conversation that was repairing the old plan is now describing the wrong file.
+        # The join point ends the repair chain because every state that routes back here
+        # changed what the diff obligates, so the conversation that was repairing the old
+        # plan is now describing the wrong file.
         self.reset_session(self._chain)
         impl = self.output(resolve_impl_context)
         build = self.call(
@@ -783,10 +783,10 @@ class Qa(Workflow):
         )
         if result.status == "passed":
             # To the stack, not to the plan: the planner authors against a surface it can
-            # reach. `plan_authored` is cleared on the way, because this is the join point —
-            # a state routing back here changed what the diff obligates, and the plan that
-            # answered the old obligations must not be the one that runs.
-            return Continue(result, self.stack, loop=loop.update(plan_authored=False))
+            # reach. Nothing has to be cleared on the way — what `stack` reads is the plan
+            # on disk, gated against the packet this state just rebuilt, so a plan that
+            # answered the old obligations fails those gates and is re-authored.
+            return Continue(result, self.stack, loop=loop)
         if loop.context_rework >= MAX_CONTEXT_REWORKS:
             return self._exhausted(loop, f"{loop.context_rework} OKF-context repair")
         return Continue(result, self.repair_context, loop=loop)
@@ -881,6 +881,11 @@ class Qa(Workflow):
                 extra={"activity": True},
             )
             return self._validated(loop)
+        # A rejoin from a context rebuild — an `apply_fixes` lap, a grounding repair — buys a
+        # fresh `power="high"` authoring turn whenever the standing plan does not answer the
+        # rebuilt packet. What bounds that is `MAX_CONTEXT_REWORKS`, the ceiling on the
+        # rebuilds themselves, not the clock: a rejoin cannot happen without one.
+        _note_plan_budget(loop, self.logger)
         overran = ""
         started = time.monotonic()
         drafted: QaPlanResult | None = None
@@ -1006,9 +1011,9 @@ class Qa(Workflow):
     def _standing_plan(self) -> bool:
         """Does a `qa_plan.py` already stand that lints and validates against the packet?
 
-        The plan turn used to re-author from the story every time it ran, because
-        `build_context` clears `plan_authored` on every rejoin — so a re-QA of a story
-        whose accepted plan was sitting on disk paid a full authoring turn to write it
+        The plan turn used to re-author from the story every time it ran, because the loop
+        carried a boolean that every rejoin through `build_context` cleared — so a re-QA of a
+        story whose accepted plan was sitting on disk paid a full authoring turn to write it
         again, and the benchmark's frozen fixtures paid the same turn to reproduce a plan
         they shipped with. Both machine gates run here, fresh, against the packet the
         context stage just rebuilt: the lint gate vouches for the AST, and the validate
@@ -1158,7 +1163,7 @@ class Qa(Workflow):
                 return self._guard_dry_run(
                     gate, loop.update(plan_validation_notes=_finding(False, gate.notes))
                 )
-        return Continue(validation, self.run, loop=loop.update(plan_authored=True))
+        return Continue(validation, self.run, loop=loop)
 
     # ── stack and run ─────────────────────────────────────────────────────────────────
 
@@ -1181,12 +1186,14 @@ class Qa(Workflow):
         U+2019, a password constant that disagreed with the seed script. Nothing about the
         plan changes what the stack does, so nothing is lost by standing it up first.
 
-        `plan_authored` is why the same node serves both entries. `setup_fix` rejoins here,
-        and it can be reached from the *runner* as well as from a stack that would not come
-        up — so a fixer that repaired a broken emulator mid-run must return to the run, not to
-        a second authoring turn. `build_context` clears the flag, because a state routing back
-        to the join point changed what the diff obligates and the plan answering the old
-        obligations must not be the one that runs.
+        This node does not decide whether a plan has to be written. It used to, reading a
+        boolean the loop carried — set when a plan validated, cleared on every rejoin through
+        `build_context` — which mattered because `setup_fix` rejoins here, and can be reached
+        from the *runner* as well as from a stack that would not come up: a fixer that
+        repaired a broken emulator mid-run must return to the run, not to a second authoring
+        turn. `plan` asks that question of the artifact now (`_standing_plan`), and asks it
+        of the packet the context stage just rebuilt, so the flag had nothing left to say
+        that the file on disk does not.
 
         Which makes this an entry into the plan lane, bounded like every other one by
         `MAX_CONTEXT_REWORKS` — a rejoin costs a context rebuild, and those are counted.
@@ -1215,14 +1222,7 @@ class Qa(Workflow):
                     blocked_problems=()
                 ),
             )
-        if not loop.plan_authored:
-            # `build_context` clears `plan_authored`, so every rejoin from a context rebuild —
-            # an `apply_fixes` lap, a grounding repair — buys a fresh `power="high"` authoring
-            # turn. What bounds that is `MAX_CONTEXT_REWORKS`, the ceiling on the rebuilds
-            # themselves, not the clock: a rejoin cannot happen without one.
-            _note_plan_budget(loop, self.logger)
-            return Continue(status, self.plan, loop=loop)
-        return Continue(status, self.run, loop=loop)
+        return Continue(status, self.plan, loop=loop)
 
     def run(self, loop: QaLoop) -> Continue | Done:
         """Execute the plan through ostler's runner — the expensive step, and its own state.
