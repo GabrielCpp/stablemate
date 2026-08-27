@@ -160,6 +160,14 @@ def test_the_prompt_documents_the_keys_the_turn_is_asked_for(
     if not fields:
         return  # not a model: the engine asks for one scalar key, and a prompt cannot drift
     body = (PACKAGE / workflow / prompt).read_text(encoding="utf-8")
+    if "{{ result_schema }}" in body:
+        # The contract is not hand-written here: the placeholder is filled at turn time by
+        # `schema_block(...)`, which renders the ```json block this test would otherwise
+        # look for straight from the declared model — `roles.turn` builds it from its own
+        # `returns` argument, so for those sites the pairing holds by construction. What
+        # could still drift is a hand-built args dict rendering a *different* model than
+        # `returns=` names, which sits outside what a per-prompt scan can see.
+        return
     examples = [keys for block in BLOCK.findall(body) if (keys := _top_level_keys(block))]
     assert any(keys == fields for keys in examples), (
         f"{source}:{lineno}: no ```json block in {prompt} has exactly the top-level keys "

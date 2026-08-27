@@ -16,7 +16,8 @@ conditional between two literals (`"a.md" if cond else "b.md"`, which is how okf
 one drain state picks the repair prompt over the discovery one) — both arms are checked, so
 nothing stops being covered. And `turn.prompt`, the coder workflow's role indirection: the
 `turn = roles.turn(self, "dev-fix")` that produced it is in the same function, so the role
-name is still a literal in the source and the envelope it resolves to is still checkable
+name is still a literal in the source — or a conditional between two literals, which gets
+the same both-arms treatment — and the envelope it resolves to is still checkable
 here — under the calling flow's own `prompts/`, which is the directory the walked file
 sits in. That is the whole reason the resolver names the envelope after its own stem. Anything
 else — a computed name, an f-string — is a failure, because silently dropping it would turn
@@ -58,22 +59,30 @@ def _agent_prompts(source: Path) -> list[tuple[int, ast.expr]]:
             continue
         if node.args:
             found.extend(
-                (node.lineno, _literalize(arg, resolved, flow))
+                (node.lineno, lit)
                 for arg in _branches(node.args[0])
+                for lit in _literalize(arg, resolved, flow)
             )
             continue
         for kw in node.keywords:
             if kw.arg == "prompt":
                 found.extend(
-                    (node.lineno, _literalize(arg, resolved, flow))
+                    (node.lineno, lit)
                     for arg in _branches(kw.value)
+                    for lit in _literalize(arg, resolved, flow)
                 )
     return found
 
 
-def _roles_by_line(tree: ast.Module) -> dict[int, str]:
-    """Every `<name> = roles.turn(self, "<role>")` in the module, by the line it is on."""
-    seen: dict[int, str] = {}
+def _roles_by_line(tree: ast.Module) -> dict[int, list[str]]:
+    """Every `<name> = roles.turn(self, "<role>")` in the module, by the line it is on.
+
+    The role argument gets the same ternary allowance the prompt argument does below: a
+    state that picks its role from the item it drew names two envelopes, and both are
+    recorded so both are checked. An arm that is not a string literal spoils the whole
+    site — recording the literal arm alone would half-cover it silently.
+    """
+    seen: dict[int, list[str]] = {}
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
             continue
@@ -86,14 +95,18 @@ def _roles_by_line(tree: ast.Module) -> dict[int, str]:
         )
         if not named_roles_turn or len(node.value.args) < 2:
             continue
-        role = node.value.args[1]
-        if isinstance(role, ast.Constant) and isinstance(role.value, str):
-            seen[node.lineno] = role.value
+        roles: list[str] = []
+        for arm in _branches(node.value.args[1]):
+            if not (isinstance(arm, ast.Constant) and isinstance(arm.value, str)):
+                break
+            roles.append(arm.value)
+        else:
+            seen[node.lineno] = roles
     return seen
 
 
-def _literalize(arg: ast.expr, resolved: dict[int, str], flow: str) -> ast.expr:
-    """`turn.prompt` → the envelope path of the nearest preceding `roles.turn(…)`.
+def _literalize(arg: ast.expr, resolved: dict[int, list[str]], flow: str) -> list[ast.expr]:
+    """`turn.prompt` → the envelope paths of the nearest preceding `roles.turn(…)`.
 
     Nearest *preceding* rather than "the one in this function": the walk is over an AST
     with no scope attached, and every call site in this repo assigns its `turn` on the
@@ -108,11 +121,13 @@ def _literalize(arg: ast.expr, resolved: dict[int, str], flow: str) -> ast.expr:
         and arg.value.id == "turn"
     )
     if not is_turn_prompt:
-        return arg
+        return [arg]
     before = [line for line in resolved if line <= arg.lineno]
     if not before:
-        return arg
-    return ast.Constant(value=f"{flow}/prompts/{resolved[max(before)]}.md")
+        return [arg]
+    return [
+        ast.Constant(value=f"{flow}/prompts/{role}.md") for role in resolved[max(before)]
+    ]
 
 
 def _branches(arg: ast.expr) -> list[ast.expr]:
