@@ -38,7 +38,7 @@ Run:
 from __future__ import annotations
 
 import json
-import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -48,8 +48,12 @@ REPO = Path(__file__).resolve().parents[1]
 #: Suffixes that are a shell script by name.
 SHELL_SUFFIXES = (".sh", ".bash", ".zsh", ".ksh", ".fish")
 
-#: A shell shebang, so an extensionless `bin/deploy` is not a way around the suffix list.
-SHEBANG = re.compile(r"^#!\s*\S*/(?:env\s+)?(?:ba|z|k|da)?sh\b")
+#: Interpreters a shebang can name that make the extensionless file a shell script, so
+#: `bin/deploy` is not a way around the suffix list.
+SHELL_INTERPRETERS = frozenset({"sh", "bash", "zsh", "ksh", "dash", "fish"})
+
+#: Tokens that end a command in a pipeline, and with it any `tee` argument list.
+CONTROL_TOKENS = frozenset({"|", "||", "&&", ";", "&"})
 
 #: Paths where another program dictates the interface, so the shell file *is* the contract.
 #: git execs `.githooks/*` directly and farrier rewrites a fenced region inside them; Docker
@@ -61,12 +65,6 @@ ALLOWED = frozenset(
         ".githooks/pre-commit",
         "ostler/docker/sandbox/entrypoint.sh",
     }
-)
-
-#: A Bash tool call that authors a script rather than running one: a redirect or a `tee` into a
-#: shell-script path. Running an existing script is not creating one, so `bash x.sh` is fine.
-BASH_AUTHORS_SCRIPT = re.compile(
-    r"(?:>{1,2}\s*|\btee\s+(?:-\S+\s+)*)\S*\.(?:sh|bash|zsh|ksh|fish)\b"
 )
 
 STEER = (
@@ -101,7 +99,46 @@ def _is_shell(rel: str, path: Path) -> str | None:
         first = path.open("r", encoding="utf-8", errors="replace").readline()
     except OSError:
         return None
-    return f"shell shebang {first.strip()!r}" if SHEBANG.match(first) else None
+    return f"shell shebang {first.strip()!r}" if _shebang_names_a_shell(first) else None
+
+
+def _shebang_names_a_shell(first: str) -> bool:
+    """Whether `first` is a shebang naming a shell — read as the line's actual grammar
+    (interpreter path, then arguments), not pattern-matched against its raw text."""
+    if not first.startswith("#!"):
+        return False
+    parts = first[2:].strip().split()
+    if parts and Path(parts[0]).name == "env":
+        parts = [part for part in parts[1:] if not part.startswith("-")]
+    return bool(parts) and Path(parts[0]).name in SHELL_INTERPRETERS
+
+
+def _bash_writes_a_script(command: str) -> bool:
+    """Whether a Bash call authors a script rather than running one: a redirect or a `tee`
+    whose target path has a shell suffix. Running an existing script is not creating one,
+    so `bash x.sh` passes. Tokenized with shlex so quoting is honoured; a command shlex
+    cannot finish (a heredoc body's stray quote) degrades to whitespace words, which still
+    keeps the redirect next to its target."""
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        tokens = command.split()
+    targets: list[str] = []
+    tee_arguments = False
+    previous = ""
+    for token in tokens:
+        if previous.endswith(">"):
+            targets.append(token)
+        elif token.startswith(">"):
+            targets.append(token.lstrip(">&"))
+        elif token in CONTROL_TOKENS:
+            tee_arguments = False
+        elif Path(token).name == "tee":
+            tee_arguments = True
+        elif tee_arguments and not token.startswith("-"):
+            targets.append(token)
+        previous = token
+    return any(Path(target).suffix in SHELL_SUFFIXES for target in targets)
 
 
 def check_no_shell(repo: Path = REPO) -> list[str]:
@@ -136,7 +173,7 @@ def hook_decision(payload: dict[str, object]) -> str | None:
         return f"Refusing to write {raw} — a shell script. {STEER}"
     if tool == "Bash":
         command = tool_input.get("command")
-        if isinstance(command, str) and BASH_AUTHORS_SCRIPT.search(command):
+        if isinstance(command, str) and _bash_writes_a_script(command):
             return f"Refusing a Bash call that writes a shell script. {STEER}"
     return None
 
