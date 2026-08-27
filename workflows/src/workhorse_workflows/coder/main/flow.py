@@ -18,19 +18,18 @@ during QA must not re-run the implementation.
 PR cluster, which is the whole distance either of them travels. A counter is a state
 parameter, so seeding one is a keyword on a `Continue` rather than a node of its own.
 
-**Two disjunctions that look alike and are not.** The working epic resolves two different
-ways, and the graph keeps them apart:
+**Two epics that look alike and are not.** The working epic resolves two different ways,
+and the graph keeps them apart behind two readbacks:
 
-* the story pipeline uses `prepare_story.story_epic or select_story.epic or epic` — the
-  epic the *story* belongs to, discovered by scanning when story mode was handed a bare
-  slug;
-* `commit_story`, `qa_give_up` and `replan_epic` use `select_epic.epic or epic` — the epic
-  the *queue* is working, which in story mode is whatever the run was invoked with.
+* `_epic` is `select_epic.epic or self.epic` — the epic the *queue* is working, which in
+  story mode is whatever the run was invoked with;
+* `_story_epic()` is `prepare_story.story_epic or _epic` — the epic the *story* belongs
+  to, discovered by scanning when story mode was handed a bare slug.
 
-Both are fall-back chains because `self.output()` raises for a node that has not run, and
-in story mode neither `select_epic` nor `select_story` ever runs. The queue epic is carried
-as a state parameter rather than read back through a guarded `self.output`, so a resumed
-run does not have to re-derive it.
+Both guard `NodeNotRunError`, because in story mode `select_epic` never runs. Neither is
+threaded as a state parameter: the epic is already in the checkpoint as the node record
+`select_epic` wrote, and restating it on twenty-odd signatures made every one of them
+carry an argument it only ever passed along.
 
 **The backlog drain is the `fix` flow, handed off to.** A story that goes green drains
 whatever it filed on the way, and `drain` below is one `handoff` — not a second copy of
@@ -237,7 +236,7 @@ class Coder(Workflow):
         if self.mode == "story":
             branch = self.call(branch_story, self.story, self.docs_path)
             self.logger.info("story mode: %s off %s", branch.story_branch, branch.base_branch)
-            return Continue(branch, self.prepare, slug=self.story, epic=self.epic)
+            return Continue(branch, self.prepare, slug=self.story)
         return Continue(self.call(init_base), self.select_epic)
 
     # ── the epic queue ────────────────────────────────────────────────────────────────
@@ -259,9 +258,9 @@ class Coder(Workflow):
             return Done(pick)
         base = self.output(init_base).base_branch
         self.call(branch_epic, pick.epic, base, str(self.run_dir))
-        return Continue(pick, self.select_story, epic=pick.epic)
+        return Continue(pick, self.select_story)
 
-    def select_story(self, epic: str = "") -> Continue:
+    def select_story(self) -> Continue:
         """The next unimplemented story of this epic.
 
         Three outcomes, and the third is the one worth naming: `blocked` does *not* fail the
@@ -269,19 +268,20 @@ class Coder(Workflow):
         epic is a planning problem, and stopping the whole loop over it would strand every
         other epic behind it.
         """
+        epic = self._epic
         pick = self.call(select_story, epic, self.docs_path, str(self.run_dir))
         if pick.story_outcome == "story":
-            return Continue(pick, self.prepare, slug=pick.story_slug, epic=epic)
+            return Continue(pick, self.prepare, slug=pick.story_slug)
         if pick.story_outcome == "done":
             self.logger.info("epic %s has no stories left — opening its PR", epic)
-            return Continue(pick, self.open_pr, epic=epic)
+            return Continue(pick, self.open_pr)
         # `blocked`, and every other verdict: the epic is set aside and the queue advances.
         self.call(flag_epic_blocked, epic, str(self.run_dir), pick.reason)
         return Continue(pick, self.select_epic)
 
     # ── one story ─────────────────────────────────────────────────────────────────────
 
-    def prepare(self, slug: str = "", epic: str = "") -> Continue:
+    def prepare(self, slug: str = "") -> Continue:
         """Resolve the slug to paths, and seed the triage counter.
 
         The triage budget is seeded here rather than inside `qa` because it has to
@@ -296,11 +296,11 @@ class Coder(Workflow):
         story selected after it is then held responsible for documenting.
         """
         self.call(snapshot_worktree_state, self.docs_path)
-        story = self.call(prepare_story, self.docs_path, slug, epic)
+        story = self.call(prepare_story, self.docs_path, slug, self._epic)
         self.logger.info("preparing %s%s", slug, self._progress(), extra={"activity": True})
-        return Continue(story, self.dev, epic=epic)
+        return Continue(story, self.dev)
 
-    def dev(self, epic: str = "", triage: int = 0) -> Continue:
+    def dev(self, triage: int = 0) -> Continue:
         """Plan and implement the story.
 
         `replan` is the sub-flow saying the *story* was the wrong thing to build — an
@@ -319,22 +319,21 @@ class Coder(Workflow):
             Dev,
             story=slug,
             docs_path=self.docs_path,
-            epic=self._story_epic(epic),
+            epic=self._story_epic(),
             operator_mode=self.operator_mode,
             target_env=self.target_env,
         )
         if result.status == "replan":
-            return Continue(result, self.replan, epic=epic, notes=result.operator_notes)
+            return Continue(result, self.replan, notes=result.operator_notes)
         # `ready`, and every other verdict: on to the review.
         return Continue(
             result,
             self.review,
-            epic=epic,
             triage=triage,
             session_turns=result.session_turns,
         )
 
-    def review(self, epic: str = "", triage: int = 0, session_turns: int = 0) -> Continue:
+    def review(self, triage: int = 0, session_turns: int = 0) -> Continue:
         """Code review and reuse, with no branch on the outcome.
 
         Nothing is read back, and that is not an oversight: the review flow either
@@ -354,13 +353,13 @@ class Coder(Workflow):
             Review,
             story=slug,
             docs_path=self.docs_path,
-            epic=self._story_epic(epic),
+            epic=self._story_epic(),
             operator_mode=self.operator_mode,
             inherited_turns=session_turns,
         )
-        return Continue(result, self.document, epic=epic, triage=triage)
+        return Continue(result, self.document, triage=triage)
 
-    def document(self, epic: str = "", triage: int = 0) -> Continue:
+    def document(self, triage: int = 0) -> Continue:
         """Fold the story into the OKF book.
 
         `not_applicable` — a repo with no book — passes, because the alternative is that
@@ -380,19 +379,18 @@ class Coder(Workflow):
             Docs,
             story=self._story.story_slug,
             docs_path=self.docs_path,
-            epic=self._story_epic(epic),
+            epic=self._story_epic(),
             target_env=self.target_env,
             preexisting=self._preexisting(),
             operator_mode=self.operator_mode,
         )
         if not _documented(result):
-            return Continue(result, self.blocked_docs, epic=epic, triage=triage,
+            return Continue(result, self.blocked_docs, triage=triage,
                             notes=_docs_notes(result, "story"))
-        return Continue(result, self.qa, epic=epic, triage=triage)
+        return Continue(result, self.qa, triage=triage)
 
     def blocked_docs(
         self,
-        epic: str = "",
         triage: int = 0,
         notes: str = "",
         resume_at: Literal["document", "give_up", "finalize"] = "document",
@@ -435,7 +433,6 @@ class Coder(Workflow):
             "Fix the code, the spec or the plan so the book can be made true of it, and "
             "touch this file when the run should try again.",
             self.docs_operator,
-            epic=epic,
             triage=triage,
             resume_at=resume_at,
             attempts=attempts,
@@ -443,7 +440,6 @@ class Coder(Workflow):
 
     def docs_operator(
         self,
-        epic: str = "",
         triage: int = 0,
         resume_at: Literal["document", "give_up", "finalize"] = "document",
         attempts: int = 0,
@@ -453,12 +449,12 @@ class Coder(Workflow):
             "operator answered the docs gate — redocumenting %s", self._story.story_slug
         )
         if resume_at == "give_up":
-            return Continue(None, self.give_up, epic=epic, attempts=attempts)
+            return Continue(None, self.give_up, attempts=attempts)
         if resume_at == "finalize":
-            return Continue(None, self.finalize, epic=epic)
-        return Continue(None, self.document, epic=epic, triage=triage)
+            return Continue(None, self.finalize)
+        return Continue(None, self.document, triage=triage)
 
-    def qa(self, epic: str = "", triage: int = 0) -> Continue:
+    def qa(self, triage: int = 0) -> Continue:
         """The four-way gate the whole loop turns on.
 
         `rescope` is the interesting arm. It sends the story back to `dev` carrying the
@@ -478,17 +474,17 @@ class Coder(Workflow):
             Qa,
             story=self._story.story_slug,
             docs_path=self.docs_path,
-            epic=self._story_epic(epic),
+            epic=self._story_epic(),
             operator_mode=self.operator_mode,
             target_env=self.target_env,
             triage_scope=triage,
             preexisting=self._preexisting(),
         )
         if result.status == "replan":
-            return Continue(result, self.replan, epic=epic, notes=result.operator_notes)
+            return Continue(result, self.replan, notes=result.operator_notes)
         if result.status == "rescope":
             self.logger.info("QA rescoped %s — back to dev", self._story.story_slug)
-            return Continue(result, self.dev, epic=epic, triage=result.triage_scope)
+            return Continue(result, self.dev, triage=result.triage_scope)
         if result.status == "refix":
             # Triage found the *product* wrong. The QA lane's fixer is briefed on a QA report
             # and told not to broaden behaviour, so it patches the surface the scenario
@@ -498,28 +494,27 @@ class Coder(Workflow):
             self.logger.info(
                 "QA found a product defect in %s — back to dev", self._story.story_slug
             )
-            return Continue(result, self.dev, epic=epic, triage=result.triage_scope)
+            return Continue(result, self.dev, triage=result.triage_scope)
         if result.status == "inconclusive":
             # The only mode that still lands here is `target_env="dev"`: every other
             # exhaustion now escalates to the operator gate inside the QA sub-flow itself
             # and never returns with this status at all.
-            return Continue(result, self.give_up, epic=epic, attempts=result.qa_rework)
+            return Continue(result, self.give_up, attempts=result.qa_rework)
         # `passed`, and every other verdict: the story is green, so drain what it filed.
         return Continue(
             result,
             self.drain,
-            epic=epic,
             docs_recheck_required=result.docs_recheck_required,
         )
 
-    def replan(self, epic: str = "", notes: str = "") -> Continue:
+    def replan(self, notes: str = "") -> Continue:
         """Rewrite the epic from what the operator said, and re-select.
 
         The one turn in this graph that rewrites planning documents rather than code, which
         is why it is `power="high"`. `notes` is threaded rather than read back: it comes out
         of a sub-flow's return value, and a sub-flow's node records are in its own subscope.
         """
-        self.logger.info("replanning epic %s", self._queue_epic(epic), extra={"activity": True})
+        self.logger.info("replanning epic %s", self._epic, extra={"activity": True})
         turn = roles.turn(self, "replan-epic", returns=ReplanResult)
         result = self.agent(
             turn.prompt,
@@ -529,16 +524,16 @@ class Coder(Workflow):
             power="high",
             add_dirs=self._dirs(),
             args=turn.args | {
-                "epic": self._queue_epic(epic),
+                "epic": self._epic,
                 "story_slug": self._story.story_slug,
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
                 "operator_context": notes,
             },
         )
-        return Continue(result, self.select_story, epic=epic)
+        return Continue(result, self.select_story)
 
-    def give_up(self, epic: str = "", attempts: int = 0) -> Continue:
+    def give_up(self, attempts: int = 0) -> Continue:
         """QA could not be carried: the dev-target report ends here, and the run stops.
 
         Real QA exhaustion no longer reaches this method: every budget the QA sub-flow can
@@ -566,7 +561,7 @@ class Coder(Workflow):
             Docs,
             story=self._story.story_slug,
             docs_path=self.docs_path,
-            epic=self._story_epic(epic),
+            epic=self._story_epic(),
             target_env=self.target_env,
             preexisting=self._preexisting(),
             operator_mode=self.operator_mode,
@@ -575,7 +570,6 @@ class Coder(Workflow):
             return Continue(
                 result,
                 self.blocked_docs,
-                epic=epic,
                 notes=_docs_notes(result, "failed story"),
                 resume_at="give_up",
                 attempts=attempts,
@@ -586,7 +580,7 @@ class Coder(Workflow):
                 self._story.story_slug,
                 extra={"activity": True},
             )
-            return Continue(result, self.qa, epic=epic)
+            return Continue(result, self.qa)
         raise WorkflowFailed(
             f"QA never passed for story {self._story.story_slug!r} after {attempts} "
             f"attempt(s); nothing was committed for this story.",
@@ -596,7 +590,7 @@ class Coder(Workflow):
 
     # ── the backlog drain ─────────────────────────────────────────────────────────────
 
-    def drain(self, epic: str = "", docs_recheck_required: bool = True) -> Continue:
+    def drain(self, docs_recheck_required: bool = True) -> Continue:
         """Hand the backlog to the `fix` flow, which drains it to dry and returns.
 
         `Fix` documents and commits each item it drains, so nothing about the drained work
@@ -612,13 +606,12 @@ class Coder(Workflow):
         return Continue(
             result,
             self.finalize,
-            epic=epic,
             docs_recheck_required=docs_recheck_required,
         )
 
     # ── the far end of a story ────────────────────────────────────────────────────────
 
-    def finalize(self, epic: str = "", docs_recheck_required: bool = True) -> Continue:
+    def finalize(self, docs_recheck_required: bool = True) -> Continue:
         """Recheck documentation after a mutation, then commit the story.
 
         A clean QA pass needs no redundant second Docs handoff. QA repairs and the nested
@@ -627,13 +620,13 @@ class Coder(Workflow):
         """
         if not docs_recheck_required:
             if self.mode == "epic":
-                return Continue(None, self.commit, epic=epic)
+                return Continue(None, self.commit)
             return Continue(None, self.commit_pr)
         result = self.handoff(
             Docs,
             story=self._story.story_slug,
             docs_path=self.docs_path,
-            epic=self._story_epic(epic),
+            epic=self._story_epic(),
             target_env=self.target_env,
             preexisting=self._preexisting(),
             operator_mode=self.operator_mode,
@@ -642,15 +635,14 @@ class Coder(Workflow):
             return Continue(
                 result,
                 self.blocked_docs,
-                epic=epic,
                 notes=_docs_notes(result, "story (final pass)"),
                 resume_at="finalize",
             )
         if self.mode == "epic":
-            return Continue(result, self.commit, epic=epic)
+            return Continue(result, self.commit)
         return Continue(result, self.commit_pr)
 
-    def commit(self, epic: str = "", dirty_laps: int = 0) -> Continue | Await:
+    def commit(self, dirty_laps: int = 0) -> Continue | Await:
         """The story's work is recorded, or it parks.
 
         The workflow used to commit for the agent — `git commit -a` per affected repo,
@@ -677,15 +669,15 @@ class Coder(Workflow):
         )
         if not state.clean:
             if dirty_laps:
-                return self._dirty_gate(state.dirty, epic)
-            return Continue(state, self.settle, epic=epic, dirty_laps=1)
+                return self._dirty_gate(state.dirty)
+            return Continue(state, self.settle, dirty_laps=1)
         self.reset_session(self._settle_chain())
         result = self.call(
-            stamp_story_passed, self._queue_epic(epic), story.story_slug, story.story_path
+            stamp_story_passed, self._epic, story.story_slug, story.story_path
         )
-        return Continue(result, self.select_story, epic=epic)
+        return Continue(result, self.select_story)
 
-    def settle(self, epic: str = "", dirty_laps: int = 1) -> Continue | Await:
+    def settle(self, dirty_laps: int = 1) -> Continue | Await:
         """One chained turn to record what the story left on disk, then re-read the tree.
 
         Chained deliberately, and to the story rather than the run: this is the same agent
@@ -714,15 +706,15 @@ class Coder(Workflow):
                 "story_path": story.story_path,
                 "spec_dir": story.spec_dir,
                 "story_slug": story.story_slug,
-                "epic": self._queue_epic(epic),
+                "epic": self._epic,
                 "dirty_paths": "\n".join(state.dirty),
                 "result_schema": schema_block(WorktreeSettled),
             },
             session=self._settle_chain(),
         )
         if result.blocked:
-            return self._dirty_gate(state.dirty, epic, notes=result.notes)
-        return Continue(result, self.commit, epic=epic, dirty_laps=dirty_laps)
+            return self._dirty_gate(state.dirty, notes=result.notes)
+        return Continue(result, self.commit, dirty_laps=dirty_laps)
 
     def commit_pr(self) -> Done:
         """Story mode's end: commit what the story left, and open its PR.
@@ -749,7 +741,7 @@ class Coder(Workflow):
 
     # ── the epic's pull request, and the two gates behind it ──────────────────────────
 
-    def open_pr(self, epic: str = "") -> Continue:
+    def open_pr(self) -> Continue:
         """The epic is done, so ship it.
 
         The pop comes *before* the PR deliberately: `open_pr` commits the docs it finds, so
@@ -761,15 +753,15 @@ class Coder(Workflow):
         epic whose branch carries a *set-aside* epic declines to ship: `open_pr` refuses to
         PR work that would merge past another epic's gate, and the queue advances anyway.
         """
-        self.call(prune_epic, self._queue_epic(epic))
-        gate = self.call(open_pr, self._queue_epic(epic), self.output(init_base).base_branch,
-                         str(self.run_dir))
+        epic = self._epic
+        self.call(prune_epic, epic)
+        gate = self.call(open_pr, epic, self.output(init_base).base_branch, str(self.run_dir))
         if not gate.should_gate:
             self.logger.info("no PR to gate on for %s — taking the next epic", epic)
             return Continue(gate, self.select_epic)
-        return Continue(gate, self.ci, epic=epic)
+        return Continue(gate, self.ci)
 
-    def ci(self, epic: str = "", ci_rework: int = 0, merge_rework: int = 0) -> Continue | Await:
+    def ci(self, ci_rework: int = 0, merge_rework: int = 0) -> Continue | Await:
         """Is the epic's PR green?
 
         `unavailable` passes through to the merge, and that is the deliberate design rather
@@ -783,16 +775,13 @@ class Coder(Workflow):
         gate = self.output(open_pr)
         checks = self.call(poll_pr_checks, "", epic_branch(gate.ci_epic))
         if checks.status in ("passed", "unavailable"):
-            return Continue(checks, self.merge, epic=epic, merge_rework=merge_rework)
+            return Continue(checks, self.merge, merge_rework=merge_rework)
         # `failed`, and every other verdict: the guard decides whether a lap is left.
         if ci_rework >= self.MAX_CI_REWORKS:
-            return self._ci_gate(gate.ci_epic, ci_rework, checks.summary, epic, merge_rework)
-        return Continue(checks, self.repair_ci, epic=epic, ci_rework=ci_rework,
-                        merge_rework=merge_rework)
+            return self._ci_gate(gate.ci_epic, ci_rework, checks.summary, merge_rework)
+        return Continue(checks, self.repair_ci, ci_rework=ci_rework, merge_rework=merge_rework)
 
-    def repair_ci(
-        self, epic: str = "", ci_rework: int = 0, merge_rework: int = 0
-    ) -> Continue | Await:
+    def repair_ci(self, ci_rework: int = 0, merge_rework: int = 0) -> Continue | Await:
         """One automated attempt at red CI: fix it, push it, spend a lap.
 
         `repo=""` into the sub-flow means "iterate every workspace repo with failing CI".
@@ -807,11 +796,10 @@ class Coder(Workflow):
         )
         push = self.call(push_ci_fix, "", epic_branch(gate.ci_epic))
         if push.status in ("pushed", "unavailable"):
-            return Continue(push, self.ci, epic=epic, ci_rework=ci_rework + 1,
-                            merge_rework=merge_rework)
-        return self._ci_gate(gate.ci_epic, ci_rework, summary, epic, merge_rework)
+            return Continue(push, self.ci, ci_rework=ci_rework + 1, merge_rework=merge_rework)
+        return self._ci_gate(gate.ci_epic, ci_rework, summary, merge_rework)
 
-    def ci_operator(self, epic: str = "", merge_rework: int = 0) -> Continue:
+    def ci_operator(self, merge_rework: int = 0) -> Continue:
         """The consume half of the CI gate: the operator acted, so poll again.
 
         The budget resets to zero: the operator's intervention buys a fresh set of
@@ -819,9 +807,9 @@ class Coder(Workflow):
         is visible in the next poll, not in what they typed.
         """
         self.logger.info("operator answered the CI gate — re-polling")
-        return Continue(None, self.ci, epic=epic, ci_rework=0, merge_rework=merge_rework)
+        return Continue(None, self.ci, ci_rework=0, merge_rework=merge_rework)
 
-    def merge(self, epic: str = "", merge_rework: int = 0) -> Continue | Await:
+    def merge(self, merge_rework: int = 0) -> Continue | Await:
         """Land the epic's PR.
 
         Best-effort, like the gate above it: with no origin, no token or no open PR the
@@ -836,10 +824,10 @@ class Coder(Workflow):
             return Continue(outcome, self.select_epic)
         # `failed`, and a blank, which is pessimistic for the same reason.
         if merge_rework >= self.MAX_MERGE_REWORKS:
-            return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework, epic)
-        return Continue(outcome, self.fix_merge, epic=epic, merge_rework=merge_rework)
+            return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework)
+        return Continue(outcome, self.fix_merge, merge_rework=merge_rework)
 
-    def fix_merge(self, epic: str = "", merge_rework: int = 0) -> Continue | Await:
+    def fix_merge(self, merge_rework: int = 0) -> Continue | Await:
         """One automated attempt at a merge that would not land.
 
         The second of the graph's two agent turns, and `power="high"`: resolving conflicts
@@ -869,18 +857,18 @@ class Coder(Workflow):
             # so go straight to the gate the budget's own exhaustion goes to — and get
             # there with the resolver's reason, which is the only account of *why*.
             self.logger.info("the merge resolver reported it cannot decide: %s", result.notes)
-            return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework, epic)
+            return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework)
         push = self.call(push_ci_fix, "", gate.ci_epic)
         if push.status in ("pushed", "unavailable"):
-            return Continue(push, self.merge, epic=epic, merge_rework=merge_rework + 1)
-        return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework, epic)
+            return Continue(push, self.merge, merge_rework=merge_rework + 1)
+        return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework)
 
-    def merge_operator(self, epic: str = "") -> Continue:
+    def merge_operator(self) -> Continue:
         """The consume half of the merge gate: try the merge again, budget reset."""
         self.logger.info("operator answered the merge gate — re-merging")
-        return Continue(None, self.merge, epic=epic, merge_rework=0)
+        return Continue(None, self.merge, merge_rework=0)
 
-    def dirty_operator(self, epic: str = "") -> Continue:
+    def dirty_operator(self) -> Continue:
         """The consume half of the dirty-tree gate: re-read the tree, budget reset.
 
         Back to `commit` rather than on to `select_story`, because what the operator
@@ -888,7 +876,7 @@ class Coder(Workflow):
         exactly where the run should land again.
         """
         self.logger.info("operator answered the dirty-tree gate — re-reading the worktree")
-        return Continue(None, self.commit, epic=epic, dirty_laps=0)
+        return Continue(None, self.commit, dirty_laps=0)
 
     # ── routers and shared turns, none of them states ─────────────────────────────────
 
@@ -897,7 +885,6 @@ class Coder(Workflow):
         ci_epic: str,
         attempts: int,
         summary: str,
-        epic: str,
         merge_rework: int,
     ) -> Await:
         """The automated attempts are spent, so the epic parks for a person.
@@ -917,11 +904,10 @@ class Coder(Workflow):
             "Fix it on the branch (or in the pipeline) and touch this file when the run "
             "should poll again.",
             self.ci_operator,
-            epic=epic,
             merge_rework=merge_rework,
         )
 
-    def _merge_gate(self, ci_epic: str, ci_base: str, attempts: int, epic: str) -> Await:
+    def _merge_gate(self, ci_epic: str, ci_base: str, attempts: int) -> Await:
         """The merge-side twin of `_ci_gate`."""
         self.call(flag_merge_failure, ci_epic, ci_base, str(attempts))
         return Await(
@@ -929,10 +915,9 @@ class Coder(Workflow):
             f"`{ci_epic}` will not merge into `{ci_base}` after {attempts} automated "
             "attempt(s).\n\nResolve it and touch this file when the run should try again.",
             self.merge_operator,
-            epic=epic,
         )
 
-    def _dirty_gate(self, dirty: list[str], epic: str, notes: str = "") -> Await:
+    def _dirty_gate(self, dirty: list[str], notes: str = "") -> Await:
         """The uncommitted-work arm of `commit`: the story parks, it is not swept into a commit.
 
         Reached from two places and for the same reason both times — the tree still holds
@@ -957,7 +942,6 @@ class Coder(Workflow):
             + "Commit what belongs to this story, discard or set aside what does not, and "
             "touch this file when the run should re-read the tree.",
             self.dirty_operator,
-            epic=epic,
         )
 
     def _settle_chain(self) -> str:
@@ -968,23 +952,30 @@ class Coder(Workflow):
         """
         return f"settle-worktree:{self._story.story_slug}"
 
-    def _story_epic(self, epic: str) -> str:
-        """`prepare_story.story_epic or select_story.epic or epic` — the *story's* epic.
+    def _story_epic(self) -> str:
+        """`prepare_story.story_epic or _epic` — the *story's* epic.
 
         `prepare_story` discovers it by scanning when story mode was handed a bare slug, so
-        its answer wins; the queue epic is the fall-back. `select_story.epic` is skipped
-        between them because it is the value `epic` already carries: the pick was made *for*
-        that epic.
+        its answer wins; the queue epic is the fall-back. `select_story.epic` sits between
+        the two in neither chain, because it is the value the queue already holds: the pick
+        was made *for* that epic.
         """
-        return self._story.story_epic or epic or self.epic
+        return self._story.story_epic or self._epic
 
-    def _queue_epic(self, epic: str) -> str:
-        """`select_epic.epic or epic` — the epic the *queue* is working.
+    @property
+    def _epic(self) -> str:
+        """`select_epic.epic or self.epic` — the epic the *queue* is working.
 
         Distinct from `_story_epic` and not interchangeable with it: this one is blank in
-        story mode unless the run was invoked with an epic.
+        story mode unless the run was invoked with an epic, where the story's own is
+        discovered by scanning. Read back off the queue's node record rather than threaded
+        down the graph, so the twenty-odd states between the pick and the pull request do
+        not each declare a parameter they only forward.
         """
-        return epic or self.epic
+        try:
+            return self.output(select_epic).epic or self.epic
+        except NodeNotRunError:
+            return self.epic
 
     def _progress(self) -> str:
         """The ` · 3/7` suffix an activity line carries when the run knows how far through it is."""

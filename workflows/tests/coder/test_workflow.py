@@ -1644,10 +1644,11 @@ def test_a_run_killed_in_qa_resumes_on_qa_without_rebuilding_the_story(
     """The reason `dev`, `review`, `document` and `qa` are four states and not one.
 
     A kill during QA must not re-run the implementation, and the checkpoint is what makes
-    that true: the resumed run re-enters `qa` with the epic and both counters it was
-    carrying, and `dev` is not called a second time. The sub-flow records the first run
-    wrote are still in the run directory, which is what the resumed run's `self.output`
-    reads its story back from.
+    that true: the resumed run re-enters `qa` carrying the counters it was on, and `dev` is
+    not called a second time. The sub-flow records the first run wrote are still in the run
+    directory, which is what the resumed run's `self.output` reads its story back from —
+    and the epic with it, which is why the resumed QA handoff is still told `EPIC-1` even
+    though no state parameter carried it across the kill.
     """
     repo = epic()
     _Sub(repo, explode={"Qa"}).install(monkeypatch)
@@ -1661,7 +1662,6 @@ def test_a_run_killed_in_qa_resumes_on_qa_without_rebuilding_the_story(
     resume = read_resume(checkpoint)
     assert resume.state == "qa", resume
     assert resume.flow == "Coder", resume
-    assert resume.params["epic"] == EPIC, resume.params
 
     sub = _Sub(repo).install(monkeypatch)
     result = drive_flow(Coder(**resume.inputs), env(run_dir=run_dir), _Agent(), resume)
@@ -1669,6 +1669,7 @@ def test_a_run_killed_in_qa_resumes_on_qa_without_rebuilding_the_story(
     assert result.has_epic is False, result
     assert "Dev" not in sub.calls, sub.calls
     assert sub.calls == ["Qa", "Fix"], sub.calls
+    assert [c.epic for c in sub.calls_to("Qa")] == [EPIC], "the epic is read back, not carried"
 
 
 # ----------------------------------------------------------------- the CI operator gate
