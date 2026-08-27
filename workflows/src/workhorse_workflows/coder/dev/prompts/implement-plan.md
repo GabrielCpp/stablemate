@@ -25,8 +25,6 @@ Your CWD is the repo containing the service above. All code changes go in this r
 
 Implement **only** the plan you were handed for this iteration. Do NOT search other repos, git history, or branch state to guess which story to implement, and do NOT substitute a different service.
 
-If the story path is blank or its file does not exist, return `status: "blocked"` (Machine-Readable Result below) with notes saying the workflow did not provide a usable story path — that hands it to the operator. Do not pick a story yourself.
-
 {% if operator_context %}
 ## Operator answer (authoritative ground truth)
 

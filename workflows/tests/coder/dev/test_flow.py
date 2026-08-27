@@ -707,6 +707,47 @@ def test_an_unauthored_story_is_refused_before_anything_is_planned(
     assert agent.calls == []
 
 
+def test_a_slug_that_resolves_to_no_file_is_refused_before_anything_is_planned(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The other half of the authored gate: the slug resolved, but to a file nobody wrote.
+
+    A slug the graph does not know is not an unauthored story — it is legitimate, story
+    mode can be pointed outside the epics tree — so `prepare_story` only logs it and falls
+    back to the layout rule. What comes back is a path, and the turns below take their
+    story path as authoritative. Reading it here is what keeps a planner from inventing
+    one.
+    """
+    agent = _Agent(docs)
+
+    with pytest.raises(Exception, match="not readable"):
+        drive_flow(Dev(story="ghost-story", epic=EPIC), env(), agent)
+
+    assert agent.calls == []
+
+
+def test_no_slug_at_all_is_refused_before_anything_is_planned(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`prepare_story` with nothing to resolve returns blank paths, and blank is not a story.
+
+    The prompts used to carry this as a fallback arm — "if the story path is blank, return
+    blocked" — which paid an agent turn to report what the flow already knew.
+    """
+    agent = _Agent(docs)
+
+    with pytest.raises(Exception, match="no story path"):
+        drive_flow(Dev(), env(), agent)
+
+    assert agent.calls == []
+
+
 # --------------------------------------------------------------------------- path gate
 
 

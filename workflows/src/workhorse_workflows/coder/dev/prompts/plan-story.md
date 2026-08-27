@@ -9,7 +9,7 @@ The workflow supplies these values. Use them exactly as given:
 - Story path: `{{ workhorse_var('story_path') }}`
 - Spec/artifact directory: `{{ workhorse_var('spec_dir') }}`
 
-Plan **only** the story at the story path above. Do NOT search the repository, git history, or branch state to guess which story to plan, and do NOT substitute a different story. If the story path above is blank or the file does not exist, return `status: "blocked"` (Machine-Readable Result below) with a summary saying the workflow did not provide a usable story path — that hands it to the operator. Do not pick a story yourself.
+Plan **only** the story at the story path above. Do NOT search the repository, git history, or branch state to guess which story to plan, and do NOT substitute a different story.
 
 ## Pre-Planning (REQUIRED — do first)
 

@@ -29,9 +29,10 @@ The budgets, the conversation keys and every turn with more than one call site a
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, Workflow
+from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.coder.dev import nodes
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.conversation import backbone
@@ -69,6 +70,36 @@ from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.kit.telemetry import counter_labels
 
 
+def _guard_story_file(story: StoryPaths) -> None:
+    """Fail the run when the story this lane was pointed at is not a file it can read.
+
+    Every turn below is handed the story path as an authoritative input, and the planner
+    and the implementer are both told to work the story it names. A slug that resolved to
+    nothing — no epic, a docs tree ostler could not read — used to arrive as an empty
+    string, and a path that resolved to a file nobody wrote arrives as a name; either way
+    the turn that got it invented the story rather than reading it.
+
+    Presence is this flow's obligation, not the agent's, so the check is here and once,
+    ahead of the first turn, rather than as a fallback arm in each prompt that renders it.
+
+    Opened, not `exists()`-ed, for the reason `shared/dev.py` opens plan files: the
+    failure a turn would hit is a read, and a directory, a broken symlink and a file
+    nobody may read all pass an existence check.
+    """
+    if not story.story_path:
+        raise WorkflowFailed(
+            f"no story path for {story.story_slug or '(no slug)'!r} — the slug did not "
+            "resolve to a story file, so there is nothing to plan against."
+        )
+    try:
+        Path(story.story_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise WorkflowFailed(
+            f"story file '{story.story_path}' is not readable ({exc.strerror or exc}); "
+            "refusing to plan against a story nobody wrote."
+        ) from exc
+
+
 class Dev(Workflow):
     """Plan a story, gate the plan, then implement and repair it service by service."""
 
@@ -104,14 +135,17 @@ class Dev(Workflow):
         `self.ctx` is one value and the paths are what nearly every state wants.
 
         `prepare_story` is also the authored-story gate: a story ostler knows and reports
-        unauthored fails the run here rather than being planned against.
+        unauthored fails the run here rather than being planned against. `_guard_story_file`
+        is the other half of it — the slug resolved, but to a file that is not there.
 
         Nothing seeds the backbone chain: its key is derived from the story slug, and the
         chain file lives in the run directory, so this lane simply opens the conversation
         the later lanes will name.
         """
         self.call(resolve_workspace_dirs, self.docs_path)
-        return self.call(prepare_story, self.docs_path, self.story, self.epic)
+        story = self.call(prepare_story, self.docs_path, self.story, self.epic)
+        _guard_story_file(story)
+        return story
 
     def labels(self) -> dict[str, str]:
         """Which story this run is on: what the run's activity line shows."""
