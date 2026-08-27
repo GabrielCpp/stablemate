@@ -143,7 +143,10 @@ find prose describing one, it is stale and fixing it is welcome.
 - [`workhorse/docs/AUTHORING.md`](workhorse/docs/AUTHORING.md) — writing a workflow
 - [`workhorse/docs/WORKFLOW.md`](workhorse/docs/WORKFLOW.md) — the retired YAML schema
   mapped construct-by-construct to what replaces it
-- [`docs/features/`](docs/features/) — the generated knowledge graph for the tools
+- [`docs/features/`](docs/features/) — this repo's own OKF book: the tools' feature docs
+  as an ostler-tended knowledge graph. There is no index page by design — browse it with
+  `uv run ostler search <term>` / `uv run ostler trace <id>` rather than by directory
+  listing
 
 ## Reporting a vulnerability
 

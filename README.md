@@ -8,7 +8,70 @@
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-## Why
+**stablemate is an AI-native software development lifecycle you can install.** Not a
+prompt collection: a toolchain of agent workflows that plan, implement, review and QA
+software as checkpointed state machines, unattended for days, on the agent-CLI
+subscription you already pay for — Claude, Codex, Copilot, Cline or OpenCode.
+
+The premise is the one the emerging AI-native SDLC playbooks (Anthropic's
+[is a good statement of it](https://claude.com/blog/the-ai-native-sdlc-playbook)) argue
+for: agents can do most of the work, but what keeps the output shippable is the
+*process* around them — intent written down before code, review against engineering
+standards, verification that does not take the implementer's word for it, a human
+reachable at the moments that need one. stablemate is that process as running,
+vendor-neutral code: the artifacts are markdown in your repo, the workflows are Python
+state machines, and every claim a run makes leaves a directory you can audit.
+
+Two things have to be true for that to work in practice, and they are the two halves of
+this repo: the runs must be **verified from independent evidence**
+([the methodology](#the-methodology-three-evidence-bases-none-of-them-the-implementers)),
+and the runs must **survive being unattended**
+([the engine](#why-an-engine-and-not-a-bash-loop)).
+
+## The methodology: three evidence bases, none of them the implementer's
+
+The failure this exists to stop is self-certification: the agent context that wrote the
+code is also the one that declares it done, so "done" means "the author is satisfied
+with the author". The `coder` workflow breaks that circle by examining every story from
+three bases of evidence, each assembled from different inputs:
+
+```mermaid
+flowchart LR
+    story["story (intent)"]
+    code["code (the diff)"]
+    skills["skills library<br/>(engineering standards)"]
+    okf["OKF book<br/>(normalized docs graph)"]
+    live["live environment"]
+
+    story --> A["A — test<br/>does the code do what was asked?"]
+    code --> A
+    code --> B["B — review<br/>does it hold to the standards?"]
+    story --> B
+    skills --> B
+    okf --> C["C — QA<br/>does the running app keep<br/>the promises the docs make?"]
+    live --> C
+```
+
+- **A — test** (story + code): the tests must match the *dev intent*, not merely pass —
+  a suite that encodes the story is the first check on the diff.
+- **B — review** (code + story + skills): the diff is reviewed against the engineering
+  knowledge in the [base library](base-library/)'s skills — a fresh context whose job is
+  to hold the code to the standards, not to defend the choices that produced it.
+- **C — QA** (OKF book + live environment): the `author` workflow first encodes each
+  story's intent into the repo's **OKF book** — its planning docs as a normalized
+  knowledge graph in the [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md),
+  tended by [ostler](ostler/). QA then exercises the *running application* against what
+  that book promises, with the code deliberately not in the room. `ostler qa context`
+  maps the diff to the book's obligations, so QA is contractual — a story cannot pass by
+  testing only what its implementer thought to mention.
+
+Same model, three different rooms: the independence is in the *inputs*, not the judge.
+And a leg that cannot produce its evidence is a stop, not a shrug — a QA give-up parks
+the run for an operator instead of stamping it passed. The C leg is as strong as the
+book behind it: a repo with a thin OKF book gets a thinner contract until
+[okf-builder](workflows/) backfills it.
+
+## Why an engine, and not a bash loop
 
 The cheapest way to run an agent for hours is a bash loop around `claude -p`. That
 works right up until it doesn't, and the four ways it doesn't are the reason this
@@ -27,11 +90,15 @@ toolchain exists:
   can read.
 - **A loop can't ask you anything.** Operator gates park a run on a question only a
   human can answer and resume when it is answered — from the browser, hours later,
-  via [groom](groom/).
+  via [groom](groom/):
+
+  ![groom's dashboard: a blocked coder run asking the operator to pick a storage backend, with the answer typed and ready to send](docs/features/groom/gui/screenshots/operator-answers-blocked-gate-answer-typed.png)
 
 The composite is the point: **multi-day, unattended runs on subscription-billed agent
 CLIs** — Claude, Codex, Copilot, Cline, OpenCode — with a repo-local planning graph and
-asynchronous human gates.
+asynchronous human gates. That durability is what makes the methodology above
+affordable: three verification legs per story is a lot of agent turns, and they only
+pay for themselves when nobody has to babysit them.
 
 ## What's in the box
 
@@ -271,6 +338,13 @@ empty PR, that is why.
 
 What merging does, the upload order and the isolated smoke test in front of it, the full
 type→bump table, and the one-time PyPI setup are in [docs/RELEASING.md](docs/RELEASING.md).
+
+## Contributing
+
+[CONTRIBUTING.md](CONTRIBUTING.md) is the map: workspace layout, the gates a change has
+to pass, and the conventions the hooks enforce. Security reports go through
+[SECURITY.md](SECURITY.md), and the community standard is
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## License
 
