@@ -1,5 +1,4 @@
-"""Genesis as a state machine — the port of `coder/workflow.yaml`'s `flows.genesis`
-(18 nodes, lines 4104-4366).
+"""Genesis as a state machine.
 
 It turns a directory into something the author and coder workflows can both stand on: a
 git repo with a commit, an `agents.yml` carrying a `workspace:` block, farrier's packs and
@@ -8,60 +7,36 @@ the main loop — it produces the preconditions the main loop *assumes*, and is 
 directly.
 
 Genesis is pure bootstrapping: every state below is deterministic tooling, with no agent
-turn anywhere in the flow. The two agent turns the YAML carried (a "make it conventional"
-pass and a repair turn) are gone — there is no product code, no story and nothing
-judgement-shaped for an agent to do at this stage, and a repair turn that could only guess
-at a tooling failure was never more than a second, unaccountable roll of the same dice
-`verify` already failed. A target that fails validation now fails the run directly.
+turn anywhere in the flow. There is no product code, no story and nothing judgement-shaped
+for an agent to do at this stage, and a repair turn that could only guess at a tooling
+failure would be a second, unaccountable roll of the same dice `verify` already failed. A
+target that fails validation fails the run directly.
 
 The shape is a straight line with two skip-ahead branches at the front::
 
     classify → [git init] → agents.yml → [skeleton] → farrier → verify → done
 
-Eighteen nodes become six states, and every node that disappeared was a branch. All five
-`type: branch` nodes read a value the node directly above them had just produced —
-`decide_target` reads `resolve_target`'s `target_ok`, `decide_farrier` reads
-`install_farrier`'s `farrier_ok`, and so on. That is `if` written across two nodes because
-a script cannot route.
+The two skips read fields of the classification — `target_state` and `service_state` —
+produced several states earlier. Repo state and service state are separate questions on
+purpose: an established monorepo is exactly where a new service gets added, so "the repo
+exists" must not short-circuit the build.
 
-`decide_genesis` and `decide_skeleton` are the two that fold *forward* rather than back:
-each reads a field of the classification (`target_state`, `service_state`) that was
-produced several states earlier, so the collapse puts them at the end of the state that
-precedes their target rather than the one that produced their input. Repo state and
-service state are separate questions on purpose — an established monorepo is exactly where
-a new service gets added, so "the repo exists" must not short-circuit the build.
+**GENESIS CARRIES ZERO STACK KNOWLEDGE.** Every stack-specific value — `packs`,
+`scaffolds`, `init_cmd`, `marker`, `markers` — is an input written through verbatim.
+`scripts/check_public.py` asserts no base workflow may depend on the private overlay, and
+the stack packs live there; a base flow that knew `go` meant `go.mod` would be a base flow
+that knows the overlay's contents.
 
-`genesis_failed`, a `type: fail` node reached from several branches, becomes
-`raise WorkflowFailed(...)` at the site that decided to fail, carrying the reason the node
-reported.
+Two shapes worth naming:
 
-**GENESIS CARRIES ZERO STACK KNOWLEDGE**, and that survives the port unchanged. Every
-stack-specific value — `packs`, `scaffolds`, `init_cmd`, `marker`, `markers` — is an input
-written through verbatim. `scripts/check_public.py` asserts no base workflow may depend on
-the private overlay, and the stack packs live there; a base flow that knew `go` meant
-`go.mod` would be a base flow that knows the overlay's contents.
-
-Divergences from the YAML, all deliberate:
-
-* the `*_ok` / `*_valid` outputs were `"yes"`/`"no"` **strings**, because a YAML branch
-  compares text. They are `bool` on the models; nothing on disk carried the strings.
-* `git_init` was passed `target_state` as its second argument; `genesis-git-init.py`
-  documents the parameter and never reads it. It is omitted, which is faithful rather than
-  a narrowing — the same call is made either way.
-* the comma-separated inputs stay `str` here and are split before reaching a node. That is
-  the operator-facing contract exactly as documented — `--params '{"packs": "go",
-  "scaffolds": "shared-docs:docs,go-service:api"}'` — and typing them `list[str]` would
-  break every recorded invocation.
-* the `validate_genesis` node's state is called **`verify`**, not `validate`. `Workflow`
-  is a pydantic model, and state discovery skips every name on `dir(Workflow)` — which
-  includes pydantic v1's deprecated `validate`, `json`, `dict`, `copy` and `schema`
-  aliases. A state named `validate` is therefore silently not a state, and the run only
-  finds out when a transition names it. This is the second reserved-name collision the
-  coder port hit, and it is in the progress ledger; the rename is workflow-side and costs
-  nothing here, since no run has ever checkpointed on the name.
-* `refuel: target_dir` on `resolve_target` has no counterpart: pyflow has no gas tank. The
-  flow is a straight line now, so the transition budget is not in question here; it is
-  recorded in the progress ledger as a driver-level gap rather than worked around per flow.
+* **The comma-separated inputs stay `str`** and are split before reaching a node. That is
+  the operator-facing contract — `--params '{"packs": "go", "scaffolds":
+  "shared-docs:docs,go-service:api"}'` — and typing them `list[str]` would break every
+  recorded invocation.
+* **The validating state is called `verify`, not `validate`.** `Workflow` is a pydantic
+  model, and state discovery skips every name on `dir(Workflow)` — which includes pydantic
+  v1's deprecated `validate`, `json`, `dict`, `copy` and `schema` aliases. A state named
+  `validate` is silently not a state, and the run only finds out when a transition names it.
 """
 from __future__ import annotations
 
@@ -247,11 +222,10 @@ class Genesis(Workflow):
     # --- helpers ------------------------------------------------------------
 
     def _target(self) -> TargetClassification:
-        """The classification every state below reads, exactly as the YAML re-read it.
+        """The classification every state below reads.
 
-        Six nodes carried `get_node_output('resolve_target', 'target_dir')`; this is that
-        read, once, with a name. It is a method rather than threaded state because the
-        classification is a fact about the run, not a value any state hands to the next.
+        A method rather than threaded state, because the classification is a fact about the
+        run rather than a value any state hands to the next.
         """
         return self.output(resolve_genesis_target)
 

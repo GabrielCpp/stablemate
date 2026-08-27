@@ -1,67 +1,54 @@
-"""Review a story's implementation and drive the findings to settled — the port of
-`coder/workflow.yaml`'s `flows.review` (18 nodes, lines 1842-2173).
+"""Review a story's implementation and drive the findings to settled.
 
-Reached from the main graph as a `type: flow` node that reads nothing back, and standalone as
+Reached from the main graph as a flow that reads nothing back, and standalone as
 `workhorse-coder run review` for a PR that no story pipeline produced::
 
     start (code review) → review ⇄ apply (bounded) → feedback poll → done
                                ↘ operator gate ↗
 
-Eighteen nodes become eight states. Four are `type: branch` routers reading a value the node
-above them had just produced; two are the `seed`/`incr` pair for the rework counter, which is
-a state parameter here; `stamp_specs_review` merges into the review state it always ran
-directly after; and the code-review/code-reuse pair — two nodes in the YAML — is one turn,
-`start`'s single review pass: the reuse hunt is a lens of the code review rather than a
-second turn re-reading the same diff cold, which is what it cost to be.
+The code review and the reuse hunt are one turn, `start`'s single review pass: the reuse
+hunt is a lens on the diff rather than a second turn re-reading it cold.
 
-**Three call sites share one `apply-review.md` node**, as the YAML also had them — the review
-loop, the operator resolution, and the feedback pass. The driver ids an agent turn by its
-prompt stem, so the three are one node id where the YAML had three; nothing reads that output
-by node name, and what distinguished the sites was their arguments and where they went next.
+**Three call sites share one `apply-review.md` node** — the review loop, the operator
+resolution, and the feedback pass. The driver ids an agent turn by its prompt stem, so the
+three are one node id; nothing reads that output by node name, and what distinguishes the
+sites is their arguments and where they go next.
 
-**The lane is split in two along one line: who judges, and who changes the code.** The judging
-turns — code review, reuse, the implementation verdict — are cold by design; a reviewer that
-inherited the author's context is reviewing its own reasoning. The three apply turns are the
-opposite case: they resume the *implementer's* conversation — the story's backbone chain,
-which the dev lane left open in this run's directory — because a finding is a request to
-change code somebody just wrote and the turn that wrote it already knows why the line is
-there. Nothing is threaded in to make that happen: the key is derived from the story slug,
-and a lane with no dev lane in front of it simply finds no chain and runs cold. That also makes the cheap power tier sufficient
-for an apply, which is where this lane's cost was. `MAX_SESSION_TURNS` bounds the conversation
-across both lanes — the count arrives as `inherited_turns` from `DevResult.session_turns`,
-seeds `ReviewLoop.session_turns` in `start`, and keeps going here.
+**The lane is split in two along one line: who judges, and who changes the code.** The
+judging turns — code review, reuse, the implementation verdict — are cold by design; a
+reviewer that inherited the author's context is reviewing its own reasoning. The three
+apply turns are the opposite case: they resume the *implementer's* conversation — the
+story's backbone chain, which the dev lane left open in this run's directory — because a
+finding is a request to change code somebody just wrote and the turn that wrote it already
+knows why the line is there. Nothing is threaded in to make that happen: the key is derived
+from the story slug, and a lane with no dev lane in front of it simply finds no chain and
+runs cold. That also makes the cheap power tier sufficient for an apply, which is where this
+lane's cost was. `MAX_SESSION_TURNS` bounds the conversation across both lanes — the count
+arrives as `inherited_turns` from `DevResult.session_turns`, seeds `ReviewLoop.session_turns`
+in `start`, and keeps going here.
 
-Divergences from the YAML, all deliberate:
+Two shapes worth naming before reading the states:
 
 * **The operator gate never decides on the operator's behalf**, exactly as `author`,
-  `surveyor` and `dev` settled it. `resolve_review` below investigates and always `Await`s —
+  `surveyor` and `dev` settle it. `resolve_review` below investigates and always `Await`s —
   it does not read a `decision` field to choose between looping and waiting, because there is
   no loop it could choose instead: a block always parks. `_gate` decides only whether the
   resolver gets a turn first (`ReviewLoop.blocks` below `MAX_REVIEW_BLOCKS`) or the block goes
-  straight to a human — never whether to wait at all. The consume half of `await_operator.py`
-  is `read_operator_context`, a node.
-* `review_rework_count` was a var with `seed`/`incr` nodes; it is `ReviewLoop.rework`. The
-  re-seed that `apply_review_resolved → reset_review` performed is that field going back to
-  zero on the transition to `start`. `ReviewLoop.blocks` is the cumulative outer budget that
-  does survive that transition, so repeated operator cycles terminate. All three counters
-  travel as one `ReviewLoop`, so a state signature says how many things it threads rather
-  than how many integers happen to be in flight.
-* `guard_review`'s comment cites `vars.max_review_reworks`, which neither this flow nor any
-  caller declares — the literal `"3"` on the branch is the only budget there is. It is
-  `MAX_REVIEW_REWORKS` here, a `ClassVar` rather than an input, so the port does not invent
-  an operator control the YAML did not have. Recorded in the progress ledger as a finding;
-  it is the third instance of that shape, after `genesis`'s `max_genesis_reworks` and `dev`'s
-  `max_validate_reworks`.
-* **the review verdict is threaded, not read back.** `review_implementation` reads the
-  findings produced inside `start`, one state earlier; under the YAML engine they
-  sat in the run context for the flow's lifetime. `self.output` reads only *node* outputs,
-  and an agent turn is not a node, so the model travels as a state parameter. It is the one
-  genuinely large thing this flow checkpoints, and it is checkpointed because the state that
-  consumes it is also the state the feedback loop returns to. The operator arm does not
-  carry it: every path out of that arm goes back to `start`, which reviews the new code
-  from scratch, so a copy threaded through the gate would be a stale one nobody reads.
+  straight to a human — never whether to wait at all.
+* **The review verdict is threaded, not read back.** `review_implementation` reads the
+  findings produced inside `start`, one state earlier. `self.output` reads only *node*
+  outputs, and an agent turn is not a node, so the model travels as a state parameter. It is
+  the one genuinely large thing this flow checkpoints, and it is checkpointed because the
+  state that consumes it is also the state the feedback loop returns to. The operator arm
+  does not carry it: every path out of that arm goes back to `start`, which reviews the new
+  code from scratch, so a copy threaded through the gate would be a stale one nobody reads.
   Node outputs — the operator's answer, a polled feedback note — are read back with
   `self.output` rather than threaded at all.
+
+The three counters travel as one `ReviewLoop`: `rework` goes back to zero on the transition
+to `start`, `blocks` is the cumulative outer budget that survives it so repeated operator
+cycles terminate, and `session_turns` is the shared conversation bound. Both ceilings are
+`ClassVar` ints rather than inputs.
 """
 from __future__ import annotations
 
@@ -204,8 +191,8 @@ class Review(Workflow):
     #: name and was not passed one; see `Workflow.injects`.
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
-    #: Apply passes before the loop escalates to the operator. `ClassVar` because the YAML
-    #: exposed no var for it — see the module docstring.
+    #: Apply passes before the loop escalates to the operator. A `ClassVar` rather than an
+    #: input: it is not an operator control — see the module docstring.
     MAX_REVIEW_REWORKS: ClassVar[int] = 3
 
     #: Trips through the operator gate that get a resolver turn before every further block
@@ -232,7 +219,7 @@ class Review(Workflow):
         return ctx
 
     def labels(self) -> dict[str, str]:
-        """Which story this run is on — the YAML's `labels:` block."""
+        """Which story this run is on: what the run's activity line shows."""
         return {"work_id": self.ctx.story_slug} if self.ctx.story_slug else {}
 
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
@@ -327,8 +314,8 @@ class Review(Workflow):
         not speak is a parse failure the runner retries rather than a blank this state has to
         read an intent into.
 
-        The stamp runs on every pass, including the one the feedback loop returns for, which
-        is the YAML's wiring: the review turn can rewrite spec docs and the frontmatter that
+        The stamp runs on every pass, including the one the feedback loop returns for: the
+        review turn can rewrite spec docs, and the frontmatter that
         makes them OKF Concepts is only as reliable as the model's memory, so it is applied
         mechanically each time rather than trusted once.
 
@@ -400,9 +387,8 @@ class Review(Workflow):
             },
         )
         # The branch below reads the *settled* status, never the turn's own claim, which is
-        # why the claim is not even bound: the YAML overwrote `impl_result` with the
-        # verifier's output for exactly this reason, and a turn that wrote no verdict has
-        # produced nothing to settle.
+        # why the claim is not even bound: a turn that wrote no verdict has produced nothing
+        # to settle.
         settled = self.call(
             verify_review_resolution, self.ctx.spec_dir, self.docs_path, self.ctx.story_slug
         )
@@ -517,11 +503,10 @@ class Review(Workflow):
     def apply_resolved(self, notes: str, loop: ReviewLoop) -> Continue | Await:
         """Apply the operator's resolution, then start the review over with a fresh budget.
 
-        `apply_review_resolved` + `reset_review`. Going back to `start` re-runs both feeder
-        reviews against the new code, which is what the YAML did and what makes the answer
-        binding rather than asserted: the same reviewer has to look again. `reset_review` is
-        the rework counter going back to zero on that transition; the block budget does not,
-        which is what makes repeated operator cycles terminate.
+        Going back to `start` re-runs both feeder reviews against the new code, which is
+        what makes the answer binding rather than asserted: the same reviewer has to look
+        again. The rework counter goes back to zero on that transition; the block budget does
+        not, which is what makes repeated operator cycles terminate.
 
         A turn that reports it could not apply the answer goes back to the operator instead
         of re-entering the loop: re-reviewing unchanged code produces the same findings and
@@ -582,8 +567,8 @@ class Review(Workflow):
 
         No review findings go in: the feedback *is* the work, and handing the applier a stale
         set of already-settled findings would invite it to redo them. The rework counter is
-        carried rather than reset, which is the YAML's wiring — the feedback pass re-enters
-        the review loop with whatever allowance is left.
+        carried rather than reset: the feedback pass re-enters the review loop with whatever
+        allowance is left.
 
         Feedback the turn reports it cannot act on is the one case in this flow where the
         block came from a human who is not waiting: they dropped a note and moved on. It

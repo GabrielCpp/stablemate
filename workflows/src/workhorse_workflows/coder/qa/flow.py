@@ -1,70 +1,47 @@
-"""Plan QA for a story, run it, and refuse to believe it passed — the port of
-`coder/workflow.yaml`'s `flows.qa` (91 nodes, lines 2440-3593).
+"""Plan QA for a story, run it, and refuse to believe it passed.
 
 Reached from the main graph as the `qa_phase` flow node, and standalone as
-`workhorse-coder run qa`. It is the densest graph in the four workflows, and it is one
-control plane rather than a pipeline::
+`workhorse-coder run qa`. It is the densest machine in the nine, and it is one control
+plane rather than a pipeline::
 
     context ⇄ repair → stack ⇄ setup-fix → plan ⇄ review → run → assess
       → evidence → audit → backlog → (triage | feedback → regression ⇄ fix) → sentinels
 
-Ninety-one nodes become twenty-five states. Twenty-nine of the ninety-one are `type: branch`
-routers reading a value produced directly above them, so each folds into the `if` at the end
-of the state that produced it; eleven are `seed`/`incr` counter nodes and `emit-kv.py` flag
-setters, which are fields of the loop carrier now; four more are `emit-kv.py` terminals,
-which are `Done(...)`.
+**Everything the graph loops on travels as one `QaLoop`.** Eighteen values is past the
+point where threading each as its own state parameter is legible — see the model. A
+pydantic model is a legal state parameter, so a checkpoint carries the whole loop and a
+resume rebuilds it.
 
-**Everything the graph loops on travels as one `QaLoop`.** Eighteen flow vars is past the
-point where threading each as its own state parameter is legible — see the model. This is
-the first port to need the shape, and it needed no driver change: a pydantic model is a
-legal state parameter, so a checkpoint carries the whole loop and a resume rebuilds it.
+Shapes worth naming before reading the states:
 
-Divergences from the YAML, all deliberate:
-
-* **`add_dirs` is `affected_repo_paths`, not the workspace dirs.** Every agent turn in this
-  flow reads `{{ affected_repo_paths }}` — the repos the *plan* touches, decoded by
-  `resolve_impl_context` — where `dev` and `docs` pass the whole workspace. `qa` never calls
-  `resolve_workspace_dirs` at all, and the port keeps the narrower grant.
-* `repair_qa_context` declared two output keys on one agent node. It returns a two-field
-  model here (`QaContextRepair`), because the driver builds one output key per top-level
-  field — see `shared/schemas/qa.py`. No other agent turn in the four workflows has this shape.
-* **an empty `story_path` fails the flow**, as it does in `docs`. The YAML ended the run
-  `exhausted` on it — a status that says the story was QA'd and could not be carried, when
-  what happened is that the story was never found. A resolver that cannot be resolved is a
-  defect in whatever asked for this slug, and `exhausted` files it against the story.
-* the budgets are `ClassVar` ints. None is declared in `flows.qa.vars` — the guards carry
-  branch literals and the comments cite `vars.max_*`
-  names that do not exist. Same inert-var finding as `dev`'s `max_validate_reworks`;
-  recorded in the progress ledger.
-* **the QA-plan budget is one total across three attributed counters.** Schema validation,
-  pre-run review, and post-run findings retain separate counters for diagnosis, but all draw
-  from one four-repair ceiling. The total is derived from those checkpointed counters, so an
-  old resume neither resets its allowance nor needs a state migration.
-* **a gate's findings are routed by scope, not all billed to the plan author.** The YAML sent
-  every refusal from `decide_qa_assessment`, `decide_qa_audit` and the plan review to the
-  replan loop, because all three returned prose. All three return structured findings with a
-  closed `scope` now, and `_routed` sends each to the loop that can repair it: `product-test`
-  to the fix loop, `plan` to the replan loop, `stack` to setup. Prose with no findings still
-  takes the YAML's arm, so nothing that worked before stops working.
-* `clear_qa_gate_state` is `QaLoop.cleared()`, called on the way out of the plan turn rather
-  than as a node. It blanked five keys and left the two context ones alone; the model does
-  the same, and says so.
-* `decide_qa_run`'s `blocked: file_backlog_items` arm is unreachable and stays that way:
-  `decide_qa_assessment_runner_status` sends `blocked` to the setup loop three branches
-  earlier, so the runner status cannot still be `blocked` by the time `decide_qa_run` reads
-  it. Recorded rather than tidied.
-* `await_operator_qa` re-emitted `plan_rework_count` — a key `flows.qa` neither declares nor
-  reads (it is `qa_plan_rework_count` here), left over from `flows.dev`'s copy of the node.
-  Nothing observes it, and a flow's vars are isolated, so it is dropped. Recorded as a
-  finding, not a narrowing: there is no reader to narrow.
-* **`apply_resolved` reads the QA budget it spends.** In the YAML nothing did, and the
-  operator gate's return leg is reachable from the context loop, whose own counter advances
-  only on a repaired packet — so an unmappable packet laps context → repair → gate → resolve
-  → read → apply → context forever, three agent turns a lap, until the driver's transition
-  budget ends the run. The counter was already being incremented; the guard is new.
-* the three `mark-*` scripts (`mark-qa-assessment-failed.py`, `mark-qa-audit-failed.py`,
-  `mark-regression-unresolved.py`) each printed one `qa_result`. They are the assignment at
-  the deciding site, with the same default strings.
+* **The agents see `affected_repo_paths`, not the workspace dirs.** Every turn in this
+  flow reads the repos the *plan* touches, decoded by `resolve_impl_context`, where `dev`
+  and `docs` pass the whole workspace. `qa` never calls `resolve_workspace_dirs` at all,
+  and the narrower grant is the point: QA reads what the story moved.
+* **An empty `story_path` fails the flow**, as it does in `docs`. Ending `exhausted`
+  instead would say the story was QA'd and could not be carried, when what happened is
+  that the story was never found — a defect in whatever asked for this slug, filed
+  against the wrong thing.
+* **The budgets are `ClassVar` ints**, so a guard cites the ceiling it enforces and
+  nothing can hand the flow a different one at dispatch.
+* **The QA-plan budget is one total across three attributed counters.** Schema
+  validation, pre-run review and post-run findings retain separate counters for
+  diagnosis, but all draw from one four-repair ceiling. The total is derived from those
+  checkpointed counters, so a resume neither resets its allowance nor needs a migration.
+* **A gate's findings are routed by scope, not all billed to the plan author.** Every
+  refusal from the assessment gate, the audit gate and the plan review carries a closed
+  `scope`, and `_routed` sends each to the loop that can repair it: `product-test` to the
+  fix loop, `plan` to the replan loop, `stack` to setup. Prose with no findings still
+  goes to the replan loop, which is where an unscoped complaint has always gone.
+* **`QaLoop.cleared()` is the plan turn's exit.** It blanks the five keys a fresh plan
+  invalidates and leaves the two context ones alone, and it says so at the model.
+* **`apply_resolved` reads the QA budget it spends.** The operator gate's return leg is
+  reachable from the context loop, whose own counter advances only on a repaired packet,
+  so without the guard an unmappable packet laps context → repair → gate → resolve →
+  read → apply → context forever, three agent turns a lap.
+* **`repair_qa_context` is the one agent turn in the nine flows that returns two
+  top-level fields** (`QaContextRepair`), and so opens two output keys where every other
+  turn opens one.
 """
 from __future__ import annotations
 
@@ -625,7 +602,7 @@ class Qa(Workflow):
         return ctx
 
     def labels(self) -> dict[str, str]:
-        """Which story this run is on — the YAML's `labels:` block."""
+        """Which story this run is on: what the run's activity line shows."""
         return {"work_id": self.ctx.story_slug} if self.ctx.story_slug else {}
 
     @property
@@ -1294,14 +1271,9 @@ class Qa(Workflow):
     def assess(self, loop: QaLoop) -> Continue | Await | Done:
         """Read the runner's verdict for what it means — four chained decisions, one state.
 
-        `assess_qa_run` + `stamp_specs_qa` + `decide_qa_assessment` +
-        `decide_qa_assessment_runner_status` + `decide_qa_assessment_class` +
-        `decide_qa_assessment_objective` + `mark_qa_assessment_failed` + `decide_qa_run`.
-
-        The five branches are a single sieve over one agent reply and one runner status, and
-        the YAML wrote them as separate nodes only because a branch node reads one path. Each
-        arm is spelled out below in the order the YAML chained them, and every fall-through
-        lands on the same two loops: the plan rework, or the setup repair.
+        The five branches are a single sieve over one agent reply and one runner status.
+        Each arm is spelled out below in the order it is tested, and every fall-through lands
+        on the same two loops: the plan rework, or the setup repair.
         """
         started = time.monotonic()
         turn = roles.turn(self, "qa-story")
@@ -1387,8 +1359,8 @@ class Qa(Workflow):
         if not assessment.objective_reached:
             return self._guard_plan(assessment, loop)
 
-        # `decide_qa_run`. `blocked` and `invalid` were both sieved out above; the YAML's
-        # arms for them are unreachable here and preserved as written.
+        # `blocked` and `invalid` were both sieved out above, so only a pass and a red
+        # reach this line.
         if loop.qa.status == "passed":
             return Continue(assessment, self.verify_evidence, loop=loop)
         return Continue(assessment, self.backlog, loop=loop)
@@ -1620,9 +1592,9 @@ class Qa(Workflow):
     def apply_feedback(self, loop: QaLoop, content: str) -> Continue:
         """Apply the operator's note and rebuild the context — product feedback moves it.
 
-        `apply_qa_feedback`. It is `apply-qa-fixes.md` with an empty `qa_notes`, because
-        there are no QA failures here: the note is the work. No rework is spent, which is the
-        YAML's wiring — feedback is not a failure of the fix loop.
+        It is `apply-qa-fixes.md` with an empty `qa_notes`, because there are no QA failures
+        here: the note is the work. No rework is spent — feedback is not a failure of the fix
+        loop.
         """
         started = time.monotonic()
         result = self._apply_fixes(
@@ -2151,11 +2123,11 @@ class Qa(Workflow):
     def apply_resolved(self, loop: QaLoop, content: str) -> Continue | Await:
         """Apply the operator's answer as a QA fix, and spend a rework on it.
 
-        `apply_qa_resolved` + `incr_qa`. The same prompt `apply_qa_fixes` runs, at medium
-        rather than high, because the hard thinking was the operator's.
+        The same prompt `apply-qa-fixes.md` runs, at medium rather than high, because the
+        hard thinking was the operator's.
 
-        The budget is re-read *here* rather than only in `_guard_qa`, which is the divergence
-        from the YAML. `_guard_qa` bounds the fix loop that goes through it; this state is the
+        The budget is re-read *here* rather than only in `_guard_qa`. `_guard_qa` bounds the
+        fix loop that goes through it; this state is the
         far end of the operator gate, and the gate is reachable from the context loop
         (`repair_context` → `_gate`) whose own counter only advances on a *repaired* packet.
         A packet that stays unmappable therefore cycles context → repair → gate → resolve →
@@ -2604,10 +2576,10 @@ class Qa(Workflow):
     def _apply_fixes(
         self, *, qa_notes: str, operator_feedback: str | None, power: str, session: str
     ) -> QaResult:
-        """`apply-qa-fixes.md`, which three nodes ran with three different argument sets.
+        """`apply-qa-fixes.md`, rendered by three callers with three different argument sets.
 
-        `operator_feedback` is omitted rather than passed empty on the plain fix path,
-        because that node's YAML args did not include the key at all.
+        `operator_feedback` is omitted rather than passed empty on the plain fix path: there
+        is no operator in that lap, and a blank reads as one who said nothing.
 
         `session` names the chain the turn resumes, and the caller decides which: the fix
         laps and the operator-guided lap run on the story's own backbone chain
@@ -2643,7 +2615,7 @@ class Qa(Workflow):
         """The repos this story's plan touches — every agent turn's `add_dirs`.
 
         `dev` and `docs` grant the whole workspace; `qa` grants only `affected_repo_paths`,
-        which is what its YAML did at all eleven agent nodes.
+        at every agent turn it dispatches.
         """
         return list(self.output(resolve_impl_context).affected_repo_paths)
 

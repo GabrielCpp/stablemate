@@ -24,12 +24,10 @@ stderr banners go to `logger.warning` instead of `print(file=sys.stderr)`. The b
 operator-facing text, and the run record is where operator-facing text belongs now — a
 `print` to stderr survives only as long as the terminal it scrolled past.
 
-**The `main` default is not applied to a blank.** Each of these scripts read
-`sys.argv[2] if len(sys.argv) > 2 else "main"`, and the YAML always passed the argument —
-so an unrendered `base_branch` arrived as `""` and stayed `""`, not `"main"`. The parameter
-defaults below reproduce that exactly: `"main"` when the caller omits the argument, `""`
-when the caller passes an empty one. `open_story_pr` is the one that coerces (`base or
-"main"`), because its script did, and that difference is preserved rather than smoothed.
+**The `main` default is not applied to a blank.** The parameter defaults below fire only
+when the caller omits the argument: an explicit `""` stays `""`, and does not become
+`"main"`. `open_story_pr` is the one that coerces (`base or "main"`), and the asymmetry
+between it and its neighbours is deliberate rather than an oversight to smooth away.
 """
 from __future__ import annotations
 

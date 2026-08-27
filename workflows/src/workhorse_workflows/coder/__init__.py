@@ -1,10 +1,8 @@
 """The coder workflow as a Python state machine.
 
-The port of `base-library/workflows/coder/workflow.yaml` — 4,366 lines of YAML, 308
-nodes across eight graphs, and the largest thing in the base library by a wide margin. It
-builds an epic: it walks the epic queue, and for each story plans, implements, reviews,
-documents and QAs it, then commits, opens one PR per epic, holds it against CI, and
-merges.
+The largest workflow in the base library by a wide margin. It builds an epic: it walks the
+epic queue, and for each story plans, implements, reviews, documents and QAs it, then
+commits, opens one PR per epic, holds it against CI, and merges.
 
 The package has the layout `workflows/README.md` prescribes for every workflow — one
 directory per *machine*, so a reader can tell which nodes belong to which graph without
@@ -54,6 +52,6 @@ neither is obvious from the callsite:
 Each sub-flow gets its own transition budget, because `handoff` drives it through a fresh
 `drive()` — a per-repo loop inside one cannot exhaust the parent's.
 
-The YAML's name is `epic-coder`; the entry point and the console script are both
-`coder`, matching the directory the library resolves it by today.
+The entry point and the console script are both `coder`, matching the directory the
+library resolves it by.
 """

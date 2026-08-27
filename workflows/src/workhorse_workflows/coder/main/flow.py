@@ -1,38 +1,25 @@
 """`coder`: the epic/story loop.
 
-The YAML's main graph was 80 nodes across `workflow.yaml` lines 191–1348, above eight
-`flows:` blocks that make up the other three quarters of the file. Those eight are one
-directory each here — `dev/`, `qa/`, `genesis/` and the rest — and this module is the
-graph that sequences them. It is a flow package like they are, for the same reason: the
-machine, the nodes only it calls (`nodes/`) and the prompts only it renders sit together,
-and `coder/workflow.py` is left holding the registry that composes all nine.
+Eight of the nine flows are one directory each — `dev/`, `qa/`, `genesis/` and the rest —
+and this module is the graph that sequences them. It is a flow package like they are, for
+the same reason: the machine, the nodes only it calls (`nodes/`) and the prompts only it
+renders sit together, and `coder/workflow.py` is left holding the registry that composes
+all nine.
 
-**What the shape buys, at this size.** Twenty-seven states cover eighty nodes, and the
-factor of three is not compression for its own sake — it is the `decide_*` nodes
-disappearing into the `if` at the end of the state that produced the value they branch on.
-`decide_epic` existed because the YAML had no way to write "select an epic, then look at
-what came back"; here that is two lines of one function. The same goes for the eight
-`incr_*`/`reset_*`/`init_*` counter nodes: a counter is a state parameter, so seeding it is
-a keyword on a `Continue` and there is nothing left to be a node.
-
-**Where the state boundaries are.** A state is a resumable unit, and the rule the port
-follows everywhere is that a state ends where the *expensive or irreversible* thing begins:
-each `handoff` to a sub-flow, each agent turn, and each of the two operator gates starts
-one. Deterministic nodes fold forward into whichever state branches on them. That is why
-`prune_epic` sits inside `open_pr` (a straight line, and the YAML's own comment says the
-pop must precede the PR) while `dev`, `review`, `document` and `qa` are four states rather
-than one — a kill during QA must not re-run the implementation.
+**Where the state boundaries are.** A state is a resumable unit, and the rule this graph
+follows everywhere is that a state ends where the *expensive or irreversible* thing
+begins: each `handoff` to a sub-flow, each agent turn, and each of the two operator gates
+starts one. Deterministic work folds forward into whichever state branches on it. That is
+why `prune_epic` sits inside `open_pr` — a straight line, and the pop must precede the PR
+— while `dev`, `review`, `document` and `qa` are four states rather than one: a kill
+during QA must not re-run the implementation.
 
 **The two counters are parameters.** `ci_rework` and `merge_rework` both live inside the
-PR cluster, which is the whole distance either of them travels. There was a third —
-`zero_diff`, consecutive stories whose commit found nothing to commit — and it is gone:
-the workflow no longer commits on the agent's behalf, so "this story produced no diff" is
-no longer a thing this graph is in a position to observe. What replaced it is not a
-smaller counter but the check that the agent committed at all, in `commit`, and the two
-gates that hang off a tree it left dirty.
+PR cluster, which is the whole distance either of them travels. A counter is a state
+parameter, so seeding one is a keyword on a `Continue` rather than a node of its own.
 
-**Two disjunctions that look alike and are not.** The YAML resolves the working epic two
-different ways and the port keeps both apart:
+**Two disjunctions that look alike and are not.** The working epic resolves two different
+ways, and the graph keeps them apart:
 
 * the story pipeline uses `prepare_story.story_epic or select_story.epic or epic` — the
   epic the *story* belongs to, discovered by scanning when story mode was handed a bare
@@ -47,9 +34,7 @@ run does not have to re-derive it.
 
 **The backlog drain is the `fix` flow, handed off to.** A story that goes green drains
 whatever it filed on the way, and `drain` below is one `handoff` — not a second copy of
-the loop. The copy that used to live here was the YAML's, seven states of it, and it had
-drifted: it implemented only the first service a fix's plan dispatched, and it swallowed
-a blocked implementer rather than escalating. Both are gone with the copy.
+the loop.
 
 The two flows still differ at the far end, and that difference is `Fix`'s, not this
 file's: `Fix` documents and commits each drained item itself. This story's own final
@@ -133,12 +118,12 @@ def _docs_changed_qa_retry_artifact(result: DocsResult, spec_dir: str) -> bool:
 
 
 def _documented(result: DocsResult) -> bool:
-    """`decide_docs_outcome`: did the book end up true of this story?
+    """Did the book end up true of this story?
 
     `not_applicable` — a repo with no book — passes, because the alternative is that every
     repo without documentation cannot run the workflow. Everything else, blank included, is
-    the pessimistic arm the YAML's `default:` took, and every one of them now goes to the
-    operator rather than one of them ending the run.
+    the pessimistic arm, and every one of them goes to the operator rather than ending
+    the run.
     """
     return result.status in ("passed", "not_applicable")
 
@@ -202,20 +187,19 @@ class Coder(Workflow):
     def setup(self) -> WorkspaceDirs:
         """Resolve every directory this run's agent turns may read, once.
 
-        `resolve_workspace` in the YAML, which sat on the *story* path only — so the two
-        agent turns in the main graph that take `add_dirs: {{ workspace_dirs }}`
-        (`fix_merge` and `replan_epic`) rendered it empty on any run that reached them
-        before the first story. The node's one argument is `docs_path`, which is a run
-        input, so resolving it in `setup()` is the same call at a strictly earlier point.
-        It is a widening and it is recorded as one.
+        Resolved here rather than on the story path, because the two agent turns this
+        graph runs outside a story — `fix_merge` and `replan_epic` — are reachable before
+        the first story is picked, and would otherwise be granted nothing. The node's one
+        argument is `docs_path`, a run input, so this is the same call at a strictly
+        earlier point.
         """
         return self.call(resolve_workspace_dirs, self.docs_path)
 
     def labels(self) -> dict[str, str]:
-        """Which story, which epic, which mode, how far through — the YAML's `labels:`.
+        """Which story, which epic, which mode, how far through: what a run's activity line shows.
 
         `work_id` and `progress` come off `select_story`'s record when there is one. Story
-        mode never runs that node, so both fall back the way the YAML's `or story` did.
+        mode never runs that node, so both fall back to the run's own arguments.
         """
         base = {"work_id": self.story, "epic": self.epic, "mode": self.mode, "progress": ""}
         try:
@@ -239,7 +223,7 @@ class Coder(Workflow):
     # ── mode ──────────────────────────────────────────────────────────────────────────
 
     def start(self) -> Continue:
-        """`decide_mode`: the queue, or the one story we were pointed at.
+        """The queue, or the one story we were pointed at.
 
         Story mode cuts its branch here — off the current HEAD, recording the base it came
         from, because the PR at the far end has to target that base and re-deriving it from
@@ -258,7 +242,7 @@ class Coder(Workflow):
     # ── the epic queue ────────────────────────────────────────────────────────────────
 
     def select_epic(self) -> Continue | Done:
-        """`select_epic` + `decide_epic` + `branch_epic`: take the front of the queue.
+        """Take the front of the queue, and branch every repo for it.
 
         The branch is cut in the same state as the pick because nothing branches between
         them. An empty queue is the run's ordinary end, not a failure.
@@ -277,7 +261,7 @@ class Coder(Workflow):
         return Continue(pick, self.select_story, epic=pick.epic)
 
     def select_story(self, epic: str = "") -> Continue:
-        """`select_story` + `decide_story`: the next unimplemented story of this epic.
+        """The next unimplemented story of this epic.
 
         Three outcomes, and the third is the one worth naming: `blocked` does *not* fail the
         run. It flags the epic, and goes back to `select_epic` for the next one — a blocked
@@ -290,19 +274,18 @@ class Coder(Workflow):
         if pick.story_outcome == "done":
             self.logger.info("epic %s has no stories left — opening its PR", epic)
             return Continue(pick, self.open_pr, epic=epic)
-        # `blocked`, and the YAML's `default:` arm, which pointed at the same node.
+        # `blocked`, and every other verdict: the epic is set aside and the queue advances.
         self.call(flag_epic_blocked, epic, str(self.run_dir), pick.reason)
         return Continue(pick, self.select_epic)
 
     # ── one story ─────────────────────────────────────────────────────────────────────
 
     def prepare(self, slug: str = "", epic: str = "") -> Continue:
-        """`prepare_story` + `init_triage_counter`: resolve the slug to paths.
+        """Resolve the slug to paths, and seed the triage counter.
 
-        The triage budget is seeded here rather than inside `qa` for the reason the YAML
-        gives at `init_triage_counter`: it has to survive across QA *entries*, because a
-        rescope sends the story back to `dev` and re-enters QA, and a budget that reset on
-        each entry would never be spent. That is why `triage` is threaded through the four
+        The triage budget is seeded here rather than inside `qa` because it has to
+        survive across QA *entries*: a rescope sends the story back to `dev` and re-enters
+        QA, and a budget that reset on each entry would never be spent. That is why `triage` is threaded through the four
         pipeline states below instead of starting at zero in `qa`.
 
         `snapshot_worktree_state` reads the worktree *before* the first dev turn, and
@@ -317,7 +300,7 @@ class Coder(Workflow):
         return Continue(story, self.dev, epic=epic)
 
     def dev(self, epic: str = "", triage: int = 0) -> Continue:
-        """`dev` + `decide_dev`: plan and implement the story.
+        """Plan and implement the story.
 
         `replan` is the sub-flow saying the *story* was the wrong thing to build — an
         operator answered a block with an epic-scoped answer — so the epic gets rewritten
@@ -341,7 +324,7 @@ class Coder(Workflow):
         )
         if result.status == "replan":
             return Continue(result, self.replan, epic=epic, notes=result.operator_notes)
-        # `ready` and the YAML's `default:` arm, which was also `review`.
+        # `ready`, and every other verdict: on to the review.
         return Continue(
             result,
             self.review,
@@ -351,11 +334,11 @@ class Coder(Workflow):
         )
 
     def review(self, epic: str = "", triage: int = 0, session_turns: int = 0) -> Continue:
-        """`review`: code review and reuse, with no branch on the outcome.
+        """Code review and reuse, with no branch on the outcome.
 
-        The YAML declared `outputs: []` here and went straight to `docs`. That is not an
-        oversight: the review flow either converges or fails the run from inside itself, so
-        there is no verdict left for the caller to read. It also takes no `target_env` —
+        Nothing is read back, and that is not an oversight: the review flow either
+        converges or fails the run from inside itself, so there is no verdict left for the
+        caller to read. It also takes no `target_env` —
         review reads code, it does not run it.
 
         The lane judges the diff cold — the review turns open their own conversation, so no
@@ -377,7 +360,7 @@ class Coder(Workflow):
         return Continue(result, self.document, epic=epic, triage=triage)
 
     def document(self, epic: str = "", triage: int = 0) -> Continue:
-        """`docs` + `decide_docs_outcome`: fold the story into the OKF book.
+        """Fold the story into the OKF book.
 
         `not_applicable` — a repo with no book — passes, because the alternative is that
         every repo without documentation cannot run the workflow. Anything else, blank
@@ -475,7 +458,7 @@ class Coder(Workflow):
         return Continue(None, self.document, epic=epic, triage=triage)
 
     def qa(self, epic: str = "", triage: int = 0) -> Continue:
-        """`qa_phase` + `decide_qa_outcome`: the four-way gate the whole loop turns on.
+        """The four-way gate the whole loop turns on.
 
         `rescope` is the interesting arm. It sends the story back to `dev` carrying the
         triage budget the QA flow spent, and the re-entry deliberately bypasses the seed
@@ -520,7 +503,7 @@ class Coder(Workflow):
             # exhaustion now escalates to the operator gate inside the QA sub-flow itself
             # and never returns with this status at all.
             return Continue(result, self.give_up, epic=epic, attempts=result.qa_rework)
-        # `passed`, and the YAML's `default:` arm, which was also the drain.
+        # `passed`, and every other verdict: the story is green, so drain what it filed.
         return Continue(
             result,
             self.drain,
@@ -529,7 +512,7 @@ class Coder(Workflow):
         )
 
     def replan(self, epic: str = "", notes: str = "") -> Continue:
-        """`replan_epic`: rewrite the epic from what the operator said, and re-select.
+        """Rewrite the epic from what the operator said, and re-select.
 
         The one turn in this graph that rewrites planning documents rather than code, which
         is why it is `power="high"`. `notes` is threaded rather than read back: it comes out
@@ -555,7 +538,7 @@ class Coder(Workflow):
         return Continue(result, self.select_story, epic=epic)
 
     def give_up(self, epic: str = "", attempts: int = 0) -> Continue:
-        """`decide_qa_fail` → `failed_docs`: the dev-target report ends here; the run stops.
+        """QA could not be carried: the dev-target report ends here, and the run stops.
 
         Real QA exhaustion no longer reaches this method: every budget the QA sub-flow can
         run out of now escalates to the operator gate and parks the run there instead of
@@ -667,7 +650,7 @@ class Coder(Workflow):
         return Continue(result, self.commit_pr)
 
     def commit(self, epic: str = "", dirty_laps: int = 0) -> Continue | Await:
-        """`check_repos_clean` + `stamp_story_passed`: the story's work is recorded, or it parks.
+        """The story's work is recorded, or it parks.
 
         The workflow used to commit for the agent — `git commit -a` per affected repo,
         under a subject this file composed from the story's title. That decided the
@@ -740,10 +723,10 @@ class Coder(Workflow):
         return Continue(result, self.commit, epic=epic, dirty_laps=dirty_laps)
 
     def commit_pr(self) -> Done:
-        """`commit_story_pr` + `open_story_pr`: story mode's end.
+        """Story mode's end: commit what the story left, and open its PR.
 
-        The epic argument is blank, as the YAML's was: a story-mode run commits under the
-        story's own identity. The branch to push and open the PR from comes from
+        The epic argument is blank: a story-mode run commits under the story's own
+        identity. The branch to push and open the PR from comes from
         `branch_story`, the node that cut it — never re-derived from the slug here, which is
         how the two drifted once.
         """
@@ -765,7 +748,7 @@ class Coder(Workflow):
     # ── the epic's pull request, and the two gates behind it ──────────────────────────
 
     def open_pr(self, epic: str = "") -> Continue:
-        """`prune_epic` + `open_pr` + `decide_gate`: the epic is done, so ship it.
+        """The epic is done, so ship it.
 
         The pop comes *before* the PR deliberately: `open_pr` commits the docs it finds, so
         popping first is what puts the pruned queue file into the epic's own pull request
@@ -785,7 +768,7 @@ class Coder(Workflow):
         return Continue(gate, self.ci, epic=epic)
 
     def ci(self, epic: str = "", ci_rework: int = 0, merge_rework: int = 0) -> Continue | Await:
-        """`await_ci` + `decide_ci` + `guard_ci`: is the epic's PR green?
+        """Is the epic's PR green?
 
         `unavailable` passes through to the merge, and that is the deliberate design rather
         than an oversight — offline, CI-less and read-blocked runs still complete, and the
@@ -799,7 +782,7 @@ class Coder(Workflow):
         checks = self.call(poll_pr_checks, "", epic_branch(gate.ci_epic))
         if checks.status in ("passed", "unavailable"):
             return Continue(checks, self.merge, epic=epic, merge_rework=merge_rework)
-        # `failed`, and the YAML's `default:`, which was also the guard.
+        # `failed`, and every other verdict: the guard decides whether a lap is left.
         if ci_rework >= self.MAX_CI_REWORKS:
             return self._ci_gate(gate.ci_epic, ci_rework, checks.summary, epic, merge_rework)
         return Continue(checks, self.repair_ci, epic=epic, ci_rework=ci_rework,
@@ -808,10 +791,9 @@ class Coder(Workflow):
     def repair_ci(
         self, epic: str = "", ci_rework: int = 0, merge_rework: int = 0
     ) -> Continue | Await:
-        """`fix_ci` + `push_ci` + `decide_push` + `incr_ci`: one automated attempt at red CI.
+        """One automated attempt at red CI: fix it, push it, spend a lap.
 
-        `repo=""` into the sub-flow means "iterate every workspace repo with failing CI",
-        which is the YAML's own comment on the argument.
+        `repo=""` into the sub-flow means "iterate every workspace repo with failing CI".
 
         A resolution that cannot be pushed can never make the next poll come back green, so
         `failed` escalates rather than spending another attempt on an unmoved branch head.
@@ -830,16 +812,15 @@ class Coder(Workflow):
     def ci_operator(self, epic: str = "", merge_rework: int = 0) -> Continue:
         """The consume half of the CI gate: the operator acted, so poll again.
 
-        The budget resets to zero, which is what `await-ci-operator.py` emitted — the
-        operator's intervention buys a fresh set of automated attempts. Nothing here parses
-        the answer: the YAML declared an `operator_input` output and no node ever read it,
-        because what the operator did is visible in the next poll, not in what they typed.
+        The budget resets to zero: the operator's intervention buys a fresh set of
+        automated attempts. Nothing here parses the answer, because what the operator did
+        is visible in the next poll, not in what they typed.
         """
         self.logger.info("operator answered the CI gate — re-polling")
         return Continue(None, self.ci, epic=epic, ci_rework=0, merge_rework=merge_rework)
 
     def merge(self, epic: str = "", merge_rework: int = 0) -> Continue | Await:
-        """`merge` + `decide_merge` + `guard_merge`: land the epic's PR.
+        """Land the epic's PR.
 
         Best-effort, like the gate above it: with no origin, no token or no open PR the
         merge is a pass-through and HEAD is left on the epic branch, which is exactly what a
@@ -851,17 +832,17 @@ class Coder(Workflow):
             # The epic's merge is settled; the next epic's conflicts are a different worklist.
             self.reset_session(f"merge-fix:{gate.ci_epic}")
             return Continue(outcome, self.select_epic)
-        # `failed`, and the blank the YAML's pessimistic `default:` sent the same way.
+        # `failed`, and a blank, which is pessimistic for the same reason.
         if merge_rework >= self.MAX_MERGE_REWORKS:
             return self._merge_gate(gate.ci_epic, gate.ci_base, merge_rework, epic)
         return Continue(outcome, self.fix_merge, epic=epic, merge_rework=merge_rework)
 
     def fix_merge(self, epic: str = "", merge_rework: int = 0) -> Continue | Await:
-        """`fix_merge` + `push_merge` + `decide_merge_push` + `incr_merge`.
+        """One automated attempt at a merge that would not land.
 
-        The second of the graph's two agent turns. `power="high"` for the reason the YAML
-        gives: resolving conflicts on a divergent branch has high blast radius, and a wrong
-        resolution corrupts code silently rather than failing loudly.
+        The second of the graph's two agent turns, and `power="high"`: resolving conflicts
+        on a divergent branch has high blast radius, and a wrong resolution corrupts code
+        silently rather than failing loudly.
         """
         gate = self.output(open_pr)
         self.logger.info("resolving the merge for %s", gate.ci_epic, extra={"activity": True})
@@ -913,11 +894,11 @@ class Coder(Workflow):
         epic: str,
         merge_rework: int,
     ) -> Await:
-        """`flag_ci_fail` + `await_ci_operator`: the automated attempts are spent.
+        """The automated attempts are spent, so the epic parks for a person.
 
-        **This gate is human whatever `operator_mode` says**, and that is the YAML's own
-        decision, recorded on the var: a red PR that cannot be pushed is an infrastructure
-        or credential wall, not a question an agent can answer by trying harder.
+        **This gate is human whatever `operator_mode` says**: a red PR that cannot be
+        pushed is an infrastructure or credential wall, not a question an agent can answer
+        by trying harder.
 
         The note on the PR is best-effort — with no token or no open PR there is nothing to
         comment on — and the gate below it is the real escalation.
@@ -935,7 +916,7 @@ class Coder(Workflow):
         )
 
     def _merge_gate(self, ci_epic: str, ci_base: str, attempts: int, epic: str) -> Await:
-        """`flag_merge_fail` + `await_merge_operator`: the merge-side twin of `_ci_gate`."""
+        """The merge-side twin of `_ci_gate`."""
         self.call(flag_merge_failure, ci_epic, ci_base, str(attempts))
         return Await(
             paths.operator_context_path(paths.launch_repo_root(self.repo_dir), "merge-operator", ci_epic),
@@ -946,7 +927,7 @@ class Coder(Workflow):
         )
 
     def _dirty_gate(self, dirty: list[str], epic: str, notes: str = "") -> Await:
-        """`commit`'s uncommitted-work arm: the story ends parked, not swept into a commit.
+        """The uncommitted-work arm of `commit`: the story parks, it is not swept into a commit.
 
         Reached from two places and for the same reason both times — the tree still holds
         work nobody recorded, and the one turn that could speak for it has had its lap.
@@ -985,9 +966,9 @@ class Coder(Workflow):
         """`prepare_story.story_epic or select_story.epic or epic` — the *story's* epic.
 
         `prepare_story` discovers it by scanning when story mode was handed a bare slug, so
-        its answer wins; the queue epic is the fall-back. `select_story.epic` is the middle
-        rung in the YAML and is skipped here because it is the value `epic` already carries:
-        the pick was made *for* that epic.
+        its answer wins; the queue epic is the fall-back. `select_story.epic` is skipped
+        between them because it is the value `epic` already carries: the pick was made *for*
+        that epic.
         """
         return self._story.story_epic or epic or self.epic
 
@@ -995,13 +976,12 @@ class Coder(Workflow):
         """`select_epic.epic or epic` — the epic the *queue* is working.
 
         Distinct from `_story_epic` and not interchangeable with it: this one is blank in
-        story mode unless the run was invoked with an epic, which is what the YAML rendered
-        there too.
+        story mode unless the run was invoked with an epic.
         """
         return epic or self.epic
 
     def _progress(self) -> str:
-        """The ` · 3/7` suffix the two `activity:` templates appended when there was one."""
+        """The ` · 3/7` suffix an activity line carries when the run knows how far through it is."""
         try:
             progress = self.output(select_story).progress
         except NodeNotRunError:
@@ -1022,11 +1002,11 @@ class Coder(Workflow):
             return ()
 
     def _dirs(self) -> list[str]:
-        """`{{ workspace_dirs }}` — the `add_dirs` every agent turn in this graph was given."""
+        """The directories every agent turn in this graph may read."""
         return list(self.ctx.dirs)
 
     @property
     def _story(self) -> StoryPaths:
-        """The story this iteration is building, as `prepare_story` resolved it."""
+        """The story this iteration is building, as `prepare` resolved it."""
         return self.output(prepare_story)
 

@@ -183,8 +183,8 @@ def genesis_git_init(logger: logging.Logger, target_dir: str = "") -> GitInit:
 
     Local-only by design — no remote is added. PR delivery is optional downstream.
 
-    `target_state` is not read: the YAML passed it and the script ignored it, and the
-    branch that would have used it (skip when `existing`) is upstream in the flow.
+    `target_state` is not read: the branch that would use it — skip when `existing` — is
+    upstream in the flow.
     """
     if not target_dir:
         return GitInit(note="no target_dir was provided")

@@ -114,7 +114,7 @@ class Dev(Workflow):
         return self.call(prepare_story, self.docs_path, self.story, self.epic)
 
     def labels(self) -> dict[str, str]:
-        """Which story this run is on — the YAML's `labels:` block."""
+        """Which story this run is on: what the run's activity line shows."""
         return {"work_id": self.ctx.story_slug} if self.ctx.story_slug else {}
 
     #: The three bounded budgets, each already a parameter of the state that guards it.

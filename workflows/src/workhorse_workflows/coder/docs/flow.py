@@ -1,52 +1,35 @@
-"""Fold a finished story into the as-built OKF book, and refuse to believe it was — the port
-of `coder/workflow.yaml`'s `flows.docs` (22 nodes, lines 2176-2437).
+"""Fold a finished story into the as-built OKF book, and refuse to believe it was.
 
 Reached from the main graph at four call sites (`docs`, `final_docs`, `failed_docs` and
-`document_fix_item`, the last through the `*docs_flow` anchor inside `flows.fix`), and
-standalone as `workhorse-coder run docs`::
+the fix lane's per-item documentation pass), and standalone as `workhorse-coder run
+docs`::
 
     detect OKF → classify context → document ⇄ (grounding gate → review) → passed
-
-Twenty-two nodes become six states. Five are `type: branch` routers reading a value produced
-directly above them, two are the `seed`/`incr` counter pair, and two are `emit-kv.py`
-terminals — the YAML's way of returning a value, which is `Done(...)` here.
 
 **The `document → verify → review` split is not cosmetic.** The author turn is the expensive
 thing in the loop and the checkpoint is written before a state runs, so a resume after a
 failed gate re-enters at the gate rather than re-documenting.
 
-Divergences from the YAML, all deliberate:
+Shapes worth naming before reading the states:
 
-* `documentation_rework_count` was a var with `seed`/`incr` nodes; it is the `rework`
-  parameter, and the budget is `MAX_REWORKS` — the literal `"3"` on `guard_documentation`
-  is the only budget the YAML had. **It is now two.** `review_rework`/`MAX_REVIEW_REWORKS`
-  counts the reviewer's revisions separately from the grounding gate's; `_rework` carries
-  the run that forced the split.
-* **`documentation_failed` was a `type: fail`**, so every arm that reached it raised
-  `WorkflowFailed` at the deciding site. What the four call sites' `default: failed` was for
-  — a sub-flow that produced no value at all — cannot happen here, and `DocsResult`'s
-  default records that. A workflow does not give up, though: the one arm here that was a
-  rework-budget exhaustion rather than a genuinely malformed or unresolvable input —
-  `verify`'s grounding gate not converging in `MAX_REWORKS` passes — now takes the same
-  `_blocked` arm `review`'s own convergence exhaustion always did. The remaining raises
-  guard inputs no repair lap can fix: an unresolvable story path, an unusable OKF, an
-  author or reviewer response that does not parse.
-* `resolve_documentation_context` reused `resolve-impl-context.py` whole and read only two
-  of its seven outputs. It is the same `resolve_impl_context` node here; the port does not
-  fork a node to narrow what a caller reads.
-* the `output_key` argument that `build-qa-okf-context.py` and `validate-qa-okf-context.py`
-  took (`"documentation_context_build"`, `"documentation_context_result"`) folds away —
-  see `shared/okf.py`. The two nodes are shared with `qa`, which passed different names.
-* in `semantic` mode the two context statuses are passed as `""`. That is not a stand-in for
-  "invalid": under the YAML they were *unset vars*, which Jinja renders as the empty string,
-  and `verify-story-documentation.py` only reads them in `local` mode. Passing `"invalid"`
-  would look the same today and be wrong the moment the gate started reading them.
-
-One shape is in neither the YAML nor the port it came from: **`blocked` consults before it
-ends the flow**. A documentation block is a product decision nobody ratified, and on a
-product the author workflow specified there is no human upstream of it — so `_blocked`
-spends one resolver turn in the author's stead and gives the story a repair lap on the
-answer. See `_blocked` for the loop guard and for what `human`/`operator` mode still does.
+* **Two rework budgets, not one.** `rework`/`MAX_REWORKS` counts the grounding gate's
+  passes and `review_rework`/`MAX_REVIEW_REWORKS` the reviewer's revisions; `_rework`
+  carries the run that forced the split. A gate that keeps failing on a different ground
+  each pass is not the same thing as a reviewer asking for one more edit.
+* **A budget exhaustion blocks; a malformed input fails.** `verify`'s grounding gate not
+  converging in `MAX_REWORKS` passes takes the same `_blocked` arm as `review`'s own
+  convergence exhaustion. The remaining raises guard inputs no repair lap can fix: an
+  unresolvable story path, an unusable OKF, an author or reviewer response that does not
+  parse.
+* **In `semantic` mode the two context statuses are passed as `""`**, which is not a
+  stand-in for `"invalid"`: `verify_story_documentation` reads them only in `local` mode,
+  and passing `"invalid"` would look the same today and be wrong the moment the gate
+  started reading them.
+* **`blocked` consults before it ends the flow.** A documentation block is a product
+  decision nobody ratified, and on a product the author workflow specified there is no
+  human upstream of it — so `_blocked` spends one resolver turn in the author's stead and
+  gives the story a repair lap on the answer. See `_blocked` for the loop guard and for
+  what `human`/`operator` mode still does.
 """
 from __future__ import annotations
 
@@ -173,8 +156,8 @@ class Docs(Workflow):
     #: name and was not passed one; see `Workflow.injects`.
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
-    #: Grounding-gate failures before the flow fails. `ClassVar` because the YAML exposed no
-    #: var for it — the literal `"3"` on `guard_documentation` is the whole budget.
+    #: Grounding-gate failures before the flow blocks. A `ClassVar` rather than an input:
+    #: it is not an operator control.
     MAX_REWORKS: ClassVar[int] = 3
 
     #: Reviewer revisions before the flow fails, counted on their own. See `_rework`
@@ -212,7 +195,7 @@ class Docs(Workflow):
         return ctx
 
     def labels(self) -> dict[str, str]:
-        """Which story this run is on — the YAML's `labels:` block."""
+        """Which story this run is on: what the run's activity line shows."""
         return {"work_id": self.ctx.story_slug} if self.ctx.story_slug else {}
 
     @property
@@ -692,14 +675,13 @@ class Docs(Workflow):
         )
 
     def _rework(self, result: object, loop: DocsLoop) -> Continue:
-        """`guard_documentation`'s other half: send the author back with what it must fix.
+        """Send the author back with what it must fix.
 
         Not a state — the routing half of a branch, called from the three sites that can
         decide the documentation is not good enough yet. `_`-prefixed so state discovery
         does not pick it up.
 
-        **The two counters are deliberately separate**, which the YAML's single
-        `documentation_rework_count` was not. The grounding gate is deterministic — it names
+        **The two counters are deliberately separate.** The grounding gate is deterministic — it names
         the exact ungrounded symbols and converges in a pass or two — while
         `review_story_documentation` is a `power="high"` semantic read that finds a different
         real defect each round. Sharing one budget means a story that needed a single

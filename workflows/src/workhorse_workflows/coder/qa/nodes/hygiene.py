@@ -5,10 +5,9 @@ commit, both work on the *code* repo rather than the docs repo, and both are the
 check that is worthless unless it is deterministic — an agent asked "did you leave any
 placeholders behind?" answers no.
 
-Both scripts had re-typed `workhorse.scriptutil.find_repo_root` character for character
-rather than importing it. They call the engine's copy here, which is not a narrowing: the
-bodies were identical, and neither YAML node carried a `cwd:`, so the run's `repo_dir`
-input (or the upward walk from it) resolves the same repo the environment read did.
+Both find their repo through `workhorse.scriptutil.find_repo_root`, called on the run's
+`repo_dir` input — the node is told which repo it works on, and walks upward from there
+rather than reading the process's working directory.
 
 The gates disagree about what a problem means, and that stays: a screenshot that cannot be
 moved is logged and the flow continues, while a sentinel ID fails the QA pass. One is
