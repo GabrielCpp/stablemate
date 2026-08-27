@@ -152,9 +152,10 @@ The package must be installed **unpacked** (any pip/uv wheel is): the prompt ren
 a filesystem template loader rooted at the workflow's own directory, so a zip-imported
 package is refused at startup rather than failing later as a missing template.
 
-The three subcommands each command carries are `run`, [`dot`](#checking-and-diagramming-a-workflow)
-and `version` — what the author of a workflow needs: run it, draw it, say which engine
-version drew it.
+The five subcommands each command carries are `run`, [`dot`](#checking-and-diagramming-a-workflow),
+[`control`](#reaching-a-run-that-is-already-going), `inbox` and `version` — what the operator of a workflow
+needs: run it, draw it, steer the live process, read or answer the messages a run left at
+its operator gates, and say which engine version did it.
 
 A workflow's node functions run under workhorse's own interpreter, so a tool they import
 must live in *that* environment (`pipx inject workhorse-agent ostler`), not merely on
@@ -307,14 +308,15 @@ does to a run mid-flight — are in [docs/RELOAD.md](https://github.com/GabrielC
 ## Run artifacts
 
 Each run writes a directory under `--runs-dir` (default `<cwd>/.agents/runs`), holding
-`run.json` and the final `context.json`, one `<step-id>/` per step with the rendered
-`prompt.md` and extracted `output.json`, a `turns/` dir keeping every *earlier* visit a
-looping node overwrote, `sessions.jsonl` mapping each turn to its agent-CLI session, and
-`transcripts/` capturing the turns themselves — because the CLI's own session store lives
-on one host and is pruned whenever it likes.
+`run.json` and the final `context.json`, the `checkpoint.json` a resume restarts from and
+the `events.jsonl` log of every state transition, one `<step-id>/` per step with the
+rendered `prompt.md` and extracted `output.json`, a `turns/` dir keeping every *earlier*
+visit a looping node overwrote, `sessions.jsonl` mapping each turn to its agent-CLI
+session, and `transcripts/` capturing the turns themselves — because the CLI's own session
+store lives on one host and is pruned whenever it likes.
 
 ```
-runs/<workflow>-<run-id>/{run.json,launch.json,context.json,sessions.jsonl,turns/,transcripts/,<step-id>/}
+runs/<workflow>-<run-id>/{run.json,launch.json,checkpoint.json,context.json,events.jsonl,sessions.jsonl,turns/,transcripts/,<step-id>/}
 ```
 
 `launch.json` is the one written for whoever outlives the process. A run killed outright —

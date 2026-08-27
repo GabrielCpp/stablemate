@@ -246,7 +246,7 @@ check-skills: ## Guard the base library's writing doctrine (sprawl, dead disclos
 	uv run python base-library/library/skills/farrier/farrier-skills-writing/scripts/check_skills.py
 
 .PHONY: vendor
-vendor: ## Copy core/stablemate_core into workhorse and farrier (run it with any core change)
+vendor: ## Copy core/stablemate_core into workhorse, farrier and ostler (run it with any core change)
 	# stablemate-core is not published; each tool carries a copy. The copy is committed
 	# rather than synthesized at build time because release-please decides what to ship
 	# from the paths a commit touched — a fix committed only under core/ touches no

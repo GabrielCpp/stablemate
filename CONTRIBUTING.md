@@ -29,7 +29,7 @@ there, runnable by hand when you are working out why a commit was blocked.
 | --- | --- |
 | `make lint` | ruff + ty + basedpyright over the whole workspace. Zero findings is the bar. |
 | `make test` | lint, then every package's suite, then the repo's guards. |
-| `make -C <pkg> test` | one package (`core`, `workhorse`, `workflows`, `ostler`, `farrier`, `groom`, `saddlebag`). |
+| `make -C <pkg> test` | one package (`core`, `workhorse`, `workflows`, `ostler`, `farrier`, `groom`, `saddlebag`, `paddock`). |
 
 Run `make lint` from the **repo root**, not from a package: a member that lints itself
 lints a different tree than CI does.
@@ -117,13 +117,13 @@ machine where the code was written:
 | --- | --- |
 | `make check-parsers` | a format with a grammar gets a parser, not a regex |
 | `make check-portability` | a shipped package runs on the user's OS, not ours |
-| `make check-vendor` | `core/` and its two vendored copies match byte for byte |
+| `make check-vendor` | `core/` and its three vendored copies match byte for byte |
 | `make check-library` | the base library's front matter parses |
 
-`core/stablemate_core` is vendored into `workhorse/` and `farrier/` rather than depended
-on. If you change it, run `make vendor` and commit the copies in the same commit — that is
-also what makes release-please bump both tools, since it decides what to ship from the
-paths a commit touched.
+`core/stablemate_core` is vendored into `workhorse/`, `farrier/` and `ostler/` rather than
+depended on. If you change it, run `make vendor` and commit the copies in the same commit —
+that is also what makes release-please bump the tools that carry it, since it decides what
+to ship from the paths a commit touched.
 
 ## Opening a pull request
 

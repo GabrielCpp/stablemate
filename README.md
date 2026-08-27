@@ -46,7 +46,7 @@ packages that work alongside an agent prompt library:
 | [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph through its CLI and the in-process facade workflows use. |
 | [`groom/`](groom/) | — (unpublished) | Local dashboard + OTLP collector for running workflows: answers operator gates from the browser and pages you when a run stalls. Optional. |
 | [`saddlebag/`](saddlebag/) | `saddlebag` (unpublished) | Credentials and environment manifests a workflow needs at run time, kept out of the repo. Optional. |
-| [`core/`](core/) | — (vendored, never published) | Shared plumbing the tools must agree on: the home config, base-library discovery, the base-library cache. `make vendor` copies it into `workhorse` and `farrier`, which ship it inside their own wheels; there is nothing to install. |
+| [`core/`](core/) | — (vendored, never published) | Shared plumbing the tools must agree on: the home config, base-library discovery, the base-library cache. `make vendor` copies it into `workhorse`, `farrier` and `ostler`, which ship it inside their own wheels; there is nothing to install. |
 
 And two directories that are **not** packages:
 
@@ -168,7 +168,7 @@ Every one of them left a directory behind:
 
 ```bash
 ls .agents/runs/hello-world-dry-run/
-# checkpoint.json  context.json  events.jsonl  run.json  measure/  greet/
+# checkpoint.json  context.json  events.jsonl  launch.json  run.json  measure/  greet/  resume_generation
 ```
 
 `--dry-run` answered both seams from stand-ins the workflow declares itself, which is what
@@ -218,9 +218,9 @@ why that schema is gone.
 make install                         # once per clone: venv + git hooks + test browsers
 make sync                            # just the venv, when that is all that changed
 make test                            # every suite + the benchmark tests + check-public
-make build                           # wheels + sdists for core, workhorse, workflows, farrier
+make build                           # wheels + sdists for ostler, workhorse, farrier, workflows
 make -C farrier check                # inspect a built wheel's contents
-make -C <pkg> test                   # one package (core, workhorse, workflows, ostler, farrier, groom)
+make -C <pkg> test                   # one package (core, workhorse, workflows, ostler, farrier, groom, saddlebag, paddock)
 ```
 
 `make install` is `sync` plus `browsers` (the Playwright Chromium some suites drive —
@@ -236,10 +236,10 @@ anchor — it has a `[project]` table but no `[build-system]`, so uv never build
 or installs the root itself.) Use `uv run --package <name>` to run within a
 specific member.
 
-`make test` is the aggregate: each member's suite, then `make test-bench` (the benchmark
-harness's own tests — a benchmark whose scoring is wrong is worse than none) and
-`make check-public`, the guard that no private overlay name reached this public repo and
-that the base library still stands alone. `make okf-verify` is separate and slower: it
+`make test` is the aggregate: lint, then every member's suite — paddock's benchmark
+tests included, because a benchmark whose scoring is wrong is worse than none — then
+the repo guards, among them `make check-public`, which asserts that no private overlay
+name reached this public repo and that the base library still stands alone. `make okf-verify` is separate and slower: it
 checks every OKF book's coverage against its source.
 
 Each package that ships is independently versioned and released from CI. Nothing is

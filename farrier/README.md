@@ -53,9 +53,9 @@ one round-trip rather than a re-clone. Three qualifications:
   leave the existing cache in place rather than leaving you with none.
 
 `STABLEMATE_FETCH_BASE=0` forbids the network entirely; `STABLEMATE_CACHE_DIR` relocates
-the cache. See the
-[monorepo README](https://github.com/GabrielCpp/stablemate#finding-the-base-library) for
-the full resolution order and why everything other than install reads the cache frozen.
+the cache. See the monorepo's
+[install guide](https://github.com/GabrielCpp/stablemate/blob/main/docs/INSTALL.md#finding-the-base-library)
+for the full resolution order and why everything other than install reads the cache frozen.
 
 ## Use
 
