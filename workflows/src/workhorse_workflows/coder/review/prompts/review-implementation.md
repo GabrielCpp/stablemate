@@ -36,11 +36,7 @@ All three sets of findings are combined into the final verdict.
 
 1. Read the **story** at `story_path` to understand the acceptance criteria and scope.
 2. Read the **plan** in `spec_dir` (look for `plan.md` or the service-specific plan files) to understand the intended approach.
-3. The affected repos, as the plan resolved them:
-{% if plan_services %}
-{{ plan_services }}
-{% endif %}
-   When that is blank, take the scope from the plan artifacts themselves.
+3. The affected repos, as the flow resolved them: `{{ workhorse_var('affected_repo_paths') }}`
 
 ### 2. Examine the Changes
 

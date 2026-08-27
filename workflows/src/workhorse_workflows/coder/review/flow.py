@@ -60,7 +60,6 @@ from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.conversation import spend_turn, story_chain
 from workhorse_workflows.coder.shared.dev import (
-    plan_summary,
     read_operator_context,
 )
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
@@ -337,7 +336,7 @@ class Review(Workflow):
                 "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
-                "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
+                "affected_repo_paths": self._repos,
                 "must_fix_findings": findings_block(must_fix),
                 "advisory_findings": findings_block(advisory),
             },
