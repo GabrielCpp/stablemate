@@ -18,20 +18,9 @@ The pull request for epic `{{ ci_epic }}` (branch `{{ ci_branch }}`) is **failin
    - Reproduce locally with the repository's own bounded `make` targets where possible (e.g. format, lint, codegen drift, unit/integration tests). Every command you run must be wall-clock bounded (`timeout ...`), per the repo CLI conventions.
 3. **Fix the root cause**, not the symptom. Common CI failures here: generated-file drift (re-run codegen and commit the result), formatting (this repo's own format target), failing tests, or build breaks. Keep the change minimal and scoped to what CI flagged — do not refactor unrelated code. This stage may not add or change a user-facing service, screen, component, command, endpoint, flow, concept, format, or other observable contract because no story documentation context exists here. If CI can only be fixed by changing such a contract, make no commit and report `failed` for operator/story-level resolution.
 4. **Verify locally** that the gate you fixed now passes (re-run the same bounded command).
-5. **Commit on the epic branch.** Stage and commit your fix with a **Conventional Commit** subject — releases in these repositories are cut by release-please, which reads commit subjects and nothing else, so a non-conforming subject ships to nobody. Use `fix` when the CI failure was a defect in the code, `chore` when it was generated-file drift, formatting or config, and scope it to the package you changed:
-   Stage **by explicit path** — never `git add -A`, `git add .` or `git commit -a`, which sweep in
-   whatever else happens to be in the tree — and give the commit an `Epic:` trailer:
-
-   ```
-   fix(<package>): <what you fixed>
-
-   Epic: {{ ci_epic }}
-   ```
-
-   e.g. `fix(api-service): reject an expired token instead of panicking`,
-   `chore(web-app): regenerate the API client`. Keep the subject ≤ 72 characters, lowercase after
-   the colon, no trailing period. One commit per package you changed.
-   Do **not** push and do **not** open/merge a PR — the workflow handles the push and re-check.
+5. **Commit on the epic branch**, each commit carrying `Epic: {{ ci_epic }}` as a trailer,
+   spelled exactly so — the run record ties a commit back to its epic through it. Do **not**
+   push and do **not** open/merge a PR — the workflow handles the push and re-check.
 
 ## Output
 Respond with JSON only after you have committed your fix (or concluded you cannot):

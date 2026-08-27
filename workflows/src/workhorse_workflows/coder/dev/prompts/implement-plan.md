@@ -213,29 +213,11 @@ Re-verifying a previously failed story is still your job when the plan says so, 
 recording what you ran. Put that under `## Implementation Status` as prose and leave the
 **Status** line to the gate.
 
-## Commit What You Wrote
+## Commit Trailers
 
-The workflow does not commit on your behalf. Work still sitting in the working tree when the
-story ends parks it for an operator instead of shipping it, so commit each stage of the plan
-as it comes green rather than saving it all for the end:
-
-1. **Stage by explicit path** — never `git add -A`, `git add .` or `git commit -a`. Those sweep
-   in whatever else is in the tree, and something else is usually working here. Anything that is
-   not yours stays exactly where it is.
-2. **One commit per repository per stage**, its subject scoped to the package you changed:
-
-   ```
-   <type>(<package>): <lowercase imperative description>
-
-{% if workhorse_var('epic') %}   Epic: {{ workhorse_var('epic') }}
-{% endif %}{% if workhorse_var('story_slug') %}   Story: {{ workhorse_var('story_slug') }}
-{% endif %}   ```
-
-   `<type>` is `feat` when the story adds behaviour and `fix` when it repairs some — pick by
-   what the change is, not how large it is. Subject ≤ 72 characters, no capital first word, no
-   trailing period. Keep the trailers exactly as spelled — they are how the run record ties a
-   commit back to its story.
-3. **Do not push, open a pull request, or switch branches.** The workflow owns those.
+Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
+`Story: {{ workhorse_var('story_slug') }}` as trailers, spelled exactly so — the run record
+ties a commit back to its story through them.
 
 ## Machine-Readable Result (required)
 

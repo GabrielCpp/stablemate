@@ -27,22 +27,9 @@ either yours or a stranger's.
    plan in `{{ spec_dir }}`. Work that implements, tests or documents this story is yours. A file
    you cannot account for — a stray build artifact, an editor scratch file, someone else's
    half-finished edit — is **not** yours to commit under this story's name.
-3. **Commit what belongs to this story, one commit per package.** Stage by explicit path — never
-   `git add -A`, `git add .` or `git commit -a`, which sweep in whatever else is in the tree.
-   Use a Conventional Commit subject scoped to the package it lands in:
-
-   ```
-   <type>(<scope>): <lowercase imperative description>
-
-   Epic: {{ epic }}
-   Story: {{ story_slug }}
-   ```
-
-   `<type>` is `feat` for new behaviour, `fix` for a repaired defect, `refactor` for a rename, move
-   or extraction, `test` / `docs` / `chore` for the rest — pick by what the change *is*, not how
-   large it is. `<scope>` is the package being released, not the module inside it. Subject ≤ 72
-   characters, no capital first word, no trailing period. Keep the `Epic:` and `Story:` trailers
-   exactly as spelled above; they are how the run record ties a commit back to its story.
+3. **Commit what belongs to this story, one commit per package**, each commit carrying
+   `Epic: {{ epic }}` and `Story: {{ story_slug }}` as trailers, spelled exactly so — the run
+   record ties a commit back to its story through them.
 4. **Leave anything that is not yours exactly where it is.** Do not commit it, do not revert it, do
    not stash it. Name it in `notes` and return `blocked` — an operator decides what happens to work
    you did not write.
