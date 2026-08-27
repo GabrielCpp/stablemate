@@ -239,10 +239,29 @@ def _farrier_globals(
             return f"/{PurePosixPath(path).parent.name or skill_name}"
         return f"Read `{path}` and follow its instructions"
 
+    def skill_path_ref(skill_name: str, relative: str) -> str:
+        """Return the path of a file that ships inside an installed skill.
+
+        The citing sibling of ``skill_load_ref``, for prompts that point at a skill's
+        reference pages rather than its SKILL.md. The same resolution applies for the
+        same reason: farrier installs a skill under the consuming repo's prefix, so a
+        path built from the caller's bare name (``{skill_dir}/ostler-okf/…``) names a
+        directory no repo has. The installed directory comes from the resolved
+        SKILL.md; the bare spelling remains only as the fallback for an uninstalled
+        skill, where no better path exists to cite.
+        """
+        resolved = resolve_instruction(instructions, skill_name)
+        if resolved is None:
+            unresolved("skill", skill_name)
+        parent = PurePosixPath(resolved).parent if resolved else None
+        base = str(parent) if parent and str(parent) != "." else f"{skill_dir()}/{skill_name}"
+        return f"{base}/{relative}"
+
     return {
         "workhorse_var": workhorse_var,
         "agent_cli": agent_cli,
         "skill_load_ref": skill_load_ref,
+        "skill_path_ref": skill_path_ref,
         "get_node_output": get_node_output,
         "skill_dir": skill_dir,
         "instruction_ref": instruction_ref,
