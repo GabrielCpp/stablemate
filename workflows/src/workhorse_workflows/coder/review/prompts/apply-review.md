@@ -32,8 +32,6 @@ If the section above is non-empty, it is mid-flight feedback a human dropped int
 Read:
 
 - `AGENTS.md`
-- this repo's developer / local-stack runbook, wherever it installs one; failing that,
-  `AGENTS.md` and the repo's own documented commands
 - the story file
 - the parent `epic.md`
 - the plan artifacts under `docs/specs/<story-name>/`
