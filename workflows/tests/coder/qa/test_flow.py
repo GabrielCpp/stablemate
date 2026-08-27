@@ -667,13 +667,10 @@ class _Agent:
     # -- one handler per prompt -------------------------------------------
 
     def _repair_qa_context(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """The only two-key turn in the coder: the repair *and* the running QA verdict."""
+        """One key: did the packet heal? The running QA verdict follows from that."""
         return {
-            "qa_context_repair": {"status": self.repair, "notes": f"repair pass {nth}"},
-            "qa_result": {
-                "status": "blocked" if self.repair != "repaired" else "",
-                "notes": f"the diff touches code no feature node owns (pass {nth})",
-            },
+            "status": self.repair,
+            "notes": f"the diff touches code no feature node owns (pass {nth})",
         }
 
     def _plan_qa(self, data: dict[str, Any], nth: int) -> dict[str, Any]:

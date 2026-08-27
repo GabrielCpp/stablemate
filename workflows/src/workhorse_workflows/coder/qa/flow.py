@@ -39,9 +39,6 @@ Shapes worth naming before reading the states:
   reachable from the context loop, whose own counter advances only on a repaired packet,
   so without the guard an unmappable packet laps context → repair → gate → resolve →
   read → apply → context forever, three agent turns a lap.
-* **`repair_qa_context` is the one agent turn in the nine flows that returns two
-  top-level fields** (`QaContextRepair`), and so opens two output keys where every other
-  turn opens one.
 """
 from __future__ import annotations
 
@@ -100,10 +97,10 @@ from workhorse_workflows.coder.shared.schemas.dev import OperatorGate, OperatorR
 from workhorse_workflows.coder.shared.schemas.qa import (
     AssessmentRecord,
     AuditRecord,
+    ContextRepair,
     FixWorklist,
     QaAssessment,
     QaAudit,
-    QaContextRepair,
     QaFinding,
     QaFlowResult,
     QaLoop,
@@ -794,13 +791,13 @@ class Qa(Workflow):
     def repair_context(self, loop: QaLoop) -> Continue | Await | Done:
         """Ask an agent to make the packet mappable, once per rework the budget allows.
 
-        `repair_qa_context` + `decide_qa_context_repair`. The only two-key agent turn in the
-        coder: it reports whether it repaired anything *and* writes the running QA verdict,
-        so a blocked repair carries its reason into the operator gate it routes to.
+        `repair_qa_context` + `decide_qa_context_repair`. The turn reports one thing —
+        whether the packet healed — and the running QA verdict is derived from that here,
+        so a blocked repair still carries its reason into the operator gate it routes to.
         """
         self.logger.info("repairing the QA obligation packet", extra={"activity": True})
         started = time.monotonic()
-        turn = roles.turn(self, "repair-qa-context", returns=QaContextRepair)
+        turn = roles.turn(self, "repair-qa-context", returns=ContextRepair)
         reply = self.agent(
             turn.prompt,
             returns=turn.returns,
@@ -820,9 +817,9 @@ class Qa(Workflow):
         loop = (
             loop.charged(time.monotonic() - started)
             .require_docs_recheck()
-            .with_qa(reply.qa_result)
+            .with_qa(reply.as_qa_result())
         )
-        if reply.qa_context_repair.status == "repaired":
+        if reply.status == "repaired":
             return Continue(
                 reply, self.build_context, loop=loop.update(context_rework=loop.context_rework + 1)
             )

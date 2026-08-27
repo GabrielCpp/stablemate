@@ -359,31 +359,19 @@ class ContextRepair(CoderResult):
         default="", description="What you repaired — or, when blocked, what it needs."
     )
 
+    def as_qa_result(self) -> QaResult:
+        """This repair as the story's running QA verdict.
 
-class QaContextRepair(CoderResult):
-    """`repair-qa-context.md`'s whole reply — the only two-key agent turn in the coder.
-
-    The YAML declared two outputs on one node (`qa_context_repair` and `qa_result`), and the
-    driver builds one output key per top-level field of the model a turn returns. So the two
-    keys are the two fields, each typed as the model the prompt actually specifies. Nothing
-    about the driver had to change to carry this; it is the shape `_outputs_for` already
-    implied, and the port is the first place that shape was needed.
-
-    The repair half carries no default for the same reason its `status` does not: it is the
-    half the turn is dispatched for, and a reply that omits it is a parse failure rather than
-    a repair nobody performed. The verdict half is the rolling `QaResult`, which does default
-    — the turn writes it so a blocked repair carries its reason into the operator gate, and
-    the loop already holds one when it does not.
-    """
-
-    qa_context_repair: ContextRepair = Field(
-        description="The repair itself: whether the obligation packet's grounding now holds."
-    )
-    qa_result: QaResult = Field(
-        default=QaResult(),
-        description="The story's QA verdict as this turn leaves it — `invalid` while the "
-        "context is being regenerated after a repair, `blocked` when the repair is.",
-    )
+        The turn used to be asked for both — its own status *and* a `QaResult` beside it,
+        the one two-key agent reply in the coder. The second key was never a second
+        judgement: `repaired` means the packet is being rebuilt, which is `invalid`, and
+        `blocked` means the repair is, which is `blocked`. A mapping Python can write is
+        not a question worth spending an agent's attention on, and asking for it let a
+        turn contradict itself.
+        """
+        return QaResult(
+            status="invalid" if self.status == "repaired" else "blocked", notes=self.notes
+        )
 
 
 class QaPlanResult(CoderResult):
@@ -1193,7 +1181,6 @@ __all__ = [
     "QaAudit",
     "QaAuditVerdict",
     "QaCleared",
-    "QaContextRepair",
     "QaDisposition",
     "QaFailureClass",
     "QaFlowResult",
