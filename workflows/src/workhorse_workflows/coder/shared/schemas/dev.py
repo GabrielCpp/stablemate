@@ -66,8 +66,6 @@ class PlanService(CoderResult):
     #: The technology key *this repo's* skills and prompts gate on, not a remembered
     #: taxonomy — it is read back out of the repo's own `agents.yml`.
     type: str = ""
-    #: Instruction short-names the implementer must load for this service.
-    skills: list[str] = []
     #: The per-service plan file, relative to the spec dir. Blank on a shared package.
     plan_file: str = ""
     #: The directory does not exist yet and implementation will scaffold it, so the path
@@ -381,7 +379,6 @@ class DispatchEntry(CoderResult):
     service_path: str = ""
     type: str = ""
     plan_file: str = ""
-    skills: list[str] = []
     qa_mode: str = ""
     qa_skills: list[str] = []
     verification: str = ""
@@ -417,21 +414,8 @@ class PlanSummary(CoderResult):
     text: str = ""
 
 
-class InstructionFile(CoderResult):
-    """One coding standard, carried as content rather than as a path to go read.
-
-    A path costs the implementer a tool call per file — sixteen standards is sixteen
-    serial turns of time-to-first-token before the first edit. Handing the text itself
-    makes loading them one render. `text` is empty when the file could not be read, and
-    the prompt falls back to naming the path, which is the pre-inlining behaviour.
-    """
-
-    path: str = ""
-    text: str = ""
-
-
 class ImplContext(CoderResult):
-    """`resolve-impl-context.py` — the approved plan decoded against the workspace.
+    """`resolve_impl_context` — the approved plan decoded against the workspace.
 
     Deterministic and side-effect-free, and deliberately degrading: a missing or garbled
     plan-context yields empty lists rather than a failure, so the implementer falls back to
@@ -443,9 +427,6 @@ class ImplContext(CoderResult):
     against rather than re-derive.
     """
 
-    impl_instruction_paths: list[str] = []
-    #: The same standards as content — see `InstructionFile` for why both exist.
-    impl_instructions: list[InstructionFile] = []
     qa_run_plan: list[QaRunEntry] = []
     verification_setup: dict[str, Any] = {}
     #: The plan's declared fixtures, carried through so the QA planner is handed the names
@@ -508,6 +489,25 @@ class GateOutcome(CoderResult):
     command: str = ""
     output: str = ""
     reason: str = ""
+
+
+class StoryStatusCheck(CoderResult):
+    """`check_story_status` — whether the story's Status line still says what it may.
+
+    The Status line is a machine-parsed shape: `ostler next-story` selects on it, and
+    `qa passed`, `done`, `merged` and `complete` all mark a story finished. Only the run's
+    own stamp, after a QA pass the workflow performed, is allowed to write one — so an
+    implementing or repairing turn that writes it takes the story out of selection before
+    anything verified it, and every later loop reads the story as built.
+
+    The prompt states that form once; this is what makes the statement binding. `dirty` is
+    the default because an unbuilt check has verified nothing, and the pessimistic arm
+    loops the turn rather than passing it.
+    """
+
+    status: Literal["clean", "dirty"] = "dirty"
+    #: What the story actually says right now, carried so the finding can quote it.
+    written: str = ""
 
 
 class GateList(CoderResult):
@@ -592,4 +592,5 @@ __all__ = [
     "PlanResult",
     "PlanValidation",
     "QaRunEntry",
+    "StoryStatusCheck",
 ]

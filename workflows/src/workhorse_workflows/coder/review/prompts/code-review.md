@@ -10,8 +10,7 @@ You are running the **code review** stage of the autonomous story workflow. Your
 
 - Story path: `{{ workhorse_var('story_path') }}`
 - Affected repo paths: `{{ workhorse_var('affected_repo_paths') }}`
-{% if workhorse_var('instruction_paths') %}- Coding standards the implementer built against: `{{ workhorse_var('instruction_paths') }}`
-{% endif %}{% if workhorse_var('branch') %}- Branch: `{{ workhorse_var('branch') }}`
+{% if workhorse_var('branch') %}- Branch: `{{ workhorse_var('branch') }}`
 {% endif %}{% if workhorse_var('pr_number') %}- PR number: `{{ workhorse_var('pr_number') }}`
 {% endif %}
 
@@ -33,9 +32,8 @@ For each path in `affected_repo_paths`:
    - Over 1500: **at most 5**. That is a hard cap, whatever the diff's size.
    - Whoever does the reading covers these lenses:
      a. **Bugs** — a shallow scan of the changed lines for real defects: wrong logic, unhandled errors, races, resource leaks, broken invariants. Stay on the diff; do not go spelunking for extra context.
-{% if workhorse_var('instruction_paths') %}     b. **The standard** — read the instruction files listed under `instruction_paths` above. Those are the coding standards this change was *written* against, so a violation of them is a real finding, not a style opinion. Only flag what the instruction text actually says; quote the line you are relying on.
-{% else %}     b. **The standard** — if the repo carries a root `CLAUDE.md` or one beside the changed files, read it and check the change against it. Only flag what the instruction text actually says; quote the line you are relying on.
-{% endif %}     c. **Local guidance** — comments in the modified files that state an invariant or a rule the change now breaks.
+     b. **The standard** — the coding standards installed in this repo, loaded for the files the diff actually changes. A violation of one is a real finding, not a style opinion; only flag what the standard's text actually says, and quote the line you are relying on.
+     c. **Local guidance** — comments in the modified files that state an invariant or a rule the change now breaks.
      d. **Reuse and duplication** — a required lens, not an optional one. Two things only: logic the diff repeats within itself or re-adds where it already exists in the codebase (copy-paste, near-identical blocks, re-derived constants); and hand-rolled code an existing shared utility, helper, core package or standard-library function already provides. Match on *behaviour*, not name — prefer `rg`, and scan the shared trees explicitly (`pkg/*`, `internal/*/util`, `lib/*/utils`, `packages/*`, a `shared`/`common` module). Say which existing code it should collapse to.
 {% if workhorse_var('branch') %}7{% else %}6{% endif %}. Score every candidate finding from 0 to 100 for how confident you are that it is real, using this rubric:
    - **0**: Not confident at all. This is a false positive that doesn't stand up to light scrutiny, or is a pre-existing issue.

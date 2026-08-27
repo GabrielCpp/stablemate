@@ -75,7 +75,6 @@ from workhorse_workflows.coder.shared.conversation import spend_turn, story_chai
 from workhorse_workflows.coder.shared.dev import (
     plan_summary,
     read_operator_context,
-    resolve_impl_context,
 )
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.resolution import (
@@ -230,12 +229,6 @@ class Review(Workflow):
         ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
         require_story_file(ctx)
         self.call(resolve_review_context, ctx.spec_dir, self.repo, self.docs_path)
-        # The instruction files the implementer was handed, decoded off the plan projection
-        # the dev lane left on the spec dir. Handing the reviewer the standard the code was
-        # written against beats letting it hunt for the nearest CLAUDE.md, and it is the
-        # same list `implement-plan` got — deterministic, and empty for a standalone PR
-        # review with no plan behind it.
-        self.call(resolve_impl_context, ctx.spec_dir)
         return ctx
 
     def labels(self) -> dict[str, str]:
@@ -302,7 +295,6 @@ class Review(Workflow):
             args=turn.args | {
                 "story_path": self.ctx.story_path,
                 "affected_repo_paths": self._repos,
-                "instruction_paths": self._instruction_paths,
                 "branch": self.branch,
                 "pr_number": self.pr_number,
             },
@@ -636,11 +628,6 @@ class Review(Workflow):
     def _repos(self) -> list[str]:
         """The code repos this story touched, which are what the reviewers may read."""
         return list(self.output(resolve_review_context).affected_repo_paths)
-
-    @property
-    def _instruction_paths(self) -> list[str]:
-        """The coding standards the implementer built against — see `setup`."""
-        return list(self.output(resolve_impl_context).impl_instruction_paths)
 
     def _escalation(
         self,

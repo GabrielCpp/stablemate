@@ -562,9 +562,9 @@ def install_farrier(
 
     Two calls, in order. `farrier install --repo <target>` reads the `agents.yml` the
     previous step wrote and renders the declared packs into the repo's adapters, producing
-    `.agents/agents-context.json` — whose `instructions` map is what `resolve_impl_context`
-    reads to decide which skills apply to a service. Without it every skill silently
-    resolves to nothing and the implementation stage runs unskilled. Then `farrier scaffold
+    `.agents/agents-context.json` — whose `instructions` map is the index an implementing
+    turn loads its standards out of. Without it the repo advertises no standards at all and
+    the implementation stage runs unskilled. Then `farrier scaffold
     <id> --param dir=<root>` per scaffold seeds the conventional folder and its
     `.gitignore`.
 
@@ -685,7 +685,7 @@ def validate_genesis(
     ctx_path = target / ".agents" / "agents-context.json"
     if not ctx_path.is_file():
         errors.append(f"no {ctx_path.relative_to(target)} — farrier install did not run, so "
-                      f"resolve-impl-context.py will resolve every skill to nothing")
+                      f"the repo advertises no standards for an implementing turn to load")
     elif not load_json(ctx_path, "agents-context", logger).get("instructions"):
         errors.append(
             f"{ctx_path.relative_to(target)} has an empty 'instructions' map — the "

@@ -133,8 +133,8 @@ Return this exact JSON object as the LAST thing in your final response — these
 - `services`: one entry per **service** (concrete deployable unit) the refined plan changes.
   Each has `repo` (workspace/CWD repo name), `path` (relative path from repo root to the
   service folder, `.` for root), `type` (the key this repo's instructions gate on — take it
-  from the repo's own `agents.yml` and skill short-names, not from a taxonomy you remember),
-  `skills` (optional — only standards the layer's own tags do not reach), and `plan_file`. This is where a layer
+  from the repo's own `agents.yml` and skill short-names, not from a taxonomy you remember)
+  and `plan_file`. This is where a layer
   is pinned to *where* it lives. Set `new_service: true` on a directory this story scaffolds.
 - `implementation_order`: `repo::path` keys in build order; every entry must name a declared service.
 - `shared_packages`: non-service directories (libs, shared code) changed as part of a dependent service's pass.

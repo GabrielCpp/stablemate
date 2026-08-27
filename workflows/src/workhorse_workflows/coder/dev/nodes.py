@@ -34,6 +34,7 @@ from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 from workhorse_workflows.coder.shared.schemas.dev import (
     DevResult,
     DispatchEntry,
+    FailureReport,
     ImplResult,
     Lap,
     OperatorGate,
@@ -185,6 +186,32 @@ def gate_plan(
     return Continue(result, flow.resolve_plan, notes=notes, plan_blocks=plan_blocks)
 
 
+def repair_or_escalate(
+    flow: Dev,
+    report: FailureReport,
+    notes: str,
+    where: str,
+    index: int,
+    impl_blocks: int,
+    lap: Lap,
+) -> Continue | Await:
+    """Route a gate that said no: another repair lap while the budget holds, else the operator.
+
+    Every gate in this lane converges here, so a gate added later — a command, a shape check
+    on something the run parses — inherits the budget and the escalation without restating
+    either, and `fix` keeps having one entry point.
+
+    The budget bounds the *lap*, never the story: a spent budget hands the failing gate to
+    the resolver and, failing that, to a human, exactly as a blocked implement turn does.
+    See AGENTS.md, "a workflow never gives up".
+    """
+    if lap.fix_lap < MAX_FIX_LAPS:
+        return Continue(
+            report, flow.fix, index=index, impl_blocks=impl_blocks, lap=lap, report=report
+        )
+    return gate_impl(flow, report, notes, index, where, impl_blocks, lap)
+
+
 def gate_impl(
     flow: Dev,
     result: CoderResult,
@@ -316,8 +343,6 @@ def implement_layer(flow: Dev, operator_context: str) -> ImplResult:
             "service_path": layer.service_path,
             "service_type": layer.type,
             "verification": layer.verification,
-            "impl_instruction_paths": impl.impl_instruction_paths,
-            "impl_instructions": impl.impl_instructions,
             "qa_run_plan": impl.qa_run_plan,
             "verification_setup": impl.verification_setup,
             "gates": gates.text,
@@ -342,6 +367,7 @@ __all__ = [
     "plan_arg",
     "refine",
     "repair_chain",
+    "repair_or_escalate",
     "resolver_turn",
     "spend",
 ]

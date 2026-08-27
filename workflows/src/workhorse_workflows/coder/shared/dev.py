@@ -39,6 +39,7 @@ import yaml
 from workhorse import gates
 from workhorse_workflows.kit import find_docs_root, find_repo_root, load_json
 from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared import story_status
 from workhorse_workflows.coder.shared.contract import service_problems
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.dev import (
@@ -48,13 +49,13 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     GateList,
     GateOutcome,
     ImplContext,
-    InstructionFile,
     LayerPick,
     OperatorAnswer,
     PlanFixture,
     PlanSummary,
     PlanValidation,
     QaRunEntry,
+    StoryStatusCheck,
     lift_fixture,
 )
 from workhorse_workflows.kit import (
@@ -66,9 +67,7 @@ from workhorse_workflows.kit import (
     resolve_workspace,
 )
 from ostler import Ostler
-
-#: Where the orchestrating repo keeps the logical-name → instruction-path manifest.
-MANIFEST_REL = ".agents/agents-context.json"
+from ostler.select import is_done
 
 #: Cap on the gate output threaded into the fix agent's context. The tail carries the
 #: findings; the head is usually the command echo.
@@ -171,18 +170,10 @@ def plan_document(
         else str(item)
         for item in plan.get("implementation_order") or []
     ]
-    instructions: list[str] = []
-    for svc in services:
-        for skill in svc.get("skills") or []:
-            if str(skill) not in instructions:
-                instructions.append(str(skill))
     return {
         "services": services,
         "implementation_order": order,
         "shared_packages": [entry(pkg) for pkg in plan.get("shared_packages") or []],
-        # Derived, never asked for: it was always the union of the services' skills, and a
-        # hand-written union is a hand-written way to disagree with itself.
-        "required_instructions": instructions,
         "verification_setup": _verification_setup(plan),
         "fixtures": _fixtures(plan),
     }
@@ -387,71 +378,6 @@ def _package_label(item: Any) -> str:
     return str(item)
 
 
-def _instruction_paths(
-    services: list[dict[str, Any]],
-    instructions: dict[str, str],
-    instruction_tags: dict[str, list[str]],
-    logger: logging.Logger,
-) -> list[str]:
-    """The standards the implementer must hold, deduplicated in service order.
-
-    Two channels, and the first is the workflow's rather than the planner's. A service's
-    `type` is the layer it is (`backend`, `web`, `cli`, …), and the library already answers
-    "however this repo writes that layer" — it is the same `tags:` query `find_by_tags`
-    renders into the planning prompt. Asking the manifest directly means the standard is
-    chosen by the workflow: the planner picks layers, not a hand-typed inventory of eleven
-    skill names it has to keep in sync with the library.
-
-    `skills` is the second channel and stays, because a story can turn on a standard its
-    layer's tags do not reach — a release rule, a codegen contract, one shared package's
-    convention. It is a union, not an override: a named skill adds to what the layer already
-    implies, and a name the repo's manifest does not carry is warned about and dropped,
-    exactly as before. A `type` that matches no tag simply contributes nothing, which leaves
-    a repo that tags no skills behaving as it did.
-    """
-    paths: list[str] = []
-
-    def add(path: str) -> None:
-        if path and path not in paths:
-            paths.append(path)
-
-    for svc in services:
-        layer = str(svc.get("type") or "").strip().lower()
-        if layer:
-            for name, tags in sorted(instruction_tags.items()):
-                if layer in {str(tag).lower() for tag in tags}:
-                    add(instructions.get(name, ""))
-        for skill_name in svc.get("skills") or []:
-            path = instructions.get(str(skill_name).replace(".", "-"))
-            if not path:
-                logger.warning("skill '%s' not in repo manifest — skipping", skill_name)
-                continue
-            add(path)
-    return paths
-
-
-def _instruction_files(
-    root: Path, paths: list[str], logger: logging.Logger
-) -> list[InstructionFile]:
-    """The resolved standards as content, so the implement turn loads them in one render.
-
-    Rendered into the prompt instead of listed as paths to go read: each path used to cost
-    the implementer a serial tool turn, and on a fresh session that is a dozen-plus turns
-    of time-to-first-token before the first edit. Degrading, like everything else on this
-    node: a path that cannot be read is carried with empty `text` (logged), and the prompt
-    names it for the agent to read itself — the pre-inlining behaviour.
-    """
-    files: list[InstructionFile] = []
-    for rel in paths:
-        text = ""
-        try:
-            text = (root / rel).read_text(encoding="utf-8")
-        except OSError:
-            logger.warning("instruction file '%s' not readable — passing the path only", rel)
-        files.append(InstructionFile(path=rel, text=text))
-    return files
-
-
 def read_plan_text(spec_dir: str, plan_file: str, logger: logging.Logger) -> str:
     """The layer's plan as content, inlined into the implement turn rather than read by it.
 
@@ -491,11 +417,18 @@ def resolve_impl_context(
     implementer falls back to reading the plan text, rather than a hard failure that aborts
     the run.
 
-    Two roots, never conflated. `find_repo_root(repo_dir)` is the *orchestrating* repo, where
-    the context manifest and the instruction library live; `find_docs_root(docs_path, repo_dir)`
-    is the
-    *docs* repo, which may be a different directory, may not be a git repo, and may not have
-    an `agents.yml`.
+    Two roots, never conflated. `find_repo_root(repo_dir)` is the *orchestrating* repo, whose
+    workspace file names the code repos; `find_docs_root(docs_path, repo_dir)` is the *docs*
+    repo, which may be a different directory, may not be a git repo, and may not have an
+    `agents.yml`.
+
+    Which coding standards bind is deliberately not decided here. It was, once — service
+    `type` matched against skill tags, the winners read off disk and pasted into the
+    implement turn — and that selection is language-blind in a way no amount of tag
+    curation fixes: one service can mix languages, so the binding standard is a property of
+    the file under edit and is chosen at the moment of the edit. The installed skill index
+    already does that, adjacent to the work and re-loadable, rather than as a blob at the
+    top of a long turn that fades from attention exactly as the edits it was for arrive.
     """
     root = find_repo_root(repo_dir)
     docs_root = find_docs_root(docs_path, repo_dir)
@@ -503,13 +436,7 @@ def resolve_impl_context(
     repos = resolve_workspace(workspace_file, repo_dir)
     plan_ctx, plan_ctx_absent = _plan_context(plan, spec_dir, root, repos, logger)
 
-    manifest = load_json(root / MANIFEST_REL, "context manifest", logger)
-    instructions: dict[str, str] = manifest.get("instructions") or {}
-    instruction_tags: dict[str, list[str]] = manifest.get("instruction_tags") or {}
     services = plan_ctx.get("services") or []
-
-    impl_instruction_paths = _instruction_paths(services, instructions, instruction_tags, logger)
-    impl_instructions = _instruction_files(root, impl_instruction_paths, logger)
 
     # Fall back to a single repo-root dispatch whenever the plan names no services —
     # whether plan-context.json is absent OR present in the legacy flat form. Without this
@@ -562,8 +489,6 @@ def resolve_impl_context(
             qa_source_roots.append(source_root)
 
     return ImplContext(
-        impl_instruction_paths=impl_instruction_paths,
-        impl_instructions=impl_instructions,
         qa_run_plan=qa_run_plan,
         verification_setup=_verification_setup(plan_ctx),
         fixtures=[PlanFixture(**item) for item in _fixtures(plan_ctx)],
@@ -605,9 +530,8 @@ def plan_summary(
     lines = ["Services this story changes (from the plan):"]
     for svc in services:
         label = f"{svc.get('repo', '')}::{svc.get('path', '')}"
-        skills = ", ".join(str(s) for s in svc.get("skills") or []) or "none"
         plan_file = svc.get("plan_file", "") or "plan.md"
-        lines.append(f"- {label} (type: {svc.get('type', '')}) — skills: {skills} — plan: {plan_file}")
+        lines.append(f"- {label} (type: {svc.get('type', '')}) — plan: {plan_file}")
     order = plan_ctx.get("implementation_order") or []
     if order:
         lines.append("Build order: " + " → ".join(str(item) for item in order))
@@ -1035,6 +959,38 @@ def run_gate(
 
 
 @blueprint.node
+def check_story_status(
+    logger: logging.Logger,
+    docs_path: str = "",
+    slug: str = "",
+    epic: str = "",
+    story_path: str = "",
+    repo_dir: str = "",
+) -> StoryStatusCheck:
+    """Whether the turn just taken stamped the story finished. A shape gate, like the rest.
+
+    The Status line is parsed, not read — story selection is what parses it — so the rule
+    that only a QA-verified run may write a done status is a machine-checkable claim and is
+    checked here rather than argued for in the prompt. The value comes back through the same
+    reader the stamp writes with (`story_status.current`), so a status hidden in prose is not
+    one and a frontmatter status is.
+
+    A violation is `dirty` and routes exactly as a red lint gate does: another repair lap
+    while the budget holds, then the operator. Nothing here rewrites the line — the turn that
+    wrote it is the turn that has to unwrite it, and a gate that silently repaired its own
+    subject would leave the next turn believing the rule does not bind.
+    """
+    root = find_docs_root(docs_path, repo_dir)
+    written = story_status.current(root, slug, epic=epic, story_path=story_path).strip()
+    if not is_done(written):
+        return StoryStatusCheck(status="clean", written=written)
+    logger.warning(
+        "the story's Status reads %r, which marks it finished, before QA has run", written
+    )
+    return StoryStatusCheck(status="dirty", written=written)
+
+
+@blueprint.node
 def changed_files(logger: logging.Logger, cwd: str = "", story_slug: str = "") -> ChangedFiles:
     """Which files this story has already written in one service checkout.
 
@@ -1110,6 +1066,7 @@ def read_operator_context(logger: logging.Logger, story_path: str = "") -> Opera
 __all__ = [
     "branch_code_repos",
     "changed_files",
+    "check_story_status",
     "declared_gates",
     "declared_markers",
     "gate_command",

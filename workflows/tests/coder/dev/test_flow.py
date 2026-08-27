@@ -42,6 +42,7 @@ from workhorse.records import parse_checkpoint
 from workhorse_workflows.coder.dev import nodes
 from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.shared.schemas.dev import PlanResult
+from workhorse_workflows.coder.shared import story_status
 from workhorse_workflows.coder.shared.dev import (
     plan_document,
     plan_summary,
@@ -126,14 +127,12 @@ SERVICES: list[dict[str, Any]] = [
         "path": ".",
         "type": "go",
         "plan_file": "plan-api.md",
-        "skills": ["go-service"],
     },
     {
         "repo": "web",
         "path": ".",
         "type": "react-router",
         "plan_file": "plan-web.md",
-        "skills": [],
     },
 ]
 
@@ -141,7 +140,7 @@ SERVICES: list[dict[str, Any]] = [
 #: it on the workspace lookup, which is the one failure mode no blind refine pass can repair
 #: by luck — the path gate's escalation arm needs an error that stays an error.
 GHOST: list[dict[str, Any]] = [
-    {"repo": "ghost", "path": ".", "type": "go", "plan_file": "plan-api.md", "skills": []}
+    {"repo": "ghost", "path": ".", "type": "go", "plan_file": "plan-api.md"}
 ]
 
 
@@ -228,7 +227,8 @@ class _Agent:
     whatever stands in for the operator (`_answers`), not from the resolver the agent scripts.
 
     `impl_blocked` makes the first N implementation turns report they could not write the
-    change.
+    change, and `stamps_status` makes the first N of them do the one thing the story-status
+    gate exists to catch — write a finished status onto the story.
     """
 
     def __init__(
@@ -242,6 +242,7 @@ class _Agent:
         fix_gate: Path | None = None,
         explode: set[str] | None = None,
         impl_blocked: int = 0,
+        stamps_status: int = 0,
         repo_relative_plans: bool = False,
         unwritten_plans: int = 0,
     ) -> None:
@@ -255,6 +256,9 @@ class _Agent:
         self.fix_gate = fix_gate
         self.explode = explode or set()
         self.impl_blocked = impl_blocked
+        #: The first N implementation turns stamp the story `QA passed` — the status the
+        #: queue reads as finished, written by a turn that has not reached QA.
+        self.stamps_status = stamps_status
         #: Report `plan_file` the other way it can legally be read — repo-relative, the form
         #: the turn was holding when it wrote the file — while writing the file itself
         #: exactly where it belongs.
@@ -346,9 +350,14 @@ class _Agent:
         self.impls += 1
         if self.impls <= self.impl_blocked:
             return {"status": "blocked", "notes": "the plan names a migration nobody has run"}
+        if self.impls <= self.stamps_status:
+            _set_status(self.docs, "QA passed")
         return {"status": "done", "notes": f"implemented {data['service_path']}"}
 
     def _dev_fix(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        if data["report"]["source"] == "story status":
+            _set_status(self.docs, "Not started")
+            return {"status": "fixed", "notes": "put the status line back"}
         if self.fix_gate is None:
             return {"status": "failed", "notes": "the finding is in vendored code"}
         self.fix_gate.write_text("", encoding="utf-8")
@@ -365,6 +374,17 @@ class _Agent:
         it unnoticed; see `test_an_escalating_resolver_leaves_its_note_for_the_human`.
         """
         (self.docs / CONTEXT_REL).write_text(ESCALATION_NOTE, encoding="utf-8")
+
+
+def _set_status(docs: Path, status: str) -> None:
+    """Rewrite the story's `- **Status**:` line, the way a turn editing the file would."""
+    story = docs / STORY_REL / "story.md"
+    lines = story.read_text(encoding="utf-8").splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("- **Status**:"):
+            lines[i] = f"- **Status**: {status}"
+            break
+    story.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _answers(docs: Path, seen: list[str], *, scope: str = "story") -> Callable[..., None]:
@@ -440,18 +460,18 @@ def test_plans_stamps_branches_and_implements_every_layer(
     ]
 
 
-def test_the_implement_turn_is_handed_the_three_values_its_prompt_reads(
+def test_the_implement_turn_is_handed_the_two_values_its_prompt_reads(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`implement-plan.md` reads three values the YAML node never passed.
+    """`implement-plan.md` reads two values the YAML node never passed.
 
     Under the YAML engine a node's declared outputs landed in the run context and the prompt
     rendered against the whole of it; `Engine.agent` renders against `args` alone, so the
     port passes them explicitly. This is the assertion that says so — if they are dropped,
-    the prompt silently renders three blanks and nothing else in the suite notices.
+    the prompt silently renders two blanks and nothing else in the suite notices.
     """
     agent = _Agent(docs)
     run_env = env()
@@ -461,7 +481,6 @@ def test_the_implement_turn_is_handed_the_three_values_its_prompt_reads(
     first = agent.args_for("implement-plan")[0]
     impl = _output(run_env, resolve_impl_context)
     assert first["qa_run_plan"] == impl["qa_run_plan"]
-    assert first["impl_instruction_paths"] == impl["impl_instruction_paths"]
     assert first["verification_setup"] == impl["verification_setup"]
 
 
@@ -1203,6 +1222,37 @@ def test_the_gate_lane_repairs_and_re_runs_until_clean(
     assert report["source"] == "lint", report
     assert report["command"] == "sh lint.sh", report
     assert report["cwd"] == str(workspace["api"]), report
+
+
+def test_a_turn_that_stamps_the_story_finished_is_sent_back(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The Status line is a machine-parsed shape, so a gate holds the turn to it.
+
+    `QA passed` on a story the workflow has not QA'd removes it from story selection
+    permanently: every later loop reads the story as built, and nothing ever verifies it.
+    The prompt says so, and this is what makes saying so binding — the turn comes back with
+    a finding naming the file and the value, on the same repair budget every other gate
+    spends.
+    """
+    agent = _Agent(docs, stamps_status=1)
+    run_env = env()
+
+    result = drive_flow(Dev(story=STORY), run_env, agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["dev-fix"] == 1, agent.counts()
+    report = agent.args_for("dev-fix")[0]["report"]
+    assert report["source"] == "story status", report
+    assert "QA passed" in report["findings"][0]["issue"], report
+    assert report["findings"][0]["target"].endswith("story.md"), report
+    story_md = docs / STORY_REL / "story.md"
+    assert story_status.current(docs, STORY, epic=EPIC, story_path=str(story_md)) == (
+        "Not started"
+    )
 
 
 def test_a_gate_no_repair_lap_can_satisfy_never_gives_up_either(

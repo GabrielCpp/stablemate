@@ -43,19 +43,13 @@ Before writing any code:
 
 1. Read the story — your plan is inlined under **"The Plan"** at the end of this prompt; it is already in front of you, so do not spend a turn reading it from disk. **The story's Acceptance Criteria are the bar — your job is to make ALL of them true**, as a person using the running app would observe them, at parity with the named source of truth. **Cover the whole goal**: if satisfying a criterion requires fixing a root cause that spans the surface (e.g. state keyed wrong across every field, labels untranslated everywhere, a missing nav/section), that whole fix is in scope — do not implement a narrow symptom-patch that leaves the criterion only partly met. This may take **several passes**: QA will exercise each criterion against the source of truth and fail anything not actually met, looping you back here. The story's `## Context` links the documentation it is grounded in; read those links for grounding, but the Acceptance Criteria — not the docs — define done.
    - A *different* surface or an unrelated defect you pass through is not this story's: leave it alone, and say so in the result notes. Never absorb it, and never treat it as an excuse to leave this story's own criteria unmet.
-2. Hold this story's coding standards — the workflow derived them from the layers the plan declares.
-{%- if impl_instructions %} **Their full text is inlined under "Coding Standards (inlined)" at the end of this prompt — it is already in front of you, so do not spend turns re-reading those files.** A standard listed there without an inlined body is the exception: read that path yourself before writing code.
-{%- elif impl_instruction_paths %} Read every one of these before writing code:
-{%- for path in impl_instruction_paths %}
-   - `{{ path }}`
-{%- endfor %}
-{%- else %}
-   - _(The resolved list is empty.)_ Fall back to the standards the plan's **Approach** and **Changes** sections cite by name, and load each one.
-{%- endif %}
-   - Docs-only work also covers the repo's `AGENTS.md`.
-3. Use the matching local skills as well — in particular each touched layer's testing skill before writing or updating its tests.
-4. The plan's **Verification Commands** section carries the canonical test, codegen, lint, and build commands, and **Provided Inputs** carries this service's gates. Those are the commands you run — do not hunt through instruction files for others, and do not invent any.
-5. Where the plan leaves a detail open, make the reasonable design decision yourself and record it in the implementation notes — the planning gates are behind you, and a block here costs an operator round-trip. Reserve `blocked` for what a decision cannot get past (an operator-only foundation, per Step 5).
+2. Load this repo's installed coding standards for the files you are about to edit — the
+   skill index advertises what applies where, and a service can mix languages, so the
+   standard that binds is a property of the file, chosen as you reach it. Docs-only work
+   also covers the repo's `AGENTS.md`, and a layer's testing skill before you write or
+   update its tests.
+3. The plan's **Verification Commands** section carries the canonical test, codegen, lint, and build commands, and **Provided Inputs** carries this service's gates. Those are the commands you run — do not hunt through instruction files for others, and do not invent any.
+4. Where the plan leaves a detail open, make the reasonable design decision yourself and record it in the implementation notes — the planning gates are behind you, and a block here costs an operator round-trip. Reserve `blocked` for what a decision cannot get past (an operator-only foundation, per Step 5).
 
 ---
 
@@ -86,9 +80,9 @@ earlier command's output (generated code, a failing test's message).
 - Map each test to the plan's **Given / When / Should** cases; add assertions for new
   functions, branches, error conditions, and state transitions.
 - **For a component that consumes an external contract** (an API payload, another producer's output), derive its test fixtures from a **captured real payload** (a golden file recorded from the real producer), not a hand-authored shape. A fixture you invent can encode the *same wrong assumption* as the code it tests — then both agree and the suite passes green over a real bug. Record the real payload and assert against it.
-- Before editing a layer's tests, follow that layer's **testing instruction file** from the standards resolved in Step 1.2 — that set is the whole set; a layer missing from it
-  has no testing skill in this repo. Treat it as the canonical source for that layer's test naming, fixtures, integration-test shape, and assertion conventions — if this prompt appears to disagree with it, follow the layer's testing skill.
-- Explicitly use the matching testing skill before writing or updating that layer's tests. Do not rely only on automatic path matching.
+- Before editing a layer's tests, load that layer's **testing skill** from the ones this
+  repo installs and treat it as canonical for test naming, fixtures, integration-test shape
+  and assertion conventions — if this prompt appears to disagree with it, follow the skill.
 
 ### 3b. Run code generation when its inputs change
 
@@ -121,7 +115,7 @@ After all implementation tasks are done, run every command from the plan's **Ver
 3. **Lint / Format**: Run the lint/format command. Fix any issues.
 4. **Build**: Run the build command. Confirm it succeeds.
 5. **Plan review**: Confirm every file in the plan was modified and every success criterion is met.
-6. **Standards**: Verify all edits conform to the applicable instruction files.
+6. **Standards**: Verify all edits conform to the standards you loaded for the files you changed.
 
 **Per-service verification**: Run the verification command for this service: `{{ workhorse_var('verification') }}`. This is the canonical build/test/lint command from the repo's agents.yml.
 
@@ -198,20 +192,9 @@ building it is in scope for this story.
 
 ## Story Status
 
-Do **not** hand-edit the story's `status:` frontmatter or its `## Implementation Status`
-**Status** line. Later gates own those transitions and set them from a structured verdict —
-`Reviewed` from review, `QA passed` only from a QA run the workflow itself performed. You
-have not reached those stages, so any status you write is a claim about work that has not
-happened yet.
-
-This matters beyond tidiness: the queue reads that line. `QA passed`, `done`, `merged` and
-`complete` all mark the story finished, so a status written here makes the story invisible
-to story selection — if the run later gives up, crashes, or sets the epic aside, the story
-stays "passed" forever without QA ever having verified it.
-
-Re-verifying a previously failed story is still your job when the plan says so, and so is
-recording what you ran. Put that under `## Implementation Status` as prose and leave the
-**Status** line to the gate.
+Leave the story's `status:` frontmatter and its `## Implementation Status` **Status** line
+exactly as you found them — record what you ran as prose under that heading instead. A gate
+re-reads that line after this turn and sends the story back to you if it changed.
 
 ## Commit Trailers
 
@@ -241,18 +224,3 @@ The approved plan for this iteration, verbatim. This is the plan every step abov
 to — do not re-read it from disk.
 
 {{ plan_text }}
-{% if impl_instructions %}
-
----
-
-## Coding Standards (inlined — authoritative)
-
-The full text of every standard resolved in Step 1.2, verbatim from the repo. Do not
-re-read these files; hold every rule below for each layer you touch.
-{% for ins in impl_instructions %}
-
-### `{{ ins.path }}`
-
-{% if ins.text %}{{ ins.text }}{% else %}_(not inlined — read this file before writing code)_{% endif %}
-{%- endfor %}
-{% endif %}

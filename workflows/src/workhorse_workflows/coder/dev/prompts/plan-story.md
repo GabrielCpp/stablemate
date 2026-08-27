@@ -124,10 +124,6 @@ shape is under "Machine-Readable Result" at the end of this prompt, and it is:
   - `repo`: the repo name (must match a folder name in the workspace or the CWD repo name)
   - `path`: relative path from repo root to the service directory (e.g., `cmd/alert`, `packages/discover`, `.` for root)
   - `type`: the technology, using the key **this repo's** instructions/prompts gate on — take it from the skill short-names listed under "Instruction Set Resolution" above and from the repo's own `agents.yml`, not from a taxonomy you remember. `docs` is the type for documentation-only services in every repo.
-  - `skills`: **optional.** The workflow already hands the implementer every standard
-    tagged with this service's `type`, so leave this out unless the story turns on a
-    standard the layer's tags do not reach — a release rule, a codegen contract, one
-    shared package's convention. Names here are added to the layer's, never instead of them.
   - `plan_file`: the plan file for this service (relative to spec dir)
   - `new_service`: `true` only when the directory does not exist yet and this story scaffolds it
 - `implementation_order`: ordered list of `repo::path` keys specifying build order. Dependencies first: whatever defines a shared contract before whatever implements it, and whatever implements it before whatever consumes it. Every entry must name a service you declared.
@@ -355,14 +351,12 @@ After writing the plan artifacts, return this exact JSON object as the LAST thin
       "repo": "api-service",
       "path": "cmd/alert",
       "type": "go",
-      "skills": ["api-service-events"],
       "plan_file": "plan-api-service-alert.md"
     },
     {
       "repo": "web-app",
       "path": "packages/discover",
       "type": "web-app",
-      "skills": [],
       "plan_file": "plan-web-app-discover.md"
     }
   ],

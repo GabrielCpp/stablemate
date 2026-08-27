@@ -40,6 +40,7 @@ from workhorse_workflows.coder.shared.dev import (
     GATE_ORDER,
     branch_code_repos,
     changed_files,
+    check_story_status,
     declared_markers,
     read_operator_context,
     record_plan,
@@ -47,7 +48,7 @@ from workhorse_workflows.coder.shared.dev import (
     run_gate,
     select_next_layer,
 )
-from workhorse_workflows.coder.shared.failure import from_gate
+from workhorse_workflows.coder.shared.failure import from_findings, from_gate
 from workhorse_workflows.coder.shared.resolution import answered
 from workhorse_workflows.coder.shared.story import (
     prepare_story,
@@ -55,8 +56,10 @@ from workhorse_workflows.coder.shared.story import (
     stamp_specs,
     workspace_dirs,
 )
+from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.shared.schemas.dev import (
     DevResult,
+    FailureReport,
     FixResult,
     GateOutcome,
     Lap,
@@ -388,9 +391,52 @@ class Dev(Workflow):
         declaring it, and a service that has not is not thereby broken. Nothing here
         guesses a command, so a stack stablemate has never seen gets gates the moment its
         repo writes them down.
+
+        The story's Status line is gated here too, and first, because it is the one shape a
+        turn can break that no command in `agents.yml` reads: story selection parses it, so
+        a turn that stamps the story finished takes it out of the queue before QA has seen
+        it. It runs on every lap, so the repair turn is held to the rule as well.
         """
-        outcome = GateOutcome()
         layer = nodes.current_layer(self)
+        stamped = self.call(
+            check_story_status,
+            self.docs_path,
+            self.ctx.story_slug,
+            epic=self.ctx.story_epic,
+            story_path=self.ctx.story_path,
+        )
+        if stamped.status == "dirty":
+            return nodes.repair_or_escalate(
+                self,
+                from_findings(
+                    "story status",
+                    [
+                        Finding(
+                            target=self.ctx.story_path,
+                            issue=(
+                                f"the story's Status reads '{stamped.written}', which marks "
+                                "it finished — story selection reads that line, so the story "
+                                "is now invisible to every later loop and to QA"
+                            ),
+                            repair=(
+                                "put the Status line back to the value it held before this "
+                                "story's work — `git diff` on the story file shows it — and "
+                                "record what was run as prose under `## Implementation "
+                                "Status` instead. The workflow stamps the outcome itself, "
+                                "and only from a QA run it performed"
+                            ),
+                        )
+                    ],
+                    layer.cwd,
+                    lap.fix_lap,
+                ),
+                f"the story's Status was set to '{stamped.written}' before QA ran.",
+                "the story status gate",
+                index,
+                impl_blocks,
+                lap,
+            )
+        outcome = GateOutcome()
         for gate in GATE_ORDER:
             outcome = self.call(
                 run_gate, layer.cwd, layer.service, gate, service_type=layer.type
@@ -400,32 +446,34 @@ class Dev(Workflow):
         if outcome.status != "dirty":
             return Continue(outcome, self.layer, index=index, lap=lap)
         report = from_gate(outcome, layer.cwd, lap.fix_lap)
-        if lap.fix_lap < nodes.MAX_FIX_LAPS:
-            return Continue(report, self.fix, index=index, impl_blocks=impl_blocks, lap=lap)
-        # The budget bounds the *lap*, never the story: this hands the failing gate to the
-        # resolver and, failing that, to a human, exactly as a blocked implement turn does.
-        # See AGENTS.md, "a workflow never gives up".
         failing = f"`{report.command}`" if report.command else f"the {outcome.gate} gate"
-        return nodes.gate_impl(
+        return nodes.repair_or_escalate(
             self,
             report,
             f"{layer.service}: {failing} still fails after "
             f"{lap.fix_lap} repair lap(s).\n\n{report.output}",
-            index,
             f"the {outcome.gate} gate",
+            index,
             impl_blocks,
             lap,
         )
 
-    def fix(self, index: int, lap: Lap, impl_blocks: int = 0) -> Continue | Await:
+    def fix(
+        self,
+        index: int,
+        lap: Lap,
+        report: FailureReport = FailureReport(),
+        impl_blocks: int = 0,
+    ) -> Continue | Await:
         """Repair whatever the gate reported, then re-run the gates.
 
         One repair role for every gate, on the story's own conversation: the turn that
         wrote this code is the cheapest turn to fix it, and a fixer in a fresh context
         spends its first minutes re-reading a diff it has only just met.
 
-        The report is read back off the gate that produced it rather than threaded, since
-        `gates` breaks on the first dirty one and that is the output recorded there.
+        The report is threaded in rather than read back off a node's output, because not
+        every gate in this lane is a node with one: the status check builds its findings in
+        Python, and `gates` is the single place that decides which failure this lap is for.
         `lap.digest` is the *previous* lap's fingerprint: two laps whose reports digest the
         same mean the repair changed nothing the gate can see, and the answer to that is to
         spend power rather than another identical turn. The ladder is low, low, then high —
@@ -433,8 +481,7 @@ class Dev(Workflow):
         a stalled lap brings that escalation forward.
         """
         layer = nodes.current_layer(self)
-        failure = from_gate(self.output(run_gate), layer.cwd, lap.fix_lap)
-        stalled = bool(lap.digest) and failure.digest == lap.digest
+        stalled = bool(lap.digest) and report.digest == lap.digest
         lap = nodes.spend(self, lap)
         turn = roles.turn(self, "dev-fix")
         result = self.agent(
@@ -446,7 +493,7 @@ class Dev(Workflow):
             args=turn.args | {
                 # Dumped rather than passed as a model: everything in `args` is
                 # checkpointed, and a checkpoint holds JSON.
-                "report": failure.model_dump(),
+                "report": report.model_dump(),
                 "changed_files": self.call(
                     changed_files, layer.cwd, self.ctx.story_slug
                 ).paths,
@@ -464,7 +511,7 @@ class Dev(Workflow):
                 result,
                 result.notes
                 or "the repair turn could not satisfy "
-                + (f"`{failure.command}`" if failure.command else f"the {failure.source} gate"),
+                + (f"`{report.command}`" if report.command else f"the {report.source} gate"),
                 index,
                 "the repair turn",
                 impl_blocks,
@@ -476,7 +523,7 @@ class Dev(Workflow):
             index=index,
             impl_blocks=impl_blocks,
             lap=lap.model_copy(
-                update={"fix_lap": lap.fix_lap + 1, "digest": failure.digest}
+                update={"fix_lap": lap.fix_lap + 1, "digest": report.digest}
             ),
         )
 

@@ -36,7 +36,7 @@ All three sets of findings are combined into the final verdict.
 
 1. Read the **story** at `story_path` to understand the acceptance criteria and scope.
 2. Read the **plan** in `spec_dir` (look for `plan.md` or the service-specific plan files) to understand the intended approach.
-3. The affected repos and their instruction files, as the plan resolved them:
+3. The affected repos, as the plan resolved them:
 {% if plan_services %}
 {{ plan_services }}
 {% endif %}
@@ -59,13 +59,11 @@ and they are folded in at Step 4; do not re-derive them.
 #### 3a. Instruction Compliance
 
 - Read the coding-standard files that govern the changed code. Take the list from the
-  repo itself, not from memory:
-  - the `skills` listed for each service above — that is the set the implementer was
-    held to, so it is the set to review against
-  - any further skills those files themselves point at for the areas the diff touches
-  - any other repo-specific standards listed in that repo's `AGENTS.md`/`CLAUDE.md`
-  - if a repo names no skills for a changed file, say so in the review rather than
-    substituting conventions from a stack this repo does not use
+  repo itself, not from memory: the standards it installs, loaded for the files the diff
+  actually changes, plus any further skills those files point at and any repo-specific
+  standards in that repo's `AGENTS.md`/`CLAUDE.md`. If a repo names no standard for a
+  changed file, say so in the review rather than substituting conventions from a stack
+  this repo does not use.
 - Verify naming conventions, code structure, and patterns match the documented standards
 - Identify any violations with specific file and line references; explain which rule was broken
 

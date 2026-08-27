@@ -13,9 +13,11 @@ first place), the story would have stayed "passed" forever without any QA the wo
 performed. `apply-review.md` already carried this guard; `implement-plan.md` did not, and the
 asymmetry was invisible until an agent took the opening.
 
-The assertion is deliberately about *forbidding*, not about phrasing: it checks that each
-prompt names the status line and tells the agent not to write it. Rewording the section is
-fine; deleting the prohibition is the regression.
+The dev lane no longer argues the point at length: `check_story_status` re-reads the line
+after every implementing and repairing turn and routes a violation back through the repair
+budget, so the prompt states the rule once and the gate is what makes stating it binding.
+The assertion here is about *forbidding*, not about phrasing — rewording is fine, deleting
+the prohibition is the regression.
 """
 from __future__ import annotations
 
@@ -24,6 +26,7 @@ from pathlib import Path
 import pytest
 
 import workhorse_workflows
+from workhorse_workflows.coder.shared.schemas.dev import StoryStatusCheck
 
 CODER = Path(workhorse_workflows.__file__).parent / "coder"
 
@@ -39,6 +42,10 @@ UNAUTHORIZED = sorted(
     p for p in CODER.glob("*/prompts/*.md") if p.name in NO_STATUS_AUTHORITY
 )
 
+#: Ways of saying "not yours to write". A prompt satisfies the rule with any one of them;
+#: the list grows when a prompt finds a better sentence, never when one drops the rule.
+PROHIBITIONS = ("Do **not**", "do **not**", "exactly as you found them")
+
 
 def _id(path: Path) -> str:
     return f"{path.parent.parent.name}/{path.stem}"
@@ -51,19 +58,25 @@ def test_the_prompt_forbids_writing_the_story_status_line(prompt: Path) -> None:
     section = text.partition("## Story Status")[2]
     assert section, f"{prompt} has no `## Story Status` section"
     assert "Implementation Status" in section, prompt
-    assert "Do **not**" in section or "do **not**" in section, prompt
+    assert any(phrase in section for phrase in PROHIBITIONS), prompt
 
 
-def test_the_guard_explains_why_a_stamped_status_sticks() -> None:
-    """`implement-plan` says what a premature stamp costs, not just that it is banned.
+def test_the_guard_names_what_enforces_it() -> None:
+    """Each prompt points at the machinery that re-reads the line, not at a bare rule.
 
     The agent that stamped `QA passed` was not being careless — it had genuinely re-verified
-    the story and was recording a true-looking fact. A bare prohibition reads as bookkeeping
-    to an agent in that position; the consequence is what makes it a rule worth obeying.
+    the story and was recording a true-looking fact. A prohibition with nothing behind it
+    reads as bookkeeping to an agent in that position. `implement-plan` names the gate that
+    re-reads the line; `apply-review` names the gate that owns the transition instead.
     """
-    copies = [p for p in UNAUTHORIZED if p.name == "implement-plan.md"]
-    assert copies, "no `implement-plan.md` found — the glob is looking in the wrong place"
-    for copy in copies:
-        section = copy.read_text(encoding="utf-8").partition("## Story Status")[2]
-        assert "QA passed" in section, copy
-        assert "queue" in section, copy
+    for prompt in UNAUTHORIZED:
+        section = prompt.read_text(encoding="utf-8").partition("## Story Status")[2]
+        assert "gate" in section, prompt
+
+
+def test_the_dev_gate_defaults_to_dirty() -> None:
+    """The claim the prompt makes is only true because this node exists and fails closed.
+
+    An unbuilt check has verified nothing, so its default is the arm that loops the turn.
+    """
+    assert StoryStatusCheck().status == "dirty"

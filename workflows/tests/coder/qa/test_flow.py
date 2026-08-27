@@ -122,7 +122,6 @@ API_SERVICE: dict[str, Any] = {
     "path": ".",
     "type": "go",
     "plan_file": "plan-api.md",
-    "skills": [],
 }
 
 #: The same plan with a second service, one that *does* declare a `regression:` command —
@@ -133,7 +132,6 @@ WEB_SERVICE: dict[str, Any] = {
     "path": ".",
     "type": "web-app",
     "plan_file": "plan-web.md",
-    "skills": [],
 }
 
 #: The one scenario `QA_PLAN` declares, and therefore the one the draft nominates as its
