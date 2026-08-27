@@ -226,6 +226,51 @@ def _go_receiver(node: Node) -> tuple[bool, str]:
     return pointer, syntax.text_of(kind)
 
 
+def _go_embedded_name(kind: Node | None) -> str:
+    """The name an embedded field or interface is known by: its type's last identifier.
+
+    `mock.Mock` → `Mock`, `*Thing` → `Thing`, `generics.Box[int]` → `Box` — the same
+    derivation the language itself performs when it promotes the member.
+    """
+    while kind is not None and kind.type in {"pointer_type", "generic_type"}:
+        kind = kind.child_by_field_name("type") or (
+            kind.named_children[0] if kind.named_children else None
+        )
+    if kind is None:
+        return ""
+    if kind.type == "qualified_type":
+        return syntax.field_text(kind, "name")
+    if kind.type == "type_identifier":
+        return syntax.text_of(kind)
+    return ""
+
+
+def _go_member_names(spec: Node) -> list[str]:
+    """Struct field and interface method names inside one type spec — grounding's extras.
+
+    Fields ground the way Python class attributes always have (`_py_declared` walks at any
+    depth), and grounding is where they matter: `MockProjectReader.Mock` is a real embedded
+    field, and a scanner that never descends into `struct_type` turns that correct citation
+    into a `missing-code-symbol` no edit can clear. They stay out of `symbols()` — a field is
+    not a unit the book owes coverage for, and the denominator must not widen.
+    """
+    out: list[str] = []
+    for node in syntax.walk(spec):
+        if node.type == "field_declaration":
+            names = node.children_by_field_name("name")
+            if names:
+                out.extend(syntax.text_of(name) for name in names)
+            else:
+                out.append(_go_embedded_name(node.child_by_field_name("type")))
+        elif node.type == "method_elem":
+            out.append(syntax.field_text(node, "name"))
+        elif node.type == "type_elem":
+            out.append(
+                _go_embedded_name(node.named_children[0] if node.named_children else None)
+            )
+    return [name for name in out if name]
+
+
 def _go_symbols(text: str, *, exported_only: bool) -> list[str]:
     """Types/funcs/vars/consts, plus each method qualified by its receiver.
 
@@ -241,7 +286,8 @@ def _go_symbols(text: str, *, exported_only: bool) -> list[str]:
 
     Only `source_file`'s own children are read, which is what keeps a function-local `var` out
     of a package's symbol set. Ordering is source order, because `symbols` is the inventory's
-    ordered unit list.
+    ordered unit list. The grounding pass (`exported_only=False`) additionally descends into
+    each type's members — see `_go_member_names`.
     """
     out: list[str] = []
 
@@ -265,6 +311,8 @@ def _go_symbols(text: str, *, exported_only: bool) -> list[str]:
                 if spec.type in _GO_SPECS:
                     for name in spec.children_by_field_name("name"):
                         keep(syntax.text_of(name))
+                    if not exported_only and spec.type in {"type_spec", "type_alias"}:
+                        out.extend(_go_member_names(spec))
     return [name for name in out if name]
 
 

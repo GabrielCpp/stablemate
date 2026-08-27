@@ -241,6 +241,45 @@ def test_a_composite_literal_inside_a_value_block_is_not_a_declaration():
     assert {"unexported", "Grouped", "ElementRules"} <= declared, sorted(declared)
 
 
+GO_MEMBERS = '''\
+package mocks
+
+type MockProjectReader struct {
+	mock.Mock
+	name string
+	Ptr  *retry.Policy
+	Box  generics.Box[int]
+}
+
+type Reader interface {
+	Read(p []byte) (int, error)
+	io.Closer
+}
+'''
+
+
+def test_go_struct_fields_and_interface_methods_ground():
+    """A field citation is a correct citation — the Python scanner has always agreed.
+
+    `MockProjectReader.Mock` names a real embedded field, and before members were read a
+    book documenting a mockery mock re-flagged `missing-code-symbol` on every doctor round,
+    unfixable by any edit. Embedded members ground under the name the language promotes them
+    as: the type's last identifier.
+    """
+    for symbol in ("MockProjectReader.Mock", "MockProjectReader.name",
+                   "Reader.Read", "Reader.Closer"):
+        assert inventory.declares("mocks.go", GO_MEMBERS, symbol) is True, symbol
+    assert inventory.declares("mocks.go", GO_MEMBERS, "MockProjectReader.Absent") is False
+
+
+def test_go_members_stay_out_of_the_inventory():
+    """The other half of the decision: members ground citations, they are not units.
+
+    Widening `symbols()` would change what a complete book means for every Go tree at once.
+    """
+    assert inventory.symbols("mocks.go", GO_MEMBERS) == ["MockProjectReader", "Reader"]
+
+
 TS = '''\
 export function exported() {}
 function local() {}
