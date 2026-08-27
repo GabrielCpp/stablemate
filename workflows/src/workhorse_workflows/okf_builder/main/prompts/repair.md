@@ -11,7 +11,7 @@ that one defect rather than for repairs in general.
 Load the method and obey it: {{ skill_load_ref("ostler-okf", skill_dir() + "/ostler-okf/SKILL.md") }}
 {% if workhorse_var('item_code') in ['undeclared-obligation', 'weak-check', 'unstated-precondition', 'unparsed-check', 'compound-normative-bullet', 'unminted-claim'] %}
 This finding is about whether a claim can ever be observed, so read the bar it is measured
-against: `{{ skill_dir() }}/ostler-okf/references/falsifiable-verification.md`.
+against: `{{ skill_path_ref("ostler-okf", "references/falsifiable-verification.md") }}`.
 {% endif %}
 
 ## This item
@@ -59,7 +59,7 @@ so a key that is not here comes back as `unknown-bullet`.
 {{ workhorse_var('bullet_grammar') }}
 
 The full authority for a type — what each key *means*, with examples — is its reference
-page: `{{ skill_dir() }}/ostler-okf/references/node-types/<type>.md`. Read the
+page: `{{ skill_path_ref("ostler-okf", "references/node-types") }}/<type>.md`. Read the
 page for the node's type before restructuring its bullets; the grammar above says what is
 legal, the page says what is right.
 

@@ -83,10 +83,14 @@ def _references_ok(root: Path) -> tuple[bool, str]:
     to stop. A skill that is installed but incomplete is therefore a blocked run, not a
     degraded one, and the fix is a farrier refresh, not agent persistence.
     """
+    # Farrier installs the skill under the consuming repo's prefix
+    # (`<repo>-ostler-okf`), so the directory name is matched by suffix.
     installs = [
-        root / d / "ostler-okf"
+        p
         for d in BACKEND_SKILL_DIR.values()
-        if (root / d / "ostler-okf").is_dir()
+        if (root / d).is_dir()
+        for p in sorted((root / d).iterdir())
+        if p.is_dir() and (p.name == "ostler-okf" or p.name.endswith("-ostler-okf"))
     ]
     if not installs:
         return False, (
