@@ -29,7 +29,14 @@ test: ## Run the test suite — the harness's tests and the data's, in one pass
 	# wrong is worse than no benchmark, because it reports a number nobody re-derives.
 	# They are named together rather than split across two targets so there is no way to
 	# run "paddock's tests" and have skipped half of what a round rests on.
-	uv run --extra test pytest tests data/tests -q
+	#
+	# `-n auto --dist loadscope`: the minutes here are subprocess minutes — go builds,
+	# pulumi previews, git plumbing — each in its own tmp dir, so they parallelize
+	# cleanly and the serial suite's ~11 minutes was mostly cores sitting idle.
+	# `loadscope` rather than plain `load` because the compile-heavy modules share a
+	# module-scoped go build cache; scattering their tests across workers would give
+	# each worker a cold cache and recompile the same SDK tree once per worker.
+	uv run --extra test pytest tests data/tests -q -n auto --dist loadscope
 
 .PHONY: build
 build: clean ## Build sdist + wheel into this package's dist/

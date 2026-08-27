@@ -1150,12 +1150,14 @@ dependencies = [
 [package.optional-dependencies]
 test = [
     { name = "pytest" },
+    { name = "pytest-xdist" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "pytest-xdist", marker = "extra == 'test'", specifier = ">=3.6" },
     { name = "tomli-w", specifier = ">=1.0" },
 ]
 provides-extras = ["test"]
