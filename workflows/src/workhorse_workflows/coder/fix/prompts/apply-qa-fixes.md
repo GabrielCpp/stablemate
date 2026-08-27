@@ -2,9 +2,9 @@
 agent: agent
 ---
 
-# Apply {{ repo.name | title }} Story QA Fixes
+# Apply The Story's QA Fixes
 
-Apply fixes for a {{ repo.name | title }} story after QA fails. This stage is separate from implementation review fixes and must stay limited to failures documented in the QA report.
+Apply fixes for a story after QA fails. This stage is separate from implementation review fixes and must stay limited to failures documented in the QA report.
 
 **Fix the root cause that makes each failed acceptance criterion true** — within this story's surface that includes a defect spanning the whole surface (state keyed wrong across every field, labels untranslated everywhere, a missing nav/section), not a narrow patch that leaves the criterion only partly met. The QA report's per-criterion findings (the action performed, the old↔new divergence) are your worklist; make each failed criterion observably pass against the source of truth. Genuinely *separate* scope (a different surface) is filed to the backlog, never used to leave this story's criteria unmet. QA reruns after you, so converge across passes rather than half-fixing.
 
@@ -41,14 +41,16 @@ category.
 Read:
 
 - `AGENTS.md`
-- this repo's developer / local-stack runbook: {{ find_by_tags("runbook") | default("(none installed — follow `AGENTS.md` and the repo's own documented commands)", true) }}
+- this repo's developer / local-stack runbook, wherever it installs one; failing that,
+  `AGENTS.md` and the repo's own documented commands
 - the story file
 - the parent `epic.md`
 - plan artifacts under `docs/specs/<story-name>/`
 - `review.md` and its resolution section, if present
 - `qa.md`
 - story-local QA evidence under `docs/epics/<epic-short-name>/stories/<story-short-name>/qa/`
-- the instruction files for the layers you touched, from those this repository installs: {{ find_by_tags("standards") | default("(none installed — follow `AGENTS.md` and the repo's own conventions)", true) }}
+- the coding standards that govern the files you edit, loaded for those files at the
+  moment you edit them
 
 ## Goal
 

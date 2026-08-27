@@ -2,7 +2,7 @@
 agent: agent
 ---
 
-# Report DEV QA Pass — {{ repo.name | title }}
+# Report The DEV QA Pass
 
 QA ran against the DEV environment and all acceptance criteria passed. Write a clear, evidence-backed Jira comment that tells the story's author exactly what was tested and confirmed, then terminate cleanly.
 

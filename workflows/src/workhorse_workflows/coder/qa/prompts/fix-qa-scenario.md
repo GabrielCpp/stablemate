@@ -48,10 +48,12 @@ divergence — and read that scenario's function in `{{ workhorse_var('spec_dir'
 Read:
 
 - `AGENTS.md`
-- this repo's developer / local-stack runbook: {{ find_by_tags("runbook") | default("(none installed — follow `AGENTS.md` and the repo's own documented commands)", true) }}
+- this repo's developer / local-stack runbook, wherever it installs one; failing that,
+  `AGENTS.md` and the repo's own documented commands
 - the story file, and the plan artifacts beside it
 - `qa.md`, limited to this scenario's findings
-- the instruction files for the layers you touch, from those this repository installs: {{ find_by_tags("standards") | default("(none installed — follow `AGENTS.md` and the repo's own conventions)", true) }}
+- the coding standards that govern the files you edit, loaded for those files at the
+  moment you edit them
 
 ## Goal
 

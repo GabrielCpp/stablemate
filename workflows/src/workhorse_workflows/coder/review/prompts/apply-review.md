@@ -2,9 +2,9 @@
 agent: agent
 ---
 
-# Apply {{ repo.name | title }} Story Review Fixes
+# Apply The Story's Review Fixes
 
-Apply required fixes from a {{ repo.name | title }} story implementation review. This stage must stay limited to review findings.
+Apply the required fixes from a story implementation review. This stage must stay limited to review findings.
 
 ## Inputs (authoritative — do not rediscover)
 
@@ -32,12 +32,14 @@ If the section above is non-empty, it is mid-flight feedback a human dropped int
 Read:
 
 - `AGENTS.md`
-- this repo's developer / local-stack runbook: {{ find_by_tags("runbook") | default("(none installed — follow `AGENTS.md` and the repo's own documented commands)", true) }}
+- this repo's developer / local-stack runbook, wherever it installs one; failing that,
+  `AGENTS.md` and the repo's own documented commands
 - the story file
 - the parent `epic.md`
 - the plan artifacts under `docs/specs/<story-name>/`
 - `review.md`
-- the instruction files for the layers you touched, from those this repository installs: {{ find_by_tags("standards") | default("(none installed — follow `AGENTS.md` and the repo's own conventions)", true) }}
+- the coding standards that govern the files you edit, loaded for those files at the
+  moment you edit them
 
 ## Goal
 

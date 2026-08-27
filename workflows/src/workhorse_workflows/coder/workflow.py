@@ -45,7 +45,8 @@ workflow = (
             # Keyed by prompt STEM: the reply that makes a dry run *progress* past each
             # gate rather than taking the pessimistic blank arm.
             "plan-story": {"status": "complete"},
-            "refine-plan": {"status": "complete"},
+            "repair-plan-paths": {"status": "done"},
+            "replan-with-answer": {"status": "done"},
             "implement-plan": {"status": "complete"},
             "dev-fix": {"status": "fixed"},
             "code-review": {"status": "clean"},

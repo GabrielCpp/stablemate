@@ -24,15 +24,16 @@ the file does not exist, return `blocked` and say so.
 Read:
 
 - `AGENTS.md`
-- this repo's developer / local-stack runbook: {{ find_by_tags("runbook") | default("(none installed — follow `AGENTS.md` and the repo's own documented commands)", true) }}
+- this repo's developer / local-stack runbook, wherever it installs one; failing that,
+  `AGENTS.md` and the repo's own documented commands
 - the story file, for its acceptance criteria
 - the plan artifacts under the spec directory. Verify the services the fix touched, not
   the whole repository:
 {% if plan_services %}
 {{ plan_services }}
 {% endif %}
-- the testing instruction files for the layers the fix touched, from those this repository
-  installs: {{ find_by_tags("tests") | default("(none installed — follow the conventions the layer's existing tests establish)", true) }}
+- the testing standards that govern the files the fix touched, failing that the
+  conventions the layer's existing tests establish
 
 ## What To Do
 

@@ -102,7 +102,7 @@ def _spec_relative(plan_file: str, spec_abs: Path | None, root: Path | None) -> 
     that fills it has just *written* `docs/specs/<story>/plan.md`, and a planner holding
     that repo-relative string in its hand hands the same string back. The two readings name
     the same file on disk, so the disagreement is about notation and nothing else. It was
-    not free: in benchmark run `c1` it cost a 203 s high-power `refine-plan` lap whose whole
+    not free: in benchmark run `c1` it cost a 203 s high-power re-planning lap whose whole
     output was one string rewritten into another string for the same file, and the errors it
     was sent came from two checkers at once — this module's own, and `ostler artifact vet`'s
     (`artifact/kinds.py`), which resolves the field the same way. Normalising here fixes

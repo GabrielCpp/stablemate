@@ -2,7 +2,7 @@
 agent: agent
 ---
 
-# Make the Dev Environment QA-Capable — {{ repo.name | title }}
+# Make the Dev Environment QA-Capable
 
 The QA stack could not be brought up — QA was **blocked**, or the workflow's durable bring-up step
 (`ensure_stack`) could not stand the stack up. This is a *setup* problem, not a product one. Your job

@@ -14,11 +14,11 @@ than a static grep because the guards are the mechanism under test — `{%- set 
 find_by_tags("web") %}` at the top and `{% if web_refs %}` around the body — and a grep
 cannot tell prose inside a guard from prose outside one.
 
-The manifest carries `_instruction_tags` as well as `_instructions`, because the guards
-ask by capability now rather than by name. A skill the manifest lists but does not tag is
-one no query can reach, so an untagged manifest would render *every* layer's prose away
-and pass the neutrality half of this file for the wrong reason — which is what the last
-test here exists to catch.
+The manifest carries `_instruction_tags` as well as `_instructions`, because a guard that
+survives asks by capability rather than by name. The prompts no longer *list* what a repo
+installs — the installed skills advertise themselves and the model loads them — so what is
+left to check is the other half: that no prompt hardcodes a stack, and that none demands a
+skill by a name no repo is obliged to install.
 
 Both directions are checked. A web-only manifest must not yield mobile prose, and a
 mobile-only manifest must not yield web prose, because a prompt that hardcodes *one*
@@ -207,22 +207,3 @@ def test_no_prompt_requires_a_skill_this_package_cannot_promise(stack: str, prom
         f"`find_by_tags(...)` and a `| default(...)`, or guard it with "
         f"`isUsingInstruction`"
     )
-
-
-@pytest.mark.parametrize("stack", sorted(STACKS))
-def test_the_stack_it_does_have_still_reaches_the_prompt(stack: str) -> None:
-    """The guard against passing by rendering nothing.
-
-    Dropping every stack-specific paragraph would satisfy the test above perfectly, and
-    would also delete the guidance the prompt exists to give. `plan-story` and
-    `refine-plan` are the two that branch per layer, so each must still name at least one
-    of the manifest's own skill files once the guards have run.
-    """
-    branching = [p for p in PROMPTS if p.name in ("plan-story.md", "refine-plan.md")]
-    assert branching, "no branching prompt found — the glob is looking in the wrong place"
-    for prompt in branching:
-        rendered = render(prompt, _context(stack), CODER)
-        assert any(skill in rendered for skill in STACKS[stack]["skills"]), (
-            f"{_id(prompt)} rendered for a {stack} repo mentions none of its skills — the "
-            f"guards are dropping the prose they were meant to select"
-        )

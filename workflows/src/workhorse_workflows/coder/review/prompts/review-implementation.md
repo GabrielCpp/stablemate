@@ -2,7 +2,7 @@
 agent: agent
 ---
 
-# Review A {{ repo.name | title }} Story Implementation
+# Review A Story Implementation
 
 ## Inputs (authoritative — do not rediscover)
 

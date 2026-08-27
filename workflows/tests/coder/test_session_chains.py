@@ -351,18 +351,18 @@ def test_applying_a_product_note_is_not_the_fix_worklist(spy: _Spy) -> None:
 # ── the dev lane ─────────────────────────────────────────────────────────────────────
 
 
-def _refine(flow: Dev, worklist: str) -> None:
+def _refine(flow: Dev, role: str, worklist: str) -> None:
     with pytest.raises(_Reached):
-        nodes.refine(flow, review_notes="", operator_context="", worklist=worklist)
+        nodes.refine(flow, role, review_notes="", operator_context="", worklist=worklist)
 
 
 def test_the_re_planning_loops_never_share_a_conversation(spy: _Spy) -> None:
-    """One prompt, several call sites, unrelated worklists. Sharing a key would hand the
-    path-repair pass the operator's answer to a block it was never told about — the stale
-    context each loop deliberately withholds through its arguments."""
+    """Two prompts, unrelated worklists. Sharing a key would hand the path-repair pass the
+    operator's answer to a block it was never told about — the stale context each loop
+    deliberately withholds through its arguments."""
     flow = _dev()
-    for worklist in ("block-repair", "path-repair"):
-        _refine(flow, worklist)
+    for role, worklist in (("replan-with-answer", "block-repair"), ("repair-plan-paths", "path-repair")):
+        _refine(flow, role, worklist)
 
     assert [turn["session"] for turn in spy.turns] == [
         f"plan-{worklist}:{STORY}" for worklist in ("block-repair", "path-repair")

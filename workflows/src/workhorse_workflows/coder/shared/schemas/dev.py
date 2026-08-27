@@ -113,7 +113,7 @@ class PlanFixture(CoderResult):
 
 
 class PlanResult(CoderResult):
-    """`dev/prompts/plan-story.md` and `dev/prompts/refine-plan.md` — the plan, or the blocker.
+    """What every plan turn returns — `plan-story`, `repair-plan-paths`, `replan-with-answer`.
 
     `status` is `done` or `blocked`, and required: the turn either produced a plan or it
     did not, and a plan turn that cannot say which has not answered. Only `blocked` is

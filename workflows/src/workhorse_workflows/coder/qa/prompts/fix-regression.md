@@ -2,7 +2,7 @@
 agent: agent
 ---
 
-# {{ repo.name | title }} Regression Suite Fix
+# Regression Suite Fix
 
 The deterministic regression runner just executed the committed user-journey suite for this story
 and it did **not** come back clean. The deterministic runner compared failures with the complete
@@ -25,8 +25,8 @@ You are **not** re-checking this story's ACs.
 
 ## Required Context
 
-- The QA skill(s) for how to bring up the **real** stack and how a journey is written here —
-  whichever of these this repository installs: {{ find_by_tags("qa") | default("(none installed — follow the repo's own QA documentation)", true) }}
+- the QA standards this repo installs, for how to bring up the **real** stack and how a
+  journey is written here; failing that, the repo's own QA documentation
 - The documented journeys and their convention, wherever this repo keeps them (its journeys
   README is the entry point). Each journey is one flow.
 - the surfaces this story actually changed, and the stack/fixtures they need:

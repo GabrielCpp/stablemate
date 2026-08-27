@@ -294,11 +294,14 @@ class _Agent:
     def _plan_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return self._plan(data)
 
-    def _refine_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+    def _repair_plan_paths(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        return self._plan(data)
+
+    def _replan_with_answer(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return self._plan(data)
 
     def _plan(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Write the plan files both planning prompts are told to, then report the structure.
+        """Write the plan files every planning prompt is told to, then report the structure.
 
         The plan files are written *untyped*: `stamp_specs` runs right after the first plan
         turn and is what gives them their OKF `type`, so writing them with front-matter
@@ -732,8 +735,8 @@ def test_an_unresolvable_service_path_reworks_the_plan(
     result = drive_flow(Dev(story=STORY), run_env, agent)
 
     assert result.status == "ready", result
-    assert agent.counts()["refine-plan"] == 1, agent.counts()
-    assert "ghost" in agent.args_for("refine-plan")[0]["review_notes"]
+    assert agent.counts()["repair-plan-paths"] == 1, agent.counts()
+    assert "ghost" in agent.args_for("repair-plan-paths")[0]["review_notes"]
     # The gate's verdict is the node's, recorded: the second validation passed.
     assert _output(run_env, record_plan)["status"] == "valid"
 
@@ -756,8 +759,8 @@ def test_a_plan_whose_files_were_never_written_reworks_the_plan(
     result = drive_flow(Dev(story=STORY), run_env, agent)
 
     assert result.status == "ready", result
-    assert agent.counts()["refine-plan"] == 1, agent.counts()
-    notes = agent.args_for("refine-plan")[0]["review_notes"]
+    assert agent.counts()["repair-plan-paths"] == 1, agent.counts()
+    notes = agent.args_for("repair-plan-paths")[0]["review_notes"]
     assert "plan-api.md" in notes and "not readable" in notes, notes
     assert _output(run_env, record_plan)["status"] == "valid"
 
@@ -772,7 +775,7 @@ def test_a_repo_relative_plan_file_costs_no_refine_lap(
 
     `plan-story.md` asks for it relative to the spec dir, and the turn that fills it has
     just written `docs/specs/<story>/plan.md` — so it hands that string back about as often
-    as the short one. Benchmark run `c1` spent a 203 s high-power `refine-plan` lap on the
+    as the short one. Benchmark run `c1` spent a 203 s high-power re-planning lap on the
     difference, and produced one string rewritten into another string for the same file.
     """
     agent = _Agent(docs, repo_relative_plans=True)
@@ -781,7 +784,7 @@ def test_a_repo_relative_plan_file_costs_no_refine_lap(
     result = drive_flow(Dev(story=STORY), run_env, agent)
 
     assert result.status == "ready", result
-    assert agent.counts()["refine-plan"] == 0, agent.counts()
+    assert agent.counts()["repair-plan-paths"] == 0, agent.counts()
     assert _output(run_env, record_plan)["status"] == "valid"
     # Repaired on the way in, not tolerated at the check: every later reader of the
     # projection — `ostler artifact vet`, QA on a later run — sees the one spelling.
@@ -840,7 +843,8 @@ def test_an_unfixable_plan_exhausts_the_budget_and_reaches_the_operator(
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
-    assert agent.counts()["refine-plan"] == 4, agent.counts()
+    assert agent.counts()["repair-plan-paths"] == 3, agent.counts()
+    assert agent.counts()["replan-with-answer"] == 1, agent.counts()
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
     assert agent.args_for("resolve-operator")[0]["block_kind"] == "plan"
 
@@ -914,7 +918,7 @@ def test_a_resolver_that_grounds_its_answer_settles_the_block_without_a_person(
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
     # The answer reached the refiner exactly as a human's would have, and the marker was
     # flipped, so the next block re-arms instead of re-consuming this answer.
-    assert "staging bucket" in agent.args_for("refine-plan")[0]["operator_context"]
+    assert "staging bucket" in agent.args_for("replan-with-answer")[0]["operator_context"]
     assert "STATUS: CONSUMED" in (docs / CONTEXT_REL).read_text()
 
 
@@ -967,10 +971,10 @@ def test_a_blocked_plan_goes_to_the_auto_operator_and_is_reworked(
 
     assert result.status == "ready", result
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
-    assert agent.counts()["refine-plan"] == 1, agent.counts()
+    assert agent.counts()["replan-with-answer"] == 1, agent.counts()
     # The answer reached the refiner, and the marker was flipped so a later block re-arms
     # instead of consuming this same answer again.
-    assert "staging bucket" in agent.args_for("refine-plan")[0]["operator_context"]
+    assert "staging bucket" in agent.args_for("replan-with-answer")[0]["operator_context"]
     assert "STATUS: CONSUMED" in (docs / CONTEXT_REL).read_text()
 
 

@@ -232,6 +232,7 @@ class Dev(Workflow):
         """
         result = nodes.refine(
             self,
+            "replan-with-answer",
             review_notes=notes,
             operator_context=operator_context,
             worklist="block-repair",
@@ -277,8 +278,8 @@ class Dev(Workflow):
             return nodes.gate_plan(self, result, notes, plan_blocks)
         refined = nodes.refine(
             self,
+            "repair-plan-paths",
             review_notes=f"Service path validation failed: {result.errors}",
-            operator_context="",
             worklist="path-repair",
             # low: the design already passed the gate; what failed is a path, a repo name or
             # a marker in the machine-readable reply. Billing that as a high-power re-plan is

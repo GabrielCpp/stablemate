@@ -264,21 +264,23 @@ def gate_impl(
 
 def refine(
     flow: Dev,
+    role: str,
     *,
     review_notes: str,
-    operator_context: str,
+    operator_context: str = "",
     worklist: str,
     power: str = "high",
 ) -> PlanResult:
-    """The `refine-plan.md` turn, shared by the two states that re-plan.
+    """One re-planning turn, for whichever of the two reasons the caller is here for.
 
-    What distinguishes the call sites is their `review_notes` and where they go next, and
-    both are the caller's. So is `worklist` — the loops lap on unrelated things, so each
-    resumes its own conversation and neither inherits the other's — and so is `power`:
-    re-planning around an operator's answer is high-stakes work, repairing a rejected
-    service path is a string edit.
+    The flow knows why it is dispatching, so it names the prompt rather than describing
+    both arrivals to the agent and asking it to sniff which one this is:
+    `repair-plan-paths` is a string edit against a validator's complaint,
+    `replan-with-answer` is real planning around a decision the plan could not make. That
+    is also why `power` differs, and why `worklist` does — the loops lap on unrelated
+    things, so each resumes its own conversation and neither inherits the other's.
     """
-    turn = roles.turn(flow, "refine-plan")
+    turn = roles.turn(flow, role)
     return flow.agent(
         turn.prompt,
         returns=PlanResult,

@@ -2,7 +2,7 @@
 agent: agent
 ---
 
-# Triage {{ repo.name | title }} QA Failures
+# Triage The QA Failures
 
 QA failed for one story. Before any fix is attempted, **triage** the findings: decide, per
 finding, whether the work belongs **inside this story** (and grow the story to cover it) or is
@@ -51,7 +51,8 @@ will not loop forever. (A deterministic guard enforces this too, but decide hone
 Read:
 
 - `AGENTS.md`
-- this repo's developer / local-stack runbook: {{ find_by_tags("runbook") | default("(none installed — follow `AGENTS.md` and the repo's own documented commands)", true) }}
+- this repo's developer / local-stack runbook, wherever it installs one; failing that,
+  `AGENTS.md` and the repo's own documented commands
 - the story file (especially its `## Acceptance Criteria`)
 - the parent `epic.md` (to judge what is *this* story vs a sibling/other epic)
 - `qa.md` / `qa.json` and the captured evidence under the `qa/` directory

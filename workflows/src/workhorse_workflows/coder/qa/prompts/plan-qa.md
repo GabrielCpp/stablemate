@@ -2,7 +2,7 @@
 agent: agent
 ---
 
-# Plan QA For A {{ repo.name | title }} Story
+# Plan QA For A Story
 
 Author the complete, machine-executable QA plan for one reviewed story. Do not execute
 QA. Ostler is the only primary executor for command, browser, and mobile scenarios.
@@ -241,7 +241,7 @@ dashes, so the function name is the id — no separate uniqueness bookkeeping to
 
 ### QA tools
 
-`{{ repo.name }}` has opted the following tools into `agents.yml`, resolved for this host
+This repo has opted the following tools into `agents.yml`, resolved for this host
 (`ostler qa tools list`):
 
 {% if qa_tools %}

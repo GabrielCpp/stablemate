@@ -180,7 +180,7 @@ trip over:
   `os.system`, `os.popen` and anything else outside that allowlist fail lint regardless of what
   they would have run. If a finding needs a CLI, reach for a tool this repo already opted into
   in `agents.yml`: `qa.tesseract.ocr(image)`, `qa.convert.resize(image, width, height)`, or
-  `qa.tool("name").run(*args)` for anything else in the table below. `{{ repo.name }}` has
+  `qa.tool("name").run(*args)` for anything else in the table below. This repo has
   opted into:
 
 {% if qa_tools %}

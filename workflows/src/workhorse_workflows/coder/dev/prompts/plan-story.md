@@ -13,44 +13,17 @@ Plan **only** the story at the story path above. Do NOT search the repository, g
 
 ## Pre-Planning (REQUIRED — do first)
 
-### Instruction Set Resolution
+### Read the standards the design turns on
 
 Read the standards that bear on the decisions this story asks you to make — the layer it
 touches, and within that layer the files whose rules the design turns on. Not the whole set:
-the implementer is handed every standard tagged with each service's layer whether you read it
-or not, so reading one here buys a better *plan*, and reading one that changes no decision
-buys nothing. A handful is normal; a dozen means you are reading the layer rather than
-planning the story. (References point at the target adapter's instruction directory,
-`{{ skill_dir() }}`.)
-
-Only the layers this repository actually installs are listed below — if a layer you expected
-is absent, this repo has no skills for it, so use the shared repo guidance rather than
-inventing a path.
-{%- set backend_refs = find_by_tags("backend") %}
-{%- set cli_refs = find_by_tags("cli") %}
-{%- set web_refs = find_by_tags("web") %}
-{%- set mobile_refs = find_by_tags("mobile") %}
-{%- set infra_refs = find_by_tags("infra") %}
-{%- if backend_refs %}
-- {{ template.backend_layer_name | default("Go API") }}: {{ backend_refs }}
-{%- endif %}
-{%- if cli_refs %}
-- Go CLI / `{{ template.go_cli_name | default("appctl") }}`: {{ cli_refs }}
-{%- endif %}
-{%- if web_refs %}
-- {{ template.web_layer_name | default("Web app") }}: {{ web_refs }}
-{%- endif %}
-{%- if mobile_refs %}
-- {{ template.mobile_layer_name | default("Mobile app") }}: {{ mobile_refs }}
-{%- endif %}
-{%- if infra_refs %}
-- {{ template.infra_layer_name | default("Infrastructure") }}: {{ infra_refs }}
-{%- endif %}
-- Docs-only work: the repo's `AGENTS.md`
+reading one that changes no decision buys nothing. A handful is normal; a dozen means you are
+reading the layer rather than planning the story. What this repo installs advertises itself
+through the repo's own instruction mechanism and each skill's frontmatter; load from there.
 
 Rules:
 
-- One layer → that layer's instruction files plus shared repo/docs guidance, nothing else.
+- One layer → that layer's standards plus shared repo/docs guidance, nothing else.
 - Multiple layers → the ones each layer's decisions turn on, and split the plan by layer.
 - Layer unclear → inspect the story and code paths first; if still unclear, stop and ask before planning.
 
@@ -123,7 +96,7 @@ shape is under "Machine-Readable Result" at the end of this prompt, and it is:
 - `services`: one entry per **service** (concrete deployable unit) this story changes. Each has:
   - `repo`: the repo name (must match a folder name in the workspace or the CWD repo name)
   - `path`: relative path from repo root to the service directory (e.g., `cmd/alert`, `packages/discover`, `.` for root)
-  - `type`: the technology, using the key **this repo's** instructions/prompts gate on — take it from the skill short-names listed under "Instruction Set Resolution" above and from the repo's own `agents.yml`, not from a taxonomy you remember. `docs` is the type for documentation-only services in every repo.
+  - `type`: the technology, using the key **this repo's** instructions/prompts gate on — take it from the repo's own `agents.yml` and the short-names of the skills it installs, not from a taxonomy you remember. `docs` is the type for documentation-only services in every repo.
   - `plan_file`: the plan file for this service (relative to spec dir)
   - `new_service`: `true` only when the directory does not exist yet and this story scaffolds it
 - `implementation_order`: ordered list of `repo::path` keys specifying build order. Dependencies first: whatever defines a shared contract before whatever implements it, and whatever implements it before whatever consumes it. Every entry must name a service you declared.
@@ -328,8 +301,7 @@ exactly how.
 - [ ] The plan says how the work is tested — the seam per unit, and what has to exist first.
 - [ ] A story too big for one sitting carries **Stages**, each with the check that closes it.
 
-❌ Don't plan for a layer this repo does not have — the "Instruction Set Resolution" list
-above is the whole set.
+❌ Don't plan for a layer this repo does not have — what it installs is the whole set.
 ❌ Don't forget code generation — stale generated files cause silent failures.
 
 ## Commit Trailers

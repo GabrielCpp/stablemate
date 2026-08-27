@@ -2,7 +2,7 @@
 agent: agent
 ---
 
-# Report DEV QA Failure — {{ repo.name | title }}
+# Report The DEV QA Failure
 
 QA ran against the DEV environment and found failures. This code is owned by another developer — fixing it is not your job. Your job is to write a clear, actionable Jira comment that tells the story's author exactly what failed and how to reproduce it, then terminate cleanly.
 
