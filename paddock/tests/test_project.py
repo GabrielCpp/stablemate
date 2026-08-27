@@ -165,7 +165,10 @@ def test_the_toolchain_is_not_a_repository_the_round_can_commit_into(
         cwd=str(pinned.path), capture_output=True, text=True, check=False,
     )
     assert outer.returncode != 0
-    assert project_mod.FENCE in outer.stderr
+    # The refusal is the contract; the wording is git's. 2.43 prints the unresolvable
+    # gitdir path — fence name included — where newer git prints `(null)` for it, so
+    # only the refusal's own phrase is safe to pin.
+    assert "not a git repository" in outer.stderr
     project_mod.release(pinned)
 
 
