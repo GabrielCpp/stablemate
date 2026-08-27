@@ -28,9 +28,9 @@ The library is the single source of truth. Never hand-edit a generated adapter
 (`.claude/`, `.codex/`, `.github/`, `.agents/`, or a generated local
 `AGENTS.md`/`CLAUDE.md`) — change the library, then re-install.
 
-This repo does not ship the agent-library skill, so the essentials are inlined
-below. If you have `farrier` installed, `farrier config show` documents the same
-layout for the configured library.
+Read ../skills/stablemate-farrier-agent-library/SKILL.md before you touch anything —
+it is the authority on layout, the `instruction_file` cross-link helper, packs, and
+the install/verify loop.
 
 ## 0. Locate the library — never hardcode its path
 

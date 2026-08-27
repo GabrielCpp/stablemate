@@ -3,7 +3,7 @@ name: stablemate-farrier-agent-library
 description: "Agent Library Maintenance & Install. Applies to agents.yml,.agents/**,agents/library/**,agents/packs/**,agents/scaffolds/**."
 metadata:
   generated_by: farrier
-  source: library/skills/farrier/farrier-agent-library/SKILL.md
+  source: library/skills/farrier/agent-library/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-farrier-agent-library/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [codegen]

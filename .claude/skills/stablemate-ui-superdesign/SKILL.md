@@ -3,7 +3,7 @@ name: stablemate-ui-superdesign
 description: "Superdesign Local Design Workflow — CLI setup, agent-skill install, design exploration prompts, and implementation handoff rules. Applies to UI source, design docs, and agents.yml."
 metadata:
   generated_by: farrier
-  source: library/skills/ui/ui-superdesign/SKILL.md
+  source: library/skills/ui/superdesign/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-ui-superdesign/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [runbook]

@@ -1,5 +1,5 @@
 ---
-name: farrier-skills-writing
+name: skills-writing
 description: "How to write a document an agent reads — a skill, a prompt, a CLAUDE.md, a doc reached by a link: the context pointer and how its wording decides whether the material is ever reached, the two loads a document spends, the information hierarchy and the progressive-disclosure move down it (SKILL.md + references/), completion criteria that resist premature completion, leading words, why prohibition backfires, and the pruning tests that keep a document relevant. Load when writing or editing a skill, a prompt, or an instruction file, when a document has sprawled past the point an agent attends to all of it, or when an agent keeps missing material that is already written down. For which surface material belongs on, load ostler-repo-docs; for the library's plumbing, agent-library."
 tags: [standards, docs]
 ---

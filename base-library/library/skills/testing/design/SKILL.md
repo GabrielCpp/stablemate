@@ -1,5 +1,5 @@
 ---
-name: testing-design
+name: design
 description: "The universal contract for a test that can actually fail, language-neutral — name the defect it catches, watch it go red before trusting it, derive fixtures from the producer instead of restating them, assert on evidence of work rather than status, and cover the composition and not only the units. Load whenever writing or reviewing tests; a stack skill (go-testing, python-testing, flutter-testing, react-router-qa, pulumi-qa) supplies the concrete mechanics, and the e2e-testing skill layers the end-to-end-specific contract (locators, waits, flake diagnosis) on top. Applies to test files in any language."
 applyTo: "**/*_test.go,**/test_*.py,**/*_test.py,**/*_test.dart,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,tests/**,**/__tests__/**"
 tags: [standards, tests]

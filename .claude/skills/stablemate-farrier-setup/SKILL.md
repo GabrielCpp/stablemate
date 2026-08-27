@@ -3,7 +3,7 @@ name: stablemate-farrier-setup
 description: "Farrier setup guide — install, configure library, write agents.yml, scaffold new services with `farrier scaffold`, bind skills to local CLAUDE.md files via localInstructions."
 metadata:
   generated_by: farrier
-  source: library/skills/farrier/farrier-setup/SKILL.md
+  source: library/skills/farrier/setup/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-farrier-setup/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [codegen]

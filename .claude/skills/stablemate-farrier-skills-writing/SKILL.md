@@ -3,7 +3,7 @@ name: stablemate-farrier-skills-writing
 description: "How to write a document an agent reads — a skill, a prompt, a CLAUDE.md, a doc reached by a link: the context pointer and how its wording decides whether the material is ever reached, the two loads a document spends, the information hierarchy and the progressive-disclosure move down it (SKILL.md + references/), completion criteria that resist premature completion, leading words, why prohibition backfires, and the pruning tests that keep a document relevant. Load when writing or editing a skill, a prompt, or an instruction file, when a document has sprawled past the point an agent attends to all of it, or when an agent keeps missing material that is already written down. For which surface material belongs on, load ostler-repo-docs; for the library's plumbing, agent-library."
 metadata:
   generated_by: farrier
-  source: library/skills/farrier/farrier-skills-writing/SKILL.md
+  source: library/skills/farrier/skills-writing/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-farrier-skills-writing/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [standards, docs]

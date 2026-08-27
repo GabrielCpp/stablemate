@@ -3,7 +3,7 @@ name: stablemate-ostler-repo-docs
 description: "How to write and maintain a repo's prose entry surface — CLAUDE.md (root and nested), README.md, and <package>/docs/*.md: the admission test that decides what earns a slot in every-turn agent context, the root/nested/skill/README/docs placement table, why `@`-imports are not splitting, and the README-outgrew-itself refactor (extract whole sections into <package>/docs/<TOPIC>.md, leave a summary plus an absolute link). Load when creating or editing a CLAUDE.md or README.md, when adding a rule an agent keeps getting wrong, when a file has outgrown its budget, or when a change makes an existing instruction stale. Not for docs/features/** — that is ostler's OKF graph."
 metadata:
   generated_by: farrier
-  source: library/skills/ostler/ostler-repo-docs/SKILL.md
+  source: library/skills/ostler/repo-docs/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-ostler-repo-docs/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [standards, docs]

@@ -3,7 +3,7 @@ name: stablemate-ostler-cli
 description: "The ostler tool — the system-of-record for a repo's docs/ knowledge graph (epics, stories, seeds, features and the OKF UI profile's typed nodes): the CLI command interface AND the `from ostler import Ostler` Python API workflow scripts use in-process, epic.md grammar, short handles, the coverage model, id allocation, profiles and templates, the QA control plane, and when a workflow agent should call it. Load it to *drive* ostler; the format it enforces under docs/features/ is ostler-okf."
 metadata:
   generated_by: farrier
-  source: library/skills/ostler/ostler-cli/SKILL.md
+  source: library/skills/ostler/cli/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-ostler-cli/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [cli, python, docs]

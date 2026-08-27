@@ -3,7 +3,7 @@ name: stablemate-ui-accessibility
 description: "The universal accessibility contract for any UI, framework-neutral — every interactive element carries a role, an accessible name, and keyboard operability; focus is always deliberate; state is perceivable without sight; contrast meets WCAG AA. Load for any screen/GUI work; a framework skill (react-router-a11y, python-htmx-accessibility, flutter-a11y, react-native-a11y) supplies the concrete mechanics. Applies to **/*.tsx,**/*.jsx,**/*.dart,**/*.html,**/templates/**,**/assets/**/*.js."
 metadata:
   generated_by: farrier
-  source: library/skills/ui/ui-accessibility/SKILL.md
+  source: library/skills/ui/accessibility/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-ui-accessibility/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [standards]

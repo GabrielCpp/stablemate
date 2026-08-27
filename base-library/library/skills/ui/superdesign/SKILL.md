@@ -1,5 +1,5 @@
 ---
-name: ui-superdesign
+name: superdesign
 description: "Superdesign Local Design Workflow — CLI setup, agent-skill install, design exploration prompts, and implementation handoff rules. Applies to UI source, design docs, and agents.yml."
 applyTo: '{{ template.app_path | default("app") }}/**,docs/**/*.md,agents.yml'
 tags: [runbook]

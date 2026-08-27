@@ -3,7 +3,7 @@ name: stablemate-ostler-okf
 description: "The OKF UI-profile format and the craft of authoring it — the typed node graph under docs/features/** (screen/cli/server, component/command/endpoint, interaction/invocation, method/field, flow, concept, format, runbook/environment/step), the three content rules (the book not a changelog, spec-complete, spec not implementation), the scaffold→author→fmt→doctor loop, the bullet grammar, the check vocabulary behind `verify:` and the bar a check clears to be an observation at all. Load whenever you are writing or repairing anything under docs/features/ — a one-story merge after finishing a story, a bulk build of a whole service's surface graph, a prose-only feature doc, or a doctor finding."
 metadata:
   generated_by: farrier
-  source: library/skills/ostler/ostler-okf/SKILL.md
+  source: library/skills/ostler/okf/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-ostler-okf/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [standards, docs]

@@ -1,5 +1,5 @@
 ---
-name: ostler-okf
+name: okf
 description: "The OKF UI-profile format and the craft of authoring it — the typed node graph under docs/features/** (screen/cli/server, component/command/endpoint, interaction/invocation, method/field, flow, concept, format, runbook/environment/step), the three content rules (the book not a changelog, spec-complete, spec not implementation), the scaffold→author→fmt→doctor loop, the bullet grammar, the check vocabulary behind `verify:` and the bar a check clears to be an observation at all. Load whenever you are writing or repairing anything under docs/features/ — a one-story merge after finishing a story, a bulk build of a whole service's surface graph, a prose-only feature doc, or a doctor finding."
 tags: [standards, docs]
 ---

@@ -3,7 +3,7 @@ name: stablemate-testing-design
 description: "The universal contract for a test that can actually fail, language-neutral — name the defect it catches, watch it go red before trusting it, derive fixtures from the producer instead of restating them, assert on evidence of work rather than status, and cover the composition and not only the units. Load whenever writing or reviewing tests; a stack skill (go-testing, python-testing, flutter-testing, react-router-qa, pulumi-qa) supplies the concrete mechanics, and the e2e-testing skill layers the end-to-end-specific contract (locators, waits, flake diagnosis) on top. Applies to test files in any language."
 metadata:
   generated_by: farrier
-  source: library/skills/testing/testing-design/SKILL.md
+  source: library/skills/testing/design/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-testing-design/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [standards, tests]

@@ -3,7 +3,7 @@ name: stablemate-workhorse-engine
 description: "Writing workhorse workflow nodes — the @blueprint.node contract, typed returns, WorkflowFailed routing, the kit git/GitHub/workspace helpers, the in-process ostler facade, and substitution-based testing. Applies to a workflow distribution's Python."
 metadata:
   generated_by: farrier
-  source: library/skills/workhorse/workhorse-engine/SKILL.md
+  source: library/skills/workhorse/engine/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-workhorse-engine/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [backend, standards, tests]

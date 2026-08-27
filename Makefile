@@ -156,7 +156,7 @@ check-public: ## Guard the public/private split (no private names; the base stan
 check-no-env: ## Guard the no-environment rule (a workflow's inputs are parameters)
 	# A value read from os.environ is in no checkpoint and no telemetry, so a resume
 	# silently takes a different one and nobody can tell what the run worked on.
-	uv run python base-library/library/skills/workhorse/workhorse-engine/scripts/check_no_env.py
+	uv run python base-library/library/skills/workhorse/engine/scripts/check_no_env.py
 
 .PHONY: check-no-giveup
 check-no-giveup: ## Guard the "a workflow never gives up" rule (blocked, not failed)
@@ -243,7 +243,7 @@ check-skills: ## Guard the base library's writing doctrine (sprawl, dead disclos
 	# SKILL.md long enough that the agent attends to all of it only on some runs, a
 	# bundled reference nothing links to (installed everywhere, read nowhere), and a skill
 	# firing a prompt — inverting a human entry point into an autonomous one.
-	uv run python base-library/library/skills/farrier/farrier-skills-writing/scripts/check_skills.py
+	uv run python base-library/library/skills/farrier/skills-writing/scripts/check_skills.py
 
 .PHONY: vendor
 vendor: ## Copy core/stablemate_core into workhorse, farrier and ostler (run it with any core change)

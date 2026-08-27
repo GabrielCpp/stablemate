@@ -1,5 +1,5 @@
 ---
-name: groom-telemetry
+name: telemetry
 description: "Investigating a workhorse run from groom's store — the SQLite telemetry (spans/metrics/logs/turns) and the turn-record archive that sits beside it. Which command answers which question (`status`, `logs`, `cost`, `loops`, `profile`, `transcript`), why an unfinished node has no span, the archive's visit-key layout and how to get records out of a container or backfill them from the agent CLI, and the raw `sqlite3` recipes — including the dotted-attribute-key footgun that silently returns NULL. Load when asked why a run is stuck, why a loop repeats, what a run cost, or what a node actually said."
 tags: [cli, backend, standards]
 ---

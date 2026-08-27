@@ -3,7 +3,7 @@ name: stablemate-ui-design-system
 description: "How to create (bootstrap) a design system from a reference design — palette, typography, spacing, radii, shadows, and motion captured as named, traceable tokens and wired into the app theme. Applies to **/*theme*.ts,**/*theme*.tsx,**/*theme*.dart,**/theme/**,**/design_system.dart,**/root.tsx."
 metadata:
   generated_by: farrier
-  source: library/skills/ui/ui-design-system/SKILL.md
+  source: library/skills/ui/design-system/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-ui-design-system/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [standards]
