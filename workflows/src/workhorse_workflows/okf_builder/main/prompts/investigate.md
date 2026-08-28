@@ -123,6 +123,17 @@ missing rather than re-reading the whole tree.
   implementation as its own sibling node (find them by subclass/grep — do **not** just name the rest
   in prose). If it's a **module**, cover **every** public member. Author directly referenced
   concepts/formats in this turn where bounded; only emit a grouped follow-up when genuinely too large.
+- **judgment** — write the concept that adjudicates the competing nodes named in `context`, from the
+  evidence the item cites. Scaffold it (`ostler scaffold concept <slug> --service <svc>`), then
+  author the selection rule the source already shows: a `rule:` stating when each competitor is the
+  right call, `prefers:` linking the winning node, `deprecates:` linking the superseded one — and
+  expand the rationale in prose beside them. Then add `- detail: [<concept>](…)` to **every**
+  competing node, not just one: the warn clears only when the rule is reachable from each side.
+  Ground every claim in the cited evidence — a deprecation annotation, a migrated call site, a
+  comment naming the successor. **If the source does not settle the competition, record that**: keep
+  the concept to what the code shows (the competitors exist; here is what each does) and write no
+  `rule:`/`prefers:` you cannot cite — an invented preference is worse than none, because a reviewer
+  trusts it exactly once.
 - **runbook** / **environment** — document the **operational surface** to the spec-complete bar
   (the OKF runbook profile). `ostler scaffold runbook <driver> --service <svc>`
   (or `environment <name>`) writes it under `docs/features/<svc>/ops/`, then author:
