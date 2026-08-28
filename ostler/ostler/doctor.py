@@ -797,6 +797,13 @@ def _check_judgment(graph: Graph, f: list[Finding],
     by_citation: dict[tuple[str, str], list] = {}
     for node in graph.ui_nodes:
         for ref in refs_mod.code_refs(node.meta.get("code")):
+            # Only symbol-level citations can compete. A whole-file ref says "somewhere
+            # in this file" — two interactions of one form both live in its component
+            # file without being alternatives — and a region (prose after `::`) is a
+            # description, not a name two nodes could collide on.
+            _path, separator, symbol = ref.partition("::")
+            if not (separator and symbol) or _SPACE.search(symbol):
+                continue
             by_citation.setdefault((node.type, ref), []).append(node)
     for (ntype, ref), nodes in sorted(by_citation.items()):
         if len(nodes) < 2:

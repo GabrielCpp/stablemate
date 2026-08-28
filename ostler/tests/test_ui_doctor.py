@@ -622,6 +622,24 @@ def test_competing_implementations_silent_for_parts_of_one_declared_whole(repo: 
     assert "competing-implementations" not in all_codes(_run(repo))
 
 
+def test_competing_implementations_ignores_whole_file_citations(repo: Path):
+    """A form's submit and its refusal both live in the form's component file, so both
+    interactions cite it whole — cohabiting a file is not competing over a symbol. Only
+    a shared `path::symbol` says two nodes claim the same unit."""
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+          "## Interactions\n\n"
+          "### submit\n- when: the form is submitted with every field valid\n"
+          "- then: the record is created\n"
+          "- verify: visible(locator=\"status\")\n"
+          "- code: app/web/src/Form.tsx\n\n"
+          "### refuse\n- when: the form is submitted with a field the service refuses\n"
+          "- then: the refusal is shown beside the field\n"
+          "- verify: visible(locator=\"alert\")\n"
+          "- code: app/web/src/Form.tsx\n")
+    assert "competing-implementations" not in all_codes(_run(repo))
+
+
 def test_deprecation_without_successor(repo: Path):
     """A concept whose `deprecates:` resolves but that names no `prefers:` and no `rule:`
     reads as "delete this" — usually wrong. A dangling `deprecates:` is `unresolved-relation`'s
