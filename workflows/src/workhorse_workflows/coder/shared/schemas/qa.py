@@ -190,18 +190,23 @@ class QaCleared(CoderResult):
 class StackStatus(CoderResult):
     """`ensure-stack.py` — the durable QA stack is up, adopted, undeclared, or broken.
 
-    `ready` is three-state on purpose, and the third state is the one this schema was
-    wrong about for a year. `none` means the book declares no stack at all — no `runbook`
-    node, no walkthrough `server`. That is not a pass: it used to be spelled `skip` and
+    `ready` splits the empty manifest in two, because "no stack" means opposite things
+    depending on what the book describes. `none` means the book *serves* something — a
+    `screen` or a `server` — but declares no way to bring it up: no stack `runbook`, no
+    `walkthrough: true` server. That is not a pass: it used to be spelled `skip` and
     routed exactly where `yes` did, so a repo that had never authored a runbook ran its
     QA against nothing and found out only once the runner failed for reasons no fixer
-    could read. `none` and `no` both reach the setup-repair loop; only `yes` runs QA.
+    could read. `unneeded` means the book serves nothing — a CLI's, a library's, an
+    infrastructure program's — so an empty stack is its documented topology, and asking
+    a fixer to author a runbook would be asking it to declare a stack for nothing;
+    depot-style artifact repos looped forever on exactly that ask. `none` and `no`
+    reach the setup-repair loop; `yes` and `unneeded` run QA.
 
     The pids are strings because `ostler.qa.stack.ensure_stack` returns them that way —
     they are recorded for a human killing a leaked stack, never arithmetic.
     """
 
-    ready: Literal["yes", "no", "none"] = "no"
+    ready: Literal["yes", "no", "none", "unneeded"] = "no"
     app_pid: str = ""
     app_pgid: str = ""
     entry_url: str = ""

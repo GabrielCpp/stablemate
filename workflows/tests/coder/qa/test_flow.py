@@ -18,6 +18,7 @@ convinced of rather than one it was told about.
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from collections import Counter
 from collections.abc import Callable, Iterable
@@ -1641,6 +1642,68 @@ def test_the_stack_is_standing_before_the_plan_is_written(
     assert agent.calls[0] == "plan-qa", agent.calls
     # And standing first does not cost a second visit: the approval arms go to the runner.
     assert agent.planned() == 1, agent.counts()
+
+
+def test_an_empty_manifest_splits_on_whether_the_book_serves_anything(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+) -> None:
+    """`ensure_stack` reads the topology, not just the manifest, before calling it a gap.
+
+    A book with no stack declared is two different repos. One serves something — a
+    `screen`, a `server` — and forgot to say how it comes up; that is `none`, a defect
+    the setup fixer can repair. The other serves nothing, so the empty manifest *is* the
+    topology — an artifact-only repo whose QA drives its own commands — and telling it
+    to author a runbook is an instruction its own doctor contradicts. Collapsing the two
+    parked a real story on an unanswerable escalation, five gates deep.
+    """
+    log = logging.getLogger("test")
+    (docs / RUNBOOK_REL).unlink()
+
+    status = qa_nodes.ensure_stack(log, str(docs))
+    assert status.ready == "unneeded", status
+    assert "serves nothing" in status.notes
+
+    write(
+        docs / "docs" / "features" / "app" / "server.md",
+        "---\ntype: server\ntitle: App server\n---\n\n# App server\n",
+    )
+    status = qa_nodes.ensure_stack(log, str(docs))
+    assert status.ready == "none", status
+    assert "served surface" in status.notes
+
+
+def test_a_book_that_serves_nothing_runs_qa_without_a_stack(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """An artifact-only book proceeds straight to planning — no fixer, no gate, no boot.
+
+    The regression this pins: `stack` used to route every empty manifest to the setup
+    fixer, whose budget an artifact-only repo could only exhaust — it cannot author a
+    stack its book is correct not to have — after which every lap escalated to the
+    operator and every answer rejoined the same unconditional check. The book that
+    declares nothing served now runs its QA lane exactly as a served one does once its
+    stack is up, and ostler's `ensure_stack` is never asked to boot the nothing.
+    """
+    ostler()
+    (docs / RUNBOOK_REL).unlink()
+
+    def _boom(*a: Any, **k: Any) -> dict[str, Any]:
+        raise AssertionError("there is no manifest, so nothing may try to bring one up")
+
+    monkeypatch.setattr(qa_stack, "ensure_stack", _boom)
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert "setup-fix" not in agent.counts(), agent.counts()
+    assert agent.calls[0] == "plan-qa", agent.calls
 
 
 def test_a_setup_repair_mid_run_returns_to_the_runner_not_to_a_second_plan(

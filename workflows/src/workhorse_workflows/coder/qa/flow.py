@@ -1167,13 +1167,23 @@ class Qa(Workflow):
     def stack(self, loop: QaLoop) -> Continue | Await | Done:
         """Bring the durable QA stack up, or send its manifest to the repair loop.
 
-        `ensure_stack`. Two of its three answers go to the repair loop: `no` (the runbook
-        is there and would not come up) and `none` (the book declares no runbook at all).
-        The second used to be a silent pass, which is the defect this routing closes — a
-        greenfield repo ran its whole QA lane against a surface nobody had started, and the
-        first thing that noticed was the runner, dozens of turns later, reporting failures
-        no fixer could act on. Sending `none` here sends it *before* the planning turn, so
-        the stack is declared once and every later lap has something to stand up.
+        `ensure_stack`. Two of its four answers go to the repair loop: `no` (the runbook
+        is there and would not come up) and `none` (the book serves something but declares
+        no runbook for it). The second used to be a silent pass, which is the defect this
+        routing closes — a greenfield repo ran its whole QA lane against a surface nobody
+        had started, and the first thing that noticed was the runner, dozens of turns
+        later, reporting failures no fixer could act on. Sending `none` here sends it
+        *before* the planning turn, so the stack is declared once and every later lap has
+        something to stand up.
+
+        `unneeded` proceeds like `yes`, because it is the routing's own over-correction
+        undone: a book that serves nothing — no `screen`, no `server`, the doctor's own
+        `runbook-missing` predicate — has an empty stack as its documented topology, and
+        sending it to the setup fixer asks for a runbook the book is correct not to have.
+        The fixer cannot comply, the budget spends, and every operator answer rejoins
+        through `build_context` into the same unconditional check: an escalation loop no
+        answer can break, which is how an artifact-only repo parked a story five times on
+        one question the book had already settled.
 
         This sits *before* the plan lane rather than after it, which is the point: with the
         surface already up, the authoring turn can execute a scenario it has just written
@@ -1196,8 +1206,15 @@ class Qa(Workflow):
         `MAX_CONTEXT_REWORKS` — a rejoin costs a context rebuild, and those are counted.
         """
         status = self.call(ensure_stack, self.docs_path)
+        if status.ready == "unneeded":
+            self.logger.info(
+                "the book serves nothing — an empty stack is its topology, QA proceeds"
+            )
+            return Continue(status, self.plan, loop=loop)
         if status.ready == "none":
-            self.logger.info("the book declares no QA stack — routing to the setup fixer")
+            self.logger.info(
+                "the book serves a surface but declares no stack — routing to the setup fixer"
+            )
             return self._guard_setup(
                 status,
                 loop.with_qa(QaResult(status="blocked", notes=status.notes)).update(

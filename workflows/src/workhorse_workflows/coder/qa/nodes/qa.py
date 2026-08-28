@@ -23,7 +23,7 @@ import subprocess
 from pathlib import Path
 from typing import Literal
 
-from ostler import Ostler
+from ostler import Ostler, model
 from ostler.qa import runbook, stack
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.credentials import scoped_envs
@@ -124,18 +124,34 @@ def ensure_stack(
     `ostler.qa.runbook.load_stack`, which reads it off the book's `runbook` node — this node
     is only the outcome's translator.
 
-    `none` means the book declares no stack, and unlike the `skip` it replaces it is not a
-    pass: a repo that never authored a runbook used to run QA against nothing and say so
-    only in a log line, which is how one story spent an entire run's budget discovering it.
+    An empty manifest is two different answers, split by what the book describes. `none`
+    means the book serves something but declares no way to bring it up, and unlike the
+    `skip` it replaces it is not a pass: a repo that never authored a runbook used to run
+    QA against nothing and say so only in a log line, which is how one story spent an
+    entire run's budget discovering it. `unneeded` means the book serves nothing — the
+    same `has_served_surface` test the doctor's `runbook-missing` gates on — so the empty
+    manifest is the repo's documented topology, not a gap. Collapsing the two was how an
+    artifact-only repo got told, every lap, to author a runbook its own doctor said it
+    did not need: the setup fixer could not comply, the operator gate could not clear it,
+    and the story escalated forever.
     """
     root = find_docs_root(docs_path, repo_dir)
-    manifest = runbook.load_stack(root, logger=logger)
+    graph = model.load(root)
+    manifest = runbook.load_stack(root, graph=graph, logger=logger)
     if not manifest:
+        if not runbook.has_served_surface(graph):
+            return StackStatus(
+                ready="unneeded",
+                notes=("The book serves nothing — no `screen`, no `server` — so an empty "
+                       "stack is its documented topology. QA scenarios invoke the repo's "
+                       "commands directly; there is nothing to bring up first."),
+            )
         return StackStatus(
             ready="none",
-            notes=("The book declares no `runbook` node and no `walkthrough: true` server, "
-                   "so there is no stack to bring up. Author the runbook before QA runs "
-                   "against nothing — `ostler doctor` reports this as `runbook-missing`."),
+            notes=("The book describes a served surface but declares no stack — no stack "
+                   "`runbook` node and no `walkthrough: true` server — so QA would run "
+                   "against nothing. Author the runbook that brings it up; `ostler doctor` "
+                   "reports this as `runbook-missing`."),
         )
 
     result = stack.ensure_stack(manifest, repo_root=str(root), logger=logger)
