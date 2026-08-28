@@ -287,7 +287,7 @@ CODE_GROUNDING_KEYS = frozenset({"code"})
 # ``cli`` / ``surfaces`` are the runbook profile's relations (docs/okf-runbook.md §4.1).
 RELATION_KEYS = ("on", "parent", "extends", "steps", "presents", "detail",
                  "environment", "cli", "surfaces", "requires", "params", "leads-to",
-                 "exclusive-with")
+                 "exclusive-with", "prefers", "deprecates")
 
 # Normative on every node type, whatever it is.
 SHARED_NORMATIVE_KEYS = ("consistency", "consistency rule", "consistency group", "persistence",
@@ -474,6 +474,14 @@ UI_TYPES: tuple[UINodeType, ...] = (
         bullet_keys=(
             BulletKey("code", link=True, owns=True),
             BulletKey("extends", link=True),
+            # The judgment keys. None is normative: a selection rule is not live-provable,
+            # and minting an obligation from one would demand evidence no scenario can
+            # produce. `rule:` states the selection rule as prose the packet can carry;
+            # `prefers:`/`deprecates:` point at the winning and superseded nodes, resolved
+            # like any relation so a dangling side is `unresolved-relation`, never silence.
+            BulletKey("rule"),
+            BulletKey("prefers", link=True),
+            BulletKey("deprecates", link=True),
             # The test files covering this node, as on `flow` and for the same reader: the
             # regression node attributes a failing suite test back to the node that owns it.
             # Declared on every type that can carry a `verify:` observation, because the books

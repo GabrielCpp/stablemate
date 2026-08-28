@@ -8,9 +8,10 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-ostler-
 
 # `concept`
 
-The one type in the registry with **no normative keys at all**. Its whole bullet vocabulary is
-`code:` and `extends:` — so it mints no obligation, no check is required of it, no QA plan is
-ever asked to prove it. Its body *is* its content.
+The one type in the registry whose own keys mint **nothing**: no obligation, no required check,
+no QA plan ever asked to prove it. Its body *is* its content, and its bullet vocabulary —
+`code:`, `extends:`, `tests:`, and the judgment keys `rule:` / `prefers:` / `deprecates:` — is
+grounding and advisory structure around that prose, never a claim.
 
 That is not an oversight in the registry. It is the escape hatch, and this file is the
 documentation it never had.
@@ -27,8 +28,19 @@ well-split `does:` bullets, discriminating `verify:` checks. `ostler doctor` is 
 Every claim on both is true. And a reader arriving at either one has no way to learn the only
 thing that mattered: which one to reach for, and when.
 
-Nothing in the bullet format says it, and the near-misses are worth naming so nobody reaches
-for one by mistake:
+The concept is where that answer lives, and three advisory keys give it a shape the tooling
+can carry without ever grading it:
+
+- **`rule:`** — the selection rule as prose. Not normative, deliberately: a selection rule is
+  not live-provable, and an obligation minted from one would demand evidence no scenario can
+  produce. The rationale behind the rule still belongs in the body.
+- **`prefers:`** — a link to the winning node, the one a new call site should reach for.
+- **`deprecates:`** — a link to the superseded node. A deprecation with no `prefers:` and no
+  `rule:` reads as "delete this", which is usually wrong.
+
+`prefers:` and `deprecates:` are relations, so a dangling side is `unresolved-relation` rather
+than silence. This pair is OKF's only supersession construct; four other keys look like one
+without being it, and are worth naming so nobody reaches for them by mistake:
 
 - **`exclusive-with:` is not supersession.** Despite the name it is a DOM co-render assertion,
   consumed only by locator-collision suppression — two controls that share a role+name but
@@ -38,8 +50,6 @@ for one by mistake:
   book.
 - **The `legacy` in doctor's reachability rules** is an unrelated root waiver, not a marker on
   a node.
-
-So the answer is not a new flag. It is prose, in the one type built to carry it.
 
 ## What belongs in a concept
 
@@ -85,6 +95,10 @@ File type under `docs/features/<service>/concepts/`, `type: concept` in frontmat
 | --- | --- | --- |
 | `code` | no | link, **owns** its file — `path::symbol` |
 | `extends` | no | resolves as a link — the concept this one specializes |
+| `rule` | no | advisory — the selection rule, as prose; mints nothing anywhere |
+| `prefers` | no | resolves as a link — the winning implementation |
+| `deprecates` | no | resolves as a link — the superseded implementation |
+| `tests` | no | resolves as a link — the test files covering this concept |
 
 Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type).
 These are the one way a concept *can* mint an obligation — a `consistency:` or `persistence:`
@@ -123,6 +137,8 @@ requires the synchronous send receipt that V2's batching cannot produce. It is n
 and must not be migrated without replacing that receipt; it is also not a general-purpose
 option, and a new call site reaching for it is a defect.
 
+- rule: reach for `NotifyV2` unless the call site needs a synchronous send receipt
+- prefers: [notify-v2](../http/notify-api.md#notify-v2)
 - code: internal/notify/v2.go::NotifyV2
 - code: internal/notify/legacy.go::LegacyNotifier
 ```
@@ -130,7 +146,7 @@ option, and a new call site reaching for it is a defect.
 ## Doctor codes it can trip
 
 `okf-missing-type`, `dangling-code-ref`, `missing-code-symbol`, `unresolved-relation` on
-`extends:`, and — if it uses the shared normative keys — `undeclared-obligation` and
+`extends:`, `prefers:` or `deprecates:`, and — if it uses the shared normative keys — `undeclared-obligation` and
 `weak-check`. See [../doctor-codes.md](../doctor-codes.md).
 
 Prose is not checked, deliberately. Nothing in this file's body can trip a doctor code, which

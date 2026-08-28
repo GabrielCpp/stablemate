@@ -165,10 +165,21 @@ the only thing the reader needed to know.
 
 **Prose is judgment, and the format deliberately does not check it** — which is precisely why
 where it goes has to be written down. It goes in a `concept` node, the one type in the registry
-with no normative keys at all, linked from each competing node with `detail:`. See
+whose own keys mint nothing, linked from each competing node with `detail:`. See
 [node-types/concept.md](node-types/concept.md).
 
-There is no supersession construct in OKF today, and four keys look like one without being it:
+The concept carries three **advisory** keys for exactly this — a fifth family, beside the four
+above, that drives no obligation and never will:
+
+- `rule:` — the selection rule, stated as prose. Plain, not load-bearing: on any other type the
+  key stays the author's own word, and nothing mints from it anywhere, because a selection rule
+  is not live-provable and an obligation minted from one would demand evidence no scenario can
+  produce.
+- `prefers:` / `deprecates:` — the supersession pair, pointing at the winning and superseded
+  nodes. Both are relations (`registry.RELATION_KEYS`), so a dangling side is
+  `unresolved-relation` rather than silence, and both stay out of the load-bearing set.
+
+Supersession lives there and **only** there. Four other keys look like it without being it:
 
 - `exclusive-with:` is a **DOM co-render assertion**, consumed only by `locators.py` and
   `vet/placement.py` to suppress locator collisions between controls that never appear together;

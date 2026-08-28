@@ -531,6 +531,34 @@ def test_detail_is_declared_on_every_implementation_bearing_type(repo: Path):
     assert text.index("- verify:") < text.index("- code:") < text.index("- detail:")
 
 
+def test_concept_judgment_keys_are_advisory_relations(repo: Path):
+    """`rule:`/`prefers:`/`deprecates:` are the concept's judgment vocabulary, and none is
+    normative — a selection rule is not live-provable, so minting an obligation from one
+    would demand evidence no scenario can produce. `prefers:`/`deprecates:` are relations:
+    a dangling side is `unresolved-relation`, never silence. `rule:` is plain prose, so on
+    a type that never declared it the key stays the author's own word — inert, not policed
+    by `unknown-bullet` the way a load-bearing key would be."""
+    for key in ("rule", "prefers", "deprecates"):
+        assert key in registry.declared_keys("concept"), key
+        assert key not in registry.normative_keys("concept"), key
+    write(repo / "docs/features/groom/concepts/notify.md",
+          "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\n"
+          "- rule: reach for V2 unless the call site needs a synchronous send receipt\n"
+          "- prefers: [gone](../gui/screens/gone.md)\n")
+    hits = [f for f in _run(repo).findings if f.code == "unresolved-relation"]
+    assert hits and "prefers" in hits[0].message
+    write(repo / "docs/features/groom/http/api.md",
+          "---\ntype: api\nslug: api\ntitle: API\n---\n# API\n\n"
+          "## Endpoints\n\n### submit\n- method: POST\n- path: /x\n"
+          "- does:\n  - state: submits the form\n- status: `201` on success\n"
+          "- verify: http_status(code=201, path=\"/x\")\n"
+          "- code: `api/submit.go::Submit`\n"
+          "- rule: the author's own word here, not the concept vocabulary\n")
+    codes = {f.code for f in _run(repo).findings
+             if f.path == "docs/features/groom/http/api.md"}
+    assert "unknown-bullet" not in codes
+
+
 def test_all_ui_findings_are_errors(repo: Path):
     write(repo / "docs/features/groom/concepts/diff.md",
           "---\ntype: concept\nslug: diff\ntitle: Diff\n---\n# Diff\n\n"
