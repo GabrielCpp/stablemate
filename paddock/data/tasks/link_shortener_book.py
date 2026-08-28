@@ -18,8 +18,9 @@ backwards, per story, by hand." This task measures the builder; it does not mint
 
 One trial per round — a build is its own control. `--param budget` narrows the wall
 clock for a smoke round (the builder exits rc 1 at the budget with a resume line, and
-the partial book still scores, caveated); `--param judge=true` is reserved for the
-opt-in prose judge once it exists.
+the partial book still scores, caveated); `--param judge=true` adds the opt-in prose
+judge (`_okfbuild.judge_book` + `rubric-book.md`), which grades a sample of the rebuilt
+bullets on whether each earns its citation — a detail line, never the headline.
 """
 
 from __future__ import annotations

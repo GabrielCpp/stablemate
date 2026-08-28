@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import json
+import re
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -134,6 +135,108 @@ def test_judgment_is_blank_when_the_registry_lacks_the_vocabulary(
 
     monkeypatch.setattr(registry, "declared_keys", lambda node_type: frozenset())
     assert okfbuild.judgment_counts(witness(tmp_path)) is None
+
+
+# ── the judge ─────────────────────────────────────────────────────────────────────────
+
+
+def judged_witness(tmp_path: Path) -> Path:
+    """A witness whose screen carries normative component bullets — something to judge —
+    plus a second service's book, which the sample must treat as out of scope."""
+    root = witness(tmp_path)
+    write(
+        root / "docs" / "features" / "svc" / "gui" / "screens" / "widget.md",
+        "---\ntype: screen\nslug: widget\ntitle: Widget\n---\n# Widget\n\n"
+        "- route: `/widget`\n- detail: [Policy format](../../policy-format.md)\n\n"
+        "## Components\n\n### widget-list\n\n- role: `list`\n- name: `Widgets`\n"
+        '- states: empty shows "no widgets yet"\n',
+    )
+    write(
+        root / "docs" / "features" / "other" / "gui" / "screens" / "stray.md",
+        "---\ntype: screen\nslug: stray\ntitle: Stray\n---\n# Stray\n\n"
+        "- route: `/stray`\n\n## Components\n\n### stray-list\n\n"
+        "- role: `list`\n- name: `Strays`\n",
+    )
+    return root
+
+
+def test_sample_bullets_is_scoped_and_deterministic(tmp_path: Path) -> None:
+    root = judged_witness(tmp_path)
+    bullets = okfbuild.sample_bullets(root, fixture(), 50)
+    assert bullets, "the component's normative bullets must mint something to judge"
+    # Per-bullet claims only, all from inside this service's book.
+    assert all(b["page"].startswith("docs/features/svc/") for b in bullets)
+    assert all(b["kind"] not in ("contract", "journey") for b in bullets)
+    assert {b["kind"] for b in bullets} == {"role", "name", "states"}
+    # The same witness sampled twice judges the same bullets, in the same order.
+    assert bullets == okfbuild.sample_bullets(root, fixture(), 50)
+
+
+def test_sample_bullets_narrows_evenly_never_randomly(tmp_path: Path) -> None:
+    root = judged_witness(tmp_path)
+    everything = okfbuild.sample_bullets(root, fixture(), 0)
+    two = okfbuild.sample_bullets(root, fixture(), 2)
+    assert len(two) == 2
+    assert two == okfbuild.sample_bullets(root, fixture(), 2)
+    assert all(b in everything for b in two)
+
+
+def test_sample_bullets_of_an_unreadable_witness_is_empty(tmp_path: Path) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert okfbuild.sample_bullets(empty, fixture(), 12) == []
+
+
+def test_appraise_keeps_an_earned_level_with_a_real_citation(tmp_path: Path) -> None:
+    write(tmp_path / "app.py", "def main():\n    pass\n")
+    text = json.dumps({"level": 2, "evidence": ["app.py:main"], "reason": "shown"})
+    verdict = okfbuild._appraise(text, tmp_path)
+    assert verdict["level"] == 2
+    assert not verdict["capped"]
+    assert verdict["unverified_citations"] == []
+
+
+def test_appraise_caps_an_invented_citation(tmp_path: Path) -> None:
+    text = json.dumps({"level": 2, "evidence": ["ghost.py:main"], "reason": "shown"})
+    verdict = okfbuild._appraise(text, tmp_path)
+    assert verdict["level"] == 1
+    assert verdict["capped"]
+    assert verdict["unverified_citations"] == ["ghost.py:main"]
+
+
+def test_appraise_caps_an_earned_level_with_no_evidence_at_all(tmp_path: Path) -> None:
+    verdict = okfbuild._appraise(json.dumps({"level": 2, "reason": "trust me"}), tmp_path)
+    assert verdict["level"] == 1
+    assert verdict["capped"]
+
+
+def test_appraise_clamps_and_survives_garbage(tmp_path: Path) -> None:
+    write(tmp_path / "app.py", "x = 1\n")
+    generous = json.dumps({"level": 7, "evidence": ["app.py"], "reason": "very good"})
+    assert okfbuild._appraise(generous, tmp_path)["level"] == okfbuild.BOOK_MAX_LEVEL
+    garbage = okfbuild._appraise("the judge rambled and returned no object", tmp_path)
+    assert garbage["level"] == 0
+    assert garbage["reason"] == "(judge returned no reason)"
+
+
+def test_book_rubric_placeholders_are_exactly_what_the_judge_fills() -> None:
+    """Every `{{…}}` in the rubric must be one `judge_book` fills — a placeholder it
+    does not know ships a template to the judge instead of a question, and `render`
+    fills by exact name (`_greenfield.render` is `str.replace`), so a stray space or a
+    typo inside the braces is a miss, not a near-match."""
+    rubric = (DATA / "rubric-book.md").read_text(encoding="utf-8")
+    found = set(re.findall(r"\{\{[^}]*\}\}", rubric))
+    assert found == {"{{page}}", "{{kind}}", "{{claim}}", "{{repo}}", "{{scale}}"}
+
+
+def test_judge_line_reads_like_a_tally() -> None:
+    line = okfbuild._judge_line({
+        "sample": 12,
+        "levels": {"earned": 9, "asserted": 2, "ungrounded": 1},
+        "capped": 1,
+        "bullets": [],
+    })
+    assert line == "book judge: earned 9/12, asserted 2, ungrounded 1, 1 capped (sample of 12)"
 
 
 # ── the score ─────────────────────────────────────────────────────────────────────────

@@ -24,6 +24,7 @@ import json
 import os
 import shutil
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -57,6 +58,13 @@ class Fixture:
     repo_dir: str
     budget_s: float = 5400.0
     source_excludes: str = ""
+    #: The judge's own backend, pinned apart from the builder under test — the same
+    #: precedence rule as `_greenfield.judge_backlog`: an unpinned grader would switch
+    #: backends in step with the thing it grades, and a delta between two labels would
+    #: then carry no information about either.
+    judge_cli: str = ""
+    judge_model: str = ""
+    judge_effort: str = ""
 
 
 def book_dir(repo: Path, fixture: Fixture) -> Path:
@@ -271,6 +279,153 @@ def judgment_counts(witness: Path) -> dict[str, int] | None:
     return {"concepts": len(concepts), "detail_links": inbound}
 
 
+# ── the judge ─────────────────────────────────────────────────────────────────────────
+#
+# Opt-in (`--param judge=true`), and never the headline: an agent grading prose is a
+# different kind of instrument from the rulers above — useful, but not comparable across
+# labels the way a doctor count is. It answers the one question the rulers cannot:
+# whether a normative bullet *earns* its citation, or merely sounds like it does.
+
+BOOK_LEVELS: dict[int, tuple[str, str]] = {
+    0: ("ungrounded", "the cited code shows something else, or the citation is missing"),
+    1: ("asserted", "grounded but generic — the prose adds nothing the citation lacked"),
+    2: ("earned", "the cited code shows the specific behavior the bullet claims"),
+}
+BOOK_MAX_LEVEL = max(BOOK_LEVELS)
+
+
+def sample_bullets(witness: Path, fixture: Fixture, limit: int) -> list[dict[str, Any]]:
+    """A deterministic sample of the book's per-bullet obligations, ready to judge.
+
+    The node-level `contract`/`journey` obligations are excluded — they restate a title,
+    which is not a claim a judge can hold against source — and so is anything minted
+    outside the rebuilt book (the surviving epics and specs are inputs, not product).
+    The sample is even-spaced over the sorted ids rather than random, so two scorings of
+    one witness judge the same bullets and their delta is the judge's noise, not the
+    draw's.
+    """
+    from ostler.model import load
+    from ostler.qa.context import _obligations, _serialized_graph
+
+    if not _readable(witness):
+        return []
+    try:
+        nodes, _edges, _ends, _scopes, _details = _serialized_graph(load(witness))
+    except Exception:  # noqa: BLE001 - an unreadable witness has nothing to judge
+        return []
+    prefix = f"docs/features/{fixture.service}/"
+    pool: dict[str, dict[str, Any]] = {}
+    for node in nodes.values():
+        for obligation in _obligations(
+            node, [], journey=str(node.get("type", "")) in ("flow", "journey")
+        ):
+            if obligation["kind"] in ("contract", "journey"):
+                continue
+            if not str(obligation["source"]).startswith(prefix):
+                continue
+            pool[str(obligation["id"])] = {
+                "id": str(obligation["id"]),
+                "page": str(obligation["source"]),
+                "kind": str(obligation["kind"]),
+                "claim": str(obligation["requirement"]),
+            }
+    ordered = [pool[key] for key in sorted(pool)]
+    if limit <= 0 or len(ordered) <= limit:
+        return ordered
+    return [ordered[index * len(ordered) // limit] for index in range(limit)]
+
+
+def _appraise(text: str, repo: Path) -> dict[str, Any]:
+    """Parse one judge response and apply the citation cap — pure, so tests need no agent.
+
+    The cap mirrors `_greenfield.judge_one`: an `earned` whose cited paths do not resolve
+    in the repo, or that cites nothing at all, drops to `asserted` and is flagged — the
+    judge's most common failure is a confident level resting on a path it invented.
+    """
+    from workhorse.runner import extract as wh_extract
+
+    parsed = wh_extract.parse_json_from_text(text, ["level", "evidence", "reason"]) or {}
+    try:
+        level = max(0, min(BOOK_MAX_LEVEL, int(parsed.get("level", 0))))
+    except (TypeError, ValueError):
+        level = 0
+    evidence = [str(e) for e in (parsed.get("evidence") or []) if str(e).strip()]
+    reason = str(parsed.get("reason") or "").strip() or "(judge returned no reason)"
+    bad = [e for e in evidence if not (repo / e.split(":", 1)[0].strip()).exists()]
+    capped = bool(bad) or (level >= BOOK_MAX_LEVEL and not evidence)
+    if capped and level >= BOOK_MAX_LEVEL:
+        level = 1
+    return {"level": level, "evidence": evidence, "reason": reason,
+            "unverified_citations": bad, "capped": capped}
+
+
+def judge_book(run: Run, fixture: Fixture, witness: Path) -> dict[str, Any] | None:
+    """Have an agent grade a sample of the rebuilt book's bullets against the source.
+
+    Judged over a scratch copy of the staged repo, never `run.repo` itself — the
+    read-only-guard lesson from `_greenfield.judge_backlog`: the judge only reads, but
+    the agent CLI it reads through writes its session transcripts into whatever tree it
+    is pointed at, and a scored run must leave the stage byte-identical to an unscored
+    one. Returns `None` when the witness minted nothing gradeable.
+    """
+    # Lazily, like the ostler imports above: the judge drags workhorse in, and every
+    # book task pays that import at load time otherwise, judge or no judge.
+    import _greenfield as gf
+
+    limit = int(run.param_float("judge_sample", 12.0))
+    bullets = sample_bullets(witness, fixture, limit)
+    if not bullets:
+        return None
+
+    rubric_path = run.data_dir / "rubric-book.md"
+    if not rubric_path.is_file():
+        raise TrialError(f"no rubric at {rubric_path}")
+    rubric = rubric_path.read_text(encoding="utf-8")
+
+    judge = gf.Judge(
+        gf.get_backend(fixture.judge_cli or None),
+        gf.AgentResilience.from_env(), gf.SYSTEM_CLOCK,
+        model=fixture.judge_model, effort=fixture.judge_effort,
+    )
+    repo = run.workdir("judge") / run.repo.name
+    shutil.copytree(run.repo, repo, symlinks=True)
+    scale = "\n".join(
+        f"  {number} {name} — {description}"
+        for number, (name, description) in BOOK_LEVELS.items()
+    )
+
+    def one(bullet: dict[str, Any]) -> dict[str, Any]:
+        prompt = gf.render(
+            rubric, page=bullet["page"], kind=bullet["kind"],
+            claim=bullet["claim"], repo=str(repo), scale=scale,
+        )
+        text = gf.call_agent(judge, prompt, node_id=f"judge_{bullet['id']}", repo=repo)
+        return {**bullet, **_appraise(text, repo)}
+
+    jobs = max(1, int(run.param_float("judge_jobs", 4.0)))
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        judged = list(pool.map(one, bullets))
+    return {
+        "sample": len(judged),
+        "levels": {
+            name: sum(1 for b in judged if int(b["level"]) == number)
+            for number, (name, _description) in BOOK_LEVELS.items()
+        },
+        "capped": sum(1 for b in judged if b["capped"]),
+        "bullets": judged,
+    }
+
+
+def _judge_line(book_judge: dict[str, Any]) -> str:
+    levels = book_judge["levels"]
+    sample = book_judge["sample"]
+    parts = [f"earned {levels['earned']}/{sample}",
+             f"asserted {levels['asserted']}", f"ungrounded {levels['ungrounded']}"]
+    if book_judge["capped"]:
+        parts.append(f"{book_judge['capped']} capped")
+    return f"book judge: {', '.join(parts)} (sample of {sample})"
+
+
 # ── the score ─────────────────────────────────────────────────────────────────────────
 
 
@@ -338,6 +493,17 @@ def score_round(run: Run, fixture: Fixture) -> Score:
             f"the build exited rc {rc} — the book is whatever state the run stopped in"
         )
 
+    book_judge: dict[str, Any] | None = None
+    if run.param_bool("judge"):
+        if not run.repo.is_dir():
+            caveats.append("judge requested but the staged repo is gone — skipped")
+        else:
+            book_judge = judge_book(run, fixture, witness)
+            if book_judge is None:
+                caveats.append("judge requested but the witness minted no gradeable bullets")
+            else:
+                detail.append(_judge_line(book_judge))
+
     return Score(
         headline=headline,
         detail=tuple(detail),
@@ -348,6 +514,7 @@ def score_round(run: Run, fixture: Fixture) -> Score:
             "coverage": coverage,
             "graph": graph,
             "judgment": judgment,
+            "book_judge": book_judge,
         },
         caveats=tuple(caveats),
     )
