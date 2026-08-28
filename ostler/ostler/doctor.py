@@ -809,6 +809,15 @@ def _check_judgment(graph: Graph, f: list[Finding],
         group_ids = {node.id for node in nodes}
         if any(_resolved_targets(node, "extends", resolver) & group_ids for node in nodes):
             continue
+        # A shared `parent:` says the members are declared parts of one whole — two
+        # components of a server-rendered screen both cite the screen's one renderer
+        # because each is a region of its output, not an alternative to the other.
+        shared_parent: set[str] | None = None
+        for node in nodes:
+            targets = _resolved_targets(node, "parent", resolver)
+            shared_parent = targets if shared_parent is None else shared_parent & targets
+        if shared_parent:
+            continue
         shared: set[str] | None = None
         for node in nodes:
             targets = _resolved_targets(node, "detail", resolver)

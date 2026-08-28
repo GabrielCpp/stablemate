@@ -606,6 +606,22 @@ def test_competing_implementations_silent_under_a_shared_detail_concept(repo: Pa
     assert "competing-implementations" not in all_codes(_run(repo))
 
 
+def test_competing_implementations_silent_for_parts_of_one_declared_whole(repo: Path):
+    """Two components of a server-rendered screen both cite the screen's one renderer
+    because each is a region of its output — a shared `parent:` says they are parts of
+    one whole, and nobody is choosing between the parts of a whole."""
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+          "## Components\n\n"
+          "### grid\n- selector: `div.grid`\n- role: grid\n- name: Grid\n"
+          "- verify: visible(locator=\"grid:Grid\")\n"
+          "- parent: [S](#s)\n- code: `app/page.py::render`\n\n"
+          "### summary\n- selector: `p.summary`\n- role: status\n- name: summary\n"
+          "- verify: visible(locator=\"status\")\n"
+          "- parent: [S](#s)\n- code: `app/page.py::render`\n")
+    assert "competing-implementations" not in all_codes(_run(repo))
+
+
 def test_deprecation_without_successor(repo: Path):
     """A concept whose `deprecates:` resolves but that names no `prefers:` and no `rule:`
     reads as "delete this" — usually wrong. A dangling `deprecates:` is `unresolved-relation`'s
