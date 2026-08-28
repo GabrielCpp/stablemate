@@ -62,6 +62,13 @@ GROUNDED_CODES = frozenset({
     # inventory), and re-aiming the citation without reading it points the node at a
     # neighbour that happens to exist.
     "missing-code-symbol",
+    # Whether a competition is settled is a fact about the cited code — a deprecation
+    # annotation, a migrated call site. A selection rule written without reading it is a
+    # ranking nobody made; an unsettled competition is recorded, not resolved by invention.
+    "competing-implementations",
+    # The successor is whatever the deprecation evidence in the source actually names;
+    # filling `prefers:` from the finding text alone invents a winner.
+    "deprecation-without-successor",
 })
 
 #: The drain's spend order, as code families from upstream to downstream. Grounding first:

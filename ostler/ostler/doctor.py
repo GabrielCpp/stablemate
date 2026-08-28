@@ -113,6 +113,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
     resolver = links_mod.LinkResolver(graph)
 
     _check_ui(graph, f, resolver)
+    _check_judgment(graph, f, resolver)
     _check_runbook(graph, f)
     # One build, shared. Each of these needs the resolved node/edge dump, and on a large book a
     # rebuild costs more than every other check in this function put together.
@@ -763,6 +764,87 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
                     "error", "missing-code-symbol",
                     f"{node.id}: `code:` target '{ref}' — '{target_path}' does not declare "
                     f"'{symbol}'", path=rel, line=node.line, ref=ref))
+
+
+def _resolved_targets(node, key: str, resolver: links_mod.LinkResolver) -> set[str]:
+    """The node ids *node*'s `key:` links resolve to — dangling links contribute nothing
+    (they are `unresolved-relation`'s finding, not this caller's)."""
+    out: set[str] = set()
+    for value in _bullet_values(node.meta.get(key, "")):
+        for _text, href in markdown.extract_refs(value).links:
+            target = resolver.resolve(node.path, href)
+            if target is not None and target.resolved:
+                out.add(target.node_id)
+    return out
+
+
+def _check_judgment(graph: Graph, f: list[Finding],
+                    resolver: links_mod.LinkResolver) -> None:
+    """The judgment gap: competition the book records without adjudicating.
+
+    Two conformant nodes can both be entirely true and still leave a reader stranded on
+    the one question that bites — *which one do I use?* Structure cannot answer it, so
+    these checks do not try; they find the places where the answer is owed and missing.
+    Both are warns: writing the selection rule is the author's judgment, not a rewrite
+    the finding can dictate.
+    """
+    # `competing-implementations` — two or more nodes of the *same* type, unrelated by
+    # containment or `extends:`, grounding themselves in one normalized `path::symbol`,
+    # with no shared resolved `detail:` concept. Same-type is load-bearing: an endpoint
+    # and a concept co-citing a symbol is a well-written book (the concept explains the
+    # unit the endpoint serves); two endpoints citing it are alternatives nobody ranked.
+    by_citation: dict[tuple[str, str], list] = {}
+    for node in graph.ui_nodes:
+        for ref in refs_mod.code_refs(node.meta.get("code")):
+            by_citation.setdefault((node.type, ref), []).append(node)
+    for (ntype, ref), nodes in sorted(by_citation.items()):
+        if len(nodes) < 2:
+            continue
+        # Containment: a section node inside the other's file shares its purpose rather
+        # than competing with it (ids are `path` / `path#anchor`).
+        if any(a is not b and b.id.startswith(f"{a.id}#") for a in nodes for b in nodes):
+            continue
+        # `extends:` inside the group is declared specialization, not competition.
+        group_ids = {node.id for node in nodes}
+        if any(_resolved_targets(node, "extends", resolver) & group_ids for node in nodes):
+            continue
+        shared: set[str] | None = None
+        for node in nodes:
+            targets = _resolved_targets(node, "detail", resolver)
+            shared = targets if shared is None else shared & targets
+        if shared:
+            continue
+        first = min(nodes, key=lambda n: (str(n.path), n.line))
+        rel = first.path.relative_to(graph.root).as_posix()
+        ids = ", ".join(sorted(group_ids))
+        f.append(Finding(
+            "warn", "competing-implementations",
+            f"{ids}: {len(nodes)} `{ntype}` nodes ground themselves in '{ref}' with no "
+            f"shared `detail:` concept — a reader reaching either one cannot learn which "
+            f"to use, or when",
+            path=rel, line=first.line, ref=ref,
+            suggestion="write the concept that states the selection rule, then point "
+                       "every competitor at it: `- detail: "
+                       "[<concept>](../concepts/<slug>.md)`"))
+
+    # `deprecation-without-successor` — a concept that resolves a `deprecates:` but names
+    # no successor. Only a *resolved* deprecation is asked: a dangling one is already
+    # `unresolved-relation`, and stacking a second finding on the same broken link would
+    # have the repair chase two codes for one defect.
+    for node in graph.ui_nodes:
+        if node.type != "concept" or not _resolved_targets(node, "deprecates", resolver):
+            continue
+        if node.meta.get("prefers") or node.meta.get("rule"):
+            continue
+        rel = node.path.relative_to(graph.root).as_posix()
+        f.append(Finding(
+            "warn", "deprecation-without-successor",
+            f"{node.id}: `deprecates:` names a node but no `prefers:` or `rule:` says "
+            f"what replaces it — a deprecation with no successor reads as \"delete "
+            f"this\", which is usually wrong",
+            path=rel, line=node.line, ref=f"{node.id}#deprecates",
+            suggestion="- prefers: [<winning node>](<path>)   # or a `rule:` stating "
+                       "when the deprecated one is still the right call"))
 
 
 #: How much prose one normative bullet may spend before it stops being one claim. A bullet is

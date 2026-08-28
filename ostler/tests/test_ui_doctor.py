@@ -559,6 +559,81 @@ def test_concept_judgment_keys_are_advisory_relations(repo: Path):
     assert "unknown-bullet" not in codes
 
 
+def _endpoint_file(slug: str, symbol: str, extra: str = "") -> str:
+    return (f"---\ntype: api\nslug: {slug}\ntitle: {slug}\n---\n# {slug}\n\n"
+            f"## Endpoints\n\n### {slug}\n- method: POST\n- path: /{slug}\n"
+            f"- does:\n  - state: sends the notification\n- status: `201` on success\n"
+            f"- verify: http_status(code=201, path=\"/{slug}\")\n"
+            f"- code: `{symbol}`\n{extra}")
+
+
+def test_competing_implementations_fires_on_unranked_same_type_co_citation(repo: Path):
+    """Two endpoints ground themselves in one symbol with no shared `detail:` concept — each
+    can be entirely true and a reader reaching either still cannot learn which to use."""
+    write(repo / "docs/features/groom/http/v1.md",
+          _endpoint_file("v1", "internal/notify.go::Notify"))
+    write(repo / "docs/features/groom/http/v2.md",
+          _endpoint_file("v2", "internal/notify.go::Notify"))
+    hits = [f for f in _run(repo).findings if f.code == "competing-implementations"]
+    assert len(hits) == 1 and hits[0].severity == "warn"
+    assert "v1" in hits[0].message and "v2" in hits[0].message
+    assert "internal/notify.go::Notify" in hits[0].message
+    assert "detail:" in (hits[0].suggestion or "")
+
+
+def test_competing_implementations_ignores_cross_type_co_citation(repo: Path):
+    """An endpoint and a concept citing one symbol is a well-written book — the concept
+    explains the unit the endpoint serves. Only same-type groups compete."""
+    write(repo / "docs/features/groom/http/v1.md",
+          _endpoint_file("v1", "internal/notify.go::Notify"))
+    write(repo / "docs/features/groom/concepts/notify.md",
+          "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\n"
+          "- code: `internal/notify.go::Notify`\n")
+    assert "competing-implementations" not in all_codes(_run(repo))
+
+
+def test_competing_implementations_silent_under_a_shared_detail_concept(repo: Path):
+    """Both competitors pointing `detail:` at one concept IS the adjudicated state — the
+    selection rule is reachable from either side, so there is nothing left to warn about."""
+    write(repo / "docs/features/groom/concepts/notify.md",
+          "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\n"
+          "- rule: reach for v2 unless the call site needs a synchronous send receipt\n")
+    detail = "- detail: [notify](../concepts/notify.md)\n"
+    write(repo / "docs/features/groom/http/v1.md",
+          _endpoint_file("v1", "internal/notify.go::Notify", detail))
+    write(repo / "docs/features/groom/http/v2.md",
+          _endpoint_file("v2", "internal/notify.go::Notify", detail))
+    assert "competing-implementations" not in all_codes(_run(repo))
+
+
+def test_deprecation_without_successor(repo: Path):
+    """A concept whose `deprecates:` resolves but that names no `prefers:` and no `rule:`
+    reads as "delete this" — usually wrong. A dangling `deprecates:` is `unresolved-relation`'s
+    finding alone: stacking this warn on the same broken link would have the repair chase two
+    codes for one defect."""
+    write(repo / "docs/features/groom/concepts/legacy.md",
+          "---\ntype: concept\nslug: legacy\ntitle: Legacy\n---\n# Legacy\n\nOld path.\n")
+    write(repo / "docs/features/groom/concepts/notify.md",
+          "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\n"
+          "- deprecates: [legacy](legacy.md)\n")
+    hits = [f for f in _run(repo).findings if f.code == "deprecation-without-successor"]
+    assert len(hits) == 1 and hits[0].severity == "warn"
+    assert "prefers" in hits[0].message
+    # naming the successor — either key — clears it
+    write(repo / "docs/features/groom/concepts/notify.md",
+          "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\n"
+          "- rule: legacy remains only for the dunning sequence's synchronous receipt\n"
+          "- deprecates: [legacy](legacy.md)\n")
+    assert "deprecation-without-successor" not in all_codes(_run(repo))
+    # dangling side: unresolved-relation fires, this warn stays out of the way
+    write(repo / "docs/features/groom/concepts/notify.md",
+          "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\n"
+          "- deprecates: [gone](gone.md)\n")
+    report = _run(repo)
+    assert "unresolved-relation" in all_codes(report)
+    assert "deprecation-without-successor" not in all_codes(report)
+
+
 def test_all_ui_findings_are_errors(repo: Path):
     write(repo / "docs/features/groom/concepts/diff.md",
           "---\ntype: concept\nslug: diff\ntitle: Diff\n---\n# Diff\n\n"
