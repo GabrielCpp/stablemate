@@ -1128,7 +1128,11 @@ def _check_runbook(graph: Graph, f: list[Finding]) -> None:
     """
     runbooks = graph.ui_nodes_of_type("runbook")
     stacks = {n.id for n in runbook_mod.stack_runbooks(graph)}
-    if not stacks and _has_served_surface(graph) and runbook_mod.select_server(graph) is None:
+    if (
+        not stacks
+        and runbook_mod.has_served_surface(graph)
+        and runbook_mod.select_server(graph) is None
+    ):
         f.append(Finding("warn", "runbook-missing",
                          "no `runbook` node brings a system up: the book describes a surface "
                          "that has to be served and never says how it starts, so QA has no "
@@ -1185,18 +1189,6 @@ def _check_runbook(graph: Graph, f: list[Finding]) -> None:
                              suggestion="- entry-url: http://localhost:<port>"))
 
         _check_runbook_environment(graph, node, rel, f)
-
-
-def _has_served_surface(graph: Graph) -> bool:
-    """Whether anything in this book has to be *running* before QA can reach it.
-
-    The missing-stack warning is only meaningful against a book that describes something
-    served. A CLI's book (`cli` nodes), a library's, or an infrastructure program's
-    describes behaviour a lane invokes directly, and telling those repos to declare a
-    stack would be telling them to declare a stack for nothing. A `screen` or a `server`
-    is the tell: neither can be driven without a process answering first.
-    """
-    return bool(graph.ui_nodes_of_type("screen") or graph.ui_nodes_of_type("server"))
 
 
 def _check_runbook_environment(graph: Graph, node, rel: str, f: list[Finding]) -> None:

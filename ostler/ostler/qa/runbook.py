@@ -296,6 +296,20 @@ def select_server(graph: Graph) -> UINode | None:
     return marked[0] if len(marked) == 1 else None
 
 
+def has_served_surface(graph: Graph) -> bool:
+    """Whether anything in this book has to be *running* before QA can reach it.
+
+    A missing stack is only a defect against a book that describes something served. A
+    CLI's book (`cli` nodes), a library's, or an infrastructure program's describes
+    behaviour a lane invokes directly, and telling those repos to declare a stack would
+    be telling them to declare a stack for nothing. A `screen` or a `server` is the
+    tell: neither can be driven without a process answering first. The doctor's
+    `runbook-missing` gates on this, and so does anything downstream deciding whether an
+    empty manifest is a topology or a gap.
+    """
+    return bool(graph.ui_nodes_of_type("screen") or graph.ui_nodes_of_type("server"))
+
+
 def load_stack(root: Path | None = None, *, name: str = "",
                graph: Graph | None = None,
                logger: logging.Logger | None = None) -> dict[str, Any]:
