@@ -195,3 +195,25 @@ Supersession lives there and **only** there. Four other keys look like it withou
 - `legacySurface` (`registry.py:40`) exists only on epic **seeds**, in the planning layer, and
   never reaches the book;
 - `doctor.py:950`'s `legacy` is an unrelated reachability-root waiver.
+
+## `unspecified` — deliberately out of contract
+
+The one **advisory** key writable on every type (`registry.SHARED_ADVISORY_KEYS`). An
+`unspecified:` bullet records a behaviour the book looked at and *decided* to leave out of
+contract — an encoding order, a duplicate policy, a tie-break nobody promised. It mints
+nothing: a statement of what is not promised has no observation to prove, and QA reads it as
+resolved-by-design rather than as a gap to invent coverage for.
+
+That reading is trust, and the citation is what earns it. Every `unspecified:` value must
+carry at least one markdown link resolving to the record that settled the decision — a
+decision doc, an acceptance criterion, a stated convention:
+
+```markdown
+- unspecified: the export's field encoding order — settled in
+  [0007](../../../decisions/0007-export-encoding.md)
+```
+
+A bullet with no live citation is `ungrounded-unspecified`, an **error**: uncited, nothing
+distinguishes it from a gap someone decorated, and the remedy is mechanical — cite what
+settled it, or delete the bullet. The link names a record, not a node, so it is grounded by
+that check rather than by the relation resolver.

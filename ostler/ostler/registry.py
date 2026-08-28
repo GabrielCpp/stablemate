@@ -293,6 +293,14 @@ RELATION_KEYS = ("on", "parent", "extends", "steps", "presents", "detail",
 SHARED_NORMATIVE_KEYS = ("consistency", "consistency rule", "consistency group", "persistence",
                          "emits", "consumes", "concurrency", "idempotency")
 
+# Advisory on every node type: recognized, never an obligation, never a relation. `unspecified:`
+# records what a node deliberately leaves out of contract — encoding order, duplicate policy —
+# with a citation to the record that settled it. It mints nothing (a bullet stating what is *not*
+# promised has no observation to prove), and its grounding is `doctor`'s
+# `ungrounded-unspecified`, not the relation resolver: the link names the settling record, not a
+# node.
+SHARED_ADVISORY_KEYS = ("unspecified",)
+
 
 def normative_keys(node_type: str) -> tuple[str, ...]:
     """Every bullet key on `node_type` that becomes an obligation."""
@@ -305,7 +313,11 @@ def declared_keys(node_type: str) -> frozenset[str]:
     grades — which is what `doctor`'s `unknown-bullet` tells the author."""
     uitype = UI_TYPES_BY_NAME.get(node_type)
     own = () if uitype is None else uitype.bullet_keys
-    return frozenset(b.key for b in own) | frozenset(SHARED_NORMATIVE_KEYS)
+    return (
+        frozenset(b.key for b in own)
+        | frozenset(SHARED_NORMATIVE_KEYS)
+        | frozenset(SHARED_ADVISORY_KEYS)
+    )
 
 
 def owning_keys(node_type: str) -> tuple[str, ...]:

@@ -114,6 +114,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
 
     _check_ui(graph, f, resolver)
     _check_judgment(graph, f, resolver)
+    _check_unspecified(graph, f, resolver)
     _check_runbook(graph, f)
     # One build, shared. Each of these needs the resolved node/edge dump, and on a large book a
     # rebuild costs more than every other check in this function put together.
@@ -845,6 +846,39 @@ def _check_judgment(graph: Graph, f: list[Finding],
             path=rel, line=node.line, ref=f"{node.id}#deprecates",
             suggestion="- prefers: [<winning node>](<path>)   # or a `rule:` stating "
                        "when the deprecated one is still the right call"))
+
+
+def _check_unspecified(graph: Graph, f: list[Finding],
+                       resolver: links_mod.LinkResolver) -> None:
+    """`ungrounded-unspecified` — a resolved-by-design claim with nothing that resolved it.
+
+    An `unspecified:` bullet says a behaviour is deliberately out of contract, which is a
+    decision somebody made, and the bullet's authority *is* the record of that decision — a
+    decision doc, an acceptance criterion, a stated convention. Without a live citation the
+    bullet is indistinguishable from a gap the author decorated, so this one is an error,
+    not a warn: the remedy is mechanical — cite what settled it, or delete the bullet.
+    """
+    for node in graph.ui_nodes:
+        for value in _bullet_values(node.meta.get("unspecified", "")):
+            links = markdown.extract_refs(value).links
+            grounded = any(
+                (target := resolver.resolve(node.path, href)) is not None and target.resolved
+                for _text, href in links
+            )
+            if grounded:
+                continue
+            rel = node.path.relative_to(graph.root).as_posix()
+            what = ("its citation does not resolve" if links
+                    else "it cites no record at all")
+            f.append(Finding(
+                "error", "ungrounded-unspecified",
+                f"{node.id}: an `unspecified:` bullet claims the behaviour is resolved by "
+                f"design, but {what} — nothing distinguishes it from a gap someone "
+                f"decorated",
+                path=rel, line=node.line, ref=f"{node.id}#unspecified",
+                suggestion="link the record that settled it — a decision doc, an "
+                           "acceptance criterion, a stated convention; with nothing to "
+                           "cite, delete the bullet"))
 
 
 #: How much prose one normative bullet may spend before it stops being one claim. A bullet is

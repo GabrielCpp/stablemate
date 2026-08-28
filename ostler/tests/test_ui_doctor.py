@@ -634,6 +634,34 @@ def test_deprecation_without_successor(repo: Path):
     assert "deprecation-without-successor" not in all_codes(report)
 
 
+def test_ungrounded_unspecified(repo: Path):
+    """An `unspecified:` bullet is resolved-by-design only on the strength of its citation.
+    With a live one it is silent on any node type; uncited, or cited against a record that
+    is not there, it is an error — the remedy is mechanical: cite what settled it, or
+    delete the bullet."""
+    write(repo / "docs/decisions/0007-export-encoding.md",
+          "# 0007 — export encoding\n\nEncoding order is the consumer's concern.\n")
+    cited = ("- unspecified: the export's field encoding order — settled in "
+             "[0007](../../../decisions/0007-export-encoding.md)\n")
+    write(repo / "docs/features/groom/http/v1.md",
+          _endpoint_file("v1", "internal/notify.go::Notify", cited))
+    assert "ungrounded-unspecified" not in all_codes(_run(repo))
+    write(repo / "docs/features/groom/http/v1.md",
+          _endpoint_file("v1", "internal/notify.go::Notify",
+                         "- unspecified: the export's field encoding order\n"))
+    hits = [f for f in _run(repo).findings if f.code == "ungrounded-unspecified"]
+    assert len(hits) == 1 and hits[0].severity == "error"
+    assert "cites no record" in hits[0].message
+    assert "delete the bullet" in (hits[0].suggestion or "")
+    write(repo / "docs/features/groom/http/v1.md",
+          _endpoint_file("v1", "internal/notify.go::Notify",
+                         "- unspecified: the export's field encoding order — settled in "
+                         "[gone](../../../decisions/gone.md)\n"))
+    hits = [f for f in _run(repo).findings if f.code == "ungrounded-unspecified"]
+    assert len(hits) == 1 and hits[0].severity == "error"
+    assert "does not resolve" in hits[0].message
+
+
 def test_all_ui_findings_are_errors(repo: Path):
     write(repo / "docs/features/groom/concepts/diff.md",
           "---\ntype: concept\nslug: diff\ntitle: Diff\n---\n# Diff\n\n"

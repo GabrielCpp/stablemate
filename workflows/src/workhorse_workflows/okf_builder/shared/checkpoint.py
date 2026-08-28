@@ -69,6 +69,10 @@ GROUNDED_CODES = frozenset({
     # The successor is whatever the deprecation evidence in the source actually names;
     # filling `prefers:` from the finding text alone invents a winner.
     "deprecation-without-successor",
+    # The citation is the record that settled the decision — a decision doc, a stated
+    # convention, an acceptance criterion. A link invented to clear the finding decorates
+    # a gap; with nothing real to cite, the bullet is deleted, not decorated.
+    "ungrounded-unspecified",
 })
 
 #: The drain's spend order, as code families from upstream to downstream. Grounding first:
