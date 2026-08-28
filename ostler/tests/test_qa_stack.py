@@ -525,12 +525,41 @@ def test_run_step_accepts_string_and_mapping(monkeypatch) -> None:
 def test_run_step_reports_a_nonzero_exit(monkeypatch) -> None:
     class Failed:
         returncode = 1
+        stdout = ""
         stderr = "seed blew up"
 
     monkeypatch.setattr(stack.subprocess, "run", lambda *_a, **_kw: Failed())
     ok, err = stack._run_step("make seed", "root", 42, LOG, label="seed[0]")
     assert not ok
     assert "seed blew up" in err
+    assert "exit 1" in err  # the exit code is part of the brief, not only the stream
+
+
+def test_run_step_briefs_from_stdout_when_stderr_is_silent(monkeypatch) -> None:
+    """make and docker put real failures on stdout; an empty brief points at nothing.
+
+    The observed shape: a coder-QA seed step failed with exit 2, its Makefile printed the
+    error to stdout, and the setup fixer was briefed with a blank reason — so it had to
+    re-run the step by hand to learn what the run already knew.
+    """
+    class Failed:
+        returncode = 2
+        stdout = "progress...\nError: emulator port 8081 is taken"
+        stderr = "  \n"
+
+    monkeypatch.setattr(stack.subprocess, "run", lambda *_a, **_kw: Failed())
+    ok, err = stack._run_step("make seed", "root", 42, LOG, label="seed[0]")
+    assert not ok
+    assert "port 8081 is taken" in err
+
+
+def test_step_error_keeps_the_tail_of_a_long_stream() -> None:
+    """The error is the last thing a scrolling build prints — head-truncation cuts it."""
+    noise = "progress line\n" * 200
+    err = stack._step_error(2, None, noise + "FATAL: the actual reason")
+    assert "FATAL: the actual reason" in err
+    err = stack._step_error(2, "", "")
+    assert "exit 2" in err  # never a blank brief, even with silent streams
 
 
 def test_a_manifest_step_is_a_shell_recipe_not_an_argv_list() -> None:

@@ -322,8 +322,8 @@ def teardown_app(
                                stop_cmd, exc)
                 return {"torn_down": "no"}
             if done.returncode != 0:
-                logger.warning("stop recipe exited %d — the app may still be running: %s",
-                               done.returncode, (done.stderr or "").strip()[:500])
+                logger.warning("stop recipe failed — the app may still be running: %s",
+                               _step_error(done.returncode, done.stdout, done.stderr))
                 return {"torn_down": "no"}
             return {"torn_down": "yes"}
         logger.info("teardown skipped — no app_pgid and no stop recipe "
@@ -560,8 +560,23 @@ def _run_step(
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return False, str(exc)
     if done.returncode != 0:
-        return False, (done.stderr or "").strip()[:500]
+        return False, _step_error(done.returncode, done.stdout, done.stderr)
     return True, ""
+
+
+def _step_error(code: int, stdout: str | None, stderr: str | None) -> str:
+    """One bounded clause saying how a step failed, from the step's own output.
+
+    The *tail* of the stream, not the head: a build that scrolls 40 lines of progress
+    before the error puts the error last, and a head-truncated brief hands the repairer
+    the progress and cuts the error. stderr when it says anything, else stdout — make
+    and docker put real failures on stdout often enough that "exit 2" with an empty
+    brief was what the setup fixer got for a step whose output named the fix.
+    """
+    detail = (stderr or "").strip()[-500:] or (stdout or "").strip()[-500:]
+    if detail:
+        return f"exit {code}: {detail}"
+    return f"exit {code} with no output on either stream"
 
 
 def _killpg(pgid: int, sig: int) -> bool:
