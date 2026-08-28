@@ -13,6 +13,19 @@ export PULUMI_BACKEND_URL := file://$(CURDIR)/.pulumi-state
 export PULUMI_CONFIG_PASSPHRASE := depot-fixture
 export PULUMI_SKIP_UPDATE_CHECK := true
 
+# The preview is hermetic, and this is what makes it so rather than what asserts it. Left
+# to itself the provider phones home while configuring — it requests an OAuth token and
+# lists the project's compute regions, and it does both before planning a single resource —
+# which contradicts the story's own claim that a plan needs no credential and reaches no
+# Google API. A dead proxy on a closed local port turns every such attempt into an
+# immediate on-machine refusal: the provider logs one "failed to get regions list …
+# connection refused" warning and plans anyway. The discriminating observation this buys
+# is in the evidence itself — a `googleapi:` diagnostic in `preview.json` means a request
+# left this machine and was answered, and with these three lines set there is none.
+export HTTPS_PROXY := http://127.0.0.1:1
+export HTTP_PROXY := http://127.0.0.1:1
+export NO_PROXY :=
+
 STACK := dev
 
 .PHONY: preview plan build vet

@@ -25,6 +25,6 @@
       "a warm Go module cache and a resolvable `gcp` resource plugin — the two things a preview needs that a credential is not"
     ],
     "capable_of_rendering": "nothing. The program declares resources and exposes no surface; the plan JSON is the only observable this repo produces",
-    "notes": "no credential is needed and no Google API is reached. `pulumi preview` emits one diagnostic warning about listing regions, in an online run and an offline one alike, and it is not a failure"
+    "notes": "no credential is needed and no Google API is reached, and the Makefile is what makes that true rather than a hope: it routes the provider's phone-home attempts (an OAuth token request, a compute regions listing) into a dead local proxy. `pulumi preview` therefore emits one diagnostic warning — `failed to get regions list … connection refused` — and it is not a failure. A `googleapi:` diagnostic in `preview.json` would mean a request left the machine and was answered, which is exactly the thing to object to"
   }
 }
