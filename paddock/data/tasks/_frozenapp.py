@@ -237,11 +237,14 @@ def reset_stack_state(dest: Path) -> None:
 #: on a configuration that never turns the auditor on is `inconclusive`, not a miss.
 CATCH_ROUTES = frozenset({"run", "audit"})
 
-#: Every trial runs the QA lane to its *first verdict* — one plan, one suite run, no repair
-#: loop — which is what makes a seeded defect's first red comparable across rounds. Under it
-#: the lane never enters `audit`, so `audit_result` is empty for every trial and a row whose
-#: only route is the auditor cannot be scored by this configuration. Recorded per trial as
-#: `audit_turn` so a re-score of an old ledger knows which configuration wrote it.
+#: The default trial configuration: the QA lane runs to its *first verdict* — one plan, one
+#: suite run, no repair loop — which is what makes a seeded defect's first red comparable
+#: across rounds. Under it the lane never enters `audit`, so `audit_result` is empty for
+#: every trial and a row whose only route is the auditor cannot be scored. Recorded per
+#: trial as `audit_turn` so a re-score of an old ledger knows which configuration wrote it —
+#: and the fallback `classify` assumes for a ledger written before `audit_turn` existed,
+#: because every such ledger came from this configuration. A fixture flips its own copy
+#: (`Fixture.first_verdict`) to give the auditor a turn.
 FIRST_VERDICT = True
 
 
@@ -997,6 +1000,16 @@ class Fixture:
     #: prints those, with `(3 of 6 metrics)` after them, instead of three blanks that read
     #: as metrics that failed to compute. Every key must be one of `LEVERAGE_KEYS`.
     leverage: tuple[str, ...] = LEVERAGE_KEYS
+    #: Whether a trial stops at its first verdict. `False` is the audit-on configuration:
+    #: the lane keeps going past the verdict and the auditor gets its turn, which is the
+    #: only configuration under which an `audit`-method defect can score caught rather
+    #: than inconclusive. The module default stays first-verdict because that is what
+    #: every scored label so far ran under.
+    first_verdict: bool = FIRST_VERDICT
+    #: The defect ids this task selects when `--param defects=…` names none. `()` keeps
+    #: the whole answer key, which is what a QA-method task wants; an audit task scopes
+    #: itself to the rows only an audit turn can catch instead of re-buying the rest.
+    defects: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         unknown = [key for key in self.leverage if key not in LEVERAGE_KEYS]
@@ -1033,7 +1046,9 @@ def trials_dir(run: Run) -> Path:
     return directory
 
 
-def plan_round(run: Run, app: Path) -> list[tuple[str, dict[str, str] | None]]:
+def plan_round(
+    run: Run, app: Path, fixture: Fixture | None = None,
+) -> list[tuple[str, dict[str, str] | None]]:
     """The trials to run: one control per story, then one per selected defect.
 
     One control per *story*, not one per round: the obligations a trial owes are minted
@@ -1045,7 +1060,8 @@ def plan_round(run: Run, app: Path) -> list[tuple[str, dict[str, str] | None]]:
     problems = validate_defects(app)
     if problems:
         raise TrialError(f"{app / 'defects.yml'} cannot be scored:\n  " + "\n  ".join(problems))
-    rows = select_defects(app, run.param_list("defects"))
+    wanted = run.param_list("defects") or (fixture.defects if fixture else ())
+    rows = select_defects(app, wanted)
     stories = sorted({str(row["story"]) for row in rows})
     control: list[tuple[str, dict[str, str] | None]] = (
         [] if run.param_bool("no_control") else [(story, None) for story in stories]
@@ -1063,7 +1079,7 @@ def run_round(run: Run, fixture: Fixture) -> None:
 
     with no_leaks(checkout, pinned=pin_held(run.pinned)):
         ledger: list[dict[str, Any]] = []
-        for index, (story, row) in enumerate(plan_round(run, app), start=1):
+        for index, (story, row) in enumerate(plan_round(run, app, fixture), start=1):
             variant = str(row["id"]) if row else CLEAN
             run_id = f"{fixture.repo_dir}-{run.label}-qa-{story}-{variant}-{index}"
             # farrier regenerates `.agents/agents-context.json`, which is gitignored and so is
@@ -1103,8 +1119,13 @@ def run_round(run: Run, fixture: Fixture) -> None:
                 # the product — the lane ends at the first verdict instead of repairing
                 # toward green, so a seeded defect reports its first red without entering
                 # the fix loop and a clean control's pass costs no repair/refute turns.
+                # An audit-on fixture turns that off, because the auditor's turn is what
+                # it exists to measure.
                 "--params", json.dumps(
-                    {"story": story, "docs_path": str(repo), "stop_at_first_verdict": FIRST_VERDICT}
+                    {
+                        "story": story, "docs_path": str(repo),
+                        "stop_at_first_verdict": fixture.first_verdict,
+                    }
                 ),
                 cwd=repo,
                 # Enforced by workhorse between states rather than by killing the process, so an
@@ -1126,7 +1147,7 @@ def run_round(run: Run, fixture: Fixture) -> None:
                 "rc": result.returncode,
                 # Whether this configuration gave the auditor a turn at all — what separates
                 # an `audit` row's miss from a row this lane could never have caught.
-                "audit_turn": not FIRST_VERDICT,
+                "audit_turn": not fixture.first_verdict,
                 "witness": str(witness.relative_to(run.stage)),
                 "timing": fx.timing_of(run_id, wall, since),
                 "laps": fx.laps_of(run_id, since),

@@ -12,14 +12,19 @@ from __future__ import annotations
 
 import contextlib
 import importlib.util
+import json
 import subprocess
 import sys
 from collections.abc import Iterator
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 import yaml
+
+from paddock import loader
+from paddock.pointer import Pointer
+from paddock.runner import Run
 
 DATA = Path(__file__).parents[1]
 APP = DATA / "apps" / "policy-desk"
@@ -89,3 +94,90 @@ def test_the_install_layer_is_committed_with_the_before_tree(tmp_path: Path) -> 
 def test_materialize_without_an_installer_is_unchanged(tmp_path: Path) -> None:
     dest = frozenapp.materialize(APP, "create-policy", tmp_path / "policy-desk")
     assert dirty(dest) == manifest("create-policy")
+
+
+# ── fixture-scoped and audit-on rounds ────────────────────────────────────────────────
+
+
+def make_run(tmp_path: Path, **params: str) -> Run:
+    """A `Run` carrying nothing but params and paths — what the round functions read."""
+    return Run(
+        task=loader.load_path(DATA / "tasks" / "expense_split.py"),
+        label="t1",
+        stage=tmp_path / "stage",
+        repo=tmp_path / "stage" / "policy-desk",
+        scratch=tmp_path / "scratch",
+        config=tmp_path / "config.toml",
+        data_dir=DATA,
+        store=tmp_path / "store",
+        seed=Pointer(name="policy-desk", repo_dir="policy-desk", sha256="0" * 64, bytes=1),
+        params=params,
+    )
+
+
+def fixture(**overrides: object):  # noqa: ANN201 - frozenapp.Fixture, loaded above
+    return frozenapp.Fixture(app="apps/policy-desk", repo_dir="policy-desk", **overrides)
+
+
+@pytest.mark.skipif(not APP.is_dir(), reason="the policy-desk fixture is not in this tree")
+def test_fixture_defects_scope_the_round_and_a_param_still_narrows(tmp_path: Path) -> None:
+    """A task may pin the rows it exists to measure — an audit task re-buying the whole
+    answer key would spend five QA-route trials to score the one audit-route row — and
+    `--param defects=…` keeps overriding, because narrowing a run is the operator's call."""
+    scoped = frozenapp.plan_round(make_run(tmp_path), APP, fixture(defects=("P2",)))
+    assert scoped == [("create-policy", None)] + [
+        (story, row) for story, row in scoped if row and row["id"] == "P2"
+    ]
+    assert len(scoped) == 2
+    overridden = frozenapp.plan_round(
+        make_run(tmp_path, defects="P1"), APP, fixture(defects=("P2",))
+    )
+    assert [row["id"] for _story, row in overridden if row] == ["P1"]
+
+
+@pytest.mark.skipif(not APP.is_dir(), reason="the policy-desk fixture is not in this tree")
+def test_audit_on_reaches_the_trial_params_and_the_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`first_verdict=False` is only real if both readers see it: the lane must be told to
+    run past the verdict (`stop_at_first_verdict: false` in `--params`), and the ledger
+    must say the auditor had a turn (`audit_turn: true`), or `classify` scores an `audit`
+    row as inconclusive on a round that paid for the audit."""
+    run = make_run(tmp_path, no_control="yes")
+    fx_row = fixture(first_verdict=False, defects=("P2",))
+    commands: list[tuple[str, ...]] = []
+
+    def fake_cli(*argv: str, **_kwargs: object) -> SimpleNamespace:
+        commands.append(argv)
+        return SimpleNamespace(returncode=0)
+
+    def fake_materialize(_source: Path, _story: str, dest: Path, *_a: object) -> Path:
+        dest.mkdir(parents=True, exist_ok=True)
+        return dest
+
+    def fake_witness(_repo: Path, dest: Path, extra: tuple[str, ...] = ()) -> Path:
+        dest.mkdir(parents=True, exist_ok=True)
+        return dest
+
+    monkeypatch.setattr(frozenapp, "stablemate_checkout", lambda _run: tmp_path / "sm")
+    monkeypatch.setattr(frozenapp, "effective", lambda _run: tmp_path / "config.toml")
+    monkeypatch.setattr(frozenapp, "pin_held", lambda _pinned: None)
+    monkeypatch.setattr(frozenapp, "no_leaks", lambda *_a, **_k: contextlib.nullcontext())
+    monkeypatch.setattr(frozenapp, "materialize", fake_materialize)
+    monkeypatch.setattr(frozenapp, "seed_defect", lambda *_a: None)
+    monkeypatch.setattr(frozenapp, "reset_stack_state", lambda _repo: None)
+    monkeypatch.setattr(frozenapp, "capture_witness", fake_witness)
+    monkeypatch.setattr(frozenapp.fx, "timing_of", lambda *_a: {})
+    monkeypatch.setattr(frozenapp.fx, "laps_of", lambda *_a: {})
+    monkeypatch.setattr(run, "cli", fake_cli)
+
+    frozenapp.run_round(run, fx_row)
+
+    qa = next(argv for argv in commands if "qa" in argv)
+    params = json.loads(qa[qa.index("--params") + 1])
+    assert params["stop_at_first_verdict"] is False
+    ledger = json.loads(
+        (run.stage / "artifacts" / "trials" / "trials.json").read_text(encoding="utf-8")
+    )
+    assert [entry["defect"] for entry in ledger] == ["P2"]
+    assert all(entry["audit_turn"] is True for entry in ledger)
