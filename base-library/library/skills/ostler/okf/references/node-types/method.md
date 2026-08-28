@@ -20,6 +20,7 @@ rather than kebabbing it into a slug.
 | `raises` | no | **mints an obligation** — what it throws and when |
 | `returns` | no | **mints an obligation** — what it gives back |
 | `code` | no | link, **owns** its file |
+| `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
 | `tests` | no | link — the test files covering it |

@@ -67,9 +67,10 @@ by browsing.
 It works on **any** node type. It is a *relation* key, and relations are handled globally by
 key name rather than per type: the link resolves and `unresolved-relation` guards it wherever
 it is written, and relation keys are excluded from the load-bearing set, so it never raises
-`unknown-bullet` on a type that does not list it. Two types declare it explicitly —
-[`command`](command.md) and [`endpoint`](endpoint.md) — which only means `ostler fmt` has a
-canonical slot for it there.
+`unknown-bullet` on a type that does not list it. Every implementation-bearing type also
+declares it — screen, cli, server, format, flow, component, interaction, invocation, method,
+[`command`](command.md) and [`endpoint`](endpoint.md) — which means `ostler fmt` has a
+canonical slot for it, right after the `code:` grounding it qualifies.
 
 A prose link from the node's body works too, and is the better choice when the pointer needs a
 sentence of its own to be useful.

@@ -19,6 +19,7 @@ File type under `docs/features/<service>/flows/`, `type: flow` in frontmatter.
 | `start` | no | **mints an obligation** — the starting condition |
 | `steps` | no | nested; each child resolves as a link |
 | `end` | no | **mints an obligation** — the observable outcome |
+| `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
 | `fixture` | no | a fixture: arranges the state a claim is proved against |
 | `tests` | no | resolves as a link — the test files covering this flow |

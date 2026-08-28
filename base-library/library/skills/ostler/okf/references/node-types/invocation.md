@@ -28,6 +28,7 @@ Section type. A `### <id>` under an `## Invocations` heading. Its id is `path#an
 | `auth` | no | **mints an obligation** — who may cause it |
 | `authorization` | no | alias of `auth` |
 | `code` | no | link, **owns** its file |
+| `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
 | `tests` | no | link — the test files covering it |

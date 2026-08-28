@@ -29,6 +29,7 @@ Section type. A `### <id>` under a `## Interactions` heading, normally in a
 | `variants` | no | `path = token \| token \| …` — a closed per-instance axis from the source |
 | `does` | **yes** | nested; **mints an obligation** per value |
 | `code` | no | link, **owns** its file |
+| `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
 | `tests` | no | link — the test files covering it |

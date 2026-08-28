@@ -508,6 +508,29 @@ def test_a_status_bullet_on_an_invocation_is_declared_and_formatted(repo: Path):
     assert per_bullet == {("status", 1): ["exit_status(code=0)"]}
 
 
+def test_detail_is_declared_on_every_implementation_bearing_type(repo: Path):
+    """`detail:` always resolved on any type — relations are global by key name — but only
+    `command` and `endpoint` declared it, so on every other type it tripped `unknown-bullet`
+    and `fmt` had no slot for it. Declaring it is what lets a book point a competing
+    implementation at the concept that says when it is the right one."""
+    for node_type in ("screen", "cli", "server", "format", "flow", "component",
+                      "interaction", "invocation", "method", "command", "endpoint"):
+        assert "detail" in registry.declared_keys(node_type), node_type
+    write(repo / "docs/features/groom/concepts/notify.md",
+          "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n")
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+          "## Components\n\n### banner\n- role: `status`\n- name: Banner\n"
+          "- keyboard: none\n- states: shown\n"
+          "- verify: visible(subject=\"the banner\")\n"
+          "- detail: [Notify](../../concepts/notify.md)\n"
+          "- code: `web/src/Banner.tsx::Banner`\n")
+    assert "unknown-bullet" not in all_codes(_run(repo))
+    fmt.run_fmt(load(repo), [])
+    text = (repo / "docs/features/groom/gui/screens/s.md").read_text()
+    assert text.index("- verify:") < text.index("- code:") < text.index("- detail:")
+
+
 def test_all_ui_findings_are_errors(repo: Path):
     write(repo / "docs/features/groom/concepts/diff.md",
           "---\ntype: concept\nslug: diff\ntitle: Diff\n---\n# Diff\n\n"

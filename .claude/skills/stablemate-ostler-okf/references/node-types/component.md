@@ -34,6 +34,7 @@ Section type. A `### <id>` under a `## Components` heading, normally in a
 | `variants` | no | `path = token \| token \| …` — a closed per-instance axis from the source |
 | `states` | no | **mints an obligation** — the states it can be in |
 | `code` | no | link, **owns** its file |
+| `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
 

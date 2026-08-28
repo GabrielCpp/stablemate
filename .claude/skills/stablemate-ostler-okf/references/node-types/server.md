@@ -24,6 +24,7 @@ File type under `docs/features/<service>/http/`, `type: server` in frontmatter.
 | key | required | what it does |
 | --- | --- | --- |
 | `code` | no | link, **owns** its file |
+| `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `openapi` | no | link, **owns** its file |
 | `launch` | no | the bring-up command |
 | `entry-url` | no | base URL the app serves on |

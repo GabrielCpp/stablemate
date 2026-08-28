@@ -435,12 +435,17 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # navigation (app root, emailed deep link, OAuth callback) and the value says how.
             # It exempts the screen from the reachability check, so it is not a silencer.
             BulletKey("entry"),
+            BulletKey("detail", link=True),
         ),
     ),
     UINodeType(
         name="cli", kind="file", context="",
         required_sections=(SectionSpec("Commands"),),
-        bullet_keys=(BulletKey("binary"), BulletKey("code", link=True, owns=True)),
+        bullet_keys=(
+            BulletKey("binary"),
+            BulletKey("code", link=True, owns=True),
+            BulletKey("detail", link=True),
+        ),
     ),
     UINodeType(
         name="server", kind="file", context="http",
@@ -448,6 +453,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         bullet_keys=(
             BulletKey("code", link=True, owns=True),
             BulletKey("openapi", link=True, owns=True),
+            BulletKey("detail", link=True),
             # The walkthrough launch contract. okf-builder has read these off a server node since
             # it was written — the launch contract is documentation, not configuration, which is
             # what lets the walk run standalone — but they were registered nowhere, so the doctor
@@ -487,6 +493,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # grounding key: a config file may be gitignored or env-local.
             BulletKey("config", owns=True),
             BulletKey("code", link=True, owns=True),
+            BulletKey("detail", link=True),
             BulletKey("tests", link=True),
         ),
     ),
@@ -496,6 +503,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("start", normative=True),
             BulletKey("steps", nested=True, link=True),
             BulletKey("end", normative=True),
+            BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
             # The test files covering this node, as `path` or `path::name`. Not an obligation
@@ -601,6 +609,11 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("exclusive-with", link=True),
             BulletKey("states", normative=True),
             BulletKey("code", link=True, owns=True),
+            # The judgment pointer: the concept whose selection rule says when *this* one of
+            # several competing implementations is the right one. It resolves on any type
+            # already (RELATION_KEYS); declaring it gives `fmt` a canonical slot beside the
+            # grounding it qualifies, on every type that can carry a `code:` competitor.
+            BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
             BulletKey("tests", link=True),
@@ -681,6 +694,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("exclusive-with", link=True),
             BulletKey("does", required=True, nested=True, normative=True),
             BulletKey("code", link=True, owns=True),
+            BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
             BulletKey("tests", link=True),
@@ -707,6 +721,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("auth", normative=True),
             BulletKey("authorization", normative=True, alias=True),
             BulletKey("code", link=True, owns=True),
+            BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
             BulletKey("tests", link=True),
@@ -723,6 +738,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("raises", normative=True),
             BulletKey("returns", normative=True),
             BulletKey("code", link=True, owns=True),
+            BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
             BulletKey("tests", link=True),
