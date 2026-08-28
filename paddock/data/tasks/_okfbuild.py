@@ -84,7 +84,13 @@ def strip_book(run: Run, fixture: Fixture) -> None:
     git("config", "user.name", "stablemate benchmark", cwd=run.repo)
     rel = str(book.relative_to(run.repo))
     git("add", "--all", "--", rel, cwd=run.repo)
-    git("commit", "--quiet", "-m", f"strip the {fixture.service} book", cwd=run.repo)
+    # `--no-verify` because the seed's own hooks run otherwise, and they reject this
+    # commit: a capture excludes `.claude/`, so the app's farrier pre-commit hook finds
+    # its generated files missing and exits non-zero. The hooks belong to the app under
+    # test; this commit is fixture surgery performed by the harness, not agent work the
+    # hooks exist to gate.
+    message = f"strip the {fixture.service} book"
+    git("commit", "--quiet", "--no-verify", "-m", message, cwd=run.repo)
 
 
 def run_build(run: Run, fixture: Fixture) -> None:
