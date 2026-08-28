@@ -24,6 +24,9 @@ Section type. A `### <id>` under a `## Interactions` heading, normally in a
 | `keyboard` | **yes** | **mints an obligation** — how it is fired without a pointer |
 | `when` | no | **mints an obligation** — the condition it applies under |
 | `exclusive-with` | no | link — a sibling it can never co-render with |
+| `one-per` | no | the iteration variable — one node stands for a whole generated family |
+| `unique-by` | no | a dot-path whose value is distinct per instance, with the evidence in prose |
+| `variants` | no | `path = token \| token \| …` — a closed per-instance axis from the source |
 | `does` | **yes** | nested; **mints an obligation** per value |
 | `code` | no | link, **owns** its file |
 | `verify` | no | a check |
@@ -34,6 +37,12 @@ An interaction is by definition operable, so five keys are required. `role:`/`na
 `getByRole(role, {name})` instead of a brittle selector. `none` on `keyboard:` is a *claim*
 that the control is pointer-only — an accessibility defect worth being able to **find**, not a
 blank to leave empty.
+
+An interaction repeated once per member of a collection carries the same repeat keys as a
+component — see the
+[repeat grammar](../bullet-grammar.md#repeated-controls-one-per--unique-by--variants). Note
+`on:` is a reference, not membership: pointing `on:` a repeated component does **not** inherit
+its family; write the repeat keys where the iteration actually is.
 
 Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type).
 
@@ -67,7 +76,8 @@ timeout 30 ostler scaffold interaction save-link --in docs/features/acme/gui/scr
 
 `missing-required-bullet` (five keys), `undeclared-obligation`, `weak-check`,
 `unstated-precondition`, `compound-normative-bullet`, `unresolved-relation` on `on:`,
-`ambiguous-locator`. See [../doctor-codes.md](../doctor-codes.md).
+`ambiguous-locator`; with the repeat keys also `static-template`, `unproven-unique-name`,
+`malformed-template`, `malformed-variants`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
 

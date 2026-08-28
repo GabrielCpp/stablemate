@@ -142,6 +142,7 @@ working tree.
 | `qa.verify(check, observed, covers=…, **args)` | make the observation the book declares, and record it |
 | `with qa.step("label"):` | group a phase under a named step; the report lists each assertion and screenshot under the step it ran in |
 | `qa.capture(key, value)` / `qa.get(key)` | publish a value into the ledger and read it back |
+| `qa.instance(obligation, bindings)` | declare which member of a repeated (`one-per:`) family this scenario drives — a literal dict mapping the template's bindable holes (and the `variants:` path, when one exists) to the values used; a declaration, not an assertion |
 | `qa.artifact(path, kind=…)` | register a file as evidence; relative paths resolve inside `qa.dir`. A directory is filed file by file (every file under it, one manifest row each, `directory` naming the root); an empty directory is a problem |
 | `qa.secret(name)` | a declared secret's value |
 | `qa.tool(name).run(*args, cwd=…, env=…, timeout=…)` | an opted-in external command; `cwd` must stay inside `qa.dir`, `env` keys must be declared with `tool_env(...)`; returns `ToolResult(stdout, stderr, exit_code)` |
@@ -260,6 +261,13 @@ remember to ask for, made the default.
   same declaration — one `qa.verify` whose `covers=` lists all of them satisfies each, and the
   refusal names them together for exactly that reason. Do not write one near-identical
   assertion per id.
+- **A covered repeat obligation must be sampled.** An obligation minted from a `one-per:`
+  node with bindable holes or a `variants:` axis demands at least one
+  `qa.instance(OBLIGATION, {"stage.name": "…"})` in the scenario that covers it. The mapping
+  must be a literal dict, supply every bindable hole, use no computed values, and name no key
+  outside the binds and the `variants:` path; every `variants:` value must be sampled by some
+  scenario. A family with no binds and no variants asks for nothing here — doctor's
+  `static-template` owns that case.
 - **`input_file` paths must exist and stay out of `qa/`**, which the runner deletes and
   recreates each run.
 

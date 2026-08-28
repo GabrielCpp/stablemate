@@ -176,6 +176,22 @@ Check types for `ostler qa assert`:
 - `no_duplicate` — counts events matching a filter; PASS if count == 1 (the "no double-publish"
   check).
 
+**`instance`** — which member of a repeated family the scenario drove
+
+```json
+{
+  "ts": "2026-07-10T17:18:03Z",
+  "kind": "instance",
+  "scenario": "a_stage_row_can_be_renamed",
+  "obligation": "okf:docs/features/acme/gui/screens/stages.md#stage-row:one-per:1",
+  "bindings": { "stage.name": "Foundations" }
+}
+```
+
+Written by `qa.instance(...)`. A declaration, like `fixture` — it grades nothing, but it
+puts on the ledger which concrete instance of a `one-per:` family a scenario exercised, so
+a reader of the run can see the sampled member instead of inferring it from a locator.
+
 **`daemon_stop`**
 
 ```json
@@ -403,6 +419,7 @@ explicit attribute here, and the two that used to cost the most are the first tw
 | `qa.require(label, condition, …)`  | record one claim and stop the scenario when it does not hold            |
 | `qa.step(label)`                   | a context manager grouping a phase's work under one step record         |
 | `qa.capture(key, value)` / `qa.get` | publish a value into the ledger so a later report can name it          |
+| `qa.instance(obligation, bindings)` | declare which member of a repeated (`one-per:`) family this scenario drives — a literal mapping of the template's bindable holes (and the `variants:` path, when one exists) to the values used; a declaration, not an assertion |
 | `qa.artifact(path, kind=…)`        | register a file as evidence; a relative path resolves inside `qa.dir`. A directory is filed file by file — one manifest row per file under it, each carrying `directory` — and an empty directory is a problem |
 | `qa.secret(name)`                  | the runtime value of a declared secret — redacted everywhere it is written |
 | `qa.eventually(label, callable, …)` / `qa.require_eventually` | the retrying forms of `check`/`require`: a lambda, a bound method or a nested function is re-evaluated until it holds or the timeout passes — the replacement for a bare `wait_for*` settle statement, which plan lint refuses |
@@ -630,6 +647,12 @@ under the target's interpreter and reads the declarations back, so it catches:
   `.write_text`, `open(...)` and a bare `page.wait_for_*(...)` are refused by plan lint —
   build files through an opted-in `qa.tool`, and wait with `qa.eventually(label, lambda: …)`.
   A lambda is admitted (and its body is still linted).
+- a scenario covering a **repeat obligation** (one minted from a `one-per:` node with
+  bindable holes or a `variants:` axis) that declares no `qa.instance(...)` for it; an
+  instance whose mapping is not a literal dict, supplies a computed value, misses a bindable
+  hole, or names a key outside the binds and the `variants:` path; and a `variants:` value no
+  scenario samples. A family with no binds and no variants asks for nothing here — doctor's
+  `static-template` owns that case.
 - a `qa-plan.yml`, rejected with the name of the module that replaces it.
 
 ---

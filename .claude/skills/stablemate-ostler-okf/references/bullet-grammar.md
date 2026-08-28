@@ -123,6 +123,34 @@ Canonical bullet order is the type's `bullet_keys` order and is applied by `ostl
 stub written in the wrong place is one the formatter moves the first time the file is touched.
 `ostler scaffold` already emits check stubs under the last claim for this reason.
 
+## Repeated controls: `one-per:` / `unique-by:` / `variants:`
+
+A control the app renders once per member of a collection is **one node** carrying the repeat
+keys (declared on `component` and `interaction`), not N copies:
+
+```markdown
+- one-per: `stage` — one row per stage in the project's stage list
+- name: `{stage.name} stage row`
+- unique-by: `stage.id` — primary key of the stages table
+- variants: `stage.kind = draft | active` — the union StageKind
+```
+
+The grammar is strict so fixtures and tests can be compiled from it:
+
+- **The machine value is the first backticked span**; the tail after ` — ` is prose and is
+  never parsed. `one-per:` holds one identifier — the iteration variable. `unique-by:` holds
+  one dot-path rooted at that variable. `variants:` holds `path = token | token | …` entirely
+  inside the backticks, tokens copied from a closed enumeration in the source.
+- With `one-per:` in force, `name:` is a **template**. A `{…}` hole that is a plain dot-path
+  rooted at an in-scope iteration variable is *bindable*; anything else is *opaque* — kept
+  verbatim, matched as a wildcard, **never evaluated**. Classification cannot fail; the only
+  hard error is an unbalanced brace (`malformed-template`).
+- Scope flows through markdown containment and `parent:` only. An `on:` edge is a reference,
+  not membership — an interaction `on:` a repeated component does not inherit its family.
+- The data-only segments compiled from the template (never code) travel with every obligation
+  the node mints, and the QA plan validator demands a sampled instance per covered repeat
+  obligation — see the qa-plan-authoring reference in the ostler/cli skill.
+
 ## The `untyped` node
 
 A `## Heading` that names no type still promotes its `### id` children to nodes

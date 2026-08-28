@@ -108,7 +108,11 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | --- | --- | --- |
 | `no-entry-point` | warn | No screen on this surface declares `entry:`, so reachability cannot be checked. |
 | `unreachable-screen` | error | No documented path reaches a screen. Add a `leads-to:` on the component that navigates there, or `entry:` if it is entered from outside the app. |
-| `ambiguous-locator` | error | Two controls on one screen share role+name, so `getByRole` cannot tell them apart. Give each a distinct accessible name — or, if they genuinely never co-render, declare `exclusive-with:`. |
+| `ambiguous-locator` | error | Two controls on one screen share role+name, so `getByRole` cannot tell them apart. Give each a distinct accessible name — or, if they genuinely never co-render, declare `exclusive-with:`. Also raised when a repeated node's `name:` template — opaque holes wildcarded — pattern-matches a static sibling's literal name. |
+| `static-template` | error | A node declares `one-per:` but its `name:` template has no bindable hole, so no consumer can discriminate instances. Write the per-instance datum the render interpolates as a dot-path hole; if the render has none, that is an app a11y defect to record, not a datum to invent. |
+| `unproven-unique-name` | warn | The template's bindable holes are display values (`.name`/`.label`/`.title`) and no `unique-by:` claims a distinct key. State `unique-by:` only with evidence from the source; otherwise the warning is the truth. |
+| `malformed-template` | error | The `name:` template has an unbalanced brace — the one way a template fails to parse (a hole the dot-path grammar rejects is simply opaque). |
+| `malformed-variants` | error | `variants:` does not parse. Form: one backticked span holding `path = token \| token \| …`, prose only after ` — `. |
 | `invalid-role` | error | `role:` is not an ARIA role. State the bare computed role and put any caveat in prose. |
 | `unnamed-interactive` | error | An operable role with no accessible `name:` — unannounceable to assistive tech and unaddressable by `getByRole`. |
 | `missing-placement` | error | A page-carrying role with no `placement:`. A role+name assertion passes on a component crushed into a sliver. |

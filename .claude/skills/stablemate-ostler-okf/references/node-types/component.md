@@ -29,6 +29,9 @@ Section type. A `### <id>` under a `## Components` heading, normally in a
 | `extends` | no | link — the component this specializes |
 | `parent` | no | link — the component containing it |
 | `exclusive-with` | no | link — a sibling it can never co-render with |
+| `one-per` | no | the iteration variable — one node stands for a whole generated family |
+| `unique-by` | no | a dot-path whose value is distinct per instance, with the evidence in prose |
+| `variants` | no | `path = token \| token \| …` — a closed per-instance axis from the source |
 | `states` | no | **mints an obligation** — the states it can be in |
 | `code` | no | link, **owns** its file |
 | `verify` | no | a check |
@@ -46,6 +49,11 @@ finds an element whether the page lays it out across the window or crushes it in
 `exclusive-with:` is a *claim* grounded in source (mutually-exclusive states, a variant switch),
 not a way to silence a real same-screen collision. It is a DOM co-render assertion and nothing
 more — it does not mean one control supersedes another.
+
+A control rendered once per member of a collection carries `one-per:`, and its `name:` becomes
+a template with `{…}` holes — see the
+[repeat grammar](../bullet-grammar.md#repeated-controls-one-per--unique-by--variants). A child
+nested under it (containment or `parent:`) inherits the family.
 
 Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type).
 
@@ -80,8 +88,9 @@ timeout 30 ostler scaffold component save-button --in docs/features/acme/gui/scr
 ## Doctor codes it can trip
 
 `missing-required-bullet`, `invalid-role`, `unnamed-interactive`, `missing-placement`,
-`malformed-placement`, `ambiguous-locator`, `undeclared-obligation`, `weak-check`. See
-[../doctor-codes.md](../doctor-codes.md).
+`malformed-placement`, `ambiguous-locator`, `undeclared-obligation`, `weak-check`; with the
+repeat keys also `static-template`, `unproven-unique-name`, `malformed-template`,
+`malformed-variants`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
 
