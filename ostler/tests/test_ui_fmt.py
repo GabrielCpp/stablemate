@@ -170,3 +170,19 @@ def test_a_check_written_above_every_claim_stays_above_them():
     i_contract = body.index('- verify: json_path("hold.version", equals="1")')
     i_raises = body.index("- raises: `Seat Unavailable` when it is taken.")
     assert i_contract < i_raises < body.index("- verify: http_status(409)")
+
+
+def test_repeat_bullets_have_a_canonical_slot():
+    """`one-per`/`variants` sit between role and name; `unique-by` right after the name."""
+    text = (
+        "---\ntype: screen\nslug: s\ntitle: T\n---\n# T\n\n"
+        "## Components\n\n### stage-row-button\n"
+        "- unique-by: `stage.id`\n"
+        "- name: `{stage.name}`\n"
+        "- one-per: `stage`\n"
+        "- role: button\n"
+    )
+    body = fmt.format_text(text).splitlines()
+    order = [body.index(f"- {b}") for b in (
+        "role: button", "one-per: `stage`", "name: `{stage.name}`", "unique-by: `stage.id`")]
+    assert order == sorted(order)

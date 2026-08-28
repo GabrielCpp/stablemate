@@ -574,7 +574,17 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # legitimate value — a decorative or purely presentational element has no accessible
             # name — but it has to be *stated*, so "no name" and "nobody looked" stay distinguishable.
             BulletKey("role", required=True, normative=True),
+            # A generated class of controls: `one-per:` names the iteration variable (machine
+            # value = one identifier in backticks; where the data comes from stays prose, grounded
+            # via `code:`), `variants:` enumerates the "one of each type" axis
+            # (`` `field.type = text | number | select | date` ``), and `unique-by:` claims the
+            # per-instance distinct key. With `one-per:` present, `name:` reads as a template whose
+            # `{…}` holes are classified — bindable dot-paths vs opaque expressions — never
+            # evaluated. See locators.py.
+            BulletKey("one-per"),
+            BulletKey("variants"),
             BulletKey("name", required=True, normative=True),
+            BulletKey("unique-by"),
             # Where the component lands on the screen, as bands of the viewport
             # (`width 60-100%, x 0-20%`). Screen-relative on purpose: no `sidebar`/`main-column`
             # vocabulary, nothing that assumes the page has a grid. It is the one documented
@@ -660,7 +670,12 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # is pointer-only — which is an accessibility defect worth being able to *find*, not a
             # blank to leave empty.
             BulletKey("role", required=True),
+            # Repeat grammar, as on `component`: an interaction on a generated class of controls
+            # repeats with it, and its `name:` template binds the same iteration variable.
+            BulletKey("one-per"),
+            BulletKey("variants"),
             BulletKey("name", required=True),
+            BulletKey("unique-by"),
             BulletKey("keyboard", required=True, normative=True),
             BulletKey("when", normative=True),
             BulletKey("exclusive-with", link=True),

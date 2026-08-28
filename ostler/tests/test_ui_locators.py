@@ -401,3 +401,154 @@ def test_a_real_co_render_collision_is_not_cleared_by_an_unrelated_exclusion(rep
     assert len(collisions) == 1
     # a↔b is excluded, but c collides with both a and b, so all three stay in the live conflict
     assert [n.split("#")[-1] for n in collisions[0]["nodes"]] == ["save-a", "save-b", "save-c"]
+
+
+# ---- generated elements: `one-per:` templates ---------------------------------------------------
+
+REPEATED = """\
+### stage-row-button
+- role: button
+- one-per: `stage` — one button per stage of the report
+- name: `{stage.name} — {fmt(stage.totalCost, 2)} $`
+- unique-by: `stage.id` — `stage.name` may repeat across stages
+"""
+
+
+def _locator(repo: Path, *components: str) -> dict:
+    data = _build(repo, _screen(*components))
+    return locators.screen_locators(data)[0]["locators"][0]
+
+
+def test_a_one_per_node_compiles_to_a_data_only_template(repo: Path):
+    """The compiled form is segments — no locator expression in any target language."""
+    entry = _locator(repo, REPEATED)
+    assert entry["strategy"] == "template"
+    assert entry["locator"] == ""          # nothing executable is emitted
+    assert entry["iterates"] == "stage"
+    assert entry["binds"] == ["stage.name"]
+    assert entry["segments"] == [
+        {"kind": "bind", "path": "stage.name"},
+        {"kind": "literal", "text": " — "},
+        {"kind": "opaque", "expr": "fmt(stage.totalCost, 2)"},
+        {"kind": "literal", "text": " $"},
+    ]
+
+
+def test_template_reading_is_opt_in_per_node(repo: Path):
+    """Without `one-per:`, `{…}` in a name is literal text — exactly today's behavior."""
+    entry = _locator(repo, "### t\n- role: button\n- name: {stage.name} — total\n")
+    assert entry["strategy"] == "role"
+    assert "{stage.name}" in entry["locator"]
+
+
+def test_a_hole_outside_the_iteration_scope_is_opaque(repo: Path):
+    """Classification is total: an unknown root is not an error, it is a wildcard."""
+    entry = _locator(repo, "### r\n- role: button\n- one-per: `row`\n- name: `{row.id}: {other.name}`\n")
+    assert {"kind": "bind", "path": "row.id"} in entry["segments"]
+    assert {"kind": "opaque", "expr": "other.name"} in entry["segments"]
+
+
+def test_the_repeat_bullets_are_known_to_the_registry(repo: Path):
+    _build(repo, _screen(REPEATED))
+    assert "unknown-bullet" not in _codes(repo, "warn")
+    assert "static-template" not in _codes(repo)
+    assert "unproven-unique-name" not in _codes(repo, "warn")
+
+
+def test_an_all_opaque_template_is_static(repo: Path):
+    """`${t("row_edit")}` on every row collides at runtime like two buttons sharing an i18n key."""
+    data = _build(repo, _screen('### e\n- role: button\n- one-per: `row`\n- name: `${t("row_edit")}`\n'))
+    assert [s["node"].split("#")[-1] for s in locators.static_templates(data)] == ["e"]
+    assert "static-template" in _codes(repo)
+
+
+def test_a_literal_name_on_a_repeated_node_is_static(repo: Path):
+    data = _build(repo, _screen("### e\n- role: button\n- one-per: `row`\n- name: Edit\n"))
+    assert len(locators.static_templates(data)) == 1
+    assert "static-template" in _codes(repo)
+
+
+def test_a_bind_of_an_ancestor_variable_does_not_discriminate(repo: Path):
+    """`{group.name}` is constant across the *inner* repetition, so the inner node is static."""
+    body = _screen("""\
+### group-panel
+- role: group
+- one-per: `group`
+- name: `{group.name}`
+- unique-by: `group.id`
+""", """\
+### row-toggle
+- role: switch
+- one-per: `row`
+- name: `{group.name} row`
+- parent: [group-panel](#group-panel)
+""")
+    data = _build(repo, body)
+    assert [s["node"].split("#")[-1] for s in locators.static_templates(data)] == ["row-toggle"]
+
+
+def test_display_value_binds_without_unique_by_warn(repo: Path):
+    """The book can warn that `name` may repeat across instances; it cannot prove it doesn't."""
+    data = _build(repo, _screen("### b\n- role: button\n- one-per: `stage`\n- name: `{stage.name}`\n"))
+    assert [u["binds"] for u in locators.unproven_unique_names(data)] == [["stage.name"]]
+    assert "unproven-unique-name" in _codes(repo, "warn")
+
+
+def test_unique_by_clears_the_unproven_name_warning(repo: Path):
+    _build(repo, _screen(REPEATED))
+    assert "unproven-unique-name" not in _codes(repo, "warn")
+
+
+def test_a_non_display_bind_needs_no_unique_by(repo: Path):
+    data = _build(repo, _screen("### b\n- role: button\n- one-per: `stage`\n- name: `Stage {stage.id}`\n"))
+    assert locators.unproven_unique_names(data) == []
+
+
+def test_a_template_pattern_matching_a_static_sibling_is_ambiguous(repo: Path):
+    """A static "Total — 12.00 $" label collides with the stage template at runtime."""
+    static = "### total-label\n- role: button\n- name: Total — 12.00 $\n"
+    collisions = locators.collisions(_build(repo, _screen(REPEATED, static)))
+    assert len(collisions) == 1
+    assert collisions[0]["template"] == "{stage.name} — {fmt(stage.totalCost, 2)} $"
+    assert [n.split("#")[-1] for n in collisions[0]["nodes"]] == [
+        "stage-row-button", "total-label"]
+    assert _codes(repo).count("ambiguous-locator") == 2
+
+
+def test_a_static_sibling_the_pattern_cannot_match_is_fine(repo: Path):
+    assert locators.collisions(_build(repo, _screen(REPEATED, SAVE))) == []
+
+
+def test_exclusive_with_clears_a_template_collision_too(repo: Path):
+    body = _screen(REPEATED.rstrip() + "\n- exclusive-with: [total-label](#total-label)\n",
+                   "### total-label\n- role: button\n- name: Total — 12.00 $\n")
+    assert locators.collisions(_build(repo, body)) == []
+
+
+def test_an_unbalanced_brace_is_the_one_hard_error(repo: Path):
+    data = _build(repo, _screen("### b\n- role: button\n- one-per: `row`\n- name: `{row.name`\n"))
+    assert len(locators.malformed_templates(data)) == 1
+    assert "malformed-template" in _codes(repo)
+
+
+def test_variants_parse_into_an_enumerable_axis(repo: Path):
+    data = _build(repo, _screen("""\
+### property-field
+- role: textbox
+- one-per: `field`
+- variants: `field.type = text | number | select | date`
+- name: `{field.label}`
+- unique-by: `field.id`
+"""))
+    node = next(n for n in data["nodes"] if n["id"].endswith("#property-field"))
+    assert locators.variants_of(node) == {
+        "path": "field.type", "values": ["text", "number", "select", "date"]}
+    assert "malformed-variants" not in _codes(repo, "warn")
+
+
+def test_an_unparsable_variants_axis_is_surfaced_not_dropped(repo: Path):
+    data = _build(repo, _screen(
+        "### f\n- role: textbox\n- one-per: `field`\n- variants: `whatever goes`\n"
+        "- name: `{field.id}`\n"))
+    assert len(locators.invalid_variants(data)) == 1
+    assert "malformed-variants" in _codes(repo, "warn")

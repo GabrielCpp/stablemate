@@ -1181,6 +1181,52 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
             suggestion="- name: <the control's visible label or aria-label>",
             **_at(unnamed["node"])))
 
+    # The repeat grammar (`one-per:`) is opt-in per node; all four checks below are inert on a
+    # book that never declares it.
+    for item in loc_mod.static_templates(data):
+        var = item["iterates"]
+        f.append(Finding(
+            "error", "static-template",
+            f"{item['node']}: repeats one-per `{var}` but `name:` {item['template']!r} carries no "
+            f"bindable hole of `{var}` — every instance shares one accessible name, and no "
+            f"consumer can discriminate them",
+            ref=item["node"],
+            suggestion=f"interpolate a per-instance datum (e.g. `{{{var}.name}}`) or give the "
+                       f"control an instance-specific aria-label in the app",
+            **_at(item["node"])))
+
+    for item in loc_mod.unproven_unique_names(data):
+        f.append(Finding(
+            "warn", "unproven-unique-name",
+            f"{item['node']}: instances are told apart only by display value(s) "
+            f"({', '.join(item['binds'])}), which nothing guarantees distinct — two instances "
+            f"sharing one are ambiguous at runtime with no warning anywhere",
+            ref=item["node"],
+            suggestion="state the distinct key as `- unique-by: `<var>.<key>``, or interpolate a "
+                       "guaranteed-distinct datum into the name",
+            **_at(item["node"])))
+
+    for item in loc_mod.malformed_templates(data):
+        f.append(Finding(
+            "error", "malformed-template",
+            f"{item['node']}: `name:` {item['template']!r} has an unbalanced brace — the one "
+            f"template error classification cannot absorb",
+            ref=item["node"],
+            suggestion="balance the `{…}` holes; anything the path grammar rejects is kept "
+                       "verbatim as opaque, so no hole needs rewording",
+            **_at(item["node"])))
+
+    for item in loc_mod.invalid_variants(data):
+        f.append(Finding(
+            "warn", "malformed-variants",
+            f"{item['node']}: `variants: {item['value']}` does not parse as "
+            f"`<var>.<path> = tok | tok | …` — the axis would be silently dropped and QA would "
+            f"stop owing one instance per variant",
+            ref=item["node"],
+            suggestion="- variants: `<var>.<path> = <literal> | <literal>` — all inside one "
+                       "backtick span",
+            **_at(item["node"])))
+
 
 def _check_placement(node, rel: str, f: list[Finding]) -> None:
     """A structural component says where it sits, and says it in a form QA can check.
