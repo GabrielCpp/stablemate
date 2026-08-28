@@ -207,6 +207,33 @@ different prompt written for the one doctor code they carry. If you were handed 
 - If the source does not settle it, **leave the bullet off** and say why in `doc_status`. A node
   that stays red is a correct outcome; a node made green by a guess is not.
 
+### Repeated controls: `one-per:` / `unique-by:` / `variants:`
+
+A control the app renders once per member of a collection — a row per stage, a field per
+schema entry — is **one node** carrying the repeat keys, not N copies:
+
+```markdown
+- one-per: `stage` — one row per stage in the project's stage list
+- name: `{stage.name} stage row`
+- unique-by: `stage.id` — primary key of the stages table
+- variants: `stage.kind = draft | active` — the union StageKind
+```
+
+- **The machine value is the first backticked span; everything after ` — ` is prose and is
+  never parsed.** `one-per:` holds one identifier — the iteration variable. `unique-by:`
+  holds one dot-path rooted at that variable. `variants:` holds `path = token | token | …`
+  entirely inside the backticks, tokens copied from the source's own closed enumeration.
+- With `one-per:` in force, `name:` is a **template**. A `{…}` hole that is a plain dot-path
+  rooted at an in-scope iteration variable is *bindable*; any other expression is *opaque* —
+  kept verbatim, matched as a wildcard, **never evaluated** — so write holes exactly as the
+  rendered accessible name interpolates them, and keep at least one bindable hole or the
+  template names no instance.
+- A child nested under a repeated node (markdown containment or `parent:`) inherits the
+  family; an interaction that merely points `on:` a repeated component does **not** — write
+  the repeat keys where the iteration actually is.
+- Do not describe repetition in prose glue like `name: dynamic — one per stage`; that is a
+  literal (and ambiguous) name. The keys above are the only spelling doctor and QA read.
+
 **Do not run a full `ostler doctor` to check your own work.** It lints the entire repository — tens
 of seconds on a large book — to answer a question about one node, and multiplied across a drain of
 hundreds of items that dwarfs the actual documenting. Run `ostler fmt <touched files>` and stop

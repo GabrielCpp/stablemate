@@ -27,7 +27,9 @@ anything.
   **never co-render** (add `exclusive-with: [the sibling](#its-anchor)` to one, and cite in prose the
   code that makes them exclusive); or they **genuinely co-render with the same name** — a real
   accessibility defect, so leave the finding standing and record what you saw. Never invent a
-  distinguishing label the UI does not have.
+  distinguishing label the UI does not have. The same three-way applies when one side is a repeated
+  node whose `name:` template — opaque holes wildcarded — pattern-matches a static sibling's
+  literal name: sharpen the template, declare the exclusivity, or record the real collision.
 - `unnamed-interactive` means an operable control has no accessible name. Find its label in the
   source; if there genuinely is none, the app has an unlabeled control — record that rather than
   naming it for the app.
