@@ -380,9 +380,12 @@ def ensure_stack(
         the QA plan's ``background:`` block, where it always reflects the working tree.
       * ``always`` — adopt whenever the identity is serving. Reserve this for a
         **code-independent** stack (a stock DB/emulator holding fixtures) whose build does
-        not depend on the code under test; it is the only case where skipping bring-up and
-        re-seed is safe.
+        not depend on the code under test.
       * ``never`` — never adopt; always re-run ``launch``.
+
+    Whatever the policy decides, ``seed`` and ``health`` run on every path — adoption
+    skips only ``prepare`` and ``launch``. An adopted stack that fails a seed step or a
+    health gate is not returned broken: the run falls back to a full bring-up.
 
     ``prepare``/``seed``/``health``/``fresh`` entries are a bare command string or a mapping
     with ``run`` (+ optional ``working-directory``/``timeout``). Returns
@@ -411,13 +414,30 @@ def ensure_stack(
     # Adopt-if-serving — but only when the reuse policy proves the running stack is not
     # stale (built from older code). Otherwise fall through and re-run the (idempotent,
     # self-freshening) launch so QA never runs against a stale build.
+    #
+    # Adoption skips prepare and launch, never seed or health: serving the identity
+    # proves the *process* survived, not its *state*. An emulator restarted between runs
+    # answers its identity from an empty store, and a run that adopted it on the identity
+    # alone reached the health phase holding no fixtures — "owner cannot sign in
+    # (user/claims wiped on restart)" — or, worse, reached QA itself. `seed` steps are
+    # documented idempotent, so re-running them against a stack that kept its state is a
+    # cheap no-op; against one that lost it, they are the repair. And when the adopted
+    # stack still cannot pass its gates, adoption was the wrong call however the policy
+    # argued it — fall through to the full bring-up rather than failing a run that a
+    # re-launch would have saved.
     if identity and health_url and not health_probe(health_url, identity):
         if _may_adopt(reuse, manifest, app_cwd, timeout_s, logger):
-            logger.info("adopting the stack already serving %s (reuse=%s)", health_url, reuse)
-            return {"ready": "yes", "adopted": "yes", "entry_url": entry_url,
-                    "app_pid": "", "app_pgid": ""}
-        logger.info("stack serving %s but not adopted (reuse=%s) — re-running launch to "
-                    "refresh it against current code", health_url, reuse)
+            step, err = _seed_then_gate(manifest, app_cwd, timeout_s, logger, clock)
+            if not step:
+                logger.info("adopting the stack already serving %s (reuse=%s; seed and "
+                            "health gates re-proven)", health_url, reuse)
+                return {"ready": "yes", "adopted": "yes", "entry_url": entry_url,
+                        "app_pid": "", "app_pgid": ""}
+            logger.warning("stack serving %s failed %s while adopting (%s) — falling "
+                           "back to a full bring-up", health_url, step, err)
+        else:
+            logger.info("stack serving %s but not adopted (reuse=%s) — re-running launch "
+                        "to refresh it against current code", health_url, reuse)
 
     for i, step in enumerate(manifest.get("prepare") or []):
         ok, err = _run_step(step, app_cwd, timeout_s, logger, label=f"prepare[{i}]")
@@ -445,29 +465,9 @@ def ensure_stack(
                          res["app_pid"], res["app_pgid"])
         app_pid, app_pgid = res["app_pid"], res["app_pgid"]
 
-    for i, step in enumerate(manifest.get("seed") or []):
-        ok, err = _run_step(step, app_cwd, timeout_s, logger, label=f"seed[{i}]")
-        if not ok:
-            logger.warning("seed[%d] failed: %s", i, err)
-            return _fail(f"seed[{i}]", err, app_pid, app_pgid)
-
-    # One window for the whole `health` phase, retried rather than single-shot: boot only
-    # proved the *entry URL* answers, and in a multi-service stack that is the fastest
-    # service, not the last one. A gate asserting on its siblings therefore runs into a
-    # stack that is still coming up — a spurious failure that routes an otherwise healthy
-    # run into repair. Gates are documented as read-only assertions (`seed` owns the side
-    # effects), so re-running one is safe.
-    health_deadline = clock.monotonic() + boot_timeout(
-        str(manifest.get("health_timeout", "")), default=HEALTH_WINDOW_S
-    )
-    for i, step in enumerate(manifest.get("health") or []):
-        ok, err = _gate_until(
-            step, app_cwd, timeout_s, logger,
-            label=f"health[{i}]", deadline=health_deadline, clock=clock,
-        )
-        if not ok:
-            logger.warning("health[%d] failed: %s", i, err)
-            return _fail(f"health[{i}]", err, app_pid, app_pgid)
+    step_label, err = _seed_then_gate(manifest, app_cwd, timeout_s, logger, clock)
+    if step_label:
+        return _fail(step_label, err, app_pid, app_pgid)
 
     logger.info("stack is ready at %s", health_url or entry_url or "(no entry url)")
     return {"ready": "yes", "adopted": "no", "entry_url": entry_url,
@@ -486,6 +486,43 @@ def teardown_stack(
 
 
 # -- helpers ----------------------------------------------------------------------
+
+
+def _seed_then_gate(
+    manifest: dict[str, Any], app_cwd: str, timeout_s: float,
+    logger: logging.Logger, clock: Clock,
+) -> tuple[str, str]:
+    """Run the `seed` steps then the `health` gates; ``("", "")`` on success.
+
+    Otherwise the failing step's label and its own error. Shared by the bring-up path
+    and the adoption path — adoption skips prepare and launch, but state and readiness
+    are re-proven the same way however the stack came to be serving.
+
+    One window for the whole `health` phase, retried rather than single-shot: boot only
+    proved the *entry URL* answers, and in a multi-service stack that is the fastest
+    service, not the last one. A gate asserting on its siblings therefore runs into a
+    stack that is still coming up — a spurious failure that routes an otherwise healthy
+    run into repair. Gates are documented as read-only assertions (`seed` owns the side
+    effects), so re-running one is safe.
+    """
+    for i, step in enumerate(manifest.get("seed") or []):
+        ok, err = _run_step(step, app_cwd, timeout_s, logger, label=f"seed[{i}]")
+        if not ok:
+            logger.warning("seed[%d] failed: %s", i, err)
+            return f"seed[{i}]", err
+
+    health_deadline = clock.monotonic() + boot_timeout(
+        str(manifest.get("health_timeout", "")), default=HEALTH_WINDOW_S
+    )
+    for i, step in enumerate(manifest.get("health") or []):
+        ok, err = _gate_until(
+            step, app_cwd, timeout_s, logger,
+            label=f"health[{i}]", deadline=health_deadline, clock=clock,
+        )
+        if not ok:
+            logger.warning("health[%d] failed: %s", i, err)
+            return f"health[{i}]", err
+    return "", ""
 
 
 def _may_adopt(

@@ -176,7 +176,10 @@ def test_teardown_leaves_the_stack_up_when_no_stop_recipe_is_documented(monkeypa
 
 
 def test_ensure_stack_reuse_always_adopts_without_running_prepare(monkeypatch) -> None:
-    """reuse=always (code-independent stack) short-circuits before prepare/launch/seed."""
+    """reuse=always (code-independent stack) short-circuits before prepare/launch.
+
+    This manifest declares no seed or health steps, so adoption runs nothing at all.
+    """
     monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "")
     monkeypatch.setattr(
         stack, "_run_step", lambda *_a, **_kw: pytest.fail("ran a step while adopting"),
@@ -229,6 +232,71 @@ def test_ensure_stack_if_fresh_adopts_when_probe_passes(monkeypatch) -> None:
         logger=LOG,
     )
     assert out["adopted"] == "yes"
+
+
+def test_ensure_stack_adoption_still_runs_seed_and_health(monkeypatch) -> None:
+    """Adoption skips prepare and launch, never seed or health.
+
+    Serving the identity proves the *process* survived, not its *state*: an emulator
+    restarted between runs answers its identity from an empty store, and adopting it on
+    the identity alone hands QA a stack with no fixtures.
+    """
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "")
+    ran: list[str] = []
+    monkeypatch.setattr(
+        stack, "_run_step",
+        lambda step, *_a, label="", **_kw: (ran.append(label) or (True, "")),
+    )
+    monkeypatch.setattr(
+        stack, "_gate_until",
+        lambda step, *_a, label="", **_kw: (ran.append(label) or (True, "")),
+    )
+    monkeypatch.setattr(
+        stack, "boot_app", lambda *_a, **_kw: pytest.fail("re-launched an adoptable stack"),
+    )
+    out = stack.ensure_stack(
+        {"entry_url": "u", "identity": "acme", "reuse": "always",
+         "prepare": ["make deps"], "launch": "docker compose up -d --build",
+         "seed": ["make seed"], "health": ["make stack-health"]},
+        logger=LOG,
+    )
+    assert out["adopted"] == "yes"
+    assert out["ready"] == "yes"
+    assert ran == ["seed[0]", "health[0]"]  # prepare never ran; seed and health did
+
+
+def test_ensure_stack_adopted_stack_failing_a_gate_falls_back_to_bring_up(monkeypatch) -> None:
+    """An adopted stack that fails a health gate is not returned broken.
+
+    The run falls back to a full bring-up — the launch recipe is idempotent and
+    self-freshening, so re-running it is the repair, not a risk — and the second pass
+    through the gates is what proves readiness.
+    """
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "")
+    attempts = {"gate": 0}
+
+    def gate(step, *_a, **_kw):
+        attempts["gate"] += 1
+        # first pass (adoption re-proof) finds the wiped store; after relaunch it holds
+        return (attempts["gate"] > 1), ("empty store" if attempts["gate"] == 1 else "")
+
+    monkeypatch.setattr(stack, "_gate_until", gate)
+    monkeypatch.setattr(stack, "_run_step", lambda *_a, **_kw: (True, ""))
+    launched = {"n": 0}
+    monkeypatch.setattr(
+        stack, "boot_app",
+        lambda *_a, **_kw: (launched.__setitem__("n", launched["n"] + 1)
+                            or {"boot_ok": "yes", "entry_url": "u", "app_pid": "", "app_pgid": ""}),
+    )
+    out = stack.ensure_stack(
+        {"entry_url": "u", "identity": "acme", "reuse": "always",
+         "launch": "docker compose up -d --build", "health": ["make stack-health"]},
+        logger=LOG,
+    )
+    assert launched["n"] == 1  # fell through to the real bring-up
+    assert attempts["gate"] == 2
+    assert out["adopted"] == "no"
+    assert out["ready"] == "yes"
 
 
 def test_ensure_stack_if_fresh_relaunches_when_probe_fails(monkeypatch) -> None:
