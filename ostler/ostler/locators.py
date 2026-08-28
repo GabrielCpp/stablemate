@@ -473,6 +473,32 @@ def malformed_templates(data: dict) -> list[dict]:
     return out
 
 
+def templates_outside_repeat(data: dict) -> list[dict]:
+    """Nodes whose ``name:`` reads as a template but which repeat over nothing.
+
+    A balanced ``{…}`` hole in a name announces per-instance interpolation, yet with no
+    ``one-per:`` on the node or an ancestor there is no iteration variable to bind it: every
+    hole is opaque, every consumer matches it as a wildcard, and the name silently stops
+    pinning the control it was written to pin. Either the node genuinely renders per member
+    of a collection — declare the repeat keys — or the braces are decoration to drop.
+    An unbalanced brace outside a repeat scope stays literal text, exactly as before; this
+    reads only names the template grammar accepts.
+    """
+    scopes = _scopes(data)
+    out = []
+    for screen, node in _locatables(data):
+        if scopes.get(node["id"]):
+            continue
+        name = _bullet(node, "name")
+        if not name or _stated_none(name):
+            continue
+        compiled = compile_template(name, ())
+        if compiled is None or compiled["malformed"]:
+            continue
+        out.append({"screen": screen, "node": node["id"], "template": name})
+    return out
+
+
 def invalid_variants(data: dict) -> list[dict]:
     """Repeated nodes whose ``variants:`` machine value the micro-syntax rejects.
 

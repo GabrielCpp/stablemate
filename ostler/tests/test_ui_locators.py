@@ -552,3 +552,31 @@ def test_an_unparsable_variants_axis_is_surfaced_not_dropped(repo: Path):
         "- name: `{field.id}`\n"))
     assert len(locators.invalid_variants(data)) == 1
     assert "malformed-variants" in _codes(repo, "warn")
+
+
+def test_a_templated_name_outside_any_repeat_warns(repo: Path):
+    """Holes with no iteration variable to bind are all wildcards — the name pins nothing."""
+    data = _build(repo, _screen("### s\n- role: button\n- name: `{stage.name} — total`\n"))
+    assert [t["node"].split("#")[-1] for t in locators.templates_outside_repeat(data)] == ["s"]
+    assert "template-outside-repeat" in _codes(repo, "warn")
+
+
+def test_a_repeat_scope_clears_the_outside_repeat_warning(repo: Path):
+    """Own `one-per:` and an inherited scope both count — the holes have a variable to bind."""
+    body = _screen(REPEATED, """\
+### row-label
+- role: button
+- name: `{stage.name} row`
+- parent: [stage-row-button](#stage-row-button)
+""")
+    data = _build(repo, body)
+    assert locators.templates_outside_repeat(data) == []
+    assert "template-outside-repeat" not in _codes(repo, "warn")
+
+
+def test_an_unbalanced_brace_outside_a_repeat_stays_literal(repo: Path):
+    """Outside a repeat scope the grammar changes nothing for unbalanced braces — no check reads them."""
+    data = _build(repo, _screen("### s\n- role: button\n- name: `{stage.name`\n"))
+    assert locators.templates_outside_repeat(data) == []
+    assert "template-outside-repeat" not in _codes(repo, "warn")
+    assert "malformed-template" not in _codes(repo)

@@ -1352,6 +1352,18 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
                        "backtick span",
             **_at(item["node"])))
 
+    for item in loc_mod.templates_outside_repeat(data):
+        f.append(Finding(
+            "warn", "template-outside-repeat",
+            f"{item['node']}: `name:` {item['template']!r} carries `{{…}}` holes but the node "
+            f"repeats over nothing — every hole is opaque, so every consumer matches the name "
+            f"as a wildcard instead of the value it was written to pin",
+            ref=item["node"],
+            suggestion="declare the repeat (`- one-per: `<var>``, plus `unique-by:` for the "
+                       "distinct key) if the control renders per member of a collection; "
+                       "otherwise write the literal rendered name",
+            **_at(item["node"])))
+
 
 def _check_placement(node, rel: str, f: list[Finding]) -> None:
     """A structural component says where it sits, and says it in a form QA can check.

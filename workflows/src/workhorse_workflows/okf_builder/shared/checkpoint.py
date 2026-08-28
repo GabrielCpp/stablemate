@@ -73,6 +73,10 @@ GROUNDED_CODES = frozenset({
     # convention, an acceptance criterion. A link invented to clear the finding decorates
     # a gap; with nothing real to cite, the bullet is deleted, not decorated.
     "ungrounded-unspecified",
+    # Whether the braces are a repeat missing its declaration or decoration to flatten is
+    # a fact about the rendering code — deleting the holes to clear the finding writes a
+    # literal name the UI never renders.
+    "template-outside-repeat",
 })
 
 #: The drain's spend order, as code families from upstream to downstream. Grounding first:

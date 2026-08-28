@@ -8,7 +8,7 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-ostler-
 
 # Doctor codes
 
-Every finding `ostler doctor` can raise: **65 codes, 51 error and 14 warn**. An error is a
+Every finding `ostler doctor` can raise: **66 codes, 51 error and 15 warn**. An error is a
 mechanical defect with a mechanical remedy — the exit code counts errors, so a story can be gated
 on it. A warn is a finding whose remedy is authoring judgment, which is why `doctor` cannot
 converge on it the way it converges on `fmt`. Companion to [`../SKILL.md`](../SKILL.md); the
@@ -121,6 +121,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `unproven-unique-name` | warn | The template's bindable holes are display values (`.name`/`.label`/`.title`) and no `unique-by:` claims a distinct key. State `unique-by:` only with evidence from the source; otherwise the warning is the truth. |
 | `malformed-template` | error | The `name:` template has an unbalanced brace — the one way a template fails to parse (a hole the dot-path grammar rejects is simply opaque). |
 | `malformed-variants` | error | `variants:` does not parse. Form: one backticked span holding `path = token \| token \| …`, prose only after ` — `. |
+| `template-outside-repeat` | warn | The `name:` carries balanced `{…}` holes but the node declares no `one-per:` and inherits no repeat scope — every hole is opaque, so consumers match the name as a wildcard instead of the value it was written to pin. Declare the repeat keys if the control renders per member of a collection; otherwise write the literal rendered name. A warn per the migration rule: backfills drain conversions as ordinary worklist items. |
 | `invalid-role` | error | `role:` is not an ARIA role. State the bare computed role and put any caveat in prose. |
 | `unnamed-interactive` | error | An operable role with no accessible `name:` — unannounceable to assistive tech and unaddressable by `getByRole`. |
 | `missing-placement` | error | A page-carrying role with no `placement:`. A role+name assertion passes on a component crushed into a sliver. |
