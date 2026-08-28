@@ -362,6 +362,18 @@ class PythonDriver(QaDriver):
                 )
             elif kind == "capture":
                 self.session.set_capture(str(record["key"]), str(record["value"]))
+            elif kind == "instance":
+                # Which member of a `one-per:` family the scenario drove. A declaration,
+                # not an assertion — it goes on the ledger so a reader of the run can see
+                # the sampled instance, but it grades nothing.
+                self.session.append(
+                    {
+                        "kind": "instance",
+                        "scenario": scenario_id,
+                        "obligation": str(record.get("obligation", "")),
+                        "bindings": record.get("bindings") or {},
+                    }
+                )
             elif kind == "artifact":
                 problems.extend(self._register(scenario_id, record, step=step))
             elif kind == "vet":

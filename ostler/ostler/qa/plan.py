@@ -203,6 +203,7 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
 
     scenario_problems, asserted_coverage = _validate_python_scenarios(document, targets)
     problems.extend(scenario_problems)
+    problems.extend(_validate_instances(document))
 
     for obligation in document.context.get("obligations", []):
         if not isinstance(obligation, dict) or not obligation.get("id"):
@@ -498,6 +499,118 @@ def _validate_python_scenarios(
                 )
             )
     return problems, asserted_coverage
+
+
+def _validate_instances(document: PlanDocument) -> list[str]:
+    """Hold every scenario covering a repeated obligation to concrete, named instances.
+
+    A `one-per:` obligation stands for a family, and the packet's `repeat` block says what a
+    concrete member looks like: the template holes a scenario can bind (`binds`) and the
+    enumerable axis it must sample (`variants`). This checks the sampling contract statically
+    — a covering scenario declares at least one `qa.instance(...)`, each declaration supplies
+    every bindable hole with a written string and nothing the family does not define, and
+    every declared variant value is sampled by some instance. A repeated obligation with no
+    holes and no variants asks nothing here: a template with nothing bindable is the book's
+    defect, and `ostler doctor` (`static-template`) reports it at the source.
+    """
+    repeats: dict[str, dict[str, Any]] = {}
+    for obligation in document.context.get("obligations", []):
+        if is_mapping(obligation) and obligation.get("id") and is_mapping(obligation.get("repeat")):
+            repeats[str(obligation["id"])] = dict(obligation["repeat"])
+    problems: list[str] = []
+    scenarios = document.data.get("scenarios")
+    if not repeats or not isinstance(scenarios, list):
+        return problems
+    for index, scenario in enumerate(scenarios):
+        if not is_mapping(scenario):
+            continue
+        scenario_id = str(scenario.get("id") or f"scenarios[{index}]")
+        raw_covers = scenario.get("covers")
+        covers = (
+            [item for item in raw_covers if isinstance(item, str)]
+            if isinstance(raw_covers, list)
+            else []
+        )
+        raw_instances = scenario.get("instances")
+        declared = raw_instances if isinstance(raw_instances, list) else []
+        by_obligation: dict[str, list[dict[str, Any]]] = {}
+        for instance in declared:
+            if not is_mapping(instance):
+                continue
+            obligation_id = str(instance.get("obligation") or COMPUTED)
+            repeat = repeats.get(obligation_id)
+            if repeat is None:
+                problems.append(
+                    f"scenario '{scenario_id}' declares qa.instance for '{obligation_id}', "
+                    "which is not a repeated obligation in this packet — the id must be "
+                    "written literally and name an obligation whose node declares `one-per:`"
+                )
+                continue
+            if obligation_id not in covers:
+                problems.append(
+                    f"scenario '{scenario_id}' declares qa.instance for '{obligation_id}' "
+                    "without covering it — an instance narrows a coverage claim, so add the "
+                    "obligation to the scenario's covers or drop the declaration"
+                )
+                continue
+            bindings = instance.get("bindings")
+            if not is_mapping(bindings):
+                problems.append(
+                    f"scenario '{scenario_id}' declares an unreadable qa.instance for "
+                    f"'{obligation_id}' — write the bindings as a literal dict of written "
+                    "strings; a computed mapping declares nothing validation can check"
+                )
+                continue
+            binds = [bind for bind in repeat.get("binds") or [] if isinstance(bind, str)]
+            variants = repeat.get("variants") if is_mapping(repeat.get("variants")) else None
+            allowed = set(binds) | ({str(variants["path"])} if variants else set())
+            for key in sorted(set(binds) - set(bindings)):
+                problems.append(
+                    f"scenario '{scenario_id}' instance for '{obligation_id}' does not bind "
+                    f"'{key}' — the template interpolates it, so a concrete instance must say "
+                    "what it holds"
+                )
+            for key in sorted(set(map(str, bindings)) - allowed):
+                problems.append(
+                    f"scenario '{scenario_id}' instance for '{obligation_id}' binds unknown "
+                    f"key '{key}' — the family defines {sorted(allowed) or '(nothing bindable)'}"
+                )
+            for key in sorted(map(str, bindings)):
+                if bindings[key] == COMPUTED:
+                    problems.append(
+                        f"scenario '{scenario_id}' instance for '{obligation_id}' binds "
+                        f"'{key}' to a computed value — write the string literally, so the "
+                        "declared instance and the driven one are the same one"
+                    )
+            by_obligation.setdefault(obligation_id, []).append(dict(bindings))
+        for obligation_id in covers:
+            repeat = repeats.get(obligation_id)
+            if repeat is None:
+                continue
+            binds = repeat.get("binds") or []
+            variants = repeat.get("variants") if is_mapping(repeat.get("variants")) else None
+            if not binds and not variants:
+                continue
+            instances = by_obligation.get(obligation_id, [])
+            if not instances:
+                problems.append(
+                    f"scenario '{scenario_id}' covers repeated obligation '{obligation_id}' "
+                    "but declares no qa.instance(...) — a family is only proven through a "
+                    "named member, so declare which one this scenario drives"
+                )
+                continue
+            if variants:
+                path = str(variants["path"])
+                sampled = {str(bound[path]) for bound in instances if path in bound}
+                for value in variants.get("values") or []:
+                    if str(value) not in sampled:
+                        problems.append(
+                            f"scenario '{scenario_id}' covers '{obligation_id}' but no "
+                            f"instance samples variant `{path} = {value}` — the book "
+                            "enumerates the axis, so every value needs an instance (or the "
+                            "book's `variants:` bullet is wrong)"
+                        )
+    return problems
 
 
 def _documented_screens(document: PlanDocument) -> set[str]:

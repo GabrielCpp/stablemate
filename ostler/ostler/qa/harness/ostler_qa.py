@@ -1390,6 +1390,26 @@ class Qa:
             )
         return result
 
+    def instance(self, obligation: str, bindings: dict[str, object]) -> None:
+        """Declare which concrete member of a repeated family this scenario exercises.
+
+        A `one-per:` obligation stands for a whole family of generated elements, and a
+        scenario that covers it proves nothing until it says *which* instance it drove —
+        `qa.instance(obligation, {"stage.name": "Fondations"})` writes that choice into the
+        run log, and `qa validate` holds the plan to the family's contract statically: every
+        bindable template hole supplied, no unknown keys, and every declared variant value
+        sampled by some instance. This records a declaration, like `fixture`, not an
+        assertion — the checks that follow are what carry the evidence.
+        """
+        self._recorder.emit(
+            {
+                "type": "instance",
+                "scenario": self.scenario_id,
+                "obligation": str(obligation),
+                "bindings": {str(key): str(value) for key, value in bindings.items()},
+            }
+        )
+
     # -- assertions --------------------------------------------------------------------
 
     def _status_mismatch(
@@ -2424,6 +2444,64 @@ def extract_vets(source: str) -> dict[str, list[str]]:
     return found
 
 
+#: How a scenario declares which member of a repeated family it drives, and the method
+#: `extract_instances` reads.
+INSTANCE_METHOD = "instance"
+
+
+def extract_instances(source: str) -> dict[str, list[dict[str, Any]]]:
+    """The concrete instances each scenario declares for repeated obligations, as written.
+
+    Static for the same reason the covers bindings are: a scenario covering a `one-per:`
+    obligation owes named instances *before* anything runs, and validation is where the
+    debt is called. Only what the parse can read is recovered — a computed obligation id
+    becomes `COMPUTED` (matching nothing, so the coverage it would claim stays unclaimed),
+    a binding value that is not a written string becomes `COMPUTED`, and a bindings
+    argument that is not a literal dict is reported as `None` so the caller can say the
+    declaration itself is unreadable rather than guess at its keys.
+    """
+    tree = ast.parse(source)
+    constants = _module_constants(tree)
+    found: dict[str, list[dict[str, Any]]] = {}
+    for function, reachable in _reachable_calls(tree).items():
+        instances: list[dict[str, Any]] = []
+        for call in reachable:
+            if not isinstance(call.func, ast.Attribute) or call.func.attr != INSTANCE_METHOD:
+                continue
+            obligation = _resolve(call.args[0], constants) if call.args else None
+            bindings_node = call.args[1] if len(call.args) > 1 else None
+            for keyword in call.keywords:
+                if keyword.arg == "bindings":
+                    bindings_node = keyword.value
+            bindings: dict[str, Any] | None = None
+            if isinstance(bindings_node, ast.Dict):
+                # Read the dict node entry by entry: a computed *value* still leaves the
+                # key — the half validation checks — readable, and becomes `COMPUTED`.
+                bindings = {}
+                for key_node, value_node in zip(bindings_node.keys, bindings_node.values):
+                    key = _resolve(key_node, constants) if key_node is not None else None
+                    if not isinstance(key, str):
+                        bindings = None
+                        break
+                    value = _resolve(value_node, constants)
+                    bindings[key] = value if isinstance(value, str) else COMPUTED
+            elif bindings_node is not None:
+                written = _resolve(bindings_node, constants)
+                if isinstance(written, dict):
+                    bindings = {
+                        str(key): value if isinstance(value, str) else COMPUTED
+                        for key, value in written.items()
+                    }
+            instances.append(
+                {
+                    "obligation": obligation if isinstance(obligation, str) else COMPUTED,
+                    "bindings": bindings,
+                }
+            )
+        found[function] = instances
+    return found
+
+
 def _literal(node: ast.expr) -> Any:
     try:
         return ast.literal_eval(node)
@@ -2440,12 +2518,14 @@ def _describe(module_path: Path) -> dict[str, Any]:
     check_calls = extract_check_calls(source)
     locators = extract_locators(source)
     vets = extract_vets(source)
+    instances = extract_instances(source)
     for declared in data["scenarios"]:
         declared["checks"] = counts.get(declared["function"], 0)
         declared["check_covers"] = check_covers.get(declared["function"], [])
         declared["check_calls"] = check_calls.get(declared["function"], [])
         declared["locators"] = locators.get(declared["function"], [])
         declared["vets"] = vets.get(declared["function"], [])
+        declared["instances"] = instances.get(declared["function"], [])
     return data
 
 

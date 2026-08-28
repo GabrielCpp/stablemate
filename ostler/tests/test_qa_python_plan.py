@@ -1008,3 +1008,167 @@ def test_a_stale_report_does_not_outlive_the_run_that_wrote_it(tmp_path: Path) -
     outcome = cmd_run(module, spec, root=tmp_path)
     assert outcome.ok, outcome.message
     assert "<!-- run: qa-story-1 status: passed -->" in (spec / "qa-report.md").read_text(encoding="utf-8")
+
+
+# -- repeated obligations: the qa.instance sampling contract ---------------------------
+
+REPEAT_OBLIGATION = "okf:docs/features/demo/board.md#stage-row:contract"
+
+
+def _repeat_spec(tmp_path: Path, **repeat_overrides: Any) -> Path:
+    """A packet whose one obligation is a repeated family, as `build_context` lifts it."""
+    repeat: dict[str, Any] = {
+        "onePer": "stage",
+        "binds": ["stage.name"],
+        "template": "{stage.name} stage row",
+        "iterates": "stage",
+        "segments": [
+            {"kind": "bind", "path": "stage.name"},
+            {"kind": "literal", "text": " stage row"},
+        ],
+        "uniqueBy": "stage.id",
+        "variants": {"path": "stage.kind", "values": ["draft", "active"]},
+    }
+    repeat.update(repeat_overrides)
+    spec = tmp_path / "docs/specs/story-1"
+    spec.mkdir(parents=True)
+    (spec / "qa-okf-context.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "available": True,
+                "acceptanceCriteria": [],
+                "healthFindings": [],
+                "obligations": [
+                    {
+                        "id": REPEAT_OBLIGATION,
+                        "kind": "contract",
+                        "node": "stage-row",
+                        "source": "docs/features/demo/board.md",
+                        "requirement": "one row per stage",
+                        "evidenceRequired": "live",
+                        "reasons": [],
+                        "repeat": repeat,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return spec
+
+
+def _repeat_plan(spec: Path, body: str) -> Path:
+    """A one-scenario plan over the repeated obligation; *body* is the scenario's inside."""
+    module = spec / "qa_plan.py"
+    module.write_text(
+        "from ostler_qa import Qa, plan, scenario, target\n\n"
+        'plan(run_id="qa-story-1", story="story-1")\n\n'
+        'api = target("api")\n\n'
+        f'OB = "{REPEAT_OBLIGATION}"\n\n\n'
+        "@scenario(target=api, mechanism='live', covers=[OB])\n"
+        "def each_stage_row(qa: Qa) -> None:\n"
+        '    """The family is proven through named members."""\n'
+        + "".join(f"    {line}\n" for line in body.splitlines()),
+        encoding="utf-8",
+    )
+    return module
+
+
+def _repeat_problems(tmp_path: Path, spec: Path, body: str) -> list[str]:
+    document, problems = load_plan(_repeat_plan(spec, body), spec, tmp_path)
+    assert document is not None, problems
+    return validate_v2(document)
+
+
+def test_instances_covering_every_variant_satisfy_the_family(tmp_path: Path) -> None:
+    reported = _repeat_problems(
+        tmp_path,
+        _repeat_spec(tmp_path),
+        'qa.instance(OB, {"stage.name": "Fondations", "stage.kind": "draft"})\n'
+        'qa.instance(OB, {"stage.name": "Toiture", "stage.kind": "active"})\n'
+        'qa.check("both rows are shown", True, covers=[OB])',
+    )
+    assert reported == []
+
+
+def test_covering_a_repeated_obligation_without_instances_is_rejected(tmp_path: Path) -> None:
+    reported = _repeat_problems(
+        tmp_path,
+        _repeat_spec(tmp_path),
+        'qa.check("a row is shown", True, covers=[OB])',
+    )
+    assert any("declares no qa.instance" in item for item in reported)
+
+
+def test_an_instance_missing_a_bind_or_inventing_a_key_is_rejected(tmp_path: Path) -> None:
+    reported = _repeat_problems(
+        tmp_path,
+        _repeat_spec(tmp_path),
+        'qa.instance(OB, {"stage.kind": "draft", "bogus": "x"})\n'
+        'qa.instance(OB, {"stage.name": "Toiture", "stage.kind": "active"})\n'
+        'qa.check("rows are shown", True, covers=[OB])',
+    )
+    assert any("does not bind 'stage.name'" in item for item in reported)
+    assert any("unknown key 'bogus'" in item for item in reported)
+
+
+def test_an_uncovered_variant_is_surfaced_not_sampled_around(tmp_path: Path) -> None:
+    reported = _repeat_problems(
+        tmp_path,
+        _repeat_spec(tmp_path),
+        'qa.instance(OB, {"stage.name": "Fondations", "stage.kind": "draft"})\n'
+        'qa.check("the row is shown", True, covers=[OB])',
+    )
+    assert any("no instance samples variant `stage.kind = active`" in item for item in reported)
+
+
+def test_a_computed_binding_or_mapping_declares_nothing(tmp_path: Path) -> None:
+    reported = _repeat_problems(
+        tmp_path,
+        _repeat_spec(tmp_path),
+        "chosen = qa.root.name\n"
+        'qa.instance(OB, {"stage.name": chosen, "stage.kind": "draft"})\n'
+        "qa.instance(OB, dict(elsewhere for elsewhere in ()))\n"
+        'qa.instance(OB, {"stage.name": "Toiture", "stage.kind": "active"})\n'
+        'qa.check("rows are shown", True, covers=[OB])',
+    )
+    assert any("binds 'stage.name' to a computed value" in item for item in reported)
+    assert any("unreadable qa.instance" in item for item in reported)
+
+
+def test_an_instance_for_an_unrepeated_or_uncovered_obligation_is_rejected(tmp_path: Path) -> None:
+    reported = _repeat_problems(
+        tmp_path,
+        _repeat_spec(tmp_path),
+        'qa.instance("okf:docs/features/demo/other.md:contract", {"stage.name": "X"})\n'
+        'qa.instance(OB, {"stage.name": "Toiture", "stage.kind": "draft"})\n'
+        'qa.instance(OB, {"stage.name": "Autre", "stage.kind": "active"})\n'
+        'qa.check("rows are shown", True, covers=[OB])',
+    )
+    assert any("not a repeated obligation" in item for item in reported)
+
+
+def test_a_family_with_nothing_bindable_and_no_variants_asks_nothing(tmp_path: Path) -> None:
+    """The static-template defect belongs to `ostler doctor`, at the source, not to the plan."""
+    reported = _repeat_problems(
+        tmp_path,
+        _repeat_spec(tmp_path, binds=[], variants=None, template=None, segments=None),
+        'qa.check("the rows are shown", True, covers=[OB])',
+    )
+    assert reported == []
+
+
+def test_qa_instance_writes_the_declaration_into_the_ledger(tmp_path: Path) -> None:
+    spec = _repeat_spec(tmp_path)
+    module = _repeat_plan(
+        spec,
+        'qa.instance(OB, {"stage.name": "Fondations", "stage.kind": "draft"})\n'
+        'qa.instance(OB, {"stage.name": "Toiture", "stage.kind": "active"})\n'
+        'qa.check("both rows are shown", True, covers=[OB])',
+    )
+    outcome = cmd_run(module, spec, root=tmp_path)
+    assert outcome.ok, outcome.message
+    records = [r for r in _ledger(spec) if r.get("kind") == "instance"]
+    assert {r["obligation"] for r in records} == {REPEAT_OBLIGATION}
+    assert {r["bindings"]["stage.name"] for r in records} == {"Fondations", "Toiture"}

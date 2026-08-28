@@ -204,6 +204,11 @@ def _scopes(data: dict) -> dict[str, tuple[str, ...]]:
     return cache
 
 
+def scopes(data: dict) -> dict[str, tuple[str, ...]]:
+    """Public face of `_scopes` for consumers outside this module (``qa/context``)."""
+    return _scopes(data)
+
+
 def compile_template(name: str, scope: tuple[str, ...]) -> dict | None:
     """Segments for a templated name, or None when the name carries no hole.
 

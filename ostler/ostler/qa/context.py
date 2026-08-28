@@ -14,6 +14,7 @@ from unidiff.patch import PatchSet
 from unidiff.errors import UnidiffParseError
 
 from ostler import graph as graph_mod
+from ostler import locators as locators_mod
 from ostler import checks as checks_mod
 from ostler import inventory, markdown, path as path_mod, refs as refs_mod, registry, syntax
 from ostler.model import Graph, _parse_ui_nodes, load
@@ -190,9 +191,12 @@ def build_context(
         for path in current.doc_roots.values()
         if path.resolve().is_relative_to(root)
     }
-    base_nodes, base_edges, base_ends = _serialized_graph(base_graph)
-    head_nodes, head_edges, head_ends = _serialized_graph(head_graph)
+    base_nodes, base_edges, base_ends, base_scopes = _serialized_graph(base_graph)
+    head_nodes, head_edges, head_ends, head_scopes = _serialized_graph(head_graph)
     nodes_by_id = _merge_snapshot_nodes(base_nodes, head_nodes)
+    # Head wins per node, as `_merge_snapshot_nodes` does for the nodes themselves; a node
+    # only the base graph still holds keeps the scope it had there.
+    node_scopes = {**base_scopes, **head_scopes}
     # A path the book declares under `config:` is a production unit by declaration. The
     # non-production and generated-unit filters below are heuristics over the path alone —
     # a `Pulumi.<stack>.yaml` is dropped as stack config, which is the right default for a
@@ -556,6 +560,7 @@ def build_context(
             journey=False,
             required=node_id in required_contracts,
             owed_keys=None if node_id in reached_by_the_diff else _SHARED_INVARIANT_KEYS,
+            scope=node_scopes.get(node_id, ()),
         )
     ] + [
         obligation
@@ -567,6 +572,7 @@ def build_context(
             required=_journey_is_required(
                 node_id, direct_reasons, required_contracts, end_edges
             ),
+            scope=node_scopes.get(node_id, ()),
         )
     ]
     obligations.sort(key=lambda item: _sort_key(str(item["id"])))
@@ -636,6 +642,19 @@ def render_obligations(
         if locators:
             for key, values in sorted(obligation.get("locators", {}).items()):
                 lines.append(f"  - {key}: {'; '.join(values)}")
+            repeat = obligation.get("repeat")
+            if repeat:
+                parts = [f"one per `{repeat['onePer']}`"]
+                if repeat.get("binds"):
+                    parts.append("binds " + ", ".join(f"`{b}`" for b in repeat["binds"]))
+                if repeat.get("uniqueBy"):
+                    parts.append(f"unique by `{repeat['uniqueBy']}`")
+                if repeat.get("variants"):
+                    variants = repeat["variants"]
+                    parts.append(
+                        f"variants `{variants['path']}` = " + " | ".join(variants["values"])
+                    )
+                lines.append(f"  - repeated: {'; '.join(parts)}")
     return lines
 
 
@@ -811,8 +830,13 @@ def _graph_at_revision(root: Path, revision: str, features_root: str) -> Graph:
 
 def _serialized_graph(
     graph: Graph,
-) -> tuple[dict[str, dict[str, Any]], set[tuple[str, str]], set[tuple[str, str]]]:
-    """The nodes, every resolved edge, and the subset of them that is a flow's destination.
+) -> tuple[
+    dict[str, dict[str, Any]],
+    set[tuple[str, str]],
+    set[tuple[str, str]],
+    dict[str, tuple[str, ...]],
+]:
+    """The nodes, every resolved edge, the flow destinations, and each node's repeat scope.
 
     The third member is what tells a journey's destination apart from a step along the way,
     and it is read off the `end:` bullet rather than off each edge's `via`. `via` keeps the
@@ -845,7 +869,7 @@ def _serialized_graph(
         }
         named = [edge for edge in walked if edge.get("href") in hrefs]
         ends.update((item["id"], edge["to"]) for edge in named or walked[-1:])
-    return nodes, edges, ends
+    return nodes, edges, ends, locators_mod.scopes(data)
 
 
 def _changed_units(
@@ -1592,6 +1616,39 @@ def _locators(node: dict[str, Any]) -> dict[str, list[str]]:
     return {key: _values(bullets.get(key)) for key in _LOCATOR_KEYS if _values(bullets.get(key))}
 
 
+def _repeat(node: dict[str, Any], scope: tuple[str, ...]) -> dict[str, Any] | None:
+    """The compiled repeat contract for a node in a `one-per:` scope, or None.
+
+    Everything a planner needs to sample the family is lifted here — the iteration variable,
+    the compiled name-template segments, the bindable holes, and the declared distinctness and
+    variant axes — so `qa plan` can hold a scenario to concrete instances without re-reading
+    the book. A node outside any repeated scope gets no block, which keeps the packet
+    byte-identical for every book that never declares `one-per:`.
+    """
+    own = locators_mod.repeat_of(node)
+    scope = scope or ((own,) if own else ())
+    if not scope:
+        return None
+    repeat: dict[str, Any] = {"onePer": scope[-1], "binds": []}
+    located = locators_mod.locator_for(node, scope=scope)
+    if located["strategy"] == "template":
+        repeat.update(
+            {
+                "template": located["template"],
+                "iterates": located["iterates"],
+                "segments": located["segments"],
+                "binds": located["binds"],
+            }
+        )
+    unique = locators_mod.unique_by_of(node)
+    if unique:
+        repeat["uniqueBy"] = unique
+    variants = locators_mod.variants_of(node)
+    if variants:
+        repeat["variants"] = variants
+    return repeat
+
+
 def _obligations(
     node: dict[str, Any],
     reasons: list[dict[str, str]],
@@ -1599,6 +1656,7 @@ def _obligations(
     journey: bool,
     required: bool = True,
     owed_keys: frozenset[str] | None = None,
+    scope: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
     """Mint one obligation per normative bullet, plus the node-level contract.
 
@@ -1621,6 +1679,9 @@ def _obligations(
     locators = _locators(node)
     if locators:
         base["locators"] = locators
+    repeat = _repeat(node, scope)
+    if repeat:
+        base["repeat"] = repeat
     # Per bullet, not per node. A node-level list credits every obligation the node mints with
     # every check the node declares, so one discriminating call covers a sibling claim that
     # nothing observes — the claim rides on an assertion that was never about it. The book

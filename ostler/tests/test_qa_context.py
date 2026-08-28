@@ -499,6 +499,96 @@ title: Items
     assert not any("tests/test_items.py" in row for row in both)
 
 
+def test_a_repeated_component_lifts_its_family_contract_onto_the_obligation(tmp_path: Path):
+    """A `one-per:` node's obligations carry the compiled repeat block, camelCase like the packet.
+
+    The block is what lets `qa plan` hold a covering scenario to concrete instances without
+    re-reading the book: the bindable template holes, the distinctness claim, and the variant
+    axis all travel with the obligation. A node outside any repeated scope carries no block at
+    all, so a book that never declares `one-per:` produces the packet it always did.
+    """
+    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/gui/screens/planner.md").write_text(
+        """---
+type: screen
+title: Planner
+---
+# Planner
+
+## Components
+
+### stage-row
+- role: row
+- name: `{stage.name} stage row`
+- one-per: `stage` — one row per stage the project declares
+- unique-by: `stage.id`
+- variants: `stage.kind = draft | active`
+- states: expanded while selected
+- code: app/planner.py::render_stage
+
+### add-stage-button
+- role: button
+- name: Add stage
+- code: app/planner.py::render_stage
+
+## Interactions
+
+### toggle-stage
+- on: [stage-row](#stage-row)
+- trigger: click
+- does:
+  - request: expand the stage
+- code: app/planner.py::render_stage
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "app/planner.py").write_text(
+        "def render_stage():\n    return 'old'\n", encoding="utf-8"
+    )
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/planner.py").write_text(
+        "def render_stage():\n    return 'new'\n", encoding="utf-8"
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+
+    by_id = {item["id"]: item for item in packet["obligations"]}
+    row = next(v for k, v in by_id.items() if k.endswith("#stage-row:contract"))
+    repeat = row["repeat"]
+    assert repeat["onePer"] == "stage"
+    assert repeat["binds"] == ["stage.name"]
+    assert repeat["template"] == "{stage.name} stage row"
+    assert repeat["iterates"] == "stage"
+    assert repeat["segments"][0] == {"kind": "bind", "path": "stage.name"}
+    assert repeat["uniqueBy"] == "stage.id"
+    assert repeat["variants"] == {"path": "stage.kind", "values": ["draft", "active"]}
+    # Every obligation the node mints repeats with it — the states bullet is per instance too.
+    states = next(v for k, v in by_id.items() if "#stage-row:states" in k)
+    assert states["repeat"]["onePer"] == "stage"
+    # Scope flows down containment and `parent:` links only — an `on:` edge is a reference,
+    # not nesting, so the interaction stays unrepeated, exactly as the doctor reads it.
+    toggle = next(v for k, v in by_id.items() if k.endswith("#toggle-stage:contract"))
+    assert "repeat" not in toggle
+    # A sibling outside the repeat carries no block at all.
+    button = next(v for k, v in by_id.items() if k.endswith("#add-stage-button:contract"))
+    assert "repeat" not in button
+    # The rendered packet says so where a planner reads the obligation.
+    lines = render_obligations([row])
+    assert any(
+        "repeated: one per `stage`" in line
+        and "binds `stage.name`" in line
+        and "unique by `stage.id`" in line
+        and "variants `stage.kind` = draft | active" in line
+        for line in lines
+    )
+
+
 def test_a_check_binds_to_the_claim_it_was_written_under(tmp_path: Path):
     """Two sibling claims, each with its own `verify:`, are two separately observed claims.
 
