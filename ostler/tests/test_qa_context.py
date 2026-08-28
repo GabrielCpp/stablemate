@@ -1346,3 +1346,177 @@ title: Claims
     }
     assert provides["three-identities"] == "the adjuster and both holders exist"
     assert provides["seeded-ledger"] == "two claims on file"
+
+
+def _judgment_repo(root: Path, *, with_judgment: bool) -> str:
+    """A screen whose interaction competes with an older writer, settled by a concept.
+
+    `with_judgment=False` builds the same book with the `detail:` pointer, the
+    `unspecified:` bullet and the concept files stripped — the control for asserting the
+    judgment layer adds context without changing what a change is owed.
+    """
+    (root / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (root / "docs/features/acme/concepts").mkdir(parents=True)
+    (root / "docs/decisions").mkdir(parents=True)
+    (root / "app").mkdir()
+    judgment_bullets = (
+        "- detail: [Export choice](../../concepts/choice.md)\n"
+        "- unspecified: duplicate names keep insertion order, settled by"
+        " [the export decision](../../../../decisions/0001-export.md)\n"
+        if with_judgment
+        else ""
+    )
+    (root / "docs/features/acme/gui/screens/items.md").write_text(
+        f"""---
+type: screen
+title: Items
+---
+# Items
+
+## Components
+
+### save-button
+- role: button
+- name: Save item
+- code: app/items.py::save_item
+
+## Interactions
+
+### save-item
+- on: [save-button](#save-button)
+- trigger: click
+- does:
+  - request: persist the item
+  - error: preserve fields and expose an alert
+- code: app/items.py::save_item
+{judgment_bullets}""",
+        encoding="utf-8",
+    )
+    if with_judgment:
+        (root / "docs/decisions/0001-export.md").write_text("# settled\n", encoding="utf-8")
+        (root / "docs/features/acme/concepts/choice.md").write_text(
+            """---
+type: concept
+title: Export choice
+---
+# Export choice
+
+- rule: prefer the streaming writer; the buffered one exists only for the legacy CLI
+- prefers: [save-item](../gui/screens/items.md#save-item)
+- deprecates: [legacy writer](legacy-writer.md)
+""",
+            encoding="utf-8",
+        )
+        (root / "docs/features/acme/concepts/legacy-writer.md").write_text(
+            """---
+type: concept
+title: Legacy writer
+---
+# Legacy writer
+""",
+            encoding="utf-8",
+        )
+    (root / "app/items.py").write_text("def save_item():\n    return 'old'\n", encoding="utf-8")
+    _git(root, "init")
+    _git(root, "config", "user.email", "qa@example.com")
+    _git(root, "config", "user.name", "QA")
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "base")
+    base = _git(root, "rev-parse", "HEAD")
+    (root / "app/items.py").write_text("def save_item():\n    return 'new'\n", encoding="utf-8")
+    return base
+
+
+def test_a_detail_edge_pulls_its_concept_as_judgment_context(tmp_path: Path):
+    """The concept a selected node points `detail:` at rides along, and only as context.
+
+    Its rule/prefers/deprecates land on the pointing node's node-level obligation — where the
+    reviewer choosing between implementations reads them — and on nothing the node mints per
+    bullet, while the concept itself is never owed live evidence.
+    """
+    base = _judgment_repo(tmp_path, with_judgment=True)
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+
+    assert validate_context(packet) == []
+    concept_id = next(node for node in packet["contracts"] if node.endswith("choice.md"))
+    reasons = next(
+        item["reasons"] for item in packet["directNodes"] if item["node"] == concept_id
+    )
+    pointer = next(r for r in reasons if r["kind"] == "judgment-context")
+    assert pointer["ref"].endswith("#save-item")
+    by_id = {item["id"]: item for item in packet["obligations"]}
+    concept_contract = by_id[f"okf:{concept_id}:contract"]
+    assert concept_contract["required"] is False
+    assert concept_contract["evidenceRequired"] == "context"
+    interaction = next(
+        item
+        for key, item in by_id.items()
+        if key.endswith("#save-item:contract")
+    )
+    entry = next(e for e in interaction["judgment"] if e["concept"] == concept_id)
+    assert entry["title"] == "Export choice"
+    assert entry["rules"] == [
+        "prefer the streaming writer; the buffered one exists only for the legacy CLI"
+    ]
+    assert entry["prefers"] == ["[save-item](../gui/screens/items.md#save-item)"]
+    assert entry["deprecates"] == ["[legacy writer](legacy-writer.md)"]
+    resolved = interaction["unspecified"]
+    assert resolved[0]["citation"] == "../../../../decisions/0001-export.md"
+    assert "insertion order" in resolved[0]["text"]
+    for key, item in by_id.items():
+        if key.endswith(":does:1") or key.endswith(":does:2"):
+            assert "judgment" not in item
+            assert "unspecified" not in item
+
+
+def test_judgment_context_changes_no_owed_obligation(tmp_path: Path):
+    """Additive only: with the judgment layer stripped, the owed set is byte-identical."""
+    with_dir = tmp_path / "with"
+    without_dir = tmp_path / "without"
+    with_dir.mkdir()
+    without_dir.mkdir()
+    base_with = _judgment_repo(with_dir, with_judgment=True)
+    base_without = _judgment_repo(without_dir, with_judgment=False)
+
+    packet_with = build_context(with_dir, base=base_with, source_roots={"acme": ["app"]})
+    packet_without = build_context(
+        without_dir, base=base_without, source_roots={"acme": ["app"]}
+    )
+
+    def owed(packet: dict) -> set[str]:
+        return {
+            item["id"] for item in packet["obligations"] if item.get("required", True)
+        }
+
+    assert owed(packet_with) == owed(packet_without)
+
+
+def test_rendering_shows_judgment_and_unspecified_beside_the_obligation():
+    obligation = {
+        "id": "okf:items#save-item:contract",
+        "requirement": "save-item",
+        "judgment": [
+            {
+                "concept": "choice",
+                "title": "Export choice",
+                "rules": ["prefer the streaming writer"],
+                "prefers": ["[save-item](items.md#save-item)"],
+                "deprecates": ["[legacy writer](legacy-writer.md)"],
+            }
+        ],
+        "unspecified": [
+            {"text": "ordering settled by [the record](../decisions/0001.md)",
+             "citation": "../decisions/0001.md"}
+        ],
+    }
+    lines = render_obligations([obligation])
+    assert "  - judgment: `choice` — prefer the streaming writer" in lines
+    assert "    - prefers: [save-item](items.md#save-item)" in lines
+    assert "    - deprecates: [legacy writer](legacy-writer.md)" in lines
+    assert (
+        "  - unspecified (resolved by design): ordering settled by"
+        " [the record](../decisions/0001.md)" in lines
+    )
+    # The prose context is not a locator detail — a caller stripping locators keeps it.
+    assert any("judgment" in line for line in render_obligations([obligation], locators=False))

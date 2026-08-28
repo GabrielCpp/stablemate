@@ -95,6 +95,16 @@ they answer different questions: which obligations this scenario is responsible 
 line proves each one. Collapsing them is what let a scenario keep `covers=["ac:4"]` after its
 AC4 assertions were deleted, with the remaining unrelated check reporting AC4 proven.
 
+Two fields on a node-level obligation row are context for choosing what a scenario drives,
+never ids to cover. **`judgment`** carries the selection rules of every concept the node
+points `detail:` at — its `rules`, `prefers` and `deprecates` — and is read *before* picking
+which of two competing implementations a scenario exercises: driving the deprecated writer
+because it was the first symbol the diff showed is exactly the mistake the field exists to
+prevent. A concept pulled this way appears in the packet under a `judgment-context` reason
+with `required: false`. **`unspecified`** lists behaviors the book deliberately leaves out of
+contract, each with the citation that settled it — resolved by design, not a gap to invent
+coverage for; a scenario asserting one is pinning what the book says nothing owes.
+
 `recording={"required": True, "mode": "window"}` films a display the runner starts for the
 target, at the viewport's exact size, and launches the browser onto it — it does **not** grab
 whatever screen `$DISPLAY` names, because on a developer machine that files a valid mp4 of

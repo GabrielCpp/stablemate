@@ -106,6 +106,7 @@ _CLOSURE_REASON_KINDS = frozenset(
         "flow-links-contract",
         "flow-contract-closure",
         "graph-closure",
+        "judgment-context",
     }
 )
 
@@ -191,8 +192,8 @@ def build_context(
         for path in current.doc_roots.values()
         if path.resolve().is_relative_to(root)
     }
-    base_nodes, base_edges, base_ends, base_scopes = _serialized_graph(base_graph)
-    head_nodes, head_edges, head_ends, head_scopes = _serialized_graph(head_graph)
+    base_nodes, base_edges, base_ends, base_scopes, base_details = _serialized_graph(base_graph)
+    head_nodes, head_edges, head_ends, head_scopes, head_details = _serialized_graph(head_graph)
     nodes_by_id = _merge_snapshot_nodes(base_nodes, head_nodes)
     # Head wins per node, as `_merge_snapshot_nodes` does for the nodes themselves; a node
     # only the base graph still holds keeps the scope it had there.
@@ -417,6 +418,33 @@ def build_context(
                 direct_reasons.setdefault(node_id, []).extend(reasons)
                 related = True
 
+    # A `detail:` edge from a selected node is the author's own pointer to the concept
+    # holding the selection rule for that implementation. The concept rides along as
+    # judgment context — pulled with a closure-kind reason so it is never owed live
+    # evidence — and its rule/prefers/deprecates bullets are attached to the pointing
+    # node's obligations, where the reviewer choosing between implementations reads them.
+    detail_edges = base_details | head_details
+    judgment_by_node: dict[str, list[dict[str, Any]]] = {}
+    for source, target in sorted(detail_edges):
+        if source not in contracts and source not in journeys:
+            continue
+        concept = nodes_by_id.get(target)
+        if not concept or concept.get("type") != "concept":
+            continue
+        bullets = concept.get("bullets", {})
+        judgment_by_node.setdefault(source, []).append(
+            {
+                "concept": target,
+                "title": concept.get("title") or target,
+                "rules": _values(bullets.get("rule")),
+                "prefers": _values(bullets.get("prefers")),
+                "deprecates": _values(bullets.get("deprecates")),
+            }
+        )
+        if target not in contracts and target not in journeys:
+            contracts.add(target)
+            direct_reasons.setdefault(target, []).append({"kind": "judgment-context", "ref": source})
+
     selected = contracts | journeys
     verification_index: list[dict[str, Any]] = []
     for node_id, node in sorted(nodes_by_id.items()):
@@ -561,6 +589,7 @@ def build_context(
             required=node_id in required_contracts,
             owed_keys=None if node_id in reached_by_the_diff else _SHARED_INVARIANT_KEYS,
             scope=node_scopes.get(node_id, ()),
+            judgment=judgment_by_node.get(node_id),
         )
     ] + [
         obligation
@@ -573,6 +602,7 @@ def build_context(
                 node_id, direct_reasons, required_contracts, end_edges
             ),
             scope=node_scopes.get(node_id, ()),
+            judgment=judgment_by_node.get(node_id),
         )
     ]
     obligations.sort(key=lambda item: _sort_key(str(item["id"])))
@@ -655,6 +685,17 @@ def render_obligations(
                         f"variants `{variants['path']}` = " + " | ".join(variants["values"])
                     )
                 lines.append(f"  - repeated: {'; '.join(parts)}")
+        # Not under the `locators` flag: judgment and unspecified are prose context, wanted
+        # wherever the obligation is rendered, not a UI-locator detail a caller may strip.
+        for entry in obligation.get("judgment", []):
+            rules = "; ".join(entry.get("rules", []))
+            lines.append(f"  - judgment: `{entry['concept']}`" + (f" — {rules}" if rules else ""))
+            for preferred in entry.get("prefers", []):
+                lines.append(f"    - prefers: {preferred}")
+            for deprecated in entry.get("deprecates", []):
+                lines.append(f"    - deprecates: {deprecated}")
+        for entry in obligation.get("unspecified", []):
+            lines.append(f"  - unspecified (resolved by design): {entry['text']}")
     return lines
 
 
@@ -835,8 +876,15 @@ def _serialized_graph(
     set[tuple[str, str]],
     set[tuple[str, str]],
     dict[str, tuple[str, ...]],
+    set[tuple[str, str]],
 ]:
-    """The nodes, every resolved edge, the flow destinations, and each node's repeat scope.
+    """The nodes, every resolved edge, the flow destinations, each node's repeat scope, and
+    the `detail:` edges.
+
+    The last member exists because the general edge set discards `via`: a `detail:` edge is
+    the documented pointer from a competing node to the concept holding its selection rule,
+    and the packet wants exactly those edges back so the concept can ride along as judgment
+    context. Lifted here, where `via` is still on the item, rather than re-resolved later.
 
     The third member is what tells a journey's destination apart from a step along the way,
     and it is read off the `end:` bullet rather than off each edge's `via`. `via` keeps the
@@ -854,6 +902,11 @@ def _serialized_graph(
     data = graph_mod.build(graph)
     nodes = {item["id"]: item for item in data["nodes"]}
     edges = {(item["from"], item["to"]) for item in data["edges"] if item.get("to")}
+    details = {
+        (item["from"], item["to"])
+        for item in data["edges"]
+        if item.get("to") and item.get("via") == "detail"
+    }
     ends: set[tuple[str, str]] = set()
     for item in data["nodes"]:
         if item.get("type") != "flow":
@@ -869,7 +922,7 @@ def _serialized_graph(
         }
         named = [edge for edge in walked if edge.get("href") in hrefs]
         ends.update((item["id"], edge["to"]) for edge in named or walked[-1:])
-    return nodes, edges, ends, locators_mod.scopes(data)
+    return nodes, edges, ends, locators_mod.scopes(data), details
 
 
 def _changed_units(
@@ -1657,6 +1710,7 @@ def _obligations(
     required: bool = True,
     owed_keys: frozenset[str] | None = None,
     scope: tuple[str, ...] = (),
+    judgment: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Mint one obligation per normative bullet, plus the node-level contract.
 
@@ -1734,6 +1788,21 @@ def _obligations(
             else:
                 obligation.pop("fixturesDeclared", None)
             output.append(obligation)
+    # Attached after the loop on purpose: `base` *is* the node-level obligation already in
+    # `output`, and the per-bullet `{**base}` copies were taken before this line — so the
+    # judgment and unspecified context ride once, on the node-level row, instead of being
+    # duplicated onto every bullet the node mints.
+    if judgment:
+        base["judgment"] = judgment
+    unspecified = [
+        {
+            "text": value,
+            "citation": next((href for _t, href in markdown.extract_refs(value).links), ""),
+        }
+        for value in _values(node.get("bullets", {}).get("unspecified"))
+    ]
+    if unspecified:
+        base["unspecified"] = unspecified
     return output
 
 

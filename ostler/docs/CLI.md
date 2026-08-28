@@ -227,6 +227,14 @@ ostler qa context-validate --spec docs/specs/<story> [--json]
 `--source-root` associates a production source root with an OKF surface and is repeatable —
 that mapping is what turns a diff into a set of obligations.
 
+A selected node that points `detail:` at a concept pulls that concept into the packet as
+judgment context: the concept lands under a `judgment-context` reason with `required: false`
+(never owed live evidence), and its `rule:`/`prefers:`/`deprecates:` bullets ride on the
+pointing node's node-level obligation as a `judgment` list. The node's own `unspecified:`
+bullets land beside it as `unspecified` — each `{text, citation}`, resolved by design rather
+than a coverage gap. Both are additive: they change nothing about which obligations exist or
+which are owed. `qa context-show` renders them under the obligation they annotate.
+
 Two kinds of changed file are dropped from that scope rather than turned into obligations.
 **Scaffolding** — build files, dependency manifests, tooling and infrastructure config — never
 runs and carries no user-observable behaviour. **Generated code** does run, but no person wrote
