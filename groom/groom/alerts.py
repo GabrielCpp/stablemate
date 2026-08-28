@@ -68,8 +68,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from groom import state
-from groom.models import RunTelemetry
+from groom import state, store
+from groom.models import LIVENESS_METRICS, RunTelemetry
 
 
 @dataclass
@@ -389,19 +389,6 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
     return alerts
 
 
-# Every workhorse liveness tick. All three mean the same thing to the rules —
-# the run's process is alive — and differ only in what the run is busy with:
-# a cap sleep, a streaming agent turn, or any node at all (the run heartbeat,
-# which is the only one a buffered script node produces).
-_LIVENESS_METRICS = frozenset(
-    {
-        "workhorse.cap_wait.heartbeat",
-        "workhorse.turn.heartbeat",
-        "workhorse.run.heartbeat",
-    }
-)
-
-
 def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> list[Alert]:
     """Fold decoded metric points into the hot cache, and evaluate BLOCKED.
 
@@ -439,8 +426,19 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
         value = float(point.get("value") or 0.0)
         if activity := _activity(attrs):
             run.activity = activity
-        if name in _LIVENESS_METRICS:
+        if name in LIVENESS_METRICS:
             run.last_heartbeat_ts = now
+            # The producer's own stamp, kept separately from the wall clock above:
+            # this is the "last beat" a status row reports, and since the ticks stop
+            # being persisted at ingest, this cache is the only place it survives.
+            run.last_beat_ts = max(run.last_beat_ts, float(point.get("ts") or 0.0))
+            if name == "workhorse.run.heartbeat" and node:
+                # The run heartbeat carries the open node. node.active carries it
+                # too, but only on the edge — a groom that restarted mid-node would
+                # otherwise show "(between nodes)" until the node closes.
+                run.current_node = node
+        elif name == "workhorse.gas":
+            run.gas = value
         elif name == "workhorse.gas.refuels":
             run.node_counts.clear()
             _note_progress(run)
@@ -500,6 +498,56 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
                 if value <= _stuck_after_s():
                     run.fired.discard("STUCK")
     return alerts
+
+
+def live_status(run: str = "", now: float | None = None) -> list[dict[str, Any]]:
+    """Where each run is *right now*, newest heartbeat first — from the hot cache.
+
+    This used to be a window-function query over persisted heartbeat rows
+    (``store.live_status``); the ticks are memory-only now, so the cache this
+    module maintains at ingest is the only place the answer lives. The row shape
+    is a public contract (``groom status --json`` prints it verbatim) and is kept
+    exactly as the store version returned it.
+
+    ``alive`` False means the process stopped emitting: dead, killed, or frozen.
+    ``alive`` True with a large ``node_elapsed_s`` means the opposite failure —
+    running fine, going nowhere. A groom that just restarted has an empty cache,
+    so every run reads as absent until its next export lands (up to ~60s, the
+    SDK's periodic-reader interval) — the accepted cost of not persisting ticks.
+    """
+    now = now if now is not None else time.time()
+    rows: list[dict[str, Any]] = []
+    for tel in state.RUNS.values():
+        # No liveness tick ever seen (a spans-only ingest, or a producer too old
+        # to beat): the run has no live picture to report, only history.
+        if not tel.last_beat_ts or (run and tel.run_id != run):
+            continue
+        wait_kind = tel.wait_kind
+        turn_active = tel.turn_active
+        rows.append(
+            {
+                "run_id": tel.run_id,
+                "workflow": tel.workflow,
+                "run_dir": tel.run_dir,
+                "node": tel.current_node,
+                "node_elapsed_s": tel.node_elapsed_s,
+                "turn_active": turn_active,
+                "turn_elapsed_s": 0.0 if turn_active is False else tel.turn_elapsed_s,
+                "turn_idle_s": 0.0 if turn_active is False else tel.turn_idle_s,
+                "wait_kind": wait_kind,
+                "wait_elapsed_s": tel.wait_elapsed_s if wait_kind else 0.0,
+                "gas": tel.gas,
+                "last_beat_ts": tel.last_beat_ts,
+                "alive": (now - tel.last_beat_ts) <= store.LIVE_AFTER_S,
+            }
+        )
+    return sorted(rows, key=lambda entry: entry["last_beat_ts"], reverse=True)
+
+
+def live_run_ids(now: float | None = None) -> set[str]:
+    """The run ids beating *right now* — the only liveness question that means
+    anything. Memory-only, like :func:`live_status` it reads."""
+    return {entry["run_id"] for entry in live_status(now=now) if entry["alive"]}
 
 
 def check_time_rules(now: float | None = None) -> list[Alert]:

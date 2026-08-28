@@ -417,7 +417,7 @@ def metrics(
 ) -> dict[str, Any]:
     """The numbers worth having on screen while deciding whether to intervene.
 
-    ``facts`` is the durable half (``store.live_status`` merged with that run's
+    ``facts`` is the merged pair (``alerts.live_status`` merged with that run's
     ``store.run_summaries`` row); ``tel`` is the hot cache. Both are optional — a
     docker row that never exported telemetry reports ``empty`` so the pane can say
     so, rather than rendering a wall of dashes that looks like a broken run.
@@ -642,8 +642,8 @@ def traces_view(
 ) -> dict[str, Any]:
     """The telemetry pane: a per-run summary strip (with any fired alert rules)
     above the filtered span table. Pulled on demand — telemetry is a pull view;
-    the pushes are the alerts. ``live_ids`` is ``store.live_run_ids()``, which
-    covers the runs no longer (or not yet) in the hot cache.
+    the pushes are the alerts. ``live_ids`` is ``alerts.live_run_ids()`` — the
+    hot cache's recency verdict, since liveness is memory-only now.
 
     By default the pane shows only runs that are **connected right now** — the
     same ``live`` predicate the fleet rows use, not a second notion of it. The

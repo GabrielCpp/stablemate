@@ -127,7 +127,7 @@ async def _broadcast_shell(changed: str = "") -> None:
         await _push_detail(changed)
 
 
-def _detail_message(wf: WorkflowContainer) -> dict:
+async def _detail_message(wf: WorkflowContainer) -> dict:
     """One run's detail pane, addressed to the tabs watching that run.
 
     The same body ``GET /worker/{id}`` returns — the client keys the pane's
@@ -135,7 +135,7 @@ def _detail_message(wf: WorkflowContainer) -> dict:
     textarea's DOM node (and whatever is half-typed in it) while a gate that
     opened or closed still appears without a round trip.
     """
-    tel, facts, logs = _run_facts(wf)
+    tel, facts, logs = await _run_facts(wf)
     return projection.detail_message(wf, tel, facts, logs)
 
 
@@ -147,7 +147,7 @@ async def _push_detail(container_id: str) -> None:
     wf = state.WORKFLOWS.get(container_id)
     if wf is None:
         return
-    message = _detail_message(wf)
+    message = await _detail_message(wf)
     for queue in watchers:
         await state.send(queue, message)
 
@@ -525,23 +525,30 @@ async def file_content(container_id: str, repo: str = "", path: str = "") -> dic
     return {"path": path, "content": text or "", "lang": lang}
 
 
-def _run_facts(wf: WorkflowContainer) -> tuple:
+async def _run_facts(wf: WorkflowContainer) -> tuple:
     """Everything the detail pane knows about one instance beyond its row:
     ``(hot-cache telemetry, merged live+summary facts, recent log lines)``.
 
-    Two SQLite reads answer complementary halves — ``live_status`` says where the
-    run is *now* (its open node has no span yet, by construction), ``run_summaries``
-    says what it has done so far. Both are bounded queries against indexed columns,
-    so they run inline like /traces rather than on a thread.
+    Two sources answer complementary halves — ``alerts.live_status`` says where
+    the run is *now* (its open node has no span yet, by construction; pure
+    in-memory, so it runs inline), ``run_summaries`` says what it has done so
+    far. The SQLite reads go through ``to_thread``: every store call serializes
+    under one lock, so even a bounded query run inline stalls the whole server
+    for as long as whatever holds that lock — which is exactly how a slow cold
+    read once wedged every request at once.
     """
     run_id = projection.run_id_of(wf)
     tel = state.RUNS.get(run_id)
     facts: dict = {}
     logs: list = []
     if run_id:
-        facts.update(next(iter(store.live_status(run=run_id)), {}) or {})
-        facts.update(next(iter(store.run_summaries(limit=1, run=run_id)), {}) or {})
-        logs = store.query_logs(run=run_id, limit=projection.LOG_TRAIL_LIMIT)
+        facts.update(next(iter(alerts.live_status(run=run_id)), {}) or {})
+        facts.update(
+            next(iter(await asyncio.to_thread(store.run_summaries, limit=1, run=run_id)), {}) or {}
+        )
+        logs = await asyncio.to_thread(
+            store.query_logs, run=run_id, limit=projection.LOG_TRAIL_LIMIT
+        )
     return tel, facts, logs
 
 
@@ -555,7 +562,7 @@ async def worker_detail(container_id: str) -> dict:
     wf = state.WORKFLOWS.get(container_id)
     if wf is None:
         return {"found": False, "id": container_id}
-    tel, facts, logs = _run_facts(wf)
+    tel, facts, logs = await _run_facts(wf)
     return projection.run_detail(wf, tel, facts, logs)
 
 
@@ -912,14 +919,32 @@ async def traces(
         threshold = float(slower_than) if slower_than.strip() else None
     except ValueError:
         threshold = None
-    spans = store.query_spans(run=run, node=node, status=status, slower_than=threshold)
+    # Both store reads off the loop: they share the one store lock with every
+    # OTLP write, so run inline they would hold the whole server behind a scan.
+    # live_run_ids reads only the in-memory cache and stays inline.
+    spans = await asyncio.to_thread(
+        store.query_spans, run=run, node=node, status=status, slower_than=threshold
+    )
     return projection.traces_view(
-        store.run_summaries(run=run.strip()),
+        await asyncio.to_thread(store.run_summaries, run=run.strip()),
         spans,
         state.RUNS,
-        store.live_run_ids(),
+        alerts.live_run_ids(),
         connected_only=not (run.strip() or _truthy(show_ended)),
     )
+
+
+@get("/api/live", include_in_schema=False)
+async def api_live(run: str = "") -> list[dict]:
+    """Where each live run is right now — the rows behind ``groom status``.
+
+    Served from the in-memory ingest cache (``alerts.live_status``): the
+    heartbeat ticks it is built from are never persisted, so the running server
+    is the only process that can answer, and the CLI asks it here rather than
+    opening the SQLite file. Purely in-memory — no store call, nothing to
+    thread.
+    """
+    return alerts.live_status(run=run)
 
 
 async def _answer(wf: WorkflowContainer | None, container_id: str, file_path: str, answer: str) -> AnswerResult:
@@ -1049,7 +1074,7 @@ async def _handle_command(data: dict, queue: asyncio.Queue | None = None) -> Non
         if run_id:
             wf = state.WORKFLOWS.get(run_id)
             if wf is not None:
-                await state.send(queue, _detail_message(wf))
+                await state.send(queue, await _detail_message(wf))
         return
     if cmd != "answer":
         return
@@ -1266,7 +1291,10 @@ async def _rules_loop() -> None:
     from the hot cache, and re-pruning the durable store on its own slower clock.
     Each tick is wrapped so one bad evaluation (or an unreachable notifier) never
     kills the loop — the STALL watch itself must not be able to stall."""
-    last_prune = time.monotonic()
+    # Seeded already-expired so the first tick prunes: startup no longer does
+    # (it must not touch the db before the port binds), and without this a serve
+    # restarted more often than PRUNE_EVERY_S would never prune at all.
+    last_prune = time.monotonic() - PRUNE_EVERY_S
     last_harvest = time.monotonic()
     while True:
         await asyncio.sleep(RULES_TICK_S)
@@ -1343,10 +1371,15 @@ async def _stop_live() -> None:
 
 
 async def _spawn_rules() -> None:
-    """on_startup hook: bound groom.db's growth once per serve, then start the
-    alert-rule ticker."""
+    """on_startup hook: start the alert-rule ticker, and nothing else.
+
+    It used to run ``store.prune()`` here, synchronously, before uvicorn could
+    bind the port — which on a store carrying a heartbeat backlog held "Waiting
+    for application startup" for minutes while every exporter got connection
+    refused. The first ``_rules_loop`` tick prunes instead (``last_prune`` is
+    seeded expired there), off the loop, with the port already answering.
+    """
     global _rules_task
-    store.prune()
     _rules_task = asyncio.create_task(_rules_loop())
 
 
@@ -1400,6 +1433,7 @@ def create_app() -> Litestar:
             otlp_metrics,
             otlp_logs,
             traces,
+            api_live,
             dashboard_ws,
             dashboard_sidecar,
             reload,

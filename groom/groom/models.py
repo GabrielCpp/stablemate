@@ -6,6 +6,20 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 
+# Every workhorse liveness tick. All three mean the same thing — the run's
+# process is alive — and differ only in what the run is busy with: a cap sleep,
+# a streaming agent turn, or any node at all (the run heartbeat, which is the
+# only one a buffered script node produces). One tuple, shared by the ingest
+# cache (groom.alerts) and the store's filter/prune (groom.store): the two used
+# to carry private copies, and a name added to one but not the other would have
+# been persisted forever or never noticed alive.
+LIVENESS_METRICS = (
+    "workhorse.run.heartbeat",
+    "workhorse.turn.heartbeat",
+    "workhorse.cap_wait.heartbeat",
+)
+
+
 class WorkflowState(str, Enum):
     RUNNING = "running"
     BLOCKED = "blocked"
@@ -113,7 +127,13 @@ class RunTelemetry:
     last_span_ts: float = 0.0
     # Any workhorse liveness tick (run/turn/cap-wait heartbeat) — proof the run's
     # PROCESS is alive. Its absence, not a node's slowness, is what STALL means.
+    # Two clocks on purpose: ``last_heartbeat_ts`` is groom's wall clock at ingest
+    # (what the STALL window measures — it must not trust a producer's skewed
+    # clock), while ``last_beat_ts`` is the newest producer-stamped timestamp of a
+    # liveness point — the value `groom status` prints as "last beat", matching
+    # what the metric rows used to carry when heartbeats were persisted.
     last_heartbeat_ts: float = 0.0
+    last_beat_ts: float = 0.0
     # Where the run is right now, straight from the node-active gauge rather than
     # inferred from the last completed span's workhorse.next. Open node spans do
     # not export, so this is the only live answer to "which node?".
@@ -130,6 +150,9 @@ class RunTelemetry:
     # Explicit runtime wait. Empty kind means no current wait (or an older producer).
     wait_kind: str = ""
     wait_elapsed_s: float = 0.0
+    # The run's remaining gas tank, from the `workhorse.gas` gauge. None until the
+    # first reading — pyflow has no tank, and a missing gauge must not read as empty.
+    gas: float | None = None
     # The root span's terminal status, and the timestamp it reported. "" while the
     # run is live. Both are scoped to ONE session: a run_id is derived from the run
     # dir, so ``--resume-run`` reuses it, and an earlier session's root span must

@@ -40,39 +40,32 @@ from typing import Any, ParamSpec, TypeVar
 from platformdirs import user_data_dir
 
 from groom import prices
+from groom.models import LIVENESS_METRICS
 
 logger = logging.getLogger(__name__)
 
 # Days of span/metric history to keep; pruned at startup and on a periodic tick.
 RETENTION_DAYS = float(os.environ.get("GROOM_RETENTION_DAYS", "14"))
-# How far back the fleet/telemetry views (run_summaries, live_status) scan. The
-# whole DB is retained for `RETENTION_DAYS` and stays queryable with raw SQL, but a
-# live-ops dashboard only wants recent runs, and bounding the scan here is what keeps
-# these queries from doing a full-table GROUP BY / window-function pass that grows
-# with total history rather than with what's on screen. Default 24h.
+# How far back the fleet/telemetry views (run_summaries) scan. The whole DB is
+# retained for `RETENTION_DAYS` and stays queryable with raw SQL, but a live-ops
+# dashboard only wants recent runs, and bounding the scan here is what keeps
+# these queries from doing a full-table GROUP BY pass that grows with total
+# history rather than with what's on screen. Default 24h.
 ACTIVE_WINDOW_S = float(os.environ.get("GROOM_ACTIVE_WINDOW_S", "86400"))
-# A hard ceiling on rows the live_status window function returns, so a pathological
-# metric-cardinality run can't make one query materialize an unbounded result set.
-_LIVE_STATUS_CAP = 500
 # Logs are one row per line, not one per node visit, so they outgrow spans by
 # orders of magnitude on a long run — hence a separate, shorter default window.
 LOG_RETENTION_DAYS = float(os.environ.get("GROOM_LOG_RETENTION_DAYS", "3"))
-# Pure-liveness counters get a shorter window still. They tick every ~10s per open
-# node for the whole life of a run, which on a week-long run is millions of rows:
-# in one real store `workhorse.run.heartbeat` alone was 1.77M of 2.21M metric rows,
-# 1.23M of them from a single run. Nothing reads their history — the alert rules
-# fold heartbeats into an in-memory cache at ingest (groom.alerts.ingest_metrics)
-# and `live_status` reads only the newest point per (run_id, name) — so retaining
-# a fortnight of them buys nothing and costs most of the file. The *gauges*
-# (idle_s, elapsed_s, node.active) are excluded: their history is diagnostic (a
-# climbing idle_s is how a wedged turn looks) and they are two orders of magnitude
+# A migration knob now, not a policy one. The pure-liveness counters
+# (``LIVENESS_METRICS``) stopped being persisted at all — ``insert_metrics``
+# drops them, and the live picture is served from groom.alerts' in-memory cache
+# — but a store written by an older groom still carries millions of their rows
+# (in one real file, 80% of an 18M-row metrics table), and this window is what
+# lets the prune tick drain that backlog. Once a store has been swept clean the
+# sweep matches nothing and costs nothing. The *gauges* (idle_s, elapsed_s,
+# node.active) were never covered: their history is diagnostic (a climbing
+# idle_s is how a wedged turn looks) and they are two orders of magnitude
 # smaller.
 LIVENESS_RETENTION_DAYS = float(os.environ.get("GROOM_LIVENESS_RETENTION_DAYS", "1"))
-_LIVENESS_METRICS = (
-    "workhorse.run.heartbeat",
-    "workhorse.turn.heartbeat",
-    "workhorse.cap_wait.heartbeat",
-)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS spans (
@@ -574,7 +567,14 @@ def insert_metrics(points: list[dict[str, Any]]) -> None:
     every reader of this table asks it by recency or by aggregate, where a duplicate
     is cosmetic, and the alternative on the other side of the choice is a batch the
     exporter drops for good.
+
+    The pure liveness ticks (``LIVENESS_METRICS``) are dropped here, not stored:
+    they were ~80% of the table's rows and nothing reads their history — the live
+    picture is the in-memory cache groom.alerts folds them into at ingest. Filtered
+    at this layer rather than in the OTLP handler because that handler's other
+    consumer (``alerts.ingest_metrics``) must keep seeing them.
     """
+    points = [p for p in points if p.get("name") not in LIVENESS_METRICS]
     if not points:
         return
     with _STORE.writing() as conn:
@@ -1325,6 +1325,9 @@ def run_profile(run: str) -> dict[str, Any] | None:
     spans = [
         {**dict(row), "attrs": json.loads(row["attrs_json"] or "{}")} for row in rows
     ]
+    # Gauges only, now that the heartbeat ticks are never stored: a run that died
+    # before its first gauge export contributes no metric bounds, and its wall
+    # clock falls back to the span envelope alone.
     metric_bounds = _connection().execute(
         "SELECT MIN(ts) AS first_ts, MAX(ts) AS last_ts FROM metrics WHERE run_id = ?",
         (run,),
@@ -1418,7 +1421,7 @@ def run_summaries(
     support: a root span proves some session of this run_id ended, and since
     ``--resume-run`` reuses the run_id (it comes from the run dir), that stayed
     true forever — a resumed run read as finished while it was mid-node. Liveness
-    is a recency question and only :func:`live_run_ids` answers it.
+    is a recency question and only :func:`groom.alerts.live_run_ids` answers it.
 
     Bounded to the last ``ACTIVE_WINDOW_S`` so the GROUP BY scans recent history
     rather than the whole retained table; older runs stay queryable via raw SQL."""
@@ -1441,134 +1444,12 @@ def run_summaries(
     return [dict(row) for row in rows]
 
 
-# The metrics that describe a run's LIVE state, as opposed to its history. Spans
-# only export once they end, so for a run still in flight these are the whole
-# picture: the trace of a hanging node does not exist yet and never will while it
-# hangs.
-_LIVE_METRICS = (
-    "workhorse.run.heartbeat",
-    "workhorse.node.elapsed_s",
-    "workhorse.wait.active",
-    "workhorse.wait.elapsed_s",
-    "workhorse.turn.active",
-    "workhorse.turn.elapsed_s",
-    "workhorse.turn.idle_s",
-    "workhorse.gas",
-)
-
 # How stale the last heartbeat may be before a run is presumed dead. Workhorse
 # beats every ~10s, but the SDK's periodic reader only ships metrics every 60s by
-# default, so anything under ~2 export intervals would flag healthy runs.
+# default, so anything under ~2 export intervals would flag healthy runs. Lives
+# here (not groom.alerts, whose live_status applies it) because it is a property
+# of the telemetry stream, not of any one reader of it.
 LIVE_AFTER_S = float(os.environ.get("GROOM_LIVE_AFTER_S", "180"))
-
-
-@_resilient
-def live_status(run: str = "", now: float | None = None) -> list[dict[str, Any]]:
-    """Where each run is *right now*, newest heartbeat first.
-
-    This is the question the spans table cannot answer. A node's span is written
-    on completion, so the node a run is currently sitting in — the only one that
-    matters when it will not finish — has no row anywhere in ``spans``. The
-    heartbeat metric carries both the timestamp (is the process alive?) and the
-    open node name (where is it?), so one query over ``metrics`` answers both.
-
-    ``alive`` False means the process stopped emitting: dead, killed, or frozen.
-    ``alive`` True with a large ``node_elapsed_s`` means the opposite failure —
-    running fine, going nowhere.
-    """
-    now = now if now is not None else time.time()
-    placeholders = ",".join("?" for _ in _LIVE_METRICS)
-    params: list[Any] = list(_LIVE_METRICS)
-    # Bound the window-function scan to recent points. A live run beats within
-    # LIVE_AFTER_S (180s), so ACTIVE_WINDOW_S (24h) cannot hide one; without this the
-    # CTE scanned every metric row ever ingested on each dashboard render.
-    params.append(now - ACTIVE_WINDOW_S)
-    run_clause = ""
-    if run:
-        run_clause = "AND run_id = ?"
-        params.append(run)
-    params.append(_LIVE_STATUS_CAP)
-    rows = _connection().execute(
-        # One row per (run, metric, attribute-set): the most recent point wins.
-        f"""
-        WITH latest AS (
-            SELECT run_id, name, value, attrs_json, ts,
-                   ROW_NUMBER() OVER (
-                        PARTITION BY run_id, name ORDER BY ts DESC, rowid DESC
-                   ) AS rn
-            FROM metrics
-            WHERE name IN ({placeholders}) AND run_id != '' AND ts >= ? {run_clause}
-        )
-        SELECT run_id, name, value, attrs_json, ts FROM latest WHERE rn = 1
-        LIMIT ?
-        """,  # noqa: S608 - placeholders/clause are literals, values are bound
-        params,
-    ).fetchall()
-
-    runs: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        entry = runs.setdefault(
-            row["run_id"],
-            {
-                "run_id": row["run_id"], "workflow": "", "run_dir": "", "node": "",
-                "node_elapsed_s": 0.0, "turn_active": None,
-                "turn_elapsed_s": 0.0, "turn_idle_s": 0.0,
-                "wait_kind": "", "wait_elapsed_s": 0.0, "gas": None,
-                "last_beat_ts": 0.0, "alive": False,
-            },
-        )
-        attrs = json.loads(row["attrs_json"] or "{}")
-        if row["name"] == "workhorse.run.heartbeat":
-            entry["last_beat_ts"] = row["ts"]
-            entry["node"] = attrs.get("node", "")
-            entry["alive"] = (now - row["ts"]) <= LIVE_AFTER_S
-        elif row["name"] == "workhorse.node.elapsed_s":
-            entry["node_elapsed_s"] = row["value"]
-            entry["node"] = entry["node"] or attrs.get("node", "")
-        elif row["name"] == "workhorse.wait.active":
-            if row["value"] >= 1:
-                entry["wait_kind"] = attrs.get("wait_kind", "unknown")
-        elif row["name"] == "workhorse.wait.elapsed_s":
-            entry["wait_elapsed_s"] = row["value"]
-        elif row["name"] == "workhorse.turn.active":
-            entry["turn_active"] = row["value"] >= 1
-        elif row["name"] == "workhorse.turn.elapsed_s":
-            entry["turn_elapsed_s"] = row["value"]
-        elif row["name"] == "workhorse.turn.idle_s":
-            entry["turn_idle_s"] = row["value"]
-        elif row["name"] == "workhorse.gas":
-            entry["gas"] = row["value"]
-    for entry in runs.values():
-        if entry["turn_active"] is False:
-            entry["turn_idle_s"] = 0.0
-            entry["turn_elapsed_s"] = 0.0
-        if not entry["wait_kind"]:
-            entry["wait_elapsed_s"] = 0.0
-
-    # workflow/run_dir live on the resource, which only the spans table carries.
-    for run_id, entry in runs.items():
-        span = _connection().execute(
-            "SELECT workflow, run_dir FROM spans WHERE run_id = ?"
-            " ORDER BY start_ts DESC LIMIT 1",
-            (run_id,),
-        ).fetchone()
-        if span is not None:
-            entry["workflow"] = span["workflow"]
-            entry["run_dir"] = span["run_dir"]
-    return sorted(runs.values(), key=lambda e: e["last_beat_ts"], reverse=True)
-
-
-def live_run_ids(now: float | None = None) -> set[str]:
-    """The run ids beating *right now* — the durable answer to the only liveness
-    question that means anything.
-
-    Read from the store rather than the in-memory hot cache on purpose: a groom
-    that just restarted has an empty ``state.RUNS`` and would otherwise report
-    every live run as not-running until each one's next export lands.
-    """
-    return {
-        entry["run_id"] for entry in live_status(now=now) if entry.get("alive")
-    }
 
 
 # Path fragments that mark a run dir as a test process's, with no ambiguity:
@@ -1801,6 +1682,16 @@ def delete_turns(cutoff: float) -> int:
     return removed
 
 
+# Rows per DELETE inside the prune, each chunk its own transaction. An unbounded
+# DELETE over a backlog holds the write lock for the whole sweep — observed as
+# minutes on a store carrying millions of expired heartbeat rows — and every OTLP
+# batch arriving meanwhile burns its busy_timeout behind it and 503s. Between
+# chunks the lock drops, so writers interleave. Bigger than purge_test_runs'
+# `_PURGE_CHUNK` because that one bounds SQL parameters per statement, and this
+# one bounds time under the lock.
+_PRUNE_CHUNK = 50_000
+
+
 @_resilient
 def prune(retention_days: float = RETENTION_DAYS, now: float | None = None) -> int:
     """Drop spans/metrics/logs older than the retention window; rows removed.
@@ -1808,33 +1699,45 @@ def prune(retention_days: float = RETENTION_DAYS, now: float | None = None) -> i
     Logs get their own, shorter window (``GROOM_LOG_RETENTION_DAYS``): they are
     the highest-volume table by a wide margin — one row per log line rather than
     one per node visit — so holding them for the span retention would let a few
-    chatty week-long runs dominate the file. The liveness counters get a shorter
-    one again (``GROOM_LIVENESS_RETENTION_DAYS``, see ``_LIVENESS_METRICS``), for
-    the same reason one step further: they are the highest-volume *metric* and the
-    only one nothing reads the history of.
+    chatty week-long runs dominate the file. The liveness sweep drains heartbeat
+    rows an older groom persisted (``GROOM_LIVENESS_RETENTION_DAYS``, see
+    ``LIVENESS_METRICS``) — a current one stores none, so on a swept store it
+    matches nothing.
 
     ``turns`` is deliberately untouched. It indexes an archive on disk rather than
     telemetry, and the two are kept on different clocks on purpose: a transcript is
     wanted precisely when someone comes back to a run long after its spans have aged
     out. Its own knob is ``GROOM_TRANSCRIPT_RETENTION_DAYS`` (see :mod:`groom.turns`),
     and it defaults to keeping everything.
+
+    Deletes run in ``_PRUNE_CHUNK``-row transactions rather than one; a re-run
+    after a mid-sweep failure just resumes deleting what still matches.
     """
     stamp = now if now is not None else time.time()
     cutoff = stamp - retention_days * 86400
-    with _STORE.writing() as conn:
-        removed = conn.execute("DELETE FROM spans WHERE end_ts < ?", (cutoff,)).rowcount
-        removed += conn.execute("DELETE FROM metrics WHERE ts < ?", (cutoff,)).rowcount
-        # Never longer than the table-wide window: a liveness setting above it would
-        # otherwise read as "keep these longer", which the DELETE above cannot honour.
-        liveness_cutoff = stamp - min(LIVENESS_RETENTION_DAYS, retention_days) * 86400
-        placeholders = ",".join("?" * len(_LIVENESS_METRICS))
-        removed += conn.execute(
-            f"DELETE FROM metrics WHERE ts < ? AND name IN ({placeholders})",  # noqa: S608
-            (liveness_cutoff, *_LIVENESS_METRICS),
-        ).rowcount
-        removed += conn.execute(
-            "DELETE FROM logs WHERE ts < ?", (stamp - LOG_RETENTION_DAYS * 86400,)
-        ).rowcount
+    # Never longer than the table-wide window: a liveness setting above it would
+    # otherwise read as "keep these longer", which the metrics sweep cannot honour.
+    liveness_cutoff = stamp - min(LIVENESS_RETENTION_DAYS, retention_days) * 86400
+    placeholders = ",".join("?" * len(LIVENESS_METRICS))
+    sweeps: tuple[tuple[str, tuple[Any, ...]], ...] = (
+        ("spans WHERE end_ts < ?", (cutoff,)),
+        ("metrics WHERE ts < ?", (cutoff,)),
+        (f"metrics WHERE ts < ? AND name IN ({placeholders})", (liveness_cutoff, *LIVENESS_METRICS)),
+        ("logs WHERE ts < ?", (stamp - LOG_RETENTION_DAYS * 86400,)),
+    )
+    removed = 0
+    for clause, params in sweeps:
+        table = clause.split(" ", 1)[0]
+        while True:
+            with _STORE.writing() as conn:
+                count = conn.execute(
+                    f"DELETE FROM {table} WHERE rowid IN"  # noqa: S608 - literal clause, bound values
+                    f" (SELECT rowid FROM {clause} LIMIT ?)",
+                    (*params, _PRUNE_CHUNK),
+                ).rowcount
+            removed += count
+            if count < _PRUNE_CHUNK:
+                break
     _checkpoint()
     _STORE.note_prune()
     return removed
@@ -1849,7 +1752,9 @@ def _checkpoint() -> None:
     is not a correctness problem and that is what makes it easy to miss: the WAL simply
     grows, and a 293 MB database was observed carrying a 376 MB WAL beside it. Called on
     the prune tick because a checkpoint after a large DELETE is also when it reclaims
-    the most, and it is already off the event loop there.
+    the most — and prune must only ever be called off the event loop (the periodic
+    tick runs it via ``asyncio.to_thread``): a checkpoint over a big WAL blocks for
+    seconds, and there is no startup-hook caller anymore for exactly that reason.
 
     `TRUNCATE` rather than `PASSIVE`: passive is what was already happening and not
     working. A busy checkpoint returns rather than blocking, so a reader mid-query costs

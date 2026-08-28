@@ -11,6 +11,8 @@ Run: uv run pytest tests/test_telemetry.py
 from __future__ import annotations
 
 import asyncio
+import io
+import json
 import os
 import sqlite3
 import tempfile
@@ -29,7 +31,7 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
 )
 from opentelemetry.proto.trace.v1.trace_pb2 import Status
 
-from groom import alerts, discovery, notify, otlp, projection, state, store
+from groom import alerts, cli, discovery, notify, otlp, projection, state, store
 from groom import app as groom_app
 
 _SPAN_IDS = iter(f"{i:016x}" for i in range(1, 10_000))
@@ -612,21 +614,56 @@ def test_node_costs_reads_spans_ingested_before_the_columns_existed():
         assert row["cost_usd"] == 3.0 and row["minutes"] == 1.0
 
 
-def test_prune_expires_liveness_counters_sooner_than_diagnostic_metrics():
+def _insert_legacy_metric_rows(rows: list[tuple[str, str, float, float]]) -> None:
+    """Write metric rows straight into the table, bypassing ``insert_metrics``.
+
+    ``insert_metrics`` refuses liveness ticks now, so rows written *before* that
+    filter shipped — the ones the prune migration sweep exists to drain — can
+    only be recreated this way."""
+    conn = store._connection()
+    conn.executemany(
+        "INSERT INTO metrics (run_id, name, ts, value, attrs_json) VALUES (?, ?, ?, ?, '{}')",
+        rows,
+    )
+    conn.commit()
+
+
+def test_insert_metrics_never_stores_liveness_ticks():
+    """Heartbeats were ~80% of the metrics table with nothing reading their
+    history; they live only in the ingest cache now, so the store must drop
+    them at the door while keeping the diagnostic gauges."""
+    with _TelemetryEnv():
+        store.insert_metrics(
+            [
+                {"run_id": "r", "name": "workhorse.run.heartbeat", "ts": 100.0, "value": 1},
+                {"run_id": "r", "name": "workhorse.turn.heartbeat", "ts": 100.0, "value": 1},
+                {"run_id": "r", "name": "workhorse.cap_wait.heartbeat", "ts": 100.0, "value": 1},
+                {"run_id": "r", "name": "workhorse.turn.idle_s", "ts": 100.0, "value": 42},
+            ]
+        )
+        kept = store._connection().execute("SELECT name FROM metrics").fetchall()
+        assert [row["name"] for row in kept] == ["workhorse.turn.idle_s"]
+
+
+def test_prune_expires_legacy_liveness_rows_sooner_than_diagnostic_metrics():
+    """LIVENESS_RETENTION_DAYS is a migration knob: new ticks are never stored,
+    but a database written before the filter shipped still carries them, and the
+    dedicated sweep drains those without touching the gauges."""
     with _TelemetryEnv():
         # Two days old: inside the 14-day metric window, outside the 1-day liveness one.
         now = 10 * 86400
         old = now - 2 * 86400
-        store.insert_metrics(
+        _insert_legacy_metric_rows(
             [
-                {"run_id": "r", "name": "workhorse.run.heartbeat", "ts": old, "value": 1},
-                {"run_id": "r", "name": "workhorse.turn.heartbeat", "ts": old, "value": 1},
-                # A gauge: its history is how a wedged turn is diagnosed, so it keeps
-                # the full window.
-                {"run_id": "r", "name": "workhorse.turn.idle_s", "ts": old, "value": 42},
-                # A fresh beat must survive regardless — this is the row live_status reads.
-                {"run_id": "r", "name": "workhorse.run.heartbeat", "ts": now - 60, "value": 2},
+                ("r", "workhorse.run.heartbeat", old, 1),
+                ("r", "workhorse.turn.heartbeat", old, 1),
+                ("r", "workhorse.run.heartbeat", now - 60, 2),
             ]
+        )
+        # A gauge: its history is how a wedged turn is diagnosed, so it keeps
+        # the full window.
+        store.insert_metrics(
+            [{"run_id": "r", "name": "workhorse.turn.idle_s", "ts": old, "value": 42}]
         )
         store.prune(retention_days=14, now=now)
         kept = store._connection().execute(
@@ -641,13 +678,35 @@ def test_prune_expires_liveness_counters_sooner_than_diagnostic_metrics():
 def test_liveness_retention_never_outlives_the_table_wide_window():
     with _TelemetryEnv():
         now = 10 * 86400
-        store.insert_metrics(
-            [{"run_id": "r", "name": "workhorse.run.heartbeat", "ts": now - 7200, "value": 1}]
-        )
+        _insert_legacy_metric_rows([("r", "workhorse.run.heartbeat", now - 7200, 1)])
         # A retention shorter than the liveness window must still win; the liveness
         # rule may only ever delete more, never keep a row the table-wide sweep drops.
         store.prune(retention_days=0.01, now=now)
         assert store._connection().execute("SELECT COUNT(*) FROM metrics").fetchone()[0] == 0
+
+
+def test_prune_deletes_in_chunks_and_still_drains_everything():
+    """Each chunk is its own transaction, so an OTLP write can interleave with a
+    big prune instead of queuing behind one multi-minute DELETE. Chunking must
+    not change the result: every expired row still goes."""
+    with _TelemetryEnv():
+        now = 30 * 86400
+        old = now - 20 * 86400
+        store.insert_metrics(
+            [
+                {"run_id": "r", "name": "workhorse.turn.idle_s", "ts": old + i, "value": i}
+                for i in range(10)
+            ]
+        )
+        # Keeper: inside the window, must survive every chunk pass.
+        store.insert_metrics(
+            [{"run_id": "r", "name": "workhorse.turn.idle_s", "ts": now - 60, "value": 99}]
+        )
+        with patch.object(store, "_PRUNE_CHUNK", 3):
+            removed = store.prune(retention_days=14, now=now)
+        assert removed == 10
+        kept = store._connection().execute("SELECT ts FROM metrics").fetchall()
+        assert [row["ts"] for row in kept] == [now - 60]
 
 
 def test_run_summaries_count_spans_and_errors_without_claiming_liveness():
@@ -731,8 +790,8 @@ def test_receivers_drop_test_run_telemetry_but_keep_real_runs():
                 ).status_code == 200
             assert [s["run_id"] for s in store.query_spans()] == ["real-run"]
             assert [r["run_id"] for r in store.query_logs()] == ["real-run"]
-            assert store.live_status(now=2000.0)[0]["run_id"] == "real-run"
-            assert len(store.live_status(now=2000.0)) == 1
+            assert alerts.live_status(now=2000.0)[0]["run_id"] == "real-run"
+            assert len(alerts.live_status(now=2000.0)) == 1
         finally:
             client.__exit__(None, None, None)
 
@@ -748,9 +807,12 @@ def test_purge_test_runs_evicts_by_run_dir_across_every_table():
             store.insert_logs(otlp.parse_logs(_logs_request([{"body": "hi"}], resource)))
             # Metrics carry no run_dir column, so they can only be evicted by the
             # run_id the spans/logs identified — which is exactly what this pins.
+            # A gauge, not a heartbeat: liveness ticks never reach the table anymore.
             store.insert_metrics(
                 otlp.parse_metrics(
-                    _metrics_request("workhorse.run.heartbeat", run_id=resource["run_id"])
+                    _metrics_request(
+                        "workhorse.node.elapsed_s", run_id=resource["run_id"], gauge=True
+                    )
                 )
             )
             # The archive index is keyed by run too, so a suite run's turn records
@@ -1393,62 +1455,88 @@ def test_a_stale_zero_does_not_blank_the_node_now_running():
 
 def test_live_status_reports_the_open_node_that_has_no_span():
     """The whole point: a run parked in a node has NO row in `spans` for it (the
-    span writes on completion), yet live_status still says where it is."""
+    span writes on completion), yet live_status still says where it is — from the
+    ingest cache, since the heartbeat that named the node is never stored."""
     with _TelemetryEnv():
-        store.insert_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="select_item"))
+        alerts.ingest_metrics(
+            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="select_item")),
+            now=2000.0,
         )
-        store.insert_metrics(
+        alerts.ingest_metrics(
             otlp.parse_metrics(
                 _metrics_request(
                     "workhorse.node.elapsed_s", value=1800.0, node="select_item", gauge=True
                 )
-            )
+            ),
+            now=2000.0,
         )
         # No span for select_item exists — and never will while it hangs.
         assert store.query_spans(node="select_item") == []
-        rows = store.live_status(now=2000.0)
+        rows = alerts.live_status(now=2000.0)
         assert len(rows) == 1
         assert rows[0]["node"] == "select_item"
         assert rows[0]["node_elapsed_s"] == 1800.0
         assert rows[0]["alive"] is True
 
 
+def test_live_status_row_shape_is_the_cli_json_contract():
+    """``groom status --json`` prints these rows verbatim, so the keys are a
+    public contract — the exact shape the old store-backed query returned."""
+    with _TelemetryEnv():
+        alerts.ingest_metrics(
+            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="impl")),
+            now=2000.0,
+        )
+        alerts.ingest_metrics(
+            otlp.parse_metrics(_metrics_request("workhorse.gas", value=37.0, gauge=True)),
+            now=2000.0,
+        )
+        (row,) = alerts.live_status(now=2000.0)
+        assert list(row) == [
+            "run_id", "workflow", "run_dir", "node", "node_elapsed_s",
+            "turn_active", "turn_elapsed_s", "turn_idle_s",
+            "wait_kind", "wait_elapsed_s", "gas", "last_beat_ts", "alive",
+        ]
+        assert row["gas"] == 37.0
+        assert row["last_beat_ts"] == 2000.0
+
+
 def test_live_status_marks_a_run_dead_once_the_heartbeat_stops():
     with _TelemetryEnv():
-        store.insert_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="investigate"))
+        alerts.ingest_metrics(
+            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="investigate")),
+            now=2000.0,
         )
         # Heartbeat ts is 2000; well past the liveness window.
-        rows = store.live_status(now=2000.0 + store.LIVE_AFTER_S + 60)
+        rows = alerts.live_status(now=2000.0 + store.LIVE_AFTER_S + 60)
         assert rows[0]["alive"] is False
         assert rows[0]["node"] == "investigate"
 
 
 def test_live_run_ids_are_the_ones_beating_now():
-    """The durable answer to the only liveness question groom asks. It comes from
-    the store, not the hot cache, so a groom that just restarted does not report
-    every live run as stopped until each one's next export lands."""
+    """The only liveness question groom asks, answered from the ingest cache —
+    memory-only now, so a groom that just restarted reports nothing until each
+    run's next export lands (the accepted cost of not persisting ticks)."""
     with _TelemetryEnv():
-        store.insert_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="impl"))
+        alerts.ingest_metrics(
+            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="impl")),
+            now=2000.0,
         )
-        assert store.live_run_ids(now=2000.0) == {"run-1"}
-        assert store.live_run_ids(now=2000.0 + store.LIVE_AFTER_S + 60) == set()
+        assert alerts.live_run_ids(now=2000.0) == {"run-1"}
+        assert alerts.live_run_ids(now=2000.0 + store.LIVE_AFTER_S + 60) == set()
 
 
-def test_live_status_uses_only_the_newest_point_per_metric():
+def test_live_status_keeps_the_newest_beat():
+    """An out-of-order batch must not roll ``last_beat_ts`` backwards — the
+    newest producer stamp is the one the status line ages against."""
     with _TelemetryEnv():
-        for ts_node in ("prepare", "select_item"):
-            store.insert_metrics(
-                otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node=ts_node))
+        for ts in (3000.0, 2000.0):
+            alerts.ingest_metrics(
+                otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", ts=ts)),
+                now=3000.0,
             )
-        # Both points share a timestamp in the fixture; make the second newer.
-        store._connection().execute(
-            "UPDATE metrics SET ts = 3000 WHERE json_extract(attrs_json,'$.node') = 'select_item'"
-        )
-        rows = store.live_status(now=3000.0)
-        assert rows[0]["node"] == "select_item"
+        (row,) = alerts.live_status(now=3000.0)
+        assert row["last_beat_ts"] == 3000.0
 
 
 def test_run_dir_survives_decode_and_storage():
@@ -1598,6 +1686,50 @@ def test_v1_metrics_receiver_records_heartbeat():
         assert state.RUNS["run-1"].last_heartbeat_ts > 0
 
 
+def test_heartbeats_reach_api_live_without_ever_touching_the_metrics_table():
+    """The whole Part-2 contract in one round trip: a posted heartbeat leaves no
+    row behind, yet ``/api/live`` — what ``groom status`` reads over HTTP —
+    reports the run with the node the beat carried."""
+    with _TelemetryEnv():
+        client = _hermetic_client()
+        try:
+            resp = client.post(
+                "/v1/metrics",
+                content=_metrics_request(
+                    "workhorse.run.heartbeat",
+                    node="select_item",
+                    run_dir="/home/me/repo/.agents/runs/okf-1",
+                ),
+                headers={"Content-Type": "application/x-protobuf"},
+            )
+            assert resp.status_code == 200
+            count = store._connection().execute("SELECT COUNT(*) FROM metrics").fetchone()[0]
+            assert count == 0
+            rows = client.get("/api/live").json()
+        finally:
+            client.__exit__(None, None, None)
+        assert len(rows) == 1
+        assert rows[0]["run_id"] == "run-1"
+        assert rows[0]["node"] == "select_item"
+        assert rows[0]["last_beat_ts"] == 2000.0
+        # Filtering: naming another run returns nothing, the real id returns it.
+        # (Checked through live_status directly — the client is closed by now.)
+        assert alerts.live_status(run="other") == []
+
+
+def test_startup_hooks_never_touch_the_store_synchronously():
+    """The 8-minute "Waiting for application startup" was ``store.prune()`` run
+    inline in an ``on_startup`` hook, before the port bound. Pruning belongs to
+    the background rules tick; creating and starting the app must not call it."""
+    with _TelemetryEnv(), patch.object(store, "prune") as pruned:
+        client = _hermetic_client()
+        try:
+            assert client.get("/api/live").status_code == 200
+        finally:
+            client.__exit__(None, None, None)
+        assert pruned.call_count == 0
+
+
 def test_the_receivers_write_off_the_event_loop():
     """Every export is one SQLite commit, and a commit is a blocking syscall. Run on the
     event loop it is not this run's cost but the whole fleet's: one collector serves every
@@ -1695,8 +1827,9 @@ def test_traces_search_endpoint_returns_json_rows():
         )
         # A heartbeat inside the live window: the pane shows connected runs, so a
         # run with span history alone is history, not a row (see the test below).
-        store.insert_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", ts=now))
+        # Into the ingest cache — heartbeats never reach the store anymore.
+        alerts.ingest_metrics(
+            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", ts=now)), now=now
         )
         client = _hermetic_client()
         try:
@@ -1733,20 +1866,25 @@ def test_traces_endpoint_hides_runs_that_are_not_connected_now():
             )
         )
         # Only one of the two is still beating. Both have span history, which is
-        # exactly the distinction the pane could not make before.
-        store.insert_metrics(
+        # exactly the distinction the pane could not make before. The beats go
+        # into the ingest cache — liveness is memory-only now.
+        alerts.ingest_metrics(
             otlp.parse_metrics(
                 _metrics_request("workhorse.run.heartbeat", run_id="live-run", ts=now)
-            )
+            ),
+            now=now,
         )
-        store.insert_metrics(
+        # The ended run's last beat *arrived* long ago — ingest time is what the
+        # cache's recency predicate reads, so the simulation must age it too.
+        alerts.ingest_metrics(
             otlp.parse_metrics(
                 _metrics_request(
                     "workhorse.run.heartbeat",
                     run_id="ended-run",
                     ts=now - store.LIVE_AFTER_S - 600,
                 )
-            )
+            ),
+            now=now - store.LIVE_AFTER_S - 600,
         )
         client = _hermetic_client()
         try:
@@ -2091,6 +2229,54 @@ def test_store_health_rides_the_state_payload():
         assert health["last_error"]          # what went wrong is kept, not just a count
         assert health["ok"] is True          # ...and it healed, which is the difference
         assert health["path"] == str(store.db_path())
+
+
+# --------------------------------------------------------------------------- #
+# groom status: the CLI asks the running server, not the database
+# --------------------------------------------------------------------------- #
+def test_cli_status_asks_the_running_server_over_http(capsys):
+    """``groom status`` GETs ``/api/live`` from the serve URL — liveness exists
+    only in the server's memory, so there is no file to fall back to."""
+    with _TelemetryEnv():
+        client = _hermetic_client()
+        try:
+            client.post(
+                "/v1/metrics",
+                content=_metrics_request(
+                    "workhorse.run.heartbeat",
+                    node="impl",
+                    run_dir="/home/me/repo/.agents/runs/okf-1",
+                ),
+                headers={"Content-Type": "application/x-protobuf"},
+            )
+
+            def fake_urlopen(url, timeout=0.0):
+                # The CLI's default URL, served by the TestClient app instead.
+                prefix = "http://127.0.0.1:8787"
+                assert url.startswith(prefix + "/api/live")
+                return io.BytesIO(client.get(url[len(prefix):]).content)
+
+            with patch("urllib.request.urlopen", fake_urlopen):
+                cli.status(as_json=True)
+        finally:
+            client.__exit__(None, None, None)
+        rows = json.loads(capsys.readouterr().out)
+        assert rows[0]["run_id"] == "run-1"
+        assert rows[0]["node"] == "impl"
+
+
+def test_cli_status_without_a_server_exits_with_guidance(capsys, monkeypatch):
+    # Port 1 on loopback: nothing listens, the connection is refused immediately.
+    monkeypatch.setenv("GROOM_URL", "http://127.0.0.1:1")
+    try:
+        cli.status()
+    except SystemExit as exc:
+        assert exc.code == 1
+    else:  # pragma: no cover - the assertion the test exists for
+        raise AssertionError("status() must exit non-zero with no server to ask")
+    err = capsys.readouterr().err
+    assert "groom serve is not reachable" in err
+    assert "http://127.0.0.1:1" in err
 
 
 if __name__ == "__main__":

@@ -112,19 +112,46 @@ def _format_status(rows: list[dict], now: float) -> str:
     return "\n".join(lines)
 
 
+def _serve_url() -> str:
+    """Where the running ``groom serve`` answers.
+
+    ``GROOM_URL`` overrides for a non-default host/port; the default matches
+    ``serve``'s own defaults. (The sidecar's GROOM_HOST/GROOM_PORT convention is
+    a docker-bridge address — wrong for a host-side CLI, so it is not consulted.)
+    """
+    import os
+
+    return os.environ.get("GROOM_URL", f"http://{DEFAULT_HOST}:{DEFAULT_PORT}")
+
+
 def status(run: str = "", as_json: bool = False) -> None:
     """Print where each live run is right now.
 
-    Reads the same SQLite the dashboard and any agent read — there is no
-    privileged view. ``sqlite3 $(groom db-path) "SELECT ..."`` answers anything
-    this does not.
+    Asks the running ``groom serve`` over HTTP (``/api/live``): liveness lives
+    in the server's memory — heartbeat ticks are never persisted — so the
+    server process is the only one that can answer. Right after a serve restart
+    the picture is blank for up to a minute, until each run's next export.
     """
     import json as _json
     import time
+    import urllib.error
+    import urllib.parse
+    import urllib.request
 
-    from groom import store
-
-    rows = store.live_status(run=run)
+    url = f"{_serve_url()}/api/live"
+    if run:
+        url += "?" + urllib.parse.urlencode({"run": run})
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:  # noqa: S310 - local http url
+            rows = _json.load(resp)
+    except (urllib.error.URLError, TimeoutError) as exc:
+        print(
+            f"groom serve is not reachable at {_serve_url()} ({exc}).\n"
+            "  Live status is served from the running server's memory — start it\n"
+            "  with `groom serve`, or point GROOM_URL at where it listens.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from exc
     if as_json:
         print(_json.dumps(rows, indent=2))
         return
@@ -680,7 +707,8 @@ def main(argv: list[str] | None = None) -> None:
     status_parser = subparsers.add_parser(
         "status",
         help="Where each live run is right now (open node, node age, agent idleness). "
-        "Answers what the trace cannot: an unfinished node has no span.",
+        "Answers what the trace cannot: an unfinished node has no span. "
+        "Asks the running `groom serve` over HTTP — liveness lives in its memory.",
     )
     status_parser.add_argument("--run", default="", help="Limit to one run_id.")
     status_parser.add_argument(

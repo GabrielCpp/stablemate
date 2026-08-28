@@ -306,6 +306,14 @@ Four tables — `spans`, `metrics`, `logs` and `turns` — the first three with 
 carries no bodies: it is the index over the archive above, keyed by
 `(run_id, generation, seq, session_id)`.
 
+`metrics` carries the diagnostic gauges (`*.elapsed_s`, `*.idle_s`, `workhorse.gas`,
+`node.active`) but **not** the liveness tick counters (`workhorse.run.heartbeat` and
+friends): those used to be ~80% of the table's rows with nothing ever reading their
+history, so `insert_metrics` drops them at the door and liveness lives only in the
+serving process's memory. That is why `groom status` asks the running `groom serve`
+over HTTP rather than opening this file — a stopped server has no liveness to report,
+and for up to a minute after a restart neither does a running one.
+
 Repo state is recorded as **observation, not assertion**. A span carries
 `head_start` and `head_end`, a log record carries the `head` current when it was
 emitted, and a `turns` row carries the head the turn recorded. The engine says
@@ -355,8 +363,10 @@ only runs on a fresh database, so a column added there alone never appears on a
 
 ## Querying it yourself
 
-There is no privileged view: the dashboard, `groom status`, and any agent all
-read the same SQLite file, so `sqlite3` answers anything the CLI doesn't.
+There is no privileged view: the dashboard, the CLI, and any agent all read the
+same SQLite file, so `sqlite3` answers anything the CLI doesn't. (The one
+exception is `groom status`, whose liveness picture exists only in the running
+server's memory — see the schema note above.)
 
 ```bash
 sqlite3 -header "$(uv run groom db-path)" "

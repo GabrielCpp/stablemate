@@ -137,12 +137,15 @@ that has happened is in `GET /api/state` under `store` — `reopens`, `failures`
 statement that worked.
 
 The liveness counters — `workhorse.run.heartbeat`, `workhorse.turn.heartbeat`,
-`workhorse.cap_wait.heartbeat` — expire much sooner
-(`GROOM_LIVENESS_RETENTION_DAYS`, 1). They tick every ~10s for every open node, so
+`workhorse.cap_wait.heartbeat` — are **never stored at all**: `insert_metrics`
+drops them at the door. They tick every ~10s for every open node, so
 on long runs they outgrow everything else combined: in one real store the run
-heartbeat alone was 1.77M of 2.21M metric rows. Nothing reads their history — the
-alert rules fold them into memory at ingest and `groom status` reads only the newest
-point — so the full window bought nothing and cost most of the file. The gauges
+heartbeat alone was 1.77M of 2.21M metric rows, and a later one hit 2.8 GB with
+heartbeats ~80% of 18M rows. Nothing reads their history — the alert rules fold
+them into memory at ingest, and `groom status` asks the running server for that
+in-memory picture over HTTP (`/api/live`) — so persistence bought nothing and
+cost most of the file. (`GROOM_LIVENESS_RETENTION_DAYS`, 1, remains as the prune
+knob that drains rows written before this change.) The gauges
 (`turn.active`, `turn.idle_s`, `wait.active`, `wait.elapsed_s`, `node.elapsed_s`,
 `node.active`) keep the normal window: climbing idle on an active turn diagnoses a
 wedged agent, while an explicit wait is expected parked work.

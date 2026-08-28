@@ -205,7 +205,8 @@ def test_worker_detail_and_pushed_slices():
     client = _hermetic_client()
     try:
         detail = client.get("/worker/abc123")
-        pushed = groom_app._detail_message(wf)
+        # Async now: its facts ride store reads that must run off the event loop.
+        pushed = asyncio.run(groom_app._detail_message(wf))
     finally:
         client.__exit__(None, None, None)
 

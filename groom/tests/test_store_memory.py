@@ -4,7 +4,7 @@ Two growth vectors are covered:
 - ``state.RUNS`` (and the native rows it backs) is evicted for finished/dead runs
   by :func:`alerts.stale_run_ids` + :func:`state.evict_runs`, so it stops growing
   one entry per distinct run for the life of the process;
-- the fleet/telemetry scans (``run_summaries``/``live_status``) bound themselves to
+- the fleet/telemetry scan (``run_summaries``) bounds itself to
   a recent window rather than the whole retained table, and the span/log searches
   accept a keyset cursor so a broad query pages instead of loading everything.
 

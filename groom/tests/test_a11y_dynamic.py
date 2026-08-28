@@ -135,14 +135,18 @@ def _seed(workspace: Path) -> None:
         ]
     )
     # A heartbeat inside the live window: the telemetry pane shows the runs that
-    # are connected *now*, so span history alone leaves it empty.
-    store.insert_metrics(
+    # are connected *now*, so span history alone leaves it empty. Liveness is
+    # memory-only — the beat goes into the ingest cache, never the store.
+    from groom import alerts
+
+    alerts.ingest_metrics(
         [
             {
                 "run_id": "run-running", "name": "workhorse.run.heartbeat",
                 "ts": now, "value": 1.0, "attrs": {"node": "split_stories"},
             }
-        ]
+        ],
+        now=now,
     )
 
 
