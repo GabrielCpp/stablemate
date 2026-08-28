@@ -162,6 +162,19 @@ def test_the_task_points_at_the_app_and_names_the_trial_dir() -> None:
     assert {row["story"] for row in defects()} <= set(STORIES)
 
 
+def test_the_audit_task_is_the_qa_round_with_the_auditor_turned_on() -> None:
+    """`depot-infra-audit` exists to score the one row a first-verdict round cannot: it must
+    run audit-on, be scoped to exactly the rows filed `caught_by: audit`, and share the QA
+    task's app and repo_dir so the two labels stay comparable row-for-row."""
+    audit = _load("_depot_infra_audit_task", DATA / "tasks" / "depot_infra_audit.py")
+    assert audit.FIXTURE.first_verdict is False
+    assert audit.FIXTURE.app == TASK.FIXTURE.app
+    assert audit.FIXTURE.repo_dir == TASK.FIXTURE.repo_dir
+    assert audit.FIXTURE.leverage == TASK.FIXTURE.leverage
+    audit_rows = {row["id"] for row in defects() if row["caught_by"] == "audit"}
+    assert set(audit.FIXTURE.defects) == audit_rows == {"D7"}
+
+
 def test_the_tree_carries_no_build_output() -> None:
     """`make -C pulumi plan` writes into the app tree, and the seed digest has no excludes.
 

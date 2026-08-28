@@ -229,8 +229,9 @@ What the route gates is the *miss*. Every round runs the lane to its first verdi
 `inconclusive — no audit turn in this configuration` rather than `missed`: it is a question this
 configuration did not ask, and a miss there would grade the absence of a lane instead of the
 plan. The trial ledger records `audit_turn` per row so a re-score knows which configuration
-wrote it. Until an audit-on task exists, the audit arm of the scorer (`depot-infra`'s D7,
-`seat-booking`'s D9) is inconclusive by construction.
+wrote it. `depot-infra-audit` is the first audit-on task — `first_verdict=False`, scoped to
+D7 — so that row can now score a catch or a miss; `seat-booking`'s D9 stays inconclusive by
+construction until its own audit-on twin exists.
 
 ## The answer key's one non-obvious rule: an obligation is only scorable if the story owes it
 
@@ -417,7 +418,8 @@ the app is allowed to occupy, and the backlog is the one document every phase re
   version it resolved, not the version the program asked for — so it is filed `caught_by: audit`
   and its trial's obligation comes back `covered`. It is in the key because the gap is the point:
   on a first-verdict round it scores `inconclusive — no audit turn in this configuration`, and
-  only an audit-on task can turn it into a catch or a miss.
+  only an audit-on round can turn it into a catch or a miss — which is what `depot-infra-audit`
+  runs, audit-on and scoped to this one row.
 
   **Where the claims live.** Every normative claim here is a `consistency:` bullet on a concept
   node, not a `### field` section: `consistency` is normative on every node type, and the field
