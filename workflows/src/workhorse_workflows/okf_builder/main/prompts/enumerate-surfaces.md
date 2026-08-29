@@ -21,6 +21,11 @@ explicit source root below.
 - repo root: `{{ workhorse_var('repo_root') }}`
 - source root: `{{ workhorse_var('source_root') }}`
 - excluded source paths: `{{ workhorse_var('source_excludes') }}` — do not inspect or emit these
+- diff scope: `{{ workhorse_var('diff_scope_path') }}` ({{ workhorse_var('diff_scope_count') }} changed path(s))
+  — when a file is named here, this is a **diff-scoped backfill**: read the JSON's `paths` list and
+  emit only the surfaces those changed paths implement or reach (a changed handler seeds its server
+  surface; a changed screen module seeds its screen; an untouched surface is not this run's work).
+  When blank, enumerate the whole tree as usual.
 
 ## Steps
 

@@ -166,6 +166,23 @@ def operational_units(source: Path, repo_root: Path, excludes: list[str],
     return units
 
 
+def _load_scope(scope_path: str, errors: list[str]) -> set[str] | None:
+    """The diff scope as a set of repo-relative paths, or `None` for an unscoped run.
+
+    An unreadable scope file is an **error**, never an implicit full scan — the same
+    loudness rule as an unreadable tree: a run that was told to measure a diff must not
+    quietly measure everything and report the wider number as the narrower claim.
+    """
+    if not scope_path:
+        return None
+    try:
+        data = json.loads(Path(scope_path).read_text(encoding="utf-8"))
+        return {str(p) for p in data["paths"]}
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        errors.append(f"unreadable diff scope {scope_path}: {exc}")
+        return set()
+
+
 @blueprint.node
 def inventory_source(
     logger: logging.Logger,
@@ -173,6 +190,7 @@ def inventory_source(
     output_path: str = "",
     source_excludes: str = "",
     repo_root: str = "",
+    scope_path: str = "",
 ) -> SourceInventory:
     """Materialize a deterministic multi-language source inventory for OKF coverage.
 
@@ -193,6 +211,12 @@ def inventory_source(
       the repo root and inside the source tree. This is the forcing function for the runbook
       profile (docs/okf-runbook.md §5.3): an undocumented run surface is a coverage unit, so
       the book is not complete until it is a `runbook`.
+
+    With a `scope_path` — a diff-scoped build — both inventories keep only the units
+    whose file the squashed diff touched, so the coverage floor is the change, not the
+    tree. An empty scoped inventory is then a real answer (the diff touched no source
+    here), not the blindness the whole-tree census below guards against — the census
+    still runs over the full tree, because language support does not shrink with a diff.
     """
     source = Path(source_root).resolve() if source_root else Path.cwd().resolve()
     output = Path(output_path).resolve() if output_path else source / ".source-inventory.json"
@@ -200,7 +224,12 @@ def inventory_source(
     root = Path(repo_root).resolve() if repo_root.strip() else source
     errors: list[str] = []
     units: list[dict[str, str]] = []
+    scope = _load_scope(scope_path, errors)
     operational = operational_units(source, root, excludes, errors)
+    if scope is not None:
+        # `evidence` is `<repo-relative file>:<name>`, and the file part holds no colon
+        # for any evidence kind emitted above, so the first colon is the boundary.
+        operational = [u for u in operational if u["evidence"].split(":", 1)[0] in scope]
     if not source.is_dir():
         logger.warning("source root is not a directory: %s — the inventory will be empty", source)
         errors.append(f"source root is not a directory: {source}")
@@ -231,6 +260,8 @@ def inventory_source(
             if skipped(path, source, excludes):
                 continue
             rel = _unit_path(path, source, root)
+            if scope is not None and rel not in scope:
+                continue
             try:
                 text = path.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError) as exc:
@@ -294,6 +325,7 @@ def compute_coverage(
     inventory_path: str = "",
     waivers_path: str = "",
     prev_rescan: int = 0,
+    scoped: bool = False,
 ) -> Coverage:
     """Compute the book's coverage — the verdict the agent used to emit.
 
@@ -354,7 +386,10 @@ def compute_coverage(
     missing_path = str(missing_file)
 
     coverage_path = ""
-    if features_root:
+    # A diff-scoped run measured a subset, and `coverage.json` claims the whole book:
+    # writing the narrower number under the wider name would let one branch build mark
+    # the entire book fresh. The committed artifact belongs to full scans only.
+    if features_root and not scoped:
         try:
             anchor = short_sha(repo_root)
         except (OSError, ValueError, RuntimeError):

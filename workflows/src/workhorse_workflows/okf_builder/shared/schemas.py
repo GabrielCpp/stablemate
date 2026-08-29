@@ -76,6 +76,13 @@ class Prepared(OkfResult):
     done_baseline: int = 0
     #: Whether a stale worklist was discarded rather than resumed.
     worklist_reset: bool = False
+    #: The changed-paths file a diff-scoped build filters its inventory through.
+    #: Empty on a full scan — including a `diff_base` run sitting on the base itself,
+    #: where the squash of every commit *is* the whole tree.
+    diff_scope_path: str = ""
+    #: How many paths that scope holds. Zero is a real answer (an empty diff), not
+    #: an unset one — `diff_scope_path` is what says whether a scope exists.
+    diff_scope_count: int = 0
     #: Why the run cannot proceed, when it cannot.
     prepare_error: str = ""
 

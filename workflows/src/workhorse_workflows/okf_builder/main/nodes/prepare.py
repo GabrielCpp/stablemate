@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 from pathlib import Path
 
 from ostler import Ostler
@@ -67,6 +68,42 @@ def _ostler_loads(root: Path) -> tuple[bool, str]:
     return True, ""
 
 
+def _git(root: Path, *args: str) -> str:
+    """One git read, or `OSError` with git's own words — the caller decides what it means."""
+    result = subprocess.run(
+        ["git", *args], cwd=root, capture_output=True, text=True, timeout=120, check=False
+    )
+    if result.returncode != 0:
+        raise OSError(result.stderr.strip() or f"git {' '.join(args)} failed")
+    return result.stdout
+
+
+def _diff_scope(root: Path, base: str) -> tuple[list[str] | None, str]:
+    """The squashed-diff scope against *base*: the paths, or `None` for the whole tree.
+
+    On a branch, the scope is the squashed diff between the branch and the base — every
+    path the branch (plus the working tree, including untracked files) touched since the
+    merge base. Sitting *on* the base itself, the squash of every commit is the whole
+    tree, so there is no filter to apply and the answer is `None`, a full scan.
+
+    A scope that was asked for but cannot be computed — an unknown rev, unrelated
+    histories, not a checkout — comes back as an error, never as a silent full scan: a
+    run that claims to have measured a diff must actually have had one.
+    """
+    try:
+        _git(root, "rev-parse", "--verify", f"{base}^{{commit}}")
+        # Judged by name, not by commit equality: a fresh branch sitting at the base's
+        # tip is still a branch, and its scope is its (possibly empty) working-tree diff.
+        if _git(root, "branch", "--show-current").strip() == base:
+            return None, ""
+        merge_base = _git(root, "merge-base", base, "HEAD").strip()
+        changed = set(_git(root, "diff", "--name-only", merge_base).splitlines())
+        changed.update(_git(root, "ls-files", "--others", "--exclude-standard").splitlines())
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, f"cannot compute the diff scope against {base!r}: {exc}"
+    return sorted(path for path in changed if path), ""
+
+
 #: What the installed ostler-okf skill must carry for the build's prompts to
 #: point anywhere real: the per-type reference pages plus the two grammar sheets.
 _REFERENCES = ("references/node-types", "references/bullet-grammar.md",
@@ -116,6 +153,7 @@ def prepare(
     source_path: str = "",
     source_excludes: str = "",
     repo_dir: str = "",
+    diff_base: str = "",
 ) -> Prepared:
     """Resolve paths and initialize (or adopt) the build worklist.
 
@@ -171,9 +209,39 @@ def prepare(
         len(data["items"]),
         baseline,
     )
+    scope_path = ""
+    scope_count = 0
+    scope_error = ""
+    if diff_base:
+        scope, scope_error = _diff_scope(root, diff_base)
+        if scope is None and not scope_error:
+            logger.info(
+                "diff scope: on %r itself, the squash of every commit is the whole "
+                "tree — running a full scan",
+                diff_base,
+            )
+        elif scope is not None:
+            scope_file = paths.diff_scope_path(root, service)
+            scope_file.write_text(
+                json.dumps({"base": diff_base, "paths": scope}, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            scope_path = str(scope_file)
+            scope_count = len(scope)
+            logger.info(
+                "diff scope against %r: %d changed path(s) → %s",
+                diff_base,
+                scope_count,
+                scope_file,
+            )
     ostler_ok, why = _ostler_loads(root)
     if ostler_ok:
         ostler_ok, why = _references_ok(root)
+    if ostler_ok and scope_error:
+        # A scope that was asked for but could not be computed blocks the run — a build
+        # that silently widened to a full scan would claim a measurement it never took.
+        ostler_ok, why = False, scope_error
+        logger.warning("refusing to widen a diff-scoped build to a full scan: %s", why)
     if not ostler_ok:
         logger.warning("the build cannot start and will branch away: %s", why)
     return Prepared(
@@ -186,6 +254,8 @@ def prepare(
         ostler_ok=ostler_ok,
         done_baseline=baseline,
         worklist_reset=reset,
+        diff_scope_path=scope_path,
+        diff_scope_count=scope_count,
         prepare_error=why,
     )
 

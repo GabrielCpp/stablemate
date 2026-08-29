@@ -107,6 +107,12 @@ class OkfBuilder(Workflow):
     docs_path: str = ""
     #: Optional per-run investigation ceiling. 0 = run to convergence.
     max_items: int = 0
+    #: Scope the build to the squashed diff against this rev — on a branch, every path
+    #: changed since the merge base (working tree and untracked included); sitting on
+    #: the base itself, the squash of every commit is the whole tree, so a full scan.
+    #: `""` = full scan. A scope that cannot be computed blocks the run rather than
+    #: silently widening.
+    diff_base: str = ""
 
     def setup(self) -> Prepared:
         """Resolve every path and adopt (or reset) the worklist.
@@ -117,7 +123,12 @@ class OkfBuilder(Workflow):
         decision to fail stays in `start`, where a reader looking for the exits finds it.
         """
         return self.call(
-            prepare, self.docs_path, self.service, self.source_path, self.source_excludes
+            prepare,
+            self.docs_path,
+            self.service,
+            self.source_path,
+            self.source_excludes,
+            diff_base=self.diff_base,
         )
 
     def labels(self) -> dict[str, str]:
@@ -177,6 +188,8 @@ class OkfBuilder(Workflow):
                 "repo_root": self.ctx.repo_root,
                 "source_root": self.ctx.source_root,
                 "source_excludes": self.ctx.source_excludes,
+                "diff_scope_path": self.ctx.diff_scope_path,
+                "diff_scope_count": self.ctx.diff_scope_count,
             },
         )
         return Continue(result, self.seed_surfaces, discovered=result.discovered)
@@ -513,6 +526,7 @@ class OkfBuilder(Workflow):
             str(paths.source_inventory_path(self.ctx.worklist_path)),
             self.ctx.source_excludes,
             self.ctx.repo_root,
+            self.ctx.diff_scope_path,
         )
         coverage = self.call(
             compute_coverage,
@@ -522,6 +536,7 @@ class OkfBuilder(Workflow):
             inventory.source_inventory_path,
             str(paths.waivers_path(self.ctx.features_root)),
             rescan,
+            scoped=bool(self.ctx.diff_scope_path),
         )
         # One gap left to test here. The other — every cited node declaring what observing
         # it looks like — used to be re-read at this point because the checkpoint drained
