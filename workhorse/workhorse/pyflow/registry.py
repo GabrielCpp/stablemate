@@ -25,6 +25,7 @@ node table instead of inheriting its caller's.
 from __future__ import annotations
 
 import dataclasses
+import inspect
 import sys
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -77,6 +78,16 @@ class Registry:
         #: the entry class's package, which is what every workflow relied on before this
         #: existed.
         self.package = package or ""
+        #: The module that composed this registry — where `Registry(...)` was written,
+        #: read off the constructing frame because a module-level object's birthplace is
+        #: exactly the frame executing its module body. A live reload re-imports *this*
+        #: module to find the rebuilt registry: the entry class is free to live in a
+        #: sub-package (`coder/main/flow.py`), and every real distribution keeps its
+        #: composition root in a separate `workflow.py` the entry module never imports
+        #: back, so the entry class's own module cannot be the one to look on.
+        frame = inspect.currentframe()
+        caller = frame.f_back if frame is not None else None
+        self.module = str(caller.f_globals.get("__name__", "")) if caller is not None else ""
         self.blueprints: list[Blueprint] = []
         self.flows: dict[str, type[Workflow]] = {}
         self.entry: type[Workflow] | None = None

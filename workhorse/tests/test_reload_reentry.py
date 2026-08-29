@@ -627,6 +627,89 @@ workflow.entry = Probe
 '''.replace("@V2@", repr(_LIB_V2))
 
 
+#: The layout every real distribution has, which the probes above deliberately flatten:
+#: the entry class alone in `flow.py`, and the `Registry(...)` composed in a separate
+#: `workflow.py` the flow module never imports back. A reload that looks for the rebuilt
+#: registry on the *entry class's* module finds nothing here — the failure that ended a
+#: live run at its boundary with "found no Registry" — so the lookup must go to the
+#: module that composed it.
+_SPLIT_FLOW_V1 = '''
+"""The broken flow, alone in its module — the composition root lives elsewhere."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from workhorse import reload
+from workhorse.pyflow.workflow import Workflow
+
+VERSION = "old"
+
+
+class Probe(Workflow):
+    def start(self) -> Any:
+        here = Path(__file__)
+        # The operator's push, standing in for a `git pull`.
+        (here.parent / "pushed.py").replace(here)
+        (self.run_dir / "ran-old.txt").write_text(VERSION, encoding="utf-8")
+        raise reload.ReloadRequested("the operator cut this turn")
+'''
+
+_SPLIT_FLOW_V2 = '''
+"""The pushed fix. Same state name, so the checkpoint still resolves."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from workhorse.pyflow.transitions import Done
+from workhorse.pyflow.workflow import Workflow
+
+VERSION = "new"
+
+
+class Probe(Workflow):
+    def start(self) -> Any:
+        (self.run_dir / "ran-new.txt").write_text(VERSION, encoding="utf-8")
+        return Done(VERSION)
+'''
+
+_SPLIT_WORKFLOW = '''
+"""The composition root, in the place every real distribution keeps it."""
+
+from __future__ import annotations
+
+from split_probe.flow import Probe
+
+from workhorse.pyflow.registry import Registry
+
+workflow = Registry("probe")
+workflow.add_flows(main=Probe)
+workflow.entry = Probe
+'''
+
+
+def _write_split_package(root: Path) -> Any:
+    """Materialise the split-layout distribution and import its composition root."""
+    package = root / "split_probe"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "flow.py").write_text(_SPLIT_FLOW_V1, encoding="utf-8")
+    (package / "pushed.py").write_text(_SPLIT_FLOW_V2, encoding="utf-8")
+    (package / "workflow.py").write_text(_SPLIT_WORKFLOW, encoding="utf-8")
+    sys.path.insert(0, str(root))
+    importlib.invalidate_caches()
+    return importlib.import_module("split_probe.workflow").workflow
+
+
+def _forget_split(root: Path) -> None:
+    for name in [m for m in sys.modules if m == "split_probe" or m.startswith("split_probe.")]:
+        del sys.modules[name]
+    if str(root) in sys.path:
+        sys.path.remove(str(root))
+
+
 def _write_package(root: Path, flow: str = _FLOW_V1) -> Any:
     """Materialise the probe distribution under `root` and import its registry."""
     package = root / "reloadable_probe"
@@ -707,6 +790,33 @@ def test_a_reload_picks_up_a_fix_to_a_library_the_workflow_imports():
         assert (run_dir / "ran-new.txt").read_text(encoding="utf-8") == _VERSION_V2
 
 
+def test_a_reload_finds_the_registry_in_its_own_composition_root():
+    """The lookup goes to the module that composed the registry, not the entry class's.
+
+    Every real distribution splits the two — `workflow.py` holds `Registry(...)`, the
+    entry class lives in a flow sub-package that never imports it back — so a lookup on
+    `entry.__module__` cannot ever succeed there. Before the registry learned its own
+    module, this exact shape ended a live run at its reload boundary with "found no
+    Registry", turning a held reload into a failed run.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "src"
+        registry = _write_split_package(root)
+        try:
+            code = run_pyflow(
+                dataclasses.replace(_invocation(tmp), registry=registry, run_id="split")
+            )
+        finally:
+            _forget_split(root)
+
+        run_dir = Path(tmp) / "runs" / "probe-split"
+        assert code == 0, code
+        assert (run_dir / "ran-old.txt").read_text(encoding="utf-8") == "old"
+        # The proof: the reload found the rebuilt registry on `workflow.py` and re-entered
+        # the run on the pushed flow class.
+        assert (run_dir / "ran-new.txt").read_text(encoding="utf-8") == "new"
+
+
 def test_the_environment_is_kept_while_the_working_tree_is_replaced():
     """The safety invariant, stated over the scan rather than over one reload.
 
@@ -765,5 +875,6 @@ if __name__ == "__main__":
     test_a_switch_is_a_core_reload_even_when_nobody_asked_for_one()
     test_a_reload_re_enters_the_same_run_on_the_code_that_was_pushed()
     test_a_reload_picks_up_a_fix_to_a_library_the_workflow_imports()
+    test_a_reload_finds_the_registry_in_its_own_composition_root()
     test_the_environment_is_kept_while_the_working_tree_is_replaced()
     print("ok")

@@ -665,7 +665,12 @@ def _reimport(registry: Registry) -> tuple[Registry, list[str]]:
     entry = registry.entry
     if entry is None:  # pragma: no cover — a run without an entry flow never started
         raise WorkflowFailed("cannot reload a workflow that declares no entry point")
-    module_name = entry.__module__
+    # The registry's own module, not the entry class's: every real distribution keeps
+    # its composition root in a `workflow.py` beside the flow packages, and the entry
+    # module (`main/flow.py`) never imports it back — so the rebuilt registry is only
+    # ever found where `Registry(...)` was written. Importing that module pulls the
+    # entry flow in transitively, since composing the registry is what imports it.
+    module_name = registry.module or entry.__module__
     replaced = _reloadable_roots(module_name)
     for root in replaced:
         for cached in [m for m in sys.modules if m == root or m.startswith(root + ".")]:
