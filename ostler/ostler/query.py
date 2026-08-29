@@ -7,7 +7,9 @@ workflows ask (stories-covering-seed, surfaces-referenced-by-story).
 
 from __future__ import annotations
 
-from ostler import crud_generic, registry
+from pathlib import Path
+
+from ostler import crud_generic, provenance, registry
 from ostler.model import Graph, UINode
 
 
@@ -128,7 +130,19 @@ def search(graph: Graph, q: str, etype: str | None = None) -> list[dict]:
     return hits
 
 
-def query(graph: Graph, name: str, arg: str) -> list[dict]:
+def query(
+    graph: Graph,
+    name: str,
+    arg: str,
+    checkouts: dict[str, Path] | None = None,
+) -> list[dict]:
+    source_checkouts = checkouts or {}
+    if name == "story-provenance":
+        return provenance.story_provenance(graph, arg, source_checkouts)
+    if name == "commit-story":
+        return provenance.commit_story(graph, arg, source_checkouts)
+    if name == "node-provenance":
+        return provenance.node_provenance(graph, arg, source_checkouts)
     if name == "stories-covering-seed":
         return [_story_row(graph, e, s) for e in graph.epics for s in e.stories
                 if arg in s.seed_items]
@@ -178,4 +192,8 @@ def _surfaces_referenced(graph: Graph, story) -> list[dict]:
     return rows
 
 
-QUERIES = ("stories-covering-seed", "surfaces-referenced-by-story")
+QUERIES = (
+    "stories-covering-seed",
+    "surfaces-referenced-by-story",
+    *provenance.PROVENANCE_QUERIES,
+)

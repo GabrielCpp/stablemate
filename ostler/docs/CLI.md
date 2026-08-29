@@ -56,6 +56,8 @@ ostler trace <token>
 ostler list  --type ETYPE [--epic E] [--status S] [--json]
 ostler search <query> [--type ETYPE] [--json]
 ostler query stories-covering-seed|surfaces-referenced-by-story <arg> [--json]
+ostler query story-provenance|commit-story|node-provenance <arg> \
+  [--checkout REPOSITORY=PATH ...] [--json]
 ostler next-epic [--json]                     # next queued epic with unfinished work
 ostler next-story <epic> [--json]             # next runnable story (deps satisfied, not done)
 ostler path epic <epic> | path spec <slug> | path story <epic> <slug> | path branch <slug> [--epic]

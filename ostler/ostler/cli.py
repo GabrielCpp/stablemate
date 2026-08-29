@@ -143,6 +143,13 @@ def _build_parser() -> argparse.ArgumentParser:
     qy = sub.add_parser("query", help="reverse-index queries")
     qy.add_argument("name", choices=query_mod.QUERIES)
     qy.add_argument("arg")
+    qy.add_argument(
+        "--checkout",
+        action="append",
+        default=[],
+        metavar="REPOSITORY=PATH",
+        help="source checkout used for exact Story trailer queries; repeat per repository",
+    )
     qy.add_argument("--json", action="store_true")
 
     rc = sub.add_parser(
@@ -1642,7 +1649,25 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
             query_mod.search(graph, args.q, args.etype), args.json
         )
     if c == "query":
-        return _emit(query_mod.query(graph, args.name, ids_mod.resolve(graph, args.arg)), args.json)
+        checkouts: dict[str, Path] = {}
+        for raw in args.checkout:
+            if "=" not in raw:
+                _out(f"error: --checkout must be REPOSITORY=PATH, got {raw!r}")
+                return 2
+            repository, checkout = raw.split("=", 1)
+            if not repository or not checkout:
+                _out(f"error: --checkout must be REPOSITORY=PATH, got {raw!r}")
+                return 2
+            checkouts[repository] = Path(checkout).expanduser().resolve()
+        return _emit(
+            query_mod.query(
+                graph,
+                args.name,
+                ids_mod.resolve(graph, args.arg),
+                checkouts,
+            ),
+            args.json,
+        )
     if c == "next-epic":
         return _emit(select.next_epic(graph), args.json)
     if c == "next-story":

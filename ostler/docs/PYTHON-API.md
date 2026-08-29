@@ -24,6 +24,11 @@ okf.list("story", epic="checkout-flow")   # [{"slug","status",…}]  (ostler lis
 okf.next_story("checkout-flow")       # {"slug": …} | None          (ostler next-story)
 okf.spec_path("01-cart")              # "docs/specs/01-cart"        (ostler path spec)
 okf.doctor()                          # QaOutcome; .data is the report (ostler doctor --json)
+okf.query(
+    "story-provenance",
+    "TEAM-123",
+    checkouts={"api-service": "/workspace/api-service"},
+)                                     # exact trailers + qa-okf-context.json
 
 res = okf.create_story("checkout-flow", "02-pay", "Payment", covers=["seed-1"])
 res.ok, res.entity_id                 # a Result, not parsed JSON   (ostler create story)
@@ -48,6 +53,12 @@ against a fresh load and invalidates the cache, so the next read reflects it
 `artifact_vet`, `settle_review`), lazy-imported so a read-only caller never loads the QA/vet
 machinery. `from ostler import load` returns the bare `Graph` if you want the
 functional core directly.
+
+The provenance queries are derived reads, not a ledger. `story-provenance` joins exact Git
+`Story:` trailer lines to the story-scoped context packet; `commit-story` performs the reverse
+trailer lookup; `node-provenance` scans stored packets for direct, contract, and journey roles.
+External repository checkouts are supplied by logical repository id and are never written into
+the docs repository. Missing history or packets are returned as warnings rather than inferred.
 
 ## `QaOutcome` — the checks answer instead of raising
 

@@ -13,6 +13,26 @@ def test_no_inventory_builder_command_is_exposed() -> None:
         parse(["inventory", "build"])
 
 
+def test_provenance_query_accepts_repeatable_source_checkouts() -> None:
+    args = parse(
+        [
+            "query",
+            "story-provenance",
+            "TEAM-123",
+            "--checkout",
+            "api-service=/workspace/api",
+            "--checkout",
+            "web-app=/workspace/web",
+            "--json",
+        ]
+    )
+
+    assert args.checkout == [
+        "api-service=/workspace/api",
+        "web-app=/workspace/web",
+    ]
+
+
 def test_write_flag_accepted_after_subcommand():
     args = parse(["edit", "rename", "a", "b", "--write"])
     assert args.op == "rename" and getattr(args, "write", False) is True

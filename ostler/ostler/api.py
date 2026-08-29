@@ -380,9 +380,20 @@ class Ostler:
         """Full-text search over Concepts (``ostler search``)."""
         return query_mod.search(self.graph, q, etype)
 
-    def query(self, name: str, arg: str) -> builtins.list[dict]:
+    def query(
+        self,
+        name: str,
+        arg: str,
+        *,
+        checkouts: dict[str, str | Path] | None = None,
+    ) -> builtins.list[dict]:
         """A named reverse-index query (``ostler query``) — ``arg`` may be a short handle."""
-        return query_mod.query(self.graph, name, ids_mod.resolve(self.graph, arg))
+        return query_mod.query(
+            self.graph,
+            name,
+            ids_mod.resolve(self.graph, arg),
+            {name: Path(value) for name, value in (checkouts or {}).items()},
+        )
 
     def next_epic(self) -> dict | None:
         """The next epic with unfinished work, or ``None`` (``ostler next-epic``)."""

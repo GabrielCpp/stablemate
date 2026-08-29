@@ -471,6 +471,24 @@ millisecond differ only in their low bits, and hashing decorrelates them so even
 to six characters. From Python, `okf.handle(id)` / `okf.handles()` render and `okf.expand(token)`
 resolves — though every ostler entry point already expands its own id arguments.
 
+## Story provenance
+
+Provenance queries join exact Git `Story:` trailers with the generated context packet under a
+story's spec directory. Git is authoritative for commits; `qa-okf-context.json` is authoritative
+for the changed-unit-to-OKF impact calculated for that story. No separate ledger is written.
+
+```bash
+ostler query story-provenance TEAM-123 \
+  --checkout api-service=/workspace/api-service --json
+ostler query commit-story api-service@abc123 \
+  --checkout api-service=/workspace/api-service --json
+ostler query node-provenance docs/features/billing/create.md \
+  --checkout api-service=/workspace/api-service --json
+```
+
+Checkout paths are inputs only and are never persisted. Missing checkouts or context packets are
+reported as warnings rather than guessed from branch names, subjects, or current graph shape.
+
 ## Profiles
 
 `ostler` infers a profile from the tree: **`full`** when `docs/epics` exists (the epic/story/seed/
