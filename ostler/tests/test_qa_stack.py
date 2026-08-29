@@ -6,6 +6,7 @@ dicts) rather than the CLI wrapper. The ensure_stack/teardown_stack cases are ne
 """
 from __future__ import annotations
 
+import json
 import logging
 
 import pytest
@@ -14,6 +15,16 @@ from _fakes import FakeClock
 from ostler.qa import stack
 
 LOG = logging.getLogger("test-stack")
+
+
+@pytest.fixture(autouse=True)
+def _isolated_ownership_records(tmp_path, monkeypatch) -> None:
+    """Point the stack's ownership records at a per-test cache dir.
+
+    ensure_stack/teardown_stack read and write ``<cache>/qa-stacks/`` as a side effect;
+    without this every test would share the developer's real ``~/.cache/stablemate``.
+    """
+    monkeypatch.setenv("STABLEMATE_CACHE_DIR", str(tmp_path / "stablemate-cache"))
 
 
 def test_health_requires_documented_identity(monkeypatch) -> None:
@@ -756,3 +767,85 @@ def test_boot_without_an_entry_url_still_reports_a_launch_that_died(monkeypatch)
     )
     assert out["boot_ok"] == "no"
     assert "code 2" in out["reason"]
+
+
+# -- the ownership record ----------------------------------------------------------
+
+
+def _record_file(app_cwd: str):
+    return stack._record_path(app_cwd)
+
+
+def test_ensure_stack_records_an_owned_foreground_server(monkeypatch, tmp_path) -> None:
+    """A booted foreground server is recorded so a later *process* can still reap it."""
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "down")  # nothing serving
+    monkeypatch.setattr(
+        stack, "boot_app",
+        lambda *_a, **_kw: {"boot_ok": "yes", "entry_url": "u",
+                            "app_pid": "4242", "app_pgid": "77", "reason": ""},
+    )
+    monkeypatch.setattr(stack, "_proc_starttime", lambda _pid: "9999")
+    out = stack.ensure_stack(
+        {"entry_url": "u", "identity": "acme", "launch": "npm run dev",
+         "app_cwd": str(tmp_path)},
+        logger=LOG,
+    )
+    assert out["ready"] == "yes"
+    raw = json.loads(_record_file(str(tmp_path)).read_text(encoding="utf-8"))
+    assert raw == {"pid": "4242", "pgid": "77", "launch": "npm run dev",
+                   "starttime": "9999"}
+
+
+def test_ensure_stack_reaps_a_recorded_leaked_group_before_relaunching(
+    monkeypatch, tmp_path,
+) -> None:
+    """A run killed before its teardown leaks its server; the NEXT bring-up reaps it.
+
+    Without this, the relaunch fails on a port held by the previous run's own orphan.
+    """
+    monkeypatch.setattr(stack, "_proc_starttime", lambda _pid: "9999")
+    stack._write_record(str(tmp_path), "4242", "77", "npm run dev")
+    reaped: list[int] = []
+    monkeypatch.setattr(stack, "_reap_pgid", lambda pgid, *, clock: reaped.append(pgid))
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "down")
+    monkeypatch.setattr(
+        stack, "boot_app",
+        lambda *_a, **_kw: {"boot_ok": "yes", "entry_url": "u",
+                            "app_pid": "5000", "app_pgid": "88", "reason": ""},
+    )
+    out = stack.ensure_stack(
+        {"entry_url": "u", "identity": "acme", "launch": "npm run dev",
+         "app_cwd": str(tmp_path)},
+        logger=LOG,
+    )
+    assert out["ready"] == "yes"
+    assert reaped == [77]
+    # and the record now names the NEW owner, not the reaped one
+    raw = json.loads(_record_file(str(tmp_path)).read_text(encoding="utf-8"))
+    assert raw["pgid"] == "88"
+
+
+def test_teardown_stack_falls_back_to_the_recorded_group(monkeypatch, tmp_path) -> None:
+    """Handed no handles (a fresh process), teardown reaps the recorded owned group."""
+    monkeypatch.setattr(stack, "_proc_starttime", lambda _pid: "9999")
+    stack._write_record(str(tmp_path), "4242", "77", "npm run dev")
+    reaped: list[int] = []
+    monkeypatch.setattr(stack, "_reap_pgid", lambda pgid, *, clock: reaped.append(pgid))
+    out = stack.teardown_stack({}, {"app_cwd": str(tmp_path)}, logger=LOG)
+    assert out["torn_down"] == "yes"
+    assert reaped == [77]
+    assert not _record_file(str(tmp_path)).exists()  # the debt is settled
+
+
+def test_stale_record_is_distrusted_and_cleared(monkeypatch, tmp_path) -> None:
+    """A recycled pid (start time mismatch) must never be signalled; the record dies."""
+    monkeypatch.setattr(stack, "_proc_starttime", lambda _pid: "9999")
+    stack._write_record(str(tmp_path), "4242", "77", "npm run dev")
+    monkeypatch.setattr(stack, "_proc_starttime", lambda _pid: "1111")  # pid recycled
+    monkeypatch.setattr(
+        stack, "_reap_pgid",
+        lambda *_a, **_kw: pytest.fail("signalled a process group on a stale record"),
+    )
+    out = stack.teardown_stack({}, {"app_cwd": str(tmp_path)}, logger=LOG)
+    assert out["torn_down"] == "skipped"  # no live record, no stop recipe: leave-up policy
+    assert not _record_file(str(tmp_path)).exists()

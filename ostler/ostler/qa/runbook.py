@@ -378,9 +378,12 @@ def cmd_stack_down(root: Path, *, name: str = "",
     verb that means two lifecycles in one namespace is a verb somebody eventually spends on
     the wrong one.
 
-    No process handles cross a process boundary, so this teardown is the book's `stop:`
-    recipe and nothing else. A runbook that declares none reports `skipped` — which is the
-    policy, not a failure: a shared emulator is cheaper left serving than rebuilt.
+    No process handles cross a process boundary, so this command passes none — but
+    :func:`ostler.qa.stack.teardown_stack` still reaps a foreground server a prior
+    bring-up *recorded* in the stablemate cache for this app directory, and falls back
+    to the book's `stop:` recipe only after that. A runbook that declares no `stop:`
+    and left no record reports `skipped` — which is the policy, not a failure: a shared
+    emulator is cheaper left serving than rebuilt.
     """
     log = logger or logging.getLogger(__name__)
     manifest = load_stack(root, name=name, logger=log)

@@ -32,17 +32,31 @@ Boot is idempotent: if the documented ``identity`` marker is already serving the
 entry URL (a leftover from a prior turn or a shared expensive stack), it is adopted
 rather than double-bound, and no process group is reported so teardown won't kill a
 process this run didn't start.
+
+A foreground server this module starts is additionally **recorded** in the stablemate
+cache (``~/.cache/stablemate/qa-stacks/``), keyed by the app directory and validated
+against the process's kernel start time. Process handles do not cross process
+boundaries, and the callers that tear stacks down mostly run in a *different* process
+from the one that booted them — the coder teardown node holds no pgid, and a run
+killed mid-story never reaches teardown at all. The record is what closes both gaps:
+teardown falls back to it when handed no pgid, and the next bring-up reaps a recorded
+leaked group before relaunching instead of failing on a port its own predecessor
+still holds.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
 import shutil
 import signal
 import subprocess
 import urllib.request
+from pathlib import Path
 from typing import Any
 
+from ostler._vendor.stablemate_core import base_cache
 from ostler._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 
 #: Manifest commands are **shell** recipes, not argv lists. The contract already asks for
@@ -330,14 +344,7 @@ def teardown_app(
                     "(nothing this run owns; an adopted or self-standing app is left up)")
         return {"torn_down": "skipped"}
     logger.info("tearing down app process group %d", pgid)
-    if not _killpg(pgid, signal.SIGTERM):
-        return {"torn_down": "yes"}  # already gone
-    deadline = clock.monotonic() + TERM_GRACE_S
-    while clock.monotonic() < deadline:
-        if not _killpg(pgid, 0):  # still alive?
-            return {"torn_down": "yes"}
-        clock.sleep(POLL_INTERVAL_S)
-    _killpg(pgid, signal.SIGKILL)
+    _reap_pgid(pgid, clock=clock)
     return {"torn_down": "yes"}
 
 
@@ -439,6 +446,22 @@ def ensure_stack(
             logger.info("stack serving %s but not adopted (reuse=%s) — re-running launch "
                         "to refresh it against current code", health_url, reuse)
 
+    # Not adopting, so this run is about to own the stack. If a *prior* run recorded a
+    # foreground server here and never tore it down (a killed run never reaches its
+    # teardown node), that orphan still holds the port — and the relaunch below would
+    # fail against our own leak. Reap it first: the record's pid+starttime check proves
+    # it is still the process we started, never a stranger who inherited the pid.
+    recorded = _read_live_record(app_cwd)
+    if recorded:
+        logger.info("reaping process group %s left recorded by a prior run before "
+                    "relaunching (an undead foreground server would hold the port)",
+                    recorded)
+        try:
+            _reap_pgid(int(recorded), clock=clock)
+        except (TypeError, ValueError):
+            pass
+        _clear_record(app_cwd)
+
     for i, step in enumerate(manifest.get("prepare") or []):
         ok, err = _run_step(step, app_cwd, timeout_s, logger, label=f"prepare[{i}]")
         if not ok:
@@ -464,6 +487,13 @@ def ensure_stack(
                                               f"{health_url or entry_url}",
                          res["app_pid"], res["app_pgid"])
         app_pid, app_pgid = res["app_pid"], res["app_pgid"]
+        # An owned foreground server outlives this process, and its handles must too:
+        # record it so a teardown running in a different process — or the next run's
+        # bring-up, when this one is killed before teardown — can still reap it.
+        if app_pgid:
+            _write_record(app_cwd, app_pid, app_pgid, launch_cmd)
+        else:
+            _clear_record(app_cwd)
 
     step_label, err = _seed_then_gate(manifest, app_cwd, timeout_s, logger, clock)
     if step_label:
@@ -478,11 +508,26 @@ def teardown_stack(
     handles: dict[str, str], manifest: dict[str, Any], *,
     logger: logging.Logger, clock: Clock = SYSTEM_CLOCK,
 ) -> dict[str, str]:
-    """Reap a stack :func:`ensure_stack` brought up, honouring the leave-up policy."""
-    return teardown_app(
-        handles.get("app_pgid", ""), manifest.get("stop", ""),
-        manifest.get("app_cwd") or ".", logger=logger, clock=clock,
-    )
+    """Reap a stack :func:`ensure_stack` brought up, honouring the leave-up policy.
+
+    *handles* may be empty: the callers that tear a stack down mostly run in a fresh
+    process holding nothing from the one that booted it. The ownership record fills
+    that gap — when no pgid is handed in, a recorded (and start-time-validated) owned
+    process group from a prior bring-up in the same app directory is reaped as if the
+    handle had been passed. Only then does the decision fall to the ``stop:`` recipe
+    or the deliberate leave-up.
+    """
+    app_cwd = manifest.get("app_cwd") or "."
+    pgid = handles.get("app_pgid", "")
+    if not pgid:
+        pgid = _read_live_record(app_cwd)
+        if pgid:
+            logger.info("no handles passed — falling back to the recorded owned "
+                        "process group %s", pgid)
+    out = teardown_app(pgid, manifest.get("stop", ""), app_cwd, logger=logger, clock=clock)
+    if out.get("torn_down") == "yes":
+        _clear_record(app_cwd)
+    return out
 
 
 # -- helpers ----------------------------------------------------------------------
@@ -614,6 +659,92 @@ def _step_error(code: int, stdout: str | None, stderr: str | None) -> str:
     if detail:
         return f"exit {code}: {detail}"
     return f"exit {code} with no output on either stream"
+
+
+def _reap_pgid(pgid: int, *, clock: Clock) -> None:
+    """TERM the whole group, allow a short grace, then KILL whatever remains."""
+    if not _killpg(pgid, signal.SIGTERM):
+        return  # already gone
+    deadline = clock.monotonic() + TERM_GRACE_S
+    while clock.monotonic() < deadline:
+        if not _killpg(pgid, 0):  # still alive?
+            return
+        clock.sleep(POLL_INTERVAL_S)
+    _killpg(pgid, signal.SIGKILL)
+
+
+# -- the ownership record ----------------------------------------------------------
+#
+# One JSON file per app directory, in the stablemate cache rather than under the book:
+# a scored QA run deletes the book's qa/ directory wholesale, and a record that dies
+# with the run it describes protects nothing. Every operation here fails soft — the
+# record is a safety net, and failing a bring-up because a cache dir was unwritable
+# would cost more than the net saves.
+
+
+def _record_path(app_cwd: str) -> Path:
+    """Where the ownership record for *app_cwd*'s stack lives."""
+    key = hashlib.sha256(str(Path(app_cwd).resolve()).encode()).hexdigest()[:16]
+    return base_cache.cache_root() / "qa-stacks" / f"{key}.json"
+
+
+def _proc_starttime(pid: int) -> str:
+    """The kernel start time of *pid* (field 22 of ``/proc/<pid>/stat``), ``""`` if gone.
+
+    Split after the last ``)`` first, because field 2 (comm) may itself contain spaces
+    and parentheses. pid + start time together name a process unambiguously: a recycled
+    pid gets a different start time, so a record validated against both can never send
+    a SIGKILL to an innocent stranger that inherited the number.
+    """
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="ascii", errors="replace")
+        return stat.rpartition(")")[2].split()[19]
+    except (OSError, IndexError):
+        return ""
+
+
+def _write_record(app_cwd: str, pid: str, pgid: str, launch: str) -> None:
+    """Record the process group this run now owns for *app_cwd*'s stack."""
+    try:
+        start = _proc_starttime(int(pid))
+    except (TypeError, ValueError):
+        start = ""
+    if not start:
+        return  # died already, or an unparseable pid — nothing durable to record
+    path = _record_path(app_cwd)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"pid": pid, "pgid": pgid, "launch": launch, "starttime": start}),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def _read_live_record(app_cwd: str) -> str:
+    """The recorded pgid for *app_cwd* iff its process is still the recorded one.
+
+    ``""`` otherwise — and a record whose pid is gone or recycled is cleared on the way
+    out, so a stale file is read (and distrusted) at most once.
+    """
+    try:
+        raw = json.loads(_record_path(app_cwd).read_text(encoding="utf-8"))
+        pid, pgid = int(raw["pid"]), str(raw["pgid"])
+        recorded_start = str(raw["starttime"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return ""
+    if recorded_start and _proc_starttime(pid) == recorded_start:
+        return pgid
+    _clear_record(app_cwd)
+    return ""
+
+
+def _clear_record(app_cwd: str) -> None:
+    try:
+        _record_path(app_cwd).unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _killpg(pgid: int, sig: int) -> bool:
