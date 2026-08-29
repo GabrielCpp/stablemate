@@ -8,6 +8,8 @@ from typing import Any
 
 from ostler import path as path_mod, refs
 from ostler.model import Graph, Story, UINode
+from ostler.qa.source_context import SourceRepository, SourceScope
+from ostler.source_snapshots import load_catalog, resolved_sha, source_fingerprint
 
 CONTEXT_FILE = "qa-okf-context.json"
 
@@ -84,6 +86,74 @@ def _context(graph: Graph, story_ref: str) -> tuple[dict[str, Any] | None, str]:
     return (payload if isinstance(payload, dict) else {}), relative.as_posix()
 
 
+def source_freshness(
+    graph: Graph, packet: dict[str, Any], checkouts: dict[str, Path]
+) -> list[dict[str, Any]]:
+    """Compare stored packet/catalog fingerprints with explicitly supplied checkouts."""
+    catalog = load_catalog(graph.root)
+    rows: list[dict[str, Any]] = []
+    for stored in packet.get("repositories", []):
+        identifier = str(stored.get("id", ""))
+        reasons: list[str] = []
+        checkout = checkouts.get(identifier)
+        snapshot = catalog.repository(identifier) if catalog else None
+        packet_fingerprint = str(stored.get("sourceFingerprint", ""))
+        if checkout is None:
+            rows.append(
+                {
+                    "repository": identifier,
+                    "status": "unknown",
+                    "reasons": [f"no checkout supplied for repository {identifier!r}"],
+                }
+            )
+            continue
+        if not packet_fingerprint:
+            reasons.append("context packet predates source fingerprints")
+        if snapshot is None or not snapshot.source_fingerprint:
+            reasons.append("source catalog predates source fingerprints")
+        elif packet_fingerprint and snapshot.source_fingerprint != packet_fingerprint:
+            reasons.append("source catalog and context packet fingerprints disagree")
+        try:
+            repository = SourceRepository(
+                id=identifier,
+                checkout=str(checkout),
+                base=str(stored.get("base") or stored.get("baseSha") or ""),
+                head=str(stored.get("head") or "WORKTREE"),
+                scopes=tuple(
+                    SourceScope.model_validate(scope) for scope in stored.get("scopes", [])
+                ),
+            )
+        except ValueError as exc:
+            rows.append(
+                {
+                    "repository": identifier,
+                    "status": "unknown",
+                    "reasons": [f"stored source provenance is invalid: {exc}"],
+                }
+            )
+            continue
+        base_sha = resolved_sha(repository, repository.base)
+        if stored.get("baseSha") and base_sha != stored.get("baseSha"):
+            reasons.append("base revision no longer resolves to the recorded commit")
+        if repository.head != "WORKTREE":
+            head_sha = resolved_sha(repository, repository.head)
+            if stored.get("headSha") and head_sha != stored.get("headSha"):
+                reasons.append("head revision no longer resolves to the recorded commit")
+        current_fingerprint = source_fingerprint(repository)
+        if packet_fingerprint and current_fingerprint != packet_fingerprint:
+            reasons.append("scoped source content differs from the recorded fingerprint")
+        unknown = any("predates source fingerprints" in reason for reason in reasons)
+        rows.append(
+            {
+                "repository": identifier,
+                "status": "unknown" if unknown else "stale" if reasons else "fresh",
+                "sourceFingerprint": current_fingerprint,
+                "reasons": reasons,
+            }
+        )
+    return rows
+
+
 def story_provenance(
     graph: Graph, story_ref: str, checkouts: dict[str, Path]
 ) -> list[dict[str, Any]]:
@@ -122,6 +192,7 @@ def story_provenance(
             "directNodes": (packet or {}).get("directNodes", []),
             "contracts": (packet or {}).get("contracts", []),
             "journeys": (packet or {}).get("journeys", []),
+            "freshness": source_freshness(graph, packet or {}, checkouts),
             "warnings": warnings,
         }
     ]

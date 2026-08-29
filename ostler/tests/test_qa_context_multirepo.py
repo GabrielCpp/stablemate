@@ -8,6 +8,7 @@ from ostler import doctor
 from ostler.model import load
 from ostler.qa.context import build_context, cmd_context, validate_context
 from ostler.qa.source_context import SourceRepository, SourceScope
+from ostler.provenance import source_freshness
 from ostler.source_snapshots import catalog_path
 
 
@@ -60,19 +61,20 @@ title: Create invoice
         "def create_invoice():\n    return 'new'\n", encoding="utf-8"
     )
 
-    packet = build_context(
+    repository = SourceRepository(
+        id="api-service",
+        checkout=str(source),
+        base=source_base,
+        scopes=(SourceScope(surface="billing", root="src"),),
+    )
+    outcome = cmd_context(
         docs,
+        docs / "docs/specs/create-invoice",
         base=docs_base,
         story_file=story,
-        repositories=(
-            SourceRepository(
-                id="api-service",
-                checkout=str(source),
-                base=source_base,
-                scopes=(SourceScope(surface="billing", root="src"),),
-            ),
-        ),
+        repositories=(repository,),
     )
+    packet = outcome.data
 
     assert validate_context(packet) == []
     assert packet["version"] == 2
@@ -81,17 +83,12 @@ title: Create invoice
         "externalKey": "TEAM-123",
         "slug": "create-invoice",
     }
-    assert packet["repositories"] == [
-        {
-            "id": "api-service",
-            "base": source_base,
-            "baseSha": source_base,
-            "head": "WORKTREE",
-            "headSha": None,
-            "headAnchorSha": source_base,
-            "scopes": [{"surface": "billing", "root": "src"}],
-        }
-    ]
+    stored_repository = packet["repositories"][0]
+    assert stored_repository["id"] == "api-service"
+    assert stored_repository["baseSha"] == source_base
+    assert stored_repository["headAnchorSha"] == source_base
+    assert stored_repository["sourceFingerprint"]
+    assert stored_repository["scopes"] == [{"surface": "billing", "root": "src"}]
     assert packet["changedUnits"] == packet["changedCode"]
     assert packet["changedUnits"][0]["id"] == "repo://api-service/src/service.py"
     assert packet["changedUnits"][0]["headSymbols"] == ["create_invoice"]
@@ -103,6 +100,31 @@ title: Create invoice
         }
     ]
     assert not packet["healthFindings"]
+    assert source_freshness(load(docs), packet, {"api-service": source})[0]["status"] == "fresh"
+
+    _git(source, "add", ".")
+    _git(source, "commit", "-m", "record story work")
+    assert source_freshness(load(docs), packet, {"api-service": source})[0]["status"] == "fresh"
+
+    implementation.write_text(
+        "def create_invoice():\n    return 'newer'\n", encoding="utf-8"
+    )
+    freshness = source_freshness(load(docs), packet, {"api-service": source})[0]
+    assert freshness["status"] == "stale"
+    assert "scoped source content differs" in freshness["reasons"][-1]
+    report = doctor.cmd_doctor(load(docs)).data
+    assert not [finding for finding in report["findings"] if finding["severity"] == "error"]
+
+    refreshed = cmd_context(
+        docs,
+        docs / "docs/specs/create-invoice",
+        base=docs_base,
+        story_file=story,
+        repositories=(repository,),
+    ).data
+    (source / "src/helper.py").write_text("value = 1\n", encoding="utf-8")
+    freshness = source_freshness(load(docs), refreshed, {"api-service": source})[0]
+    assert freshness["status"] == "stale"
 
 
 def test_external_file_owner_reason_keeps_repository_qualification(

@@ -21,7 +21,7 @@ from ostler.model import Graph, _parse_ui_nodes, load
 from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.source_context import SourceRepository
-from ostler.source_snapshots import write_catalog
+from ostler.source_snapshots import source_fingerprint, write_catalog
 
 #: The last-resort declaration shape, for a language with no parser and no entry in
 #: `inventory` — and for a Python file `ast` could not read. Declared in
@@ -261,7 +261,8 @@ def build_context(
                             _git(checkout, "rev-parse", "--verify",
                                  f"{repository.head}^{{commit}}").strip()),
                 "headAnchorSha": (_git(checkout, "rev-parse", "HEAD").strip()
-                                  if repository.head == "WORKTREE" else None),
+                                   if repository.head == "WORKTREE" else None),
+                "sourceFingerprint": source_fingerprint(repository),
                 "scopes": [scope.model_dump(mode="json") for scope in repository.scopes],
             })
     else:

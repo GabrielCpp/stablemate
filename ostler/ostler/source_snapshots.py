@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ostler import inventory, path as path_mod, refs
 from ostler.model import Graph
-from ostler.qa.source_context import SourceRepository
+from ostler.qa.source_context import SourceRepository, SourceScope
 
 
 class SourceFile(BaseModel):
@@ -28,6 +28,11 @@ class RepositorySnapshot(BaseModel):
     id: str
     base: str
     head: str
+    base_sha: str = ""
+    head_sha: str = ""
+    head_anchor_sha: str = ""
+    scopes: tuple[SourceScope, ...] = ()
+    source_fingerprint: str = ""
     files: tuple[SourceFile, ...] = ()
 
 
@@ -67,6 +72,67 @@ def _text_at(repository: SourceRepository, path: str) -> str:
     return result.stdout if result.returncode == 0 else ""
 
 
+def _git(repository: SourceRepository, *args: str) -> bytes | None:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=Path(repository.checkout).resolve(),
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout if result.returncode == 0 else None
+
+
+def resolved_sha(repository: SourceRepository, revision: str) -> str:
+    value = _git(repository, "rev-parse", "--verify", f"{revision}^{{commit}}")
+    return value.decode().strip() if value else ""
+
+
+def source_fingerprint(repository: SourceRepository) -> str:
+    """Hash every path and byte under the repository's declared source scopes."""
+    roots = sorted({scope.root.strip("/") or "." for scope in repository.scopes})
+    if repository.head == "WORKTREE":
+        listed = _git(
+            repository,
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            *roots,
+        )
+    else:
+        listed = _git(
+            repository,
+            "ls-tree",
+            "-r",
+            "--name-only",
+            repository.head,
+            "--",
+            *roots,
+        )
+    if listed is None:
+        return ""
+    digest = hashlib.sha256()
+    for scope in repository.scopes:
+        digest.update(f"scope\0{scope.surface}\0{scope.root}\0".encode())
+    checkout = Path(repository.checkout).resolve()
+    for raw_path in sorted(set(listed.decode().splitlines())):
+        digest.update(raw_path.encode() + b"\0")
+        if repository.head == "WORKTREE":
+            target = checkout / raw_path
+            content = target.read_bytes() if target.is_file() else b"<deleted>"
+        else:
+            content = _git(repository, "show", f"{repository.head}:{raw_path}")
+            if content is None:
+                content = b"<missing>"
+        digest.update(content)
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def build_catalog(graph: Graph, repositories: tuple[SourceRepository, ...]) -> SourceCatalog:
     """Snapshot every external file the current feature graph cites under `code:`."""
     by_id = {repository.id: repository for repository in repositories}
@@ -99,6 +165,15 @@ def build_catalog(graph: Graph, repositories: tuple[SourceRepository, ...]) -> S
             id=identifier,
             base=repository.base,
             head=repository.head,
+            base_sha=resolved_sha(repository, repository.base),
+            head_sha=(
+                "" if repository.head == "WORKTREE" else resolved_sha(repository, repository.head)
+            ),
+            head_anchor_sha=(
+                resolved_sha(repository, "HEAD") if repository.head == "WORKTREE" else ""
+            ),
+            scopes=repository.scopes,
+            source_fingerprint=source_fingerprint(repository),
             files=tuple(files),
         ))
     return SourceCatalog(repositories=tuple(snapshots))
@@ -119,5 +194,7 @@ __all__ = [
     "build_catalog",
     "catalog_path",
     "load_catalog",
+    "resolved_sha",
+    "source_fingerprint",
     "write_catalog",
 ]
