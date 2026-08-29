@@ -56,6 +56,7 @@ class Fixture:
     service: str
     source_path: str
     repo_dir: str
+    source_paths: tuple[str, ...] = ()
     budget_s: float = 5400.0
     source_excludes: str = ""
     #: The judge's own backend, pinned apart from the builder under test — the same
@@ -69,6 +70,12 @@ class Fixture:
 
 def book_dir(repo: Path, fixture: Fixture) -> Path:
     return repo / "docs" / "features" / fixture.service
+
+
+def capture_build_witness(repo: Path, dest: Path, fixture: Fixture) -> Path:
+    """Seal every source root participating in the build, once and by relative path."""
+    sources = tuple(dict.fromkeys((fixture.source_path, *fixture.source_paths)))
+    return capture_witness(repo, dest, extra=sources)
 
 
 def strip_book(run: Run, fixture: Fixture) -> None:
@@ -157,8 +164,8 @@ def run_build(run: Run, fixture: Fixture) -> None:
         )
         wall = time.monotonic() - started
 
-    witness = capture_witness(
-        run.repo, trials_dir(run) / run_id / "witness", extra=(fixture.source_path,)
+    witness = capture_build_witness(
+        run.repo, trials_dir(run) / run_id / "witness", fixture
     )
     run.write_json(trials_dir(run) / "trials.json", [{
         "run_id": run_id,

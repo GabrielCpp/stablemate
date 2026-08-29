@@ -125,6 +125,24 @@ def test_sealed_witness_carries_the_source_the_book_cites(tmp_path: Path) -> Non
     assert "dangling-code-ref" not in {f["code"] for f in sealed_doctor["findings"]}
 
 
+def test_build_witness_seals_every_participating_source_root(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    write(repo / "docs/features/svc/concept.md", "# Concept\n")
+    write(repo / "api/service.py", "value = 'api'\n")
+    write(repo / "worker/jobs.py", "value = 'worker'\n")
+    configured = okfbuild.Fixture(
+        service="svc",
+        source_path="api",
+        source_paths=("worker", "api"),
+        repo_dir="app",
+    )
+
+    sealed = okfbuild.capture_build_witness(repo, tmp_path / "sealed", configured)
+
+    assert (sealed / "api/service.py").read_text(encoding="utf-8") == "value = 'api'\n"
+    assert (sealed / "worker/jobs.py").read_text(encoding="utf-8") == "value = 'worker'\n"
+
+
 def test_coverage_is_the_builders_own_claim(tmp_path: Path) -> None:
     root = witness(tmp_path)
     assert okfbuild.coverage_counts(root, fixture()) is None
