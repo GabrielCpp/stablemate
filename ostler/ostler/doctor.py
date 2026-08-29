@@ -19,7 +19,7 @@ from ostler import graph as graph_mod, locators as loc_mod, reach, waivers as wa
 from ostler.vet import placement as placement_mod
 from ostler import refs as refs_mod
 from ostler.refs import normalize_ref
-from ostler.model import Graph, Epic, read_doc, required_section_problems
+from ostler.model import Graph, Epic, Story, read_doc, required_section_problems
 from ostler.path import specs_root_in
 from ostler.qa import fixtures as fixtures_mod, runbook as runbook_mod
 from ostler.qa.context import RELATION_KEYS, relation_subject
@@ -134,6 +134,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
 
     _check_milestones(graph, f)
     _check_fixtures(graph, f)
+    _check_story_identity(graph, f)
 
     for epic in graph.epics:
         if epic_filter and not _epic_matches(epic, epic_filter):
@@ -151,6 +152,31 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
 
     _apply_waivers(graph, report.findings)
     return report
+
+
+def _check_story_identity(graph: Graph, findings: list[Finding]) -> None:
+    """Every accepted story spelling identifies one story, and its two id copies agree."""
+    owners: dict[str, list[tuple[Epic, Story]]] = {}
+    for epic in graph.epics:
+        for story in epic.stories:
+            for alias in story.aliases:
+                owners.setdefault(alias, []).append((epic, story))
+            if story.eid and story.file_eid and story.eid != story.file_eid:
+                path = (story.story_md.relative_to(graph.root).as_posix()
+                        if story.story_md else "")
+                findings.append(Finding(
+                    "error", "story-id-mismatch",
+                    f"story '{story.slug}' has id '{story.eid}' in epic.md but "
+                    f"'{story.file_eid}' in story.md",
+                    epic.name, story.slug, path=path, line=1))
+    for alias, matches in owners.items():
+        unique = {(epic.name, story.path) for epic, story in matches}
+        if len(unique) < 2:
+            continue
+        paths = ", ".join(path for _, path in sorted(unique))
+        findings.append(Finding(
+            "error", "story-key-collision",
+            f"story key '{alias}' identifies multiple stories: {paths}", ref=alias))
 
 
 def _apply_waivers(graph: Graph, findings: list[Finding]) -> None:

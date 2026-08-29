@@ -55,6 +55,11 @@ class Story:
     # created, recorded both in the epic's `## Stories` block and in the story's own
     # frontmatter — mirroring Epic.eid so a story is addressable by id, not only by slug.
     eid: str = ""
+    # Provider-neutral tracker alias, owned by story.md rather than duplicated into epic.md.
+    external_key: str = ""
+    # The copy read from story.md, retained separately so doctor can detect disagreement with
+    # the parent epic block instead of silently preferring one identity.
+    file_eid: str = ""
     raw: dict = field(default_factory=dict)
     story_md: Path | None = None
     status: str = ""
@@ -92,6 +97,15 @@ class Story:
         this tracks whether there is a spec to build from at all.
         """
         return self.story_md is not None and not self.unwritten_sections
+
+    @property
+    def aliases(self) -> tuple[str, ...]:
+        """Every stable spelling accepted as this story, de-duplicated in precedence order."""
+        return tuple(
+            dict.fromkeys(
+                value for value in (self.eid, self.external_key, self.slug) if value
+            )
+        )
 
 
 @dataclass
@@ -238,16 +252,22 @@ class Graph:
         return None
 
     def find_story(self, ref: str) -> tuple[Epic, Story] | None:
-        """The story named by *ref* — a slug, or the minted id the story is addressable by."""
-        for e in self.epics:
-            for s in e.stories:
-                if s.slug == ref:
-                    return e, s
-        for e in self.epics:
-            for s in e.stories:
-                if s.eid and s.eid == ref:
-                    return e, s
-        return None
+        """The story named by an id, external key, or slug.
+
+        Ambiguity is an invalid graph rather than an ordering rule. Doctor reports the same
+        collision mechanically, while direct API callers fail here instead of receiving whichever
+        epic happened to load first.
+        """
+        matches = [
+            (epic, story)
+            for epic in self.epics
+            for story in epic.stories
+            if ref in story.aliases
+        ]
+        if len(matches) > 1:
+            paths = ", ".join(story.path for _, story in matches)
+            raise ValueError(f"story reference {ref!r} is ambiguous: {paths}")
+        return matches[0] if matches else None
 
 
 # ---------------------------------------------------------------------------
@@ -1031,10 +1051,14 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
         if c.exists() and c.is_file():
             story.story_md = c
             doc = markdown.split(c.read_text(encoding="utf-8"))
-            if not story.eid and doc.frontmatter:
+            if doc.frontmatter:
+                story.file_eid = str(doc.frontmatter.get("id") or "")
+                story.external_key = str(doc.frontmatter.get("externalKey") or "")
+                story.raw["externalKey"] = story.external_key
+            if not story.eid and story.file_eid:
                 # crud writes the minted id in both places; a story whose epic block
                 # predates that still carries it in its own frontmatter.
-                story.eid = str(doc.frontmatter.get("id") or "")
+                story.eid = story.file_eid
             refs = doc.refs
             story.doc_refs = refs.doc_hrefs
             story.status = story_status(doc)

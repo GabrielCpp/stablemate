@@ -131,6 +131,8 @@ reader has it in front of them rather than one file up:
 ```yaml
 ---
 type: story
+id: ACME-01JBXR7M4E0S9YCG5NAKQ2TZVJ
+externalKey: TEAM-123   # optional provider-neutral lookup alias
 slug: 01-apercu-billing-body
 status: Not started     # free text; the workflow lifecycle (e.g. "QA passed")
 surface: account-billing/apercu-billing-body   # optional
@@ -156,6 +158,11 @@ what stops a rewrite from emptying the DAG quietly.
 The coverage edge (`covers`) is *not* here — it names seeds defined in the epic, so it lives in the
 epic's `## Stories` section (§3). Prose may link to `docs/features/…` OKF nodes with ordinary
 markdown links.
+
+The generated `id` is canonical and immutable. `externalKey`, when present, is an opaque alias for
+resolving tracker-named work; it does not replace the id or move an existing spec directory. A slug,
+id, or external key that identifies more than one story is a `story-key-collision` error, and the id
+recorded here must agree with the copy in the parent epic's `## Stories` block.
 
 ## 5. The feature Concept and the epics index
 

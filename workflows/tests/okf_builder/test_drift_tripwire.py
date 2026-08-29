@@ -78,6 +78,8 @@ ORG_GRAPH_CODES = frozenset({
     "malformed-dependency-bullet",
     "milestone-cycle",
     "missing-story-file",
+    "story-id-mismatch",
+    "story-key-collision",
     "orphan-seed",
     "qa-fixture-declaration",
     "runbook-bad-kind",

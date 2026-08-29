@@ -74,6 +74,33 @@ def test_story_id_survives_an_epic_block_that_never_recorded_it(tmp_path: Path):
     assert found[1].eid == "X-LEGACY7"
 
 
+def test_story_resolves_by_provider_neutral_external_key(tmp_path: Path):
+    crud.create_epic(load(tmp_path), "e", "E", prefix="x")
+    crud.create_story(load(tmp_path), "e", "a", "A")
+    created = load(tmp_path).find_story("a")
+    assert created is not None
+    story_path = created[1].story_md
+    assert story_path is not None
+    story_path.write_text(
+        story_path.read_text(encoding="utf-8").replace(
+            "slug: a", "externalKey: TEAM-123\nslug: a"
+        ),
+        encoding="utf-8",
+    )
+
+    graph = load(tmp_path)
+    by_key = graph.find_story("TEAM-123")
+    by_slug = graph.find_story("a")
+
+    assert by_key == by_slug
+    assert by_key is not None
+    assert by_key[1].aliases == (by_key[1].eid, "TEAM-123", "a")
+    row = next(row for row in query.list_entities(graph, "story") if row["slug"] == "a")
+    assert row["id"] == by_key[1].eid
+    assert row["externalKey"] == "TEAM-123"
+    assert row["aliases"] == list(by_key[1].aliases)
+
+
 def test_next_epic_uses_milestone_dependency_order(repo: Path):
     write(repo / "docs/milestones/feature.md", """---
 type: milestone

@@ -13,8 +13,10 @@ from ostler.model import Graph, UINode
 
 def _story_row(graph: Graph, epic, story) -> dict:
     return {
-        "type": "story", "slug": story.slug, "epic": epic.name, "title": story.title,
-        "status": story.status, "covers": story.seed_items, "dependsOn": story.dependencies,
+        "type": "story", "id": story.eid, "externalKey": story.external_key,
+        "aliases": list(story.aliases), "slug": story.slug, "epic": epic.name,
+        "title": story.title, "status": story.status, "covers": story.seed_items,
+        "dependsOn": story.dependencies,
         "path": story.path,
         # Whether the story says anything, and which required sections are still blank —
         # so a caller never has to open story.md and decide for itself what "written" means.

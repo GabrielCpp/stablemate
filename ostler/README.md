@@ -68,6 +68,11 @@ ostler list --type story --epic checkout-flow --json
 Then open the scaffolded `epic.md` / `story.md` and write the narrative, acceptance criteria, and
 prose — ostler keeps the seeds, edges, ids and queue coherent around it.
 
+A story may carry a provider-neutral `externalKey` in its own frontmatter when a tracker already
+names the work. It is a lookup alias only: Ostler's generated `id` remains the immutable identity
+used by new commit trailers and spec directories. IDs, slugs and external keys must be unique across
+stories; `doctor` rejects ambiguity rather than letting graph order choose one.
+
 ## The hierarchy
 
 A repository's knowledge lives under `docs/` as OKF **bundles** (directories of markdown Concepts).
@@ -84,7 +89,7 @@ filenames `index.md` (an ordered listing of a bundle) and `log.md` (history) are
 |---|---|---|---|
 | `milestone` | `docs/milestones/<slug>.md` | generated `id`; readable `<slug>` names the file | `type`, `id`, `title` |
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
-| `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
+| `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | generated `id`; readable `<slug>` and optional `externalKey` are aliases | `type`, `slug`, `status` |
 | `feature` | `docs/features/<area>/<slug>.md` *(or flat `docs/features/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
 | `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `docs/specs/<slug>/*.md` | path | `type` |
 

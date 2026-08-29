@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ostler import doctor
 from ostler.model import load
 
@@ -44,6 +46,70 @@ def test_blocker_naming_no_story_is_flagged(repo: Path):
 def test_blocker_in_another_epic_is_flagged(repo: Path):
     write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", depends=["01-bar"]))
     assert "cross-epic-dependency" in codes(doctor.run(load(repo)))
+
+
+def test_story_key_collision_is_flagged_and_lookup_is_ambiguous(repo: Path):
+    first = repo / FOO_STORY
+    second = repo / "docs/epics/epic-b/stories/01-bar/story.md"
+    for path in (first, second):
+        path.write_text(
+            path.read_text(encoding="utf-8").replace(
+                "slug:", "externalKey: TEAM-123\nslug:"
+            ),
+            encoding="utf-8",
+        )
+
+    graph = load(repo)
+    findings = [
+        f for f in doctor.run(graph).findings if f.code == "story-key-collision"
+    ]
+
+    assert [finding.ref for finding in findings] == ["TEAM-123"]
+    assert "01-foo/story.md" in findings[0].message
+    assert "01-bar/story.md" in findings[0].message
+    with pytest.raises(ValueError, match="ambiguous"):
+        graph.find_story("TEAM-123")
+
+
+def test_story_id_mismatch_between_epic_and_story_is_flagged(tmp_path: Path):
+    write(
+        tmp_path / "docs/epics/e/epic.md",
+        "\n".join(
+            [
+                "---",
+                "type: epic",
+                "id: E-1",
+                "title: E",
+                "---",
+                "# Epic: E",
+                "",
+                "## Stories",
+                "",
+                "### a",
+                "- title: A",
+                "- id: STORY-1",
+                "- covers: (none)",
+                "",
+            ]
+        )
+        + "\n",
+    )
+    write(
+        tmp_path / "docs/epics/e/stories/a/story.md",
+        story_md("a", "A", "Not started").replace(
+            "type: story", "type: story\nid: STORY-2"
+        ),
+    )
+
+    findings = [
+        finding
+        for finding in doctor.run(load(tmp_path)).findings
+        if finding.code == "story-id-mismatch"
+    ]
+
+    assert len(findings) == 1
+    assert "STORY-1" in findings[0].message
+    assert "STORY-2" in findings[0].message
 
 
 def test_a_dependencies_bullet_that_names_no_blocker_is_flagged(repo: Path):
