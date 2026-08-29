@@ -49,9 +49,11 @@ import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import signal
 import subprocess
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -252,7 +254,7 @@ def boot_app(
                 return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "",
                         "app_pgid": "",
                         "reason": f"the launch command exited with code {proc.returncode} "
-                                  f"during startup"}
+                                  f"during startup" + _port_hint(health_url)}
             # Exit 0 with nothing serving yet: a bring-up command that handed the app off
             # to something it doesn't own (containers, a supervisor). Not death — keep
             # polling health to the deadline.
@@ -266,13 +268,15 @@ def boot_app(
                        "exited — failing soft; anything it started is still up. %s",
                        timeout_s, why)
         return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
-                "reason": why}
+                "reason": why + _port_hint(health_url)}
 
     logger.warning("app was not healthy within %.0fs — killing pgid %d and failing soft. %s",
                    timeout_s, pgid, why)
     _killpg(pgid, signal.SIGKILL)
+    # Diagnose the port *after* reaping our own group, so a hint can only ever name the
+    # foreign process that beat us to the bind, never the corpse we just made.
     return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
-            "reason": why}
+            "reason": why + _port_hint(health_url)}
 
 
 def _boot_without_probe(
@@ -659,6 +663,42 @@ def _step_error(code: int, stdout: str | None, stderr: str | None) -> str:
     if detail:
         return f"exit {code}: {detail}"
     return f"exit {code} with no output on either stream"
+
+
+def _port_hint(url: str) -> str:
+    """One appended clause naming who holds *url*'s port, when someone does; else ``""``.
+
+    The commonest way a bring-up dies is EADDRINUSE against a port some *other* project's
+    stack happens to hold — observed as a manifest publishing :4000 into a host port an
+    unrelated emulator owned. The launch's own error says "address already in use" at
+    best and nothing at worst; naming the holder is what turns a repair loop rewriting a
+    correct recipe into "stop that process, or change the stack's port". Best-effort by
+    design: no port in the URL, no ``ss`` on the host, or no listener at all each yield
+    ``""``, and the failure reason stands on its own.
+    """
+    try:
+        port = urllib.parse.urlsplit(url).port
+    except ValueError:
+        return ""
+    if not port or not shutil.which("ss"):
+        return ""
+    try:
+        done = subprocess.run(  # noqa: S603 (fixed argv, read-only diagnosis)
+            ["ss", "-H", "-ltnp", f"( sport = :{port} )"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return ""
+    out = (done.stdout or "").strip()
+    if done.returncode != 0 or not out:
+        return ""
+    # `users:(("node",pid=123,fd=20))` — absent when the listener belongs to another
+    # user, since an unprivileged ss cannot name it.
+    m = re.search(r'\("([^"]+)",pid=(\d+)', out)
+    holder = (f"{m.group(1)} (pid {m.group(2)})" if m
+              else "an unidentified process (run `ss -ltnp` as its owner to name it)")
+    return (f" Note: port {port} is already held by {holder} — a leftover or unrelated "
+            f"process may own it; stop it, or change the stack's port.")
 
 
 def _reap_pgid(pgid: int, *, clock: Clock) -> None:

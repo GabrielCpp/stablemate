@@ -16,6 +16,10 @@ from ostler.qa import stack
 
 LOG = logging.getLogger("test-stack")
 
+# Captured at import time, before the autouse fixture below stubs the module attribute:
+# the port-diagnosis unit tests exercise the real function through this name.
+_REAL_PORT_HINT = stack._port_hint
+
 
 @pytest.fixture(autouse=True)
 def _isolated_ownership_records(tmp_path, monkeypatch) -> None:
@@ -25,6 +29,9 @@ def _isolated_ownership_records(tmp_path, monkeypatch) -> None:
     without this every test would share the developer's real ``~/.cache/stablemate``.
     """
     monkeypatch.setenv("STABLEMATE_CACHE_DIR", str(tmp_path / "stablemate-cache"))
+    # And stub the port diagnosis: it shells out to `ss` on every boot failure, which
+    # both races the machine's real listeners and trips over tests' fake Popen objects.
+    monkeypatch.setattr(stack, "_port_hint", lambda _url: "")
 
 
 def test_health_requires_documented_identity(monkeypatch) -> None:
@@ -849,3 +856,69 @@ def test_stale_record_is_distrusted_and_cleared(monkeypatch, tmp_path) -> None:
     out = stack.teardown_stack({}, {"app_cwd": str(tmp_path)}, logger=LOG)
     assert out["torn_down"] == "skipped"  # no live record, no stop recipe: leave-up policy
     assert not _record_file(str(tmp_path)).exists()
+
+
+# -- port diagnosis ----------------------------------------------------------------
+
+
+def test_port_hint_names_the_holder(monkeypatch) -> None:
+    class Done:
+        returncode = 0
+        stdout = 'LISTEN 0 511 *:4000 *:* users:(("node",pid=8123,fd=20))\n'
+
+    monkeypatch.setattr(stack.shutil, "which", lambda _name: "/usr/bin/ss")
+    monkeypatch.setattr(stack.subprocess, "run", lambda *_a, **_kw: Done())
+    hint = _REAL_PORT_HINT("http://localhost:4000/")
+    assert "port 4000" in hint
+    assert "node (pid 8123)" in hint
+
+
+def test_port_hint_is_silent_when_nothing_listens(monkeypatch) -> None:
+    class Done:
+        returncode = 0
+        stdout = ""
+
+    monkeypatch.setattr(stack.shutil, "which", lambda _name: "/usr/bin/ss")
+    monkeypatch.setattr(stack.subprocess, "run", lambda *_a, **_kw: Done())
+    assert _REAL_PORT_HINT("http://localhost:4000/") == ""
+    # and a URL with no port has nothing to diagnose
+    assert _REAL_PORT_HINT("http://example.com/") == ""
+
+
+def test_port_hint_degrades_when_the_holder_is_unnamed(monkeypatch) -> None:
+    """An unprivileged ss sees the listener but not its owner — still say the port is taken."""
+    class Done:
+        returncode = 0
+        stdout = "LISTEN 0 511 *:4000 *:*\n"
+
+    monkeypatch.setattr(stack.shutil, "which", lambda _name: "/usr/bin/ss")
+    monkeypatch.setattr(stack.subprocess, "run", lambda *_a, **_kw: Done())
+    hint = _REAL_PORT_HINT("http://localhost:4000/")
+    assert "port 4000" in hint
+    assert "unidentified" in hint
+
+
+def test_boot_failure_reason_carries_the_port_hint(monkeypatch) -> None:
+    """A launch that dies during startup names who already holds its port."""
+    class Died:
+        pid = 4242
+        returncode = 1
+
+        def poll(self) -> int:
+            return 1
+
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "nothing is serving")
+    monkeypatch.setattr(stack.subprocess, "Popen", lambda *_a, **_kw: Died())
+    monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
+    monkeypatch.setattr(
+        stack, "_port_hint",
+        lambda url: " Note: port 3000 is already held by node (pid 8123) — a leftover "
+                    "or unrelated process may own it; stop it, or change the stack's port.",
+    )
+    out = stack.boot_app(
+        "npm run dev", "http://localhost:3000", "/", ".", ".", "", 60,
+        logger=LOG, clock=FakeClock(),
+    )
+    assert out["boot_ok"] == "no"
+    assert "exited with code 1" in out["reason"]
+    assert "held by node (pid 8123)" in out["reason"]
