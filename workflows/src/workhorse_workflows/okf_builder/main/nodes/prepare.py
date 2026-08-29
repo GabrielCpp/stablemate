@@ -14,43 +14,12 @@ from pathlib import Path
 
 from ostler import Ostler
 from workhorse.manifest import BACKEND_SKILL_DIR
+from workhorse_workflows.okf_builder.main.nodes.incremental import prepare_incremental
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared import stubs
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
-from workhorse_workflows.okf_builder.shared.schemas import Prepared
-
-
-def _book_has_docs(features: Path) -> bool:
-    """Whether the book exists as more than a directory entry."""
-    return features.is_dir() and any(features.rglob("*.md"))
-
-
-def _load_worklist(wl: Path, service: str, features: Path) -> tuple[dict, bool]:
-    """The worklist to drain, and whether a stale one was discarded.
-
-    The worklist is keyed to the book it remembers: it is a memory of work whose product
-    is the book, so a worklist carrying `done` items for a book that no longer exists is
-    not a resume but a false memory — and its `done` counter makes a bounded run
-    instantly over-budget and hand out zero items. Reuse therefore requires the stamped
-    service to match and the remembered work to still have a product.
-    """
-    fresh: dict = {"service": service, "book": str(features), "items": []}
-    if not wl.exists():
-        return fresh, False
-    try:
-        data = json.loads(wl.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return fresh, True
-    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
-        return fresh, True
-    if data.get("service", service) != service:
-        return fresh, True
-    done = sum(1 for i in data["items"] if i.get("status") == "done")
-    if done and not _book_has_docs(features):
-        return fresh, True
-    data.setdefault("service", service)
-    data["book"] = str(features)
-    return data, False
+from workhorse_workflows.okf_builder.shared.schemas import Prepared, SourceRequest
+from workhorse_workflows.okf_builder.shared.worklist import load_worklist
 
 
 def _ostler_loads(root: Path) -> tuple[bool, str]:
@@ -154,6 +123,9 @@ def prepare(
     source_excludes: str = "",
     repo_dir: str = "",
     diff_base: str = "",
+    story: str = "",
+    workspace_file: str = "",
+    sources: tuple[SourceRequest, ...] = (),
 ) -> Prepared:
     """Resolve paths and initialize (or adopt) the build worklist.
 
@@ -165,6 +137,24 @@ def prepare(
     `prepare_error` saying which one — `start()` is where that becomes a failed run.
     """
     root = paths.docs_root(docs_path, repo_dir)
+    incremental = bool(story or sources)
+    if bool(story) != bool(sources):
+        return Prepared(
+            repo_root=str(root),
+            service=service,
+            mode="incremental",
+            prepare_error="story-aware incremental mode requires both story and sources",
+        )
+    if incremental:
+        return prepare_incremental(
+            logger,
+            root,
+            service,
+            story,
+            workspace_file,
+            repo_dir,
+            sources,
+        )
     source_rel = source_path or service
     source = (root / source_rel).resolve() if source_rel else root.resolve()
     try:
@@ -189,7 +179,7 @@ def prepare(
     features = paths.features_root(root, service)
     paths.ensure_build_dir(root)
     wl = paths.worklist_path(root, service)
-    data, reset = _load_worklist(wl, service, features)
+    data, reset = load_worklist(wl, service, features)
     if reset:
         # The stamped memory was void (wrong service, unreadable, or a book that no longer
         # exists). Silently starting from zero would look like a resume that lost its work.
@@ -258,6 +248,4 @@ def prepare(
         diff_scope_count=scope_count,
         prepare_error=why,
     )
-
-
 __all__ = ["prepare"]

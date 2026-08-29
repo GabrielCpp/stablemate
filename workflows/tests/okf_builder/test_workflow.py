@@ -61,6 +61,7 @@ from workhorse.records import parse_checkpoint
 
 from workhorse_workflows import okf_builder
 from workhorse_workflows.okf_builder.shared import paths
+from workhorse_workflows.okf_builder.shared.schemas import SourceRequest
 from workhorse_workflows.okf_builder.workflow import MAX_STALL_ROUNDS, OkfBuilder
 
 SERVICE = "acme"
@@ -112,6 +113,7 @@ class _Agent:
         self.args: list[dict[str, Any]] = []
         self.cwds: list[str] = []
         self.targets: list[str] = []
+        self.add_dirs: list[list[str]] = []
 
     # -- the seam ---------------------------------------------------------
 
@@ -121,6 +123,7 @@ class _Agent:
         self.calls.append(stem)
         self.args.append(data)
         self.cwds.append(str(node.cwd))
+        self.add_dirs.append([str(path) for path in node.add_dirs or []])
         handler = getattr(self, f"_{stem.replace('-', '_')}")
         return f"(scripted) {node.prompt}", handler(data, self.counts()[stem])
 
@@ -151,6 +154,7 @@ class _Agent:
     #: A `fix:` item renders `main/prompts/repair.md` instead, so the dispatch above sees a
     #: different stem for the same node. Same turn, same seam — the prompt is what differs.
     _repair = _investigate
+    _document_change = _investigate
 
     def _recheck_coverage(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"needs_journeys": False, "discovered": []}
@@ -227,6 +231,62 @@ def test_a_complete_book_drains_converges_and_skips_the_walk(
     # a no-op that booted nothing.
     assert result.is_webapp is False, result
     assert result.entry_url == "", result
+
+
+def test_incremental_story_skips_enumeration_and_documents_one_changed_function(
+    incremental_repos: Callable[
+        [str, bool], tuple[Path, Path, Path, SourceRequest, str]
+    ],
+    tmp_path: Path,
+) -> None:
+    docs, source, workspace, request, story_id = incremental_repos("case", True)
+    agent = _Agent(docs)
+
+    result = _drive(
+        _env(tmp_path),
+        agent,
+        service="billing",
+        docs_path=str(docs),
+        repo_dir=str(docs),
+        workspace_file=str(workspace),
+        story="TEAM-123",
+        sources=(request,),
+    )
+
+    assert agent.counts() == {"document-change": 1}, agent.counts()
+    args = agent.args_for("document-change")[0]
+    assert args["story_id"] == story_id
+    assert "Creating an invoice returns its identifier" in args["story_content"]
+    assert "repo://api-service/src/service.py::create_invoice" in args["item_context"]
+    assert agent.cwds == [str(docs)]
+    assert agent.add_dirs == [[str(docs), str(source)]]
+    assert result.story_id == story_id
+    assert result.changed_units == 1
+
+
+def test_incremental_empty_diff_is_a_clean_no_op(
+    incremental_repos: Callable[
+        [str, bool], tuple[Path, Path, Path, SourceRequest, str]
+    ],
+    tmp_path: Path,
+) -> None:
+    docs, _source, workspace, request, story_id = incremental_repos("case", False)
+    agent = _Agent(docs)
+
+    result = _drive(
+        _env(tmp_path),
+        agent,
+        service="billing",
+        docs_path=str(docs),
+        repo_dir=str(docs),
+        workspace_file=str(workspace),
+        story="TEAM-123",
+        sources=(request,),
+    )
+
+    assert agent.counts() == {}
+    assert result.story_id == story_id
+    assert result.changed_units == 0
 
 
 def test_the_build_scratch_ignores_itself_so_a_commit_all_cannot_eat_it(
@@ -396,6 +456,48 @@ def _answers(seen: list[str]) -> Callable[..., None]:
         path.write_text("STATUS: ANSWERED\n\nCarry on.\n", encoding="utf-8")
 
     return answered
+
+
+class _BreakIncremental(_Agent):
+    """Introduce a scoped doctor error after documenting the changed unit."""
+
+    def _document_change(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        concept = self.repo / "docs/features/billing/concepts/create-invoice.md"
+        concept.write_text(
+            concept.read_text(encoding="utf-8")
+            + "\n- code: `repo://api-service/src/service.py::missing`\n",
+            encoding="utf-8",
+        )
+        return super()._investigate(data, nth)
+
+
+def test_incremental_stall_blocks_after_identical_scoped_doctor_findings(
+    incremental_repos: Callable[
+        [str, bool], tuple[Path, Path, Path, SourceRequest, str]
+    ],
+    tmp_path: Path,
+) -> None:
+    docs, _source, workspace, request, _story_id = incremental_repos("case", True)
+    agent = _BreakIncremental(docs)
+    seen: list[str] = []
+
+    with (
+        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        pytest.raises(_Parked),
+    ):
+        _drive(
+            _env(tmp_path),
+            agent,
+            service="billing",
+            docs_path=str(docs),
+            repo_dir=str(docs),
+            workspace_file=str(workspace),
+            story="TEAM-123",
+            sources=(request,),
+        )
+
+    assert agent.counts()["repair"] == MAX_STALL_ROUNDS
+    assert "same unresolved findings" in seen[0]
 
 
 def test_the_item_ceiling_blocks_on_an_operator_gate_not_a_finished_book(

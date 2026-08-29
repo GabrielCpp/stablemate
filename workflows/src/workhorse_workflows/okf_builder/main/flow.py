@@ -61,13 +61,21 @@ from pathlib import Path
 from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, Workflow, WorkflowFailed
 from workhorse_workflows.okf_builder.main.nodes import (
     auto_waive,
+    check_incremental_context,
     compute_coverage,
     inventory_source,
     prepare,
 )
 from workhorse_workflows.okf_builder.shared import paths
 from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book
-from workhorse_workflows.okf_builder.shared.schemas import Discovery, Investigation, Prepared, Recheck
+from workhorse_workflows.okf_builder.shared.schemas import (
+    BuildResult,
+    Discovery,
+    Investigation,
+    Prepared,
+    Recheck,
+    SourceRequest,
+)
 from workhorse_workflows.okf_builder.shared.vocabulary import bullet_grammar, check_vocabulary
 from workhorse_workflows.okf_builder.shared.worklist import record, select_item
 from workhorse_workflows.okf_builder.walkthrough_web import WalkthroughWeb
@@ -113,6 +121,10 @@ class OkfBuilder(Workflow):
     #: `""` = full scan. A scope that cannot be computed blocks the run rather than
     #: silently widening.
     diff_base: str = ""
+    #: Story-aware incremental mode. Supplying either `story` or `sources` requires both.
+    story: str = ""
+    workspace_file: str = ""
+    sources: tuple[SourceRequest, ...] = ()
 
     def setup(self) -> Prepared:
         """Resolve every path and adopt (or reset) the worklist.
@@ -129,6 +141,9 @@ class OkfBuilder(Workflow):
             self.source_path,
             self.source_excludes,
             diff_base=self.diff_base,
+            story=self.story,
+            workspace_file=self.workspace_file,
+            sources=self.sources,
         )
 
     def labels(self) -> dict[str, str]:
@@ -148,7 +163,7 @@ class OkfBuilder(Workflow):
 
     # --- seeding ------------------------------------------------------------
 
-    def start(self) -> Continue:
+    def start(self) -> Continue | Done:
         """`check_ostler` + `decide_start`: can this run measure anything, and from where.
 
         No ostler, no graph, or an unusable source root and the run cannot measure what it
@@ -167,6 +182,14 @@ class OkfBuilder(Workflow):
         if self.recheck_only:
             self.logger.info("recheck-only: re-entering at the checkpoint, skipping discovery")
             return Continue(None, self.checkpoint)
+        if self.ctx.mode == "incremental":
+            if not self.ctx.packet.get("changedUnits"):
+                self.logger.info("incremental story diff is empty; no documentation work is due")
+                return Done(BuildResult(story_id=self.ctx.story_id, changed_units=0))
+            return Continue(
+                self.call(record, self.ctx.worklist_path, None, list(self.ctx.initial_items)),
+                self.select,
+            )
         return Continue(None, self.enumerate_surfaces)
 
     def enumerate_surfaces(self) -> Continue:
@@ -232,7 +255,9 @@ class OkfBuilder(Workflow):
             # gate file resumes at `refuel`, which grants another `max_items`.
             self.call(checkpoint_book, self.ctx.repo_root, self.ctx.features_root, rnd)
             return Await(
-                paths.operator_context_path(Path(self.ctx.repo_root), self.service),
+                paths.operator_context_path(
+                    Path(self.ctx.repo_root), self.service, self.ctx.scope_id
+                ),
                 f"okf-builder stopped at its {self.max_items * (refuels + 1)}-item "
                 f"ceiling with {pick.pending_count} item(s) still pending — the book "
                 f"is partial, not converged. It was canonicalized (`ostler fmt`) so "
@@ -247,6 +272,13 @@ class OkfBuilder(Workflow):
                 refuels=refuels,
             )
         if not pick.has_item:
+            if self.ctx.mode == "incremental":
+                return Continue(
+                    pick,
+                    self.incremental_check,
+                    stall=stall,
+                    signature=signature,
+                )
             return Continue(
                 pick,
                 self.checkpoint,
@@ -313,7 +345,7 @@ class OkfBuilder(Workflow):
         stall: int = 0,
         signature: str = "",
         refuels: int = 0,
-    ) -> Continue:
+    ) -> Continue | Await:
         """The heart: document ONE item to the spec-complete bar, or repair one finding.
 
         The turn returns the deeper items it revealed — elements, code layers, concepts,
@@ -337,16 +369,23 @@ class OkfBuilder(Workflow):
         `unparsed-check`, so the round spent money to move a finding sideways.
         """
         repair = item_kind.startswith("fix:")
+        change = item_kind == "change"
         where = f"{'repairing' if repair else 'documenting'} {item_kind} {item_target}"
         self.logger.info(
             "%s%s", where, f" · {progress}" if progress else "", extra={"activity": True}
         )
         result = self.agent(
-            "main/prompts/repair.md" if repair else "main/prompts/investigate.md",
+            (
+                "main/prompts/repair.md"
+                if repair
+                else "main/prompts/document-change.md"
+                if change
+                else "main/prompts/investigate.md"
+            ),
             returns=Investigation,
             power="medium",
             cwd=self.ctx.repo_root,
-            add_dirs=[self.ctx.repo_root],
+            add_dirs=list(dict.fromkeys((self.ctx.repo_root, *self.ctx.source_roots))),
             args={
                 "item_kind": item_kind,
                 "item_code": item_code,
@@ -362,8 +401,36 @@ class OkfBuilder(Workflow):
                 "repo_root": self.ctx.repo_root,
                 "source_root": self.ctx.source_root,
                 "source_excludes": self.ctx.source_excludes,
+                "story_id": self.ctx.story_id,
+                "story_path": self.ctx.story_path,
+                "story_content": self.ctx.story_content,
+                "acceptance_criteria": list(self.ctx.acceptance_criteria),
+                "source_roots": list(self.ctx.source_roots),
+                "packet": self.ctx.packet,
             },
         )
+        if change and result.doc_status == "partial":
+            return Await(
+                paths.operator_context_path(
+                    Path(self.ctx.repo_root), self.service, self.ctx.scope_id
+                ),
+                f"The source contract for {item_target} contradicts story "
+                f"{self.ctx.story_id}'s acceptance criteria. Reconcile the written "
+                "story or the implementation, then set STATUS: ANSWERED to retry this "
+                "change without marking it complete.",
+                self.investigate,
+                current_item=current_item,
+                item_kind=item_kind,
+                item_target=item_target,
+                item_context=item_context,
+                item_code=item_code,
+                progress=progress,
+                rnd=rnd,
+                rescan=rescan,
+                stall=stall,
+                signature=signature,
+                refuels=refuels,
+            )
         return Continue(
             result,
             self.record_item,
@@ -374,6 +441,55 @@ class OkfBuilder(Workflow):
             stall=stall,
             signature=signature,
             refuels=refuels,
+        )
+
+    def incremental_check(
+        self, stall: int = 0, signature: str = ""
+    ) -> Continue | Done | Await:
+        """Rebuild only this story's QA packet; requeue health debt or finish."""
+        result = self.call(
+            check_incremental_context,
+            self.ctx.repo_root,
+            self.ctx.spec_path,
+            self.ctx.story_id,
+            self.ctx.story_path,
+            self.ctx.source_requests,
+            self.ctx.source_checkouts,
+            self.ctx.baseline_doctor_errors,
+        )
+        if result.error:
+            raise WorkflowFailed(
+                result.error,
+                failure_class="okf-builder-incremental-context-invalid",
+                artifacts={"spec_path": self.ctx.spec_path},
+            )
+        if result.clean:
+            return Done(
+                BuildResult(
+                    story_id=self.ctx.story_id,
+                    changed_units=len(result.packet.get("changedUnits", [])),
+                )
+            )
+        next_stall = stall + 1 if result.signature == signature else 0
+        if next_stall >= MAX_STALL_ROUNDS:
+            return Await(
+                paths.operator_context_path(Path(self.ctx.repo_root), self.service),
+                "okf-builder's incremental checks returned the same unresolved findings "
+                f"for {MAX_STALL_ROUNDS} rounds. Inspect the story packet and worklist, "
+                "then set `STATUS: ANSWERED` to grant another repair attempt.",
+                self.incremental_check,
+                stall=0,
+                signature=result.signature,
+            )
+        self.logger.warning(
+            "incremental context still has %d scoped finding(s); requeueing",
+            len(result.items),
+        )
+        return Continue(
+            self.call(record, self.ctx.worklist_path, None, result.items),
+            self.select,
+            stall=next_stall,
+            signature=result.signature,
         )
 
     def record_item(

@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class OkfResult(BaseModel):
@@ -49,6 +49,26 @@ class OkfResult(BaseModel):
 
 
 # ── the run's setting: what `prepare` resolved ──────────────────────────────
+
+
+class SourceRequest(BaseModel):
+    """One source repository and surface participating in a story build."""
+
+    model_config = ConfigDict(frozen=True)
+
+    repo: str = Field(min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    surface: str = Field(min_length=1)
+    root: str = "."
+    base: str = Field(min_length=1)
+    head: str = "WORKTREE"
+
+    @field_validator("root")
+    @classmethod
+    def _relative_root(cls, value: str) -> str:
+        normalized = value.replace("\\", "/").strip("/") or "."
+        if normalized == ".." or normalized.startswith("../"):
+            raise ValueError("source roots must be repository-relative")
+        return normalized
 
 
 class Prepared(OkfResult):
@@ -85,6 +105,43 @@ class Prepared(OkfResult):
     diff_scope_count: int = 0
     #: Why the run cannot proceed, when it cannot.
     prepare_error: str = ""
+    #: `bulk` for the exhaustive crawler, `incremental` for a story's source diff.
+    mode: str = "bulk"
+    #: Stable identity of this exact story/source/change scope.
+    scope_id: str = "bulk"
+    #: Canonical story identity and source file, empty in bulk mode.
+    story_id: str = ""
+    story_path: str = ""
+    story_content: str = ""
+    acceptance_criteria: tuple[dict[str, str], ...] = ()
+    #: The QA packet's spec directory and packet, empty in bulk mode.
+    spec_path: str = ""
+    packet: dict[str, Any] = {}
+    #: Typed source inputs plus their resolved checkout roots.
+    source_requests: tuple[SourceRequest, ...] = ()
+    source_checkouts: dict[str, str] = {}
+    source_roots: tuple[str, ...] = ()
+    baseline_doctor_errors: tuple[str, ...] = ()
+    #: Initial incremental work, ready for the ordinary worklist drain.
+    initial_items: tuple[dict[str, Any], ...] = ()
+
+
+class BuildResult(OkfResult):
+    """A clean incremental completion, including the no-change case."""
+
+    mode: str = "incremental"
+    story_id: str = ""
+    changed_units: int = 0
+
+
+class IncrementalCheck(OkfResult):
+    """The refreshed story packet and any health work it still requires."""
+
+    clean: bool = False
+    packet: dict[str, Any] = {}
+    items: list[dict[str, Any]] = []
+    error: str = ""
+    signature: str = ""
 
 
 # ── the drain loop ──────────────────────────────────────────────────────────
@@ -277,16 +334,19 @@ class WalkSeed(OkfResult):
 __all__ = [
     "AppBoot",
     "BrowserBoot",
+    "BuildResult",
     "Checkpoint",
     "Coverage",
     "Discovery",
     "Investigation",
+    "IncrementalCheck",
     "OkfResult",
     "Pick",
     "Prepared",
     "Recheck",
     "Recorded",
     "SourceInventory",
+    "SourceRequest",
     "TornDown",
     "WalkSeed",
     "WalkTurn",

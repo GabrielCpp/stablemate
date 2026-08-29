@@ -23,6 +23,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from ostler import Ostler
+
+from workhorse_workflows.okf_builder.shared.schemas import SourceRequest
 
 #: The book, the source subtree and the package all share this name — `prepare` defaults
 #: `source_path` to `service`, so a one-input run resolves `<repo>/acme`.
@@ -144,3 +147,106 @@ def _commit(repo: Path, message: str) -> None:
     subprocess.run(
         ["git", "commit", "-qm", message], cwd=repo, check=True, stdout=subprocess.DEVNULL
     )
+
+
+@pytest.fixture
+def incremental_repos(
+    tmp_path: Path, write: Callable[[Path, str], Path]
+) -> Callable[[str, bool], tuple[Path, Path, Path, SourceRequest, str]]:
+    """Create independently-versioned docs/source repos for one story diff."""
+
+    def make(
+        name: str = "case", changed: bool = True
+    ) -> tuple[Path, Path, Path, SourceRequest, str]:
+        docs = tmp_path / name / "product-docs"
+        source = tmp_path / name / "api-service"
+        docs.mkdir(parents=True)
+        source.mkdir(parents=True)
+        for root in (docs, source):
+            for args in (
+                ("init", "-q", "-b", "main"),
+                ("config", "user.email", "test@example.com"),
+                ("config", "user.name", "Test"),
+            ):
+                subprocess.run(
+                    ["git", *args], cwd=root, check=True, stdout=subprocess.DEVNULL
+                )
+
+        references = docs / ".claude/skills/ostler-okf/references"
+        write(references / "node-types/concept.md", "# concept\n")
+        write(references / "bullet-grammar.md", "# bullets\n")
+        write(references / "check-vocabulary.md", "# checks\n")
+
+        okf = Ostler(docs)
+        created_epic = okf.create_epic("billing", "Billing", prefix="BILL")
+        assert created_epic.ok
+        created_story = okf.create_story("billing", "create-invoice", "Create invoice")
+        assert created_story.ok
+        found = okf.graph.find_story("create-invoice")
+        assert found is not None
+        story = found[1]
+        assert story.story_md is not None
+        story.story_md.write_text(
+            story.story_md.read_text(encoding="utf-8")
+            .replace("slug: create-invoice", "externalKey: TEAM-123\nslug: create-invoice")
+            .replace(
+                "## Context\n",
+                "## Context\n\nAn operator creates an invoice from the billing surface.\n",
+            )
+            .replace(
+                "## Acceptance Criteria\n",
+                "## Acceptance Criteria\n\n- AC-1: Creating an invoice returns its identifier.\n",
+            ),
+            encoding="utf-8",
+        )
+        write(
+            docs / "docs/features/billing/concepts/create-invoice.md",
+            """---
+type: concept
+title: Create invoice
+---
+# Create invoice
+
+- code: `repo://api-service/src/service.py::create_invoice`
+""",
+        )
+        _commit(docs, "seed docs")
+
+        implementation = write(
+            source / "src/service.py",
+            "def create_invoice():\n    return 'old'\n",
+        )
+        _commit(source, "seed source")
+        base = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=source,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if changed:
+            implementation.write_text(
+                "def create_invoice():\n    return 'new'\n", encoding="utf-8"
+            )
+
+        workspace = tmp_path / name / "product.code-workspace"
+        workspace.write_text(
+            json.dumps(
+                {
+                    "folders": [
+                        {"name": "product-docs", "path": "product-docs"},
+                        {"name": "api-service", "path": "api-service"},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        return (
+            docs,
+            source,
+            workspace,
+            SourceRequest(repo="api-service", surface="billing", root="src", base=base),
+            story.eid,
+        )
+
+    return make

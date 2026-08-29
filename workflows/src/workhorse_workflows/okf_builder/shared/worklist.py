@@ -31,6 +31,48 @@ def _norm(s: object) -> str:
     return " ".join(str(s or "").split()).strip().lower()
 
 
+def _book_has_docs(features: Path) -> bool:
+    return features.is_dir() and any(features.rglob("*.md"))
+
+
+def load_worklist(
+    path: Path,
+    service: str,
+    features: Path,
+    *,
+    scope_id: str = "bulk",
+    mode: str = "bulk",
+) -> tuple[dict[str, Any], bool]:
+    """Load compatible drain memory, or return a freshly stamped worklist."""
+    fresh: dict[str, Any] = {
+        "service": service,
+        "book": str(features),
+        "scope_id": scope_id,
+        "mode": mode,
+        "items": [],
+    }
+    if not path.exists():
+        return fresh, False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return fresh, True
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        return fresh, True
+    if data.get("service", service) != service:
+        return fresh, True
+    if data.get("scope_id", "bulk") != scope_id or data.get("mode", "bulk") != mode:
+        return fresh, True
+    done = sum(1 for item in data["items"] if item.get("status") == "done")
+    if done and not _book_has_docs(features):
+        return fresh, True
+    data.setdefault("service", service)
+    data["scope_id"] = scope_id
+    data["mode"] = mode
+    data["book"] = str(features)
+    return data, False
+
+
 @blueprint.node
 def select_item(
     logger: logging.Logger,
@@ -187,4 +229,4 @@ def record(
     return Recorded(done_count=done, pending_count=pend, added=added)
 
 
-__all__ = ["record", "select_item"]
+__all__ = ["load_worklist", "record", "select_item"]

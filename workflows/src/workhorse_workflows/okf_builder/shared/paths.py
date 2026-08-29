@@ -90,9 +90,11 @@ def ensure_build_dir(root: Path) -> Path:
     return build
 
 
-def worklist_path(root: Path, service: str) -> Path:
-    """The drain loop's memory. `all` when no service is named, matching the book."""
-    return build_dir(root) / f"{service or 'all'}.worklist.json"
+def worklist_path(root: Path, service: str, scope_id: str = "") -> Path:
+    """The drain memory, optionally isolated to one deterministic incremental scope."""
+    name = service or "all"
+    suffix = f".{scope_id}" if scope_id else ""
+    return build_dir(root) / f"{name}{suffix}.worklist.json"
 
 
 def diff_scope_path(root: Path, service: str) -> Path:
@@ -105,7 +107,7 @@ def diff_scope_path(root: Path, service: str) -> Path:
     return build_dir(root) / f"{service or 'all'}.diff-scope.json"
 
 
-def operator_context_path(root: Path, service: str) -> Path:
+def operator_context_path(root: Path, service: str, scope_id: str = "") -> Path:
     """Where a budget stop parks its questions, and where an answer resumes the run.
 
     Run state like the worklist beside it, not a document: the gitignored build dir is the
@@ -113,7 +115,8 @@ def operator_context_path(root: Path, service: str) -> Path:
     writes the pending count and the resume instruction, the operator edits the file, the
     resume consumes it. Nothing downstream reads it after that.
     """
-    return build_dir(root) / f"{service or 'all'}.context.md"
+    suffix = f".{scope_id}" if scope_id else ""
+    return build_dir(root) / f"{service or 'all'}{suffix}.context.md"
 
 
 def walk_worklist_path(root: Path, service: str) -> Path:
