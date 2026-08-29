@@ -127,6 +127,58 @@ def test_source_content_changes_do_not_share_worklist_memory(
     assert first.worklist_path != second.worklist_path
 
 
+def test_two_source_roots_in_one_repository_share_one_repository_context(
+    incremental_repos: Callable[
+        [str, bool], tuple[Path, Path, Path, SourceRequest, str]
+    ],
+    logger: logging.Logger,
+) -> None:
+    docs, source, workspace, request, _story_id = incremental_repos("case", False)
+    second = source / "worker/jobs.py"
+    second.parent.mkdir(parents=True)
+    second.write_text("def dispatch_invoice():\n    return 'old'\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=source, check=True)
+    subprocess.run(["git", "commit", "-qm", "add worker"], cwd=source, check=True)
+    base = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=source,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    (source / "src/service.py").write_text(
+        "def create_invoice():\n    return 'new'\n", encoding="utf-8"
+    )
+    second.write_text("def dispatch_invoice():\n    return 'new'\n", encoding="utf-8")
+    sources = (
+        request.model_copy(update={"base": base}),
+        SourceRequest(
+            repo="api-service",
+            surface="billing-worker",
+            root="worker",
+            base=base,
+        ),
+    )
+
+    result = prepare(
+        logger,
+        docs_path=str(docs),
+        repo_dir=str(docs),
+        service="billing",
+        story="TEAM-123",
+        workspace_file=str(workspace),
+        sources=sources,
+    )
+
+    assert result.ostler_ok, result.prepare_error
+    assert len(result.packet["repositories"]) == 1
+    assert result.packet["repositories"][0]["scopes"] == [
+        {"surface": "billing", "root": "src"},
+        {"surface": "billing-worker", "root": "worker"},
+    ]
+    assert len(result.packet["changedUnits"]) == 2
+
+
 def test_unmapped_change_is_seeded_instead_of_rejected(
     incremental_repos: Callable[
         [str, bool], tuple[Path, Path, Path, SourceRequest, str]

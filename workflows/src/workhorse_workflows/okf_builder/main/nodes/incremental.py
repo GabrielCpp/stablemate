@@ -162,6 +162,39 @@ def _doctor_errors(report: dict[str, Any]) -> tuple[str, ...]:
     )
 
 
+def _source_repositories(
+    sources: tuple[SourceRequest, ...], checkouts: dict[str, str]
+) -> tuple[SourceRepository, ...]:
+    grouped: dict[str, tuple[str, str, list[SourceScope]]] = {}
+    for request in sources:
+        existing = grouped.get(request.repo)
+        if existing is None:
+            grouped[request.repo] = (
+                request.base,
+                request.head,
+                [SourceScope(surface=request.surface, root=request.root)],
+            )
+            continue
+        base, head, scopes = existing
+        if (request.base, request.head) != (base, head):
+            raise ValueError(
+                f"source repository {request.repo!r} has conflicting base/head revisions"
+            )
+        scope = SourceScope(surface=request.surface, root=request.root)
+        if scope not in scopes:
+            scopes.append(scope)
+    return tuple(
+        SourceRepository(
+            id=repo,
+            checkout=checkouts[repo],
+            base=base,
+            head=head,
+            scopes=tuple(scopes),
+        )
+        for repo, (base, head, scopes) in grouped.items()
+    )
+
+
 def prepare_incremental(
     logger: logging.Logger,
     root: Path,
@@ -196,7 +229,6 @@ def prepare_incremental(
         return Prepared(repo_root=str(root), mode="incremental", prepare_error=str(exc))
 
     workspace = resolve_workspace(workspace_file, repo_dir or root)
-    repositories: list[SourceRepository] = []
     checkouts: dict[str, str] = {}
     for request in sources:
         row = workspace.get(request.repo)
@@ -208,15 +240,10 @@ def prepare_incremental(
             )
         checkout = str(Path(row["path"]).resolve())
         checkouts[request.repo] = checkout
-        repositories.append(
-            SourceRepository(
-                id=request.repo,
-                checkout=checkout,
-                base=request.base,
-                head=request.head,
-                scopes=(SourceScope(surface=request.surface, root=request.root),),
-            )
-        )
+    try:
+        repositories = _source_repositories(sources, checkouts)
+    except ValueError as exc:
+        return Prepared(repo_root=str(root), mode="incremental", prepare_error=str(exc))
     canonical_story = resolved_story.eid or resolved_story.slug
     spec = okf.spec_path(canonical_story)
     outcome = okf.qa_context(
@@ -224,7 +251,7 @@ def prepare_incremental(
         head="WORKTREE",
         spec=spec,
         story_file=resolved_story.story_md,
-        repositories=tuple(repositories),
+        repositories=repositories,
     )
     packet = outcome.data
     if outcome.status == "invalid" or not isinstance(packet, dict) or "changedUnits" not in packet:
@@ -255,7 +282,8 @@ def prepare_incremental(
             if request.head == "WORKTREE"
             else (request.base, request.head, "--", request.root)
         )
-        source_fingerprints[request.repo] = hashlib.sha256(
+        key = f"{request.repo}:{request.surface}:{request.root}"
+        source_fingerprints[key] = hashlib.sha256(
             diff_text(checkouts[request.repo], *diff_args).encode()
         ).hexdigest()
     scope_id = _scope_id(
@@ -319,16 +347,10 @@ def check_incremental_context(
     baseline_doctor_errors: tuple[str, ...],
 ) -> IncrementalCheck:
     """Rebuild the packet and return only actionable incremental health failures."""
-    repositories = tuple(
-        SourceRepository(
-            id=request.repo,
-            checkout=source_checkouts[request.repo],
-            base=request.base,
-            head=request.head,
-            scopes=(SourceScope(surface=request.surface, root=request.root),),
-        )
-        for request in source_requests
-    )
+    try:
+        repositories = _source_repositories(source_requests, source_checkouts)
+    except ValueError as exc:
+        return IncrementalCheck(error=str(exc))
     outcome = Ostler(repo_root).qa_context(
         base="HEAD",
         head="WORKTREE",
