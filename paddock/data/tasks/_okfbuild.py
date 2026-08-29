@@ -106,8 +106,10 @@ def run_build(run: Run, fixture: Fixture) -> None:
 
     One trial per round: a build is its own control — there is no defect to seed, and
     the ruler grades the artifact rather than a verdict. The witness is `docs/` plus the
-    config files ostler roots on (`capture_witness`), which is exactly what every ruler
-    below reads, so a sealed result stays re-scorable on a machine that never ran it.
+    config files ostler roots on (`capture_witness`) *plus the source root the book
+    cites* — doctor grades code grounding by resolving every `code:` ref, so a witness
+    without the source scores a converged book as a wall of `dangling-code-ref` errors.
+    Sealing the source keeps the result re-scorable on a machine that never ran it.
     """
     checkout = stablemate_checkout(run)
     budget = run.param_float("budget", fixture.budget_s)
@@ -155,7 +157,9 @@ def run_build(run: Run, fixture: Fixture) -> None:
         )
         wall = time.monotonic() - started
 
-    witness = capture_witness(run.repo, trials_dir(run) / run_id / "witness")
+    witness = capture_witness(
+        run.repo, trials_dir(run) / run_id / "witness", extra=(fixture.source_path,)
+    )
     run.write_json(trials_dir(run) / "trials.json", [{
         "run_id": run_id,
         "rc": result.returncode,

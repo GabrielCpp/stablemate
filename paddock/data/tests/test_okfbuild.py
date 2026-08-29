@@ -101,6 +101,30 @@ def test_an_unreadable_witness_is_none_never_a_count(tmp_path: Path) -> None:
     assert okfbuild.graph_counts(empty) is None
 
 
+def test_sealed_witness_carries_the_source_the_book_cites(tmp_path: Path) -> None:
+    """Doctor resolves every `code:` ref, so a witness sealed without the source root
+    scores a converged book as a wall of `dangling-code-ref` errors — the artifact the
+    first scored run printed (98e over a book whose live doctor said 0). `run_build`
+    seals `fixture.source_path` for exactly this reason."""
+    repo = tmp_path / "repo"
+    write(
+        repo / "docs" / "features" / "svc" / "policy-format.md",
+        "---\ntype: concept\nslug: policy-format\ntitle: Policy format\n---\n"
+        "# Policy format\n\n- code: `svc/policy.go::Parse`\n",
+    )
+    write(repo / "svc" / "policy.go", "package svc\n\nfunc Parse() {}\n")
+
+    bare = okfbuild.capture_witness(repo, tmp_path / "bare")
+    bare_doctor = okfbuild.doctor_counts(bare)
+    assert bare_doctor is not None
+    assert "dangling-code-ref" in {f["code"] for f in bare_doctor["findings"]}
+
+    sealed = okfbuild.capture_witness(repo, tmp_path / "sealed", extra=("svc",))
+    sealed_doctor = okfbuild.doctor_counts(sealed)
+    assert sealed_doctor is not None
+    assert "dangling-code-ref" not in {f["code"] for f in sealed_doctor["findings"]}
+
+
 def test_coverage_is_the_builders_own_claim(tmp_path: Path) -> None:
     root = witness(tmp_path)
     assert okfbuild.coverage_counts(root, fixture()) is None
