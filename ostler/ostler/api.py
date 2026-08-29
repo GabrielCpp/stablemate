@@ -466,9 +466,12 @@ class Ostler:
                                          waivers=waivers)
 
     # -- path resolution ----------------------------------------------------
-    def spec_path(self, slug: str) -> str:
-        """Spec directory for a story slug (``ostler path spec``)."""
-        return path_mod.resolve_spec(self.graph, slug)
+    def spec_path(self, story: str) -> str:
+        """Spec directory for a story, by slug or minted id (``ostler path spec``).
+
+        Keyed by the minted id when the story has one — see :func:`ostler.path.resolve_spec`.
+        """
+        return path_mod.resolve_spec(self.graph, story)
 
     def epic_path(self, epic: str) -> str:
         """Directory of an epic, by number or bare slug (``ostler path epic``).

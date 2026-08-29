@@ -52,6 +52,28 @@ def test_next_epic_and_story(repo: Path):
     assert select.next_story(load(repo), "epic-a") is None
 
 
+def test_next_story_reports_the_minted_id(tmp_path: Path):
+    crud.create_epic(load(tmp_path), "e", "E", prefix="x")
+    crud.create_story(load(tmp_path), "e", "a", "A")
+    ns = present(select.next_story(load(tmp_path), "e"))
+    # The id, not only the slug: it is what trailers and spec dirs are keyed by.
+    assert ns["id"].startswith("x-")
+
+
+def test_story_id_survives_an_epic_block_that_never_recorded_it(tmp_path: Path):
+    write(tmp_path / "docs/epics/e/epic.md", "\n".join([
+        "---", "type: epic", "id: t-9", "title: E", "---", "# Epic: E", "",
+        "## Stories", "", "### a", "- title: A", "- covers: (none)", "",
+    ]) + "\n")
+    write(tmp_path / "docs/epics/e/stories/a/story.md", "\n".join([
+        "---", "type: story", "id: X-LEGACY7", "slug: a", "status: Not started", "---",
+        "# Story: A", "",
+    ]) + "\n")
+    found = load(tmp_path).find_story("a")
+    assert found is not None
+    assert found[1].eid == "X-LEGACY7"
+
+
 def test_next_epic_uses_milestone_dependency_order(repo: Path):
     write(repo / "docs/milestones/feature.md", """---
 type: milestone

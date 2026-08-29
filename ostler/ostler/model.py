@@ -237,10 +237,15 @@ class Graph:
                 return milestone
         return None
 
-    def find_story(self, slug: str) -> tuple[Epic, Story] | None:
+    def find_story(self, ref: str) -> tuple[Epic, Story] | None:
+        """The story named by *ref* — a slug, or the minted id the story is addressable by."""
         for e in self.epics:
             for s in e.stories:
-                if s.slug == slug:
+                if s.slug == ref:
+                    return e, s
+        for e in self.epics:
+            for s in e.stories:
+                if s.eid and s.eid == ref:
                     return e, s
         return None
 
@@ -1026,6 +1031,10 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
         if c.exists() and c.is_file():
             story.story_md = c
             doc = markdown.split(c.read_text(encoding="utf-8"))
+            if not story.eid and doc.frontmatter:
+                # crud writes the minted id in both places; a story whose epic block
+                # predates that still carries it in its own frontmatter.
+                story.eid = str(doc.frontmatter.get("id") or "")
             refs = doc.refs
             story.doc_refs = refs.doc_hrefs
             story.status = story_status(doc)

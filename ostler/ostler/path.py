@@ -99,10 +99,24 @@ def epics_index(graph: Graph) -> Path:
     return epics_root(graph) / "index.md"
 
 
-def resolve_spec(graph: Graph, slug: str) -> str:
-    """Resolve a story slug to its spec directory path (relative to root)."""
+def resolve_spec(graph: Graph, story: str) -> str:
+    """Resolve a story (slug or minted id) to its spec directory path (relative to root).
+
+    The directory is keyed by the **minted id** (``ACME-01H…``) — the identity that survives
+    a slug rename and matches the trailer a commit carries — not the slug the caller may
+    have handed in. Two fallbacks keep old trees readable: a story that predates minted ids
+    keys by its slug, and a spec already on disk under the slug stays where its readers know
+    it rather than being shadowed by an empty id-keyed path.
+    """
     specs_root = graph.doc_roots["specs"]
-    return str(specs_root.relative_to(graph.root) / slug)
+    key = story
+    found = graph.find_story(story)
+    if found is not None:
+        _, s = found
+        key = s.eid or s.slug
+        if key != s.slug and not (specs_root / key).is_dir() and (specs_root / s.slug).is_dir():
+            key = s.slug
+    return str(specs_root.relative_to(graph.root) / key)
 
 
 def epic_dirs_under(epics_root: Path) -> list[Path]:

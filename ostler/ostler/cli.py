@@ -473,7 +473,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # ---- path resolution -----------------------------------------------------
     pa = sub.add_parser("path", help="resolve a slug to its canonical path")
     pas = pa.add_subparsers(dest="what", required=True)
-    pa_spec = pas.add_parser("spec", help="spec dir for a story slug")
+    pa_spec = pas.add_parser("spec", help="spec dir for a story (slug or minted id)")
     pa_spec.add_argument("slug")
     pa_epic = pas.add_parser("epic", help="directory for an epic (number or bare slug)")
     pa_epic.add_argument("epic")
