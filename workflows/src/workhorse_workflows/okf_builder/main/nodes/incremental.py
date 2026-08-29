@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler import Ostler
+from ostler.provenance import source_freshness
 from ostler.qa.source_context import SourceRepository, SourceScope
 
 from workhorse_workflows.okf_builder.shared import paths
@@ -162,6 +163,36 @@ def _doctor_errors(report: dict[str, Any]) -> tuple[str, ...]:
     )
 
 
+def _stored_packet(spec_path: Path) -> dict[str, Any] | None:
+    try:
+        packet = json.loads((spec_path / "qa-okf-context.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return packet if isinstance(packet, dict) else None
+
+
+def _freshness_items(
+    okf: Ostler, spec_path: str | Path, checkouts: dict[str, str]
+) -> list[dict[str, Any]]:
+    path = Path(spec_path)
+    packet = _stored_packet(path if path.is_absolute() else okf.root / path)
+    if packet is None:
+        return []
+    freshness = source_freshness(
+        okf.graph, packet, {repo: Path(path) for repo, path in checkouts.items()}
+    )
+    return [
+        {
+            "kind": "refresh:source",
+            "target": str(row["repository"]),
+            "context": json.dumps(row, sort_keys=True),
+            "requeue": True,
+        }
+        for row in freshness
+        if row["status"] != "fresh"
+    ]
+
+
 def _source_repositories(
     sources: tuple[SourceRequest, ...], checkouts: dict[str, str]
 ) -> tuple[SourceRepository, ...]:
@@ -246,6 +277,7 @@ def prepare_incremental(
         return Prepared(repo_root=str(root), mode="incremental", prepare_error=str(exc))
     canonical_story = resolved_story.eid or resolved_story.slug
     spec = okf.spec_path(canonical_story)
+    freshness_items = _freshness_items(okf, spec, checkouts)
     outcome = okf.qa_context(
         base="HEAD",
         head="WORKTREE",
@@ -275,6 +307,7 @@ def prepare_incremental(
         story_path=story_path,
         acceptance_criteria=acceptance,
     )
+    items.extend(freshness_items)
     source_fingerprints = {}
     for request in sources:
         diff_args = (
@@ -351,7 +384,9 @@ def check_incremental_context(
         repositories = _source_repositories(source_requests, source_checkouts)
     except ValueError as exc:
         return IncrementalCheck(error=str(exc))
-    outcome = Ostler(repo_root).qa_context(
+    okf = Ostler(repo_root)
+    freshness_items = _freshness_items(okf, Path(spec_path), source_checkouts)
+    outcome = okf.qa_context(
         base="HEAD",
         head="WORKTREE",
         spec=spec_path,
@@ -369,12 +404,13 @@ def check_incremental_context(
         acceptance_criteria=acceptance,
         health_only=True,
     )
+    items.extend(freshness_items)
     affected_paths = {
         str(row.get("node", "")).partition("#")[0]
         for row in packet.get("directNodes", [])
         if row.get("node")
     }
-    doctor = Ostler(repo_root).doctor()
+    doctor = okf.doctor()
     if doctor.status == "invalid":
         return IncrementalCheck(error=doctor.message, packet=packet)
     baseline = set(baseline_doctor_errors)

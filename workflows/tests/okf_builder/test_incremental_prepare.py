@@ -275,6 +275,44 @@ def test_incremental_check_requeues_doctor_error_on_affected_document(
     assert any(item["kind"] == "fix:missing-code-symbol" for item in result.items)
 
 
+def test_incremental_check_requeues_body_only_source_drift(
+    incremental_repos: Callable[
+        [str, bool], tuple[Path, Path, Path, SourceRequest, str]
+    ],
+    logger: logging.Logger,
+) -> None:
+    docs, source, workspace, request, story_id = incremental_repos("case", True)
+    prepared = prepare(
+        logger,
+        docs_path=str(docs),
+        repo_dir=str(docs),
+        service="billing",
+        story="TEAM-123",
+        workspace_file=str(workspace),
+        sources=(request,),
+    )
+    (source / "src/service.py").write_text(
+        "def create_invoice():\n    return 'changed after documentation'\n",
+        encoding="utf-8",
+    )
+
+    result = check_incremental_context(
+        logger,
+        str(docs),
+        prepared.spec_path,
+        story_id,
+        prepared.story_path,
+        (request,),
+        prepared.source_checkouts,
+        prepared.baseline_doctor_errors,
+    )
+
+    refresh = next(item for item in result.items if item["kind"] == "refresh:source")
+    assert not result.clean
+    assert refresh["target"] == "api-service"
+    assert json.loads(refresh["context"])["status"] == "stale"
+
+
 def test_bulk_prepare_keeps_the_legacy_worklist_scope(
     booked: Path, logger: logging.Logger
 ) -> None:
