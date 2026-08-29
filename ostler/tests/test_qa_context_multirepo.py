@@ -31,6 +31,13 @@ def test_external_source_repository_maps_qualified_code_ref(tmp_path: Path) -> N
     docs = tmp_path / "product-docs"
     source = tmp_path / "api-service"
     (docs / "docs/features/billing").mkdir(parents=True)
+    story = docs / "docs/epics/billing/stories/create-invoice/story.md"
+    story.parent.mkdir(parents=True)
+    story.write_text(
+        "---\nid: BILL-01ABCDEF\nexternalKey: TEAM-123\nslug: create-invoice\n"
+        "type: story\n---\n# Create invoice\n",
+        encoding="utf-8",
+    )
     (source / "src").mkdir(parents=True)
     (docs / "docs/features/billing/create.md").write_text(
         """---
@@ -56,6 +63,7 @@ title: Create invoice
     packet = build_context(
         docs,
         base=docs_base,
+        story_file=story,
         repositories=(
             SourceRepository(
                 id="api-service",
@@ -68,6 +76,11 @@ title: Create invoice
 
     assert validate_context(packet) == []
     assert packet["version"] == 2
+    assert packet["story"] == {
+        "id": "BILL-01ABCDEF",
+        "externalKey": "TEAM-123",
+        "slug": "create-invoice",
+    }
     assert packet["repositories"] == [
         {
             "id": "api-service",
@@ -90,6 +103,46 @@ title: Create invoice
         }
     ]
     assert not packet["healthFindings"]
+
+
+def test_external_file_owner_reason_keeps_repository_qualification(
+    tmp_path: Path,
+) -> None:
+    docs = tmp_path / "product-docs"
+    source = tmp_path / "api-service"
+    (docs / "docs/features/billing").mkdir(parents=True)
+    (source / "src").mkdir(parents=True)
+    (docs / "docs/features/billing/create.md").write_text(
+        "---\ntype: concept\ntitle: Create invoice\n---\n# Create invoice\n\n"
+        "- code: `repo://api-service/src/service.py`\n",
+        encoding="utf-8",
+    )
+    implementation = source / "src/service.py"
+    implementation.write_text("value = 'old'\n", encoding="utf-8")
+    docs_base = _init(docs)
+    source_base = _init(source)
+    implementation.write_text("value = 'new'\n", encoding="utf-8")
+
+    packet = build_context(
+        docs,
+        base=docs_base,
+        repositories=(
+            SourceRepository(
+                id="api-service",
+                checkout=str(source),
+                base=source_base,
+                scopes=(SourceScope(surface="billing", root="src"),),
+            ),
+        ),
+    )
+
+    assert packet["directNodes"][0]["reasons"] == [
+        {
+            "kind": "file-owner",
+            "ref": "repo://api-service/src/service.py",
+            "key": "code",
+        }
+    ]
 
 
 def test_identical_paths_in_two_repositories_do_not_cross_map(tmp_path: Path) -> None:

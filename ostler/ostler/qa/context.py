@@ -343,7 +343,11 @@ def build_context(
                     # owner, not two, so the shared-file count below stays honest.
                     mapped = owned_file = True
                     direct_reasons.setdefault(node_id, []).append(
-                        {"kind": "file-owner", "ref": change.path, "key": key}
+                        {
+                            "kind": "file-owner",
+                            "ref": _source_ref(change.repository, change.path),
+                            "key": key,
+                        }
                     )
         if not mapped:
             surface = change.surface or _surface_owner(change.path, source_roots)
@@ -356,7 +360,10 @@ def build_context(
                 mapped = True
                 for node_id in surface_nodes:
                     direct_reasons.setdefault(node_id, []).append(
-                        {"kind": "surface-owner", "ref": f"{surface}:{change.path}"}
+                        {
+                            "kind": "surface-owner",
+                            "ref": f"{surface}:{_source_ref(change.repository, change.path)}",
+                        }
                     )
             else:
                 health.append(
@@ -686,6 +693,7 @@ def build_context(
         "verificationRefs": verification_refs,
         "verificationIndex": verification_index,
         "healthFindings": health,
+        "story": _story_identity(story_file),
         "acceptanceCriteria": _acceptance_criteria(story_file),
         "obligations": obligations,
     }
@@ -1919,3 +1927,15 @@ def _acceptance_criteria(story_file: Path | None) -> list[dict[str, str]]:
         number, requirement = (match.group(1), match.group(2)) if match else (str(index), text)
         criteria.append({"id": f"ac:{number}", "requirement": requirement, "kind": "behavioral"})
     return criteria
+
+
+def _story_identity(story_file: Path | None) -> dict[str, str]:
+    if story_file is None or not story_file.is_file():
+        return {}
+    frontmatter = markdown.split(story_file.read_text(encoding="utf-8")).frontmatter or {}
+    values = {
+        "id": str(frontmatter.get("id") or ""),
+        "externalKey": str(frontmatter.get("externalKey") or ""),
+        "slug": str(frontmatter.get("slug") or story_file.parent.name),
+    }
+    return {key: value for key, value in values.items() if value}
