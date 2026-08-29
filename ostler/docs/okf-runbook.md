@@ -244,6 +244,11 @@ ostler qa stack up --runbook release   # when the book carries more than one
 ```
 
 `up` adopts an already-serving stack when `reuse:` allows and it proves fresh, and reports
-`status: none` when the book declares no stack at all. `down` rather than `stop`, because
+`status: none` when the book declares no stack at all. Adoption skips only `prepare` and
+`launch` — `seed` and `health` run on every path, and an adopted stack that fails either
+falls back to a full bring-up rather than being returned broken. `down` runs the book's
+`stop:` recipe, and also reaps a foreground server a prior `up` recorded in the stablemate
+cache for this app directory — so a leaked stack from a dead run is torn down even when the
+book declares no `stop:`. `down` rather than `stop`, because
 `ostler qa stop` already means "kill this session's daemons" and a verb that means two
 lifecycles in one namespace is a verb somebody eventually spends on the wrong one.
