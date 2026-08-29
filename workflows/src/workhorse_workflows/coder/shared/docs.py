@@ -121,7 +121,8 @@ def ungrounded_refs(packet: dict[str, Any], inherited: set[str]) -> list[str]:
     """
     exactly_grounded, file_grounded = _grounded_paths(packet)
     ungrounded: list[str] = []
-    for change in packet.get("changedCode", []):
+    changes = packet.get("changedUnits") or packet.get("changedCode", [])
+    for change in changes:
         if not isinstance(change, dict):
             continue
         if change.get("status") == "deleted":
@@ -138,9 +139,15 @@ def ungrounded_refs(packet: dict[str, Any], inherited: set[str]) -> list[str]:
             continue
         base_symbols = set(change.get("baseSymbols", []))
         head_symbols = set(change.get("headSymbols", []))
+        repository = str(change.get("repository", ""))
+
+        def qualified(path: str, symbol: str = "") -> str:
+            ref = f"repo://{repository}/{path}" if repository else path
+            return f"{ref}::{symbol}" if symbol else ref
+
         required = {
-            *(f"{base_path}::{symbol}" for symbol in base_symbols if base_path),
-            *(f"{head_path}::{symbol}" for symbol in head_symbols if head_path),
+            *(qualified(base_path, symbol) for symbol in base_symbols if base_path),
+            *(qualified(head_path, symbol) for symbol in head_symbols if head_path),
         }
         if base_symbols | head_symbols:
             ungrounded.extend(
@@ -149,7 +156,7 @@ def ungrounded_refs(packet: dict[str, Any], inherited: set[str]) -> list[str]:
         elif candidates.isdisjoint(
             {ref.partition("::")[0] for ref in exactly_grounded} | file_grounded
         ):
-            ungrounded.append(str(change.get("path", "<unknown>")))
+            ungrounded.append(qualified(str(change.get("path", "<unknown>"))))
     return ungrounded
 
 

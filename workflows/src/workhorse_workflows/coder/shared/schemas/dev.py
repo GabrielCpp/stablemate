@@ -455,6 +455,25 @@ class DispatchEntry(CoderResult):
     label: str = ""
 
 
+class StorySource(CoderResult):
+    """One story-scoped source root with its repository provenance."""
+
+    repo: str = ""
+    checkout: str = ""
+    surface: str = ""
+    root: str = "."
+    base: str = ""
+    head: str = "WORKTREE"
+
+
+class StorySources(CoderResult):
+    """Multi-repository source context derived from exact story commit trailers."""
+
+    status: Literal["valid", "invalid"] = "valid"
+    sources: tuple[StorySource, ...] = ()
+    errors: tuple[str, ...] = ()
+
+
 class QaRunEntry(CoderResult):
     """One service's QA brief, derived from its dispatch entry.
 

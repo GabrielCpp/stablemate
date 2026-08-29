@@ -65,6 +65,7 @@ from workhorse_workflows.coder.shared.dev import (
     plan_summary,
     read_operator_context,
     resolve_impl_context,
+    resolve_story_sources,
 )
 from workhorse_workflows.coder.shared.docs import detect_okf_docs, features_root
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
@@ -728,7 +729,22 @@ class Qa(Workflow):
         # describes a plan and a diff that have both been rewritten since.
         self._reset_chains()
         self.call(clear_qa_evidence, self.ctx.spec_dir)
-        self.call(resolve_impl_context, self.ctx.spec_dir, self.target_env, self.docs_path)
+        impl = self.call(
+            resolve_impl_context, self.ctx.spec_dir, self.target_env, self.docs_path
+        )
+        if self.workspace_file and self.ctx.story_id:
+            sources = self.call(
+                resolve_story_sources,
+                tuple(impl.dispatch_list),
+                self.ctx.story_slug,
+                self.ctx.story_id,
+                self.docs_path,
+            )
+            if sources.status != "valid":
+                raise WorkflowFailed(
+                    "story source provenance could not be resolved: "
+                    + "; ".join(sources.errors)
+                )
         okf = self.call(detect_okf_docs, self.docs_path)
         return Continue(
             okf,
@@ -764,6 +780,11 @@ class Qa(Workflow):
             "WORKTREE",
             self.docs_path,
             preexisting=tuple(self.preexisting),
+            story_sources=(
+                self.output(resolve_story_sources).sources
+                if self.workspace_file and self.ctx.story_id
+                else ()
+            ),
         )
         result = self.call(
             validate_okf_context, self.ctx.spec_dir, build.status, self.docs_path

@@ -28,10 +28,12 @@ from typing import Literal
 
 from git.exc import GitError
 from ostler import Ostler
+from ostler.qa.source_context import SourceRepository, SourceScope
 from workhorse_workflows.kit import find_docs_root, open_repo
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.qa_support import notes_for, parse_source_roots
 from workhorse_workflows.coder.shared.schemas.okf import OkfContextResult
+from workhorse_workflows.coder.shared.schemas.dev import StorySource
 from workhorse_workflows.coder.shared.worktree import digest, untouched_since
 
 #: What `ostler qa context` writes. All three have to be on disk for a memo hit to mean
@@ -151,6 +153,36 @@ def remember(spec_path: Path, key: str | None, result: OkfContextResult) -> None
         return
 
 
+def _source_repositories(sources: tuple[StorySource, ...]) -> tuple[SourceRepository, ...]:
+    grouped: dict[str, tuple[str, str, str, list[SourceScope]]] = {}
+    for source in sources:
+        existing = grouped.get(source.repo)
+        scope = SourceScope(surface=source.surface, root=source.root)
+        if existing is None:
+            grouped[source.repo] = (
+                source.checkout,
+                source.base,
+                source.head,
+                [scope],
+            )
+            continue
+        checkout, base, head, scopes = existing
+        if (source.checkout, source.base, source.head) != (checkout, base, head):
+            raise ValueError(f"source repository {source.repo!r} has conflicting provenance")
+        if scope not in scopes:
+            scopes.append(scope)
+    return tuple(
+        SourceRepository(
+            id=repo,
+            checkout=checkout,
+            base=base,
+            head=head,
+            scopes=tuple(scopes),
+        )
+        for repo, (checkout, base, head, scopes) in grouped.items()
+    )
+
+
 @blueprint.node
 def build_okf_context(
     logger: logging.Logger,
@@ -163,6 +195,7 @@ def build_okf_context(
     docs_path: str = "",
     repo_dir: str = "",
     preexisting: tuple[str, ...] = (),
+    story_sources: tuple[StorySource, ...] = (),
 ) -> OkfContextResult:
     """Map a diff onto the OKF graph and write the obligation packet into the spec dir.
 
@@ -201,17 +234,39 @@ def build_okf_context(
         for name in (*PACKET_FILES, STAMP_FILE)
         if spec_path.is_relative_to(root)
     )
+    repositories = _source_repositories(story_sources)
+    source_signatures = {
+        source.repo: worktree_signature(
+            Path(source.checkout), source.base, source.head
+        )
+        for source in story_sources
+    }
+    docs_signature = worktree_signature(root, base, head, outputs)
+    signature = (
+        hashlib.sha256(
+            json.dumps(
+                {"docs": docs_signature, "sources": source_signatures}, sort_keys=True
+            ).encode()
+        ).hexdigest()
+        if story_sources and docs_signature is not None and all(source_signatures.values())
+        else docs_signature
+    )
+    arguments: dict[str, object] = {
+        "spec": str(spec_path),
+        "story_file": story_file,
+        "features_root": features_root,
+        "source_roots": sorted(source_roots),
+        "base": base,
+        "head": head,
+        "exclude_paths": inherited,
+    }
+    if story_sources:
+        arguments["story_sources"] = [
+            source.model_dump(mode="json") for source in story_sources
+        ]
     key = fingerprint(
-        worktree_signature(root, base, head, outputs),
-        {
-            "spec": str(spec_path),
-            "story_file": story_file,
-            "features_root": features_root,
-            "source_roots": sorted(source_roots),
-            "base": base,
-            "head": head,
-            "exclude_paths": inherited,
-        },
+        signature,
+        arguments,
     )
     memo = recall(spec_path, key)
     if memo is not None:
@@ -221,15 +276,26 @@ def build_okf_context(
             spec_dir,
         )
         return memo
-    outcome = Ostler(docs_root).qa_context(
-        base=base,
-        head=head,
-        spec=spec_dir,
-        source_roots=parse_source_roots(list(source_roots)),
-        features_root=features_root,
-        story_file=story_file or None,
-        exclude_paths=inherited,
-    )
+    if repositories:
+        outcome = Ostler(docs_root).qa_context(
+            base=base,
+            head=head,
+            spec=spec_dir,
+            features_root=features_root,
+            story_file=story_file or None,
+            exclude_paths=inherited,
+            repositories=repositories,
+        )
+    else:
+        outcome = Ostler(docs_root).qa_context(
+            base=base,
+            head=head,
+            spec=spec_dir,
+            source_roots=parse_source_roots(list(source_roots)),
+            features_root=features_root,
+            story_file=story_file or None,
+            exclude_paths=inherited,
+        )
     status: Literal["passed", "invalid"] = "passed" if outcome.ok else "invalid"
     logger.info("qa context build for spec_dir=%s: status=%s", spec_dir, status)
     notes = notes_for(

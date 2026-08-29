@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 from workhorse.testing import make_git_repo
 from workhorse_workflows.coder.shared import okf
+from workhorse_workflows.coder.shared.schemas.dev import StorySource
 
 LOGGER = logging.getLogger("test")
 
@@ -34,17 +35,19 @@ class FakeOstler:
     """Stands in for the ~28s build: counts its calls and writes what the real one writes."""
 
     calls: list[Path] = []
+    contexts: list[dict[str, Any]] = []
     ok = True
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
 
-    def qa_context(self, *, spec: str, **_: Any) -> FakeOutcome:
+    def qa_context(self, *, spec: str, **kwargs: Any) -> FakeOutcome:
         spec_dir = self.root / spec
         spec_dir.mkdir(parents=True, exist_ok=True)
         for name in okf.PACKET_FILES:
             (spec_dir / name).write_text("{}\n", encoding="utf-8")
         FakeOstler.calls.append(spec_dir)
+        FakeOstler.contexts.append(kwargs)
         return FakeOutcome(ok=FakeOstler.ok)
 
 
@@ -53,6 +56,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = make_git_repo(tmp_path / "app")
     (root / "docs").mkdir()
     FakeOstler.calls = []
+    FakeOstler.contexts = []
     FakeOstler.ok = True
     monkeypatch.setattr(okf, "Ostler", FakeOstler)
     return root
@@ -149,3 +153,51 @@ def test_the_stamp_records_the_key_the_next_visit_recomputes(repo: Path) -> None
             "exclude_paths": [],
         },
     )
+
+
+def test_multi_repository_context_is_grouped_and_invalidated_by_source_edits(
+    repo: Path, tmp_path: Path
+) -> None:
+    source = make_git_repo(tmp_path / "api-service")
+    (source / "src").mkdir()
+    (source / "worker").mkdir()
+    (source / "src/service.py").write_text("value = 0\n", encoding="utf-8")
+    (source / "worker/jobs.py").write_text("value = 0\n", encoding="utf-8")
+    commit(source, "seed source")
+    base = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=source,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    (source / "src/service.py").write_text("value = 1\n", encoding="utf-8")
+    sources = (
+        StorySource(
+            repo="api-service",
+            checkout=str(source),
+            surface="api-service",
+            root="src",
+            base=base,
+        ),
+        StorySource(
+            repo="api-service",
+            checkout=str(source),
+            surface="api-service",
+            root="worker",
+            base=base,
+        ),
+    )
+
+    okf.build_okf_context(
+        LOGGER, spec_dir="docs/spec", docs_path=str(repo), story_sources=sources
+    )
+    repositories = FakeOstler.contexts[0]["repositories"]
+    assert len(repositories) == 1
+    assert [scope.root for scope in repositories[0].scopes] == ["src", "worker"]
+
+    (source / "src/service.py").write_text("value = 2\n", encoding="utf-8")
+    okf.build_okf_context(
+        LOGGER, spec_dir="docs/spec", docs_path=str(repo), story_sources=sources
+    )
+    assert len(FakeOstler.calls) == 2

@@ -16,7 +16,9 @@ from pathlib import Path
 from ostler import Ostler, crud
 from ostler.model import load
 
-from workhorse_workflows.coder.shared.dev import changed_files
+from workhorse_workflows import coder
+from workhorse_workflows.coder.shared.dev import changed_files, resolve_story_sources
+from workhorse_workflows.coder.shared.schemas.dev import DispatchEntry
 from workhorse_workflows.coder.shared.story import _story_id
 
 LOGGER = logging.getLogger("test")
@@ -74,3 +76,89 @@ def test_changed_files_without_an_id_still_greps_the_slug(
     git(repo, "commit", "-q", "-m", "feat: add old\n\nStory: 01-foo")
 
     assert "old.py" in changed_files(LOGGER, str(repo), "01-foo").paths
+
+
+def test_story_sources_begin_before_the_earliest_exact_story_trailer(
+    tmp_path: Path, git: Callable[..., subprocess.CompletedProcess]
+) -> None:
+    docs = tmp_path / "docs"
+    repo = tmp_path / "api-service"
+    docs.mkdir()
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "test@example.com")
+    git(repo, "config", "user.name", "Test")
+    (repo / "service.py").write_text("value = 0\n", encoding="utf-8")
+    git(repo, "add", "service.py")
+    git(repo, "commit", "-qm", "seed")
+    base = git(repo, "rev-parse", "HEAD").stdout.strip()
+    for value, trailer in ((1, "01-foo"), (2, "x-01ABCDEF")):
+        (repo / "service.py").write_text(f"value = {value}\n", encoding="utf-8")
+        git(repo, "add", "service.py")
+        git(repo, "commit", "-q", "-m", f"feat: value {value}\n\nStory: {trailer}")
+
+    result = resolve_story_sources(
+        LOGGER,
+        (
+            DispatchEntry(
+                service="api-service::src",
+                repo="api-service",
+                cwd=str(repo),
+                service_path="src",
+            ),
+            DispatchEntry(
+                service="api-service::worker",
+                repo="api-service",
+                cwd=str(repo),
+                service_path="worker",
+            ),
+        ),
+        "01-foo",
+        "x-01ABCDEF",
+        str(docs),
+    )
+
+    assert result.status == "valid"
+    assert [source.root for source in result.sources] == ["src", "worker"]
+    assert {source.base for source in result.sources} == {base}
+
+
+def test_story_sources_reject_a_similar_but_nonexact_trailer(
+    tmp_path: Path, git: Callable[..., subprocess.CompletedProcess]
+) -> None:
+    docs = tmp_path / "docs"
+    repo = tmp_path / "api-service"
+    docs.mkdir()
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "test@example.com")
+    git(repo, "config", "user.name", "Test")
+    (repo / "service.py").write_text("value = 1\n", encoding="utf-8")
+    git(repo, "add", "service.py")
+    git(repo, "commit", "-q", "-m", "seed\n\nStory: x-01ABCDEF-extra")
+
+    result = resolve_story_sources(
+        LOGGER,
+        (
+            DispatchEntry(
+                service="api-service::.",
+                repo="api-service",
+                cwd=str(repo),
+            ),
+        ),
+        "01-foo",
+        "x-01ABCDEF",
+        str(docs),
+    )
+
+    assert result.status == "invalid"
+    assert "no commit carries an exact Story trailer" in result.errors[0]
+
+
+def test_settlement_prompt_commits_with_the_minted_story_identity() -> None:
+    prompt = (
+        Path(coder.__file__).parent / "main/prompts/settle-worktree.md"
+    ).read_text(encoding="utf-8")
+
+    assert "`Story: {{ story_id }}`" in prompt
+    assert "`Story: {{ story_slug }}`" not in prompt

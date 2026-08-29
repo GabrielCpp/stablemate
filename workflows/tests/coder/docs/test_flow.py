@@ -405,6 +405,52 @@ def test_sources_outside_the_docs_worktree_take_the_semantic_route(
     )
 
 
+def test_minted_story_maps_an_external_repository_from_its_story_commit(
+    docs: Path,
+    elsewhere: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    git: Callable[..., subprocess.CompletedProcess],
+    write: Callable[[Path, str], Path],
+) -> None:
+    story_id = "x-01ABCDEF"
+    story = docs / STORY_REL / "story.md"
+    story.write_text(
+        story.read_text(encoding="utf-8").replace(
+            "type: story", f"id: {story_id}\ntype: story"
+        ),
+        encoding="utf-8",
+    )
+    write(elsewhere / "widget.go", "package api\n\nfunc Widget() {}\n")
+    git(elsewhere, "add", "widget.go")
+    git(
+        elsewhere,
+        "commit",
+        "-q",
+        "-m",
+        f"feat(api): add widget\n\nStory: {story_id}",
+    )
+
+    class _Grounding(_Agent):
+        def _document_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+            write(
+                docs / "docs/features/widget.md",
+                "---\ntype: concept\nslug: widget\ntitle: Widget\n---\n"
+                "# Widget\n\n- code: `repo://api/widget.go::Widget`\n",
+            )
+            return super()._document_story(data, nth)
+
+    run_env = env()
+    result = drive_flow(Docs(story=STORY, epic=EPIC), run_env, _Grounding())
+
+    assert result.status == "passed", result
+    assert _output(run_env, classify_documentation_context)["mode"] == "semantic"
+    packet = _output(run_env, build_okf_context)["ostler"]
+    assert packet["version"] == 2
+    assert packet["repositories"][0]["id"] == "api"
+    assert packet["changedUnits"][0]["repository"] == "api"
+
+
 def test_sources_inside_the_docs_worktree_take_the_local_route(
     docs: Path,
     alongside: Path,

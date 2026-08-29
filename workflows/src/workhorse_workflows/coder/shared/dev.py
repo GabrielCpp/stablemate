@@ -36,8 +36,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from git.exc import GitError
 from workhorse import gates
-from workhorse_workflows.kit import find_docs_root, find_repo_root, load_json
+from workhorse_workflows.kit import find_docs_root, find_repo_root, load_json, open_repo
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared import story_status
 from workhorse_workflows.coder.shared.contract import service_problems
@@ -56,6 +57,8 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     PlanValidation,
     QaRunEntry,
     StoryStatusCheck,
+    StorySource,
+    StorySources,
     lift_fixture,
 )
 from workhorse_workflows.kit import (
@@ -1036,6 +1039,85 @@ def changed_files(
         if done.returncode == 0:
             found += [line.strip() for line in done.stdout.splitlines() if line.strip()]
     return ChangedFiles(paths=sorted(set(found)))
+
+
+def _story_base(cwd: str, refs: tuple[str, ...]) -> str:
+    repo = open_repo(cwd)
+    trailers = {f"Story: {ref}" for ref in refs if ref}
+    matching = [
+        commit
+        for commit in repo.iter_commits("HEAD")
+        if trailers.intersection(line.strip() for line in commit.message.splitlines())
+    ]
+    if not matching:
+        raise ValueError("no commit carries an exact Story trailer for this story")
+    earliest = matching[-1]
+    if not earliest.parents:
+        raise ValueError("the story's earliest commit is the repository root")
+    return earliest.parents[0].hexsha
+
+
+@blueprint.node
+def resolve_story_sources(
+    logger: logging.Logger,
+    dispatch: tuple[DispatchEntry, ...],
+    story_slug: str = "",
+    story_id: str = "",
+    docs_path: str = "",
+    repo_dir: str = "",
+) -> StorySources:
+    """Resolve each implementation repository to the parent before this story began."""
+    docs_root = Path(find_docs_root(docs_path, repo_dir)).resolve()
+    dispatch_roots = {
+        Path(entry.cwd).resolve() for entry in dispatch if entry.cwd
+    }
+    if not dispatch_roots or dispatch_roots == {docs_root}:
+        return StorySources()
+    refs = tuple(dict.fromkeys(ref for ref in (story_id, story_slug) if ref))
+    if not refs:
+        return StorySources(status="invalid", errors=("the story has no identity",))
+    bases: dict[str, tuple[str, str]] = {}
+    sources: list[StorySource] = []
+    errors: list[str] = []
+    seen: set[tuple[str, str, str]] = set()
+    for entry in dispatch:
+        cwd = str(Path(entry.cwd).resolve()) if entry.cwd else ""
+        repo_name = (entry.repo or Path(cwd).name).strip()
+        surface = (entry.repo or entry.service).strip()
+        root = entry.service_path.strip().replace("\\", "/").strip("/") or "."
+        if not cwd or not repo_name or not surface:
+            errors.append(f"implementation entry {entry.service!r} has no source repository")
+            continue
+        existing = bases.get(repo_name)
+        if existing is not None and existing[0] != cwd:
+            errors.append(f"source repository {repo_name!r} resolves to multiple checkouts")
+            continue
+        if existing is None:
+            try:
+                base = _story_base(cwd, refs)
+            except (GitError, OSError, ValueError) as exc:
+                errors.append(f"source repository {repo_name!r}: {exc}")
+                continue
+            bases[repo_name] = (cwd, base)
+        else:
+            base = existing[1]
+        key = (repo_name, surface, root)
+        if key in seen:
+            continue
+        seen.add(key)
+        sources.append(
+            StorySource(
+                repo=repo_name,
+                checkout=cwd,
+                surface=surface,
+                root=root,
+                base=base,
+            )
+        )
+    if errors:
+        logger.warning("story source provenance is invalid: %s", "; ".join(errors))
+        return StorySources(status="invalid", errors=tuple(errors))
+    return StorySources(sources=tuple(sources))
 
 
 @blueprint.node

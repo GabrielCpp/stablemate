@@ -44,6 +44,7 @@ from workhorse_workflows.coder.shared.dev import (
     plan_summary,
     read_operator_context,
     resolve_impl_context,
+    resolve_story_sources,
 )
 from workhorse_workflows.coder.shared.docs import (
     MAX_PROMPT_NOTE_CHARS,
@@ -301,6 +302,19 @@ class Docs(Workflow):
             raise WorkflowFailed(
                 f"the documentation context could not be read: {classification.notes}"
             )
+        if self.workspace_file and self.ctx.story_id:
+            sources = self.call(
+                resolve_story_sources,
+                tuple(impl.dispatch_list),
+                self.ctx.story_slug,
+                self.ctx.story_id,
+                self.docs_path,
+            )
+            if sources.status != "valid":
+                raise WorkflowFailed(
+                    "story source provenance could not be resolved: "
+                    + "; ".join(sources.errors)
+                )
         # The grounding worklist, before the author turn rather than after it. The gate
         # computes the same join from the same packet; paying for it once here is what
         # keeps the author from re-deriving it by hand, which it does badly and at length.
@@ -509,7 +523,7 @@ class Docs(Workflow):
         review turn is the authority. Nothing but an explicit pass reaches the reviewer.
         """
         classification = self.output(classify_documentation_context)
-        mode = classification.mode
+        mode = self._context_mode(classification)
         if mode == "error":
             raise WorkflowFailed(
                 f"the documentation context could not be read: {classification.notes}"
@@ -834,7 +848,22 @@ class Docs(Workflow):
             "WORKTREE",
             self.docs_path,
             preexisting=tuple(self.preexisting),
+            story_sources=(
+                self.output(resolve_story_sources).sources
+                if self.workspace_file and self.ctx.story_id
+                else ()
+            ),
         )
+
+    def _context_mode(self, classification: ContextClassification) -> str:
+        """Treat an explicit external repository packet as locally verifiable."""
+        if (
+            self.workspace_file
+            and self.ctx.story_id
+            and self.output(resolve_story_sources).sources
+        ):
+            return "local"
+        return classification.mode
 
     def _obligations(self, classification: ContextClassification) -> DocumentationObligations:
         """Build the diff packet and read the grounding worklist off it, before authoring.
@@ -844,14 +873,15 @@ class Docs(Workflow):
         The packet is rebuilt in `verify` against the tree the author left behind — this
         one is the *before* picture and is deliberately not reused as the gate's input.
         """
+        mode = self._context_mode(classification)
         build_status = ""
-        if classification.mode == "local":
+        if mode == "local":
             build_status = self._okf_packet(classification).status
         return self.call(
             documentation_obligations,
             self.docs_path,
             self.ctx.spec_dir,
-            classification.mode,
+            mode,
             build_status,
             preexisting=tuple(self.preexisting),
         )
