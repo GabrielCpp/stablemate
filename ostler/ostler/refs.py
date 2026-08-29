@@ -39,9 +39,49 @@ book wins; a tool that cannot parse it is the defect.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from ostler.markdown import leading_code_spans
+
+
+@dataclass(frozen=True, slots=True)
+class CodeRef:
+    """A code citation, optionally qualified by its repository."""
+
+    repository: str
+    path: str
+    symbol: str = ""
+
+
+def parse_code_ref(value: str) -> CodeRef:
+    """Parse a legacy or repository-qualified code reference."""
+    target, separator, symbol = value.partition("::")
+    repository = ""
+    path = target
+    if target.startswith("repo://"):
+        repository, slash, path = target.removeprefix("repo://").partition("/")
+        if not slash or not repository or not path:
+            msg = f"malformed repository-qualified code ref: {value!r}"
+            raise ValueError(msg)
+    return CodeRef(
+        repository=repository,
+        path=path.replace("\\", "/"),
+        symbol=symbol if separator else "",
+    )
+
+
+def render_code_ref(ref: CodeRef) -> str:
+    """Render a code reference in its canonical legacy or qualified form."""
+    path = ref.path.replace("\\", "/")
+    if ref.repository:
+        if not path:
+            msg = "malformed repository-qualified code ref: path must not be empty"
+            raise ValueError(msg)
+        target = f"repo://{ref.repository}/{path}"
+    else:
+        target = path
+    return f"{target}::{ref.symbol}" if ref.symbol else target
 
 
 def normalize_ref(value: str) -> str:
@@ -70,13 +110,32 @@ def code_refs(value: Any) -> list[str]:
         # opens with prose is a bare comma-separated list. The parser decides which, and
         # where each span ends — a backtick regex could not read ``a `b` c``.
         parts = leading_code_spans(item) or item.split(",")
-        out.extend(ref for ref in (normalize_ref(part) for part in parts) if ref)
+        for part in parts:
+            normalized = normalize_ref(part)
+            if not normalized:
+                continue
+            try:
+                normalized = render_code_ref(parse_code_ref(normalized))
+            except ValueError:
+                # Bullet extraction is intentionally tolerant; strict callers use parse_code_ref.
+                pass
+            out.append(normalized)
     return list(dict.fromkeys(out))
 
 
 def ref_path(ref: str) -> str:
     """The file part of a normalized ``path::symbol`` ref (the whole ref when it has none)."""
-    return ref.partition("::")[0]
+    try:
+        return parse_code_ref(ref).path
+    except ValueError:
+        return ref.partition("::")[0]
 
 
-__all__ = ["code_refs", "normalize_ref", "ref_path"]
+__all__ = [
+    "CodeRef",
+    "code_refs",
+    "normalize_ref",
+    "parse_code_ref",
+    "ref_path",
+    "render_code_ref",
+]

@@ -65,6 +65,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `story-id-mismatch` | error | The immutable id in a story's parent epic block differs from the id in `story.md`. Make the two copies agree; do not mint a replacement. |
 | `story-key-collision` | error | One id, slug, or provider-neutral `externalKey` names multiple stories. Keep every accepted story spelling graph-global and unambiguous. |
 | `story-status-mismatch` | error | Frontmatter `status` differs from the `## Implementation Status` value. |
+| `source-catalog-invalid` | error | The generated external source catalog is malformed or unreadable. Rebuild multi-repository context; do not hand-repair derived hashes or symbol tables. |
 | `unwritten-story` | error | A story is still a bare `ostler create story` scaffold. |
 | `story-covers-no-seed` | warn | A story lists no `seedItems`. |
 | `orphan-seed` | error | An active seed no story covers. |
@@ -107,6 +108,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | Code | Sev | Trigger and remedy |
 | --- | --- | --- |
 | `dangling-code-ref` | error | A `code:` target names no such file. The value is a path relative to the repo root, as `path::symbol`. |
+| `dangling-repository-ref` | error | A repository-qualified `code:` target names no repository in the generated source catalog. Refresh multi-repository context with the workspace repository available; never remove the qualifier and guess by path. |
 | `missing-code-symbol` | error | The file exists but does not **declare** that symbol. A re-export does not ground a citation. Read the file, find the symbol that now owns the behaviour, repoint the bullet — never waive it and never restore an old name. |
 | `unresolved-relation` | error | A relation bullet (`on:`/`parent:`/`extends:`/`detail:`/…) does not resolve. `fixable`. |
 | `dangling-link` | error | A markdown link's target file does not exist. `fixable`. |

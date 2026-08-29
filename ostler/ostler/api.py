@@ -81,6 +81,7 @@ from ostler.qa import (
     tools as qa_tools_mod,
 )
 from ostler.model import Epic, Graph, Story, find_root, load
+from ostler.qa.source_context import SourceRepository
 
 if TYPE_CHECKING:
     from ostler.edit import EditPlan
@@ -739,7 +740,8 @@ class Ostler:
                    source_roots: dict[str, builtins.list[str]] | None = None,
                    features_root: str = "",
                    story_file: str | Path | None = None,
-                   exclude_paths: Iterable[str] = ()) -> QaOutcome:
+                   exclude_paths: Iterable[str] = (),
+                   repositories: Iterable[SourceRepository] = ()) -> QaOutcome:
         """Build the base/head changed-code→OKF obligation packet and write it into
         ``spec`` (``ostler qa context``); ``data`` is the packet.
 
@@ -754,7 +756,7 @@ class Ostler:
             self.root, self._resolve(spec), base=base, head=head,
             source_roots=source_roots or {}, features_root=features_root,
             story_file=self._resolve(story_file) if story_file else None,
-            exclude_paths=exclude_paths)
+            exclude_paths=exclude_paths, repositories=tuple(repositories))
 
     def qa_context_validate(self, *, spec: str | Path) -> QaOutcome:
         """Validate ``qa-okf-context.json`` in ``spec`` (``ostler qa context-validate``);

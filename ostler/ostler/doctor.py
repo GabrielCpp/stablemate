@@ -24,6 +24,7 @@ from ostler.path import specs_root_in
 from ostler.qa import fixtures as fixtures_mod, runbook as runbook_mod
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
+from ostler.source_snapshots import load_catalog
 
 
 @dataclass
@@ -755,13 +756,49 @@ def _check_code_grounding(graph: Graph, f: list[Finding]) -> None:
     `markdown.iter_links` never yields it. The bullets are read directly, as the
     required-bullet loop does.
     """
+    try:
+        catalog = load_catalog(graph.root)
+    except (OSError, ValueError) as exc:
+        f.append(Finding(
+            "error", "source-catalog-invalid",
+            f"the external source catalog cannot be read: {exc}",
+            path="docs/features/sources.json"))
+        catalog = None
     for node in graph.ui_nodes:
         uitype = registry.ui_type(node.type)
         if uitype is None or "code" not in uitype.bullet_by_key:
             continue
         rel = node.path.relative_to(graph.root).as_posix()
         for ref in refs_mod.code_refs(node.meta.get("code")):
-            target_path, separator, symbol = ref.partition("::")
+            try:
+                parsed = refs_mod.parse_code_ref(ref)
+            except ValueError:
+                parsed = refs_mod.CodeRef("", ref)
+            target_path, symbol = parsed.path, parsed.symbol
+            if parsed.repository:
+                repository = catalog.repository(parsed.repository) if catalog else None
+                if repository is None:
+                    f.append(Finding(
+                        "error", "dangling-repository-ref",
+                        f"{node.id}: `code:` target '{ref}' — no source snapshot for "
+                        f"repository '{parsed.repository}'",
+                        path=rel, line=node.line, ref=ref))
+                    continue
+                source = next((item for item in repository.files if item.path == target_path), None)
+                if source is None:
+                    f.append(Finding(
+                        "error", "dangling-code-ref",
+                        f"{node.id}: `code:` target '{ref}' — no such file '{target_path}' "
+                        f"in source snapshot '{parsed.repository}'",
+                        path=rel, line=node.line, ref=ref))
+                    continue
+                if symbol and not _SPACE.search(symbol) and symbol not in source.symbols:
+                    f.append(Finding(
+                        "error", "missing-code-symbol",
+                        f"{node.id}: `code:` target '{ref}' — '{target_path}' does not declare "
+                        f"'{symbol}'", path=rel, line=node.line, ref=ref))
+                continue
+            separator = "::" if symbol else ""
             target = graph.root / target_path
             if not target.is_file():
                 f.append(Finding(

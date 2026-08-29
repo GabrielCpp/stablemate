@@ -202,6 +202,12 @@ inventory, and `vet` checks a rendered screenshot against what the book claims. 
 contract is in
 [docs/VET.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/VET.md).
 
+Code in the documentation repository keeps the existing `path::symbol` spelling. A book that cites
+a separate source repository qualifies the same reference with its stable workspace name:
+`repo://api-service/internal/items.py::create_item`. Multi-repository context generation writes a
+compact `docs/features/sources.json` catalog of file hashes and declarations, so `doctor` can ground
+those citations without copying source trees or depending on machine-local checkout paths.
+
 ### Verification control plane
 
 `ostler qa` owns the bookkeeping of a QA run. `qa context` turns a base/head diff into a

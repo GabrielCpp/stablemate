@@ -13,6 +13,8 @@ and the node documenting it went unfound.
 
 from __future__ import annotations
 
+import pytest
+
 from ostler import refs
 
 
@@ -113,4 +115,78 @@ def test_ref_path_splits_the_symbol_off():
 def test_normalize_ref_strips_a_single_targets_decoration():
     assert refs.normalize_ref(" `api/a.py`, ") == "api/a.py"
 
+
+def test_parse_legacy_ref_has_no_repository_and_normalizes_its_path():
+    assert refs.parse_code_ref(r"api\handlers.py::serve") == refs.CodeRef(
+        repository="",
+        path="api/handlers.py",
+        symbol="serve",
+    )
+
+
+def test_parse_qualified_ref_preserves_its_symbol():
+    assert refs.parse_code_ref(
+        r'repo://acme/api\handlers.py::describe("a::b") > serves',
+    ) == refs.CodeRef(
+        repository="acme",
+        path="api/handlers.py",
+        symbol='describe("a::b") > serves',
+    )
+
+
+def test_qualified_refs_keep_the_same_path_distinct_between_repositories():
+    value = "`repo://acme/src/main.py::run`, `repo://globex/src/main.py::run`"
+    assert refs.code_refs(value) == [
+        "repo://acme/src/main.py::run",
+        "repo://globex/src/main.py::run",
+    ]
+
+
+def test_qualified_duplicates_collapse_in_first_seen_order():
+    value = (
+        "`repo://globex/src/b.py`, `repo://acme/src/a.py`, "
+        "`repo://globex/src/b.py`"
+    )
+    assert refs.code_refs(value) == [
+        "repo://globex/src/b.py",
+        "repo://acme/src/a.py",
+    ]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "repo:///src/main.py::run",
+        "repo://acme/::run",
+        "repo://acme",
+    ],
+)
+def test_explicit_parse_rejects_malformed_qualified_refs(value: str):
+    with pytest.raises(ValueError, match="repository-qualified code ref"):
+        refs.parse_code_ref(value)
+
+
+def test_tolerant_bullet_extraction_keeps_malformed_qualified_refs():
+    value = "`repo://acme/::run`, `repo://acme/src/main.py::run`"
+    assert refs.code_refs(value) == [
+        "repo://acme/::run",
+        "repo://acme/src/main.py::run",
+    ]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "api/handlers.py",
+        "api/handlers.py::serve",
+        "repo://acme/api/handlers.py",
+        'repo://acme/api/handlers.py::describe("a::b") > serves',
+    ],
+)
+def test_render_roundtrips_parsed_refs(value: str):
+    assert refs.render_code_ref(refs.parse_code_ref(value)) == value
+
+
+def test_ref_path_returns_only_the_qualified_path_portion():
+    assert refs.ref_path("repo://acme/api/handlers.py::serve") == "api/handlers.py"
 

@@ -6,7 +6,7 @@ import json
 import re
 import subprocess
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,8 @@ from ostler import inventory, markdown, path as path_mod, refs as refs_mod, regi
 from ostler.model import Graph, _parse_ui_nodes, load
 from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.outcome import QaOutcome
+from ostler.qa.source_context import SourceRepository
+from ostler.source_snapshots import write_catalog
 
 #: The last-resort declaration shape, for a language with no parser and no entry in
 #: `inventory` — and for a Python file `ast` could not read. Declared in
@@ -157,6 +159,25 @@ class ChangedUnit:
     head_lines: tuple[int, ...]
     base_symbols: tuple[str, ...]
     head_symbols: tuple[str, ...]
+    repository: str = ""
+    surface: str = ""
+    source_root: str = ""
+
+
+def _source_ref(repository: str, path: str, symbol: str = "") -> str:
+    return refs_mod.render_code_ref(refs_mod.CodeRef(repository, path, symbol))
+
+
+def _ref_owns_change(value: str, change: ChangedUnit) -> bool:
+    """Whether one owning citation names either side of a changed source file."""
+    try:
+        cited = refs_mod.parse_code_ref(value)
+    except ValueError:
+        return False
+    return (
+        cited.repository == change.repository
+        and cited.path in {change.base_path, change.head_path}
+    )
 
 
 def build_context(
@@ -168,6 +189,7 @@ def build_context(
     features_root: str = "",
     story_file: Path | None = None,
     exclude_paths: Iterable[str] = (),
+    repositories: Sequence[SourceRepository] = (),
 ) -> dict[str, Any]:
     """Map a `base..head` code diff onto the OKF graph and return the obligation packet.
 
@@ -205,23 +227,60 @@ def build_context(
     # for that file: the deploy token committed in the clear lives in exactly such a file,
     # and the filter is what made it unreachable. The filters themselves stay pure.
     declared_config = {
-        refs_mod.ref_path(item)
+        item
         for node in nodes_by_id.values()
         for item in refs_mod.code_refs(node.get("bullets", {}).get("config"))
     }
+    repository_rows: list[dict[str, Any]] = []
+    repositories_by_id = {repository.id: repository for repository in repositories}
+    if repositories:
+        changes_all: list[ChangedUnit] = []
+        seen_repositories: set[str] = set()
+        for repository in repositories:
+            if repository.id in seen_repositories:
+                raise ValueError(f"duplicate source repository id {repository.id!r}")
+            seen_repositories.add(repository.id)
+            checkout = Path(repository.checkout).resolve()
+            roots: dict[str, list[str]] = {}
+            for scope in repository.scopes:
+                roots.setdefault(scope.surface, []).append(scope.root)
+            for change in _changed_units(checkout, repository.base, repository.head, roots):
+                changes_all.append(replace(
+                    change,
+                    repository=repository.id,
+                    surface=_surface_owner(change.path, roots),
+                    source_root=str(checkout),
+                ))
+            repository_rows.append({
+                "id": repository.id,
+                "base": repository.base,
+                "baseSha": _git(checkout, "rev-parse", "--verify",
+                                f"{repository.base}^{{commit}}").strip(),
+                "head": repository.head,
+                "headSha": (None if repository.head == "WORKTREE" else
+                            _git(checkout, "rev-parse", "--verify",
+                                 f"{repository.head}^{{commit}}").strip()),
+                "headAnchorSha": (_git(checkout, "rev-parse", "HEAD").strip()
+                                  if repository.head == "WORKTREE" else None),
+                "scopes": [scope.model_dump(mode="json") for scope in repository.scopes],
+            })
+    else:
+        changes_all = _changed_units(root, base, head, source_roots)
+
     changes = [
         change
-        for change in _changed_units(root, base, head, source_roots)
+        for change in changes_all
         if change.path not in excluded_paths
-        and not any(
+        and (change.repository or not any(
             change.path == prefix or change.path.startswith(prefix.rstrip("/") + "/")
             for prefix in excluded_doc_roots
-        )
+        ))
         and (
-            change.path in declared_config
+            _source_ref(change.repository, change.path) in declared_config
             or (
                 not _is_non_production_path(change.path)
-                and not _is_generated_unit(root, change)
+                and not _is_generated_unit(Path(change.source_root) if change.source_root else root,
+                                           change)
             )
         )
     ]
@@ -232,12 +291,12 @@ def build_context(
     for change in changes:
         refs = {
             *(
-                f"{change.base_path}::{symbol}"
+                _source_ref(change.repository, change.base_path, symbol)
                 for symbol in change.base_symbols
                 if change.base_path
             ),
             *(
-                f"{change.head_path}::{symbol}"
+                _source_ref(change.repository, change.head_path, symbol)
                 for symbol in change.head_symbols
                 if change.head_path
             ),
@@ -245,6 +304,8 @@ def build_context(
         changed_code.append(
             {
                 "path": change.path,
+                "repository": change.repository,
+                "id": _source_ref(change.repository, change.path),
                 "basePath": change.base_path,
                 "headPath": change.head_path,
                 "status": change.status,
@@ -274,7 +335,7 @@ def build_context(
                             {"kind": "changed-code", "ref": ref, "key": key}
                         )
                 elif not owned_file and any(
-                    refs_mod.ref_path(item) in {change.base_path, change.head_path}
+                    _ref_owns_change(item, change)
                     for item in cited
                 ):
                     # One file-owner reason per node and change, whichever key cited it
@@ -285,7 +346,7 @@ def build_context(
                         {"kind": "file-owner", "ref": change.path, "key": key}
                     )
         if not mapped:
-            surface = _surface_owner(change.path, source_roots)
+            surface = change.surface or _surface_owner(change.path, source_roots)
             surface_nodes = [
                 node_id
                 for node_id, node in nodes_by_id.items()
@@ -302,7 +363,7 @@ def build_context(
                     {
                         "kind": "unmapped-change",
                         "severity": "error",
-                        "path": change.path,
+                        "path": _source_ref(change.repository, change.path),
                         "message": "changed production unit has no exact symbol, file, or surface owner",
                     }
                 )
@@ -461,7 +522,9 @@ def build_context(
     for node_id in sorted(selected):
         node = nodes_by_id[node_id]
         for normalized in refs_mod.code_refs(node.get("bullets", {}).get("code")):
-            if not _grounding_exists(root, base, head, normalized):
+            if not _grounding_for_ref(
+                root, base, head, normalized, repositories_by_id
+            ):
                 health.append(
                     {
                         "kind": "dangling-grounding",
@@ -607,11 +670,12 @@ def build_context(
     ]
     obligations.sort(key=lambda item: _sort_key(str(item["id"])))
     return {
-        "version": 1,
+        "version": 2 if repositories else 1,
         "available": bool(nodes_by_id),
         "base": base,
         "head": head,
         "changedCode": changed_code,
+        **({"changedUnits": changed_code, "repositories": repository_rows} if repositories else {}),
         "directNodes": [
             {"node": node_id, "reasons": direct_reasons[node_id]}
             for node_id in sorted(direct_reasons)
@@ -770,13 +834,18 @@ def validate_context(packet: Any) -> list[str]:
     if not isinstance(packet, dict):
         return ["context must be a JSON object"]
     problems: list[str] = []
-    if packet.get("version") != 1:
-        problems.append("context.version must be 1")
+    version = packet.get("version")
+    if version not in (1, 2):
+        problems.append("context.version must be 1 or 2")
     if not isinstance(packet.get("available"), bool):
         problems.append("context.available must be boolean")
     for field in ("changedCode", "directNodes", "contracts", "journeys", "journeyNodes", "verificationRefs", "healthFindings", "obligations"):
         if not isinstance(packet.get(field), list):
             problems.append(f"context.{field} must be a list")
+    if version == 2:
+        for field in ("changedUnits", "repositories"):
+            if not isinstance(packet.get(field), list):
+                problems.append(f"context.{field} must be a list")
     if "verificationIndex" in packet and not isinstance(packet["verificationIndex"], list):
         problems.append("context.verificationIndex must be a list")
     seen: set[str] = set()
@@ -800,6 +869,7 @@ def cmd_context(
     features_root: str = "",
     story_file: Path | None = None,
     exclude_paths: Iterable[str] = (),
+    repositories: Sequence[SourceRepository] = (),
 ) -> QaOutcome:
     """Build the obligation packet, write it into *spec_dir*, and report the outcome.
 
@@ -817,7 +887,10 @@ def cmd_context(
             features_root=features_root,
             story_file=story_file,
             exclude_paths=exclude_paths,
+            repositories=repositories,
         )
+        if repositories:
+            write_catalog(load(root), tuple(repositories))
         json_path, md_path = write_context(packet, spec_dir)
     except (OSError, RuntimeError, ValueError) as exc:
         return QaOutcome(ok=False, message=str(exc), status="invalid",
@@ -1151,6 +1224,32 @@ def _grounding_exists(root: Path, base: str, head: str, ref: str) -> bool:
     # made every `code:` bullet naming a constant permanently unsatisfiable: the citation was
     # reported dangling in both base and head, and no rewrite of the book could clear it.
     return any(inventory.declares(path, text, symbol) for text in texts)
+
+
+def _grounding_for_ref(
+    root: Path,
+    base: str,
+    head: str,
+    ref: str,
+    repositories: dict[str, SourceRepository],
+) -> bool:
+    """Ground one citation in the docs repository or its named source repository."""
+    try:
+        parsed = refs_mod.parse_code_ref(ref)
+    except ValueError:
+        return False
+    if not parsed.repository:
+        return _grounding_exists(root, base, head, ref)
+    repository = repositories.get(parsed.repository)
+    if repository is None:
+        return False
+    local_ref = refs_mod.render_code_ref(replace(parsed, repository=""))
+    return _grounding_exists(
+        Path(repository.checkout).resolve(),
+        repository.base,
+        repository.head,
+        local_ref,
+    )
 
 
 def _git_bytes(root: Path, *args: str) -> bytes:

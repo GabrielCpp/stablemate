@@ -40,6 +40,7 @@ from workhorse.runner.failure import BackendInvocationError
 
 from ostler import Ostler
 from ostler.qa import QaOutcome
+from ostler.qa.source_context import SourceRepository
 
 from workhorse_workflows.coder.qa import flow as qa_flow
 from workhorse_workflows.coder.qa.flow import Qa
@@ -386,6 +387,7 @@ class _Session(Ostler):
         features_root: str = "",
         story_file: str | Path | None = None,
         exclude_paths: Iterable[str] = (),
+        repositories: Iterable[SourceRepository] = (),
     ) -> QaOutcome:
         self.script.contexts += 1
         self.script.context_args.append(
