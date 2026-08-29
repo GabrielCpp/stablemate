@@ -36,9 +36,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from git.exc import GitError
+from ostler.provenance import story_commits
 from workhorse import gates
-from workhorse_workflows.kit import find_docs_root, find_repo_root, load_json, open_repo
+from workhorse_workflows.kit import find_docs_root, find_repo_root, load_json
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared import story_status
 from workhorse_workflows.coder.shared.contract import service_problems
@@ -1042,19 +1042,13 @@ def changed_files(
 
 
 def _story_base(cwd: str, refs: tuple[str, ...]) -> str:
-    repo = open_repo(cwd)
-    trailers = {f"Story: {ref}" for ref in refs if ref}
-    matching = [
-        commit
-        for commit in repo.iter_commits("HEAD")
-        if trailers.intersection(line.strip() for line in commit.message.splitlines())
-    ]
+    matching = story_commits(Path(cwd), refs)
     if not matching:
         raise ValueError("no commit carries an exact Story trailer for this story")
-    earliest = matching[-1]
-    if not earliest.parents:
+    parent = matching[0].get("parent")
+    if not parent:
         raise ValueError("the story's earliest commit is the repository root")
-    return earliest.parents[0].hexsha
+    return str(parent)
 
 
 @blueprint.node
@@ -1095,7 +1089,7 @@ def resolve_story_sources(
         if existing is None:
             try:
                 base = _story_base(cwd, refs)
-            except (GitError, OSError, ValueError) as exc:
+            except (OSError, ValueError) as exc:
                 errors.append(f"source repository {repo_name!r}: {exc}")
                 continue
             bases[repo_name] = (cwd, base)
