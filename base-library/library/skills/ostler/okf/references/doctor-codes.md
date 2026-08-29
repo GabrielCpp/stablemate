@@ -140,7 +140,7 @@ files.
 | --- | --- | --- |
 | `unknown-bullet` | warn | A key that is load-bearing on *some* type used on a type that does not declare it — so here it is inert: nothing orders it, grades it, grounds it, or binds a `verify:` to it. Move the claim under a key this type mints from, or into prose. A key **no** type declares is the author's own vocabulary and is left alone. |
 | `overlong-normative-bullet` | error | One normative bullet runs past 700 characters of prose — too much to prove as one claim. Split it into one bullet per provable claim. |
-| `relation-without-subject` | warn | A relation bullet names no subject, so no other node can be found to share it. Lead with the record, event or lock it is about. |
+| `relation-without-subject` | warn | A relation bullet names no subject, so no other node can be found to share it. Lead with the record, event or lock it is about, as one lowercase slug before a spaced em dash — `- persistence: payout-record — …`. A Title Case name or a leading phrase is prose to the parser, not a subject. |
 | `compound-normative-bullet` | warn | One bullet states more than one observation. One bullet is one obligation proved by one scenario, so the clauses sharing it are covered by whichever one the planner read. Split by repeating the key. |
 | `unminted-claim` | warn | A node that mints nothing has a bullet that reads like a claim, under a key this type never grades. Nothing will ever ask a plan to prove it. Move it under a normative key, or into prose. |
 | `unparsed-check` | error | A `verify:` value is not a well-formed call. The suggestion echoes **that check's** own signature. A test path here belongs in `tests:`. |

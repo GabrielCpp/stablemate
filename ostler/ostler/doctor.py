@@ -1484,8 +1484,9 @@ def _check_ui(graph: Graph, f: list[Finding],
                     f.append(Finding(
                         "warn", "relation-without-subject",
                         f"{node.id}: `{key}:` names no subject, so no other node can be found "
-                        f"to share it; lead with the record, event or lock it is about — "
-                        f"`- {key}: <subject> — {_prose(value)[:40]}…`",
+                        f"to share it; lead with the record, event or lock it is about, as one "
+                        f"lowercase slug before a spaced em dash — "
+                        f"`- {key}: payout-record — {_prose(value)[:40]}…`",
                         path=rel, line=node.line, ref=f"{node.id}#{key}"))
                 reasons = _split_signals(value)
                 if reasons:
