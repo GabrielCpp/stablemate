@@ -288,6 +288,7 @@ def refine(
         add_dirs=workspace_dirs(flow),
         args=turn.args | {
             "story_slug": flow.ctx.story_slug,
+            "story_id": flow.ctx.story_id or flow.ctx.story_slug,
             "epic": flow.epic,
             "story_path": flow.ctx.story_path,
             "spec_dir": flow.ctx.spec_dir,
@@ -337,6 +338,7 @@ def implement_layer(flow: Dev, operator_context: str) -> ImplResult:
         add_dirs=workspace_dirs(flow),
         args=turn.args | {
             "story_slug": flow.ctx.story_slug,
+            "story_id": flow.ctx.story_id or flow.ctx.story_slug,
             "epic": flow.epic,
             "story_path": flow.ctx.story_path,
             "spec_dir": flow.ctx.spec_dir,

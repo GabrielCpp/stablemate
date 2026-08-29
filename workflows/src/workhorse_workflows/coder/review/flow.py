@@ -333,6 +333,7 @@ class Review(Workflow):
             add_dirs=workspace_dirs(self),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
+                "story_id": self.ctx.story_id or self.ctx.story_slug,
                 "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
@@ -379,6 +380,7 @@ class Review(Workflow):
             session=self._impl_chain(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
+                "story_id": self.ctx.story_id or self.ctx.story_slug,
                 "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
@@ -522,6 +524,7 @@ class Review(Workflow):
             session=self._impl_chain(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
+                "story_id": self.ctx.story_id or self.ctx.story_slug,
                 "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
@@ -585,6 +588,7 @@ class Review(Workflow):
             session=self._impl_chain(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
+                "story_id": self.ctx.story_id or self.ctx.story_slug,
                 "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,

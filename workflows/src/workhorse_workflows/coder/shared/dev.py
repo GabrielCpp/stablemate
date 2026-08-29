@@ -991,7 +991,9 @@ def check_story_status(
 
 
 @blueprint.node
-def changed_files(logger: logging.Logger, cwd: str = "", story_slug: str = "") -> ChangedFiles:
+def changed_files(
+    logger: logging.Logger, cwd: str = "", story_slug: str = "", story_id: str = ""
+) -> ChangedFiles:
     """Which files this story has already written in one service checkout.
 
     The re-seed for a recycled conversation — see `ChangedFiles`. Three halves, really, and
@@ -1014,10 +1016,14 @@ def changed_files(logger: logging.Logger, cwd: str = "", story_slug: str = "") -
     if not cwd or not Path(cwd).expanduser().is_dir():
         return ChangedFiles()
     commands = [["diff", "--name-only", "HEAD"], ["ls-files", "--others", "--exclude-standard"]]
-    if story_slug:
-        commands.append(
-            ["log", "--name-only", "--pretty=format:", f"--grep=Story: {story_slug}"]
-        )
+    if story_slug or story_id:
+        # Trailers carry the minted id when the story has one, the slug otherwise —
+        # and older commits may hold either. git ORs multiple --grep flags, so one
+        # log walk answers to both spellings.
+        greps = [
+            f"--grep=Story: {ref}" for ref in dict.fromkeys((story_id, story_slug)) if ref
+        ]
+        commands.append(["log", "--name-only", "--pretty=format:", *greps])
     found: list[str] = []
     for args in commands:
         try:

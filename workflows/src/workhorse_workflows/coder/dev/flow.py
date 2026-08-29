@@ -155,6 +155,7 @@ class Dev(Workflow):
             add_dirs=workspace_dirs(self),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
+                "story_id": self.ctx.story_id or self.ctx.story_slug,
                 "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
@@ -507,13 +508,14 @@ class Dev(Workflow):
                 # checkpointed, and a checkpoint holds JSON.
                 "report": report.model_dump(),
                 "changed_files": self.call(
-                    changed_files, layer.cwd, self.ctx.story_slug
+                    changed_files, layer.cwd, self.ctx.story_slug, self.ctx.story_id
                 ).paths,
                 "service": layer.service,
                 # The prompt commits its own fix now, and these two are the trailers that
                 # tie that commit back to the story it belongs to.
                 "epic": self.epic,
                 "story_slug": self.ctx.story_slug,
+                "story_id": self.ctx.story_id or self.ctx.story_slug,
             },
             session=backbone(self),
         )

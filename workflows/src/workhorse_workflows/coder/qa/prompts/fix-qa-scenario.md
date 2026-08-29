@@ -120,7 +120,7 @@ instead. The workflow decides what happens next; it does not need you to be sure
 ## Commit Trailers
 
 Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
-`Story: {{ workhorse_var('story_slug') }}` as trailers, spelled exactly so — the run record
+`Story: {{ workhorse_var('story_id') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 
 ## Record What You Resolved

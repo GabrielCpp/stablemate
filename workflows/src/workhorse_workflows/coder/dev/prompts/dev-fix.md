@@ -41,7 +41,7 @@ Your only job is to make that gate pass. Nothing else.
    line, and then you say why in the notes. Do not refactor or add features beyond passing.
 4. **Re-run the command and confirm it is clean.** The workflow re-runs it deterministically
    afterwards, so a still-failing tree simply comes back to you.
-5. **Commit what you fixed**, carrying `Epic: {{ epic }}` and `Story: {{ story_slug }}` as
+5. **Commit what you fixed**, carrying `Epic: {{ epic }}` and `Story: {{ story_id }}` as
    trailers, spelled exactly so — the run record ties a commit back to its story through
    them. **Do not push or open a PR** — the workflow owns those.
 

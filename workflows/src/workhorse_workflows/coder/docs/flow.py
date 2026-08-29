@@ -450,6 +450,7 @@ class Docs(Workflow):
             "story_path": self.ctx.story_path,
             "spec_dir": self.ctx.spec_dir,
             "story_slug": self.ctx.story_slug,
+            "story_id": self.ctx.story_id or self.ctx.story_slug,
             "epic": self.epic,
             "docs_path": self.docs_path,
             "features_root": features_root(self),

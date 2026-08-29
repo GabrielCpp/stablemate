@@ -110,6 +110,9 @@ class StoryPick(CoderResult):
     story_path: str = ""
     spec_dir: str = ""
     story_slug: str = ""
+    # The minted id from the story's frontmatter — the identity commit trailers carry.
+    # Empty on a book that predates minted ids; consumers fall back to the slug.
+    story_id: str = ""
     epic: str = ""
     reason: str = ""
     progress: str = ""

@@ -28,6 +28,10 @@ class StoryPaths(CoderResult):
     qa_dir: str = ""
     story_slug: str = ""
     story_epic: str = ""
+    # The minted id from the story's frontmatter (`ACME-01H…`) — the identity commit
+    # trailers carry, because it survives a slug rename. Empty on a book that predates
+    # minted ids; consumers fall back to the slug.
+    story_id: str = ""
 
 
 class WorkspaceDirs(CoderResult):

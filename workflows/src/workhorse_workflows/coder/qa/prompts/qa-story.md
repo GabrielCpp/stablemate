@@ -156,7 +156,7 @@ assertion reported passed; no agent output can directly create a pass.
 ## Commit Trailers
 
 Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
-`Story: {{ workhorse_var('story_slug') }}` as trailers, spelled exactly so — the run record
+`Story: {{ workhorse_var('story_id') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 
 ## Output

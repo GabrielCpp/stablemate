@@ -518,6 +518,7 @@ class Coder(Workflow):
             args=turn.args | {
                 "epic": self._epic,
                 "story_slug": self._story.story_slug,
+                "story_id": self._story.story_id or self._story.story_slug,
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
                 "operator_context": notes,
@@ -682,6 +683,7 @@ class Coder(Workflow):
                 "story_path": story.story_path,
                 "spec_dir": story.spec_dir,
                 "story_slug": story.story_slug,
+                "story_id": story.story_id or story.story_slug,
                 "epic": self._epic,
                 "dirty_paths": "\n".join(state.dirty),
                 "result_schema": schema_block(WorktreeSettled),
@@ -702,7 +704,14 @@ class Coder(Workflow):
         """
         story = self._story
         branch = self.output(branch_story)
-        self.call(commit_story, "", story.story_slug, story.spec_dir, story.story_path)
+        self.call(
+            commit_story,
+            "",
+            story.story_slug,
+            story.spec_dir,
+            story.story_path,
+            story_id=story.story_id,
+        )
         self.call(teardown_stack, self.docs_path)
         return Done(
             self.call(

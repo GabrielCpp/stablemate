@@ -121,25 +121,25 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
 
 def _docs() -> Docs:
     flow = Docs(story=STORY)
-    flow._ctx = SimpleNamespace(story_slug=STORY, story_path="", spec_dir="", qa_dir="")
+    flow._ctx = SimpleNamespace(story_slug=STORY, story_id="", story_path="", spec_dir="", qa_dir="")
     return flow
 
 
 def _qa() -> Qa:
     flow = Qa(story=STORY)
-    flow._ctx = SimpleNamespace(story_slug=STORY, story_path="", spec_dir="", qa_dir="")
+    flow._ctx = SimpleNamespace(story_slug=STORY, story_id="", story_path="", spec_dir="", qa_dir="")
     return flow
 
 
 def _dev() -> Dev:
     flow = Dev(story=STORY)
-    flow._ctx = SimpleNamespace(story_slug=STORY, story_path="", spec_dir="", qa_dir="")
+    flow._ctx = SimpleNamespace(story_slug=STORY, story_id="", story_path="", spec_dir="", qa_dir="")
     return flow
 
 
 def _review(**kwargs: Any) -> Review:
     flow = Review(story=STORY, **kwargs)
-    flow._ctx = SimpleNamespace(story_slug=STORY, story_path="", spec_dir="", qa_dir="")
+    flow._ctx = SimpleNamespace(story_slug=STORY, story_id="", story_path="", spec_dir="", qa_dir="")
     return flow
 
 
@@ -230,7 +230,7 @@ def test_every_lane_names_the_same_conversation_without_being_handed_anything(
     story_md.write_text("# Story\n", encoding="utf-8")
     spec_dir = tmp_path / "specs" / STORY
     ctx = SimpleNamespace(
-        story_slug=STORY, story_path=str(story_md), spec_dir=str(spec_dir), qa_dir=""
+        story_slug=STORY, story_id="", story_path=str(story_md), spec_dir=str(spec_dir), qa_dir=""
     )
     for flow_cls in (Docs, Qa, Dev, Review):
         monkeypatch.setattr(

@@ -185,6 +185,7 @@ class Fix(Workflow):
             args=turn.args
             | {
                 "story_slug": self._story.story_slug,
+                "story_id": self._story.story_id or self._story.story_slug,
                 "epic": self._story.story_epic,
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
@@ -284,6 +285,7 @@ class Fix(Workflow):
             session=story_chain(self._story.story_slug),
             args=turn.args | {
                 "story_slug": self._story.story_slug,
+                "story_id": self._story.story_id or self._story.story_slug,
                 "epic": self._story.story_epic,
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
@@ -359,6 +361,7 @@ class Fix(Workflow):
             self._story.spec_dir,
             kind="fix",
             roots=self._changed_dirs(),
+            story_id=self._story.story_id,
         )
         return Continue(result, self.start)
 
@@ -456,6 +459,7 @@ class Fix(Workflow):
             add_dirs=self._dirs(),
             args=turn.args | {
                 "story_slug": self._story.story_slug,
+                "story_id": self._story.story_id or self._story.story_slug,
                 "epic": self._story.story_epic,
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
@@ -477,7 +481,7 @@ class Fix(Workflow):
         return [
             d
             for d in self._dirs()
-            if self.call(changed_files, d, self._story.story_slug).paths
+            if self.call(changed_files, d, self._story.story_slug, self._story.story_id).paths
         ]
 
     @property

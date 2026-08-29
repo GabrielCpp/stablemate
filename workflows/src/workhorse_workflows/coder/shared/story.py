@@ -52,6 +52,20 @@ def _spec_dir_rel(okf: Ostler, slug: str) -> str:
         return f"docs/specs/{slug}"
 
 
+def _story_id(okf: Ostler, slug: str) -> str:
+    """The story's minted id (`ACME-01H…`), or empty on a book that predates them.
+
+    The id is the identity commit trailers carry — it survives a slug rename, which the
+    slug by definition does not. Resolved through the same graph `spec_path` already
+    loaded, so this costs no extra read.
+    """
+    try:
+        found = okf.graph.find_story(slug)
+    except (OSError, ValueError, RuntimeError):
+        return ""
+    return found[1].eid if found is not None else ""
+
+
 def _guard_authored(okf: Ostler, slug: str, logger: logging.Logger) -> None:
     """Fail the run if the graph knows this story and reports it unauthored.
 
@@ -178,6 +192,7 @@ def prepare_story(
         qa_dir=spec_dir + "/qa",
         story_slug=story,
         story_epic=epic,
+        story_id=_story_id(okf, story),
     )
 
 
@@ -363,15 +378,20 @@ def stamp_specs(
 
     docs_root = find_docs_root(docs_path, repo_dir)
     okf = Ostler(docs_root)
-    spec_dir = docs_root / _spec_dir_rel(okf, story_slug)
+    spec_rel = _spec_dir_rel(okf, story_slug)
+    spec_dir = docs_root / spec_rel
     if not spec_dir.is_dir():
         # Nothing written yet (an early phase, or a mode with no spec dir) is not a failure.
         logger.info("no spec dir at %s — nothing to stamp", spec_dir)
         return SpecsStamped()
 
+    # The dir segment the resolver chose — the minted id when the story has one — not the
+    # slug the node was handed: create_spec joins its first argument onto the specs root,
+    # and stamping must land in the directory that was just globbed.
+    spec_key = Path(spec_rel).name
     stamped = 0
     for path in sorted(spec_dir.glob("*.md")):
-        res = okf.create_spec(story_slug, path.name)
+        res = okf.create_spec(spec_key, path.name)
         if not res.ok:
             logger.info("skipped %s: %s", path.name, res.message)
             continue

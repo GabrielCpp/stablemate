@@ -807,6 +807,7 @@ class Qa(Workflow):
             add_dirs=self._dirs(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
+                "story_id": self.ctx.story_id or self.ctx.story_slug,
                 "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
@@ -1073,6 +1074,7 @@ class Qa(Workflow):
             "story_path": self.ctx.story_path,
             "spec_dir": self.ctx.spec_dir,
             "story_slug": self.ctx.story_slug,
+            "story_id": self.ctx.story_id or self.ctx.story_slug,
             "epic": self.epic,
             "qa_dir": self.ctx.qa_dir,
             "qa_scratch_dir": QA_SCRATCH_DIRNAME,
@@ -1302,6 +1304,7 @@ class Qa(Workflow):
             add_dirs=self._dirs(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
+                "story_id": self.ctx.story_id or self.ctx.story_slug,
                 "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
@@ -1432,6 +1435,7 @@ class Qa(Workflow):
             add_dirs=self._dirs(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
+                "story_id": self.ctx.story_id or self.ctx.story_slug,
                 "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
@@ -1521,6 +1525,7 @@ class Qa(Workflow):
             add_dirs=self._dirs(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
+                "story_id": self.ctx.story_id or self.ctx.story_slug,
                 "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
@@ -1732,6 +1737,7 @@ class Qa(Workflow):
             add_dirs=self._dirs(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
+                "story_id": self.ctx.story_id or self.ctx.story_slug,
                 "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
@@ -2000,6 +2006,7 @@ class Qa(Workflow):
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
                 "story_slug": self.ctx.story_slug,
+                "story_id": self.ctx.story_id or self.ctx.story_slug,
                 "epic": self.epic,
                 "qa_dir": self.ctx.qa_dir,
                 "qa_scratch_dir": QA_SCRATCH_DIRNAME,
@@ -2050,6 +2057,7 @@ class Qa(Workflow):
             add_dirs=self._dirs(),
             args=turn.args | {
                 "story_slug": self.ctx.story_slug,
+                "story_id": self.ctx.story_id or self.ctx.story_slug,
                 "epic": self.epic,
                 "story_path": self.ctx.story_path,
                 "spec_dir": self.ctx.spec_dir,
@@ -2614,6 +2622,7 @@ class Qa(Workflow):
             "story_path": self.ctx.story_path,
             "spec_dir": self.ctx.spec_dir,
             "story_slug": self.ctx.story_slug,
+            "story_id": self.ctx.story_id or self.ctx.story_slug,
             "epic": self.epic,
             "qa_dir": self.ctx.qa_dir,
             "qa_notes": qa_notes,

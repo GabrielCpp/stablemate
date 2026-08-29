@@ -856,6 +856,7 @@ def select_story(
             "story_path": str(nxt.get("path") or ""),
             "spec_dir": spec_dir,
             "story_slug": slug,
+            "story_id": str(nxt.get("id") or ""),
         }
     )
 
@@ -1083,6 +1084,7 @@ def commit_story(
     workspace_file: str = "",
     kind: str = "feat",
     roots: list[str] | None = None,
+    story_id: str = "",
 ) -> StoryCommitted:
     """Commit a completed story's changes in each affected code repo, then stamp it passed.
 
@@ -1115,8 +1117,10 @@ def commit_story(
     # release-please config knows the package by — one story touching three repos produces
     # three subjects, each releasing the component it actually changed.
     def _story_message(package: str) -> str:
+        # The trailer carries the minted id when the story has one — the identity that
+        # survives a slug rename — and the slug only on a book that predates minted ids.
         return commits.message(
-            kind, commits.scope(package), description, epic=epic_name, story=slug
+            kind, commits.scope(package), description, epic=epic_name, story=story_id or slug
         )
 
     def _commit_in(repo_path: Path, package: str) -> bool:
