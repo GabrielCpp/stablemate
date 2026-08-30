@@ -1,0 +1,132 @@
+# The frozen mutant corpus for tally-cli — the input to the pin-rate benchmark.
+#
+# Curation rules, applied when this file was written and never re-litigated per run:
+#
+# - A mutant is one whole-file variant at `mutants/<id>/<path>`, based on the file as it
+#   stands at its story's POST image (not the finished app) — `seed_mutant` overwrites
+#   into the materialized story tree, so a variant built on a later image would import
+#   modules that story does not have yet.
+# - Pool A (book open): each mutant violates exactly one normative bullet whose
+#   obligation its story OWES — verifiable today with the qa-context machinery. This is
+#   the RELAXED pool-A rule: the phase-F bullet→probe compiler does not exist yet, so
+#   "violates a bullet" is asserted by curation plus the owedness check in
+#   tests/test_tally_cli_mutants.py, not compiled into a probe.
+# - Pool A avoids the defects.yml answer key: no `bullet:` below repeats an obligation
+#   a seeded defect already targets.
+# - Pool B (book closed): written without consulting the book, from the classic families
+#   — off-by-one, ordering, rounding/units, partial failure, quiet data loss.
+# - Every kept mutant passed the equivalence gate: its `battery.py` transcript differs
+#   from its story-post control's, and every variant still answers `--help` with rc 0.
+#   A candidate whose transcript matched control is logged under `discards:` with its
+#   reason and ships no variant directory.
+# - `unspecified:` is empty at curation; it is filled only at triage, by citing the
+#   grounded `unspecified:` bullet that resolves the behavior as deliberately out of
+#   contract (the qa-mutation-negative-space plan's second exit).
+
+mutants:
+  - id: M1
+    pool: A
+    story: ledger-init-add
+    path: tally/cli.py
+    symbols: [main]
+    bullet: "okf:docs/features/tally/tally.md#add-an-expense:status:2"
+    behavior: >-
+      main() folds LedgerError and RowError into one except clause returning 1, so a
+      refused amount ("0", "abc") exits 1 instead of 2 — the two error classes a caller
+      scripts against are conflated.
+  - id: M2
+    pool: A
+    story: import-csv
+    path: tally/ledger.py
+    symbols: [parse_rows]
+    bullet: "okf:docs/features/tally/tally.md#import-a-malformed-row:errors:1"
+    behavior: >-
+      parse_rows enumerates data rows from start=1 instead of start=2, so the refusal
+      names a line number one short of the 1-based file line the bad row sits on.
+  - id: M3
+    pool: A
+    story: import-csv
+    path: tally/cli.py
+    symbols: [commit_or_preview]
+    bullet: "okf:docs/features/tally/tally.md#dry-run:semantics:2"
+    behavior: >-
+      commit_or_preview writes the would-be ledger to a `.preview` sibling file on a dry
+      run — the real file is untouched, but the dry run now writes somewhere else instead.
+  - id: M4
+    pool: A
+    story: report-export
+    path: tally/report.py
+    symbols: [export_rows]
+    bullet: "okf:docs/features/tally/tally.md#export-to-csv:does:1"
+    behavior: >-
+      export_rows collapses exact duplicates, so a ledger legitimately holding the same
+      expense twice (recorded twice via `add`) exports one row, not every entry.
+  - id: M5
+    pool: A
+    story: ledger-init-add
+    path: tally/cli.py
+    symbols: [build_parser]
+    bullet: "okf:docs/features/tally/tally.md#file:semantics:2"
+    behavior: >-
+      `--file` moves off the top-level parser onto each subcommand, so the documented
+      global placement `tally --file trip.json init` becomes a usage error.
+  - id: M6
+    pool: B
+    story: report-export
+    path: tally/report.py
+    symbols: [summarize]
+    behavior: >-
+      summarize stops sorting per_person, so the text report lists people in ledger
+      insertion order (the JSON shape hides it behind sort_keys).
+  - id: M7
+    pool: B
+    story: import-csv
+    path: tally/ledger.py
+    symbols: [merge]
+    behavior: >-
+      merge never adds the row's key to `known` inside the loop, so a CSV carrying the
+      same row twice imports both copies in one run.
+  - id: M8
+    pool: B
+    story: report-export
+    path: tally/report.py
+    symbols: [export_rows]
+    behavior: >-
+      export_rows writes amounts as euro strings ("12.00") under the amount_cents
+      header — quiet unit corruption every downstream sum inherits.
+  - id: M9
+    pool: B
+    story: import-csv
+    path: tally/ledger.py
+    symbols: [load]
+    behavior: >-
+      load returns a fresh empty ledger instead of raising when the file is missing, so
+      `tally import` without `tally init` silently succeeds and conjures the ledger.
+  - id: M10
+    pool: B
+    story: report-export
+    path: tally/report.py
+    symbols: [summarize]
+    behavior: >-
+      summarize reports `entries` as the number of distinct people, so the count is
+      quietly wrong the moment one person records a second expense.
+  - id: M11
+    pool: B
+    story: import-csv
+    path: tally/ledger.py
+    symbols: [merge]
+    behavior: >-
+      merge breaks out of the loop at the first already-known row, silently dropping
+      every row after it — a partial import that reports itself as smaller, not failed.
+
+discards:
+  - id: M12
+    reason: >-
+      save() without the tmp+os.replace dance (a plain truncating write) is
+      battery-equivalent: only a process killed mid-write observes atomicity, and no
+      black-box scenario the battery can run kills the interpreter mid-syscall.
+  - id: M13
+    reason: >-
+      currency_of() reading data["currency"] directly instead of .get(..., "EUR") is
+      battery-equivalent: every ledger any tally command writes carries the key, so the
+      default arm is reachable only from a hand-edited file no scenario produces.
