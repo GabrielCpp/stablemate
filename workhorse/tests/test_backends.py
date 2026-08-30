@@ -16,6 +16,7 @@ once, which is exactly what the split exists to prevent.
 from __future__ import annotations
 
 import io
+import json
 import os
 import tempfile
 from contextlib import contextmanager, redirect_stdout
@@ -768,6 +769,67 @@ def test_opencode_effort_variant_mapping_and_omit():
     )
     _run_turn(OpenCodeBackend(fake), "P", "n", sidp, model="m", effort="medium")
     assert "--variant" not in captured["cmd"]
+
+
+def test_opencode_pins_small_model_to_turn_model():
+    """A turn with a model pins opencode's title/summary helper (`small_model`) to it
+    via OPENCODE_CONFIG_CONTENT — the helper has no CLI flag, and without the pin it
+    inherits whatever provider the machine's opencode config drifts to (an OpenRouter
+    credit wall on the title call once slept a run for 6 days)."""
+    with _config(""):
+        fake, captured = _fake_stream(
+            turn.TurnState(result_text="X", session_id="s")
+        )
+        _run_turn(OpenCodeBackend(fake), "P", "n", None, model="openai/gpt-5.6-sol")
+    assert json.loads(captured["env_extra"]["OPENCODE_CONFIG_CONTENT"]) == {
+        "small_model": "openai/gpt-5.6-sol"
+    }
+
+
+def test_opencode_no_model_no_small_model_pin():
+    """With no model on the turn there is nothing to pin to — the CLI's own config
+    decides both the turn model and the helper, consistently."""
+    with _config(""):
+        fake, captured = _fake_stream(
+            turn.TurnState(result_text="X", session_id="s")
+        )
+        _run_turn(OpenCodeBackend(fake), "P", "n", None)
+    assert captured["env_extra"] == {}
+
+
+def test_opencode_operator_config_content_wins_verbatim():
+    """An operator's own OPENCODE_CONFIG_CONTENT in [harness.opencode].env has taken
+    over the inline config: it passes through untouched — no merge, no pin — while
+    other harness env keys still ride alongside."""
+    cfg = (
+        "[harness.opencode]\n"
+        'env = { OPENCODE_CONFIG_CONTENT = \'{"small_model":"openai/gpt-5.5"}\','
+        ' OPENCODE_DISABLE_AUTOCOMPACT = "1" }\n'
+    )
+    with _config(cfg):
+        fake, captured = _fake_stream(
+            turn.TurnState(result_text="X", session_id="s")
+        )
+        _run_turn(OpenCodeBackend(fake), "P", "n", None, model="openai/gpt-5.6-sol")
+    assert captured["env_extra"] == {
+        "OPENCODE_CONFIG_CONTENT": '{"small_model":"openai/gpt-5.5"}',
+        "OPENCODE_DISABLE_AUTOCOMPACT": "1",
+    }
+
+
+def test_opencode_pin_composes_with_other_harness_env():
+    """Harness env keys that are not OPENCODE_CONFIG_CONTENT don't suppress the pin —
+    the pin joins them."""
+    with _config('[harness.opencode]\nenv = { OPENCODE_DISABLE_AUTOCOMPACT = "1" }\n'):
+        fake, captured = _fake_stream(
+            turn.TurnState(result_text="X", session_id="s")
+        )
+        _run_turn(OpenCodeBackend(fake), "P", "n", None, model="openai/gpt-5.6-terra")
+    env = captured["env_extra"]
+    assert env["OPENCODE_DISABLE_AUTOCOMPACT"] == "1"
+    assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == {
+        "small_model": "openai/gpt-5.6-terra"
+    }
 
 
 def test_opencode_on_event_text_session_and_error():

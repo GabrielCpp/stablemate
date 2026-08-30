@@ -205,10 +205,26 @@ class OpenCodeBackend(JsonlBackend):
         cmd += ["--", prompt]
         # OpenCode reads the message from argv (no stdin prompt channel), so pass
         # nothing on stdin.
+        # opencode's internal title/summary helper reads `small_model` from config —
+        # there is no CLI flag — so without a pin it rides whatever the machine's
+        # opencode.jsonc says, on whatever provider that names. A helper routed to a
+        # provider the run doesn't otherwise use fails on that provider's own wall
+        # (an OpenRouter credit exhaustion on the title call classified as a cap on
+        # the node and slept a run for 6 days while its coding models were fine).
+        # OPENCODE_CONFIG_CONTENT merges over the user config with highest
+        # precedence, so pin the helper to the turn's own model. An operator who
+        # sets OPENCODE_CONFIG_CONTENT in [harness.opencode].env has taken over the
+        # whole inline config; their value passes through verbatim.
+        env_extra = self.harness_env()
+        if model and "OPENCODE_CONFIG_CONTENT" not in env_extra:
+            env_extra = {
+                "OPENCODE_CONFIG_CONTENT": json.dumps({"small_model": model}),
+                **env_extra,
+            }
         state = self.stream(
             cmd, node_id, timeout, None, _OpenCodeEvents().on_event,
             resilience=resilience, cwd=cwd,
-            env_extra=self.harness_env(),
+            env_extra=env_extra,
         )
         # On a Codex usage cap, fetch the precise reset epoch (opencode hides it on the
         # headless path) so the runner sleeps until the window reopens, not a flat hour.

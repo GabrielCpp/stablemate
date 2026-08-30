@@ -182,6 +182,16 @@ Workhorse learns no harness's vocabulary here — it forwards whatever you name.
 also does not validate the names, so a typo is silent; check the harness's own docs
 for what it reads.
 
+One variable the opencode adapter sets **itself**: when a turn resolves a model, it
+exports `OPENCODE_CONFIG_CONTENT` pinning opencode's `small_model` — the internal
+title/summary helper — to that same model. The helper has no CLI flag; without the
+pin it rides whatever provider the machine's `opencode.jsonc` names, and a helper
+routed to a provider the run doesn't otherwise use fails on that provider's own
+wall (an OpenRouter credit exhaustion on the title call was classified as a cap on
+the node and slept a run for six days while its coding models were fine). Setting
+`OPENCODE_CONFIG_CONTENT` in `[harness.opencode].env` takes over the whole inline
+config: your value passes through verbatim and the automatic pin steps aside.
+
 The worked example is the one above. `opencode` auto-summarizes a long session, and
 each summary rewrites the conversation prefix — so the next turn bills a full-price
 prompt instead of a cache read. On a model whose context window you will never
