@@ -229,9 +229,9 @@ What the route gates is the *miss*. Every round runs the lane to its first verdi
 `inconclusive — no audit turn in this configuration` rather than `missed`: it is a question this
 configuration did not ask, and a miss there would grade the absence of a lane instead of the
 plan. The trial ledger records `audit_turn` per row so a re-score knows which configuration
-wrote it. `depot-infra-audit` is the first audit-on task — `first_verdict=False`, scoped to
-D7 — so that row can now score a catch or a miss; `seat-booking`'s D9 stays inconclusive by
-construction until its own audit-on twin exists.
+wrote it. `depot-infra-audit` and `seat-booking-audit` are the audit-on tasks —
+`first_verdict=False`, each scoped to its app's one `caught_by: audit` row (D7, D9) — so
+those rows can score a catch or a miss instead of staying inconclusive by construction.
 
 ## The answer key's one non-obvious rule: an obligation is only scorable if the story owes it
 

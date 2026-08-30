@@ -597,3 +597,16 @@ def test_the_task_points_at_the_app_and_names_the_trial_dir() -> None:
     # farrier derives generated skill names from the basename; anything else dangles.
     assert TASK.FIXTURE.repo_dir == "seat-booking"
     assert {row["story"] for row in defects()} <= set(STORIES)
+
+
+def test_the_audit_task_is_the_qa_round_with_the_auditor_turned_on() -> None:
+    """`seat-booking-audit` exists to score the one row a first-verdict round cannot: it
+    must run audit-on, be scoped to exactly the rows filed `caught_by: audit`, and share
+    the QA task's app and repo_dir so the two labels stay comparable row-for-row."""
+    audit = _load("_seat_booking_audit_task", DATA / "tasks" / "seat_booking_audit.py")
+    assert audit.FIXTURE.first_verdict is False
+    assert audit.FIXTURE.app == TASK.FIXTURE.app
+    assert audit.FIXTURE.repo_dir == TASK.FIXTURE.repo_dir
+    assert audit.FIXTURE.leverage == TASK.FIXTURE.leverage
+    audit_rows = {row["id"] for row in defects() if row["caught_by"] == "audit"}
+    assert set(audit.FIXTURE.defects) == audit_rows == {"D9"}
