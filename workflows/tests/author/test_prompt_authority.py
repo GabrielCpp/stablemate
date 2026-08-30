@@ -49,6 +49,16 @@ def test_auditor_does_not_demand_prior_citations_for_new_behavior(prompt: Path) 
     assert "contradicts cited existing behavior" in text
 
 
+@pytest.mark.parametrize("prompt", _copies("audit-story.md"), ids=_id)
+def test_auditor_respects_the_bare_minimum_story_boundary(prompt: Path) -> None:
+    text = _prose(prompt)
+
+    assert "Do not demand endpoint names, request or response schemas" in text
+    assert "Judge only the behavior changed by this story's covered seeds" in text
+    assert "does not import every guard, state, interaction, or journey" in text
+    assert "Existing guards, chrome, states, and flows outside those covered seeds" in text
+
+
 @pytest.mark.parametrize("prompt", _copies("rework-story.md"), ids=_id)
 def test_reworker_makes_in_scope_choices_instead_of_blocking(prompt: Path) -> None:
     text = _prose(prompt)

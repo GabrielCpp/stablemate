@@ -15,6 +15,20 @@ the surface's documented journey, and the coder will build the wrong thing from 
 You do **not** rewrite the story. You re-derive whether its Acceptance Criteria are something a
 coder could actually build and a QA could actually verify, grounded in the researched facts.
 
+## Authority boundary
+
+The writer deliberately produces a bare-minimum behavior contract; the coder owns implementation
+depth. Do not demand endpoint names, request or response schemas, field meanings or wire shapes,
+components, data sources, libraries, file paths, or an implementation plan. Those details are not
+story defects unless an authoritative roadmap, epic, cited spec, or OKF node already fixes the exact
+detail and the story contradicts it. A technical AC needs observable evidence at a running boundary,
+not a pre-authored implementation contract.
+
+Judge only the behavior changed by this story's covered seeds. A cited screen or flow grounds the
+context; it does not import every guard, state, interaction, or journey on that surface into this
+story. Likewise, a mockup constrains the states this story changes, not unrelated states it happens
+to depict. Do not expand the story to make the whole parent surface independently complete.
+
 ## Inputs (authoritative — do not rediscover)
 
 - Epic: `{{ workhorse_var('epic') }}`
@@ -77,12 +91,11 @@ you could have named in the first lap and did not is one you have forfeited.
 3. **No hidden decisions.** Catch the semantic open-endedness the structural phrase-list misses:
    "match the legacy behaviour" without saying *what* behaviour, "reasonable defaults", "the usual
    states". If the coder still has a product/UX decision to make, the story isn't ready → **refuted**.
-4. **Journey-complete for the surface.** The documented user journeys — the book's `flow` nodes the
-   cited surface takes part in — must each be covered by an AC; a component the book says appears
-   only in certain contexts must have a presence/absence AC for each context the story touches; an
-   interaction whose documented outcome is transient feedback must have an appear-then-disappear AC.
-   A missing journey / chrome / transient criterion → **refuted** (this is the exact "caught by luck
-   at QA" failure the grounding exists to prevent).
+4. **Journey-complete for the changed behavior.** The journey segment introduced or changed by the
+   story's covered seeds must be complete. For contexts the story changes, a documented conditional
+   component needs the relevant presence/absence AC; a changed interaction whose documented outcome
+   is transient feedback needs the relevant appear-then-disappear AC. Existing guards, chrome,
+   states, and flows outside those covered seeds remain inherited behavior, not missing scope.
 
 **A defect you cannot point at is not a defect.** Every finding must name the section, criterion or
 line of the story it is against, and say what would repair it. If a weakness is real but you cannot
