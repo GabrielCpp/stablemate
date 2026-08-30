@@ -72,18 +72,27 @@ def test_a_description_that_is_all_whitespace_still_yields_a_parseable_subject()
 # --------------------------------------------------------------------------- the body
 
 
-def test_the_epic_and_story_ride_in_the_body_not_the_subject() -> None:
-    """A released changelog quotes the subject verbatim, and its reader has no doc graph."""
+def test_the_story_id_suffixes_the_subject_and_remains_an_exact_trailer() -> None:
+    """Release tooling reads the type first; provenance reads the exact trailer."""
     message = commits.message(
         "feat", "api-service", "Add guest cart", epic="checkout", story="guest-cart"
     )
 
     assert message.splitlines() == [
-        "feat(api-service): add guest cart",
+        "feat(api-service): add guest cart [guest-cart]",
         "",
         "Epic: checkout",
         "Story: guest-cart",
     ]
+
+
+def test_a_long_story_subject_keeps_its_story_id_suffix() -> None:
+    message = commits.message("refactor", "api", "a" * 200, story="PRED-12AB")
+
+    subject = message.splitlines()[0]
+    assert len(subject) <= commits.SUBJECT_LIMIT
+    assert subject.startswith("refactor(api): ")
+    assert subject.endswith(" [PRED-12AB]")
 
 
 def test_a_message_with_nothing_to_attribute_is_a_bare_subject() -> None:

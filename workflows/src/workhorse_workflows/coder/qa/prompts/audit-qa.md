@@ -255,9 +255,10 @@ frontmatter that makes it an OKF Concept. Write below the `---` block and leave 
 pointer to `qa-report.md`), `## Assessment` reading "_confirmed by the runner; see
 qa-report.md_", your `## Independent Audit`, and an empty `## History`.
 
-## Commit Trailers
+## Commit Identity
 
-Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
+Every commit subject ends with `[{{ workhorse_var('story_id') }}]`, after its description.
+Every commit also carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_id') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 

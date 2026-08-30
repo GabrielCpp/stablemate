@@ -27,9 +27,9 @@ either yours or a stranger's.
    plan in `{{ spec_dir }}`. Work that implements, tests or documents this story is yours. A file
    you cannot account for — a stray build artifact, an editor scratch file, someone else's
    half-finished edit — is **not** yours to commit under this story's name.
-3. **Commit what belongs to this story, one commit per package**, each commit carrying
-   `Epic: {{ epic }}` and `Story: {{ story_id }}` as trailers, spelled exactly so — the run
-   record ties a commit back to its story through them.
+3. **Commit what belongs to this story, one commit per package.** End each Conventional
+   Commit subject with `[{{ story_id }}]`, after its description, and carry
+   `Epic: {{ epic }}` and `Story: {{ story_id }}` as trailers, spelled exactly so.
 4. **Leave anything that is not yours exactly where it is.** Do not commit it, do not revert it, do
    not stash it. Name it in `notes` and return `blocked` — an operator decides what happens to work
    you did not write.

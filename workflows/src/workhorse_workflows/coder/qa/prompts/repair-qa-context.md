@@ -24,9 +24,10 @@ persistence, event, consistency, concurrency, or idempotency contracts to match 
 the implementation contradicts the contract, leave it visible and report a human/product
 block. Do not write a QA plan, run QA, or edit runner evidence.
 
-## Commit Trailers
+## Commit Identity
 
-Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
+Every commit subject ends with `[{{ workhorse_var('story_id') }}]`, after its description.
+Every commit also carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_id') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 

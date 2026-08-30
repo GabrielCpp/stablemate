@@ -41,6 +41,11 @@ it overrides any earlier assumption in the item, the story or the code.
 Repair only what the gate objected to. A neighbouring surface you pass through is not this
 item's, and reworking it is a failing QA downstream rather than a bonus.
 
+Commit the completed repair in each repository it changed. Every Conventional Commit subject
+ends with `[{{ workhorse_var('story_id') }}]`, after its description. Every commit also carries
+`Epic: {{ workhorse_var('epic') }}` and `Story: {{ workhorse_var('story_id') }}` as trailers,
+spelled exactly so. Do not push or open a PR; the workflow owns those.
+
 ## Stop Conditions
 
 Return `blocked` rather than guessing when the gate can only be satisfied by a product or

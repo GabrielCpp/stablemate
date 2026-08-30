@@ -40,9 +40,10 @@ lane reads that shape and receives nothing else.
 The plan re-enters the same gate that blocked it, so an answer folded in halfway comes back
 to you as the same block.
 
-## Commit Trailers
+## Commit Identity
 
-Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
+Every commit subject ends with `[{{ workhorse_var('story_id') }}]`, after its description.
+Every commit also carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_id') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 

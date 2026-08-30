@@ -278,9 +278,10 @@ whole-plan `ostler qa run`, and not by importing `ostler.qa` from Python. A work
 validates it the moment you return and hands you its diagnostics if it fails, so a self-check
 can only repeat a verdict that is one call away.
 
-## Commit Trailers
+## Commit Identity
 
-Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
+Every commit subject ends with `[{{ workhorse_var('story_id') }}]`, after its description.
+Every commit also carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_id') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 

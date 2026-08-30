@@ -6,9 +6,8 @@ agent: agent
 
 One item was drained off the backlog and seeded as a one-criterion story. This turn does the
 whole job: work out what the repair is, then write it. What has to exist when you stop is the
-change itself, in the working tree of whatever repositories it belongs in — the repo's own
-lint and test gates run against it the moment this turn ends, and a QA turn reads it after
-that.
+committed change in every repository it belongs in — the repo's own lint and test gates run
+against it the moment this turn ends, and a QA turn reads it after that.
 
 Plan the repair first, then implement that plan completely. Both halves are this turn's; there
 is no separate planning pass ahead of you and no second implementation pass behind you.
@@ -49,6 +48,13 @@ written down nowhere, when repairing it requires a credential or a spend you do 
 when the behaviour it describes does not exist in these repositories. A block parks the run for
 an operator and comes back to this turn with their answer — it costs one question and loses no
 work, where a guess costs the review that would have caught it.
+
+## Commit Identity
+
+Commit the completed repair in each repository it changed. Every Conventional Commit subject
+ends with `[{{ workhorse_var('story_id') }}]`, after its description. Every commit also carries
+`Epic: {{ workhorse_var('epic') }}` and `Story: {{ workhorse_var('story_id') }}` as trailers,
+spelled exactly so. Do not push or open a PR; the workflow owns those.
 
 ## Return Format
 

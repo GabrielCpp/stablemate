@@ -155,9 +155,10 @@ your report. Leave the stack however its `stop` policy dictates; `ensure_stack` 
 still serving, or bring it up from cold if not — either way the node must be able to stand it up
 without you.
 
-## Commit Trailers
+## Commit Identity
 
-Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
+Every commit subject ends with `[{{ workhorse_var('story_id') }}]`, after its description.
+Every commit also carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_id') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 

@@ -153,7 +153,7 @@ def ungrounded_refs(packet: dict[str, Any], inherited: set[str]) -> list[str]:
             ungrounded.extend(
                 sorted(ref for ref in required if not _is_grounded(ref, exactly_grounded))
             )
-        elif candidates.isdisjoint(
+        elif {qualified(path) for path in candidates}.isdisjoint(
             {ref.partition("::")[0] for ref in exactly_grounded} | file_grounded
         ):
             ungrounded.append(qualified(str(change.get("path", "<unknown>"))))

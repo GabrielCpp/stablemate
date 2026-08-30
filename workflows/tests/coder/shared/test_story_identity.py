@@ -160,5 +160,23 @@ def test_settlement_prompt_commits_with_the_minted_story_identity() -> None:
         Path(coder.__file__).parent / "main/prompts/settle-worktree.md"
     ).read_text(encoding="utf-8")
 
+    assert "[{{ story_id }}]" in prompt
     assert "`Story: {{ story_id }}`" in prompt
     assert "`Story: {{ story_slug }}`" not in prompt
+
+
+def test_every_story_commit_prompt_suffixes_the_subject_with_the_minted_id() -> None:
+    prompts = Path(coder.__file__).parent
+    offenders: list[str] = []
+    for path in prompts.rglob("*.md"):
+        text = path.read_text(encoding="utf-8")
+        if "story_id') }}` as trailers" in text:
+            expected = "[{{ workhorse_var('story_id') }}]"
+        elif "`Story: {{ story_id }}` as" in text:
+            expected = "[{{ story_id }}]"
+        else:
+            continue
+        if expected not in text:
+            offenders.append(str(path.relative_to(prompts)))
+
+    assert offenders == []

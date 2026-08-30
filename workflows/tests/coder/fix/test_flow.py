@@ -42,7 +42,9 @@ from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.coder.fix.flow import MAX_FIX_LAPS, Fix
+from workhorse_workflows.coder.shared import commits
 from workhorse_workflows.coder.shared.backlog import mark_fix_blocked, prune_fix_item
+from workhorse_workflows.kit.git import commit_all
 
 BULLET = "widget-pagination"
 TEXT = "the widget list does not paginate"
@@ -184,6 +186,14 @@ class _Agent:
             makefile.write_text(RED_MAKEFILE, encoding="utf-8")
         elif makefile.exists():
             makefile.unlink()
+        message = commits.message(
+            "fix",
+            commits.scope(repo.name),
+            TEXT,
+            epic=str(data["epic"]),
+            story=str(data["story_id"]),
+        )
+        commit_all(repo, message)
         return {"status": "done", "notes": f"paginated the widget list on pass {nth}"}
 
     def _fix_item_repair(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -208,9 +218,18 @@ class _Agent:
     # -- the `docs` sub-flow's three --------------------------------------
 
     def _document_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        story_path = Path(str(data["story_path"]))
+        docs_dir = next(parent for parent in story_path.parents if parent.name == "docs")
+        feature = docs_dir / "features/api/concepts/widget.md"
+        feature.parent.mkdir(parents=True, exist_ok=True)
+        feature.write_text(
+            "---\ntype: concept\nslug: widget\ntitle: Widget\n---\n"
+            "# Widget\n\n- code: `repo://api/pagination.go`\n",
+            encoding="utf-8",
+        )
         return {
             "status": "documented",
-            "nodes": ["docs/features/widget.md"],
+            "nodes": ["docs/features/api/concepts/widget.md"],
             "notes": f"documented on pass {nth}",
         }
 
@@ -261,6 +280,13 @@ def _log_of(repo: Path) -> list[str]:
     return subprocess.run(
         ["git", "log", "--format=%s"], cwd=repo, check=True, capture_output=True, text=True
     ).stdout.split("\n")
+
+
+def _assert_agent_story_commit(repo: Path, agent: _Agent) -> None:
+    story_id = str(agent.args_for("fix-item")[0]["story_id"])
+    subject = _log_of(repo)[0]
+    assert subject.startswith("fix(api): ")
+    assert subject.endswith(f" [{story_id}]")
 
 
 def _branch_of(repo: Path) -> str:
@@ -319,7 +345,18 @@ def test_one_item_is_seeded_fixed_checked_pruned_and_committed(
 
     # And the change was committed in the repo git says it landed in, with no push and no
     # PR — a Conventional Commit `fix` scoped to that repo, because release-please reads it.
-    assert _log_of(workspace["api"])[0] == f"fix(api): {SLUG}"
+    story_id = str(agent.args_for("fix-item")[0]["story_id"])
+    subject = _log_of(workspace["api"])[0]
+    assert subject.startswith("fix(api): ")
+    assert subject.endswith(f" [{story_id}]")
+    body = subprocess.run(
+        ["git", "log", "-1", "--format=%b"],
+        cwd=workspace["api"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert f"Story: {story_id}" in body
     assert (workspace["api"] / "pagination.go").is_file()
 
 
@@ -472,7 +509,7 @@ def test_an_untouched_repo_is_neither_gated_nor_committed(
     assert result.has_fix is False, result
     assert agent.counts()["fix-item"] == 1, agent.counts()
     assert not any(line.startswith("fix(web):") for line in _log_of(workspace["web"]))
-    assert _log_of(workspace["api"])[0] == f"fix(api): {SLUG}"
+    _assert_agent_story_commit(workspace["api"], agent)
 
 
 def test_the_commits_land_on_the_branch_the_repos_were_already_on(
@@ -493,7 +530,7 @@ def test_the_commits_land_on_the_branch_the_repos_were_already_on(
 
     assert _branch_of(workspace["api"]) == "main"
     assert _branch_of(docs) == "main"
-    assert _log_of(workspace["api"])[0] == f"fix(api): {SLUG}"
+    _assert_agent_story_commit(workspace["api"], agent)
 
 
 # --------------------------------------------------------------------------- the QA tail
@@ -614,7 +651,7 @@ def test_an_implementation_turn_that_says_it_cannot_parks_instead_of_qa_ing_noth
 
     # And the iteration finishes as any other: the bullet is drained, not flagged.
     assert BULLET not in _backlog(docs), _backlog(docs)
-    assert _log_of(workspace["api"])[0] == f"fix(api): {SLUG}"
+    _assert_agent_story_commit(workspace["api"], agent)
 
 
 def test_a_blocked_item_is_flagged_and_the_next_draw_skips_it(
@@ -663,11 +700,11 @@ def test_the_docs_sub_flow_runs_for_real_and_its_verdict_gates_the_commit(
     assert agent.counts()["review-story-documentation"] == 1, agent.counts()
     # The sub-flow was handed this iteration's story and its self-created bucket.
     assert agent.args_for("document-story")[0]["story_path"].endswith("story.md")
-    # And the commit is downstream of it: documentation gates the commit, not the reverse.
-    assert _log_of(workspace["api"])[0] == f"fix(api): {SLUG}"
+    # The agent's source commit is what gives documentation exact provenance to inspect.
+    _assert_agent_story_commit(workspace["api"], agent)
 
 
-def test_documentation_that_cannot_converge_fails_the_run_before_the_commit(
+def test_documentation_that_cannot_converge_preserves_the_agent_commit(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
@@ -676,19 +713,19 @@ def test_documentation_that_cannot_converge_fails_the_run_before_the_commit(
     """A blocked reviewer is the sub-flow saying the story cannot be documented as it stands.
 
     That failure crosses the handoff boundary — `Engine.handoff` does not catch it — and the
-    fix flow does not swallow it either: nothing is committed and the drain stops here rather
-    than moving on to the next bullet.
+    fix flow does not swallow it either. The agent's attributed source commit remains as
+    evidence, while the drain stops rather than moving on to the next bullet.
 
-    It also pins the ordering, which is not free: the prune runs *before* the documentation,
-    so a run that dies here has already taken the bullet off the backlog while leaving the
-    work uncommitted. That is the wiring, and it means the failed item is not re-drawn.
+    It also pins the ordering, which is not free: the prune runs *before* documentation, so
+    a run that dies here has taken the bullet off the backlog while preserving the attributed
+    source commit. That is the wiring, and it means the failed item is not re-drawn.
     """
     agent = _Agent(workspace, review_blocks=True)
 
     with pytest.raises(WorkflowFailed):
         drive_flow(Fix(), env(), agent)
 
-    assert "fix(api):" not in "".join(_log_of(workspace["api"]))
+    _assert_agent_story_commit(workspace["api"], agent)
     assert BULLET not in _backlog(docs), _backlog(docs)
 
 

@@ -194,10 +194,11 @@ Leave the story's `status:` frontmatter and its `## Implementation Status` **Sta
 exactly as you found them — record what you ran as prose under that heading instead. A gate
 re-reads that line after this turn and sends the story back to you if it changed.
 
-## Commit Trailers
+## Commit Identity
 
-Every commit you write carries `[{{ workhorse_var('epic') }}]` and
-`[{{ workhorse_var('story_id') }}]` as trailers, spelled exactly so — the run record
+Every commit subject ends with `[{{ workhorse_var('story_id') }}]`, after its description.
+Every commit also carries `Epic: {{ workhorse_var('epic') }}` and
+`Story: {{ workhorse_var('story_id') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 
 ## Machine-Readable Result (required)

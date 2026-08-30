@@ -71,17 +71,25 @@ def describe(text: str) -> str:
     return f"{head} {tail}".strip()
 
 
-def subject(kind: str, package: str, description: str, marker: str = "") -> str:
-    """`<kind>(<package>): <description> <marker>`, trimmed to :data:`SUBJECT_LIMIT`.
+def subject(
+    kind: str,
+    package: str,
+    description: str,
+    marker: str = "",
+    story: str = "",
+) -> str:
+    """Build a Conventional Commit subject with protected story and status suffixes.
 
-    `marker` is the give-up annotation (`[QA FAILED …]`) and is never what gets trimmed —
-    it is the first thing a human triaging the epic PR reads, and a subject that lost half
-    of it reads as a story that passed. The description gives way instead, and if even a
-    minimal description will not fit beside the marker the limit does.
+    The story id and give-up marker are never what gets trimmed. The description gives way
+    instead, and if even a minimal description will not fit beside the suffixes the limit
+    does.
     """
     head = f"{kind}({package})" if package else kind
     body = describe(description) or "no description"
-    tail = f" {marker}" if marker else ""
+    suffixes = [f"[{story}]" for story in (story,) if story]
+    if marker:
+        suffixes.append(marker)
+    tail = f" {' '.join(suffixes)}" if suffixes else ""
     budget = SUBJECT_LIMIT - len(f"{head}: {tail}")
     if len(body) > budget:
         body = body[: max(budget, 0)].rstrip(" -–—:,") or body.split(" ")[0]
@@ -96,13 +104,12 @@ def message(
     epic: str = "",
     story: str = "",
 ) -> str:
-    """A full commit message: the conventional subject, plus the epic/story it came from.
+    """A story-labelled Conventional Commit plus exact provenance trailers.
 
-    The trailers are the coder's audit trail. They are *not* in the subject because the
-    subject is what a changelog quotes verbatim, and a reader of the released changelog
-    has no doc graph to resolve `0004-checkout` against.
+    The bracketed story id makes changelog entries attributable without graph access. The
+    exact trailer remains the machine-readable authority used by provenance queries.
     """
-    lines = [subject(kind, package, description, marker)]
+    lines = [subject(kind, package, description, marker, story)]
     trailers = [f"{label}: {value}" for label, value in (("Epic", epic), ("Story", story)) if value]
     if trailers:
         lines.extend(["", *trailers])

@@ -575,9 +575,10 @@ alone left it open, and a run took it: four Bash turns rediscovering `load_plan`
 a turn that spent ten minutes and a quarter of the run's whole wall-clock budget arriving where the
 node arrived immediately afterwards.
 
-## Commit Trailers
+## Commit Identity
 
-Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
+Every commit subject ends with `[{{ workhorse_var('story_id') }}]`, after its description.
+Every commit also carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_id') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 

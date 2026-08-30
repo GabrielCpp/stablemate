@@ -73,9 +73,10 @@ and add the missing `tests:` citation rather than bypassing it.
    you changed and why, per failure. Append below the existing content and leave the `---`
    frontmatter block intact — it carries the `type:` that makes the doc an OKF Concept.
 
-## Commit Trailers
+## Commit Identity
 
-Every commit you write carries `Epic: {{ workhorse_var('epic') }}` and
+Every commit subject ends with `[{{ workhorse_var('story_id') }}]`, after its description.
+Every commit also carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_id') }}` as trailers, spelled exactly so — the run record
 ties a commit back to its story through them.
 

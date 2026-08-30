@@ -531,7 +531,7 @@ def test_a_qa_mutation_requires_final_documentation_before_commit(
     drive_flow(Coder(), env(), _Agent())
 
     assert sub.calls == ["Dev", "Review", "Docs", "Qa", "Fix", "Docs"], sub.calls
-    assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
+    assert "feat(acme): story STORY-1 [STORY-1]" in _subjects(repo), _subjects(repo)
 
 
 def test_the_story_and_its_status_stamp_commit_as_conventional_commits(
@@ -560,9 +560,9 @@ def test_the_story_and_its_status_stamp_commit_as_conventional_commits(
     subjects = _subjects(repo)
     story = next(s for s in subjects if s.startswith("feat("))
     stamp = next(s for s in subjects if "QA passed" in s)
-    assert story == "feat(acme): story STORY-1", story
+    assert story == "feat(acme): story STORY-1 [STORY-1]", story
     assert stamp.startswith("docs(acme): "), stamp
-    # The epic and the story stay findable, in the body where they cannot reach a changelog.
+    # Exact trailers remain machine-readable even though the story is also in the subject.
     bodies = subprocess.run(
         ["git", "log", "--format=%b"], cwd=repo, check=True, capture_output=True, text=True
     ).stdout
@@ -1203,7 +1203,7 @@ def test_a_story_that_left_work_uncommitted_gets_one_lap_to_record_it(
     assert _output(run_env, check_repos_clean)["clean"] is True
     assert _output(run_env, stamp_story_passed)["stamped"] is True
     assert _dirty(repo) == "", _dirty(repo)
-    assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
+    assert "feat(acme): story STORY-1 [STORY-1]" in _subjects(repo), _subjects(repo)
 
 
 def test_a_settle_lap_that_blocks_parks_the_story_for_an_operator(
@@ -1533,7 +1533,7 @@ def test_a_required_final_docs_block_parks_for_an_operator_in_either_mode(
     # `finalize`, so nothing before it was repeated.
     assert sub.calls.count("Docs") == 3, sub.calls
     assert sub.calls.count("Qa") == 1, sub.calls
-    assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
+    assert "feat(acme): story STORY-1 [STORY-1]" in _subjects(repo), _subjects(repo)
     assert not any("DOCS BLOCKED" in subject for subject in _subjects(repo)), _subjects(repo)
 
 
@@ -1573,7 +1573,7 @@ def test_a_docs_handoff_that_merely_failed_parks_on_the_same_gate_a_block_does(
     # This one refused before QA, so the resume does re-enter `document` and QA runs after.
     assert sub.calls.count("Docs") == 2, sub.calls
     assert sub.calls.count("Qa") == 1, sub.calls
-    assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
+    assert "feat(acme): story STORY-1 [STORY-1]" in _subjects(repo), _subjects(repo)
 
 
 # ------------------------------------------------------------------------- the drain
