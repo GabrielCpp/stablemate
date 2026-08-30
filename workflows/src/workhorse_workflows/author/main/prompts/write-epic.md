@@ -4,6 +4,10 @@ agent: agent
 
 # Write the epic: `{{ workhorse_var('epic') }}`
 
+Change only the planning artifacts named by this task. Leave them uncommitted: do not install
+dependencies, run repository-wide checks, stage, commit, push, or alter branches/remotes; Author
+validates and delivers after all authoring turns finish.
+
 Research this epic's share of the roadmap, author its narrative, and record durable seeds with
 Ostler. Do not write stories yet.
 

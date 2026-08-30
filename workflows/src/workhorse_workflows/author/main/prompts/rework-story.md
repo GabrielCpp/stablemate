@@ -4,6 +4,10 @@ agent: agent
 
 # Rework the story: `{{ workhorse_var('story_slug') }}`
 
+Change only the planning artifacts named by this task. Leave them uncommitted: do not install
+dependencies, run repository-wide checks, stage, commit, push, or alter branches/remotes; Author
+validates and delivers after all authoring turns finish.
+
 This story came back for repair. Fix exactly what was flagged, then return control.
 
 The flags below come from one of two places, and they read differently. The deterministic validator

@@ -4,6 +4,10 @@ agent: agent
 
 # Split epic `{{ workhorse_var('epic') }}` into stories
 
+Change only the planning artifacts named by this task. Leave them uncommitted: do not install
+dependencies, run repository-wide checks, stage, commit, push, or alter branches/remotes; Author
+validates and delivers after all authoring turns finish.
+
 You are the **story-split** stage. Decide the epic's stories and record them into the epic's
 `## Stories` section via `ostler create story` — slugs, titles, blockers, and the seeds each
 story covers. (`ostler create story` allocates the id, adds the `### <slug>` block under

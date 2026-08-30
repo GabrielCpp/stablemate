@@ -1295,13 +1295,27 @@ class Author(Workflow):
     # --- 4. referential integrity --------------------------------------------
 
     def integrity(self, resolves: int = 0) -> Continue | Await:
-        """`ostler doctor` over the whole planning-doc graph.
+        """Validate the authored planning subgraph without inheriting unrelated debt.
 
         `reset_integrity_resolve` + `verify_integrity` + `decide_integrity` +
         `gate_integrity` + `guard_integrity_resolve`. Warnings never block; error-level
         findings do. `await_integrity` deliberately does not loop back to re-run the
         check — final validation is the backstop for whatever the human path leaves.
         """
+        if self.mode == "epic":
+            contract = self.call(validate_roadmap_milestone, self.ctx.roadmap_path)
+            if contract.ok:
+                return Continue(contract, self.close)
+            if self.operator_mode == "human" or resolves >= MAX_INTEGRITY_RESOLVES:
+                return Await(self._abs(self._author_context()), contract.errors, self.close)
+            return Continue(
+                contract,
+                self.resolve_integrity,
+                notes=contract.errors,
+                resolves=resolves,
+            )
+
+        # Story mode has no roadmap-owned milestone from which to derive a scope.
         report = self.call(verify_integrity)
         if report.holds or report.skipped:
             return Continue(report, self.close)

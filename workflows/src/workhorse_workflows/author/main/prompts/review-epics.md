@@ -25,7 +25,9 @@ Approve only when:
 4. Every epic is journey-readable and states its outcome, delivered experience, guardrails,
    non-goals, acceptance, and method without requiring the reader to reconstruct scope from layers.
 5. No roadmap non-goal leaked into scope and no unresolved product decision was invented.
-6. `ostler doctor` reports no error-level planning-graph defects.
+
+The workflow validates the roadmap-owned planning subgraph mechanically after this review. Do not
+run repository-wide checks or inspect unrelated milestones and epics; they are outside this review.
 
 ## Final Response
 

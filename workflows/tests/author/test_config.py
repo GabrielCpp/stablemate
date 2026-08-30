@@ -134,6 +134,28 @@ def test_roadmap_must_source_exactly_one_nonempty_milestone(tmp_path: Path) -> N
     assert "found 2" in duplicate.errors
 
 
+def test_roadmap_validation_ignores_unrelated_planning_defects(tmp_path: Path) -> None:
+    logger = logging.getLogger("test.author")
+    okf = Ostler(tmp_path)
+    assert okf.create_epic("account-access", "Account access").ok
+    milestones = tmp_path / "docs/milestones"
+    milestones.mkdir(parents=True)
+    (milestones / "account-access.md").write_text(
+        "---\ntype: milestone\nid: ACME-1\ntitle: Account access\nstatus: planned\n"
+        f"sourceItems:\n  - {ROADMAP}\nepics:\n  - account-access\n---\n",
+        encoding="utf-8",
+    )
+    (milestones / "unrelated.md").write_text(
+        "---\ntype: milestone\nid: ACME-2\ntitle: Unrelated\nstatus: planned\n"
+        "sourceItems:\n  - docs/roadmaps/unrelated.md\nepics:\n  - missing-epic\n---\n",
+        encoding="utf-8",
+    )
+
+    result = validate_roadmap_milestone(logger, ROADMAP, repo_dir=str(tmp_path))
+
+    assert result.ok, result.errors
+
+
 def test_mark_roadmap_authored_preserves_the_contract_body(tmp_path: Path) -> None:
     roadmap = tmp_path / ROADMAP
     roadmap.parent.mkdir(parents=True)

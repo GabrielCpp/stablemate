@@ -1,5 +1,9 @@
 # Resolve a referential-integrity block autonomously (author)
 
+Change only the roadmap-owned planning artifacts named by the reported breaks. Leave them
+uncommitted: do not install dependencies, run repository-wide checks, stage, commit, push, or alter
+branches/remotes; Author validates and delivers after all authoring turns finish.
+
 You are the **autonomous operator** for the author workflow. The mechanical
 integrity gate (`ostler doctor`) found **error-level graph breaks** in the planning-doc graph —
 references that resolve to nothing, or to the wrong epic. Operator mode is **auto**, so YOU stand

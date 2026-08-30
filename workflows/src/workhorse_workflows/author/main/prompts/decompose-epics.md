@@ -4,6 +4,10 @@ agent: agent
 
 # Decompose the {{ repo.name | title }} roadmap into one milestone
 
+Change only the planning artifacts named by this task. Leave them uncommitted: do not install
+dependencies, run repository-wide checks, stage, commit, push, or alter branches/remotes; Author
+validates and delivers after all authoring turns finish.
+
 You are the **epic-split** stage of the author workflow. Turn one approved roadmap into exactly
 one milestone containing coding-ordered epics. Do not write stories yet.
 

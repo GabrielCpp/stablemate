@@ -4,6 +4,10 @@ agent: agent
 
 # Write the story: `{{ workhorse_var('story_slug') }}`
 
+Change only the planning artifacts named by this task. Leave them uncommitted: do not install
+dependencies, run repository-wide checks, stage, commit, push, or alter branches/remotes; Author
+validates and delivers after all authoring turns finish.
+
 You write a **bare-minimum story**: just enough for the coder to know the goal and how it will be
 judged. Two sections of substance — **Context** and **Acceptance Criteria** — and nothing else.
 

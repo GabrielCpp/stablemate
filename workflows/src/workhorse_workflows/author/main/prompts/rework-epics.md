@@ -4,6 +4,10 @@ agent: agent
 
 # Rework the {{ repo.name | title }} roadmap decomposition
 
+Change only the planning artifacts named by this task. Leave them uncommitted: do not install
+dependencies, run repository-wide checks, stage, commit, push, or alter branches/remotes; Author
+validates and delivers after all authoring turns finish.
+
 Apply every review finding, then return control to the reviewer.
 
 ## Inputs

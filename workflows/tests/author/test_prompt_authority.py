@@ -15,6 +15,7 @@ import pytest
 import workhorse_workflows
 
 AUTHOR = Path(workhorse_workflows.__file__).parent / "author"
+MAIN_PROMPTS = AUTHOR / "main" / "prompts"
 
 
 def _copies(name: str) -> list[Path]:
@@ -54,3 +55,31 @@ def test_reworker_makes_in_scope_choices_instead_of_blocking(prompt: Path) -> No
 
     assert "make the concrete choice in the Acceptance Criteria" in text
     assert "Do not block merely because the existing OKF book is silent" in text
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "decompose-epics.md",
+        "rework-epics.md",
+        "write-epic.md",
+        "split-stories.md",
+        "write-story.md",
+        "design-mockup.md",
+        "rework-story.md",
+        "resolve-integrity.md",
+    ],
+)
+def test_mutating_turns_leave_validation_and_delivery_to_author(name: str) -> None:
+    text = _prose(MAIN_PROMPTS / name)
+
+    assert "do not install dependencies, run repository-wide checks" in text
+    assert "stage, commit, push, or alter branches/remotes" in text
+    assert "Author validates and delivers after all authoring turns finish" in text
+
+
+def test_epic_review_does_not_inherit_unrelated_planning_debt() -> None:
+    text = _prose(MAIN_PROMPTS / "review-epics.md")
+
+    assert "validates the roadmap-owned planning subgraph mechanically" in text
+    assert "Do not run repository-wide checks or inspect unrelated milestones" in text
