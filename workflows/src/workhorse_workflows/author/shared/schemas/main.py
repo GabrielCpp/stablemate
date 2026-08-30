@@ -236,7 +236,7 @@ class MockupResult(AuthorResult):
 class MockupGate(AuthorResult):
     """Whether the story touches a surface somebody has to design.
 
-    Decided from the `layers:` on the seeds the story covers — see
+    Decided from the `layers:` and `design:` on the seeds the story covers — see
     `nodes/stories.py::check_mockup_needed`. ``required`` defaults true so a missing story,
     a missing seed or an unclassified one preserves the design turn rather than skipping a
     mockup on a guess.

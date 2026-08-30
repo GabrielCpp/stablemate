@@ -390,7 +390,7 @@ class Author(Workflow):
         split_resolves: int = 0,
         parked: Sequence[str] = (),
     ) -> Continue:
-        """Design the surface first, but only when a covered seed is tagged `frontend`."""
+        """Design first only when covered seeds require a changed visual contract."""
         gate = self.call(check_mockup_needed, story_slug)
         # Annotated as a bare callable because the two branches are different states with
         # different signatures, and a union of them binds to no single `Continue[P]`. The
@@ -745,8 +745,8 @@ class Author(Workflow):
         """Sketch the surface before writing the story against it.
 
         `reset_story_rework` + `reset_write_story_resolve` + `design_mockup`. Reached only
-        when `check_mockup_needed` found a covered seed tagged `frontend`, so the prompt
-        draws rather than re-deciding. Still advisory: a failed mockup must never block
+        when `check_mockup_needed` found visual design marked `required`, so the prompt draws
+        rather than re-deciding. Still advisory: a failed mockup must never block
         authoring — `write_story` falls back to the feature doc.
         """
         result = self.agent(

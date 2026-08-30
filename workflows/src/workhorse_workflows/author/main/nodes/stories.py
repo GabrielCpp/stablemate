@@ -33,9 +33,11 @@ from workhorse_workflows.author.shared.schemas.main import (
     StoryMutation,
 )
 
-#: The one seed layer (`ostler.registry.SEED_LAYERS`) that mandates a designed mockup. Backend
-#: and infra work has no surface to design; only frontend does.
+#: Frontend is the only layer that can need a mockup. ``design`` distinguishes visual work from
+#: frontend computation that preserves an existing surface.
 MOCKUP_LAYER = "frontend"
+MOCKUP_REQUIRED = "required"
+MOCKUP_PRESERVE = "preserve"
 
 #: The backlog scope-item contract, shared with the coverage validator: `- [id] …`, read off
 #: the parsed list rather than matched line by line, so a bullet inside a fenced example is
@@ -292,12 +294,12 @@ def remove_story(
 def check_mockup_needed(
     logger: logging.Logger, story_slug: str = "", repo_dir: str = ""
 ) -> MockupGate:
-    """Design a mockup only for a story that touches the frontend.
+    """Design a mockup only for new or materially changed visual behavior.
 
-    The question is decided from the `layers:` the epic author wrote on each covered seed,
-    unioned over the story's `covers`. That is deterministic: the decision is a set
-    membership test over a closed vocabulary ostler validated at write time, so it costs no
-    model turn and cannot drift lap to lap.
+    The question is decided from the `layers:` and `design:` values the epic author wrote on
+    each covered seed. Both are closed vocabularies validated by ostler, so the decision costs
+    no model turn and cannot drift lap to lap. A frontend seed marked ``preserve`` retains an
+    existing visual contract and does not need another mockup; any ``required`` seed does.
 
     It replaces a gate that asked whether the *surface already exists* — matching each seed's
     free-text `surface:` against `graph.ui_nodes` and `graph.features`. In a greenfield repo
@@ -306,10 +308,8 @@ def check_mockup_needed(
     including pure-backend ones. Existence was also the wrong question: a screen that does
     not exist yet is exactly what a mockup is for.
 
-    Still fail-closed, on the two inputs that can be absent: a story ostler cannot resolve,
-    and a covered seed carrying no `layers:` at all (every seed written before the key
-    existed). Unclassified means unknown, not "no frontend" — an omitted tag costs a wasted
-    design turn rather than silently dropping one that was needed.
+    Still fail-closed on absent graph evidence, unclassified layers, and a frontend seed with
+    no design classification. Older epics therefore retain their existing mockup behavior.
     """
     try:
         graph = Ostler(survey_repo_root(repo_dir)).graph
@@ -326,6 +326,9 @@ def check_mockup_needed(
     layers: list[str] = []
     services: list[str] = []
     untagged: list[str] = []
+    required: list[str] = []
+    preserved: list[str] = []
+    unclassified_design: list[str] = []
     for seed_id in story.seed_items:
         seed = seeds.get(seed_id)
         if seed is None or not seed.layers:
@@ -333,6 +336,16 @@ def check_mockup_needed(
             continue
         layers += [t for t in seed.layers if t not in layers]
         services += [t for t in seed.services if t not in services]
+        if MOCKUP_LAYER not in seed.layers:
+            continue
+        if seed.design == MOCKUP_REQUIRED:
+            required.append(seed_id)
+        elif seed.design == MOCKUP_PRESERVE:
+            preserved.append(seed_id)
+        else:
+            unclassified_design.append(
+                f"{seed_id} ({seed.design or 'missing'})"
+            )
 
     if untagged:
         return MockupGate(
@@ -340,11 +353,25 @@ def check_mockup_needed(
             evidence="covered seed(s) carry no `layers:`, so a frontend surface cannot be "
                      "ruled out: " + ", ".join(untagged),
         )
-    if MOCKUP_LAYER in layers:
+    if required:
         return MockupGate(
             layers=layers, services=services,
-            evidence=f"covered seeds are tagged {', '.join(layers)} — {MOCKUP_LAYER} work "
-                     f"needs a designed surface",
+            evidence="frontend seed(s) require visual design: " + ", ".join(required),
+        )
+    if unclassified_design:
+        return MockupGate(
+            layers=layers, services=services,
+            evidence="frontend seed(s) have no valid `design:` classification: "
+                     + ", ".join(unclassified_design),
+        )
+    if preserved:
+        logger.info(
+            "story '%s' preserves existing frontend design (%s)", story_slug, ", ".join(preserved)
+        )
+        return MockupGate(
+            required=False, layers=layers, services=services,
+            evidence="frontend seed(s) preserve the existing visual contract: "
+                     + ", ".join(preserved),
         )
     logger.info("story '%s' touches no frontend layer (%s)", story_slug, ", ".join(layers))
     return MockupGate(

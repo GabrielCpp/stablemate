@@ -1,8 +1,8 @@
 """The mockup gate, decided from seed tags rather than from a model turn.
 
 `check_mockup_needed` is the whole of the decision, so the table below is the contract:
-`frontend` present anywhere in the story's covered seeds mandates a design turn, an
-explicit tag set without it skips one, and anything unknown fails closed.
+`frontend` plus `design: required` mandates a design turn, `design: preserve` skips one,
+an explicit non-frontend tag set skips one, and anything unknown fails closed.
 
 Nothing is stubbed — the graph is a real ostler repo built through `crud`, which is also
 what validates the layer vocabulary these tests write.
@@ -20,12 +20,21 @@ from workhorse_workflows.author.main.nodes.stories import check_mockup_needed
 EPIC = "accounts"
 
 
-def _epic(root: Path, seeds: dict[str, list[str]], covers: list[str]) -> None:
+def _epic(
+    root: Path,
+    seeds: dict[str, list[str]],
+    covers: list[str],
+    design: dict[str, str] | None = None,
+) -> None:
     """One epic, one story covering `covers`, with each seed tagged as given."""
     okf = Ostler(root)
     okf.create_epic(EPIC, "Accounts", prefix="acme")
     for seed_id, layers in seeds.items():
-        meta = {"layers": layers, "services": ["api-service"]} if layers else {}
+        meta: dict[str, object] = (
+            {"layers": layers, "services": ["api-service"]} if layers else {}
+        )
+        if design and seed_id in design:
+            meta["design"] = design[seed_id]
         res = okf.add_seed(EPIC, seed_id, status="researched", summary=seed_id, meta=meta)
         assert res.ok, res.message
     assert okf.create_story(EPIC, "01-sign-in", "Sign in", covers=covers).ok
@@ -80,3 +89,37 @@ def test_the_services_of_the_covered_seeds_travel_with_the_decision(
     gate = check_mockup_needed(logger, story_slug="01-sign-in", repo_dir=str(repo))
 
     assert gate.services == ["api-service"]
+
+
+def test_frontend_work_that_preserves_an_existing_surface_skips_design(
+    logger: logging.Logger, repo: Path
+) -> None:
+    """This fails when non-visual frontend widenings still pay for a mockup turn."""
+    _epic(
+        repo,
+        {"worker": ["frontend"], "report": ["frontend", "backend"]},
+        covers=["worker", "report"],
+        design={"worker": "preserve", "report": "preserve"},
+    )
+
+    gate = check_mockup_needed(logger, story_slug="01-sign-in", repo_dir=str(repo))
+
+    assert gate.required is False, gate.evidence
+    assert "preserve" in gate.evidence
+
+
+def test_one_required_visual_change_requires_design(
+    logger: logging.Logger, repo: Path
+) -> None:
+    """This fails when a preserved seed masks another seed's visual design work."""
+    _epic(
+        repo,
+        {"existing": ["frontend"], "new-panel": ["frontend"]},
+        covers=["existing", "new-panel"],
+        design={"existing": "preserve", "new-panel": "required"},
+    )
+
+    gate = check_mockup_needed(logger, story_slug="01-sign-in", repo_dir=str(repo))
+
+    assert gate.required is True
+    assert "new-panel" in gate.evidence

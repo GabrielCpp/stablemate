@@ -35,7 +35,9 @@ edit; do not launch a separate `ostler seed add` process per seed, because each 
 whole book. Seeds derive from this epic's roadmap journey segment, not independently pruneable
 roadmap headings, so omit `sourceBullet`. Populate documented surfaces, backing services,
 prerequisites, layers, and services from evidence. Tag every seed with `frontend`, `backend`, and/or
-`infra` as applicable; these tags decide whether a later story receives a design turn. Every epic
+`infra` as applicable. On every frontend seed, add `design: required` for a new or materially
+changed visual experience, or `design: preserve` when the existing visual contract remains intact;
+these fields deterministically decide whether a later story receives a design turn. Every epic
 obligation must map to at least one seed, and every seed id must be stable for story coverage.
 
 If the existing docs cannot establish a required fact, record the uncertainty and return `blocked`
