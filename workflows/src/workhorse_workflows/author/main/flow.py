@@ -547,7 +547,11 @@ class Author(Workflow):
         `epic.md`, and seeds before any story split runs. "No epic left" means every epic is
         ready for the story worklist.
         """
-        pick = self.call(select_epic_document, self.epics_dir)
+        pick = self.call(
+            select_epic_document,
+            self.epics_dir,
+            roadmap=self.ctx.roadmap_path,
+        )
         if pick.has_epic:
             return Continue(pick, self.author_epic, epic=pick.epic)
         return Continue(pick, self.next_story_epic)
@@ -596,7 +600,7 @@ class Author(Workflow):
 
     def next_story_epic(self) -> Continue:
         """Take the next epic whose story graph or story bodies still need authoring."""
-        pick = self.call(select_epic, self.epics_dir)
+        pick = self.call(select_epic, self.epics_dir, roadmap=self.ctx.roadmap_path)
         if pick.has_epic:
             return Continue(pick, self.split_stories, epic=pick.epic)
         return Continue(pick, self.reconcile)

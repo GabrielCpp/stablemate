@@ -59,7 +59,7 @@ from workhorse.records import parse_checkpoint
 
 from workhorse_workflows import author
 from workhorse_workflows.author.main.nodes.artifacts import validate_artifacts
-from workhorse_workflows.author.main.nodes.epics import select_epic
+from workhorse_workflows.author.main.nodes.epics import select_epic, select_epic_document
 from workhorse_workflows.author.main.nodes.stories import prune_bullet
 from workhorse_workflows.author.epic_edit import EpicEdit
 from workhorse_workflows.author.shared.survey import record_slug
@@ -876,6 +876,34 @@ def test_author_nodes_use_milestones_when_todo_is_absent(backlogged: Path) -> No
     report = validate_artifacts(logger, repo_dir=str(backlogged))
 
     assert report.ok, report.errors
+
+
+@pytest.mark.parametrize("selector", [select_epic_document, select_epic])
+def test_roadmap_authoring_selects_only_its_milestone_epics(
+    backlogged: Path,
+    selector: Callable[..., object],
+) -> None:
+    okf = Ostler(backlogged)
+    assert okf.create_epic("unrelated", "Unrelated").ok
+    assert okf.create_epic(EPIC, "Accounts").ok
+    expected = Path(okf.epic_path(EPIC)).name
+    milestones = backlogged / "docs/milestones"
+    milestones.mkdir(parents=True, exist_ok=True)
+    (milestones / "000-unrelated.md").write_text(
+        "---\ntype: milestone\nid: unrelated\ntitle: Unrelated\nstatus: planned\n"
+        "sourceItems:\n  - docs/roadmaps/unrelated.md\nepics:\n  - unrelated\n---\n",
+        encoding="utf-8",
+    )
+    _milestone(backlogged, EPIC, source_items=(ROADMAP,))
+
+    pick = selector(
+        logging.getLogger("test"),
+        repo_dir=str(backlogged),
+        roadmap=ROADMAP,
+    )
+
+    assert getattr(pick, "has_epic") is True
+    assert getattr(pick, "epic") == expected
 
 
 def test_every_prompt_is_told_the_resolved_paths_not_the_blank_parameters(

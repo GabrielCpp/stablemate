@@ -38,6 +38,20 @@ def _milestone_ordered_epics(okf: Ostler) -> list[str]:
     return [epic.name for epic in okf.graph.epics]
 
 
+def _roadmap_ordered_epics(okf: Ostler, roadmap: str) -> list[str]:
+    """The ordered epic worklist owned by one roadmap-sourced milestone."""
+    matches = [
+        milestone
+        for milestone in okf.graph.milestones
+        if roadmap in milestone.source_items
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"roadmap '{roadmap}' must source exactly one milestone; found {len(matches)}"
+        )
+    return [str(epic).strip() for epic in matches[0].epics if str(epic).strip()]
+
+
 def _epic_documented(okf: Ostler, epic: str) -> bool:
     """Whether the epic-level pass has produced this epic's durable authoring inputs."""
     found = epic_by_name(okf.graph, epic)
@@ -49,6 +63,7 @@ def _pick_epic(
     epics_dir: str,
     repo_dir: str,
     *,
+    roadmap: str,
     done: Callable[[Ostler, str], bool],
     finished_reason: str,
     selected_reason: str,
@@ -57,9 +72,13 @@ def _pick_epic(
     okf = Ostler(root)
 
     try:
-        queue = okf.todo() or _milestone_ordered_epics(okf)
-    except (OSError, ValueError, RuntimeError):
-        reason = "could not read the epics queue or milestone graph via ostler"
+        queue = (
+            _roadmap_ordered_epics(okf, roadmap)
+            if roadmap
+            else okf.todo() or _milestone_ordered_epics(okf)
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        reason = f"could not read the epic worklist via ostler: {exc}"
         logger.warning(reason)
         return EpicChoice(reason=reason)
 
@@ -96,7 +115,10 @@ def _pick_epic(
 
 @blueprint.node
 def select_epic_document(
-    logger: logging.Logger, epics_dir: str = "", repo_dir: str = ""
+    logger: logging.Logger,
+    epics_dir: str = "",
+    repo_dir: str = "",
+    roadmap: str = "",
 ) -> EpicChoice:
     """The first queued epic whose milestone/epic authoring pass is not complete.
 
@@ -108,6 +130,7 @@ def select_epic_document(
         logger,
         epics_dir,
         repo_dir,
+        roadmap=roadmap,
         done=_epic_documented,
         finished_reason="every epic in the queue has epic docs and researched seeds",
         selected_reason="epic needs epic.md completion or researched seeds",
@@ -116,7 +139,10 @@ def select_epic_document(
 
 @blueprint.node
 def select_epic(
-    logger: logging.Logger, epics_dir: str = "", repo_dir: str = ""
+    logger: logging.Logger,
+    epics_dir: str = "",
+    repo_dir: str = "",
+    roadmap: str = "",
 ) -> EpicChoice:
     """The first epic in the queue whose authoring is not yet complete.
 
@@ -136,6 +162,7 @@ def select_epic(
         logger,
         epics_dir,
         repo_dir,
+        roadmap=roadmap,
         done=lambda okf, epic: okf.epic_authored(epic),
         finished_reason="every epic in the queue is fully authored",
         selected_reason="epic missing stories, or a story is still unwritten",
