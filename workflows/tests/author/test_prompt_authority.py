@@ -102,3 +102,12 @@ def test_epic_writer_records_the_seed_set_without_per_seed_graph_reloads() -> No
     assert "Write or refine the complete seed set in one edit" in text
     assert "do not launch a separate `ostler seed add` process per seed" in text
     assert "following the installed artifact grammar" in text
+
+
+@pytest.mark.parametrize("prompt", _copies("design-mockup.md"), ids=_id)
+def test_mockup_inspection_does_not_leave_screenshot_collateral(prompt: Path) -> None:
+    text = _prose(prompt)
+
+    assert "Browser inspection is ephemeral" in text
+    assert "Do not save screenshots, evidence, or rendered exports" in text
+    assert "story-local `mockup.html` is this turn's only output" in text

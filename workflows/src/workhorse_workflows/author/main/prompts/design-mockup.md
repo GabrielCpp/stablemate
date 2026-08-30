@@ -8,6 +8,9 @@ Change only the artifacts named by this task. Leave them uncommitted: do not ins
 run repository-wide checks, stage, commit, push, or alter branches/remotes; Author validates and
 delivers after all authoring turns finish.
 
+Browser inspection is ephemeral. Do not save screenshots, evidence, or rendered exports in the
+repository; the story-local `mockup.html` is this turn's only output.
+
 You are the **design** stage. Produce a **visual mockup in the app's own style** so the writer can
 link it and the coder has a concrete reference.
 
