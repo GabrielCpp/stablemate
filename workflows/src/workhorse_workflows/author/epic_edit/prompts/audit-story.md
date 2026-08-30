@@ -4,6 +4,10 @@ agent: agent
 
 # Adversarially audit a story for coder-readiness: `{{ workhorse_var('story_slug') }}`
 
+Change only the story-local audit artifact named by this task. Leave it uncommitted: do not install
+dependencies, run repository-wide checks, stage, commit, push, or alter branches/remotes; Author
+validates and delivers after all authoring turns finish.
+
 The story passed the **structural** validator (it has Context + Acceptance Criteria, a Status
 line, no open-decision markers) and a deterministic **grounding gate** (its surface was researched
 and, when feature docs are configured, its journey was read). Your job is the part a script

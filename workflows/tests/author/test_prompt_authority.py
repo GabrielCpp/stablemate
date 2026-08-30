@@ -76,6 +76,7 @@ def test_reworker_makes_in_scope_choices_instead_of_blocking(prompt: Path) -> No
         "split-stories.md",
         "write-story.md",
         "design-mockup.md",
+        "audit-story.md",
         "rework-story.md",
         "resolve-integrity.md",
     ],
