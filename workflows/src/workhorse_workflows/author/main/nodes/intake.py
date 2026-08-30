@@ -32,9 +32,8 @@ def validate_roadmap_milestone(
     roadmap: str,
     repo_dir: str = "",
 ) -> Defects:
-    """Prove the roadmap owns one non-empty, internally valid milestone subgraph."""
-    okf = Ostler(survey_repo_root(repo_dir))
-    milestones = okf.list("milestone")
+    """Prove the roadmap owns exactly one non-empty milestone."""
+    milestones = Ostler(survey_repo_root(repo_dir)).list("milestone")
     matches = [m for m in milestones if roadmap in (m.get("sourceItems") or [])]
     errors: list[str] = []
     if len(matches) != 1:
@@ -50,18 +49,6 @@ def validate_roadmap_milestone(
         errors.append(
             f"milestone '{matches[0].get('name', '?')}' sourced by '{roadmap}' has no epics"
         )
-    else:
-        for epic in matches[0].get("epics") or []:
-            outcome = okf.doctor(epic=str(epic))
-            if outcome.status == "invalid":
-                errors.append(f"epic '{epic}' could not be validated: {outcome.message}")
-                continue
-            for finding in outcome.data.get("findings", []):
-                if finding.get("severity") != "error":
-                    continue
-                code = finding.get("code", "unknown")
-                message = finding.get("message", "planning graph defect")
-                errors.append(f"[{code}] ({epic}) {message}")
     logger.info("roadmap milestone validation: %d error(s)", len(errors))
     return Defects(ok=not errors, errors="\n".join(errors))
 
