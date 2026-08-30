@@ -27,6 +27,9 @@ DEFAULT_SEED_STATUS = "backlog"
 # The companion `services` axis is deliberately *not* closed — nothing branches on it yet, so
 # validating it would only add a failure mode.
 SEED_LAYERS = ("frontend", "backend", "infra")
+# Whether frontend work changes the visual contract or preserves an existing one. Author uses
+# this independently of ``layers``: a service worker is frontend code but not a screen design.
+SEED_DESIGNS = ("required", "preserve")
 
 # ---------------------------------------------------------------------------
 # epic.md body grammar (parsed by markdown.py's Section/Bullet tree)
@@ -38,7 +41,7 @@ STORIES_HEADING = "Stories"    # `## Stories` → `### <slug>` subsections
 # field. The first paragraph after the bullets is the seed `summary`.
 SEED_META_KEYS = (
     "status", "surface", "legacySurface", "backing", "prerequisites", "sourceBullet",
-    "layers", "services",
+    "layers", "services", "design",
 )
 # The two list-valued seed keys, comma-separated on the bullet.
 SEED_LIST_META_KEYS = ("layers", "services")

@@ -34,6 +34,9 @@ class SeedItem:
     # reads it that way and keeps the design turn rather than skipping it on a missing tag.
     layers: tuple[str, ...] = ()
     services: tuple[str, ...] = ()
+    # ``required`` changes a visual contract; ``preserve`` retains an existing one. Blank is
+    # unclassified and therefore fail-closed by Author's mockup gate.
+    design: str = ""
 
     @property
     def active(self) -> bool:
@@ -511,6 +514,7 @@ def _parse_seeds(doc: markdown.MarkdownDoc) -> list[SeedItem]:
         seeds.append(SeedItem(
             id=sid, status=status, summary=summary, raw=raw,
             layers=_meta_tags(meta, "layers"), services=_meta_tags(meta, "services"),
+            design=_meta_scalar(meta, "design").lower(),
         ))
     return seeds
 

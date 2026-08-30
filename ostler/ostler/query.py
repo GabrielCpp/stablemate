@@ -51,7 +51,8 @@ def _seed_row(epic, seed) -> dict:
             "currentState": raw.get("currentstate", ""),
             "sourceBullet": raw.get("sourcebullet", ""),
             "backing": raw.get("backing", ""),
-            "prerequisites": raw.get("prerequisites", "")}
+            "prerequisites": raw.get("prerequisites", ""),
+            "design": raw.get("design", "")}
 
 
 def list_entities(graph: Graph, etype: str, epic: str | None = None,

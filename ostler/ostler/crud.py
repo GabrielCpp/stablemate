@@ -562,6 +562,10 @@ def add_seed(graph: Graph, epic_name: str, seed_id: str, status: str = registry.
     if bad:
         return Result(False, f"invalid layer{'s' if len(bad) > 1 else ''} "
                              f"'{', '.join(bad)}' (one of {', '.join(registry.SEED_LAYERS)})")
+    design = str((meta or {}).get("design") or "").strip().lower()
+    if design and design not in registry.SEED_DESIGNS:
+        return Result(False, f"invalid design '{design}' "
+                             f"(one of {', '.join(registry.SEED_DESIGNS)})")
     doc = markdown.split(epic_md.read_text(encoding="utf-8"))
     sec = doc.find_section(registry.SEEDS_HEADING)
     # Update-or-create: `write-epic.md` documents re-running this as updating the seed rather
@@ -572,8 +576,10 @@ def add_seed(graph: Graph, epic_name: str, seed_id: str, status: str = registry.
         _remove_subsection(doc, registry.SEEDS_HEADING, seed_id)
     block = [f"### {seed_id}", f"- status: {status}"]
     for key in ("surface", "legacySurface", "backing", "prerequisites", "sourceBullet",
-                "layers", "services"):
+                "layers", "services", "design"):
         val = (meta or {}).get(key)
+        if key == "design" and val:
+            val = str(val).strip().lower()
         if key in registry.SEED_LIST_META_KEYS:
             val = ", ".join(_tags(val))
         if val:

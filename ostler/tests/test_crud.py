@@ -452,11 +452,13 @@ def test_story_id_uses_the_repo_prefix(tmp_path: Path):
 def test_seed_layers_and_services_round_trip(repo: Path):
     assert crud.add_seed(load(repo), "epic-a", "tagged", status="researched",
                          meta={"layers": ["frontend", "Backend"],
-                               "services": ["api-service"]}).ok
+                               "services": ["api-service"],
+                               "design": "preserve"}).ok
 
     seed = next(s for s in load(repo).epics[0].seeds if s.id == "tagged")
     assert seed.layers == ("frontend", "backend")   # normalised, order preserved
     assert seed.services == ("api-service",)
+    assert seed.design == "preserve"
     assert "- layers: frontend, backend" in (repo / "docs/epics/epic-a/epic.md").read_text(
         encoding="utf-8"
     )
@@ -466,6 +468,13 @@ def test_seed_layer_outside_the_vocabulary_is_rejected(repo: Path):
     res = crud.add_seed(load(repo), "epic-a", "typo", status="researched",
                         meta={"layers": ["frontned"]})
     assert not res.ok and "frontned" in res.message
+    assert not any(s.id == "typo" for s in load(repo).epics[0].seeds)
+
+
+def test_seed_design_outside_the_vocabulary_is_rejected(repo: Path):
+    res = crud.add_seed(load(repo), "epic-a", "typo", status="researched",
+                        meta={"layers": ["frontend"], "design": "unchanged"})
+    assert not res.ok and "unchanged" in res.message
     assert not any(s.id == "typo" for s in load(repo).epics[0].seeds)
 
 
