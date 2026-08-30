@@ -289,17 +289,17 @@ def validate_artifacts(logger: logging.Logger, repo_dir: str = "") -> Defects:
 # ── git: keep the work, and ship it ─────────────────────────────────────────
 
 
-def _commit_message(mode: str, epic: str, bullet: str) -> str:
+def _commit_message(mode: str, epic: str, bullet: str, roadmap: str = "") -> str:
     if mode == "incomplete":
         # The failure edge of the final gate. The partial prose is worth keeping — it is what
         # a rerun resumes from — but it must never look like a finished run, and the workflow
         # ends red right after this so no PR is opened on it. The message is the marker a
         # human (or a `git log` skim) needs to spot the branch as unfinished.
+        if roadmap:
+            return f"author: INCOMPLETE — roadmap {Path(roadmap).stem}, do not merge"
         if epic:
             return f"author: INCOMPLETE — unwritten stories, do not merge ({epic})"
         return "author: INCOMPLETE — unwritten stories, do not merge"
-    if mode == "survey":
-        return "author: survey intake and epic backlog authoring"
     if mode == "story" and epic:
         trimmed = bullet.strip().splitlines()[0][:72] if bullet.strip() else ""
         return f"author: {epic} — {trimmed}" if trimmed else f"author: {epic}"
@@ -307,7 +307,9 @@ def _commit_message(mode: str, epic: str, bullet: str) -> str:
         trimmed = bullet.strip().splitlines()[0][:72] if bullet.strip() else ""
         epic = registry.epic_slug(epic)
         return f"author: {epic} — {trimmed}" if trimmed else f"author: {epic}"
-    return "author: epic backlog authoring"
+    if roadmap:
+        return f"author: roadmap {Path(roadmap).stem}"
+    return "author: epic authoring"
 
 
 @blueprint.node
@@ -316,6 +318,7 @@ def commit_author(
     mode: str = "epic",
     epic: str = "",
     bullet: str = "",
+    roadmap: str = "",
     repo_dir: str = "",
     docs_dir: str = "docs",
     id_registry: str = ".agents/ids.json",
@@ -350,23 +353,23 @@ def commit_author(
         logger.info("nothing author writes exists under %s — nothing to commit", repo_root)
         return Committed()
 
-    committed = commit_paths(repo_root, _commit_message(mode, epic, bullet), *scope)
+    committed = commit_paths(repo_root, _commit_message(mode, epic, bullet, roadmap), *scope)
     if committed:
         logger.info("committed %s in %s", " ".join(scope), repo_root)
     return Committed(committed=committed)
 
 
-def _pr_title(mode: str, epic: str, bullet: str) -> str:
-    if mode == "survey":
-        return "Author: survey intake and epic/story backlog authoring"
+def _pr_title(mode: str, epic: str, bullet: str, roadmap: str = "") -> str:
     if mode == "story" and epic:
         trimmed = bullet.strip().splitlines()[0][:72] if bullet.strip() else ""
         return f"Author: {epic} — {trimmed}" if trimmed else f"Author: {epic}"
-    return "Author: epic/story backlog authoring"
+    if roadmap:
+        return f"Author: roadmap {Path(roadmap).stem}"
+    return "Author: epic/story authoring"
 
 
 def _pr_body(mode: str) -> str:
-    label = "survey mode" if mode == "survey" else "story mode" if mode == "story" else "epic mode"
+    label = "story mode" if mode == "story" else "roadmap mode"
     return "\n".join(
         [
             "## Summary",
@@ -436,6 +439,7 @@ def open_author_pr(
     mode: str = "epic",
     epic: str = "",
     bullet: str = "",
+    roadmap: str = "",
     repo_dir: str = "",
 ) -> PullRequest:
     """Push the run's branch and open one PR in the docs repo.
@@ -487,7 +491,7 @@ def open_author_pr(
         pr = gh_repo.create_pull(
             base=base,
             head=author_branch,
-            title=_pr_title(mode, epic, bullet),
+            title=_pr_title(mode, epic, bullet, roadmap),
             body=_pr_body(mode),
         )
     except Exception as exc:

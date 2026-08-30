@@ -67,6 +67,19 @@ choices; the independent audit checks consistency, verifiability, existing docum
 and scope rather than demanding that a greenfield detail already exist in the OKF book. A conflict
 with an existing source or a required scope expansion still goes to the operator.
 
+Epic authoring consumes one explicitly named approved roadmap and produces exactly one milestone:
+
+```bash
+workhorse-author run --params '{
+  "roadmap": "docs/roadmaps/account-access.md"
+}'
+```
+
+The roadmap path is the milestone's durable source identity. Author preserves the roadmap, writes
+ordered epics and vertical stories, and changes `status: approved` to `status: authored` only after
+the complete planning graph validates. Survey modes stop after discovery; they do not bypass roadmap
+approval by decomposing their generated backlog.
+
 ## Editing authored scope
 
 The author command exposes two standalone edit flows. `epic-edit` is the reconciliation

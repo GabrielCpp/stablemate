@@ -64,7 +64,7 @@ scaffolded sections pass without comment.
 6. **Deferral ownership** — nothing this epic's stories put out of scope is left unowned. The
    deterministic gate can only see edges that exist (an orphan seed, a dangling dependency); what it
    cannot see is scope the stories collectively *describe* as somebody else's — "the export flow is
-   handled elsewhere", "auth is out of scope here" — with no sibling story and no open backlog item
+   handled elsewhere", "auth is out of scope here" — with no sibling story or roadmap-backed epic
    that actually owns it. An orphaned surface is the blank-screen failure; name it in `gaps` so the
    split/rework stage gives it an owner.
 {% block repo_review_rules %}{% endblock %}

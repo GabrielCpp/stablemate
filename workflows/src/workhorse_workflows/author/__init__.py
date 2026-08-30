@@ -1,4 +1,4 @@
-"""The `author` workflow: turn a backlog into epics and stories the coder can build.
+"""The `author` workflow: turn one roadmap into epics and stories the coder can build.
 
 Ported from `base-library/workflows/author/`. The package has the layout
 `workflows/README.md` prescribes for every workflow — one directory per *machine*:

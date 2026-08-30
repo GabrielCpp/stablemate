@@ -46,7 +46,7 @@ an **escalation**, not a deletion.
   This is not a reference fix; **escalate** (or, only if clearly in-scope and safe, regenerate the
   story from its seed — never an empty stub).
 - **`orphan-seed`**: an active seed no story covers — a real coverage gap. Record it for the
-  backlog / note it in the context file; **do not** fabricate a covering story. Escalate if it
+  operator context file; **do not** fabricate a covering story. Escalate if it
   needs a scope decision.
 
 ## Best-effort check before finishing

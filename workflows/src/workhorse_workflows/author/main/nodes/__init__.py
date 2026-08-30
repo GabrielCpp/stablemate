@@ -5,11 +5,10 @@ name [`../../workflow.py`](../../workflow.py) needs from here. The submodules ar
 subjects:
 
 * `config` — what the run works on, and the branch it works on it in
-* `intake` — give every manually entered work bullet a durable id
-* `grill` — find the slash command that opens the operator's grilling session
+* `intake` — validate roadmap provenance and retain story-mode bullet adoption
 * `epics` — which epic is next
 * `stories` — one story at a time: seed it, pick it, validate it, ground it
-* `coverage` — whether an epic's stories cover it, and the backlog it consumed
+* `coverage` — whether an epic's stories cover it
 * `artifacts` — the whole-run gates, and the git tail that ships what they passed
 
 The survey graphs' nodes are not here, and they keep a blueprint of their own so a reader
@@ -45,10 +44,13 @@ from workhorse_workflows.author.main.nodes.artifacts import (
     verify_reconcile,
 )
 from workhorse_workflows.author.main.nodes.config import branch_author, load_config
-from workhorse_workflows.author.main.nodes.coverage import prune_backlog, validate_coverage
+from workhorse_workflows.author.main.nodes.coverage import validate_coverage
 from workhorse_workflows.author.main.nodes.epics import select_epic, select_epic_document
-from workhorse_workflows.author.main.nodes.grill import resolve_grill_trigger
-from workhorse_workflows.author.main.nodes.intake import adopt_backlog
+from workhorse_workflows.author.main.nodes.intake import (
+    adopt_backlog,
+    mark_roadmap_authored,
+    validate_roadmap_milestone,
+)
 from workhorse_workflows.author.main.nodes.stories import (
     check_mockup_needed,
     check_story_feedback,
@@ -70,18 +72,18 @@ __all__ = [
     "check_story_grounding",
     "commit_author",
     "load_config",
+    "mark_roadmap_authored",
     "open_author_pr",
-    "prune_backlog",
     "prune_bullet",
     "record_attempt",
     "remove_story",
-    "resolve_grill_trigger",
     "seed_story",
     "select_epic",
     "select_epic_document",
     "select_story",
     "validate_artifacts",
     "validate_coverage",
+    "validate_roadmap_milestone",
     "validate_story",
     "verify_integrity",
     "verify_reconcile",

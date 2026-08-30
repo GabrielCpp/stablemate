@@ -1,4 +1,4 @@
-"""`main` — the backlog→epics→stories machine a bare `workhorse-author run` starts.
+"""`main` — the roadmap-to-milestone machine a bare `workhorse-author run` starts.
 
 Laid out exactly as the sub-flows beside it: `flow.py` is the state machine and
 [`nodes/`](nodes) holds the deterministic work it sequences — config, epic selection,

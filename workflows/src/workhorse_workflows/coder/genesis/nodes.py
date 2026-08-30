@@ -700,7 +700,9 @@ def validate_genesis(
                       "profile without it, and epic-coverage validation then short-circuits "
                       "and asserts nothing")
     if not backlog.is_file():
-        errors.append(f"no backlog at {backlog} — the author workflow's load_config hard-fails")
+        errors.append(
+            f"no backlog at {backlog} — coder fix queues and Author story/edit modes require it"
+        )
 
     # ── advisory ──
     if not _has_lint_target(target):

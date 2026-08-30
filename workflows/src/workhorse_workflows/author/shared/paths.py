@@ -20,7 +20,7 @@ variable.
   `docs/epics/` directory. Used by the surveyor's own scripts, and by most of the main
   graph's own nodes (`load_config`, `select_epic`, `select_story`, `validate_story`,
   `check_story_grounding`, `validate_coverage`, `record_attempt`, `prune_bullet`,
-  `prune_backlog`, `validate_artifacts`) — despite the name, which reads narrower than
+  `validate_artifacts`) — despite the name, which reads narrower than
   its use.
 * `launch_repo_root()` — `repo_dir`, else the current directory, with no walk at
   all. Used by the parity surveyor and by the two tri-state verifiers
@@ -112,6 +112,17 @@ def backlog_file(root: str | Path, configured: str = "") -> str:
     return configured.strip() or _rel(root, okf_path.backlog_path_in(Path(root)))
 
 
+def roadmap_file(root: str | Path, configured: str) -> str:
+    """The one roadmap Author consumes, normalized to a repo-relative path."""
+    value = configured.strip()
+    if not value:
+        return ""
+    target = Path(value)
+    if not target.is_absolute():
+        target = Path(root) / target
+    return _rel(root, target)
+
+
 def features_dir(root: str | Path, configured: str = "") -> str:
     """The OKF feature book, repo-relative: what `template.features_dir` says, else ostler's.
 
@@ -172,6 +183,7 @@ __all__ = [
     "epics_dir",
     "features_dir",
     "launch_repo_root",
+    "roadmap_file",
     "story_context",
     "story_dir",
     "survey_repo_root",

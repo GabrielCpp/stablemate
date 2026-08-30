@@ -1,13 +1,15 @@
-"""Normalize backlog identity before an agent reads the worklist."""
+"""Validate and advance the durable inputs Author consumes."""
 from __future__ import annotations
 
 import logging
+import re
 
-from ostler import Ostler
+from ostler import Ostler, markdown
 from ostler.result import Result
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.main.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.schemas.main import Defects, RoadmapStatus
 
 
 @blueprint.node
@@ -24,4 +26,62 @@ def adopt_backlog(
     return result
 
 
-__all__ = ["adopt_backlog"]
+@blueprint.node
+def validate_roadmap_milestone(
+    logger: logging.Logger,
+    roadmap: str,
+    repo_dir: str = "",
+) -> Defects:
+    """Prove one and only one non-empty milestone owns the roadmap source path."""
+    milestones = Ostler(survey_repo_root(repo_dir)).list("milestone")
+    matches = [m for m in milestones if roadmap in (m.get("sourceItems") or [])]
+    errors: list[str] = []
+    if len(matches) != 1:
+        errors.append(
+            f"roadmap '{roadmap}' must source exactly one milestone; found {len(matches)}"
+        )
+    elif list(matches[0].get("sourceItems") or []) != [roadmap]:
+        errors.append(
+            f"milestone '{matches[0].get('name', '?')}' must list only roadmap '{roadmap}' "
+            "in sourceItems"
+        )
+    elif not matches[0].get("epics"):
+        errors.append(
+            f"milestone '{matches[0].get('name', '?')}' sourced by '{roadmap}' has no epics"
+        )
+    logger.info("roadmap milestone validation: %d error(s)", len(errors))
+    return Defects(ok=not errors, errors="\n".join(errors))
+
+
+@blueprint.node
+def mark_roadmap_authored(
+    logger: logging.Logger,
+    roadmap: str,
+    repo_dir: str = "",
+) -> RoadmapStatus:
+    """Advance one validated roadmap from approved to authored, idempotently."""
+    path = survey_repo_root(repo_dir) / roadmap
+    text = path.read_text(encoding="utf-8")
+    document = markdown.split(text)
+    status = str((document.frontmatter or {}).get("status", ""))
+    if status == "authored":
+        return RoadmapStatus(path=roadmap, status=status)
+    if status != "approved":
+        raise WorkflowFailed(
+            f"roadmap '{roadmap}' must still be approved before Author can mark it authored; "
+            f"got {status or '<missing>'}"
+        )
+    front, marker, body = text.removeprefix("---\n").partition("\n---")
+    if not marker:
+        raise WorkflowFailed(f"roadmap '{roadmap}' has no closed YAML frontmatter")
+    updated, replacements = re.subn(
+        r"(?m)^status\s*:.*$", "status: authored", front, count=1
+    )
+    if replacements != 1:
+        raise WorkflowFailed(f"roadmap '{roadmap}' has no status field to advance")
+    path.write_text(f"---\n{updated}{marker}{body}", encoding="utf-8")
+    logger.info("marked roadmap %s authored", roadmap)
+    return RoadmapStatus(path=roadmap, status="authored")
+
+
+__all__ = ["adopt_backlog", "mark_roadmap_authored", "validate_roadmap_milestone"]

@@ -28,6 +28,7 @@ class Config(AuthorResult):
 
     repo_root: str = ""
     backlog_path: str = ""
+    roadmap_path: str = ""
     epics_dir: str = ""
     features_dir: str = ""
     mockup_dir: str = ""
@@ -117,6 +118,13 @@ class Defects(AuthorResult):
     errors: str = ""
 
 
+class RoadmapStatus(AuthorResult):
+    """The durable roadmap lifecycle state after Author's final transition."""
+
+    path: str = ""
+    status: str = ""
+
+
 class VerifyReport(AuthorResult):
     """The two tri-state verifiers: `verify_reconcile` and `verify_integrity`.
 
@@ -146,7 +154,7 @@ class Feedback(AuthorResult):
 
 
 class Pruned(AuthorResult):
-    """`prune_bullet` and `prune_backlog` — bullets removed once they are covered."""
+    """`prune_bullet` — the one story-mode backlog bullet removed after authoring."""
 
     removed: int = 0
     remaining: int = 0
@@ -196,22 +204,6 @@ class EpicReview(AuthorResult):
 
     status: str = ""
     notes: str = ""
-
-
-class GrillBrief(AuthorResult):
-    """`main/prompts/grill-brief.md` — the frontier brief handed to the operator's grill.
-
-    Written to the outbox alongside the trigger command; the operator's own grilling
-    session reads it as round one instead of rediscovering the repo.
-    """
-
-    brief: str = ""
-
-
-class BacklogRefactor(AuthorResult):
-    """`main/prompts/refactor-backlog.md` — the backlog rewritten from the grill's decisions."""
-
-    summary: str = ""
 
 
 class WriteEpicResult(AuthorResult):
@@ -320,6 +312,7 @@ __all__ = [
     "MockupResult",
     "Pruned",
     "PullRequest",
+    "RoadmapStatus",
     "RunContext",
     "SeededStory",
     "StoryMutation",

@@ -2,7 +2,7 @@
 
 Nothing is stubbed except the agent turn. `load_config`, `branch_author`, `seed_story`,
 `select_epic`, `select_story`, `validate_story`, `check_story_grounding`, `record_attempt`,
-`check_story_feedback`, `validate_coverage`, `prune_backlog`, `prune_bullet`,
+`check_story_feedback`, `validate_coverage`, `prune_bullet`,
 `verify_reconcile`, `verify_integrity`, `validate_artifacts`, `commit_author` and
 `open_author_pr` all run for real against the `repo` fixture — so a drive here exercises
 ostler's real graph, the two deterministic story gates, the coverage gate, the whole-graph
@@ -18,10 +18,9 @@ replied would leave `select_epic` and `validate_story` with nothing to read.
 What the port could get wrong, and what is therefore under test here:
 
 * `handoff`, which `research` never touched: `survey` mode runs the surveyor sub-flow to
-  completion on the parent's env and then authors the backlog the sub-flow wrote. The
-  sub-flows' own machinery is covered in `flows/test_surveyor.py`; what is covered here is
-  the hand-off itself — child prompt paths resolving against the parent's directory, and
-  the parent continuing from the child's artifacts.
+  completion on the parent's env and stops with discovery artifacts. The sub-flow's own
+  machinery is covered in `flows/test_surveyor.py`; what is covered here is the hand-off
+  itself and the rule that survey output cannot bypass roadmap approval.
 * the bounded rework loops and their give-up arms — epic review, story rework — each
   ending somewhere other than "stuck";
 * the operator gates, the other shape `research` never touched. The YAML sent every gate
@@ -47,7 +46,7 @@ from unittest.mock import patch
 
 import pytest
 from _fakes import StubRunner
-from ostler import Ostler, markdown
+from ostler import Ostler
 from workhorse import inbox
 from workhorse.artifacts import ArtifactWriter
 from workhorse.cli.inbox import INBOX_FILE
@@ -68,6 +67,7 @@ from workhorse_workflows.author.story_edit import StoryEdit
 from workhorse_workflows.author.workflow import Author
 
 BACKLOG = "docs/backlog.md"
+ROADMAP = "docs/roadmaps/account-access.md"
 EPICS = "docs/epics"
 EPIC = "accounts"
 SECOND_EPIC = "profiles"
@@ -81,12 +81,53 @@ SECOND_EPIC_DIR = f"{EPICS}/{SECOND_EPIC_NAME}"
 #: The run-wide operator context file — `paths.author_context(epics_dir)`.
 CONTEXT = f"{EPICS}/_author-context.md"
 
-#: The two backlog bullets the scripted decomposition turns into seeds. The `sourceBullet`
-#: recorded on each seed is the verbatim line, which is what `prune_backlog` matches on.
+#: The two roadmap journey details the scripted epic writer turns into seeds.
 SEEDS = {
     "b1": "[b1] Users can sign in with an email and a password",
     "b2": "[b2] Users can reset a forgotten password",
 }
+ROADMAP_TEXT = """---
+type: roadmap
+title: Account Access
+status: approved
+---
+
+# Account Access
+
+## Outcome
+
+Account holders can access and recover their account.
+
+## Release Boundary
+
+One milestone is complete when account access and recovery pass end to end.
+
+## User Journeys
+
+### Sign in
+
+An account holder signs in with email and password.
+
+### Recover access
+
+An account holder resets a forgotten password.
+
+## Architecture Decisions
+
+The existing authentication boundary remains authoritative.
+
+## Constraints
+
+Account data remains compatible.
+
+## Acceptance
+
+Both journeys pass end to end.
+
+## Non-Goals
+
+Profile editing is excluded.
+"""
 #: Supporting backlog context is prose rather than a bullet, so intake does not turn it into work.
 SURFACE = "**api** is the only surface and the only writer of stored data."
 #: What the scripted `split-stories` registers, one story per seed.
@@ -138,6 +179,7 @@ def backlogged(repo: Path, write: Callable[[Path, str], Path]) -> Path:
         f"# Backlog\n\nSurfaces this app ships:\n\n{SURFACE}\n\n## Scope items\n\n"
         + "".join(f"- {b}\n" for b in SEEDS.values()),
     )
+    write(repo / ROADMAP, ROADMAP_TEXT)
     _commit(repo, "seed")
     return repo
 
@@ -380,7 +422,7 @@ class _Agent:
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         self.cwds: list[str] = []
-        self.backlog_at_decompose = ""
+        self.roadmap_at_decompose = ""
 
     # -- the seam ---------------------------------------------------------
 
@@ -399,36 +441,23 @@ class _Agent:
     def args_for(self, stem: str) -> list[dict[str, Any]]:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
 
-    # -- the grill ---------------------------------------------------------
-
-    def _grill_brief(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        return {"brief": "no open questions"}
-
-    def _refactor_backlog(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        return {"summary": "no changes needed"}
-
     # -- the epic split ---------------------------------------------------
 
     def _decompose_epics(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """Create journey epic shells in one release milestone; `write-epic` records seeds."""
-        self.backlog_at_decompose = (self.repo / data["backlog"]).read_text(encoding="utf-8")
+        self.roadmap_at_decompose = (self.repo / data["roadmap"]).read_text(encoding="utf-8")
         okf = Ostler(self.repo)
         if not (self.repo / EPIC_DIR / "epic.md").is_file():
             okf.create_epic(EPIC, "Account holder accesses their account")
         if self.two_epics and not (self.repo / SECOND_EPIC_DIR / "epic.md").is_file():
             okf.create_epic(SECOND_EPIC, "Account holder updates their profile")
-        intake = tuple(
-            item_id
-            for bullet in markdown.split(self.backlog_at_decompose).walk_bullets()
-            if (item_id := bullet.bracketed[0])
-        )
         _milestone(
             self.repo,
             EPIC,
             *(SECOND_EPIC,) if self.two_epics else (),
-            source_items=intake,
+            source_items=(str(data["roadmap"]),),
         )
-        return {"status": "complete", "notes": f"one epic from {len(SEEDS)} bullet(s)"}
+        return {"status": "complete", "notes": "one roadmap milestone"}
 
     def _rework_epics(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """Same product as the decomposition, which is why it re-runs it."""
@@ -558,7 +587,7 @@ The running system is the source of truth.
                 "p1",
                 status="researched",
                 summary="[p1] Users can edit their profile",
-                meta={"sourceBullet": "[p1] Users can edit their profile"},
+                meta={},
             )
             return {"status": "complete", "notes": "profile seed recorded"}
         surface = "docs/features/web/accounts.md"
@@ -571,7 +600,7 @@ The running system is the source of truth.
                 encoding="utf-8",
             )
         for seed_id, text in SEEDS.items():
-            meta: dict[str, Any] = {"sourceBullet": text}
+            meta: dict[str, Any] = {}
             if self.backend_seeds:
                 # Classified seeds are what the mockup gate reads: `backend` alone means no
                 # surface is designed, and the story writer falls back to the feature doc.
@@ -716,19 +745,11 @@ def _drive(
     wait_for_answer: Callable[..., Any] | None = None,
     **inputs: Any,
 ) -> Any:
-    """Drive `Author`, auto-answering the grill's gate so it never blocks a test.
-
-    The grill fires unconditionally at backlog intake, ahead of every other operator
-    gate, and its `Await` writes to the same context-file path `review_epics`'s gate
-    later reuses — so the two are told apart by *content*, not by path. A test that
-    wants to script its own gate passes `wait_for_answer`; every other `Await` this
-    run reaches still goes through it, only the grill's is skipped automatically.
-    """
+    """Drive `Author`, optionally scripting an operator gate."""
+    if inputs.get("mode", "epic") == "epic":
+        inputs.setdefault("roadmap", ROADMAP)
 
     def _wait_for_answer(path: Path, **kwargs: Any) -> Any:
-        text = path.read_text(encoding="utf-8") if path.is_file() else ""
-        if "grill this backlog" in _latest_ask(text):
-            return None
         if wait_for_answer is not None:
             return wait_for_answer(path, **kwargs)
         return None
@@ -748,24 +769,21 @@ def _drive_epic_edit(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
 # --------------------------------------------------------------------------- epic mode
 
 
-def test_epic_mode_authors_the_backlog_and_commits_it(
-    backlogged: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+def test_epic_mode_authors_one_roadmap_milestone_and_commits_it(
+    backlogged: Path, tmp_path: Path
 ) -> None:
     """The straight-through run: one epic, two stories, both gates green, then the git tail.
 
     Every count below is a node the YAML ran exactly once per pass too, and the artifacts
     are the YAML's artifacts: the epic and its seeds in `epic.md`, an authored `story.md`
-    per story, the consumed bullets gone from the backlog, one commit on the author branch,
+    per story, an untouched backlog, one commit on the author branch,
     and no PR because there is no token.
     """
+    backlog_before = (backlogged / BACKLOG).read_bytes()
     agent = _Agent(backlogged)
-    with caplog.at_level("INFO"):
-        result = _drive(_env(tmp_path), agent)
-    pruned = "\n".join(r.getMessage() for r in caplog.records if "pruned" in r.getMessage())
+    result = _drive(_env(tmp_path), agent, roadmap=ROADMAP)
 
     assert agent.counts() == {
-        "grill-brief": 1,
-        "refactor-backlog": 1,
         "decompose-epics": 1,
         "review-epics": 1,
         "write-epic": 1,
@@ -783,40 +801,19 @@ def test_epic_mode_authors_the_backlog_and_commits_it(
         f for f in Ostler(backlogged).doctor().data["findings"] if f["severity"] == "error"
     ]
 
-    # The coverage tail pruned both work items. Supporting context is prose, not a bullet.
-    assert _bullets(backlogged) == []
-    assert "## Scope items" in (backlogged / BACKLOG).read_text()
-    # Nothing outstanding — asserted on the log line, because in epic mode the prune tail's
-    # count reaches a human only there (the run's result is the PR node's). The surviving
-    # prose bullet is not a work item, and counting it says the backlog still holds work.
-    assert "pruned 2 bullet(s)" in pruned and "(0 remaining)" in pruned, pruned
+    assert (backlogged / BACKLOG).read_bytes() == backlog_before
+    milestones = Ostler(backlogged).list("milestone")
+    assert len(milestones) == 1
+    assert milestones[0]["sourceItems"] == [ROADMAP]
+    assert "status: authored" in (backlogged / ROADMAP).read_text(encoding="utf-8")
 
     # The git tail: committed on the run's own branch, PR skipped for want of a token.
-    assert _subject(backlogged) == "author: epic backlog authoring"
+    assert _subject(backlogged) == "author: roadmap account-access"
     assert result.author_pr == "skipped", result
     assert result.pr_skip_reason == "no GitHub token is configured", result
 
     # Every turn ran in the repo, not in the run directory.
     assert set(agent.cwds) == {str(backlogged)}
-
-
-def test_the_grill_briefs_the_operator_then_refactor_backlog_continues_the_run(
-    backlogged: Path, tmp_path: Path
-) -> None:
-    """The grill fires first, unconditionally, and its note carries the trigger and brief.
-
-    `refactor_backlog` then reads that same context file and hands the run on into
-    `split_epics` — a state of its own, not folded back into the gate that produced it.
-    """
-    agent = _Agent(backlogged)
-    _drive(_env(tmp_path), agent)
-
-    note = (backlogged / CONTEXT).read_text(encoding="utf-8")
-    assert "/stablemate-grill" in note, note
-    assert "grill this backlog before it is split into epics" in note, note
-    assert "no open questions" in note, note
-    assert agent.calls[:2] == ["grill-brief", "refactor-backlog"], agent.calls
-    assert agent.counts()["decompose-epics"] == 1, agent.counts()
 
 
 def test_epic_mode_skips_mockups_for_seeds_tagged_without_a_frontend_layer(
@@ -835,32 +832,6 @@ def test_epic_mode_skips_mockups_for_seeds_tagged_without_a_frontend_layer(
     assert agent.counts()["design-mockup"] == 0, agent.counts()
     assert agent.counts()["write-story"] == 2, agent.counts()
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
-
-
-def test_epic_mode_adopts_unnamed_scope_before_decomposition(
-    backlogged: Path, tmp_path: Path
-) -> None:
-    backlog = backlogged / BACKLOG
-    backlog.write_text(
-        backlog.read_text(encoding="utf-8")
-        + "\n## Later intake\n\n- Recover a local draft\n\n"
-        + "## Filed by coder\n\n- Fix an adjacent defect\n",
-        encoding="utf-8",
-    )
-    agent = _Agent(backlogged)
-
-    _drive(_env(tmp_path), agent)
-
-    assert "- [ACME-" in agent.backlog_at_decompose
-    assert "] Recover a local draft" in agent.backlog_at_decompose
-    assert "] Fix an adjacent defect" in agent.backlog_at_decompose
-    intake = {
-        item_id
-        for bullet in markdown.split(agent.backlog_at_decompose).walk_bullets()
-        if (item_id := bullet.bracketed[0])
-    }
-    milestone = Ostler(backlogged).list("milestone")[0]
-    assert set(milestone["sourceItems"]) == intake
 
 
 def test_story_prune_preserves_a_parent_with_nested_work(backlogged: Path) -> None:
@@ -910,14 +881,14 @@ def test_author_nodes_use_milestones_when_todo_is_absent(backlogged: Path) -> No
 def test_every_prompt_is_told_the_resolved_paths_not_the_blank_parameters(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """`epics_dir` and `backlog` reach a prompt as what `load_config` resolved.
+    """`epics_dir` and `roadmap` reach prompts as what `load_config` resolved.
 
     Both parameters default to blank, and blank is the *normal* case — it means "ask
     ostler". The prompts rendered the raw parameter, so every default run told its agent
     `Epics directory: ``, and every path the prompt built from it came out rooted at `/`.
     An agent handed no epics directory goes looking for one, and on a machine holding more
     than one checkout it finds the wrong repo's: two benchmark runs decomposed the
-    *harness'* backlog into the target and left the target's epics index empty.
+    *harness'* planning docs into the target and left the target's epics index empty.
     """
     agent = _Agent(backlogged)
     _drive(_env(tmp_path), agent)
@@ -925,12 +896,10 @@ def test_every_prompt_is_told_the_resolved_paths_not_the_blank_parameters(
     for stem in ("decompose-epics", "review-epics"):
         for args in agent.args_for(stem):
             assert args["epics_dir"] == EPICS, (stem, args)
-            assert args["backlog"] == BACKLOG, (stem, args)
+            assert args["roadmap"] == ROADMAP, (stem, args)
     for args in agent.args_for("write-epic"):
-        assert args["backlog"] == BACKLOG, args
+        assert args["roadmap"] == ROADMAP, args
         assert args["epic_dir"] == EPIC_DIR, args
-    for args in agent.args_for("review-coverage"):
-        assert args["backlog"] == BACKLOG, args
 
 
 def test_epic_docs_are_all_written_before_story_splitting(backlogged: Path, tmp_path: Path) -> None:
@@ -968,7 +937,7 @@ def test_the_commit_leaves_work_the_run_did_not_do_alone(
 
     _drive(_env(tmp_path), _Agent(backlogged))
 
-    assert _subject(backlogged) == "author: epic backlog authoring"
+    assert _subject(backlogged) == "author: roadmap account-access"
     committed = subprocess.run(
         ["git", "show", "--name-only", "--pretty=format:", "HEAD"],
         cwd=backlogged,
@@ -1086,6 +1055,7 @@ def test_a_finding_the_reworker_cannot_act_on_stops_the_run(
 
     with pytest.raises(WorkflowFailed, match="finding 1 missing repair"):
         _drive(_env(tmp_path), agent)
+    assert "status: approved" in (backlogged / ROADMAP).read_text(encoding="utf-8")
 
 
 def test_an_operator_note_dropped_mid_run_reworks_the_story_once(
@@ -1189,7 +1159,7 @@ def test_an_epic_review_that_will_not_converge_reaches_the_resolver(
     assert agent.counts()["decompose-epics"] == 2, agent.counts()
     assert agent.counts()["review-epics"] == 5, agent.counts()
     assert agent.args_for("resolve-operator")[0]["block_stage"] == "epic-split"
-    assert _subject(backlogged) == "author: epic backlog authoring"
+    assert _subject(backlogged) == "author: roadmap account-access"
 
 
 def test_operator_mode_human_sends_the_block_straight_to_the_context_file(
@@ -1476,16 +1446,16 @@ def test_epic_edit_semantic_review_reworks_are_bounded(
 # ------------------------------------------------------------------------------- handoff
 
 
-def test_survey_mode_runs_the_surveyor_then_authors_what_it_found(
+def test_survey_mode_runs_the_surveyor_and_stops_at_discovery(
     backlogged: Path, tmp_path: Path, write: Callable[[Path, str], Path]
 ) -> None:
-    """`handoff`: the sub-flow runs on the parent's env, and the parent reads its output.
+    """`handoff`: the sub-flow runs on the parent's env and returns its discovery output.
 
     The surveyor's own machinery is covered in `flows/test_surveyor.py`. What this proves
     is the hand-off: the child's prompts (`surveyor/prompts/*.md`) resolve against the
-    *parent's* workflow directory, the child's nodes and agent turns run under the parent's
-    run directory, and `split_epics` then decomposes the backlog the child wrote — the
-    surveyor's whole purpose being to produce author's input.
+    *parent's* workflow directory and the child's nodes and agent turns run under the parent's
+    run directory. The parent stops there; an owner must turn discovery into an approved roadmap
+    before epic authoring begins.
     """
     write(backlogged / RUBRIC, "# Accessibility rubric\n\nEvery control needs a name.\n")
     write(backlogged / BUTTON / "index.tsx", "export const Button = () => <button />\n")
@@ -1498,7 +1468,7 @@ def test_survey_mode_runs_the_surveyor_then_authors_what_it_found(
     assert agent.counts()["plan-units"] == 1, agent.counts()
     assert agent.counts()["assess-unit"] == 1, agent.counts()
     assert agent.counts()["partition-findings"] == 1, agent.counts()
-    assert agent.counts()["decompose-epics"] == 1, agent.counts()
+    assert agent.counts()["decompose-epics"] == 0, agent.counts()
 
     # The child's artifacts are on disk, and its bullets are in the parent's backlog.
     assert (backlogged / RULES).is_file()
@@ -1507,9 +1477,9 @@ def test_survey_mode_runs_the_surveyor_then_authors_what_it_found(
     assert (backlogged / PARTITION).is_file()
     assert any(CLUSTER in line for line in (backlogged / BACKLOG).read_text().splitlines())
 
-    # And the run went on to author it, under the survey commit message.
-    assert _subject(backlogged) == "author: survey intake and epic backlog authoring"
-    assert _stories(backlogged) == {slug: True for slug in SLUGS}
+    # Survey output remains discovery input; only an approved roadmap starts authoring.
+    assert _subject(backlogged) == "a rubric and one component"
+    assert _stories(backlogged) == {}
 
 
 # -------------------------------------------------------------------------------- resume

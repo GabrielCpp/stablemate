@@ -22,7 +22,7 @@ class StoryEdit(Workflow):
     operator_mode: str = "auto"
 
     def setup(self) -> Config:
-        return self.call(load_config, self.backlog, self.epics_dir)
+        return self.call(load_config, self.backlog, self.epics_dir, mode="story-edit")
 
     def labels(self) -> dict[str, str]:
         work_id = self.story if self.action == "remove" else self.epic

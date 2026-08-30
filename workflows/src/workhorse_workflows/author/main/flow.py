@@ -1,4 +1,4 @@
-"""The author workflow: a backlog becomes epics, epics become coder-ready stories.
+"""The author workflow: one roadmap becomes one milestone of coder-ready stories.
 
 Ported from `base-library/workflows/author/workflow.yaml` — 84 nodes reduced to 26
 states. The reduction is mechanical and always the same four collapses:
@@ -61,17 +61,17 @@ from workhorse_workflows.author.main.nodes import (
     check_story_grounding,
     commit_author,
     load_config,
+    mark_roadmap_authored,
     open_author_pr,
-    prune_backlog,
     prune_bullet,
     record_attempt,
-    resolve_grill_trigger,
     seed_story,
     select_epic,
     select_epic_document,
     select_story,
     validate_artifacts,
     validate_coverage,
+    validate_roadmap_milestone,
     validate_story,
     verify_integrity,
     verify_reconcile,
@@ -81,11 +81,9 @@ from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.schemas import (
     AuditFinding,
     AuditResult,
-    BacklogRefactor,
     CoverageReview,
     DecomposeResult,
     EpicReview,
-    GrillBrief,
     MockupResult,
     OperatorResolution,
     RunContext,
@@ -175,16 +173,14 @@ def _audit_notes(result: AuditResult) -> str:
 
 
 class Author(Workflow):
-    """Turn a backlog into epics, and each epic into stories a coder can build.
+    """Turn one approved roadmap into one milestone of coder-ready stories.
 
-    Three entry modes, all ending at the same git tail. `epic` (the default) decomposes
-    the backlog and authors every epic it finds. `survey` runs the surveyor first, so the
-    backlog it decomposes is one exhaustive discovery produced, then authors it. `story`
-    authors ONE bullet into an epic that already exists, and stops there.
+    `epic` (the default) decomposes the roadmap. Survey modes produce discovery artifacts
+    and stop. `story` retains its narrow legacy contract: author one backlog bullet into an
+    epic that already exists, then stop.
     """
 
-    #: `epic`, `survey`, `parity-survey` or `story`. Anything else reads as `epic`, which
-    #: is the YAML's `cases:` with `default:` on the epic arm.
+    #: `epic`, `survey`, `parity-survey` or `story`.
     mode: str = "epic"
     #: `story` mode: the epic slug to author into; it must already exist. In `epic` mode
     #: this stays blank and `select_epic` names the epic instead.
@@ -201,10 +197,11 @@ class Author(Workflow):
     #: always had. Set them when the caller knows: `--params '{"layers":"backend"}'`.
     layers: str = ""
     services: str = ""
-    #: The worklist. Story mode resolves `bullet` against **this** file, and the coverage
-    #: tail prunes the bullets an authored epic consumed from it. Blank — the normal case —
-    #: means "wherever ostler keeps it", so a repo that moved its docs is followed.
+    #: Story and survey modes' legacy worklist. Epic authoring never reads or mutates it.
     backlog: str = ""
+    #: Epic mode's one durable release contract. It must be an approved markdown file under
+    #: `docs/roadmaps/`; its repo-relative path becomes the milestone's source identity.
+    roadmap: str = ""
     #: Where epics live, one directory each. Blank means ostler's answer, which reads
     #: `docRoots:`; set it only to point a run at a tree ostler does not configure.
     #:
@@ -237,7 +234,13 @@ class Author(Workflow):
         the paths are fixed for the run, and the branch is keyed off `run_dir`, so a
         resume lands back on the same branch instead of cutting a second one.
         """
-        cfg = self.call(load_config, self.backlog, self.epics_dir)
+        cfg = self.call(
+            load_config,
+            self.backlog,
+            self.epics_dir,
+            roadmap=self.roadmap,
+            mode=self.mode,
+        )
         branches = self.call(branch_author, str(self.run_dir), self.mode)
         return RunContext(
             **cfg.model_dump(),
@@ -428,7 +431,7 @@ class Author(Workflow):
                 backlog=self.backlog,
                 operator_mode=self.operator_mode,
             )
-            return Continue(result, self.grill_backlog)
+            return Done(result)
         if self.mode == "parity-survey":
             result = self.handoff(
                 ParitySurveyor,
@@ -451,61 +454,18 @@ class Author(Workflow):
                 story_dir=seeded.story_dir,
                 story_path=seeded.story_path,
             )
-        return Continue(None, self.grill_backlog)
-
-    # --- 0. the grill -----------------------------------------------------------
-
-    def grill_backlog(self) -> Await:
-        """Brief the operator's grilling session, then block for it — unconditionally.
-
-        `operator_mode` does not gate this: the whole premise is that these decisions
-        are the operator's, not a stand-in agent's. `split_epics` still adopts the
-        backlog itself; this state only reads it to seed the brief, so a bullet that
-        has not been minted an id yet is still nameable in the frontier.
-        """
-        brief = self.agent(
-            "main/prompts/grill-brief.md",
-            returns=GrillBrief,
-            power="high",
-            cwd=self.ctx.repo_root,
-            args={
-                "backlog": self.ctx.backlog_path,
-                "epics_dir": self.ctx.epics_dir,
-            },
-        )
-        trigger = self.call(resolve_grill_trigger)
-        notes = f"Run {trigger} to grill this backlog before it is split into epics.\n\n{brief.brief}"
-        return Await(self._abs(self._author_context()), notes, self.refactor_backlog)
-
-    def refactor_backlog(self) -> Continue:
-        """Fold the operator's settled decisions into the backlog, then split it.
-
-        Its own state — re-runnable and visible in telemetry, rather than buried
-        inside the grill's `Await` resume.
-        """
-        result = self.agent(
-            "main/prompts/refactor-backlog.md",
-            returns=BacklogRefactor,
-            power="high",
-            cwd=self.ctx.repo_root,
-            args={
-                "backlog": self.ctx.backlog_path,
-                "context_path": self._author_context(),
-            },
-        )
-        return Continue(result, self.split_epics)
+        return Continue(None, self.split_epics)
 
     # --- 1. epic split --------------------------------------------------------
 
     def split_epics(self, resolves: int = 0) -> Continue:
-        """Split the backlog into epics.
+        """Split the approved roadmap into one milestone's ordered epics.
 
         `reset_epics_rework` + `reset_epics_resolve` + `decompose_epics`. The rework
         budget resets here because this is the stage entry — and because `await_epics`
         reset it too, which is why it is not a parameter. The resolve budget is one,
         since the operator gate loops back through here and must not get a fresh one.
         """
-        self.call(adopt_backlog, self.ctx.backlog_path)
         result = self.agent(
             "main/prompts/decompose-epics.md",
             returns=DecomposeResult,
@@ -513,7 +473,7 @@ class Author(Workflow):
             power="high",
             cwd=self.ctx.repo_root,
             args={
-                "backlog": self.ctx.backlog_path,
+                "roadmap": self.ctx.roadmap_path,
                 "epics_dir": self.ctx.epics_dir,
             },
         )
@@ -531,13 +491,16 @@ class Author(Workflow):
             power="high",
             cwd=self.ctx.repo_root,
             args={
-                "backlog": self.ctx.backlog_path,
+                "roadmap": self.ctx.roadmap_path,
                 "epics_dir": self.ctx.epics_dir,
             },
         )
-        if result.status == "approved":
-            return Continue(result, self.next_epic)
         notes = result.notes
+        if result.status == "approved":
+            contract = self.call(validate_roadmap_milestone, self.ctx.roadmap_path)
+            if contract.ok:
+                return Continue(contract, self.next_epic)
+            notes = contract.errors
         if result.status != "blocked" and reworks < MAX_REWORKS:
             return Continue(result, self.rework_epics, notes=notes, reworks=reworks, resolves=resolves)
         if self.operator_mode == "human" or resolves >= MAX_EPICS_RESOLVES:
@@ -556,7 +519,7 @@ class Author(Workflow):
             power="high",
             cwd=self.ctx.repo_root,
             args={
-                "backlog": self.ctx.backlog_path,
+                "roadmap": self.ctx.roadmap_path,
                 "epics_dir": self.ctx.epics_dir,
                 "review_notes": notes,
             },
@@ -604,7 +567,7 @@ class Author(Workflow):
             args={
                 "epic": epic,
                 "epic_dir": self._epic_dir(epic),
-                "backlog": self.ctx.backlog_path,
+                "roadmap": self.ctx.roadmap_path,
                 "features_dir": self.ctx.features_dir,
             },
         )
@@ -1225,9 +1188,8 @@ class Author(Workflow):
         """Every seed of this epic covered by some story — mechanically, then judged.
 
         `validate_coverage` + `decide_coverage_validate` + `review_coverage` +
-        `decide_coverage_review` + `prune_backlog` + `guard_coverage` + `incr_cov`.
-        Either failure re-enters `split_stories` with the worklist, bounded; `ok` prunes
-        the bullets the epic consumed and moves to the next epic.
+        `decide_coverage_review` + `guard_coverage` + `incr_cov`. Either failure re-enters
+        `split_stories` with the worklist, bounded; `ok` moves to the next epic.
         """
         epic_dir = self._epic_dir(epic)
         mechanical = self.call(validate_coverage, epic_dir)
@@ -1240,11 +1202,10 @@ class Author(Workflow):
             returns=CoverageReview,
             power="high",
             cwd=self.ctx.repo_root,
-            args={"epic": epic, "epic_dir": epic_dir, "backlog": self.ctx.backlog_path},
+            args={"epic": epic, "epic_dir": epic_dir},
         )
         if review.status == "ok":
-            pruned = self.call(prune_backlog, self.backlog, epic_dir)
-            return Continue(pruned, self.next_story_epic)
+            return Continue(review, self.next_story_epic)
         if review.status == "blocked":
             return self._gate_coverage(review, review.notes, epic, split_resolves)
         # `gaps` is also the default arm: a review that returns nothing legible has not
@@ -1387,9 +1348,14 @@ class Author(Workflow):
         """
         report = self.call(validate_artifacts)
         if not report.ok:
-            self.call(commit_author, "incomplete", self.epic, self.bullet)
+            self.call(commit_author, "incomplete", self.epic, self.bullet, self.ctx.roadmap_path)
             raise WorkflowFailed(f"authored artifacts did not validate:\n{report.errors}")
-        self.call(commit_author, self.mode, self.epic, self.bullet)
+        contract = self.call(validate_roadmap_milestone, self.ctx.roadmap_path)
+        if not contract.ok:
+            self.call(commit_author, "incomplete", self.epic, self.bullet, self.ctx.roadmap_path)
+            raise WorkflowFailed(f"roadmap milestone did not validate:\n{contract.errors}")
+        self.call(mark_roadmap_authored, self.ctx.roadmap_path)
+        self.call(commit_author, self.mode, self.epic, self.bullet, self.ctx.roadmap_path)
         return Done(
             self.call(
                 open_author_pr,
@@ -1398,5 +1364,6 @@ class Author(Workflow):
                 self.mode,
                 self.epic,
                 self.bullet,
+                self.ctx.roadmap_path,
             )
         )

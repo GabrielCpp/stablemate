@@ -58,7 +58,7 @@ class EpicEdit(Workflow):
     branch_run_dir: str = ""
 
     def setup(self) -> RunContext:
-        cfg = self.call(load_config, self.backlog, self.epics_dir)
+        cfg = self.call(load_config, self.backlog, self.epics_dir, mode="epic-edit")
         branches = self.call(
             branch_author,
             self.branch_run_dir or str(self.run_dir),
