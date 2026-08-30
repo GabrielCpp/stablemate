@@ -41,6 +41,24 @@ def test_writer_can_define_in_scope_behavior_without_prior_okf_authority(prompt:
     assert "must not contradict existing documented behavior" in text
 
 
+@pytest.mark.parametrize("prompt", _copies("write-story.md"), ids=_id)
+def test_writer_separates_build_scope_from_regression_invariants(prompt: Path) -> None:
+    text = _prose(prompt)
+
+    assert "Non-Functional Acceptance Criteria" in text
+    assert "does not add implementation scope" in text
+    assert "QA must still prove" in text
+
+
+@pytest.mark.parametrize("prompt", _copies("write-story.md"), ids=_id)
+def test_writer_records_concise_grounded_technical_notes(prompt: Path) -> None:
+    text = _prose(prompt)
+
+    assert "Technical Notes" in text
+    assert "path::symbol" in text
+    assert "original or prior implementation" in text
+
+
 @pytest.mark.parametrize("prompt", _copies("audit-story.md"), ids=_id)
 def test_auditor_does_not_demand_prior_citations_for_new_behavior(prompt: Path) -> None:
     text = _prose(prompt)

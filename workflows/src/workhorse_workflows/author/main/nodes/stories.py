@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 
 from ostler import Ostler, backlog as ostler_backlog, markdown, registry
-from ostler.model import required_section_problems, status_bullet
+from ostler.model import required_section_problems, status_bullet, story_section_specs
 from workhorse import worklist as wl
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.main.nodes._blueprint import blueprint
@@ -70,6 +70,8 @@ _OPEN_QUESTION_PHRASES = [
 #: does not trip the check, while a bare `TODO decide later` does.
 _OPEN_QUESTION_WORDS = {"tbd", "todo", "fixme"}
 _WORD_CHARS = "_-"
+_CODE_POINTER_RE = re.compile(r"`([^`\n]+)::([^`\n]+)`")
+_NO_PRIOR_IMPLEMENTATION = "No prior implementation reference exists."
 
 
 # ── story mode's single story ───────────────────────────────────────────────
@@ -498,10 +500,10 @@ def _open_questions(doc: markdown.MarkdownDoc) -> list[str]:
 def validate_story(logger: logging.Logger, story_dir: str = "", repo_dir: str = "") -> Defects:
     """The bare-minimum story contract, checked deterministically.
 
-    A story is intentionally lean — a Context section and Acceptance Criteria — because the
-    coder workflow owns the depth. So this checks only what the contract requires: every
-    required section present and the `filled` ones carrying prose, the `- **Status**:`
-    bullet the coder's selector reads, and no open questions shipped to the coder.
+    A story separates build outcomes, non-functional invariants, and concise technical evidence
+    because the coder workflow owns implementation depth. This checks every section required by
+    the story's persisted shape, the status bullet, grounded technical pointers, and no open
+    questions shipped to the coder.
 
     **The contract is ostler's, not this node's.** Sections are checked with
     `required_section_problems` against ostler's own declaration and the Status field is located with
@@ -529,8 +531,24 @@ def validate_story(logger: logging.Logger, story_dir: str = "", repo_dir: str = 
             f"`## {registry.STORY_STATUS_HEADING}` (coder's selector reads this)"
         )
 
-    for spec, problem in required_section_problems(doc, registry.STORY_SECTIONS):
+    for spec, problem in required_section_problems(doc, story_section_specs(doc)):
         errors.append(f"required section `## {spec.heading}` is {problem}")
+
+    technical = doc.find_section("Technical Notes")
+    if technical is not None and not technical.is_empty:
+        pointers = _CODE_POINTER_RE.findall(technical.body)
+        if not pointers and technical.body.strip() != _NO_PRIOR_IMPLEMENTATION:
+            errors.append(
+                "required section `## Technical Notes` needs an existing `path::symbol` code "
+                f"pointer or the exact statement `{_NO_PRIOR_IMPLEMENTATION}`"
+            )
+        root = survey_repo_root(repo_dir)
+        for path, _symbol in pointers:
+            target = (root / path.strip().removeprefix("./")).resolve()
+            if not target.is_relative_to(root) or not target.is_file():
+                errors.append(
+                    f"technical code pointer `{path}::...` names no file under the repository"
+                )
 
     errors.extend(_open_questions(doc))
 

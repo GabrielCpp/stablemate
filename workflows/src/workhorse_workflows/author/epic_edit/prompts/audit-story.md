@@ -8,25 +8,24 @@ Change only the story-local audit artifact named by this task. Leave it uncommit
 dependencies, run repository-wide checks, stage, commit, push, or alter branches/remotes; Author
 validates and delivers after all authoring turns finish.
 
-The story passed the **structural** validator (it has Context + Acceptance Criteria, a Status
-line, no open-decision markers) and a deterministic **grounding gate** (its surface was researched
+The story passed the **structural** validator (it has Context, functional and non-functional
+Acceptance Criteria, Technical Notes, a Status line, and no open-decision markers) and a deterministic **grounding gate** (its surface was researched
 and, when feature docs are configured, its journey was read). Your job is the part a script
 cannot do: **independently re-judge the story and try to REFUTE that it is coder-ready.** You are a
 skeptic, not a rubber stamp. A story you cannot break stands; one you *can* break goes back for
 rework. Default to suspicion — a structurally-valid story can still be vague, ungrounded, or miss
 the surface's documented journey, and the coder will build the wrong thing from it.
 
-You do **not** rewrite the story. You re-derive whether its Acceptance Criteria are something a
-coder could actually build and a QA could actually verify, grounded in the researched facts.
+You do **not** rewrite the story. Re-derive whether functional criteria are something a coder can
+build, non-functional criteria are invariants QA can verify without treating them as build scope,
+and Technical Notes ground prior mechanics without prescribing a design.
 
 ## Authority boundary
 
-The writer deliberately produces a bare-minimum behavior contract; the coder owns implementation
-depth. Do not demand endpoint names, request or response schemas, field meanings or wire shapes,
-components, data sources, libraries, file paths, or an implementation plan. Those details are not
-story defects unless an authoritative roadmap, epic, cited spec, or OKF node already fixes the exact
-detail and the story contradicts it. A technical AC needs observable evidence at a running boundary,
-not a pre-authored implementation contract.
+The writer deliberately produces a focused behavior contract; the coder owns implementation depth.
+Do not demand endpoint names, request or response schemas, proposed components, libraries, or an
+implementation plan in the criteria. Technical Notes must cite known prior mechanics as
+`path::symbol`, but those references are evidence rather than a prescribed implementation contract.
 
 Judge only the behavior changed by this story's covered seeds. A cited screen or flow grounds the
 context; it does not import every guard, state, interaction, or journey on that surface into this
@@ -47,7 +46,7 @@ to depict. Do not expand the story to make the whole parent surface independentl
 
 ## Read
 
-- the story file — its **Context** and **Acceptance Criteria** are what you judge
+- the story file — judge **Context**, both Acceptance Criteria sections, and **Technical Notes**
 {%- if workhorse_var('features_dir') %}
 - **the OKF nodes the story cites** — its `## Context` links them by id (a node id is a
   repo-relative path, optionally `path#anchor`). These are the surface's documented components,
@@ -85,6 +84,15 @@ to depict. Do not expand the story to make the whole parent surface independentl
    component needs the relevant presence/absence AC; a changed interaction whose documented outcome
    is transient feedback needs the relevant appear-then-disappear AC. Existing guards, chrome,
    states, and flows outside those covered seeds remain inherited behavior, not missing scope.
+5. **Correctly classified.** Functional Acceptance Criteria name behavior this story builds or
+   changes. Non-Functional Acceptance Criteria name at-risk invariants or quality constraints that
+   QA must prove but that do not add implementation scope. Refute a regression guard in the build
+   checklist, a feature request disguised as non-functional, or a wholesale copy of unrelated
+   inherited behavior.
+6. **Technically grounded, not prescriptive.** Each useful prior mechanic is cited by an existing
+   `path::symbol` and summarized briefly. Refute a missing/invented reference, or notes that dictate
+   new architecture rather than pointing to evidence. The explicit no-prior-implementation statement
+   is valid for genuinely greenfield work.
 
 **A defect you cannot point at is not a defect.** Every finding must name the section, criterion or
 line of the story it is against, and say what would repair it. If a weakness is real but you cannot
@@ -92,15 +100,15 @@ cite where it lives, you have not found it yet — go find it or drop it. The ti
 drop it*, not "lean toward refuted": an uncitable refute costs a full rework cycle and comes back as
 a different uncitable refute next lap.
 
-**Audit exhaustively, in one lap.** List every defect you can find now, across all four axes. You do
+**Audit exhaustively, in one lap.** List every defect you can find now, across all six axes. You do
 not get a second pass for a defect you could have named here — the next lap only verifies the
 repairs to what you list.
 
 ## Output
 
 Append an `## Independent Story Audit` section to `{{ workhorse_var('story_dir') }}/audit.md`
-recording, per criterion you re-judged: what you checked, the weakness found (or not), and your
-verdict.
+recording, per functional and non-functional criterion you re-judged: what you checked, the weakness
+found (or not), and your verdict. Record the Technical Notes judgment once, not as a QA criterion.
 
 Then return this exact JSON in your **final response**. The workflow REQUIRES this structure:
 
@@ -127,7 +135,7 @@ Then return this exact JSON in your **final response**. The workflow REQUIRES th
 - Every finding needs all of `id`, `target`, `issue`, `repair` non-empty. A finding missing any of
   them fails the run rather than reworking, because rework cannot act on it. `id` is a handle you
   choose; nothing parses it — only keep it stable for the same defect across passes.
-- `kind` is one of the four axes above and nothing else.
+- `kind` is one of the four output categories shown above and nothing else.
 - Do NOT emit `blocked` — you are judging an authored artifact, not running an environment. If the
   story is too thin to judge, that is findings against what is missing, not a blocked status.
 - Return the complete JSON exactly as shown, after the markdown audit section.

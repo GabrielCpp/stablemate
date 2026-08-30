@@ -4,17 +4,18 @@ agent: agent
 
 # Write the story: `{{ workhorse_var('story_slug') }}`
 
-You write a **bare-minimum story**: just enough for the coder to know the goal and how it will be
-judged. Two sections of substance — **Context** and **Acceptance Criteria** — and nothing else.
+You write a **focused story**: enough for the coder to know the goal, what behavior to build, which
+invariants QA must preserve, and where prior implementation mechanics can be studied. Four sections
+of substance — **Context**, **Acceptance Criteria**, **Non-Functional Acceptance Criteria**, and
+**Technical Notes** — and nothing else.
 
 The coder workflow owns the depth. It plans, implements across **as many iterations as the goal
 needs**, files **follow-ups** for work the goal turns out to require, and runs real QA against your
 acceptance criteria. An over-specified story does not make the coder more correct — long, detailed
 stories have still shipped with whole defects unnoticed — it just rots and misleads.
 
-> Do NOT enumerate components, data sources, file paths, gap tables, parity matrices, libraries,
-> required skills, or an implementation plan. If you are describing *how* to build it, stop — that
-> is the coder's job. Your job is *what* and *why*, plus *how it's judged*.
+> Do NOT enumerate a proposed component plan, gap table, parity matrix, libraries, or required
+> skills. Technical Notes point to existing mechanics; they do not prescribe the coder's design.
 
 ## Inputs (authoritative)
 
@@ -30,8 +31,9 @@ stories have still shipped with whole defects unnoticed — it just rots and mis
 {%- if workhorse_var('features_dir') %}
 - **OKF book root**: `{{ workhorse_var('features_dir') }}` — the surface documentation, already built
   by the okf-builder. **Read it; never write to it.** This is where the story's grounding comes
-  from — see *Ground the story in the book* below. Do not inspect the app or source code to discover
-  surfaces; cite only OKF nodes that already exist.
+  from — see *Ground the story in the book* below. Do not inspect source code to invent product
+  surfaces; cite only OKF nodes that already exist. Inspect source separately for concise Technical
+  Notes about existing or legacy mechanics.
 {%- endif %}
 
 ## Required reading
@@ -107,9 +109,9 @@ its absence is not a block. Ground the Context in the epic's seeds this story `c
 record under the repo's decisions directory that bears on it, and say in one clause that the
 surface is new and undocumented. This orients the coder; it is **not** a spec and not a build plan.
 
-## Acceptance Criteria (how it's judged — observable, user-facing)
+## Acceptance Criteria (what the coder builds)
 
-A checklist of the **observable outcomes** that must be true when the goal is met, phrased as what
+A concise checklist of the **new or changed observable outcomes** the coder must deliver, phrased as what
 the journey actor sees or does. A technical-enabler story may instead use what an operator can
 verify at the running system boundary, but must name the epic journey step it unlocks. Never use DOM
 selectors, file presence, framework setup, or implementation details:
@@ -118,13 +120,11 @@ selectors, file presence, framework setup, or implementation details:
   checks only that box").
 - Visible content (e.g. "section titles and field labels show the translated names, not internal
   codes").
-- Parity with the source of truth (e.g. "the page shows the same sections, navigation, and controls
-  as the legacy editor").
-- The states the goal implies: happy path **plus** empty / loading / error / reachability where they
-  matter.
+- Changed states the goal introduces: happy path plus empty / loading / error / reachability only
+  where this story builds or changes them.
 
 {%- if workhorse_var('features_dir') %}
-The criteria MUST also cover what the nodes you cited say — read from the book, never invented:
+The criteria MUST cover the parts of cited nodes this story changes — read from the book, never invented:
 
 - **The documented user journey(s)** — the `flow` nodes the cited surface takes part in: at least
   one AC that a user can complete the typical end-to-end use case (e.g. "a signed-in user can open
@@ -137,16 +137,39 @@ The criteria MUST also cover what the nodes you cited say — read from the book
   that then disappears"), not merely that a control exists.
 {%- endif %}
 
-One check per item, each independently verifiable from user-visible behavior once built. These
+One check per item, each independently verifiable from user-visible behavior once built. Do not put
+"ensure existing X remains unchanged" here: that is not behavior to build and belongs under
+Non-Functional Acceptance Criteria. These
 criteria are the contract the coder's QA verifies against the cited source of truth, so make them
 about real behavior — not the mere presence of an element in the DOM.
+
+## Non-Functional Acceptance Criteria (what QA preserves)
+
+List only inherited invariants and quality constraints placed at risk by this story: compatibility,
+security, accessibility, performance, data integrity, read-only boundaries, unchanged neighboring
+journeys, or parity that must survive the implementation. This section **does not add implementation
+scope** and its criteria are not tasks for the coder to build, but **QA must still prove** each one after the
+functional change. Keep the list selective; do not restate every behavior of the parent surface.
+
+Each item must be observable at a user, operator, API, persistence, or runtime boundary. Prefer a
+specific invariant ("the active bundle still contains no executable source") over a vague adjective
+("remains secure"). If the story puts no relevant invariant at risk, write exactly `(none)`.
+
+## Technical Notes (existing mechanics, not a build plan)
+
+Inspect the repository's existing and read-only legacy/reference implementation for mechanics that
+materially reduce rediscovery. Cite each useful location as an exact backticked `path::symbol` and add
+one short clause explaining the mechanism, especially the **original or prior implementation** of a
+parser, injector, resolver, serializer, or compatibility algorithm. Point to evidence; do not
+prescribe new files, types, libraries, or architecture. If there is truly no prior implementation to
+study, write exactly `No prior implementation reference exists.`
 
 ## Write `{{ workhorse_var('story_path') }}`
 
 `ostler create story` already scaffolded this `story.md` with `## Dependencies`, `## Fixtures`,
-`## Context`, `## Acceptance Criteria`, and `## Implementation Status` (`- **Status**: Not
-started`). Fill in the **Context** and **Acceptance Criteria** bodies — and only those. Add no
-other sections. The result should read:
+`## Context`, `## Acceptance Criteria`, `## Non-Functional Acceptance Criteria`, `## Technical
+Notes`, and `## Implementation Status` (`- **Status**: Not started`). Fill in the four prose
+sections and preserve the machine-owned sections. The result should read:
 
 ```markdown
 # Story: <title>
@@ -167,6 +190,14 @@ other sections. The result should read:
 
 - <observable, user-facing outcome>
 - <…>
+
+## Non-Functional Acceptance Criteria
+
+- <invariant QA must preserve, not behavior to build>
+
+## Technical Notes
+
+- `<existing/path>::<symbol>` <concise prior mechanic>
 
 ## Implementation Status
 

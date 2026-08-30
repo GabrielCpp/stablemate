@@ -40,15 +40,21 @@ name; if you believe a finding is wrong, say which id and why in `notes` rather 
 
 Address every error or finding above. Common fixes:
 
-- Add a missing/empty required section. The bare-minimum contract needs only **Context** (what &
-  why) and **Acceptance Criteria** (observable, user-facing) — do NOT re-add Description, QA,
-  Evidence, Verification setup, or Required skills; those are the coder's job now. Leave
+- Add a missing/empty required section. The focused contract needs **Context**, functional
+  **Acceptance Criteria**, **Non-Functional Acceptance Criteria**, and concise **Technical Notes** —
+  do NOT re-add Description, QA, Evidence, Verification setup, or Required skills. Leave
   `## Dependencies` exactly as you found it — it is the story DAG, not prose to rewrite.
   Leave `## Fixtures` alone for the same reason — it is the coder's to fill.
 - Add the `- **Status**: Not started` line under `## Implementation Status`.
 - Make any vague acceptance criterion **observable and user-facing** — what a person using the app
   would see or do (behaviour, visible content, parity with the source of truth), not a DOM selector
   or an implementation detail.
+- Move inherited regression guards out of functional Acceptance Criteria and into Non-Functional
+  Acceptance Criteria. They remain QA obligations but do not add implementation scope. Move any
+  disguised feature request in the other direction.
+- Repair Technical Notes with a concise existing backticked `path::symbol` pointer and mechanism
+  note. Do not turn it into a proposed implementation plan. For genuinely greenfield work, use the
+  exact statement `No prior implementation reference exists.`
 - **Resolve an open question** the validator flagged (`open question / unresolved decision`):
   replace the hedge (`Decision to surface`, `accept, or tune`, `TBD`, `TODO`, `decide whether…`)
   with a made call — `**Decision:** <the choice> — <why>` — and make any interrogative acceptance

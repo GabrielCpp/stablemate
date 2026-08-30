@@ -30,7 +30,8 @@ blockers. It does
 not write story bodies — the per-story authoring stage does that *after* coverage is settled.
 
 So at this point every `story.md` is expected to be a scaffold with empty `## Context` and
-`## Acceptance Criteria`. **That is the correct state, not a defect.** Do not return `gaps` for a
+`## Acceptance Criteria`, `## Non-Functional Acceptance Criteria`, or `## Technical Notes`.
+**That is the correct state, not a defect.** Do not return `gaps` for a
 blank story body, an absent QA method, or missing acceptance text; the split stage is structurally
 unable to fix them, so such a verdict only sends the graph around a lap that changes nothing.
 

@@ -285,6 +285,14 @@ already, so this story adds behaviour to it rather than a new surface.
 - Given a visitor on the {title} form, when they submit valid input, the app confirms it.
 - Given invalid input, the form reports what is wrong and stays where it is.
 
+## Non-Functional Acceptance Criteria
+
+- Existing account journeys outside this form remain unchanged.
+
+## Technical Notes
+
+No prior implementation reference exists.
+
 ## Implementation Status
 
 - **Status**: Not started
@@ -305,6 +313,14 @@ _UNWRITTEN_BODY = """# Story: {title}
 ## Acceptance Criteria
 
 - Given a visitor, the app behaves.
+
+## Non-Functional Acceptance Criteria
+
+(none)
+
+## Technical Notes
+
+No prior implementation reference exists.
 
 ## Implementation Status
 
