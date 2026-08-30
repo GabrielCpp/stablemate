@@ -58,6 +58,16 @@ ROW_FOUR_IS_NOT_MONEY = (
     "ana,museum,twenty euro,2026-03-02\n"
 )
 
+#: Two distinct expenses and one of them a second time. Row 3 is byte-for-byte row 1, so an
+#: import that dedups only against the ledger it started from — and not within the file it is
+#: reading — lands three entries where the book promises two.
+ROW_THREE_IS_ROW_ONE_AGAIN = (
+    "who,what,amount_cents,spent_on\n"
+    "ana,taxi,1250,2026-03-01\n"
+    "bo,dinner,4400,2026-03-01\n"
+    "ana,taxi,1250,2026-03-01\n"
+)
+
 
 def read(qa: Qa, path):
     """What is on disk at `path`, read by a separate process after the command exited."""
@@ -161,6 +171,7 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
             "okf:docs/features/tally/tally.md#import-a-csv:consistency:1",
             "okf:docs/features/tally/tally.md#import-a-csv:contract",
             "okf:docs/features/tally/tally.md#import-a-csv:does:1",
+            "okf:docs/features/tally/tally.md#import-a-csv:does:2",
         ],
     )
 
@@ -189,6 +200,7 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
             "okf:docs/features/tally/tally.md#import-a-csv:consistency:1",
             "okf:docs/features/tally/tally.md#import-a-csv:contract",
             "okf:docs/features/tally/tally.md#import-a-csv:does:1",
+            "okf:docs/features/tally/tally.md#import-a-csv:does:2",
         ],
     )
     qa.check(
@@ -593,4 +605,152 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
         actual=misplaced.exit_code,
         expected="a non-zero exit",
         covers=["okf:docs/features/tally/tally.md#file:semantics:2"],
+    )
+
+
+@scenario(
+    target=tally,
+    mechanism="live",
+    timeout=600.0,
+    covers=[
+        "okf:docs/features/tally/tally.md#import-a-csv:contract",
+        "okf:docs/features/tally/tally.md#import-a-csv:does:2",
+    ],
+    preconditions=[
+        "the ledger starts empty, so every entry it ends with came from this one import",
+        "the duplicated row is byte-for-byte identical to an earlier row of the same file",
+    ],
+    checkpoints=[
+        "importing a file that lists one row twice exits 0",
+        "the ledger ends with two entries, not three",
+        "the duplicated row is held once",
+    ],
+    forbid=[
+        "importing the file twice — that exercises ledger-side dedup, which the first scenario "
+        "already owns; this one is about identity *within* a single file",
+        "asserting only the total count — a merge that dropped the wrong row also lands two",
+    ],
+)
+def a_row_the_file_lists_twice_imports_once(qa: Qa) -> None:
+    """`#import-a-csv:does:2`: identity is the whole expense, within the file too.
+
+    The one-import form of the dedup claim. A merge that seeds its seen-set from the ledger
+    but never adds to it as it goes is indistinguishable from a correct one on every other
+    scenario in this plan: same exit code, same second-import idempotence (by then the first
+    copy is already in the ledger). Only a single import of a file carrying its own duplicate
+    separates the two.
+    """
+    ledger = qa.artifact("dup-row/tally.json", kind="json")
+    rows = qa.artifact("dup-row/trip.csv", kind="log")
+
+    started = run(qa, ledger, "init", "--currency", "EUR")
+    qa.require(
+        "the scenario could initialise the ledger it imports into",
+        started.ok,
+        actual=started.stderr[-2000:],
+        covers=["okf:docs/features/tally/tally.md#import-a-csv:contract"],
+    )
+    write(qa, rows, ROW_THREE_IS_ROW_ONE_AGAIN)
+
+    imported = run(qa, ledger, "import", str(rows))
+    qa.verify(
+        "exit_status",
+        imported,
+        code=0,
+        label="`tally import` on a file whose every row parses exits 0, duplicate included",
+        covers=["okf:docs/features/tally/tally.md#import-a-csv:contract"],
+    )
+
+    landed = entries(qa, ledger)
+    qa.verify(
+        "count",
+        landed,
+        subject="entries in the ledger",
+        equals=2,
+        covers=["okf:docs/features/tally/tally.md#import-a-csv:does:2"],
+    )
+    taxis = [
+        entry
+        for entry in landed
+        if qa.field(entry, "who") == "ana" and qa.field(entry, "what") == "taxi"
+    ]
+    qa.verify(
+        "count",
+        taxis,
+        subject="entries the ledger holds for a row the file lists twice",
+        equals=1,
+        covers=[
+            "okf:docs/features/tally/tally.md#import-a-csv:does:1",
+            "okf:docs/features/tally/tally.md#import-a-csv:does:2",
+        ],
+    )
+
+
+@scenario(
+    target=tally,
+    mechanism="live",
+    timeout=600.0,
+    covers=[
+        "okf:docs/features/tally/tally.md#import-without-a-ledger:contract",
+        "okf:docs/features/tally/tally.md#import-without-a-ledger:does:1",
+        "okf:docs/features/tally/tally.md#import-without-a-ledger:errors:1",
+        "okf:docs/features/tally/tally.md#import-without-a-ledger:status:1",
+    ],
+    preconditions=[
+        "`tally init` has never run in the scenario's directory — the only file there is the CSV",
+        "the census is of the whole directory, because the claim is that *nothing* was conjured",
+    ],
+    checkpoints=[
+        "`tally import` with no ledger exits 1",
+        "the message says the ledger does not exist and names `tally init` as the fix",
+        "the directory afterwards holds exactly what it held before — no ledger appeared",
+    ],
+    forbid=[
+        "initialising the ledger first — the missing ledger is the scenario",
+        "asserting the exit code alone — the conjuring form of this defect exits 0, but a "
+        "refusal that wrote an empty ledger on its way out would exit 1 and still be wrong",
+    ],
+)
+def importing_without_a_ledger_refuses_and_conjures_nothing(qa: Qa) -> None:
+    """`#import-without-a-ledger`: there is nothing to import into until `tally init` has run."""
+    ledger = qa.artifact("no-ledger/tally.json", kind="json")
+    rows = qa.artifact("no-ledger/trip.csv", kind="log")
+    write(qa, rows, THREE_ROWS)
+
+    before = census(qa, rows)
+    refused = run(qa, ledger, "import", str(rows))
+    after = census(qa, rows)
+
+    qa.verify(
+        "exit_status",
+        refused,
+        code=1,
+        label="`tally import` in a directory with no ledger exits 1",
+        covers=[
+            "okf:docs/features/tally/tally.md#import-without-a-ledger:contract",
+            "okf:docs/features/tally/tally.md#import-without-a-ledger:status:1",
+        ],
+    )
+    qa.check(
+        "the refusal says the ledger does not exist and names `tally init` as the fix",
+        "does not exist" in refused.stderr and "tally init" in refused.stderr,
+        actual=refused.stderr[-2000:],
+        expected="a message naming the missing ledger and `tally init`",
+        covers=["okf:docs/features/tally/tally.md#import-without-a-ledger:errors:1"],
+    )
+    qa.verify(
+        "unchanged",
+        (before, after),
+        subject="the working directory",
+        covers=[
+            "okf:docs/features/tally/tally.md#import-without-a-ledger:contract",
+            "okf:docs/features/tally/tally.md#import-without-a-ledger:does:1",
+        ],
+    )
+    qa.check(
+        "no ledger was conjured — the CSV is still the only file the directory holds",
+        sorted(after) == ["trip.csv"],
+        actual=sorted(after),
+        expected="only the CSV the scenario wrote",
+        covers=["okf:docs/features/tally/tally.md#import-without-a-ledger:does:1"],
     )

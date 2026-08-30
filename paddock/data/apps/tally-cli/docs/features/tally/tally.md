@@ -138,8 +138,11 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - trigger: the caller runs `tally import` on a CSV file whose every row parses.
 - does:
   - Adds the rows the ledger does not already hold, and no others.
+  - Imports a row the file lists twice once: identity is the whole expense, within the file as
+    much as against the ledger it lands in.
 - verify: created(subject="the rows the ledger did not already hold")
 - verify: count(subject="entries in the ledger", equals=3)
+- verify: count(subject="entries the ledger holds for a row the file lists twice", equals=1)
 - code: tally/ledger.py::merge
 - consistency: ledger-file — importing the same file twice leaves the ledger holding what importing it once
   left it holding.
@@ -155,6 +158,19 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - errors:
   - The message names the 1-based line number of the offending row.
 - code: tally/ledger.py::parse_rows
+
+### import-without-a-ledger
+- on: [import](#import)
+- trigger: the caller runs `tally import` in a directory with no ledger.
+- does:
+  - Refuses — there is nothing to import into until `tally init` has run — and conjures
+    nothing: the invocation ends with the directory still holding no ledger.
+- verify: unchanged(subject="the working directory")
+- status: `1`.
+- verify: exit_status(code=1)
+- errors:
+  - The message says the ledger does not exist and names `tally init` as the fix.
+- code: tally/ledger.py::load
 
 ### report-as-json
 - on: [report](#report)
