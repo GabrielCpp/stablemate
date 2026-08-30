@@ -47,6 +47,20 @@ def the_plan(qa: Qa) -> dict:
 
     read = qa.tool("jq").run(".", "pulumi/preview.json", timeout=120.0)
     qa.require("the plan it wrote is readable JSON", read.ok, actual=read.stderr[-2000:], covers=["ac:1", "okf:docs/features/depot/ops/depot-stack.md:contract"])
+
+    # "Without reaching a Google API" is the half of the criterion an exit code cannot carry:
+    # the Makefile points the provider at a dead proxy, and its documented discriminator is
+    # that a `googleapi:` diagnostic in the plan means a request left this machine and was
+    # answered. Its absence is what this asserts — the benign `failed to get regions list …
+    # connection refused` warning is the refusal working, not a finding.
+    scanned = qa.tool("jq").run('[.. | strings | select(test("googleapi:"))] | length', "pulumi/preview.json", timeout=120.0)
+    qa.check(
+        "no googleapi: diagnostic anywhere in the plan, so no Google API answered a request",
+        scanned.ok and scanned.stdout.strip() == "0",
+        actual=scanned.stdout.strip() or scanned.stderr[-500:],
+        expected="0",
+        covers=["ac:1", "okf:docs/features/depot/ops/depot-stack.md:contract"],
+    )
     return json.loads(read.stdout)
 
 
