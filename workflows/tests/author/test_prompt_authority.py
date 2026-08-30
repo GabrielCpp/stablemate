@@ -93,3 +93,11 @@ def test_epic_review_does_not_inherit_unrelated_planning_debt() -> None:
 
     assert "validates the roadmap-owned planning subgraph mechanically" in text
     assert "Do not run repository-wide checks or inspect unrelated milestones" in text
+
+
+def test_epic_writer_records_the_seed_set_without_per_seed_graph_reloads() -> None:
+    text = _prose(MAIN_PROMPTS / "write-epic.md")
+
+    assert "Write or refine the complete seed set in one edit" in text
+    assert "do not launch a separate `ostler seed add` process per seed" in text
+    assert "following the installed artifact grammar" in text
