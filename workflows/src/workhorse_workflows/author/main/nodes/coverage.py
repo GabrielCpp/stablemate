@@ -32,7 +32,10 @@ _COVERAGE_CODES = {
 
 @blueprint.node(stub=_stubs.clean)
 def validate_coverage(
-    logger: logging.Logger, epic_dir: str = "", repo_dir: str = ""
+    logger: logging.Logger,
+    epic_dir: str = "",
+    repo_dir: str = "",
+    require_authored: bool = True,
 ) -> Defects:
     """Every seed covered by a story, the story graph acyclic, every story file present.
 
@@ -56,7 +59,9 @@ def validate_coverage(
     errors = [
         f"[{f.get('code')}] {f.get('message')}"
         for f in outcome.data.get("findings", [])
-        if f.get("severity") == "error" and f.get("code") in _COVERAGE_CODES
+        if f.get("severity") == "error"
+        and f.get("code") in _COVERAGE_CODES
+        and (require_authored or f.get("code") != "unwritten-story")
     ]
 
     logger.info("epic '%s' coverage: %d error(s)", epic, len(errors))

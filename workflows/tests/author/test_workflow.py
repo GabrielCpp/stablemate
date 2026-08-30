@@ -793,6 +793,7 @@ def test_epic_mode_authors_one_roadmap_milestone_and_commits_it(
         "audit-story": 2,
         "review-coverage": 1,
     }, agent.counts()
+    assert agent.calls.index("review-coverage") < agent.calls.index("write-story")
 
     # Both stories authored, for real, as ostler reads them.
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
@@ -1549,7 +1550,6 @@ def test_a_run_killed_mid_story_resumes_on_that_story_alone(
     assert second.counts() == {
         "write-story": 1,
         "audit-story": 1,
-        "review-coverage": 1,
     }, second.counts()
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
     assert result.author_pr == "skipped", result

@@ -644,7 +644,7 @@ class Author(Workflow):
         if result.status != "blocked":
             return Continue(
                 result,
-                self.next_story,
+                self.check_coverage,
                 epic=epic,
                 cov_reworks=cov_reworks,
                 split_resolves=split_resolves,
@@ -719,10 +719,8 @@ class Author(Workflow):
                 )
             return Continue(
                 pick,
-                self.check_coverage,
+                self.verify_authored_coverage,
                 epic=epic,
-                cov_reworks=cov_reworks,
-                split_resolves=split_resolves,
             )
         return self._enter_story(
             epic=epic,
@@ -1189,14 +1187,14 @@ class Author(Workflow):
     def check_coverage(
         self, epic: str, cov_reworks: int = 0, split_resolves: int = 0
     ) -> Continue | Await:
-        """Every seed of this epic covered by some story — mechanically, then judged.
+        """Approve the story DAG before any story body is authored.
 
         `validate_coverage` + `decide_coverage_validate` + `review_coverage` +
         `decide_coverage_review` + `guard_coverage` + `incr_cov`. Either failure re-enters
-        `split_stories` with the worklist, bounded; `ok` moves to the next epic.
+        `split_stories` with the worklist, bounded; `ok` starts story authoring.
         """
         epic_dir = self._epic_dir(epic)
-        mechanical = self.call(validate_coverage, epic_dir)
+        mechanical = self.call(validate_coverage, epic_dir, require_authored=False)
         if not mechanical.ok:
             return self._rework_coverage(
                 mechanical, mechanical.errors, epic, cov_reworks, split_resolves
@@ -1209,12 +1207,31 @@ class Author(Workflow):
             args={"epic": epic, "epic_dir": epic_dir},
         )
         if review.status == "ok":
-            return Continue(review, self.next_story_epic)
+            return Continue(
+                review,
+                self.next_story,
+                epic=epic,
+                cov_reworks=cov_reworks,
+                split_resolves=split_resolves,
+            )
         if review.status == "blocked":
             return self._gate_coverage(review, review.notes, epic, split_resolves)
         # `gaps` is also the default arm: a review that returns nothing legible has not
         # accounted for the epic's seeds, and the bounded rework loop is the safe read.
         return self._rework_coverage(review, review.notes, epic, cov_reworks, split_resolves)
+
+    def verify_authored_coverage(self, epic: str) -> Continue | Await:
+        """Recheck graph coverage without revising a DAG beneath authored stories."""
+        mechanical = self.call(validate_coverage, self._epic_dir(epic))
+        if mechanical.ok:
+            return Continue(mechanical, self.next_story_epic)
+        context = paths.epic_context(self._epic_dir(epic))
+        return Await(
+            self._abs(context),
+            mechanical.errors,
+            self.verify_authored_coverage,
+            epic=epic,
+        )
 
     def _rework_coverage(
         self, result: object, notes: str, epic: str, cov_reworks: int, split_resolves: int
