@@ -38,11 +38,11 @@ from paddock import Run, Score
 
 # ── the app tree ──────────────────────────────────────────────────────────────────────
 
-#: The answer key and the story images sit inside the app tree and are not the app. They
-#: are matched at the app *root* only: `shutil.ignore_patterns` matches a basename at any
+#: The answer key, the story images and the mutant corpus (`_mutants`) sit inside the app
+#: tree and are not the app. They are matched at the app *root* only: `shutil.ignore_patterns` matches a basename at any
 #: depth, and `stories` is also what an epic calls its story folders — which silently
 #: removed every story.md from the trial and left the run with nothing to plan against.
-NOT_THE_APP = ("stories", "defects", "defects.yml")
+NOT_THE_APP = ("stories", "defects", "defects.yml", "mutants", "mutants.yml")
 
 #: What the QA flow *writes*, and therefore what a trial must remove before running it.
 #: The flow's own `clear_qa_evidence` already drops `qa/` and `qa-evidence.json`, so those
