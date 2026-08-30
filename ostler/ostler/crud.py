@@ -343,7 +343,13 @@ def create_story(graph: Graph, epic_name: str, slug: str, title: str,
     # there is no way to name the story from the file itself; you have to go back to the
     # parent epic and match on slug. Ids are ostler-minted and repo-prefixed (`TODO-15`), so
     # carrying it here is what makes the story addressable in the graph.
-    fm = {"type": "story", "id": sid, "slug": slug, "status": registry.DEFAULT_STORY_STATUS}
+    fm = {
+        "type": "story",
+        "id": sid,
+        "slug": slug,
+        "status": registry.DEFAULT_STORY_STATUS,
+        registry.STORY_SHAPE_KEY: registry.CURRENT_STORY_SHAPE,
+    }
     body = _story_body(title, depends or [])
     story_md.parent.mkdir(parents=True, exist_ok=True)
     story_md.write_text(f"---\n{dump_frontmatter(fm)}---\n{body}", encoding="utf-8")

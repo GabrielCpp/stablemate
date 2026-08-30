@@ -135,13 +135,18 @@ id: ACME-01JBXR7M4E0S9YCG5NAKQ2TZVJ
 externalKey: TEAM-123   # optional provider-neutral lookup alias
 slug: 01-apercu-billing-body
 status: Not started     # free text; the workflow lifecycle (e.g. "QA passed")
+storyShape: 2           # current body contract; absent/1 retains the legacy shape
 surface: account-billing/apercu-billing-body   # optional
 ---
 # Story: …
 ## Dependencies
 - Blocked by: 00-sign-in       # one bullet per blocker, or the bare `(none)`
+## Fixtures
+(none)
 ## Context
 ## Acceptance Criteria
+## Non-Functional Acceptance Criteria
+## Technical Notes
 ## Implementation Status
 - **Status**: Not started        # legacy status line still honored if frontmatter absent
 ```
@@ -154,6 +159,13 @@ would not. A blocker may name only a story in the same epic. Change edges with
 `ostler update story --depends`, never by hand-editing a body a workflow will rewrite: a bullet
 under this heading that states anything else is a `malformed-dependency-bullet` error, which is
 what stops a rewrite from emptying the DAG quietly.
+
+Shape 2 separates behavior the coder builds (`## Acceptance Criteria`) from inherited invariants
+and constraints QA must still prove (`## Non-Functional Acceptance Criteria`). `## Technical
+Notes` carries concise existing-code references and mechanism evidence without becoming an
+implementation plan. Unversioned and `storyShape: 1` documents retain the earlier Context +
+Acceptance Criteria contract so persisted stories do not become incomplete merely because Ostler
+was upgraded.
 
 The coverage edge (`covers`) is *not* here — it names seeds defined in the epic, so it lives in the
 epic's `## Stories` section (§3). Prose may link to `docs/features/…` OKF nodes with ordinary

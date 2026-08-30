@@ -276,9 +276,28 @@ def test_writing_the_sections_clears_the_finding(tmp_path: Path):
         story_md.read_text(encoding="utf-8")
         .replace("## Context\n", "## Context\n\n- the operator needs a daily total\n")
         .replace("## Acceptance Criteria\n",
-                 "## Acceptance Criteria\n\n- The page shows one row per day.\n"),
+                 "## Acceptance Criteria\n\n- The page shows one row per day.\n")
+        .replace("## Non-Functional Acceptance Criteria\n",
+                 "## Non-Functional Acceptance Criteria\n\n- Existing exports remain unchanged.\n")
+        .replace("## Technical Notes\n",
+                 "## Technical Notes\n\n- `legacy/report.py::daily_rows` defines the prior mechanic.\n"),
         encoding="utf-8",
     )
+
+    assert _unwritten(tmp_path) == []
+
+
+def test_legacy_story_without_shape_version_keeps_the_original_contract(tmp_path: Path):
+    epic_dir = _scaffolded(tmp_path, ["01-a"])
+    story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-a/story.md"
+    text = story_md.read_text(encoding="utf-8")
+    text = text.replace("storyShape: 2\n", "")
+    start = text.index("## Non-Functional Acceptance Criteria")
+    end = text.index("## Implementation Status")
+    text = text[:start] + text[end:]
+    text = text.replace("## Context\n", "## Context\n\nLegacy context.\n")
+    text = text.replace("## Acceptance Criteria\n", "## Acceptance Criteria\n\n- It works.\n")
+    story_md.write_text(text, encoding="utf-8")
 
     assert _unwritten(tmp_path) == []
 

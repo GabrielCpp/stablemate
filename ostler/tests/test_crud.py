@@ -70,11 +70,29 @@ def test_create_story_adds_block_and_scaffold(tmp_path: Path):
     # author run created 44 of these, every checker read the scaffolded headings as evidence of
     # writing, and the run reported success. `create_story` succeeds; the story is unwritten
     # until somebody writes it, and `doctor` says so by name.
-    assert story.unwritten_sections == ["Context", "Acceptance Criteria"]
+    assert story.unwritten_sections == [
+        "Context",
+        "Acceptance Criteria",
+        "Non-Functional Acceptance Criteria",
+        "Technical Notes",
+    ]
     assert story.authored is False
     unwritten = [f for f in doctor.run(g2).findings if f.code == "unwritten-story"]
     assert [f.ref for f in unwritten] == ["01-apercu"]
-    assert "Context (empty), Acceptance Criteria (empty)" in unwritten[0].message
+    assert "Non-Functional Acceptance Criteria (empty)" in unwritten[0].message
+    assert "Technical Notes (empty)" in unwritten[0].message
+
+
+def test_story_scaffold_marks_the_current_shape_version(tmp_path: Path):
+    crud.create_epic(load(tmp_path), "billing", "Billing", prefix="acme")
+    assert crud.create_story(load(tmp_path), "billing", "01-current", "Current shape").ok
+
+    story_path = tmp_path / "docs/epics/0001-billing/stories/01-current/story.md"
+    text = story_path.read_text(encoding="utf-8")
+
+    assert "storyShape: 2" in text
+    assert "## Non-Functional Acceptance Criteria" in text
+    assert "## Technical Notes" in text
 
 
 def test_create_story_writes_its_blockers_into_the_story(tmp_path: Path):

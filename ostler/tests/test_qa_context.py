@@ -8,6 +8,7 @@ from ostler.qa.context import (
     CONTEXT_HEADING,
     OWED_HEADING,
     ChangedUnit,
+    _acceptance_criteria,
     _is_generated_unit,
     _sort_key,
     _verification_refs,
@@ -17,6 +18,33 @@ from ostler.qa.context import (
     select_obligations,
     validate_context,
 )
+
+
+def test_story_criteria_keep_functional_and_non_functional_classification(tmp_path: Path):
+    story = tmp_path / "story.md"
+    story.write_text(
+        "# Story: Parser\n\n"
+        "## Acceptance Criteria\n\n"
+        "- The compiler emits a safe AST.\n\n"
+        "## Non-Functional Acceptance Criteria\n\n"
+        "- Existing decimal results remain byte-identical.\n",
+        encoding="utf-8",
+    )
+
+    assert _acceptance_criteria(story) == [
+        {
+            "id": "ac:1",
+            "requirement": "The compiler emits a safe AST.",
+            "kind": "behavioral",
+            "category": "functional",
+        },
+        {
+            "id": "nfac:1",
+            "requirement": "Existing decimal results remain byte-identical.",
+            "kind": "behavioral",
+            "category": "non-functional",
+        },
+    ]
 
 
 def _git(root: Path, *args: str) -> str:

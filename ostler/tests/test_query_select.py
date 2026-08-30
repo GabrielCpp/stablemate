@@ -358,7 +358,11 @@ def _authored(root: Path, slug: str) -> None:
     story_md.write_text(
         story_md.read_text(encoding="utf-8")
         .replace("## Context\n", "## Context\n\n- why this matters\n")
-        .replace("## Acceptance Criteria\n", "## Acceptance Criteria\n\n- The thing works.\n"),
+        .replace("## Acceptance Criteria\n", "## Acceptance Criteria\n\n- The thing works.\n")
+        .replace("## Non-Functional Acceptance Criteria\n",
+                 "## Non-Functional Acceptance Criteria\n\n(none)\n")
+        .replace("## Technical Notes\n",
+                 "## Technical Notes\n\nNo prior implementation reference exists.\n"),
         encoding="utf-8",
     )
 
@@ -383,7 +387,12 @@ def test_author_report_selects_the_first_unwritten_story_in_dag_order(tmp_path: 
     assert report["state"] == "ready"
     assert report["story"]["slug"] == "a"
     assert report["story"]["authored"] is False
-    assert report["story"]["unwrittenSections"] == ["Context", "Acceptance Criteria"]
+    assert report["story"]["unwrittenSections"] == [
+        "Context",
+        "Acceptance Criteria",
+        "Non-Functional Acceptance Criteria",
+        "Technical Notes",
+    ]
     assert "a is unwritten" in report["detail"]
 
 

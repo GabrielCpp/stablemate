@@ -80,6 +80,8 @@ class SectionSpec:
 STORY_STATUS_HEADING = "Implementation Status"
 STORY_STATUS_LABEL = "Status"          # `- **Status**: <value>` under the heading above
 DEFAULT_STORY_STATUS = "Not started"
+STORY_SHAPE_KEY = "storyShape"
+CURRENT_STORY_SHAPE = 2
 
 # A story's blockers, in the story's own body. One bullet per blocker so the section reads as a
 # list and a diff names the edge that changed; the bare `(none)` — not a `- Blocked by: (none)`
@@ -99,9 +101,19 @@ STORY_FIXTURES_HEADING = "Fixtures"
 STORY_FIXTURES_LABEL = "Fixture"       # `- Fixture: <declared-name>`
 STORY_FIXTURES_NONE = "(none)"
 
-# story.md's body contract. `crud.create_story` scaffolds *from this table* and `model` /
-# `doctor` check against it, so the scaffold cannot drift into satisfying its own checkers —
-# the exact failure that let 44 empty stories read as authored.
+# Unversioned and explicit-v1 stories predate classified invariants and technical grounding.
+# They remain readable because story documents are persisted planning inputs, not generated cache.
+LEGACY_STORY_SECTIONS: tuple[SectionSpec, ...] = (
+    SectionSpec(STORY_DEPS_HEADING, filled=False, stub=STORY_DEPS_NONE),
+    SectionSpec(STORY_FIXTURES_HEADING, filled=False, stub=STORY_FIXTURES_NONE),
+    SectionSpec("Context", filled=True),
+    SectionSpec("Acceptance Criteria", filled=True),
+    SectionSpec(STORY_STATUS_HEADING, filled=False,
+                stub=f"- **{STORY_STATUS_LABEL}**: {DEFAULT_STORY_STATUS}"),
+)
+
+# Current story.md body contract. `crud.create_story` scaffolds *from this table* and `model` /
+# `doctor` check against it, so the scaffold cannot drift into satisfying its own checkers.
 STORY_SECTIONS: tuple[SectionSpec, ...] = (
     # Dependencies leads: what blocks a story is the first thing a reader needs to know, and
     # putting it above the prose keeps it out of the way of the sections an author rewrites.
@@ -112,6 +124,8 @@ STORY_SECTIONS: tuple[SectionSpec, ...] = (
     SectionSpec(STORY_FIXTURES_HEADING, filled=False, stub=STORY_FIXTURES_NONE),
     SectionSpec("Context", filled=True),
     SectionSpec("Acceptance Criteria", filled=True),
+    SectionSpec("Non-Functional Acceptance Criteria", filled=True),
+    SectionSpec("Technical Notes", filled=True),
     SectionSpec(STORY_STATUS_HEADING, filled=False,
                 stub=f"- **{STORY_STATUS_LABEL}**: {DEFAULT_STORY_STATUS}"),
 )

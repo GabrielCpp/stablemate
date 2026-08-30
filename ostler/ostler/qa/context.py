@@ -1918,15 +1918,25 @@ def _acceptance_criteria(story_file: Path | None) -> list[dict[str, str]]:
     if story_file is None or not story_file.is_file():
         return []
     doc = markdown.split(story_file.read_text(encoding="utf-8"))
-    section = doc.find_section("Acceptance Criteria")
-    if section is None:
-        return []
     criteria: list[dict[str, str]] = []
-    for index, bullet in enumerate(section.bullets, start=1):
-        text = bullet.text.strip()
-        match = _AC_RE.match(text)
-        number, requirement = (match.group(1), match.group(2)) if match else (str(index), text)
-        criteria.append({"id": f"ac:{number}", "requirement": requirement, "kind": "behavioral"})
+    sections = (
+        ("Acceptance Criteria", "ac", "functional"),
+        ("Non-Functional Acceptance Criteria", "nfac", "non-functional"),
+    )
+    for heading, prefix, category in sections:
+        section = doc.find_section(heading)
+        if section is None:
+            continue
+        for index, bullet in enumerate(section.bullets, start=1):
+            text = bullet.text.strip()
+            match = _AC_RE.match(text)
+            number, requirement = (match.group(1), match.group(2)) if match else (str(index), text)
+            criteria.append({
+                "id": f"{prefix}:{number}",
+                "requirement": requirement,
+                "kind": "behavioral",
+                "category": category,
+            })
     return criteria
 
 

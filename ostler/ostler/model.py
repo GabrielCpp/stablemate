@@ -296,6 +296,15 @@ def required_section_problems(
     return problems
 
 
+def story_section_specs(doc: markdown.MarkdownDoc) -> tuple[registry.SectionSpec, ...]:
+    """The body contract declared by this story's persisted shape version."""
+    frontmatter = doc.frontmatter or {}
+    raw = frontmatter.get(registry.STORY_SHAPE_KEY)
+    if raw is None or str(raw).strip() == "1":
+        return registry.LEGACY_STORY_SECTIONS
+    return registry.STORY_SECTIONS
+
+
 def status_bullet(doc: markdown.MarkdownDoc) -> markdown.Bullet | None:
     """The ``- **Status**:`` field of a parsed story doc, or ``None``.
 
@@ -1072,7 +1081,7 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
             story.dependency_strays = story_dependency_strays(doc)
             story.fixtures = story_fixtures(doc)
             story.fixture_strays = story_fixture_strays(doc)
-            problems = required_section_problems(doc, registry.STORY_SECTIONS)
+            problems = required_section_problems(doc, story_section_specs(doc))
             story.unwritten_sections = [s.heading for s, _ in problems]
             story.unwritten_detail = [f"{s.heading} ({why})" for s, why in problems]
             return
