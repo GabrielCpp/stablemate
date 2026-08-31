@@ -78,7 +78,7 @@ turns, and the command says which of the two it saw rather than smoothing them t
 ask of the run most worth asking about: a run six days into a cap window is answered from
 inside that window, and the window is not shortened by having been asked. When the run is
 parked on an operator gate, `status` also names it: `waiting_on` carries the gate file's
-path and `wait_kind` what sort of wait it is.
+path, read from the same checkpoint a resume would.
 
 ## Answering an operator gate (`control questions` / `control answer`)
 
