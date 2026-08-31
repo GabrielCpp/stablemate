@@ -728,21 +728,43 @@ class AgentRunner:
                     delay, when = cap_delay_seconds(
                         exc, resilience=resilience, clock=self.clock
                     )
-                    print(
-                        f"[{node_id}] ⏸ spending/usage cap reached — pausing ~{int(delay)}s "
-                        f"(resuming around {when}). The cap clears only when the window "
-                        f"resets, so the run sleeps through it. ({str(exc).strip()})",
-                        flush=True,
-                    )
+                    # Sleep at most one probe interval, then re-attempt. The reported
+                    # reset is the window's SCHEDULED reopening, not a promise that
+                    # nothing reopens it sooner — an operator who resets the limit by
+                    # hand, tops up credits or changes plan clears the cap immediately,
+                    # and a single multi-day sleep would ride straight past that. The
+                    # re-attempt costs one CLI invocation that fails at once while the
+                    # cap still holds.
+                    probing = 0 < resilience.cap_probe_s < delay
+                    sleep_s = resilience.cap_probe_s if probing else delay
+                    if probing:
+                        print(
+                            f"[{node_id}] ⏸ spending/usage cap reached — sleeping "
+                            f"~{int(sleep_s)}s, then re-attempting in case the cap has "
+                            f"cleared early. The window is scheduled to reopen around "
+                            f"{when}. ({str(exc).strip()})",
+                            flush=True,
+                        )
+                    else:
+                        print(
+                            f"[{node_id}] ⏸ spending/usage cap reached — pausing ~{int(sleep_s)}s "
+                            f"(resuming around {when}). The cap clears only when the window "
+                            f"resets, so the run sleeps through it. ({str(exc).strip()})",
+                            flush=True,
+                        )
                     otel.turn_event(
-                        "cap_wait", node=node_id, delay_s=int(delay), resume_around=when
+                        "cap_wait",
+                        node=node_id,
+                        delay_s=int(sleep_s),
+                        resume_around=when,
+                        probing=probing,
                     )
-                    budget.consume("cap", delay)
+                    budget.consume("cap", sleep_s)
                     with otel.wait("cap", node_id):
                         interrupted = sleep_with_notice(
-                            delay,
+                            sleep_s,
                             node_id,
-                            "cap reset",
+                            "cap probe" if probing else "cap reset",
                             resilience=resilience,
                             clock=self.clock,
                             channel=control.armed(),
@@ -753,7 +775,13 @@ class AgentRunner:
                     # in which the run could not be reached at all — the fix was pushed
                     # and then sat there until the window happened to close.
                     self._reenter_on(interrupted, node_id, "a cap wait")
-                    print(f"[{node_id}] ▶ cap wait elapsed — resuming node", flush=True)
+                    print(
+                        f"[{node_id}] ▶ cap probe interval elapsed — re-attempting "
+                        f"(cap wait {cap_waits}/{resilience.max_cap_waits})"
+                        if probing
+                        else f"[{node_id}] ▶ cap wait elapsed — resuming node",
+                        flush=True,
+                    )
                     continue
                 if short_attempt >= max_invoke_retries:
                     raise

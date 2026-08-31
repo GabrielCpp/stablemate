@@ -57,6 +57,13 @@ through three layers before it can ever crash the run (see
    the reset time from the message text (e.g. `session limit · resets 11:30am`),
    then a default. A cap is detected from text markers (`failure._CAP_MARKERS`) or a
    blocked `rate_limit_event` status (`failure._LIMIT_STATUS_MARKERS`).
+   That reset is the window's *scheduled* reopening, not a promise nothing reopens
+   it sooner, so the run does not sleep it in one shot: each cap sleep is capped at
+   `AGENT_CAP_PROBE_S` (2h) and then the turn is re-attempted. While the cap still
+   holds that costs one CLI invocation that fails at once; when an operator has
+   reset the limit by hand, changed plan or topped up credits, the run resumes
+   within the probe interval instead of riding past it for another six days. The
+   cumulative `AGENT_CAP_WAIT_BUDGET_S` is still what ends a cap that never clears.
 2. **Compact & continue** — if a node exhausts the model's **context window**
    (the headless CLI returns instead of auto-compacting — markers like
    `prompt is too long`, `context window`, `conversation is too long`), the
@@ -155,7 +162,8 @@ same CLI configuration as the conversation it is compacting.
 | `AGENT_CAP_DEFAULT_WAIT_S` | 3600 | Default wait when cap reset time can't be parsed |
 | `AGENT_CAP_WAIT_MARGIN_S` | 120 | Extra seconds added after parsed reset time |
 | `AGENT_CAP_TICK_S` | 600 | Interval for "still paused" messages during long waits |
-| `AGENT_MAX_CAP_WAITS` | 48 | Maximum consecutive cap waits before giving up |
+| `AGENT_CAP_PROBE_S` | 7200 | Longest single cap sleep before re-attempting the turn, however far out the reported reset is. A weekly window reopens ~6 days out, and sleeping that in one shot means the run cannot notice the cap clearing EARLY — a manual reset, a plan change, topped-up credits. A re-attempt costs one CLI invocation that fails immediately while the cap still holds. 0 restores the pre-probe behaviour (one sleep to the reported reset) |
+| `AGENT_MAX_CAP_WAITS` | 128 | Maximum consecutive cap waits before giving up. Sized so probing every `AGENT_CAP_PROBE_S` can span the whole `AGENT_CAP_WAIT_BUDGET_S` (8d / 2h = 96) with room to spare: the cumulative budget, not the wait count, is meant to be what ends a legitimately long cap |
 | `AGENT_CAP_WAIT_BUDGET_S` | 691320 (8 days + 120s) | Cumulative cap sleep for one agent-node visit; a reset beyond the remaining allowance stops immediately rather than sleeping partway |
 | `AGENT_EXEC_RETRY_MAX` | 5 | Short spawn retries when the agent-CLI binary is momentarily un-exec'able (self-update in flight: `ETXTBSY`/`ENOENT` with the shim still resolving) before escalating to the transient ladder. A permanently-absent CLI (`which` → `None`) is not retried. |
 | `AGENT_EXEC_RETRY_BASE_S` | 1 | Base seconds for the exec-retry exponential backoff |

@@ -303,21 +303,30 @@ def test_cap_delay_falls_back_to_text_then_default():
 
 
 def test_structured_reset_at_drives_invoke_wait():
-    """End-to-end: a cap error carrying reset_at makes the turn sleep until it."""
+    """End-to-end: a cap error carrying reset_at makes the turn sleep until it.
+
+    The reset is stated at 90 minutes: inside ``cap_probe_s`` (so the wait is not
+    clipped to a probe interval — that case is its own test above) and unequal to
+    ``cap_default_wait_s``, so the slept seconds can only have come from reset_at.
+    """
     now = 2_000_000.0
+    reset_in = 5400.0
+    assert reset_in < RESILIENCE.cap_probe_s and reset_in != RESILIENCE.cap_default_wait_s
     calls = {"n": 0}
 
     def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
-            raise BackendInvocationError("blocked", transient=True, reset_at=now + 7200)
+            raise BackendInvocationError(
+                "blocked", transient=True, reset_at=now + reset_in
+            )
         return "OK"
 
     clock = FakeClock(datetime.fromtimestamp(now))
     out = _turn(fake_cli, clock=clock)
 
     assert out == "OK"
-    assert abs(sum(clock.slept) - (7200 + RESILIENCE.cap_wait_margin_s)) < 1
+    assert abs(sum(clock.slept) - (reset_in + RESILIENCE.cap_wait_margin_s)) < 1
 
 
 def test_budget_timeout_warns_retry_with_time_budget():
@@ -586,6 +595,82 @@ def test_non_transient_fails_immediately():
     except BackendInvocationError:
         pass
     assert calls["n"] == 1, "non-transient must not retry"
+
+
+# A weekly window reopens ~6 days out. Sleeping that in ONE wait means the run cannot
+# notice the cap clearing early — an operator resetting the limit by hand, topping up
+# credits, or changing plan. The ladder therefore sleeps at most ``cap_probe_s`` and
+# re-attempts, which is what turns "back in 6 days" into "back within 2 hours of the
+# cap actually lifting".
+def _capped_once_then_ok(calls, reset_at):
+    """A CLI that reports a cap carrying ``reset_at`` once, then succeeds."""
+
+    def cli(prompt, node_id, sid, model, timeout=None, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise BackendInvocationError(
+                "opencode usage/spending cap reached", transient=True, reset_at=reset_at
+            )
+        return "RESULT_OK"
+
+    return cli
+
+
+def test_cap_probe_sleeps_one_interval_not_the_whole_week():
+    """A six-day reset costs ONE probe interval when the cap has cleared early."""
+    clock = FakeClock()
+    calls = {"n": 0}
+    reset_at = clock.now().timestamp() + 6 * 24 * 3600
+
+    out = _turn(_capped_once_then_ok(calls, reset_at), clock=clock)
+
+    assert out == "RESULT_OK"
+    assert calls["n"] == 2, "should re-attempt after one probe interval"
+    assert sum(clock.slept) == RESILIENCE.cap_probe_s, (
+        "a six-day reset must be probed, not slept through in one wait"
+    )
+
+
+def test_cap_probe_disabled_sleeps_to_the_reported_reset():
+    """``cap_probe_s=0`` keeps the pre-probe behaviour: one sleep to the reset."""
+    clock = FakeClock()
+    calls = {"n": 0}
+    reset_at = clock.now().timestamp() + 6 * 24 * 3600
+
+    out = _turn(_capped_once_then_ok(calls, reset_at), clock=clock, cap_probe_s=0)
+
+    assert out == "RESULT_OK"
+    assert sum(clock.slept) == 6 * 24 * 3600 + RESILIENCE.cap_wait_margin_s
+
+
+def test_cap_probe_repeats_while_the_cap_still_holds():
+    """Each probe that finds the cap intact costs one interval, bounded by the
+    consecutive-wait count — the run keeps trying rather than sleeping blind."""
+    clock = FakeClock()
+    calls = {"n": 0}
+    reset_at = clock.now().timestamp() + 6 * 24 * 3600
+
+    def always_capped(*args, **kwargs):
+        calls["n"] += 1
+        raise BackendInvocationError(
+            "opencode usage/spending cap reached", transient=True, reset_at=reset_at
+        )
+
+    try:
+        _turn(always_capped, clock=clock, max_cap_waits=3)
+        raise AssertionError("a cap that never lifts must eventually stop the node")
+    except BackendInvocationError:
+        pass
+
+    assert calls["n"] == 4, "three probe waits, then the fourth attempt gives up"
+    assert sum(clock.slept) == 3 * RESILIENCE.cap_probe_s
+
+
+def test_probing_can_span_the_whole_cap_wait_budget():
+    """``max_cap_waits`` must not be what ends a legitimately long cap: the cumulative
+    budget is the intended limit, so the wait count has to outlast it."""
+    assert RESILIENCE.cap_probe_s > 0
+    assert RESILIENCE.max_cap_waits > RESILIENCE.cap_wait_budget_s / RESILIENCE.cap_probe_s
 
 
 if __name__ == "__main__":
