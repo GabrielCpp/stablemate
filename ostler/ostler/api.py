@@ -406,7 +406,8 @@ class Ostler:
 
         ``skip`` — slugs given up this run — are excluded without counting as done, so one
         story failing QA does not strand the rest of the epic. See ``select.next_story``.
-        ``need="author"`` asks the other question: which story still needs writing.
+        ``need="author"`` asks which story still needs writing. ``need="author-current"`` also
+        selects authored stories whose persisted story shape is legacy or unversioned.
         """
         return select.next_story(self.graph, epic, skip=skip, need=need)
 
@@ -649,6 +650,10 @@ class Ostler:
                 depends=depends,
             )
         )
+
+    def migrate_story_to_current_shape(self, slug: str) -> Result:
+        """Migrate one story to ``CURRENT_STORY_SHAPE`` without replacing its content."""
+        return self._apply(crud.migrate_story_to_current_shape(self._fresh(), slug))
 
     def delete_epic(self, name: str) -> Result:
         """Delete an epic and remove its milestone and legacy queue references."""

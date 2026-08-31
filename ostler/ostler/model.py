@@ -67,6 +67,9 @@ class Story:
     story_md: Path | None = None
     status: str = ""
     body_status: str = ""
+    # The contract version persisted in story.md. ``None`` deliberately distinguishes an
+    # unversioned legacy story from one stamped with the current shape.
+    story_shape: int | str | None = None
     # Every in-repo document this story links to, verbatim as written (relative to story.md
     # or repo-relative). This is how a story cites the OKF book: a UI node's identity is a
     # repo-relative path (optionally `path#anchor`), so a citation is an ordinary link.
@@ -1067,6 +1070,10 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
             if doc.frontmatter:
                 story.file_eid = str(doc.frontmatter.get("id") or "")
                 story.external_key = str(doc.frontmatter.get("externalKey") or "")
+                persisted_shape = doc.frontmatter.get(registry.STORY_SHAPE_KEY)
+                story.story_shape = (
+                    persisted_shape if isinstance(persisted_shape, (int, str)) else None
+                )
                 story.raw["externalKey"] = story.external_key
             if not story.eid and story.file_eid:
                 # crud writes the minted id in both places; a story whose epic block

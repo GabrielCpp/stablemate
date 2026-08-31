@@ -7,6 +7,7 @@ layout (``SPEC.md`` / ``registry.py``) stay correct. Writers apply immediately a
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
@@ -145,6 +146,33 @@ def ensure_fixtures(doc: markdown.MarkdownDoc, fixtures: list[str]) -> None:
 
 def dump_frontmatter(fm: dict) -> str:
     return yaml.safe_dump(fm, sort_keys=False, allow_unicode=True)
+
+
+_STORY_SHAPE_LINE = re.compile(
+    rf"^(?P<prefix>{registry.STORY_SHAPE_KEY}[ \t]*:[ \t]*)"
+    r"[^#\r\n]*?(?P<comment>[ \t]*#.*)?$",
+    re.MULTILINE,
+)
+
+
+def _set_current_story_shape(doc: markdown.MarkdownDoc) -> None:
+    """Stamp the top-level shape key without reserializing unrelated YAML."""
+    raw = doc.raw_frontmatter
+    replacement = str(registry.CURRENT_STORY_SHAPE)
+    if _STORY_SHAPE_LINE.search(raw):
+        raw = _STORY_SHAPE_LINE.sub(
+            lambda match: match.group("prefix") + replacement + (match.group("comment") or ""),
+            raw,
+            count=1,
+        )
+    else:
+        if raw and not raw.endswith("\n"):
+            raw += "\n"
+        raw += f"{registry.STORY_SHAPE_KEY}: {replacement}\n"
+    frontmatter = dict(doc.frontmatter or {})
+    frontmatter[registry.STORY_SHAPE_KEY] = registry.CURRENT_STORY_SHAPE
+    doc.frontmatter = frontmatter
+    doc.raw_frontmatter = raw
 
 
 # ---------------------------------------------------------------------------
@@ -426,6 +454,50 @@ def update_story(
     epic_md.write_text(doc.render(), encoding="utf-8")
     story_md.write_text(story_doc.render(), encoding="utf-8")
     return Result(True, f"updated story '{slug}' in epic '{epic.name}'", [epic_md, story_md])
+
+
+def migrate_story_to_current_shape(graph: Graph, slug: str) -> Result:
+    """Stamp one story current, adding only the current prose headings it lacks.
+
+    Existing frontmatter values and body text remain in place. Missing current headings are
+    inserted immediately before Implementation Status so the migrated story becomes honestly
+    unauthored until those new sections are filled. Repeating the operation is a no-op.
+    """
+    found = graph.find_story(slug)
+    if found is None:
+        return Result(False, f"no story '{slug}' with a story.md")
+    story = found[1]
+    path = story.story_md
+    if path is None:
+        return Result(False, f"no story '{slug}' with a story.md")
+    doc = markdown.split(path.read_text(encoding="utf-8"))
+    status = doc.find_section(registry.STORY_STATUS_HEADING)
+    if status is None:
+        return Result(
+            False,
+            f"story '{slug}' has no '## {registry.STORY_STATUS_HEADING}' section",
+        )
+
+    missing = [
+        heading
+        for heading in ("Non-Functional Acceptance Criteria", "Technical Notes")
+        if doc.find_section(heading) is None
+    ]
+    frontmatter = doc.frontmatter or {}
+    already_current = (
+        frontmatter.get(registry.STORY_SHAPE_KEY) == registry.CURRENT_STORY_SHAPE
+    )
+    if not missing and already_current:
+        return Result(True, f"story '{slug}' already uses the current shape")
+
+    if missing:
+        lines = doc.body.split("\n")
+        inserted = [line for heading in missing for line in (f"## {heading}", "")]
+        lines[status.line_start:status.line_start] = inserted
+        doc.replace_body(lines)
+    _set_current_story_shape(doc)
+    path.write_text(doc.render(), encoding="utf-8")
+    return Result(True, f"migrated story '{slug}' to the current shape", [path])
 
 
 def delete_story(graph: Graph, slug: str) -> Result:
