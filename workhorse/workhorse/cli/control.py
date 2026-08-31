@@ -9,7 +9,11 @@ is re-read and re-narrowed on every turn, so the run only has to be told a new n
 next turn resolves from it. `status`
 asks where it is, and is answered by the run itself: everything in the answer is also on
 disk, but a reply *on that run's socket* is the one thing the disk cannot prove — that
-this process is the one still serving this run dir. The run is a different process (often
+this process is the one still serving this run dir. `questions` asks what the run is
+blocked asking an operator — answered in-band under every wait, like `status` — and
+`answer` delivers the operator's reply to the gate the run is parked on: the run writes
+it into the gate file itself, so disk keeps the record while the socket carries the
+exchange. The run is a different process (often
 in a different container), so the whole command is: resolve which run dir is meant, say it
 on the run's control socket, and report what the run appeared to be doing when it was
 asked.
@@ -38,7 +42,7 @@ from workhorse.records import PyflowCheckpoint, parse_checkpoint, parse_run_reco
 from workhorse.rundir import find_latest_resumable, resolve_run_dir
 
 NAME = "control"
-HELP = "Signal a run in flight (reload, status, switch-cli, switch-profile)"
+HELP = "Signal a run in flight (reload, status, questions, answer, switch-cli, switch-profile)"
 
 SWITCH_CLI = "switch-cli"
 SWITCH_PROFILE = reload.SWITCH_PROFILE
@@ -47,10 +51,12 @@ SWITCH_PROFILE = reload.SWITCH_PROFILE
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "action",
-        choices=["reload", "status", SWITCH_CLI, SWITCH_PROFILE],
+        choices=["reload", "status", control.QUESTIONS, control.ANSWER, SWITCH_CLI, SWITCH_PROFILE],
         help="reload: pick up pushed code and re-enter the checkpoint. status: ask the "
         "run where it is, which is also a proof that this process is the one serving "
-        "that run dir. switch-cli: re-enter the same checkpoint on another agent CLI. "
+        "that run dir. questions: list what the run is blocked asking an operator. "
+        "answer: deliver the operator's answer to the gate the run is parked on. "
+        "switch-cli: re-enter the same checkpoint on another agent CLI. "
         "switch-profile: resolve the next turn's models from another named profile.",
     )
     parser.add_argument(
@@ -72,6 +78,21 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "--runs-dir",
         default=None,
         help="Where run dirs live (default: ./.agents/runs, the same default as `run`).",
+    )
+    parser.add_argument(
+        "--gate",
+        default=None,
+        metavar="PATH",
+        help="For answer: the gate file the answer is for, as an absolute path the run "
+        "knows it by. Omitted, the answer lands on whichever gate the run is waiting "
+        "on — the run replies with its path either way.",
+    )
+    parser.add_argument(
+        "--text",
+        default=None,
+        metavar="TXT",
+        help="For answer: the operator's answer text. Omit it to read the text from "
+        "stdin, which is where a multi-line answer already is.",
     )
     parser.add_argument(
         "--core",
@@ -96,6 +117,7 @@ def run(args: argparse.Namespace) -> None:
     )
     run_dir = _target(args.run, runs_dir, args.registry.name)
     cli, profile = _switch_target(args.action, args.target)
+    gate, text = _answer_payload(args)
     request = control.Request(
         # A CLI switch is a reload on the wire, and deliberately not a verb of its own:
         # honouring it is already what a `--core` reload does — replace the process image
@@ -107,6 +129,8 @@ def run(args: argparse.Namespace) -> None:
         at_boundary=args.at_boundary,
         cli=cli,
         profile=profile,
+        path=gate,
+        body=text,
     )
     try:
         reply = control.send(run_dir, request)
@@ -120,6 +144,14 @@ def run(args: argparse.Namespace) -> None:
 
     if args.action == control.STATUS:
         _report(run_dir, reply)
+        return
+
+    if args.action == control.QUESTIONS:
+        _report_questions(run_dir, reply)
+        return
+
+    if args.action == control.ANSWER:
+        _report_answer(run_dir, reply)
         return
 
     if profile:
@@ -168,6 +200,87 @@ def _switch_target(action: str, name: str | None) -> tuple[str, str]:
               f"`control {action} {example}`", file=sys.stderr)
         sys.exit(1)
     return (name, "") if action == SWITCH_CLI else ("", name)
+
+
+def _answer_payload(args: argparse.Namespace) -> tuple[str, str]:
+    """The (gate, text) an `answer` carries — and a refusal of the flags anywhere else.
+
+    A `--text` typed after `reload` would be silently dropped, which from the operator's
+    side reads exactly like an answer that landed. The text itself may come from stdin —
+    that is where a multi-line answer already is — but only when stdin is not a terminal,
+    because blocking an interactive shell on a read nobody was told about is a hang, not
+    a prompt.
+    """
+    if args.action != control.ANSWER:
+        if args.gate is not None or args.text is not None:
+            print(f"error: {args.action} takes no --gate or --text", file=sys.stderr)
+            sys.exit(1)
+        return "", ""
+    if args.text is not None:
+        return args.gate or "", args.text
+    if sys.stdin.isatty():
+        print(
+            "error: answer needs the text — --text TXT, or pipe it on stdin",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return args.gate or "", sys.stdin.read()
+
+
+def _report_questions(run_dir: Path, reply: dict[str, object]) -> None:
+    """Print what the run said it is blocked asking, or that it said nothing.
+
+    An empty reply means the query was never read — a busy script node looks at the
+    channel only between turns — which is different from the well-formed "no questions"
+    answer a working run gives, and the two must not print alike: one says "ask again",
+    the other says "nothing to answer".
+    """
+    if not reply:
+        print(f"questions of {run_dir}: the run did not answer within the timeout")
+        print("  (a node that is not waiting on anything reads the channel only between turns)")
+        print(f"  run:     {_liveness(run_dir)}")
+        print(f"  at:      {_position(run_dir)}")
+        return
+    if reply.get("ok") is not True:
+        print(f"error: {reply.get('error', reply)}", file=sys.stderr)
+        sys.exit(1)
+    questions = reply.get("questions")
+    entries = [q for q in questions if isinstance(q, dict)] if isinstance(questions, list) else []
+    if not entries:
+        print(f"{run_dir} is not blocked on an operator gate right now")
+        return
+    print(f"{run_dir} is waiting on an operator:")
+    for entry in entries:
+        print(f"  gate:    {entry.get('path', '')}")
+        print(f"  kind:    {entry.get('kind', '')}")
+        print(f"  since:   {entry.get('since', '')}")
+        question = str(entry.get("question", "")).strip()
+        for line in question.splitlines():
+            print(f"    {line}")
+
+
+def _report_answer(run_dir: Path, reply: dict[str, object]) -> None:
+    """Print the run's verdict on the answer, and make silence an error.
+
+    An answer is the one verb where "delivered, no reply" is not good enough: the run
+    persists the answer into the gate file *before* acknowledging, so no acknowledgement
+    means nothing was written — and an operator told otherwise would walk away from a run
+    still parked on the question they believe they answered.
+    """
+    if not reply:
+        print(
+            f"error: {run_dir} did not confirm the answer within the timeout — "
+            "nothing was written into the gate",
+            file=sys.stderr,
+        )
+        print(f"  run:     {_liveness(run_dir)}", file=sys.stderr)
+        print(f"  at:      {_position(run_dir)}", file=sys.stderr)
+        sys.exit(1)
+    if reply.get("ok") is True:
+        print(f"answer delivered to {run_dir}: the run wrote it into {reply.get('path', '')}")
+        return
+    print(f"error: {reply.get('error', reply)}", file=sys.stderr)
+    sys.exit(1)
 
 
 def _report(run_dir: Path, reply: dict[str, object]) -> None:

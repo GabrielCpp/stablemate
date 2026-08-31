@@ -17,6 +17,7 @@ Run: uv run python tests/test_control_command.py   (or via pytest)
 
 from __future__ import annotations
 
+import io
 import os
 import sys
 import tempfile
@@ -321,6 +322,136 @@ def test_a_refused_profile_switch_exits_nonzero(capsys) -> None:
                 )
         assert excinfo.value.code == 1
         assert "unknown profile" in capsys.readouterr().out
+
+
+def test_questions_prints_the_gate_the_run_is_parked_on(capsys) -> None:
+    """Answered below the wait, like `status`: the listener never sees the request, so
+    the verb is safe to ask of a run parked for days — nothing about it ends the wait."""
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        run_dir = _run_dir(runs)
+
+        control.questions_with(
+            lambda: [
+                {
+                    "path": "/runs/demo-t/operator.md",
+                    "question": "which branch?\nmain or master?",
+                    "kind": "operator",
+                    "since": "2026-01-01T12:00:00",
+                }
+            ]
+        )
+        try:
+            with _listening(run_dir) as listener:
+                _control(runs, "questions", "--run", "t", "--runs-dir", str(runs))
+        finally:
+            control.questions_with(None)
+
+        out = capsys.readouterr().out
+        assert "is waiting on an operator" in out, out
+        assert "gate:    /runs/demo-t/operator.md" in out, out
+        assert "which branch?" in out and "main or master?" in out, out
+        assert "2026-01-01T12:00:00" in out, out
+        assert listener.taken == []
+
+
+def test_questions_says_when_the_run_is_not_blocked(capsys) -> None:
+    """An empty list is the well-formed answer of a run that is working, and it must not
+    read like an error or like a run that never answered."""
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        run_dir = _run_dir(runs)
+
+        with _listening(run_dir) as listener:
+            _control(runs, "questions", "--run", "t", "--runs-dir", str(runs))
+
+        assert "is not blocked on an operator gate right now" in capsys.readouterr().out
+        assert listener.taken == []
+
+
+def test_an_answer_carries_the_gate_and_the_text_and_reports_the_landing(capsys) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        run_dir = _run_dir(runs)
+
+        with _listening(run_dir) as listener:
+            listener.answer = {"ok": True, "path": "/runs/demo-t/operator.md"}
+            _control(
+                runs, "answer", "--run", "t", "--runs-dir", str(runs),
+                "--gate", "/runs/demo-t/operator.md", "--text", "main, not master",
+            )
+
+        assert [(r.action, r.path, r.body) for r in listener.taken] == [
+            ("answer", "/runs/demo-t/operator.md", "main, not master")
+        ], listener.taken
+        out = capsys.readouterr().out
+        assert "the run wrote it into /runs/demo-t/operator.md" in out, out
+
+
+def test_answer_text_can_come_from_stdin(monkeypatch) -> None:
+    """A multi-line answer is already in a file or a heredoc; retyping it after --text
+    is the workflow this arm removes."""
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        run_dir = _run_dir(runs)
+
+        monkeypatch.setattr("sys.stdin", io.StringIO("go ahead\nand push it\n"))
+        with _listening(run_dir) as listener:
+            listener.answer = {"ok": True, "path": "/runs/demo-t/operator.md"}
+            _control(runs, "answer", "--run", "t", "--runs-dir", str(runs))
+
+        assert [r.body for r in listener.taken] == ["go ahead\nand push it\n"]
+        # No --gate: the run answers whichever gate it is waiting on.
+        assert [r.path for r in listener.taken] == [""]
+
+
+def test_an_answer_with_no_text_and_a_terminal_is_refused_not_a_hang(capsys, monkeypatch) -> None:
+    class _Tty:
+        def isatty(self) -> bool:
+            return True
+
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        _run_dir(runs)
+
+        monkeypatch.setattr("sys.stdin", _Tty())
+        with pytest.raises(SystemExit) as excinfo:
+            _control(runs, "answer", "--run", "t", "--runs-dir", str(runs))
+
+        assert excinfo.value.code == 1
+        assert "answer needs the text" in capsys.readouterr().err
+
+
+def test_a_refused_answer_exits_nonzero(capsys) -> None:
+    """The run is what refuses — already answered, or parked on a different gate — and
+    an operator's script must not read a refusal as an answer that landed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        run_dir = _run_dir(runs)
+
+        with _listening(run_dir) as listener:
+            listener.answer = {"ok": False, "error": "already answered"}
+            with pytest.raises(SystemExit) as excinfo:
+                _control(
+                    runs, "answer", "--run", "t", "--runs-dir", str(runs), "--text", "go"
+                )
+
+        assert excinfo.value.code == 1
+        assert "already answered" in capsys.readouterr().err
+
+
+def test_the_answer_flags_are_refused_on_every_other_verb(capsys) -> None:
+    """A --text typed after reload would be silently dropped, which from the operator's
+    side reads exactly like an answer that landed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        _run_dir(runs)
+
+        with pytest.raises(SystemExit) as excinfo:
+            _control(runs, "reload", "--run", "t", "--runs-dir", str(runs), "--text", "go")
+
+        assert excinfo.value.code == 1
+        assert "takes no --gate or --text" in capsys.readouterr().err
 
 
 if __name__ == "__main__":
