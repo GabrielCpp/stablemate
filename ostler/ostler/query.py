@@ -20,7 +20,6 @@ def _story_row(graph: Graph, epic, story) -> dict:
         "title": story.title, "status": story.status, "covers": story.seed_items,
         "dependsOn": story.dependencies,
         "path": story.path,
-        "storyShape": story.story_shape,
         # Whether the story says anything, and which required sections are still blank —
         # so a caller never has to open story.md and decide for itself what "written" means.
         # `hasStoryMd` separates the two ways a story can be unauthored: no file at all, or a

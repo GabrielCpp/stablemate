@@ -135,7 +135,6 @@ id: ACME-01JBXR7M4E0S9YCG5NAKQ2TZVJ
 externalKey: TEAM-123   # optional provider-neutral lookup alias
 slug: 01-apercu-billing-body
 status: Not started     # free text; the workflow lifecycle (e.g. "QA passed")
-storyShape: 2           # current body contract; absent/1 retains the legacy shape
 surface: account-billing/apercu-billing-body   # optional
 ---
 # Story: …
@@ -160,12 +159,16 @@ would not. A blocker may name only a story in the same epic. Change edges with
 under this heading that states anything else is a `malformed-dependency-bullet` error, which is
 what stops a rewrite from emptying the DAG quietly.
 
-Shape 2 separates behavior the coder builds (`## Acceptance Criteria`) from inherited invariants
+The body separates behavior the coder builds (`## Acceptance Criteria`) from inherited invariants
 and constraints QA must still prove (`## Non-Functional Acceptance Criteria`). `## Technical
 Notes` carries concise existing-code references and mechanism evidence without becoming an
-implementation plan. Unversioned and `storyShape: 1` documents retain the earlier Context +
-Acceptance Criteria contract so persisted stories do not become incomplete merely because Ostler
-was upgraded.
+implementation plan.
+
+**There is one story contract and no version key.** Every story is judged by the sections it
+carries, in the order above; a document cannot declare which rules apply to it. A story missing a
+required heading is `unwritten-story` whatever its age, and `ostler` will add the heading in
+contract position on request — the same operation for a story written last year, a story a rework
+emptied, and one scaffolded a moment ago.
 
 The coverage edge (`covers`) is *not* here — it names seeds defined in the epic, so it lives in the
 epic's `## Stories` section (§3). Prose may link to `docs/features/…` OKF nodes with ordinary

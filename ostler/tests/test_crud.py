@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from ostler import crud, doctor, markdown, select, todo
+from ostler import crud, doctor, markdown, registry, select, todo
 from ostler.model import load
 
 from conftest import present
@@ -83,16 +83,17 @@ def test_create_story_adds_block_and_scaffold(tmp_path: Path):
     assert "Technical Notes (empty)" in unwritten[0].message
 
 
-def test_story_scaffold_marks_the_current_shape_version(tmp_path: Path):
+def test_story_scaffold_writes_every_required_section(tmp_path: Path):
+    """And stamps nothing: the sections are the record that the contract was honored."""
     crud.create_epic(load(tmp_path), "billing", "Billing", prefix="acme")
     assert crud.create_story(load(tmp_path), "billing", "01-current", "Current shape").ok
 
     story_path = tmp_path / "docs/epics/0001-billing/stories/01-current/story.md"
     text = story_path.read_text(encoding="utf-8")
 
-    assert "storyShape: 2" in text
-    assert "## Non-Functional Acceptance Criteria" in text
-    assert "## Technical Notes" in text
+    assert "storyShape" not in text
+    for spec in registry.STORY_SECTIONS:
+        assert f"## {spec.heading}" in text
 
 
 def test_create_story_writes_its_blockers_into_the_story(tmp_path: Path):

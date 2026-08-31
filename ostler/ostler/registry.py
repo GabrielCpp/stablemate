@@ -80,8 +80,6 @@ class SectionSpec:
 STORY_STATUS_HEADING = "Implementation Status"
 STORY_STATUS_LABEL = "Status"          # `- **Status**: <value>` under the heading above
 DEFAULT_STORY_STATUS = "Not started"
-STORY_SHAPE_KEY = "storyShape"
-CURRENT_STORY_SHAPE = 2
 
 # A story's blockers, in the story's own body. One bullet per blocker so the section reads as a
 # list and a diff names the edge that changed; the bare `(none)` — not a `- Blocked by: (none)`
@@ -101,19 +99,20 @@ STORY_FIXTURES_HEADING = "Fixtures"
 STORY_FIXTURES_LABEL = "Fixture"       # `- Fixture: <declared-name>`
 STORY_FIXTURES_NONE = "(none)"
 
-# Unversioned and explicit-v1 stories predate classified invariants and technical grounding.
-# They remain readable because story documents are persisted planning inputs, not generated cache.
-LEGACY_STORY_SECTIONS: tuple[SectionSpec, ...] = (
-    SectionSpec(STORY_DEPS_HEADING, filled=False, stub=STORY_DEPS_NONE),
-    SectionSpec(STORY_FIXTURES_HEADING, filled=False, stub=STORY_FIXTURES_NONE),
-    SectionSpec("Context", filled=True),
-    SectionSpec("Acceptance Criteria", filled=True),
-    SectionSpec(STORY_STATUS_HEADING, filled=False,
-                stub=f"- **{STORY_STATUS_LABEL}**: {DEFAULT_STORY_STATUS}"),
-)
-
-# Current story.md body contract. `crud.create_story` scaffolds *from this table* and `model` /
-# `doctor` check against it, so the scaffold cannot drift into satisfying its own checkers.
+# The story.md body contract — the only one. `crud.create_story` scaffolds *from this table* and
+# `model` / `doctor` check against it, so the scaffold cannot drift into satisfying its own
+# checkers.
+#
+# There is deliberately no second, weaker table and no persisted version key selecting between
+# them. A frontmatter stamp saying which contract to judge a document by is a second record of a
+# fact the document already carries, and it can lie in both directions: an old story that does
+# carry classified invariants goes unchecked for them, and a story stamped current with two empty
+# headings reads as honoring a contract it does not. `required_section_problems` reads the
+# document, which cannot be wrong about itself.
+#
+# The cost is taken knowingly: adding a required section here re-opens every story in every
+# consuming repo on the next selection pass. That is the actionable truth rather than a receding
+# proxy for it, and it makes this table a heavy one to edit — which it should be.
 STORY_SECTIONS: tuple[SectionSpec, ...] = (
     # Dependencies leads: what blocks a story is the first thing a reader needs to know, and
     # putting it above the prose keeps it out of the way of the sections an author rewrites.

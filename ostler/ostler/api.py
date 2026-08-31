@@ -406,8 +406,8 @@ class Ostler:
 
         ``skip`` — slugs given up this run — are excluded without counting as done, so one
         story failing QA does not strand the rest of the epic. See ``select.next_story``.
-        ``need="author"`` asks which story still needs writing. ``need="author-current"`` also
-        selects authored stories whose persisted story shape is legacy or unversioned.
+        ``need="author"`` asks which story still needs writing — which here means "does not
+        yet honor ``registry.STORY_SECTIONS``", read from the document itself.
         """
         return select.next_story(self.graph, epic, skip=skip, need=need)
 
@@ -651,9 +651,9 @@ class Ostler:
             )
         )
 
-    def migrate_story_to_current_shape(self, slug: str) -> Result:
-        """Migrate one story to ``CURRENT_STORY_SHAPE`` without replacing its content."""
-        return self._apply(crud.migrate_story_to_current_shape(self._fresh(), slug))
+    def scaffold_missing_sections(self, slug: str) -> Result:
+        """Add every required story section this story lacks, in contract order (idempotent)."""
+        return self._apply(crud.scaffold_missing_sections(self._fresh(), slug))
 
     def delete_epic(self, name: str) -> Result:
         """Delete an epic and remove its milestone and legacy queue references."""

@@ -148,12 +148,11 @@ def _story_dict(epic: Epic, story: Story) -> dict:
             "aliases": list(story.aliases), "epic": epic.name, "title": story.title,
             "status": story.status, "path": story.path,
             "covers": story.seed_items, "dependsOn": story.dependencies,
-            "storyShape": story.story_shape, "authored": story.authored,
+            "authored": story.authored,
             "unwrittenSections": list(story.unwritten_sections)}
 
 
-def _author_report(epic: Epic, skip: frozenset[str] = frozenset(), *,
-                   require_current_shape: bool = False) -> dict:
+def _author_report(epic: Epic, skip: frozenset[str] = frozenset()) -> dict:
     """``need="author"`` — the first story in DAG order that still has no written story.md.
 
     Dependencies order the work but do not gate it: an unauthored dependency is a reason to
@@ -169,14 +168,8 @@ def _author_report(epic: Epic, skip: frozenset[str] = frozenset(), *,
     ``done`` would prune it.
     """
     ordered = dag_order(epic)
-    def complete(story: Story) -> bool:
-        return story.authored and (
-            not require_current_shape
-            or story.story_shape == registry.CURRENT_STORY_SHAPE
-        )
-
-    authored = [s.slug for s in ordered if complete(s)]
-    pending = [s for s in ordered if not complete(s)]
+    authored = [s.slug for s in ordered if s.authored]
+    pending = [s for s in ordered if not s.authored]
     report = {"state": "", "story": None, "epic": epic.name, "total": len(ordered),
               "done": len(authored), "remaining": [s.slug for s in pending],
               "skipped": [s.slug for s in pending if s.slug in skip],
@@ -186,14 +179,8 @@ def _author_report(epic: Epic, skip: frozenset[str] = frozenset(), *,
             continue
         report["state"] = "ready"
         report["story"] = _story_dict(epic, story)
-        if story.authored and require_current_shape:
-            report["detail"] = (
-                f"{story.slug} uses story shape {story.story_shape!r}, "
-                f"not current shape {registry.CURRENT_STORY_SHAPE}"
-            )
-        else:
-            empty = ", ".join(story.unwritten_detail) or "no story.md"
-            report["detail"] = f"{story.slug} is unwritten ({empty})"
+        empty = ", ".join(story.unwritten_detail) or "no story.md"
+        report["detail"] = f"{story.slug} is unwritten ({empty})"
         return report
     if pending:
         report["state"] = "blocked"
@@ -253,25 +240,25 @@ def next_story_report(graph: Graph, epic_name: str,
     does not depend on it remains selectable.
 
     ``need`` picks which question is being asked. ``"build"`` (the default, everything above)
-    is the coder's: which story can be implemented next. ``"author"`` is the author's existing
-    question: which story still has no written story.md. ``"author-current"`` additionally treats
-    an authored legacy/unversioned story as pending until its persisted shape is current. On both
-    authoring modes ``skip`` applies exactly as above and only the dependency machinery does not
-    (see :func:`_author_report`). These are separate axes and a story is routinely finished on one
-    and untouched on another, so a caller must say which it means; the report shape is identical.
+    is the coder's: which story can be implemented next. ``"author"`` is the author's: which
+    story does not yet honor ``registry.STORY_SECTIONS``. There is deliberately no third,
+    stricter authoring mode — "written" and "written to the current contract" were once separate
+    questions because a frontmatter stamp could answer one without the other, and with the stamp
+    gone they are the same question asked of the document. On the authoring axis ``skip`` applies
+    exactly as above and only the dependency machinery does not (see :func:`_author_report`).
+    These are separate axes and a story is routinely finished on one and untouched on another, so
+    a caller must say which it means; the report shape is identical.
     """
     epic = epic_by_name(graph, epic_name)
     if epic is None:
         return {"state": "no-epic", "story": None, "epic": epic_name, "total": 0, "done": 0,
                 "remaining": [], "skipped": [], "waiting_on": {},
                 "detail": f"no epic named '{epic_name}' in the graph"}
-    if need not in ("build", "author", "author-current"):
-        raise ValueError(
-            f"unknown need '{need}' (expected 'build', 'author', or 'author-current')"
-        )
+    if need not in ("build", "author"):
+        raise ValueError(f"unknown need '{need}' (expected 'build' or 'author')")
     skip = frozenset(skip or ())
-    if need in ("author", "author-current") and epic.stories:
-        return _author_report(epic, skip, require_current_shape=need == "author-current")
+    if need == "author" and epic.stories:
+        return _author_report(epic, skip)
 
     done = {s.slug for s in epic.stories if is_done(s.status)}
     report = {"state": "", "story": None, "epic": epic.name, "total": len(epic.stories),

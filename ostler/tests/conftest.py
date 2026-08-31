@@ -69,11 +69,13 @@ def story_md(slug: str, title: str, status: str,
             f"# Story: {title}", "", "## Dependencies", "", *deps, "",
             "## Fixtures", "", *fixes, "",
             "## Context", "",
-            f"Why {title} matters.", "", "## Implementation Status", "",
-            f"- **Status**: {status}", "", "## Acceptance Criteria", ""]
-    body.append("- The thing works.")
-    if doc_ref:
-        body += ["", f"Feature doc: [reference]({doc_ref})."]
+            f"Why {title} matters.", "",
+            *([f"Feature doc: [reference]({doc_ref}).", ""] if doc_ref else []),
+            "## Acceptance Criteria", "", "- The thing works.", "",
+            "## Non-Functional Acceptance Criteria", "", "- It stays fast.", "",
+            "## Technical Notes", "", "`src/thing.py::run` is the seam.", "",
+            "## Implementation Status", "",
+            f"- **Status**: {status}"]
     return "\n".join(body) + "\n"
 
 

@@ -317,6 +317,15 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
                                  f"story '{story.slug}' is still a bare scaffold — "
                                  f"{', '.join(story.unwritten_detail)}",
                                  epic.name, story.slug, path=rel, line=1))
+            # Two paths add a missing section — the scaffolder and an author writing free-hand
+            # — and presence alone lets them produce documents that read differently. Order is
+            # what makes them one path, so it is checked rather than assumed.
+            if story.misordered_sections:
+                rel = story.story_md.relative_to(graph.root).as_posix()
+                f.append(Finding("error", "story-section-order",
+                                 f"story '{story.slug}' orders its required sections against "
+                                 f"the contract — {'; '.join(story.misordered_sections)}",
+                                 epic.name, story.slug, path=rel, line=1))
         # only meaningful when the epic uses seeds at all (a wholly-seedless epic is a valid mode)
         if not story.seed_items and epic.seeds:
             f.append(Finding("warn", "story-covers-no-seed",

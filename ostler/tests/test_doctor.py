@@ -287,11 +287,15 @@ def test_writing_the_sections_clears_the_finding(tmp_path: Path):
     assert _unwritten(tmp_path) == []
 
 
-def test_legacy_story_without_shape_version_keeps_the_original_contract(tmp_path: Path):
+def test_an_old_story_is_unwritten_for_the_sections_it_never_had(tmp_path: Path):
+    """No frontmatter exempts a document from the contract — there is only one, and it is the table.
+
+    Before, dropping the shape key bought this story a weaker section list and a clean report; the
+    sections it is missing are real work, and saying so is the point.
+    """
     epic_dir = _scaffolded(tmp_path, ["01-a"])
     story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-a/story.md"
     text = story_md.read_text(encoding="utf-8")
-    text = text.replace("storyShape: 2\n", "")
     start = text.index("## Non-Functional Acceptance Criteria")
     end = text.index("## Implementation Status")
     text = text[:start] + text[end:]
@@ -299,7 +303,10 @@ def test_legacy_story_without_shape_version_keeps_the_original_contract(tmp_path
     text = text.replace("## Acceptance Criteria\n", "## Acceptance Criteria\n\n- It works.\n")
     story_md.write_text(text, encoding="utf-8")
 
-    assert _unwritten(tmp_path) == []
+    found = _unwritten(tmp_path)
+    assert len(found) == 1
+    assert "Non-Functional Acceptance Criteria (missing)" in found[0].message
+    assert "Technical Notes (missing)" in found[0].message
 
 
 def test_a_partially_written_story_names_only_the_empty_section(tmp_path: Path):

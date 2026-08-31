@@ -7,7 +7,6 @@ layout (``SPEC.md`` / ``registry.py``) stay correct. Writers apply immediately a
 
 from __future__ import annotations
 
-import re
 import shutil
 from pathlib import Path
 
@@ -146,33 +145,6 @@ def ensure_fixtures(doc: markdown.MarkdownDoc, fixtures: list[str]) -> None:
 
 def dump_frontmatter(fm: dict) -> str:
     return yaml.safe_dump(fm, sort_keys=False, allow_unicode=True)
-
-
-_STORY_SHAPE_LINE = re.compile(
-    rf"^(?P<prefix>{registry.STORY_SHAPE_KEY}[ \t]*:[ \t]*)"
-    r"[^#\r\n]*?(?P<comment>[ \t]*#.*)?$",
-    re.MULTILINE,
-)
-
-
-def _set_current_story_shape(doc: markdown.MarkdownDoc) -> None:
-    """Stamp the top-level shape key without reserializing unrelated YAML."""
-    raw = doc.raw_frontmatter
-    replacement = str(registry.CURRENT_STORY_SHAPE)
-    if _STORY_SHAPE_LINE.search(raw):
-        raw = _STORY_SHAPE_LINE.sub(
-            lambda match: match.group("prefix") + replacement + (match.group("comment") or ""),
-            raw,
-            count=1,
-        )
-    else:
-        if raw and not raw.endswith("\n"):
-            raw += "\n"
-        raw += f"{registry.STORY_SHAPE_KEY}: {replacement}\n"
-    frontmatter = dict(doc.frontmatter or {})
-    frontmatter[registry.STORY_SHAPE_KEY] = registry.CURRENT_STORY_SHAPE
-    doc.frontmatter = frontmatter
-    doc.raw_frontmatter = raw
 
 
 # ---------------------------------------------------------------------------
@@ -376,7 +348,6 @@ def create_story(graph: Graph, epic_name: str, slug: str, title: str,
         "id": sid,
         "slug": slug,
         "status": registry.DEFAULT_STORY_STATUS,
-        registry.STORY_SHAPE_KEY: registry.CURRENT_STORY_SHAPE,
     }
     body = _story_body(title, depends or [])
     story_md.parent.mkdir(parents=True, exist_ok=True)
@@ -456,48 +427,65 @@ def update_story(
     return Result(True, f"updated story '{slug}' in epic '{epic.name}'", [epic_md, story_md])
 
 
-def migrate_story_to_current_shape(graph: Graph, slug: str) -> Result:
-    """Stamp one story current, adding only the current prose headings it lacks.
+def scaffold_missing_sections(graph: Graph, slug: str) -> Result:
+    """Give one story every ``registry.STORY_SECTIONS`` heading it lacks, in the table's order.
 
-    Existing frontmatter values and body text remain in place. Missing current headings are
-    inserted immediately before Implementation Status so the migrated story becomes honestly
-    unauthored until those new sections are filled. Repeating the operation is a no-op.
+    **This is not a migration.** There is no version to move between and nothing is stamped:
+    the operation asks the document which required headings it is missing and adds those, which
+    is a question with the same answer for a story written last year, a story a rework just
+    emptied, and a story scaffolded five seconds ago. Running it is idempotent, and running it
+    on a current story is a no-op — so an authoring lane can call it unconditionally on entry
+    instead of branching on whether this story is "old".
+
+    Placement is derived from the contract rather than from a fixed offset. Each missing
+    heading is inserted immediately before the first section that follows it in
+    ``STORY_SECTIONS``, so what this produces and what an author writing the story from the
+    scaffold produces are the same document — the property
+    :func:`ostler.model.section_order_problems` then holds every story to.
+
+    Existing frontmatter and body text are untouched: a section that is present but empty is
+    left alone, because "unwritten" is a thing the author fixes and the scaffolder must not
+    paper over.
     """
     found = graph.find_story(slug)
     if found is None:
         return Result(False, f"no story '{slug}' with a story.md")
-    story = found[1]
-    path = story.story_md
+    path = found[1].story_md
     if path is None:
         return Result(False, f"no story '{slug}' with a story.md")
     doc = markdown.split(path.read_text(encoding="utf-8"))
-    status = doc.find_section(registry.STORY_STATUS_HEADING)
-    if status is None:
-        return Result(
-            False,
-            f"story '{slug}' has no '## {registry.STORY_STATUS_HEADING}' section",
-        )
 
-    missing = [
-        heading
-        for heading in ("Non-Functional Acceptance Criteria", "Technical Notes")
-        if doc.find_section(heading) is None
-    ]
-    frontmatter = doc.frontmatter or {}
-    already_current = (
-        frontmatter.get(registry.STORY_SHAPE_KEY) == registry.CURRENT_STORY_SHAPE
-    )
-    if not missing and already_current:
-        return Result(True, f"story '{slug}' already uses the current shape")
-
-    if missing:
+    added: list[str] = []
+    for position, spec in enumerate(registry.STORY_SECTIONS):
+        if doc.find_section(spec.heading) is not None:
+            continue
+        block = [f"## {spec.heading}", ""]
+        if spec.stub:
+            block += [spec.stub, ""]
         lines = doc.body.split("\n")
-        inserted = [line for heading in missing for line in (f"## {heading}", "")]
-        lines[status.line_start:status.line_start] = inserted
-        doc.replace_body(lines)
-    _set_current_story_shape(doc)
+        at = _insert_at(doc, position)
+        doc.replace_body(lines[:at] + block + lines[at:])
+        added.append(spec.heading)
+
+    if not added:
+        return Result(True, f"story '{slug}' already has every required section")
     path.write_text(doc.render(), encoding="utf-8")
-    return Result(True, f"migrated story '{slug}' to the current shape", [path])
+    return Result(True, f"added {len(added)} section(s) to story '{slug}': "
+                        f"{', '.join(added)}", [path])
+
+
+def _insert_at(doc: markdown.MarkdownDoc, position: int) -> int:
+    """The body line a ``STORY_SECTIONS[position]`` heading belongs on, in this document.
+
+    The first later contract section that the document actually has, else the end: a story
+    missing both of the last two prose sections gets them in table order above
+    ``## Implementation Status`` without either one needing to know the other is coming.
+    """
+    for spec in registry.STORY_SECTIONS[position + 1:]:
+        section = doc.find_section(spec.heading)
+        if section is not None:
+            return section.line_start
+    return len(doc.body.split("\n"))
 
 
 def delete_story(graph: Graph, slug: str) -> Result:

@@ -67,9 +67,6 @@ class Story:
     story_md: Path | None = None
     status: str = ""
     body_status: str = ""
-    # The contract version persisted in story.md. ``None`` deliberately distinguishes an
-    # unversioned legacy story from one stamped with the current shape.
-    story_shape: int | str | None = None
     # Every in-repo document this story links to, verbatim as written (relative to story.md
     # or repo-relative). This is how a story cites the OKF book: a UI node's identity is a
     # repo-relative path (optionally `path#anchor`), so a citation is an ordinary link.
@@ -94,6 +91,11 @@ class Story:
     # same reason, as `dependencies` / `dependency_strays` above.
     fixtures: list[str] = field(default_factory=list)
     fixture_strays: list[str] = field(default_factory=list)
+    # Required sections this story places out of `registry.STORY_SECTIONS` order. Separate from
+    # `unwritten_sections` because it is a different defect with a different repair: the story
+    # says everything it must, in an order that makes two documents of the same contract read
+    # differently. Kept here so `doctor` and the author's own validator ask one question.
+    misordered_sections: list[str] = field(default_factory=list)
 
     @property
     def authored(self) -> bool:
@@ -299,13 +301,31 @@ def required_section_problems(
     return problems
 
 
-def story_section_specs(doc: markdown.MarkdownDoc) -> tuple[registry.SectionSpec, ...]:
-    """The body contract declared by this story's persisted shape version."""
-    frontmatter = doc.frontmatter or {}
-    raw = frontmatter.get(registry.STORY_SHAPE_KEY)
-    if raw is None or str(raw).strip() == "1":
-        return registry.LEGACY_STORY_SECTIONS
-    return registry.STORY_SECTIONS
+def section_order_problems(
+    doc: markdown.MarkdownDoc,
+    specs: tuple[registry.SectionSpec, ...],
+) -> list[str]:
+    """The required headings this body places out of the contract's order, as messages.
+
+    Presence is not enough once two paths can add a missing section: a scaffolder inserting at
+    a fixed offset and an author writing free-hand will both satisfy
+    :func:`required_section_problems` while producing documents that read differently. Order is
+    the part of the contract that makes those two paths one path, so it is checked here — in the
+    same module, against the same table — rather than left to whichever caller remembers.
+
+    Sections the contract does not name are ignored entirely: this orders the required ones
+    relative to each other and says nothing about what a document adds around them.
+    """
+    present: list[tuple[str, int]] = []
+    for spec in specs:
+        section = doc.find_section(spec.heading)
+        if section is not None:
+            present.append((spec.heading, section.line_start))
+    return [
+        f"`## {heading}` must come after `## {earlier}`"
+        for (earlier, earlier_line), (heading, line) in zip(present, present[1:])
+        if line < earlier_line
+    ]
 
 
 def status_bullet(doc: markdown.MarkdownDoc) -> markdown.Bullet | None:
@@ -1070,10 +1090,6 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
             if doc.frontmatter:
                 story.file_eid = str(doc.frontmatter.get("id") or "")
                 story.external_key = str(doc.frontmatter.get("externalKey") or "")
-                persisted_shape = doc.frontmatter.get(registry.STORY_SHAPE_KEY)
-                story.story_shape = (
-                    persisted_shape if isinstance(persisted_shape, (int, str)) else None
-                )
                 story.raw["externalKey"] = story.external_key
             if not story.eid and story.file_eid:
                 # crud writes the minted id in both places; a story whose epic block
@@ -1088,7 +1104,8 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
             story.dependency_strays = story_dependency_strays(doc)
             story.fixtures = story_fixtures(doc)
             story.fixture_strays = story_fixture_strays(doc)
-            problems = required_section_problems(doc, story_section_specs(doc))
+            problems = required_section_problems(doc, registry.STORY_SECTIONS)
             story.unwritten_sections = [s.heading for s, _ in problems]
             story.unwritten_detail = [f"{s.heading} ({why})" for s, why in problems]
+            story.misordered_sections = section_order_problems(doc, registry.STORY_SECTIONS)
             return
