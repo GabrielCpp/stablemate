@@ -6,9 +6,11 @@ gates. Run `groom serve` on your host while `author`/`coder` (or any other
 every running workflow, pages you the moment one blocks on an operator gate,
 and lets you answer the gate right from the browser — no more finding and
 restarting blocked containers one by one. The shared `await_operator` node blocks in
-place via `inotify` rather than exiting, so the container keeps running and
-just wakes up once you answer; `groom` only falls back to `docker start` if
-a container has genuinely stopped.
+place rather than exiting, so the container keeps running; the answer travels
+over the run's own workhorse control socket and the run wakes at once, with the
+gate file kept as the durable record (and as the fallback channel when nothing
+is listening); `groom` only falls back to `docker start` if a container has
+genuinely stopped.
 
 ![groom's run list with a blocked coder run selected: the gate question rendered on the right, an answer typed, ready to send](../docs/features/groom/gui/screenshots/operator-answers-blocked-gate-answer-typed.png)
 
@@ -27,7 +29,10 @@ spans, per-node timings and error status, filterable without leaving the browser
   full state on connect, streams `progress`/`blocked`/`turn` deltas, and serves the
   Files/Diff panels from local disk via `getTree`/`getFile`/`getDiff` RPC over
   the same socket — plus `listTurns`/`readTurnFile`, through which the host pulls
-  the container's turn records into its archive before the volume is destroyed.
+  the container's turn records into its archive before the volume is destroyed,
+  and `getQuestions`/`answerGate`, through which the host talks to the run's
+  workhorse control socket: list what a run is blocked asking, and deliver the
+  operator's answer straight into the waiting process.
   The connection is best-effort and re-syncs on reconnect —
   a container with no `groom` listening behaves exactly as it does today. See
   `docs/features/groom/sidecar-live-sessions.md` for the message schema and the
@@ -66,6 +71,15 @@ spans, per-node timings and error status, filterable without leaving the browser
   and each workflow row can expand a `git diff` of its working tree (rendered
   with `diff2html`). All front-end assets are vendored locally; nothing is loaded
   from a CDN at runtime.
+- Gates travel over the run's control socket, with the file as the record. An
+  answer goes socket-first — `groom` asks the run what it is waiting on and
+  delivers the answer on the run's own path spelling; the run persists it into
+  the gate file before acknowledging — and falls back to writing the gate file
+  from outside only when nothing answers (a crashed run, an old workhorse).
+  Discovery is a periodic *questions poll* of every live run's socket, so the
+  push arms (the sidecar `blocked` frame, `/push/blocked`, the hello snapshot)
+  are just hints that trigger an immediate poll: a push that never lands is
+  healed by the next poll cycle, never lost.
 - On startup (or on-demand refresh), `groom` runs a one-shot `docker ps -a` +
   `docker inspect` reconciliation scan so workflows that were already
   blocked before `groom` was started are still picked up.

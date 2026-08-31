@@ -262,6 +262,14 @@ groom's `dashboard_sidecar` handler accepts it. All frames are JSON with a
   `_safe_relpath` guard, narrowed further to the turn-record surface
   (`sessions.jsonl`, `transcripts/`, `turns/`) and checked to resolve inside the
   volume, since they return raw bytes and a symlink escapes without a `..`.
+- `{"type":"rpc",…,"method":"getQuestions"|"answerGate","params":{run,path,body}}`
+  — the operator-gate half, and deliberately the first *write-capable* RPCs: the
+  sidecar has `/runs` mounted, so it calls `workhorse.control.send()` locally
+  against the run's `control.sock` and relays the run's own reply.
+  `getQuestions`→`{ok,questions:[{path,question,kind,since}]}`,
+  `answerGate`→`{ok,path}` or `{ok:false,error}`. Nobody listening on the socket
+  is answered `{ok:false,error:"no listener"}`, which is the host's cue to fall
+  back to the gate-file write.
 - `{"type":"reload"}` — the sidecar closes and `exit(3)`s.
 
 **Decisions on the former open questions**
