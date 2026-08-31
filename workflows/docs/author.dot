@@ -1,0 +1,290 @@
+digraph author {
+  rankdir=TB;
+  bgcolor=white;
+  node [shape=box, style="rounded,filled", fillcolor=lightblue];
+  edge [color=darkblue, fontsize=10];
+
+  subgraph cluster_default_f0__ {
+    label="default";
+    style=dashed; color=gray50; fontsize=11;
+
+    f0____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    f0__next_stage [label="next_stage\ncall plan_author_step\nhandoff Milestone, EpicSplit, EpicAuthor, StorySplitFlow, …", shape=box3d, fillcolor=lightgreen];
+    f0__start [label="start\ncall adopt_backlog, seed_story, prune_bullet\nhandoff StoryAuthor, Surveyor, ParitySurveyor", shape=box3d, fillcolor=lightgreen];
+
+    f0____start -> f0__start;
+    f0__next_stage -> f0__next_stage [label="blocked"];
+    f0__start -> f0__next_stage;
+  }
+
+  subgraph cluster_surveyor_f1__ {
+    label="surveyor";
+    style=dashed; color=gray50; fontsize=11;
+
+    f1____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    f1__assess [label="assess\nagent assess-unit.md"];
+    f1__check [label="check\ncall validate_record, mark_unit"];
+    f1__emit [label="emit\ncall emit_artifacts", shape=box3d, fillcolor=lightgreen];
+    f1__expand [label="expand\ncall expand_inventory"];
+    f1__fix [label="fix\nagent fix-record.md"];
+    f1__partition [label="partition\ncall validate_partition\nagent partition-findings.md"];
+    f1__pick [label="pick\ncall select_next_unit"];
+    f1__plan [label="plan\nagent plan-units.md"];
+    f1__resolve_partition [label="resolve_partition\nagent resolve-operator.md"];
+    f1__resolve_plan [label="resolve_plan\nagent resolve-operator.md"];
+    f1__resolve_verify [label="resolve_verify\nagent resolve-operator.md"];
+    f1__split [label="split\ncall split_unit, mark_unit"];
+    f1__start [label="start\ncall check_inventory"];
+    f1__verify [label="verify\ncall verify_records"];
+
+    f1____start -> f1__start;
+    f1__assess -> f1__check [label="unit_id, record_path, verify_resolve"];
+    f1__assess -> f1__split [label="unit_id, record_path, verify_resolve"];
+    f1__check -> f1__fix [label="unit_id, record_path, record_errors, record_fix, verify_resolve"];
+    f1__check -> f1__pick [label="verify_resolve"];
+    f1__expand -> f1__plan [label="plan_rework, plan_errors, plan_resolve"];
+    f1__expand -> f1__pick;
+    f1__expand -> f1__resolve_plan [label="notes, plan_resolve"];
+    f1__expand -> f1__plan [label="plan_rework, plan_resolve", style=dashed, color=darkorange];
+    f1__fix -> f1__check [label="unit_id, record_path, record_fix, verify_resolve"];
+    f1__partition -> f1__partition [label="partition_rework, partition_errors, partition_resolve"];
+    f1__partition -> f1__resolve_partition [label="notes, partition_resolve"];
+    f1__partition -> f1__partition [label="partition_rework, partition_resolve", style=dashed, color=darkorange];
+    f1__partition -> f1__emit;
+    f1__pick -> f1__assess [label="unit_id, unit_path, unit_kind, record_path, progress, verify_resolve"];
+    f1__pick -> f1__verify [label="verify_resolve"];
+    f1__plan -> f1__expand [label="plan_rework, plan_resolve"];
+    f1__plan -> f1__resolve_plan [label="notes, plan_resolve"];
+    f1__plan -> f1__plan [label="plan_rework, plan_resolve", style=dashed, color=darkorange];
+    f1__resolve_partition -> f1__partition [label="partition_rework, partition_resolve", style=dashed, color=darkorange];
+    f1__resolve_plan -> f1__plan [label="plan_rework, plan_resolve", style=dashed, color=darkorange];
+    f1__resolve_verify -> f1__pick [label="verify_resolve", style=dashed, color=darkorange];
+    f1__split -> f1__pick [label="verify_resolve"];
+    f1__start -> f1__expand;
+    f1__start -> f1__plan;
+    f1__verify -> f1__resolve_verify [label="notes, verify_resolve"];
+    f1__verify -> f1__partition;
+    f1__verify -> f1__pick [label="verify_resolve", style=dashed, color=darkorange];
+  }
+
+  subgraph cluster_parity_surveyor_f2__ {
+    label="parity-surveyor";
+    style=dashed; color=gray50; fontsize=11;
+
+    f2____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    f2__assess [label="assess\nagent assess-parity-unit.md"];
+    f2__emit [label="emit\ncall emit_parity_backlog", shape=box3d, fillcolor=lightgreen];
+    f2__mark [label="mark\ncall validate_record, mark_unit"];
+    f2__pick [label="pick\ncall select_next_unit"];
+    f2__start [label="start\ncall expand_parity_inventory"];
+    f2__verify [label="verify\ncall verify_records"];
+
+    f2____start -> f2__start;
+    f2__assess -> f2__mark [label="unit_id, record_path"];
+    f2__mark -> f2__pick;
+    f2__pick -> f2__assess [label="unit_id, unit_path, unit_kind, record_path, progress"];
+    f2__pick -> f2__verify;
+    f2__start -> f2__pick;
+    f2__verify -> f2__emit;
+  }
+
+  subgraph cluster_epic_edit_f3__ {
+    label="epic-edit";
+    style=dashed; color=gray50; fontsize=11;
+
+    f3____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    f3__apply_plan [label="apply_plan\ncall apply_edit_plan, validate_applied_edit"];
+    f3__audit_story [label="audit_story\nagent audit-story.md"];
+    f3__check_coverage [label="check_coverage\ncall validate_coverage\nagent review-coverage.md"];
+    f3__check_story [label="check_story\ncall validate_story, check_story_grounding, record_attempt\nagent rework-story.md"];
+    f3__design_mockup [label="design_mockup\nagent design-mockup.md"];
+    f3__finish [label="finish\ncall verify_integrity, commit_author, prune_bullet", shape=box3d, fillcolor=lightgreen];
+    f3__next_affected_story [label="next_affected_story\ncall select_affected_story"];
+    f3__plan_edit [label="plan_edit\nagent plan-epic-edit.md"];
+    f3__refine_plan [label="refine_plan\nagent refine-epic-edit-plan.md"];
+    f3__review_plan [label="review_plan\nagent review-epic-edit-plan.md"];
+    f3__rework_story [label="rework_story\ncall record_attempt\nagent rework-story.md"];
+    f3__rewrite_epic [label="rewrite_epic\ncall validate_epic_document, validate_applied_edit\nagent rewrite-epic-edit.md"];
+    f3__start [label="start\ncall snapshot_epic"];
+    f3__validate_plan [label="validate_plan\ncall validate_edit_plan"];
+    f3__write_story [label="write_story\nagent write-story.md"];
+
+    f3____start -> f3__start;
+    f3__apply_plan -> f3__rewrite_epic [label="intent, snapshot, plan, applied"];
+    f3__apply_plan -> f3__finish [label="intent, applied"];
+    f3__audit_story -> f3__next_affected_story [label="intent, applied, index"];
+    f3__audit_story -> f3__rework_story [label="intent, applied, pick, index, mockup, findings, reworks"];
+    f3__audit_story -> f3__write_story [label="intent, applied, pick, index, mockup, reworks", style=dashed, color=darkorange];
+    f3__check_coverage -> f3__finish [label="intent, applied"];
+    f3__check_story -> f3__audit_story [label="intent, applied, pick, index, mockup, reworks"];
+    f3__check_story -> f3__check_story [label="intent, applied, pick, index, mockup, reworks"];
+    f3__check_story -> f3__write_story [label="intent, applied, pick, index, mockup, reworks", style=dashed, color=darkorange];
+    f3__design_mockup -> f3__write_story [label="intent, applied, pick, index, mockup"];
+    f3__next_affected_story -> f3__design_mockup [label="intent, applied, pick, index"];
+    f3__next_affected_story -> f3__check_coverage [label="intent, applied"];
+    f3__plan_edit -> f3__validate_plan [label="intent, snapshot, plan"];
+    f3__refine_plan -> f3__validate_plan [label="intent, snapshot, plan, reworks"];
+    f3__review_plan -> f3__plan_edit [label="intent, snapshot", style=dashed, color=darkorange];
+    f3__review_plan -> f3__apply_plan [label="intent, snapshot, plan"];
+    f3__review_plan -> f3__refine_plan [label="intent, snapshot, plan, findings, reworks"];
+    f3__rework_story -> f3__check_story [label="intent, applied, pick, index, mockup, reworks"];
+    f3__rewrite_epic -> f3__rewrite_epic [label="intent, snapshot, plan, applied, findings, reworks", style=dashed, color=darkorange];
+    f3__rewrite_epic -> f3__next_affected_story [label="intent, applied, index"];
+    f3__rewrite_epic -> f3__rewrite_epic [label="intent, snapshot, plan, applied, findings, reworks"];
+    f3__start -> f3__plan_edit [label="intent, snapshot"];
+    f3__validate_plan -> f3__refine_plan [label="intent, snapshot, plan, findings, reworks"];
+    f3__validate_plan -> f3__review_plan [label="intent, snapshot, plan, reworks"];
+    f3__validate_plan -> f3__plan_edit [label="intent, snapshot", style=dashed, color=darkorange];
+    f3__write_story -> f3__check_story [label="intent, applied, pick, index, mockup, reworks"];
+    f3__write_story -> f3__write_story [label="intent, applied, pick, index, mockup, reworks", style=dashed, color=darkorange];
+  }
+
+  subgraph cluster_story_edit_f4__ {
+    label="story-edit";
+    style=dashed; color=gray50; fontsize=11;
+
+    f4____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    f4__start [label="start\ncall resolve_story_intent, adopt_backlog\nhandoff EpicEdit", shape=box3d, fillcolor=lightgreen];
+
+    f4____start -> f4__start;
+  }
+
+  subgraph cluster_milestone_f5__ {
+    label="milestone";
+    style=dashed; color=gray50; fontsize=11;
+
+    f5____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    f5__start [label="start\ncall validate_milestone\nagent build-milestone.md", shape=box3d, fillcolor=lightgreen];
+
+    f5____start -> f5__start;
+    f5__start -> f5__start [style=dashed, color=darkorange];
+  }
+
+  subgraph cluster_epic_split_f6__ {
+    label="epic-split";
+    style=dashed; color=gray50; fontsize=11;
+
+    f6____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    f6__resolve [label="resolve\nagent resolve-epic-split.md"];
+    f6__review [label="review\ncall validate_epic_split\nagent review-epic-split.md", shape=box3d, fillcolor=lightgreen];
+    f6__rework [label="rework\nagent rework-epic-split.md"];
+    f6__start [label="start\nagent split-epics.md"];
+
+    f6____start -> f6__start;
+    f6__resolve -> f6__start [label="resolves", style=dashed, color=darkorange];
+    f6__review -> f6__resolve [label="notes, resolves"];
+    f6__review -> f6__rework [label="notes, reworks, resolves"];
+    f6__review -> f6__start [label="resolves", style=dashed, color=darkorange];
+    f6__rework -> f6__review [label="reworks, resolves"];
+    f6__start -> f6__review [label="resolves"];
+  }
+
+  subgraph cluster_epic_author_f7__ {
+    label="epic-author";
+    style=dashed; color=gray50; fontsize=11;
+
+    f7____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    f7__author_epic [label="author_epic\ncall validate_authored_epic\nagent write-epic.md", shape=box3d, fillcolor=lightgreen];
+    f7__resolve_epic [label="resolve_epic\nagent resolve-operator.md"];
+    f7__start [label="start"];
+
+    f7____start -> f7__start;
+    f7__author_epic -> f7__resolve_epic [label="notes, resolves"];
+    f7__author_epic -> f7__author_epic [label="resolves", style=dashed, color=darkorange];
+    f7__resolve_epic -> f7__author_epic [label="resolves", style=dashed, color=darkorange];
+    f7__start -> f7__author_epic;
+  }
+
+  subgraph cluster_story_split_f8__ {
+    label="story-split";
+    style=dashed; color=gray50; fontsize=11;
+
+    f8____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    f8__check_coverage [label="check_coverage\ncall validate_coverage, record_story_split_review\nagent review-coverage.md", shape=box3d, fillcolor=lightgreen];
+    f8__resolve_coverage [label="resolve_coverage\nagent resolve-operator.md"];
+    f8__resolve_split [label="resolve_split\nagent resolve-operator.md"];
+    f8__split_stories [label="split_stories\nagent split-stories.md"];
+    f8__start [label="start"];
+
+    f8____start -> f8__start;
+    f8__check_coverage -> f8__split_stories [label="split_resolves, cov_reworks, rework_notes"];
+    f8__check_coverage -> f8__resolve_coverage [label="notes, split_resolves"];
+    f8__check_coverage -> f8__split_stories [label="split_resolves", style=dashed, color=darkorange];
+    f8__resolve_coverage -> f8__split_stories [label="split_resolves", style=dashed, color=darkorange];
+    f8__resolve_split -> f8__split_stories [label="split_resolves, cov_reworks, rework_notes", style=dashed, color=darkorange];
+    f8__split_stories -> f8__resolve_split [label="notes, split_resolves, cov_reworks, rework_notes"];
+    f8__split_stories -> f8__resolve_coverage [label="notes, split_resolves"];
+    f8__split_stories -> f8__split_stories [label="split_resolves", style=dashed, color=darkorange];
+    f8__split_stories -> f8__check_coverage [label="cov_reworks, split_resolves"];
+    f8__split_stories -> f8__split_stories [label="split_resolves, cov_reworks, rework_notes", style=dashed, color=darkorange];
+    f8__start -> f8__split_stories;
+  }
+
+  subgraph cluster_story_author_f9__ {
+    label="story-author";
+    style=dashed; color=gray50; fontsize=11;
+
+    f9____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    f9__apply_feedback [label="apply_feedback\nagent rework-story.md"];
+    f9__audit_story [label="audit_story\nagent audit-story.md", shape=box3d, fillcolor=lightgreen];
+    f9__check_story [label="check_story\ncall validate_story, check_story_grounding", shape=box3d, fillcolor=lightgreen];
+    f9__design_mockup [label="design_mockup\nagent design-mockup.md"];
+    f9__resolve_story [label="resolve_story\nagent resolve-operator.md"];
+    f9__rework_story [label="rework_story\ncall record_attempt\nagent rework-story.md"];
+    f9__start [label="start\ncall prepare_story, check_mockup_needed"];
+    f9__story_feedback [label="story_feedback\ncall check_story_feedback, record_story_audit", shape=box3d, fillcolor=lightgreen];
+    f9__write_story [label="write_story\nagent write-story.md", shape=box3d, fillcolor=lightgreen];
+
+    f9____start -> f9__start;
+    f9__apply_feedback -> f9__check_story [label="target, mockup, reworks, resolves"];
+    f9__audit_story -> f9__rework_story [label="target, mockup, notes, reworks, resolves, audit_reworks, audit_findings"];
+    f9__audit_story -> f9__story_feedback [label="target, mockup, reworks, resolves"];
+    f9__audit_story -> f9__resolve_story [label="target, mockup, notes, resolves"];
+    f9__audit_story -> f9__write_story [style=dashed, color=darkorange];
+    f9__check_story -> f9__audit_story [label="target, mockup, reworks, resolves, audit_reworks, audit_findings"];
+    f9__check_story -> f9__rework_story [label="target, mockup, notes, reworks, resolves, audit_reworks, audit_findings"];
+    f9__check_story -> f9__resolve_story [label="target, mockup, notes, resolves"];
+    f9__check_story -> f9__write_story [style=dashed, color=darkorange];
+    f9__design_mockup -> f9__write_story [label="target, mockup"];
+    f9__resolve_story -> f9__write_story [label="target, mockup, reworks, resolves", style=dashed, color=darkorange];
+    f9__rework_story -> f9__check_story [label="target, mockup, reworks, resolves, audit_reworks, audit_findings"];
+    f9__start -> f9__write_story [label="target"];
+    f9__start -> f9__design_mockup [label="target"];
+    f9__story_feedback -> f9__apply_feedback [label="target, mockup, notes, reworks, resolves"];
+    f9__write_story -> f9__check_story [label="target, mockup, reworks, resolves, audit_reworks, audit_findings"];
+    f9__write_story -> f9__resolve_story [label="target, mockup, notes, resolves"];
+    f9__write_story -> f9__write_story [style=dashed, color=darkorange];
+  }
+
+  subgraph cluster_finalize_f10__ {
+    label="finalize";
+    style=dashed; color=gray50; fontsize=11;
+
+    f10____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    f10__close [label="close\ncall validate_artifacts, validate_roadmap_milestone, mark_roadmap_authored, commit_author, …", shape=box3d, fillcolor=lightgreen];
+    f10__integrity [label="integrity\ncall verify_integrity"];
+    f10__reconcile [label="reconcile\ncall verify_reconcile"];
+    f10__resolve_graph [label="resolve_graph\nagent resolve-integrity.md"];
+    f10__resolve_milestone [label="resolve_milestone\nagent resolve-integrity.md"];
+    f10__resolve_reconcile [label="resolve_reconcile\nagent resolve-operator.md"];
+    f10__roadmap_milestone [label="roadmap_milestone\ncall validate_roadmap_milestone"];
+    f10__start [label="start"];
+
+    f10____start -> f10__start;
+    f10__integrity -> f10__resolve_graph [label="notes, resolves"];
+    f10__integrity -> f10__roadmap_milestone;
+    f10__integrity -> f10__roadmap_milestone [style=dashed, color=darkorange];
+    f10__reconcile -> f10__resolve_reconcile [label="notes, resolves"];
+    f10__reconcile -> f10__integrity;
+    f10__reconcile -> f10__integrity [style=dashed, color=darkorange];
+    f10__resolve_graph -> f10__integrity [label="resolves"];
+    f10__resolve_graph -> f10__roadmap_milestone [style=dashed, color=darkorange];
+    f10__resolve_milestone -> f10__roadmap_milestone [label="resolves"];
+    f10__resolve_milestone -> f10__close [style=dashed, color=darkorange];
+    f10__resolve_reconcile -> f10__integrity [style=dashed, color=darkorange];
+    f10__roadmap_milestone -> f10__resolve_milestone [label="notes, resolves"];
+    f10__roadmap_milestone -> f10__close;
+    f10__roadmap_milestone -> f10__close [style=dashed, color=darkorange];
+    f10__start -> f10__reconcile;
+  }
+}
