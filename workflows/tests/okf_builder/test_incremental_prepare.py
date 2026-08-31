@@ -48,6 +48,7 @@ def test_external_story_key_seeds_one_qualified_changed_function(
     assert context["directNodes"]
     assert context["story"]["acceptanceCriteria"] == [
         {
+            "category": "functional",
             "id": "ac:1",
             "requirement": "AC-1: Creating an invoice returns its identifier.",
             "kind": "behavioral",
