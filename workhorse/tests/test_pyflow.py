@@ -916,6 +916,109 @@ def test_a_parked_wait_lists_its_gate_for_the_questions_verb_and_clears_it_after
         assert after.replies == [{"ok": True, "questions": []}]
 
 
+def test_resume_re_parks_on_the_gate_the_checkpoint_was_waiting_on():
+    """A resume must not walk past the question into a state expecting its answer.
+
+    The checkpoint written on `Await` names the *next* state with `waiting_on` set, so
+    a resume used to enter that state whether or not anyone had answered — which is
+    what made cutting a parked wait unsafe. Re-arming the wait is what makes reload →
+    resume → parked-again lose nothing.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        ask = Path(tmp) / "operator.md"
+        ask.write_text("STATUS: AWAITING_OPERATOR\n\nwhich branch?\n")
+
+        class Blocks(Workflow):
+            def start(self) -> Transition:  # pragma: no cover - resumed past
+                raise AssertionError("a resume must not re-enter start")
+
+            def resumed(self) -> Transition:
+                return Done(ask.read_text())
+
+        class AnsweringClock(FakeClock):
+            def sleep(self, seconds: float) -> None:
+                ask.write_text("STATUS: ANSWERED\n\nmain\n")
+                super().sleep(seconds)
+
+        clock = AnsweringClock()
+        env = _env(tmp, clock=clock)
+        resume = Resume(state="resumed", params={}, flow="Blocks", waiting_on=str(ask))
+        assert drive(Blocks(), env, resume) == "STATUS: ANSWERED\n\nmain\n"
+        assert clock.slept == [env.config.await_poll_s], clock.slept
+
+
+def test_resume_skips_a_gate_answered_or_gone_while_the_run_was_down():
+    """Only a file still reading AWAITING_OPERATOR re-parks: an answered gate, and a
+    machine wait's wake file (which never carries the header), go straight in."""
+    for content in ("STATUS: ANSWERED\n\nmain\n", None):
+        with tempfile.TemporaryDirectory() as tmp:
+            gate = Path(tmp) / "operator.md"
+            if content is not None:
+                gate.write_text(content)
+
+            class Blocks(Workflow):
+                def start(self) -> Transition:  # pragma: no cover - resumed past
+                    raise AssertionError("a resume must not re-enter start")
+
+                def resumed(self) -> Transition:
+                    return Done("proceeded")
+
+            clock = FakeClock()
+            env = _env(tmp, clock=clock)
+            resume = Resume(state="resumed", params={}, flow="Blocks", waiting_on=str(gate))
+            assert drive(Blocks(), env, resume) == "proceeded"
+            assert clock.slept == [], clock.slept
+
+
+def test_a_reload_cut_wait_re_parks_on_resume_and_the_answer_still_lands():
+    """The whole journey: parked → reload cuts → resume re-parks → socket answers."""
+    with tempfile.TemporaryDirectory() as tmp:
+        ask = Path(tmp) / "operator.md"
+
+        class Blocks(Workflow):
+            def start(self) -> Transition:
+                return Await(ask, "which branch?", self.resumed)
+
+            def resumed(self) -> Transition:
+                return Done(ask.read_text())
+
+        class ParkedOperator(FakeChannel):
+            def take(self) -> Request | None:
+                try:
+                    parked = gates.status_of(ask.read_text()) == "AWAITING_OPERATOR"
+                except OSError:
+                    parked = False
+                return super().take() if parked else None
+
+        env = _env(tmp)
+        control.arm(ParkedOperator(Request(action="reload")))
+        try:
+            _raises(reload.ReloadRequested, drive, Blocks(), env)
+        finally:
+            control.arm(None)
+
+        saved = _checkpoint(env)
+        assert saved["state"] == "resumed", saved
+        assert saved["waiting_on"] == str(ask), saved
+
+        channel = ParkedOperator(Request(action=control.ANSWER, body="main"))
+        control.arm(channel)
+        try:
+            resume = Resume(
+                state=saved["state"],
+                params=saved["params"],
+                flow="Blocks",
+                waiting_on=saved["waiting_on"],
+            )
+            result = drive(Blocks(), _env(tmp, reopen=True), resume)
+        finally:
+            control.arm(None)
+
+        assert gates.status_of(result) == "ANSWERED", result
+        assert result.endswith("\n\nmain\n"), result
+        assert channel.replies == [{"ok": True, "path": str(ask)}]
+
+
 # ---------------------------------------------------------------------- self.handoff
 
 

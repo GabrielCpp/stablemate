@@ -331,6 +331,39 @@ def _consume_answer(
     log.info("[workhorse] await  → %s answered over the control socket", path)
 
 
+def _park(path: Path, env: RunEnv, *, kind: str) -> None:
+    """Block on `path` until answered, honouring control requests while parked.
+
+    The wait consumes what it can — an `answer` for this gate, a `questions` query —
+    and hands back anything it cannot. `cut_by` is the one policy for those: a profile
+    switch and an `--at-boundary` reload are acknowledged and held (the boundary after
+    the answer applies them), an unknown verb is declined — all of which resume the
+    wait — and a cutting reload unwinds right now. The checkpoint carrying
+    `waiting_on` went to disk before any caller parks here, so the re-entered run
+    knows to park on this same gate.
+    """
+    while True:
+        interrupted = wait_for_answer(
+            path,
+            interval=env.config.await_poll_s,
+            clock=env.clock,
+            channel=control.armed(),
+            log=env.log,
+            deadline=env.deadline,
+            kind=kind,
+        )
+        if interrupted is None:
+            return
+        cut = reload.cut_by(interrupted)
+        if cut is not None:
+            env.log.info("[workhorse] reload → requested while parked on %s", path)
+            raise reload.ReloadRequested(
+                f"reload requested while parked on {path}",
+                core=cut.core,
+                cli=cut.cli,
+            )
+
+
 def _ask(path: Path, questions: str, log: logging.Logger) -> None:
     """Write the ask, so the operator has something to answer.
 
@@ -406,6 +439,22 @@ def drive(
         wf._seal(_revive_ctx(wf, resume.ctx))
         state, params = resume.state, resume.params
         env.log.info("[workhorse] resume → state '%s'", state)
+        if resume.waiting_on is not None:
+            # The checkpoint parked on a gate: a reload cut the wait, or the process
+            # died mid-park. Re-arm it before running the state, or a resume would
+            # walk straight past the question into a state expecting its answer.
+            # Only a file still reading AWAITING_OPERATOR re-parks — that header is
+            # written by operator gates alone, so a machine wait's wake file (or a
+            # gate answered while the run was down) skips straight in as before.
+            gate = Path(resume.waiting_on)
+            try:
+                parked = gates.status_of(gate.read_text()) == "AWAITING_OPERATOR"
+            except OSError:
+                parked = False
+            if parked:
+                env.log.info("[workhorse] resume → still parked on %s", gate)
+                with otel.wait("operator", state):
+                    _park(gate, env, kind="operator")
     else:
         wf._seal(wf.setup())
         state, params = wf.start_state, {}
@@ -536,36 +585,7 @@ def drive(
             verb = "blocked on" if outcome.kind == "operator" else "waiting on"
             env.log.info("[workhorse] await  → %s %s", verb, outcome.path)
             with otel.wait(outcome.kind, spec.name):
-                while True:
-                    interrupted = wait_for_answer(
-                        outcome.path,
-                        interval=env.config.await_poll_s,
-                        clock=env.clock,
-                        channel=control.armed(),
-                        log=env.log,
-                        deadline=env.deadline,
-                        kind=outcome.kind,
-                    )
-                    if interrupted is None:
-                        break
-                    # The wait hands back anything it cannot consume itself, and
-                    # `cut_by` is the one policy for those: a profile switch and an
-                    # `--at-boundary` reload are acknowledged and held (the boundary
-                    # after the answer applies them), an unknown verb is declined —
-                    # all of which resume the wait — and a cutting reload unwinds
-                    # right now. The checkpoint above already carries `waiting_on`,
-                    # so the re-entered run knows to park on this same gate.
-                    cut = reload.cut_by(interrupted)
-                    if cut is not None:
-                        env.log.info(
-                            "[workhorse] reload → requested while parked on %s",
-                            outcome.path,
-                        )
-                        raise reload.ReloadRequested(
-                            f"reload requested while parked on {outcome.path}",
-                            core=cut.core,
-                            cli=cut.cli,
-                        )
+                _park(outcome.path, env, kind=outcome.kind)
         state, params = outcome.state, outcome.params
 
     raise WorkflowFailed(
