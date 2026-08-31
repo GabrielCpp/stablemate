@@ -30,8 +30,10 @@ Divergences from the YAML, all deliberate:
 * `detect_webapp` emitted `round: 0` to reset the walk's round cap, because a `var` is
   global to a run and the main graph's `round` would otherwise have leaked in. The walk's
   round is a parameter of `checkpoint` here, so it starts at 0 by construction.
-* `refuel: done_count` on `select_wt` has no counterpart: pyflow has no gas tank, and the
-  transition budget is what bounds the machine. The drain costs four transitions per item.
+* `refuel: done_count` on `select_wt` is `REFUEL_ON` below: pyflow has no gas tank, so the
+  transition budget bounds the machine instead — but it counts transitions *since the last
+  completed item*, which is what the refuel meant. The drain costs four transitions per
+  item, and that no longer puts a ceiling on how long a walk's worklist may be.
 * the two boot scripts' `--teardown` sentinel is gone (see `walkthrough_web/nodes/stack.py`).
 * `select_wt` was called without `done_baseline`, so its `max_items` cap counted `done`
   over the whole file — a *lifetime* cap, not a per-run one, unlike the main graph's.
@@ -39,6 +41,8 @@ Divergences from the YAML, all deliberate:
   the two drains and it is the YAML's, not the port's.
 """
 from __future__ import annotations
+
+from typing import ClassVar
 
 from workhorse.pyflow import Continue, Done, NodeNotRunError, Workflow
 from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book
@@ -66,6 +70,10 @@ class WalkthroughWeb(Workflow):
     service name, the docs root and the item ceiling are the only inputs, and every path
     is re-derived from the book.
     """
+
+    #: `pick` reports `"3/12"` and hands it to `walk`, so it moves exactly when a
+    #: walk item is closed — the YAML's `refuel: done_count` on `select_wt`, restored.
+    REFUEL_ON: ClassVar[frozenset[str]] = frozenset({"progress"})
 
     #: Which `<features-root>/<service>` book to walk — ostler resolves the features root,
     #: so a repo that moved it is followed. `null` in the YAML's `vars`, `""`

@@ -35,12 +35,15 @@ that confirms them on a workflow that shares none of author's shape:
 
 Three divergences worth naming, beyond the mechanical ones the node modules record:
 
-**`refuel: done_count` has no counterpart.** The YAML refuelled the gas tank on the
-worklist's `done` count so a drain that stopped completing items would run the tank dry.
-pyflow has no gas tank; the transition budget bounds the machine instead. A drain that
-stops completing items still terminates, but it terminates on a *transition* count rather
-than on the observation that nothing is progressing — a coarser signal, and the one thing
-this port loses. It is a finding, not a silent absorption: see the ledger.
+**`refuel: done_count` is `REFUEL_ON`.** The YAML refuelled the gas tank on the worklist's
+`done` count so a drain that stopped completing items would run the tank dry. pyflow has
+no gas tank, and for a while the transition budget stood in for one — which terminated a
+stalled drain, but on a *transition* count rather than on the observation that nothing is
+progressing. That is a coarser signal and it has a failure mode the YAML did not: a 4,378
+item backlog exhausts 1,000 transitions while perfectly healthy, and dies. `REFUEL_ON`
+below restores the original reading — the budget bounds transitions *since the last
+completed item*, so the backlog's size stops being a thing an operator has to have
+predicted, and a ping-pong still dies on the same 1,000.
 
 **`recheck` reads its coverage bundle with `self.output(...)`.** The YAML passed eleven
 template arguments to that turn, six of them just copied through two states from
@@ -57,6 +60,7 @@ bounds the worklist's lifetime. See `walkthrough_web/flow.py`.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, Workflow, WorkflowFailed
 from workhorse_workflows.okf_builder.main.nodes import (
@@ -100,6 +104,13 @@ class OkfBuilder(Workflow):
     gate rather than ending it — a partial book must not read as a finished one, and a
     budget stop is not a defect, so the run waits for a fresh allowance instead of dying.
     """
+
+    #: `select` reports `"3386/4378"` and the drain threads it down to `investigate`, so
+    #: it moves exactly when an item is closed or a new one is discovered — the YAML's
+    #: `refuel: done_count`, restored. A backlog of four thousand items no longer needs
+    #: an operator to have guessed four thousand items' worth of transitions in advance;
+    #: a drain that stops closing items still dies on the same 1,000.
+    REFUEL_ON: ClassVar[frozenset[str]] = frozenset({"progress"})
 
     #: Which `<features-root>/<service>` book to build, the root being ostler's answer;
     #: `""` = the whole tree.
