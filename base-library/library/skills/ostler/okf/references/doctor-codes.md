@@ -59,6 +59,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `story-status-mismatch` | error | Frontmatter `status` differs from the `## Implementation Status` value. |
 | `source-catalog-invalid` | error | The generated external source catalog is malformed or unreadable. Rebuild multi-repository context; do not hand-repair derived hashes or symbol tables. |
 | `unwritten-story` | error | A story is still a bare `ostler create story` scaffold. |
+| `story-section-order` | error | A story carries its required sections out of contract order. |
 | `story-covers-no-seed` | warn | A story lists no `seedItems`. |
 | `orphan-seed` | error | An active seed no story covers. |
 | `unclassified-seed` | warn | A seed has no `layers:`, so every covering story keeps the mockup turn by default. |
