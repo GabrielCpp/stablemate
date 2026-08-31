@@ -20,21 +20,14 @@ class EpicAuthor(Workflow):
     """Run the current epic-prose and seed pass for one caller-selected epic."""
 
     epic: str = ""
-    roadmap: str = ""
-    epics_dir: str = ""
-    features_dir: str = ""
     operator_mode: str = "auto"
 
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("resolves",)
 
     def setup(self) -> EpicAuthorContext:
         """Resolve config and the explicit target only; never create a branch."""
-        cfg = self.call(load_config, "", self.epics_dir, roadmap=self.roadmap, mode="epic")
-        if self.features_dir.strip():
-            cfg = cfg.model_copy(
-                update={"features_dir": paths.features_dir(cfg.repo_root, self.features_dir)}
-            )
-        target = self.call(prepare_epic_target, self.epic, cfg.epics_dir)
+        cfg = self.call(load_config, mode="epic")
+        target = self.call(prepare_epic_target, self.epic)
         return EpicAuthorContext(**cfg.model_dump(), **target.model_dump())
 
     def labels(self) -> dict[str, str]:
@@ -70,7 +63,7 @@ class EpicAuthor(Workflow):
         )
         if result.status == "blocked":
             return self._gate(result, result.notes, resolves)
-        evidence = self.call(validate_authored_epic, self.ctx.epic, self.ctx.epics_dir)
+        evidence = self.call(validate_authored_epic, self.ctx.epic)
         if not evidence.ok:
             return self._gate(evidence, evidence.errors, resolves)
         return Done(

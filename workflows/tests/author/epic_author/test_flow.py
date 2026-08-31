@@ -103,7 +103,7 @@ def test_authors_only_the_explicit_epic_and_returns_document_evidence(
     agent = _Agent(repo)
 
     result = drive(
-        EpicAuthor(epic="sign-in", roadmap=ROADMAP, repo_dir=str(repo)),
+        EpicAuthor(epic="sign-in", repo_dir=str(repo)),
         _env(tmp_path, agent),
     )
 
@@ -125,7 +125,7 @@ def test_block_is_diagnosed_then_retries_the_same_epic(repo: Path, tmp_path: Pat
 
     with patch.object(pyflow_driver, "wait_for_answer", return_value=None):
         result = drive(
-            EpicAuthor(epic="sign-in", roadmap=ROADMAP, repo_dir=str(repo)),
+            EpicAuthor(epic="sign-in", repo_dir=str(repo)),
             _env(tmp_path, agent),
         )
 

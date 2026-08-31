@@ -195,7 +195,6 @@ def emit_artifacts(
     logger: logging.Logger,
     partition: str = "docs/survey/partition.yaml",
     inventory: str = "docs/survey/inventory.json",
-    backlog: str = "",
     unit_manifest: str = "docs/survey/unit-manifest.json",
     repo_dir: str = "",
 ) -> EmitResult:
@@ -212,7 +211,7 @@ def emit_artifacts(
     manifest_rel = unit_manifest.strip() or "docs/survey/unit-manifest.json"
 
     root = survey_repo_root(repo_dir)
-    backlog_rel = paths.backlog_file(root, backlog)
+    backlog_rel = paths.backlog_file(root)
     try:
         part = yaml.safe_load((root / part_rel).read_text(encoding="utf-8"))
         clusters = part.get("clusters") or []

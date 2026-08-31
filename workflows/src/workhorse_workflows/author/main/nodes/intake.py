@@ -15,11 +15,10 @@ from workhorse_workflows.author.shared.schemas.main import Defects, RoadmapStatu
 @blueprint.node
 def adopt_backlog(
     logger: logging.Logger,
-    backlog: str = "",
     repo_dir: str = "",
 ) -> Result:
     """Mint ids for every unnamed backlog bullet before decomposition or story lookup."""
-    result = Ostler(survey_repo_root(repo_dir)).backlog_adopt(backlog)
+    result = Ostler(survey_repo_root(repo_dir)).backlog_adopt()
     if not result.ok:
         raise WorkflowFailed(result.message)
     logger.info(result.message)

@@ -34,13 +34,11 @@ def _milestone_fingerprints(okf: Ostler, root: Path) -> dict[str, str]:
 @blueprint.node
 def prepare_milestone(
     logger: logging.Logger,
-    roadmap: str,
-    epics_dir: str = "",
     repo_dir: str = "",
 ) -> MilestoneContext:
     """Validate intake and snapshot every epic so this stage cannot create or edit one."""
     root = survey_repo_root(repo_dir)
-    roadmap = approved_roadmap(root, roadmap)
+    roadmap = approved_roadmap(root)
     okf = Ostler(root)
     matches = [m for m in okf.graph.milestones if roadmap in m.source_items]
     if len(matches) > 1:
@@ -50,7 +48,7 @@ def prepare_milestone(
     return MilestoneContext(
         repo_root=str(root),
         roadmap=roadmap,
-        epics_dir=paths.epics_dir(root, epics_dir),
+        epics_dir=paths.epics_dir(root),
         milestone_path=(milestone.path.relative_to(root).as_posix() if milestone else ""),
         milestone_epics=list(milestone.epics) if milestone else [],
         milestone_fingerprints=_milestone_fingerprints(okf, root),

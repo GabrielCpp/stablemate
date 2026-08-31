@@ -25,15 +25,13 @@ UNBOUNDED = float("inf")
 class Finalize(Workflow):
     """Run the normal epic-mode validation, commit, and PR tail directly."""
 
-    roadmap: str = ""
-    epics_dir: str = ""
     base_branch: str = "main"
     author_branch: str = ""
     operator_mode: str = "auto"
 
     def setup(self) -> RunContext:
         """Resolve repository config while preserving the caller-owned branch."""
-        cfg = self.call(load_config, "", self.epics_dir, roadmap=self.roadmap, mode="epic")
+        cfg = self.call(load_config, mode="epic")
         return RunContext(
             **cfg.model_dump(),
             base_branch=self.base_branch,
@@ -42,12 +40,12 @@ class Finalize(Workflow):
 
     def labels(self) -> dict[str, str]:
         return {
-            "work_id": Path(self.roadmap).stem,
+            "work_id": Path(self.ctx.roadmap_path).stem,
             "progress": "validating and delivering authored roadmap",
         }
 
     def _context(self) -> str:
-        return paths.author_context(self.ctx.repo_root, self.ctx.epics_dir)
+        return paths.author_context(self.ctx.repo_root)
 
     def _context_path(self) -> Path:
         return Path(self.ctx.repo_root) / self._context()
@@ -76,7 +74,7 @@ class Finalize(Workflow):
         return Continue(None, self.reconcile)
 
     def reconcile(self, resolves: int = 0) -> Continue | Await:
-        report = self.call(verify_reconcile, self.ctx.epics_dir)
+        report = self.call(verify_reconcile)
         if report.holds or report.skipped:
             return Continue(report, self.integrity)
         if self.operator_mode == "human" or resolves >= MAX_RECONCILE_RESOLVES:
@@ -100,7 +98,7 @@ class Finalize(Workflow):
         return Await(self._context_path(), notes, self.integrity)
 
     def integrity(self, resolves: int = 0) -> Continue | Await:
-        report = self.call(verify_integrity, "", self.ctx.epics_dir)
+        report = self.call(verify_integrity, "")
         if report.holds or report.skipped:
             return Continue(report, self.roadmap_milestone)
         if self.operator_mode == "human" or resolves >= MAX_INTEGRITY_RESOLVES:

@@ -61,18 +61,19 @@ def test_config_honours_an_overridden_survey_dir(
     logger: logging.Logger, repo: Path, write: Callable[[Path, str], Path]
 ) -> None:
     write(repo / "base.json", "{}")
-    (repo / "book").mkdir()
+    (repo / "docs/features").mkdir(parents=True)
 
     cfg = load_parity_config(
         logger,
         baseline="base.json",
-        target="book",
         survey_dir="docs/parity",
-        backlog="TODO.md",
-        epics="docs/work",
     )
 
-    assert (cfg.target_features, cfg.backlog, cfg.epics_dir) == ("book", "TODO.md", "docs/work")
+    assert (cfg.target_features, cfg.backlog, cfg.epics_dir) == (
+        "docs/features",
+        "docs/backlog.md",
+        "docs/epics",
+    )
     assert cfg.inventory == "docs/parity/inventory.json"
     assert cfg.findings_dir == "docs/parity/findings"
 
@@ -84,7 +85,7 @@ def test_config_blank_overrides_fall_back_to_the_defaults(
     write(repo / "base.json", "{}")
     (repo / "docs/features").mkdir(parents=True)
 
-    cfg = load_parity_config(logger, baseline="base.json", target="", survey_dir="  ")
+    cfg = load_parity_config(logger, baseline="base.json", survey_dir="  ")
 
     assert cfg.target_features == "docs/features"
     assert cfg.survey_dir == "docs/survey/legacy-vs-new"
@@ -326,7 +327,6 @@ def _emit(repo: Path, logger: logging.Logger) -> Any:
         logger,
         inventory="inv.json",
         findings_dir="findings",
-        backlog="docs/backlog.md",
         unit_manifest="manifest.json",
     )
 
@@ -623,12 +623,11 @@ def test_emit_paths_all_travel_with_parameters(
         logger,
         inventory="elsewhere/inv.json",
         findings_dir="elsewhere/f",
-        backlog="TODO.md",
         unit_manifest="elsewhere/manifest.json",
     )
 
     assert result.emit_ok
-    assert "- [legacy-parity-billing-invoices] gap" in (repo / "TODO.md").read_text(
+    assert "- [legacy-parity-billing-invoices] gap" in (repo / "docs/backlog.md").read_text(
         encoding="utf-8"
     )
     assert (repo / "elsewhere/manifest.json").is_file()

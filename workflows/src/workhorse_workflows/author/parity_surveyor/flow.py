@@ -83,17 +83,9 @@ class ParitySurveyor(Workflow):
     #: practice: `load_parity_config` fails the flow when it names no readable file.
     #: `null` in the YAML's `vars`, `""` here, because an input is typed.
     baseline_inventory: str = ""
-    #: The new app's feature book — the "does anything own this?" side of the compare.
-    #: Blank means the book ostler configures for this repo.
-    target_features: str = ""
     #: Where this survey's own artifacts live. The inventory, the findings dir and the
     #: unit manifest are all derived from it by `load_parity_config`.
     survey_dir: str = "docs/survey/legacy-vs-new"
-    #: What emission appends to, inside its generated fence. Blank means ostler's backlog.
-    backlog: str = ""
-    #: Read by the assessor to recognize a surface an epic already covers. Blank means the
-    #: epics root ostler configures.
-    epics_dir: str = ""
 
     def setup(self) -> ParityConfig:
         """Resolve and validate both sides of the comparison.
@@ -106,10 +98,7 @@ class ParitySurveyor(Workflow):
         return self.call(
             load_parity_config,
             self.baseline_inventory,
-            self.target_features,
             self.survey_dir,
-            self.backlog,
-            self.epics_dir,
         )
 
     def labels(self) -> dict[str, str]:
@@ -262,7 +251,6 @@ class ParitySurveyor(Workflow):
             emit_parity_backlog,
             self.ctx.inventory,
             self.ctx.findings_dir,
-            self.ctx.backlog,
             self.ctx.unit_manifest,
         )
         if not result.emit_ok:

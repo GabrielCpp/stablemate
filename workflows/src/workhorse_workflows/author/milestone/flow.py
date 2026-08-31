@@ -16,14 +16,11 @@ from workhorse_workflows.author.shared import paths
 class Milestone(Workflow):
     """The milestone-only boundary; no epic, git, or downstream work is reachable."""
 
-    roadmap: str = ""
-    epics_dir: str = ""
-
     def setup(self) -> MilestoneContext:
-        return self.call(prepare_milestone, self.roadmap, self.epics_dir)
+        return self.call(prepare_milestone)
 
     def labels(self) -> dict[str, str]:
-        return {"work_id": Path(self.roadmap).stem}
+        return {"work_id": Path(self.ctx.roadmap).stem}
 
     def start(self) -> Done | Await:
         result = self.agent(
@@ -33,9 +30,7 @@ class Milestone(Workflow):
             cwd=self.ctx.repo_root,
             args={"roadmap": self.ctx.roadmap},
         )
-        context_path = Path(self.ctx.repo_root) / paths.author_context(
-            self.ctx.repo_root, self.ctx.epics_dir
-        )
+        context_path = Path(self.ctx.repo_root) / paths.author_context(self.ctx.repo_root)
         if result.status == "blocked":
             return Await(context_path, result.notes, self.start)
         validation = self.call(validate_milestone, self.ctx)

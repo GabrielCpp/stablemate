@@ -55,13 +55,11 @@ def _skeleton_error(path: Path) -> str:
 @blueprint.node
 def prepare_epic_split(
     logger: logging.Logger,
-    roadmap: str,
-    epics_dir: str = "",
     repo_dir: str = "",
 ) -> EpicSplitContext:
     """Require the milestone stage's unique roadmap-owned document and snapshot content."""
     root = survey_repo_root(repo_dir)
-    roadmap = approved_roadmap(root, roadmap)
+    roadmap = approved_roadmap(root)
     okf = Ostler(root)
     matches = [m for m in okf.graph.milestones if roadmap in m.source_items]
     if len(matches) != 1 or matches[0].source_items != [roadmap]:
@@ -73,7 +71,7 @@ def prepare_epic_split(
     return EpicSplitContext(
         repo_root=str(root),
         roadmap=roadmap,
-        epics_dir=paths.epics_dir(root, epics_dir),
+        epics_dir=paths.epics_dir(root),
         milestone_path=milestone.path.relative_to(root).as_posix(),
         existing_epics=[epic.name for epic in okf.graph.epics],
         milestone_fingerprints=_milestone_fingerprints(okf, root),

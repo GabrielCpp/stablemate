@@ -26,14 +26,12 @@ class StorySplitFlow(Workflow):
     """Create and accept the story graph for one explicitly named epic."""
 
     epic: str = ""
-    backlog: str = ""
-    epics_dir: str = ""
     operator_mode: str = "auto"
 
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("cov_reworks", "split_resolves")
 
     def setup(self) -> Config:
-        return self.call(load_config, self.backlog, self.epics_dir, mode="story-split")
+        return self.call(load_config, mode="story-split")
 
     def labels(self) -> dict[str, str]:
         return {"work_id": self.epic, "epic": self.epic, "progress": "splitting stories"}
@@ -42,7 +40,7 @@ class StorySplitFlow(Workflow):
         return self.labels() | counter_labels(params, "story_split", self.BUDGET_LABELS)
 
     def _epic_dir(self) -> str:
-        return paths.epic_dir(self.ctx.repo_root, self.epic, self.ctx.epics_dir)
+        return paths.epic_dir(self.ctx.repo_root, self.epic)
 
     def _context(self) -> str:
         return paths.epic_context(self._epic_dir())

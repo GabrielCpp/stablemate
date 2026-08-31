@@ -31,25 +31,15 @@ class Author(Workflow):
     bullet: str = ""
     layers: str = ""
     services: str = ""
-    backlog: str = ""
-    roadmap: str = ""
-    epics_dir: str = ""
     rubric: str = "docs/survey/rubric.md"
     survey_dir: str = "docs/survey"
     baseline_inventory: str = ""
-    target_features: str = ""
     parity_survey_dir: str = "docs/survey/legacy-vs-new"
     operator_mode: str = "auto"
 
     def setup(self) -> RunContext:
         """Resolve paths and create the one branch shared by every handed-off stage."""
-        cfg = self.call(
-            load_config,
-            self.backlog,
-            self.epics_dir,
-            roadmap=self.roadmap,
-            mode=self.mode,
-        )
+        cfg = self.call(load_config, mode=self.mode)
         branches = self.call(branch_author, str(self.run_dir), self.mode)
         return RunContext(
             **cfg.model_dump(),
@@ -64,26 +54,20 @@ class Author(Workflow):
                 Surveyor,
                 rubric=self.rubric,
                 survey_dir=self.survey_dir,
-                backlog=self.backlog,
                 operator_mode=self.operator_mode,
             ))
         if self.mode == "parity-survey":
             return Done(self.handoff(
                 ParitySurveyor,
                 baseline_inventory=self.baseline_inventory,
-                target_features=self.target_features,
                 survey_dir=self.parity_survey_dir,
-                backlog=self.backlog,
-                epics_dir=self.epics_dir,
             ))
         if self.mode == "story":
-            self.call(adopt_backlog, self.ctx.backlog_path)
+            self.call(adopt_backlog)
             seeded = self.call(
                 seed_story,
                 self.epic,
-                self.epics_dir,
                 self.bullet,
-                self.backlog,
                 layers=self.layers,
                 services=self.services,
             )
@@ -91,15 +75,11 @@ class Author(Workflow):
                 StoryAuthor,
                 epic=self.epic,
                 story=seeded.story_slug,
-                epics_dir=self.ctx.epics_dir,
-                features_dir=self.ctx.features_dir,
-                mockup_dir=self.ctx.mockup_dir,
                 feedback_dir=str(self.run_dir),
                 operator_mode=self.operator_mode,
             )
             return Done(self.call(
                 prune_bullet,
-                self.backlog,
                 seeded.bullet_id,
                 seeded.from_backlog,
             ))
@@ -107,43 +87,30 @@ class Author(Workflow):
 
     def next_stage(self, blocked: Sequence[str] = ()) -> Continue | Done:
         """Run exactly one artifact-derived stage, then plan again from disk."""
-        step = self.call(plan_author_step, self.ctx.roadmap_path, blocked=tuple(blocked))
-        common = {"epics_dir": self.ctx.epics_dir}
+        step = self.call(plan_author_step, blocked=tuple(blocked))
         if step.kind == "milestone":
-            result = self.handoff(Milestone, roadmap=step.roadmap, **common)
+            result = self.handoff(Milestone)
         elif step.kind == "epic-split":
-            result = self.handoff(
-                EpicSplit,
-                roadmap=step.roadmap,
-                operator_mode=self.operator_mode,
-                **common,
-            )
+            result = self.handoff(EpicSplit, operator_mode=self.operator_mode)
         elif step.kind == "epic-author":
             result = self.handoff(
                 EpicAuthor,
                 epic=step.epic,
-                roadmap=step.roadmap,
-                features_dir=self.ctx.features_dir,
                 operator_mode=self.operator_mode,
-                **common,
             )
         elif step.kind == "story-split":
             result = self.handoff(
                 StorySplitFlow,
                 epic=step.epic,
                 operator_mode=self.operator_mode,
-                **common,
             )
         elif step.kind == "story-author":
             result = self.handoff(
                 StoryAuthor,
                 epic=step.epic,
                 story=step.story,
-                features_dir=self.ctx.features_dir,
-                mockup_dir=self.ctx.mockup_dir,
                 feedback_dir=str(self.run_dir),
                 operator_mode=self.operator_mode,
-                **common,
             )
             if result.status == "blocked":
                 self.logger.warning(
@@ -159,11 +126,9 @@ class Author(Workflow):
         else:
             return Done(self.handoff(
                 Finalize,
-                roadmap=step.roadmap,
                 base_branch=self.ctx.base_branch,
                 author_branch=self.ctx.author_branch,
                 operator_mode=self.operator_mode,
-                **common,
             ))
         return Continue(result, self.next_stage, blocked=list(blocked))
 

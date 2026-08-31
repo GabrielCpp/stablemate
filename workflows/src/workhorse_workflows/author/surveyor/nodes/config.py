@@ -18,7 +18,6 @@ def load_survey_config(
     logger: logging.Logger,
     rubric: str = "docs/survey/rubric.md",
     survey_dir: str = "docs/survey",
-    backlog: str = "",
     repo_dir: str = "",
 ) -> SurveyConfig:
     """Resolve the survey's paths and prove the rubric exists.
@@ -36,7 +35,7 @@ def load_survey_config(
     survey_dir = survey_dir.strip() or "docs/survey"
 
     root = survey_repo_root(repo_dir)
-    backlog = paths.backlog_file(root, backlog)
+    backlog = paths.backlog_file(root)
     rubric_path = (root / rubric).resolve()
     if not rubric_path.is_file():
         logger.warning("rubric file not found: %s", rubric_path)

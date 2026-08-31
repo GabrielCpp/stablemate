@@ -20,8 +20,6 @@ def _intent_stub(
     bullet: str = "",
     reason: str = "",
     force: bool = False,
-    backlog: str = "",
-    epics_dir: str = "",
     repo_dir: str = "",
 ) -> EditIntent:
     return EditIntent(
@@ -44,15 +42,13 @@ def resolve_story_intent(
     bullet: str = "",
     reason: str = "",
     force: bool = False,
-    backlog: str = "",
-    epics_dir: str = "",
     repo_dir: str = "",
 ) -> EditIntent:
     """Validate the requested story operation and name its parent epic and binding outcome."""
     if action == "add":
         if not epic.strip() or not bullet.strip():
             raise WorkflowFailed("story-edit add needs both 'epic' and 'bullet'")
-        resolved = resolve_bullet(Path(repo_dir), bullet, backlog)
+        resolved = resolve_bullet(Path(repo_dir), bullet)
         logger.info("resolved add-story intent for %s from %s", epic, resolved.id)
         return EditIntent(
             kind="add-story",
@@ -71,10 +67,7 @@ def resolve_story_intent(
     row = next(
         (
             row
-            for row in Ostler(
-                repo_dir,
-                doc_roots={"epics": epics_dir} if epics_dir else {},
-            ).list("story")
+            for row in Ostler(repo_dir).list("story")
             if str(row["slug"]) == slug
         ),
         None,

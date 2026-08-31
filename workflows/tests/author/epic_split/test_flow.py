@@ -96,7 +96,7 @@ def test_creates_only_ordered_epic_skeletons_after_review_rework(
     agent = _Agent(repo, ["needs_rework", "approved"])
 
     result = drive(
-        EpicSplit(roadmap=ROADMAP, repo_dir=str(repo)),
+        EpicSplit(repo_dir=str(repo)),
         replace(_env(tmp_path), agent_runner=StubRunner(agent)),
     )
 
@@ -120,7 +120,7 @@ def test_block_is_diagnosed_then_retried_after_operator_resume(repo: Path, tmp_p
 
     with patch.object(pyflow_driver, "wait_for_answer", return_value=None):
         result = drive(
-            EpicSplit(roadmap=ROADMAP, repo_dir=str(repo)),
+            EpicSplit(repo_dir=str(repo)),
             replace(_env(tmp_path), agent_runner=StubRunner(agent)),
         )
 
@@ -132,7 +132,7 @@ def test_block_is_diagnosed_then_retried_after_operator_resume(repo: Path, tmp_p
 
 def test_validation_rejects_seed_and_prose_authored_during_split(repo: Path) -> None:
     _planning_input(repo)
-    context = prepare_epic_split(logging.getLogger("test"), ROADMAP, repo_dir=str(repo))
+    context = prepare_epic_split(logging.getLogger("test"), repo_dir=str(repo))
     okf = Ostler(repo)
     assert okf.create_epic("sign-in", "Sign in").ok
     _set_epics(repo, ["sign-in"])

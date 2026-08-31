@@ -61,9 +61,6 @@ class StoryAuthor(Workflow):
 
     epic: str = ""
     story: str = ""
-    epics_dir: str = ""
-    features_dir: str = ""
-    mockup_dir: str = ""
     feedback_dir: str = ""
     operator_mode: str = "auto"
 
@@ -75,13 +72,7 @@ class StoryAuthor(Workflow):
 
     def setup(self) -> Config:
         """Resolve config only; direct story authoring never creates a branch."""
-        cfg = self.call(load_config, "", self.epics_dir, mode="story-author")
-        updates: dict[str, object] = {}
-        if self.features_dir.strip():
-            updates["features_dir"] = paths.features_dir(cfg.repo_root, self.features_dir)
-        if self.mockup_dir.strip():
-            updates["mockup_dir"] = self.mockup_dir.strip().rstrip("/")
-        return cfg.model_copy(update=updates)
+        return self.call(load_config, mode="story-author")
 
     def labels(self) -> dict[str, str]:
         return {"work_id": self.story, "epic": self.epic, "progress": "authoring one story"}
@@ -126,7 +117,7 @@ class StoryAuthor(Workflow):
                 "story_slug": target.story,
                 "story_dir": target.story_dir,
                 "features_dir": self.ctx.features_dir,
-                "mockup_dir": self.ctx.mockup_dir,
+                "epics_dir": self.ctx.epics_dir,
             },
         )
         return Continue(result, self.write_story, target=target, mockup=result.mockup)
@@ -152,7 +143,6 @@ class StoryAuthor(Workflow):
                 "story_slug": target.story,
                 "story_dir": target.story_dir,
                 "features_dir": self.ctx.features_dir,
-                "mockup_dir": self.ctx.mockup_dir,
                 "mockup_path": mockup,
             },
         )
@@ -364,7 +354,6 @@ class StoryAuthor(Workflow):
                 "story_slug": target.story,
                 "story_dir": target.story_dir,
                 "features_dir": self.ctx.features_dir,
-                "mockup_dir": self.ctx.mockup_dir,
                 "mockup_path": mockup,
                 "validation_errors": notes,
                 "prior_attempts": ledger.prior_attempts,
@@ -446,7 +435,6 @@ class StoryAuthor(Workflow):
                 "story_slug": target.story,
                 "story_dir": target.story_dir,
                 "features_dir": self.ctx.features_dir,
-                "mockup_dir": self.ctx.mockup_dir,
                 "mockup_path": mockup,
                 "validation_errors": "",
                 "operator_feedback": notes,

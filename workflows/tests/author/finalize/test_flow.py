@@ -156,7 +156,6 @@ def test_finalizes_with_one_commit_and_reuses_the_open_pr(repo: Path, tmp_path: 
         client.return_value.get_repo.return_value = gh_repo
         result = drive(
             Finalize(
-                roadmap=ROADMAP,
                 base_branch="main",
                 author_branch="main",
                 repo_dir=str(repo),
@@ -187,7 +186,6 @@ def test_terminal_validation_commits_incomplete_then_fails(repo: Path, tmp_path:
     ):
         drive(
             Finalize(
-                roadmap=ROADMAP,
                 base_branch="main",
                 author_branch="main",
                 repo_dir=str(repo),

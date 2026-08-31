@@ -16,7 +16,6 @@ from workhorse_workflows.author.shared.paths import survey_repo_root
 def prepare_epic_target(
     logger: logging.Logger,
     epic: str,
-    epics_dir: str = "",
     repo_dir: str = "",
 ) -> EpicTarget:
     """Resolve exactly the named epic; never substitute a worklist neighbor."""
@@ -27,7 +26,7 @@ def prepare_epic_target(
     found = epic_by_name(Ostler(root).graph, requested)
     if found is None:
         raise WorkflowFailed(f"epic '{requested}' was not found")
-    epic_dir = paths.epic_dir(root, found.name, epics_dir)
+    epic_dir = paths.epic_dir(root, found.name)
     logger.info("prepared explicit epic '%s'", found.name)
     return EpicTarget(
         epic=found.name,
@@ -40,7 +39,6 @@ def prepare_epic_target(
 def validate_authored_epic(
     logger: logging.Logger,
     epic: str,
-    epics_dir: str = "",
     repo_dir: str = "",
 ) -> EpicEvidence:
     """Apply the main worklist's documented-epic evidence to one explicit epic."""
@@ -49,11 +47,11 @@ def validate_authored_epic(
     errors: list[str] = []
     if found is None:
         errors.append(f"epic '{epic}' was not found")
-        epic_dir = paths.epic_dir(root, epic, epics_dir)
+        epic_dir = paths.epic_dir(root, epic)
         epic_path = f"{epic_dir}/epic.md"
         seed_count = 0
     else:
-        epic_dir = paths.epic_dir(root, found.name, epics_dir)
+        epic_dir = paths.epic_dir(root, found.name)
         epic_path = (
             found.epic_md.relative_to(root).as_posix()
             if found.epic_md is not None

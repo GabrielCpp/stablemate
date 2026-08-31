@@ -15,12 +15,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-from ostler import markdown
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.author.main.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.roadmap import approved_roadmap
 from workhorse_workflows.author.shared.schemas.main import Branches, Config
 from workhorse_workflows.kit import active_branch, checkout, local_branch_exists
 
@@ -40,49 +40,22 @@ def _template(root: Path) -> dict:
 @blueprint.node
 def load_config(
     logger: logging.Logger,
-    backlog: str = "",
-    epics_dir: str = "",
     repo_dir: str = "",
-    roadmap: str = "",
     mode: str = "epic",
 ) -> Config:
     """Resolve the author's paths and prove the selected intake exists.
 
-    Epic mode requires one explicitly named approved roadmap. Story and edit modes retain
-    their configured backlog. Everything else is a convention default a repo may override
-    under `template.*` in `agents.yml`.
+    Every path here is ostler's answer, read from `docRoots:` — the run has no parameter that
+    can move one, because a run that moved one wrote documents the rest of the toolchain
+    could not find. What is left as an input is the repo and the mode.
 
     The feature book is read-only grounding for author prompts. New visual references are
     story-local mockups; author never creates a feature inventory or registers mockups in one.
     """
     root = survey_repo_root(repo_dir)
-    backlog = paths.backlog_file(root, backlog)
-    roadmap = paths.roadmap_file(root, roadmap)
-    epics_dir = paths.epics_dir(root, epics_dir)
-    if mode == "epic" and not roadmap:
-        raise WorkflowFailed(
-            "an approved roadmap file is required for epic authoring; pass "
-            "--params '{\"roadmap\":\"docs/roadmaps/<slug>.md\"}'."
-        )
-    if mode == "epic":
-        roadmap_path = (root / roadmap).resolve()
-        try:
-            relative = roadmap_path.relative_to(root.resolve())
-        except ValueError as exc:
-            raise WorkflowFailed(f"roadmap must be inside the repository: {roadmap_path}") from exc
-        if relative.parent != Path("docs/roadmaps") or relative.suffix != ".md":
-            raise WorkflowFailed(
-                f"roadmap must be one markdown file under docs/roadmaps/: {roadmap}"
-            )
-        if not roadmap_path.is_file():
-            raise WorkflowFailed(f"roadmap file not found: {roadmap_path}")
-        document = markdown.split(roadmap_path.read_text(encoding="utf-8"))
-        frontmatter = document.frontmatter or {}
-        if frontmatter.get("type") != "roadmap" or frontmatter.get("status") != "approved":
-            raise WorkflowFailed(
-                f"epic authoring requires an approved roadmap at {roadmap}; got "
-                f"type={frontmatter.get('type')!r}, status={frontmatter.get('status')!r}"
-            )
+    backlog = paths.backlog_file(root)
+    epics_dir = paths.epics_dir(root)
+    roadmap = approved_roadmap(root) if mode == "epic" else ""
 
     backlog_path = (root / backlog).resolve()
     if mode in {"story", "story-edit", "epic-edit"} and not backlog_path.is_file():
@@ -90,15 +63,11 @@ def load_config(
         raise WorkflowFailed(
             f"backlog file not found: {backlog_path}\n"
             f"Create {backlog} (a markdown bullet list of features) before running the author "
-            f"workflow, or pass --params '{{\"backlog\":\"<path>\"}}'."
+            f"workflow, or point `docRoots: backlog:` at the list this repo keeps."
         )
 
     data = _template(root)
-    template = data.get("template") or {}
-
-    features_dir = paths.features_dir(root, template.get("features_dir") or "")
-
-    mockup_dir = template.get("mockup_dir") or "docs/design"
+    features_dir = paths.features_dir(root)
 
     # Best-effort layer list, a hint for layer-aware prompts only: the prompts use
     # isUsingInstruction() at install time for the authoritative selection.
@@ -117,7 +86,6 @@ def load_config(
         roadmap_path=roadmap,
         epics_dir=epics_dir,
         features_dir=str(features_dir),
-        mockup_dir=str(mockup_dir),
         layers=layers,
     )
 

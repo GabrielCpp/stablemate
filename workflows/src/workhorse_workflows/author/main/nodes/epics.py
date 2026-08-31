@@ -60,7 +60,6 @@ def _epic_documented(okf: Ostler, epic: str) -> bool:
 
 def _pick_epic(
     logger: logging.Logger,
-    epics_dir: str,
     repo_dir: str,
     *,
     roadmap: str,
@@ -107,7 +106,7 @@ def _pick_epic(
     return EpicChoice(
         has_epic=True,
         epic=epic,
-        epic_dir=paths.epic_dir(root, epic, epics_dir),
+        epic_dir=paths.epic_dir(root, epic),
         reason=selected_reason,
         progress=snap.progress,
     )
@@ -116,7 +115,6 @@ def _pick_epic(
 @blueprint.node
 def select_epic_document(
     logger: logging.Logger,
-    epics_dir: str = "",
     repo_dir: str = "",
     roadmap: str = "",
 ) -> EpicChoice:
@@ -128,7 +126,6 @@ def select_epic_document(
     """
     return _pick_epic(
         logger,
-        epics_dir,
         repo_dir,
         roadmap=roadmap,
         done=_epic_documented,
@@ -140,7 +137,6 @@ def select_epic_document(
 @blueprint.node
 def select_epic(
     logger: logging.Logger,
-    epics_dir: str = "",
     repo_dir: str = "",
     roadmap: str = "",
 ) -> EpicChoice:
@@ -160,7 +156,6 @@ def select_epic(
     """
     return _pick_epic(
         logger,
-        epics_dir,
         repo_dir,
         roadmap=roadmap,
         done=lambda okf, epic: okf.epic_authored(epic),

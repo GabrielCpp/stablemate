@@ -56,7 +56,6 @@ def _subsection_ids(text: str, heading: str) -> set[str]:
 @blueprint.node(stub=_stubs.holds)
 def verify_reconcile(
     logger: logging.Logger,
-    epics_dir: str = "",
     ref: str = "HEAD",
     repo_dir: str = "",
 ) -> VerifyReport:
@@ -73,7 +72,7 @@ def verify_reconcile(
     """
     ref = ref.strip() or "HEAD"
     root = launch_repo_root(repo_dir)
-    epics_rel = paths.epics_dir(root, epics_dir)
+    epics_rel = paths.epics_dir(root)
     epics_path = root / epics_rel
 
     if show_file(root, ref, epics_rel) is None and not (root / ".git").exists():
@@ -134,7 +133,6 @@ def verify_reconcile(
 def verify_integrity(
     logger: logging.Logger,
     epic: str = "",
-    epics_dir: str = "",
     repo_dir: str = "",
 ) -> VerifyReport:
     """`ostler doctor` over the whole graph, as a blocking gate.
@@ -148,7 +146,7 @@ def verify_integrity(
     opt-in-by-presence stance the other author gates take. `epic` blank means the whole
     graph, which is what the final gate wants.
     """
-    okf = Ostler(launch_repo_root(repo_dir), doc_roots={"epics": epics_dir} if epics_dir else {})
+    okf = Ostler(launch_repo_root(repo_dir))
 
     outcome = okf.doctor(epic=epic.strip() or None)
     if outcome.status == "invalid":
@@ -217,8 +215,8 @@ def validate_artifacts(logger: logging.Logger, repo_dir: str = "") -> Defects:
     unauthored story is now an error that names the epic, the slug and the empty sections,
     and it does not count toward `selectable`.
 
-    The YAML passed `epics_dir` here for the node's contract and the script never read it:
-    ostler discovers the graph's doc roots itself. This takes no arguments.
+    ostler discovers the graph's doc roots itself, so this takes no location argument —
+    the same rule every node here follows.
     """
     okf = Ostler(survey_repo_root(repo_dir))
 

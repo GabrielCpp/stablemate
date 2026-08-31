@@ -84,13 +84,12 @@ def _audit_current(story_path: Path | None) -> bool:
 @blueprint.node
 def plan_author_step(
     logger: logging.Logger,
-    roadmap: str,
     blocked: tuple[str, ...] = (),
     repo_dir: str = "",
 ) -> AuthorStep:
     """Select exactly one next stage from the approved roadmap's current artifacts."""
     root = survey_repo_root(repo_dir)
-    roadmap = approved_roadmap(root, roadmap)
+    roadmap = approved_roadmap(root)
     okf = Ostler(root)
     matches = [milestone for milestone in okf.graph.milestones if roadmap in milestone.source_items]
 

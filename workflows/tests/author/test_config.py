@@ -71,7 +71,7 @@ def test_author_config_never_invents_a_surface_inventory(tmp_path: Path) -> None
     )
 
     config = load_config(
-        logging.getLogger("test.author"), roadmap=ROADMAP, repo_dir=str(tmp_path)
+        logging.getLogger("test.author"), repo_dir=str(tmp_path)
     )
 
     assert "surface_manifest" not in config.model_dump()
@@ -90,9 +90,9 @@ def test_epic_authoring_requires_an_approved_roadmap(
     roadmap.parent.mkdir(parents=True)
     roadmap.write_text(_roadmap(status, doc_type=doc_type), encoding="utf-8")
 
-    with pytest.raises(WorkflowFailed, match="approved roadmap"):
+    with pytest.raises(WorkflowFailed, match="requires one roadmap"):
         load_config(
-            logging.getLogger("test.author"), roadmap=ROADMAP, repo_dir=str(tmp_path)
+            logging.getLogger("test.author"), repo_dir=str(tmp_path)
         )
 
 
@@ -101,7 +101,7 @@ def test_epic_authoring_does_not_fall_back_to_a_backlog(tmp_path: Path) -> None:
     backlog.parent.mkdir(parents=True)
     backlog.write_text("# Backlog\n\n- A legacy item\n", encoding="utf-8")
 
-    with pytest.raises(WorkflowFailed, match="roadmap file is required"):
+    with pytest.raises(WorkflowFailed, match="requires one roadmap"):
         load_config(logging.getLogger("test.author"), repo_dir=str(tmp_path))
 
 

@@ -17,12 +17,10 @@ class StoryEdit(Workflow):
     story: str = ""
     reason: str = ""
     force: bool = False
-    backlog: str = ""
-    epics_dir: str = ""
     operator_mode: str = "auto"
 
     def setup(self) -> Config:
-        return self.call(load_config, self.backlog, self.epics_dir, mode="story-edit")
+        return self.call(load_config, mode="story-edit")
 
     def labels(self) -> dict[str, str]:
         work_id = self.story if self.action == "remove" else self.epic
@@ -39,14 +37,10 @@ class StoryEdit(Workflow):
             self.bullet,
             self.reason,
             self.force,
-            self.ctx.backlog_path,
-            self.ctx.epics_dir,
         )
         result = self.handoff(
             EpicEdit,
             intent=intent,
-            backlog=self.backlog,
-            epics_dir=self.epics_dir,
             operator_mode=self.operator_mode,
             branch_run_dir=str(self.run_dir),
         )

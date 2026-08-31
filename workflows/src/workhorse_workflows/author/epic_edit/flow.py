@@ -51,14 +51,12 @@ class EpicEdit(Workflow):
     epic: str = ""
     change: str = ""
     intent: EditIntent = EditIntent()
-    backlog: str = ""
-    epics_dir: str = ""
     force: bool = False
     operator_mode: str = "auto"
     branch_run_dir: str = ""
 
     def setup(self) -> RunContext:
-        cfg = self.call(load_config, self.backlog, self.epics_dir, mode="epic-edit")
+        cfg = self.call(load_config, mode="epic-edit")
         branches = self.call(
             branch_author,
             self.branch_run_dir or str(self.run_dir),
@@ -107,7 +105,7 @@ class EpicEdit(Workflow):
                     failure_class="epic-edit-missing-params",
                 )
             intent = EditIntent(kind="epic", epic=self.epic, change=self.change, force=self.force)
-        snapshot = self.call(snapshot_epic, intent.epic, self.ctx.epics_dir)
+        snapshot = self.call(snapshot_epic, intent.epic)
         return Continue(snapshot, self.plan_edit, intent=intent, snapshot=snapshot)
 
     def plan_edit(self, intent: EditIntent, snapshot: EpicSnapshot) -> Continue:
@@ -324,7 +322,6 @@ class EpicEdit(Workflow):
             applied.epic,
             applied.affected_stories,
             index,
-            self.ctx.epics_dir,
         )
         if not pick.has_story:
             return Continue(pick, self.check_coverage, intent=intent, applied=applied)
@@ -354,7 +351,7 @@ class EpicEdit(Workflow):
                 "story_slug": pick.story_slug,
                 "story_dir": pick.story_dir,
                 "features_dir": self.ctx.features_dir,
-                "mockup_dir": self.ctx.mockup_dir,
+                "epics_dir": self.ctx.epics_dir,
             },
         )
         return Continue(
@@ -387,7 +384,6 @@ class EpicEdit(Workflow):
                 "story_slug": pick.story_slug,
                 "story_dir": pick.story_dir,
                 "features_dir": self.ctx.features_dir,
-                "mockup_dir": self.ctx.mockup_dir,
                 "mockup_path": mockup,
                 "epic_edit": intent.change,
             },
@@ -466,7 +462,6 @@ class EpicEdit(Workflow):
                     "story_slug": pick.story_slug,
                     "story_dir": pick.story_dir,
                     "features_dir": self.ctx.features_dir,
-                    "mockup_dir": self.ctx.mockup_dir,
                     "mockup_path": mockup,
                     "validation_errors": errors,
                     "prior_attempts": ledger.prior_attempts,
@@ -575,7 +570,6 @@ class EpicEdit(Workflow):
                 "story_slug": pick.story_slug,
                 "story_dir": pick.story_dir,
                 "features_dir": self.ctx.features_dir,
-                "mockup_dir": self.ctx.mockup_dir,
                 "mockup_path": mockup,
                 "validation_errors": findings,
                 "prior_attempts": ledger.prior_attempts,
@@ -621,7 +615,7 @@ class EpicEdit(Workflow):
         return Continue(review, self.finish, intent=intent, applied=applied)
 
     def finish(self, intent: EditIntent, applied: AppliedEpicEdit) -> Done:
-        report = self.call(verify_integrity, "", self.ctx.epics_dir)
+        report = self.call(verify_integrity, "")
         if not report.holds and not report.skipped:
             self.call(commit_author, "incomplete", applied.epic, intent.change)
             raise WorkflowFailed(
@@ -630,7 +624,7 @@ class EpicEdit(Workflow):
                 artifacts={"epic_dir": str(applied.epic_dir)},
             )
         if intent.kind == "add-story" and intent.from_backlog:
-            self.call(prune_bullet, self.backlog, intent.bullet_id, True)
+            self.call(prune_bullet, intent.bullet_id, True)
         self.call(commit_author, "epic-edit", applied.epic, intent.change)
         return Done(applied)
 

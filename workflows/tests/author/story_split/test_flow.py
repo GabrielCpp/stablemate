@@ -91,7 +91,7 @@ def test_accepts_one_epic_graph_without_selecting_authoring_or_git(
     head_before = _git(repo, "rev-parse", "--verify", "HEAD")
 
     result = drive(
-        StorySplitFlow(epic=EPIC, repo_dir=str(repo), epics_dir="docs/epics"),
+        StorySplitFlow(epic=EPIC, repo_dir=str(repo)),
         _env(tmp_path, agent),
     )
 
@@ -114,7 +114,7 @@ def test_coverage_findings_drive_a_bounded_resplit_worklist(
     reports = [Defects(ok=False, errors="[orphan-seed] reset"), Defects(ok=True), Defects(ok=True)]
 
     result = drive(
-        StorySplitFlow(epic=EPIC, repo_dir=str(repo), epics_dir="docs/epics"),
+        StorySplitFlow(epic=EPIC, repo_dir=str(repo)),
         _env(tmp_path, agent, reports),
     )
 
@@ -140,7 +140,7 @@ def test_blocked_coverage_resolves_then_rechecks_the_same_epic(
     env = _env(tmp_path, agent, [Defects(ok=True), Defects(ok=True)])
     with patch.object(pyflow_driver, "wait_for_answer", answered):
         result = drive(
-            StorySplitFlow(epic=EPIC, repo_dir=str(repo), epics_dir="docs/epics"),
+            StorySplitFlow(epic=EPIC, repo_dir=str(repo)),
             replace(env, agent_runner=StubRunner(agent)),
         )
 

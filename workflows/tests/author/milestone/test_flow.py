@@ -71,7 +71,7 @@ def test_builds_then_reuses_one_milestone_without_epics(repo: Path, tmp_path: Pa
 
     first_agent = _Agent(repo)
     first = drive(
-        Milestone(roadmap=ROADMAP, repo_dir=str(repo)),
+        Milestone(repo_dir=str(repo)),
         replace(_env(tmp_path), agent_runner=StubRunner(first_agent)),
     )
 
@@ -84,7 +84,7 @@ def test_builds_then_reuses_one_milestone_without_epics(repo: Path, tmp_path: Pa
 
     second_agent = _Agent(repo)
     second = drive(
-        Milestone(roadmap=ROADMAP, repo_dir=str(repo)),
+        Milestone(repo_dir=str(repo)),
         replace(_env(tmp_path / "again"), agent_runner=StubRunner(second_agent)),
     )
 
@@ -96,7 +96,7 @@ def test_builds_then_reuses_one_milestone_without_epics(repo: Path, tmp_path: Pa
 
 def test_validation_rejects_an_epic_created_by_the_milestone_stage(repo: Path) -> None:
     _roadmap(repo)
-    context = prepare_milestone(logging.getLogger("test"), ROADMAP, repo_dir=str(repo))
+    context = prepare_milestone(logging.getLogger("test"), repo_dir=str(repo))
     okf = Ostler(repo)
     assert okf.create_milestone("account-access", "Account access", source_items=[ROADMAP]).ok
     assert okf.create_epic("sign-in", "Sign in").ok

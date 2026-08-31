@@ -23,25 +23,21 @@ UNBOUNDED = float("inf")
 class EpicSplit(Workflow):
     """The epic-skeleton boundary; epic prose, seeds, stories, and delivery are unreachable."""
 
-    roadmap: str = ""
-    epics_dir: str = ""
     operator_mode: str = "auto"
 
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("reworks", "resolves")
 
     def setup(self) -> EpicSplitContext:
-        return self.call(prepare_epic_split, self.roadmap, self.epics_dir)
+        return self.call(prepare_epic_split)
 
     def labels(self) -> dict[str, str]:
-        return {"work_id": Path(self.roadmap).stem}
+        return {"work_id": Path(self.ctx.roadmap).stem}
 
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
         return self.labels() | counter_labels(params, "epic_split", self.BUDGET_LABELS)
 
     def _context_path(self) -> Path:
-        return Path(self.ctx.repo_root) / paths.author_context(
-            self.ctx.repo_root, self.ctx.epics_dir
-        )
+        return Path(self.ctx.repo_root) / paths.author_context(self.ctx.repo_root)
 
     def _split_args(self, review_notes: str = "") -> dict[str, str]:
         return {

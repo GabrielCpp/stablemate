@@ -399,7 +399,7 @@ def test_the_survey_directory_travels_with_the_parameters(
 ) -> None:
     partition = "docs/survey/legacy-vs-new/partition.yaml"
     inventory = "docs/survey/legacy-vs-new/inventory.json"
-    backlog = "docs/legacy-backlog.md"
+    backlog = "docs/backlog.md"
     manifest = "docs/survey/legacy-vs-new/unit-manifest.json"
     write(repo / partition, yaml.safe_dump({"clusters": [_cluster("x-y", ["legacy/q1"])]}))
     write_json(repo / inventory, {"units": [_unit("legacy/q1")]})
@@ -409,7 +409,6 @@ def test_the_survey_directory_travels_with_the_parameters(
         logger,
         partition=partition,
         inventory=inventory,
-        backlog=backlog,
         unit_manifest=manifest,
     )
 

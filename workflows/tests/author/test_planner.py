@@ -97,14 +97,14 @@ def install(
         fake = _Ostler(tmp_path, milestones, epics)
         monkeypatch.setattr(planner, "Ostler", lambda _root: fake)
         monkeypatch.setattr(planner, "survey_repo_root", lambda _repo: tmp_path)
-        monkeypatch.setattr(planner, "approved_roadmap", lambda _root, roadmap: roadmap)
+        monkeypatch.setattr(planner, "approved_roadmap", lambda _root: ROADMAP)
         return fake
 
     return _install
 
 
 def _plan() -> Any:
-    return planner.plan_author_step(logging.getLogger("test"), ROADMAP, repo_dir="unused")
+    return planner.plan_author_step(logging.getLogger("test"), repo_dir="unused")
 
 
 def test_missing_milestone_is_the_next_unit(install: Any) -> None:
@@ -220,7 +220,6 @@ def test_blocked_story_is_skipped_for_the_remainder_of_one_main_run(install: Any
 
     step = planner.plan_author_step(
         logging.getLogger("test"),
-        ROADMAP,
         blocked=("accounts/sign-in",),
         repo_dir="unused",
     )

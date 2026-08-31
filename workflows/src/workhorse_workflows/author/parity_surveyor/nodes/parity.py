@@ -55,10 +55,7 @@ def parity_slug(value: str) -> str:
 def load_parity_config(
     logger: logging.Logger,
     baseline: str,
-    target: str = "",
     survey_dir: str = "docs/survey/legacy-vs-new",
-    backlog: str = "",
-    epics: str = "",
     repo_dir: str = "",
 ) -> ParityConfig:
     """Resolve and validate the two documentation inventories being compared.
@@ -71,9 +68,9 @@ def load_parity_config(
     survey_dir = survey_dir.strip() or "docs/survey/legacy-vs-new"
 
     root = launch_repo_root(repo_dir)
-    target = paths.features_dir(root, target)
-    backlog = paths.backlog_file(root, backlog)
-    epics = paths.epics_dir(root, epics)
+    target = paths.features_dir(root)
+    backlog = paths.backlog_file(root)
+    epics = paths.epics_dir(root)
     if not baseline or not (root / baseline).is_file():
         logger.warning("baseline inventory not found: %s", baseline or "(empty)")
         raise WorkflowFailed(
@@ -208,7 +205,6 @@ def emit_parity_backlog(
     logger: logging.Logger,
     inventory: str,
     findings_dir: str,
-    backlog: str,
     unit_manifest: str,
     repo_dir: str = "",
 ) -> EmitResult:
@@ -219,6 +215,7 @@ def emit_parity_backlog(
     rather than an absence.
     """
     root = launch_repo_root(repo_dir)
+    backlog = paths.backlog_file(root)
     try:
         data = json.loads((root / inventory).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:

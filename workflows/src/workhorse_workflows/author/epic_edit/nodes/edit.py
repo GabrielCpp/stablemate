@@ -36,7 +36,6 @@ _REQUIRED_EPIC_SECTIONS = (
 def _snapshot_stub(
     logger: logging.Logger,
     epic: str = "",
-    epics_dir: str = "",
     repo_dir: str = "",
 ) -> EpicSnapshot:
     return EpicSnapshot()
@@ -64,12 +63,11 @@ def _hash(path: Path) -> str:
 def snapshot_epic(
     logger: logging.Logger,
     epic: str = "",
-    epics_dir: str = "",
     repo_dir: str = "",
 ) -> EpicSnapshot:
     """Capture the graph and story-body baseline an edit is allowed to change."""
-    resolved_epics_dir = paths.epics_dir(repo_dir, epics_dir)
-    okf = Ostler(repo_dir, doc_roots={"epics": resolved_epics_dir})
+    resolved_epics_dir = paths.epics_dir(repo_dir)
+    okf = Ostler(repo_dir)
     frozen = (okf.graph.ids or {}).get("frozen") or {}
     wanted = registry.epic_slug(epic)
     epic_row = next(
@@ -79,7 +77,7 @@ def snapshot_epic(
     if epic_row is None:
         raise WorkflowFailed(f"epic '{epic}' does not exist")
     name = str(epic_row["name"])
-    epic_dir_rel = paths.epic_dir(repo_dir, name, epics_dir)
+    epic_dir_rel = paths.epic_dir(repo_dir, name)
     seeds = [
         SeedSnapshot(
             id=str(row["id"]),
@@ -319,7 +317,7 @@ def apply_edit_plan(
     repo_dir: str = "",
 ) -> AppliedEpicEdit:
     """Apply one validated plan idempotently through Ostler's structural APIs."""
-    okf = Ostler(repo_dir, doc_roots={"epics": snapshot.epics_dir})
+    okf = Ostler(repo_dir)
     epic = snapshot.epic
     for change in plan.story_changes:
         if change.action == "remove" and any(
@@ -424,7 +422,7 @@ def validate_applied_edit(
     repo_dir: str = "",
 ) -> Defects:
     """Prove disk matches the approved graph and unaffected story bodies remain byte-stable."""
-    okf = Ostler(repo_dir, doc_roots={"epics": snapshot.epics_dir})
+    okf = Ostler(repo_dir)
     if applied.deleted:
         exists = any(
             registry.epic_slug(str(row["name"])) == registry.epic_slug(snapshot.epic)
@@ -532,7 +530,6 @@ def select_affected_story(
     epic: str,
     affected_stories: list[str],
     index: int,
-    epics_dir: str = "",
     repo_dir: str = "",
 ) -> StoryChoice:
     """Resolve the next approved affected story without widening the edit worklist."""
@@ -542,10 +539,7 @@ def select_affected_story(
     row = next(
         (
             row
-            for row in Ostler(
-                repo_dir,
-                doc_roots={"epics": epics_dir} if epics_dir else {},
-            ).list("story", epic=epic)
+            for row in Ostler(repo_dir).list("story", epic=epic)
             if str(row["slug"]) == slug
         ),
         None,

@@ -31,7 +31,6 @@ class Config(AuthorResult):
     roadmap_path: str = ""
     epics_dir: str = ""
     features_dir: str = ""
-    mockup_dir: str = ""
     layers: list[str] = []
 
 

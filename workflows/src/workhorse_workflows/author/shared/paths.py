@@ -92,48 +92,37 @@ def _rel(root: str | Path, target: Path) -> str:
         return target.as_posix()
 
 
-def epics_dir(root: str | Path, configured: str = "") -> str:
-    """Where epics live, repo-relative: what the run was told, else what ostler says.
+def epics_dir(root: str | Path) -> str:
+    """Where epics live, repo-relative — ostler's answer, read from `docRoots:`.
 
-    `configured` is the run's `epics_dir` parameter — an operator pointing the run at a
-    non-standard tree. Empty (the normal case) asks ostler, which reads `docRoots:`, so the
-    workflow carries no `docs/epics` literal of its own to fall out of date.
+    There is no parameter that can move it. One used to exist, and what it bought was a run
+    writing epics into a tree `ostler backlog`, `coverage` and `doctor` do not read: two
+    records of one location, with the copy winning.
     """
-    return configured.strip().rstrip("/") or _rel(root, okf_path.epics_root_in(Path(root)))
+    return _rel(root, okf_path.epics_root_in(Path(root)))
 
 
-def backlog_file(root: str | Path, configured: str = "") -> str:
-    """The worklist, repo-relative: what the run was told, else where ostler keeps it.
+def backlog_file(root: str | Path) -> str:
+    """The worklist, repo-relative — where ostler keeps it.
 
-    A run scoped to a subset of the work points `backlog` at its own file, which is why the
-    parameter wins; ostler answers for the unscoped run so `docs/backlog.md` is written in
-    exactly one place — the same place `ostler backlog` reads.
+    A run scoped to a subset of the work says so in `docRoots: backlog:`, where `ostler
+    backlog` and `doctor` read the same answer. A parameter here could only disagree with
+    them.
     """
-    return configured.strip() or _rel(root, okf_path.backlog_path_in(Path(root)))
+    return _rel(root, okf_path.backlog_path_in(Path(root)))
 
 
-def roadmap_file(root: str | Path, configured: str) -> str:
-    """The one roadmap Author consumes, normalized to a repo-relative path."""
-    value = configured.strip()
-    if not value:
-        return ""
-    target = Path(value)
-    if not target.is_absolute():
-        target = Path(root) / target
-    return _rel(root, target)
+def roadmaps_dir(root: str | Path) -> str:
+    """Where roadmaps live, repo-relative — the location ostler was finally taught."""
+    return _rel(root, okf_path.roadmaps_root_in(Path(root)))
 
 
-def features_dir(root: str | Path, configured: str = "") -> str:
-    """The OKF feature book, repo-relative: what `template.features_dir` says, else ostler's.
-
-    The config key stays authoritative because a repo may point the author at a book it does
-    not own — a shared book in a sibling checkout. Unset, the book is wherever this repo's
-    `docRoots:` puts it, which is the same directory `ostler coverage` reads.
-    """
-    return configured.strip().rstrip("/") or _rel(root, okf_path.features_root_in(Path(root)))
+def features_dir(root: str | Path) -> str:
+    """The OKF feature book, repo-relative — the same directory `ostler coverage` reads."""
+    return _rel(root, okf_path.features_root_in(Path(root)))
 
 
-def epic_dir(root: str | Path, epic: str, configured: str = "") -> str:
+def epic_dir(root: str | Path, epic: str) -> str:
     """Where one epic's artifacts live, repo-relative — ostler resolves the folder.
 
     Epic folders are numbered (`0001-checkout`) while the queue, the prompts and an
@@ -142,7 +131,7 @@ def epic_dir(root: str | Path, epic: str, configured: str = "") -> str:
     one. A name that resolves to nothing comes back as the literal join, so a caller keeps
     reporting the name it was handed.
     """
-    epics_root = Path(root) / epics_dir(root, configured)
+    epics_root = Path(root) / epics_dir(root)
     return _rel(root, okf_path.epic_dir_under(epics_root, epic))
 
 
@@ -156,13 +145,13 @@ def story_dir(epic_dir_rel: str, slug: str) -> str:
     return okf_path.story_dir_under(Path(epic_dir_rel), slug).as_posix()
 
 
-def author_context(root: str | Path, configured: str = "") -> str:
+def author_context(root: str | Path) -> str:
     """The run-wide operator context file: the whole-backlog gates write here.
 
     The *name* is this workflow's (`_author-context.md`, leading underscore so it sorts
     above the epics it sits beside); the directory is ostler's.
     """
-    return f"{epics_dir(root, configured)}/_author-context.md"
+    return f"{epics_dir(root)}/_author-context.md"
 
 
 def epic_context(epic_dir_rel: str) -> str:
@@ -183,7 +172,7 @@ __all__ = [
     "epics_dir",
     "features_dir",
     "launch_repo_root",
-    "roadmap_file",
+    "roadmaps_dir",
     "story_context",
     "story_dir",
     "survey_repo_root",

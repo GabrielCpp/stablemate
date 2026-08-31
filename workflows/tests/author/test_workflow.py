@@ -78,7 +78,7 @@ EPIC_NAME = f"0001-{EPIC}"
 SECOND_EPIC_NAME = f"0002-{SECOND_EPIC}"
 EPIC_DIR = f"{EPICS}/{EPIC_NAME}"
 SECOND_EPIC_DIR = f"{EPICS}/{SECOND_EPIC_NAME}"
-#: The run-wide operator context file — `paths.author_context(epics_dir)`.
+#: The run-wide operator context file — `paths.author_context(repo_root)`.
 CONTEXT = f"{EPICS}/_author-context.md"
 
 #: The two roadmap journey details the scripted epic writer turns into seeds.
@@ -803,9 +803,6 @@ def _drive(
     **inputs: Any,
 ) -> Any:
     """Drive `Author`, optionally scripting an operator gate."""
-    if inputs.get("mode", "epic") == "epic":
-        inputs.setdefault("roadmap", ROADMAP)
-
     def _wait_for_answer(path: Path, **kwargs: Any) -> Any:
         if wait_for_answer is not None:
             return wait_for_answer(path, **kwargs)
@@ -849,7 +846,7 @@ def test_epic_mode_authors_one_roadmap_milestone_and_commits_it(
     """
     backlog_before = (backlogged / BACKLOG).read_bytes()
     agent = _Agent(backlogged)
-    result = _drive(_env(tmp_path), agent, roadmap=ROADMAP)
+    result = _drive(_env(tmp_path), agent)
 
     assert agent.counts() == {
         "build-milestone": 1,
@@ -917,7 +914,6 @@ def test_story_prune_preserves_a_parent_with_nested_work(backlogged: Path) -> No
 
     result = prune_bullet(
         logging.getLogger("test"),
-        backlog=BACKLOG,
         bullet_id="parent",
         from_backlog=True,
         repo_dir=str(backlogged),
@@ -982,10 +978,11 @@ def test_every_prompt_is_told_the_resolved_paths_not_the_blank_parameters(
 ) -> None:
     """`epics_dir` and `roadmap` reach prompts as what `load_config` resolved.
 
-    Both parameters default to blank, and blank is the *normal* case — it means "ask
-    ostler". The prompts rendered the raw parameter, so every default run told its agent
-    `Epics directory: ``, and every path the prompt built from it came out rooted at `/`.
-    An agent handed no epics directory goes looking for one, and on a machine holding more
+    There is no parameter for either any more: both are ostler's answer, read once in
+    `load_config` and carried on the run context. The parameters that used to exist
+    defaulted to blank, the prompts rendered the raw value, and every default run told its
+    agent `Epics directory: ``, so every path the prompt built came out rooted at `/`. An
+    agent handed no epics directory goes looking for one, and on a machine holding more
     than one checkout it finds the wrong repo's: two benchmark runs decomposed the
     *harness'* planning docs into the target and left the target's epics index empty.
     """
@@ -1439,9 +1436,18 @@ def test_story_edit_remove_reconciles_remaining_epic_scope_and_journey(
     assert (with_epic / EPIC_DIR / "stories/keep-story/story.md").read_bytes() == kept_before
 
 
-def test_story_edit_mutates_the_overridden_epics_root(backlogged: Path, tmp_path: Path) -> None:
+def test_story_edit_follows_the_configured_epics_root(backlogged: Path, tmp_path: Path) -> None:
+    """A repo that moved its epics in `docRoots:` is followed, with no parameter to disagree.
+
+    The run reads the same answer `ostler backlog`, `coverage` and `doctor` read. There is
+    no `epics_dir` to hand it a different one — the mode where a run edited a tree the rest
+    of the toolchain does not look at.
+    """
     custom_epics = "product/epics"
-    okf = Ostler(backlogged, doc_roots={"epics": custom_epics})
+    (backlogged / "ostler.yml").write_text(
+        f"organization:\n  docRoots:\n    epics: {custom_epics}\n", encoding="utf-8"
+    )
+    okf = Ostler(backlogged)
     assert okf.create_epic(EPIC, "Accounts").ok
     assert okf.create_story(EPIC, "remove-story", "Remove").ok
     _commit(backlogged, "custom epic root")
@@ -1451,11 +1457,10 @@ def test_story_edit_mutates_the_overridden_epics_root(backlogged: Path, tmp_path
         _Agent(backlogged),
         action="remove",
         story="remove-story",
-        epics_dir=custom_epics,
     )
 
     assert not (backlogged / custom_epics / EPIC_NAME).exists()
-    assert not (backlogged / EPICS).exists()
+    assert not (backlogged / EPICS / EPIC_NAME).exists()
 
 
 def test_epic_edit_static_findings_drive_a_replacement_plan(

@@ -144,9 +144,6 @@ class Surveyor(Workflow):
     #: Where this survey's own artifacts live: rules, frozen inventory, finding records,
     #: partition, unit manifest and the operator context file.
     survey_dir: str = "docs/survey"
-    #: What emission appends its generated bullets to, inside its own fence. Blank — the
-    #: normal case — means the backlog ostler keeps for this repo.
-    backlog: str = ""
     #: `auto` lets the resolver agent stand in for the human at every gate; `human` sends
     #: every block straight to the context file. Anything else reads as `auto`, which is
     #: the YAML's `cases: {human: …}` with `default:` on the autonomous arm.
@@ -159,7 +156,7 @@ class Surveyor(Workflow):
         paths and none of them decides one.
         """
         return self.call(
-            load_survey_config, self.rubric, self.survey_dir, self.backlog
+            load_survey_config, self.rubric, self.survey_dir
         )
 
     def labels(self) -> dict[str, str]:
@@ -644,7 +641,6 @@ class Surveyor(Workflow):
             emit_artifacts,
             self.ctx.partition,
             self.ctx.inventory,
-            self.ctx.backlog,
             self.ctx.unit_manifest,
         )
         if not result.emit_ok:

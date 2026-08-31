@@ -89,16 +89,16 @@ def _kebab(text: str, *, max_len: int = 60) -> str:
     return slug or "story"
 
 
-def resolve_bullet(root: Path, bullet: str, backlog_rel: str) -> ResolvedBullet:
-    """Resolve one requested bullet against the configured backlog.
+def resolve_bullet(root: Path, bullet: str) -> ResolvedBullet:
+    """Resolve one requested bullet against the repo's backlog.
 
-    `backlog_rel` is the run's backlog — not always the repo's default one. A repo that
-    scopes a run to a subset of its work points `backlog` at a separate file, and this must
-    follow: an id resolved against the wrong file comes back `from_backlog=False`, which reads as
+    The backlog is ostler's answer, so a run scoped to a subset of the work says so in
+    `docRoots: backlog:` and every reader follows together. It used to be a parameter, and
+    an id resolved against the wrong file came back `from_backlog=False` — which reads as
     "literal text the operator typed" and makes the prune tail skip the bullet. The story is
     authored, the bullet is never consumed, and the next run re-authors it.
     """
-    backlog_path = root / paths.backlog_file(root, backlog_rel)
+    backlog_path = root / paths.backlog_file(root)
     raw = bullet.strip()
     bare = raw[1:-1].strip() if raw.startswith("[") and raw.endswith("]") else raw
 
@@ -128,9 +128,7 @@ def resolve_bullet(root: Path, bullet: str, backlog_rel: str) -> ResolvedBullet:
 def seed_story(
     logger: logging.Logger,
     epic: str = "",
-    epics_dir: str = "",
     bullet: str = "",
-    backlog: str = "",
     layers: str = "",
     services: str = "",
     repo_dir: str = "",
@@ -161,11 +159,10 @@ def seed_story(
 
     root = survey_repo_root(repo_dir)
     okf = Ostler(root)
-    backlog_rel = paths.backlog_file(root, backlog)
     # ostler names the folder, not a join here: epic directories carry their creation order
     # (`0001-accounts`) and story mode is invoked with the bare slug, so a literal join would
-    # report a missing epic for one that is right there. `epics_dir` still says which root.
-    epic_dir_rel = paths.epic_dir(root, epic, epics_dir)
+    # report a missing epic for one that is right there.
+    epic_dir_rel = paths.epic_dir(root, epic)
     epic_dir_abs = root / epic_dir_rel
 
     if not (epic_dir_abs / "epic.md").is_file():
@@ -174,7 +171,7 @@ def seed_story(
             "EXISTING epic and never creates one; run epic mode first or fix the epic slug"
         )
 
-    resolved = resolve_bullet(root, bullet, backlog_rel)
+    resolved = resolve_bullet(root, bullet)
     bullet_id = resolved.id
     source_bullet = resolved.source_bullet
     from_backlog = resolved.from_backlog
@@ -707,7 +704,6 @@ def check_story_feedback(logger: logging.Logger, run_dir: str = "") -> Feedback:
 @blueprint.node
 def prune_bullet(
     logger: logging.Logger,
-    backlog: str = "",
     bullet_id: str = "",
     from_backlog: bool = False,
     repo_dir: str = "",
@@ -725,7 +721,7 @@ def prune_bullet(
         return Pruned()
 
     root = survey_repo_root(repo_dir)
-    backlog_rel = paths.backlog_file(root, backlog)
+    backlog_rel = paths.backlog_file(root)
     backlog_path = root / backlog_rel
     if not backlog_path.is_file():
         logger.info("no backlog at %s — nothing to prune", backlog_path)

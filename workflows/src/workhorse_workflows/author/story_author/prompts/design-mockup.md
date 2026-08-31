@@ -32,15 +32,16 @@ say so and return cleanly; the writer falls back to the feature doc / reference.
   **Read it; never write to it.** Where it already describes this surface in part, it is the content
   the mockup must depict. Do not inspect the app or source code to discover surfaces.
 {%- endif %}
-- Prior mockup/design reference dir: `{{ workhorse_var('mockup_dir') }}` — read existing examples from
-  here when present, but do not write the new story's source of truth there.
+- Prior mockups: `mockup.html` beside earlier stories under `{{ workhorse_var('epics_dir') }}` —
+  read one or two as exemplars when they exist. There is no gallery directory to write into; a
+  mockup belongs to the story that needed it.
 - Story-local mockup path: `{{ workhorse_var('story_dir') }}/mockup.html` — write the mockup here.
 
 ## Produce the mockup (in the app's style)
 
 1. **Learn the app's style.** Read the project's design system before drawing anything: its design
    tokens (colors, typography, spacing, radii, shadows), a `.superdesign/` design-system file if present,
-   and 1–2 existing mockups under the prior mockup/design reference dir as exemplars. The mockup MUST use these tokens —
+   and 1–2 prior story mockups as exemplars. The mockup MUST use these tokens —
    never invent a new palette, type scale, or component language.
 2. **Generate with superdesign when available.** Prefer the **superdesign** design skill if it is
    installed — it analyses the repo's design tokens and produces mockups in the app's style. The

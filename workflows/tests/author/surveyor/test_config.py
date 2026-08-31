@@ -49,7 +49,6 @@ def test_survey_dir_moves_the_whole_convention_with_it(
         logger,
         rubric="docs/survey/legacy-vs-new/rubric.md",
         survey_dir="docs/survey/legacy-vs-new",
-        backlog="docs/backlog.md",
     )
 
     assert cfg.inventory == "docs/survey/legacy-vs-new/inventory.json"
@@ -63,7 +62,7 @@ def test_blank_parameters_fall_back_to_the_defaults(
     is why the script stripped each argument before defaulting it."""
     write(repo / "docs/survey/rubric.md", "# concern\n")
 
-    cfg = load_survey_config(logger, rubric="  ", survey_dir="", backlog=" ")
+    cfg = load_survey_config(logger, rubric="  ", survey_dir="")
 
     assert cfg.rubric == "docs/survey/rubric.md"
     assert cfg.survey_dir == "docs/survey"
