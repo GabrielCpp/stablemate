@@ -290,6 +290,8 @@ workhorse-coder control --run <id> reload                 # cut the turn, re-ent
 workhorse-coder control --run <id> reload --at-boundary   # let the turn land first
 workhorse-coder control --run <id> reload --core          # …and replace workhorse itself
 workhorse-coder control --run <id> status                 # is this process still serving this run dir
+workhorse-coder control --run <id> questions              # what is this run asking an operator?
+workhorse-coder control --run <id> answer --text "go"     # answer the gate it is parked on
 workhorse-coder control --run <id> switch-cli claude      # move it onto another agent CLI
 workhorse-coder control --run <id> switch-profile cheap   # move it onto another set of models
 ```

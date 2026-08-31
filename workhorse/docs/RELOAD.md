@@ -76,7 +76,48 @@ turns, and the command says which of the two it saw rather than smoothing them t
 
 `status` is answered *below* every wait rather than by one, which is what makes it safe to
 ask of the run most worth asking about: a run six days into a cap window is answered from
-inside that window, and the window is not shortened by having been asked.
+inside that window, and the window is not shortened by having been asked. When the run is
+parked on an operator gate, `status` also names it: `waiting_on` carries the gate file's
+path and `wait_kind` what sort of wait it is.
+
+## Answering an operator gate (`control questions` / `control answer`)
+
+An `Await(kind="operator")` parks the run on a gate file until someone answers. The same
+channel that carries a reload carries that conversation, so the operator (or groom on
+their behalf) talks to the run instead of to its files:
+
+```bash
+workhorse-coder control --run <id> questions                    # what is this run asking?
+workhorse-coder control --run <id> answer --text "ship it"      # answer the gate it waits on
+workhorse-coder control --run <id> answer --gate /abs/path.md   # …naming the gate explicitly
+```
+
+`questions` is answered in-band under every wait, like `status` — it never ends one. The
+reply is `{"ok": true, "questions": [{"path", "question", "kind", "since"}]}`, with the
+question text read live from the gate file, and an empty list when the run is not blocked
+on a gate.
+
+`answer` is the one verb that *ends* a wait, so only the operator wait accepts it; at any
+other wait it is refused with `{"ok": false, "error": "this run is not blocked on an
+operator gate right now"}` and the window is left intact. At the gate itself:
+
+- a `--gate` path that is not the gate this run is waiting on is refused by name —
+  `{"ok": false, "error": "this run is waiting on <path>, not <that>"}` — and the wait
+  continues; omitted, the answer lands on whichever gate the run is parked on;
+- a gate already answered is refused with `{"ok": false, "error": "already answered"}`,
+  so a second answer can never overwrite the first;
+- otherwise the run **persists first** — it writes the answer into its own gate file
+  (`STATUS: ANSWERED` plus the operator's prose) — and only then replies
+  `{"ok": true, "path": ...}`. The file is the durable record: if the process dies right
+  after replying, the resume reads the answered gate and proceeds.
+
+The socket is the prompt path, not the only one. The wait keeps re-reading the gate file
+every `WORKHORSE_AWAIT_POLL_S` (15s), so an answer written to the file by hand — or by a
+groom falling back because nothing was listening — still lands; the socket only makes it
+immediate. Symmetrically, a `reload` or `switch-cli` delivered to a parked operator wait
+cuts the wait *now* rather than after the answer: the checkpoint already carries
+`waiting_on`, so the resume re-arms the same wait on the same gate and the run parks
+again, having lost nothing.
 
 ## Moving a run onto another agent CLI (`control switch-cli`)
 
