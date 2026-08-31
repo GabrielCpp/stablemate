@@ -164,6 +164,29 @@ class Workflow(BaseModel):
     #: the operator's setting, because a flow that legitimately needs 4000 hops knows
     #: that about itself and the operator does not.
     max_transitions: ClassVar[int] = 0
+    #: State parameters whose *value changing* means the run moved forward, so the
+    #: transition budget refills to full. Empty = never refills, the flat ceiling.
+    #:
+    #: A drain's transition count is a function of its backlog, not of its shape: at
+    #: four hops an item, any fixed budget names a backlog size above which a perfectly
+    #: healthy run dies, and the operator's only recourse is to raise a number nobody
+    #: can compute in advance. Meanwhile the thing the budget exists to catch — "two
+    #: states handing each other back and forth" — is not a count of transitions at all.
+    #: It is transitions that *achieve nothing*, and only the workflow knows which of
+    #: its parameters says otherwise. So it names one: `{"progress"}` on a worklist
+    #: drain refills the tank each time `"3386/4378"` becomes `"3387/4378"`, and a
+    #: ping-pong between two states — where that string never moves — still dies on
+    #: exactly the budget it always did.
+    #:
+    #: Declared, never inferred, for the reason `INFRA_NODES` gives: the driver is
+    #: generic and must not learn what a parameter *means* from its name. It only ever
+    #: asks whether the value it was pointed at is the same one as last time.
+    #:
+    #: This is the YAML engine's `refuel: <key>`, which the pyflow port dropped for want
+    #: of a gas tank. A refilling budget is not an unbounded run: `max_items` gates the
+    #: items, `WORKHORSE_MAX_RUNTIME_S` gates the clock, and both stop a run that is
+    #: progressing — which is what a budget on *stalling* must not do.
+    REFUEL_ON: ClassVar[frozenset[str]] = frozenset()
 
     # --- registration -------------------------------------------------------
 

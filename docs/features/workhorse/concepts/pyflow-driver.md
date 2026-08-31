@@ -54,7 +54,12 @@ unchanged by that, which is why a ported workflow's operator knobs still mean wh
    `waiting_on` set, and polls. Anything else is a `WorkflowFailed` — a state that falls off the
    end returning `None` is a bug, not a terminal.
 6. **Budget.** Each hop burns one unit of `max_transitions` (`WORKHORSE_MAX_TRANSITIONS`,
-   default 1000). Exhaustion raises `WorkflowFailed`. That, plus the wall-clock
+   default 1000). Exhaustion raises `WorkflowFailed`. A workflow that declares
+   `REFUEL_ON = {"<param>"}` refills that budget to full whenever the named state parameter
+   takes a new value, so what the count bounds is transitions *since the last forward step* —
+   a drain's backlog stops being a number the operator must have predicted, while a
+   ping-pong between two states, where the parameter never moves, still dies on the same
+   1000. That, plus the wall-clock
    `WORKHORSE_MAX_RUNTIME_S` deadline checked between states, is the whole runaway bound —
    there is no per-node fuel budget, because a Python `for` loop is not a cycle in a graph.
 

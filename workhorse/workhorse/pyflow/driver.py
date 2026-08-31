@@ -464,11 +464,29 @@ def drive(
     ctx_payload = _ctx_payload(wf)
     flow_name = type(wf).__name__
     budget = type(wf).max_transitions or env.config.max_transitions
+    refuel_on = type(wf).REFUEL_ON
+    # What the budget actually bounds: transitions *since the last forward step*. With
+    # no `REFUEL_ON` no token is ever produced, nothing refills, and this is the flat
+    # ceiling it has always been. See `Workflow.REFUEL_ON` for why a drain needs the
+    # other reading.
+    remaining, refuel_token = budget, None
     # One tracker per logger, so an activity a sub-flow sets survives the parent's
     # next transition instead of being published over by a second instance.
     activity = activity_log.install(env.log)
 
-    for _ in range(budget):
+    while True:
+        token = _refuel_token(refuel_on, params)
+        if token is not None and token != refuel_token:
+            # The first token of a run is a sighting, not a refuel — there is nothing
+            # to compare it against and the tank is full anyway. Counting it would put
+            # a refuel on the meter for every drain that ever started one item.
+            if refuel_token is not None:
+                env.log.debug("[workhorse] refuel → %s (%s)", token, state)
+                otel.gas_refuel(state)
+            refuel_token, remaining = token, budget
+        if remaining <= 0:
+            break
+        remaining -= 1
         spec = type(wf).resolve_state(state)
         bound = getattr(wf, spec.name)
         kwargs = coerce_params(bound, params, state=spec.name)
@@ -588,12 +606,34 @@ def drive(
                 _park(outcome.path, env, kind=outcome.kind)
         state, params = outcome.state, outcome.params
 
+    spent = (
+        f"{budget} transitions without forward progress "
+        f"(the last one this run recorded was {refuel_token})"
+        if refuel_on
+        else f"{budget} transitions"
+    )
     raise WorkflowFailed(
-        f"transition budget exhausted after {budget} transitions (last state "
+        f"transition budget exhausted after {spent} (last state "
         f"'{state}'). Raise WORKHORSE_MAX_TRANSITIONS if the run is genuinely that "
         "long, or look for two states handing each other back and forth.",
         failure_class="transition-budget-exhausted",
     )
+
+
+def _refuel_token(keys: frozenset[str], params: dict[str, Any]) -> str | None:
+    """The value of `keys` in `params`, as one comparable string — or `None`.
+
+    `None` means "this hop says nothing about progress", which is different from "no
+    progress": a state that does not take the parameter leaves the last token standing
+    rather than clearing it, so returning to the drain from a checkpoint round does not
+    read as a fresh advance.
+    """
+    if not keys:
+        return None
+    seen = {k: params[k] for k in sorted(keys) if k in params}
+    if not seen:
+        return None
+    return repr(jsonable(seen))
 
 
 def _labels(wf: Workflow, log: logging.Logger, params: dict[str, Any]) -> dict[str, str]:

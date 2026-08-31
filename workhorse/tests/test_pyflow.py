@@ -371,6 +371,88 @@ def test_a_workflow_that_pins_no_budget_uses_the_runs_own():
         assert "transition budget exhausted after 3" in str(exc), exc
 
 
+def test_a_declared_progress_parameter_refills_the_budget():
+    """A drain outlives a budget far smaller than its backlog.
+
+    Six transitions on a budget of four: without the refill this dies on item three.
+    What the budget bounds under `REFUEL_ON` is transitions since the last forward
+    step, and every lap here takes one.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+
+        class Drain(Workflow):
+            max_transitions = 4
+            REFUEL_ON = frozenset({"progress"})
+
+            def start(self) -> Transition:
+                return Continue(None, self.item, progress="1/6")
+
+            def item(self, progress: str) -> Transition:
+                done = int(progress.split("/")[0])
+                if done == 6:
+                    return Done(progress)
+                return Continue(None, self.item, progress=f"{done + 1}/6")
+
+        assert drive(Drain(), env) == "6/6"
+
+
+def test_a_refilling_budget_still_ends_a_ping_pong_that_does_not_progress():
+    """The refill is not an exemption: the token has to actually move.
+
+    `stuck` re-enters itself with the same `progress` forever — the shape a real drain
+    takes when it stops closing items — and it dies on exactly the budget a workflow
+    declaring nothing would have.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+
+        class Stuck(Workflow):
+            max_transitions = 4
+            REFUEL_ON = frozenset({"progress"})
+
+            def start(self) -> Transition:
+                return Continue(None, self.stuck, progress="3/9")
+
+            def stuck(self, progress: str) -> Transition:
+                return Continue(None, self.stuck, progress=progress)
+
+        exc = _raises(WorkflowFailed, drive, Stuck(), env)
+        assert "transition budget exhausted after 4 transitions without" in str(exc), exc
+        # The message names the last step the run did make, so an operator reading it
+        # knows whether they are looking at a stall or at a backlog they underestimated.
+        assert "3/9" in str(exc), exc
+
+
+def test_a_state_that_takes_no_progress_parameter_does_not_re_arm_the_refill():
+    """A hop that says nothing about progress leaves the last token standing.
+
+    The drain's own checkpoint round is exactly this: several states that never see
+    `progress`, then a return to the loop carrying the value it already had. Were the
+    absent parameter read as "no token", coming back would look like a fresh advance
+    and the round trip would refill the budget on its own — a ping-pong through a
+    third state would then run forever.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+
+        class Round(Workflow):
+            max_transitions = 6
+            REFUEL_ON = frozenset({"progress"})
+
+            def start(self) -> Transition:
+                return Continue(None, self.loop, progress="2/8")
+
+            def loop(self, progress: str) -> Transition:
+                return Continue(None, self.checkpoint)
+
+            def checkpoint(self) -> Transition:
+                return Continue(None, self.loop, progress="2/8")
+
+        exc = _raises(WorkflowFailed, drive, Round(), env)
+        assert "transition budget exhausted after 6" in str(exc), exc
+
+
 # --------------------------------------------------------------------------- freezing
 
 
