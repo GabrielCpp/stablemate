@@ -323,6 +323,75 @@ def test_native_gate_raised_inside_a_subflow_is_found(tmp_path):
     assert wf.gates["docs/story/context.md"].question == "Which corpus?"
 
 
+def test_native_gate_outside_the_claimed_workspace_still_surfaces(tmp_path):
+    """A ``--resume-run`` launched from some other directory exports THAT cwd as the
+    run's workspace, while the checkpoint still names the gate by absolute path in
+    the real checkout. The gate is readable on this host either way — dropping it
+    because it fails ``relative_to(workspace)`` is how three blocked runs showed
+    ``wait=operator`` with an empty question. Anchor at the root and carry the base."""
+    _reset()
+    run_dir = tmp_path / "runs" / "author-r3"
+    claimed = tmp_path / "somewhere-else"
+    claimed.mkdir()
+    checkout = tmp_path / "checkout"
+    gate = checkout / "docs" / "epics" / "0006" / "context.md"
+    gate.parent.mkdir(parents=True)
+    gate.write_text("STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\nWhich scope?\n")
+    _checkpoint(run_dir, "", "author_epic", str(gate))
+
+    alerts.ingest_metrics(
+        [
+            _metric(
+                "A3", "workhorse.run.heartbeat", 1,
+                run_dir=str(run_dir), workspace=str(claimed), node="author_epic",
+            )
+        ],
+        now=time.time(),
+    )
+
+    assert groom_app._sync_native_row(state.RUNS["A3"]) is True
+    wf = state.WORKFLOWS["A3"]
+    assert wf.state == WorkflowState.BLOCKED
+    rel = str(gate.relative_to("/"))
+    assert wf.gates[rel].question == "Which scope?"
+    assert wf.gates[rel].base == "/"
+    # The workspace panels keep the exported path; only the gate carries its base.
+    assert wf.workspace_volume == str(claimed)
+
+    # And the answer writes back against the gate's own base, not the claimed
+    # workspace — end to end through the shared answer path.
+    result = asyncio.run(groom_app._answer(wf, "A3", rel, "narrow it to commands"))
+    assert result.ok is True
+    written = gate.read_text()
+    assert written.startswith("STATUS: ANSWERED")
+    assert "narrow it to commands" in written
+
+
+def test_native_gate_inside_the_workspace_carries_no_base_override(tmp_path):
+    """The common case stays exactly as it was: a repo-relative gate path, resolved
+    against the row's workspace_volume, with no base of its own."""
+    _reset()
+    run_dir = tmp_path / "runs" / "coder-r4"
+    workspace = tmp_path / "workspace"
+    gate = workspace / "docs" / "context.md"
+    gate.parent.mkdir(parents=True)
+    gate.write_text("STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\nOk?\n")
+    _checkpoint(run_dir, "", "review", str(gate))
+
+    alerts.ingest_metrics(
+        [
+            _metric(
+                "A4", "workhorse.run.heartbeat", 1,
+                run_dir=str(run_dir), workspace=str(workspace), node="review",
+            )
+        ],
+        now=time.time(),
+    )
+
+    groom_app._sync_native_row(state.RUNS["A4"])
+    assert state.WORKFLOWS["A4"].gates["docs/context.md"].base == ""
+
+
 def test_native_gate_ignores_a_finished_siblings_checkpoint(tmp_path):
     """A flow node inside a loop leaves its `_flow` scope behind. Only the chain the
     root's current state names is followed, so the previous story's gate — still

@@ -41,6 +41,12 @@ class GateInfo:
     file_path: str
     question: str = ""
     status: str = "AWAITING_OPERATOR"
+    # The directory ``file_path`` is relative to, when it is NOT the run's
+    # workspace. A native run resumed from some other cwd exports that cwd as its
+    # workspace, but its checkpoint still names the gate by absolute path — the
+    # gate is real and answerable, just not under the claimed workspace. Empty
+    # (the common case) means "resolve against the row's workspace_volume".
+    base: str = ""
     # A pyflow checkpoint can identify an older gate whose file predates the
     # canonical STATUS header. It remains answerable while that checkpoint is live.
     legacy_headerless: bool = False

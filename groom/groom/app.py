@@ -229,19 +229,30 @@ def _active_waiting_on(run_dir: str) -> str:
 
 def _native_gate(run: RunTelemetry) -> GateInfo | None:
     """The exact gate named by a native pyflow checkpoint, if still pending."""
-    if not run.run_dir or not run.workspace:
+    if not run.run_dir:
         return None
     waiting_on = _active_waiting_on(run.run_dir)
     if not waiting_on:
         return None
-    workspace = Path(run.workspace).resolve()
     path = Path(waiting_on)
-    candidate = path.resolve() if path.is_absolute() else (workspace / path).resolve()
-    try:
-        relative = candidate.relative_to(workspace)
-    except ValueError:
+    if path.is_absolute():
+        candidate = path.resolve()
+    elif run.workspace:
+        candidate = (Path(run.workspace).resolve() / path).resolve()
+    else:
         return None
-    content = localfs.read_file(str(workspace), str(relative))
+    base = Path(run.workspace).resolve() if run.workspace else Path("/")
+    try:
+        relative = candidate.relative_to(base)
+    except ValueError:
+        # The exported workspace is only whatever cwd the session was (re)started
+        # from — a resume launched from some other directory claims a workspace
+        # the gate does not live under. The checkpoint's absolute path is the
+        # truer pointer, so anchor the gate at the filesystem root rather than
+        # dropping it (which left the run blocked with nothing to answer).
+        base = Path("/")
+        relative = candidate.relative_to(base)
+    content = localfs.read_file(str(base), str(relative))
     if content is None:
         return None
     status = status_of(content)
@@ -250,6 +261,7 @@ def _native_gate(run: RunTelemetry) -> GateInfo | None:
     return GateInfo(
         workflow_id=run.run_id,
         file_path=str(relative),
+        base="" if run.workspace and base == Path(run.workspace).resolve() else str(base),
         question=extract_question(content),
         legacy_headerless=not status,
     )
@@ -953,8 +965,11 @@ async def _answer(wf: WorkflowContainer | None, container_id: str, file_path: st
     command and the ``POST /api/run/{run_id}/outbox`` route so a gate answered
     from a CLI updates every open tab exactly like one answered from the browser.
     """
-    workspace_volume = wf.workspace_volume if wf else ""
     gate = wf.gates.get(file_path) if wf else None
+    # A gate can live outside the workspace the run exported (a resume launched
+    # from another cwd); the gate row carries the base it was actually read from,
+    # and the answer must be written back against that same base.
+    workspace_volume = (gate.base if gate and gate.base else wf.workspace_volume) if wf else ""
     allow_headerless = bool(gate and gate.legacy_headerless)
     if allow_headerless:
         run = state.RUNS.get(container_id)
