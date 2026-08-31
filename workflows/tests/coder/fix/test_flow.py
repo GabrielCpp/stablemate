@@ -338,6 +338,10 @@ def test_one_item_is_seeded_fixed_checked_pruned_and_committed(
     story = (docs / STORY_REL / "story.md").read_text(encoding="utf-8")
     assert f"- {TEXT}" in story, story
     assert BULLET in story, story
+    assert "## Non-Functional Acceptance Criteria\n\n(none)" in story, story
+    assert (
+        "## Technical Notes\n\nNo prior implementation reference exists." in story
+    ), story
 
     # The item left the backlog, and the section it left is still there.
     assert BULLET not in _backlog(docs), _backlog(docs)

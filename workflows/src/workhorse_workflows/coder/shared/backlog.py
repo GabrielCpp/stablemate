@@ -342,7 +342,8 @@ def seed_fix_story(
     refuses to plan against it. So both sections are written here: the bullet becomes the
     single `## Acceptance Criteria` line (the literal enactment of "one fix, one AC"), and
     `## Context` records where it came from, which is the whole of what is known about a
-    filed fix. Thin on purpose, and still authored.
+    filed fix. The current story shape also states that no additional invariant or prior
+    implementation reference is known. Thin on purpose, and still authored.
     """
     bucket = epic.strip() or "fixes"
     bullet_id = bullet_id.strip()
@@ -489,7 +490,7 @@ def _author_story_body(
     story_path: Path, bullet_id: str, bullet_text: str, logger: logging.Logger,
     backlog_rel: str = "",
 ) -> None:
-    """Write the fix story's two required sections: its single AC, and where it came from.
+    """Write every current required section from the one known fix item.
 
     `backlog_rel` is only quoted in the prose, so the story says which file the item was
     filed in; it comes from the caller because the caller is the one holding the root.
@@ -505,6 +506,16 @@ def _author_story_body(
             "- Scope is that single item and nothing else — one fix, one acceptance "
             "criterion.",
         ],
+    )
+    wrote |= _fill_empty_section(
+        story_path,
+        "Non-Functional Acceptance Criteria",
+        ["(none)"],
+    )
+    wrote |= _fill_empty_section(
+        story_path,
+        "Technical Notes",
+        ["No prior implementation reference exists."],
     )
     if wrote:
         logger.info(
