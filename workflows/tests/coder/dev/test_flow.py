@@ -90,8 +90,8 @@ status: active
 - title: Story One
 """
 
-#: An *authored* story: ostler's `Story.authored` wants `Context` and `Acceptance Criteria`
-#: filled and `Dependencies`, `Fixtures` and `Implementation Status` present. A scaffold with empty sections fails
+#: An *authored* story: every `registry.STORY_SECTIONS` heading present, and each one the
+#: contract marks `filled=True` actually written. A scaffold with empty sections fails
 #: `prepare_story`, which is the gate `test_an_unauthored_story_is_refused` drives.
 STORY_MD = """---
 type: story
@@ -114,6 +114,14 @@ Users need a thing.
 ## Acceptance Criteria
 
 - the thing exists
+
+## Non-Functional Acceptance Criteria
+
+- the thing is fast
+
+## Technical Notes
+
+- the thing is a function
 
 ## Implementation Status
 

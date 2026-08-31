@@ -91,6 +91,7 @@ ORG_GRAPH_CODES = frozenset({
     "runbook-multi-service",
     "story-covers-no-seed",
     "story-fixture-stray",
+    "story-section-order",
     "story-status-mismatch",
     "source-catalog-invalid",
     "unclassified-seed",

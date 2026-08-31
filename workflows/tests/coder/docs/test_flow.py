@@ -94,6 +94,14 @@ Users need a thing.
 
 - the thing exists
 
+## Non-Functional Acceptance Criteria
+
+- the thing is fast
+
+## Technical Notes
+
+- the thing is a function
+
 ## Implementation Status
 
 - **Status**: Done
