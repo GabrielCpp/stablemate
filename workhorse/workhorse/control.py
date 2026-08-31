@@ -45,6 +45,18 @@ from workhorse._vendor.stablemate_core.clock import Clock
 #: sleep, where no consumer is looking at the channel at all.
 STATUS = "status"
 
+#: The second query verb, answered here for the same reason `status` is: "what is this
+#: run blocked asking" changes nothing about the run, so no wait may end for it. What
+#: the answer *is* comes from whoever registered it (`questions_with`) — this module
+#: carries it, exactly as `report_with` carries the status answer.
+QUESTIONS = "questions"
+
+#: The verb that answers an operator gate. Deliberately NOT handled here: an answer
+#: ends a wait, and only the waiting site knows whether its wait is the one being
+#: answered — so it is delivered like a `reload`, and `pyflow`'s operator wait is the
+#: one consumer that accepts it.
+ANSWER = "answer"
+
 #: The listener, in the run dir. Discovery is "look in the run dir" — see `POINTER_FILE`
 #: for the one case where what is found there is a pointer rather than the socket.
 SOCKET_FILE = "control.sock"
@@ -81,6 +93,13 @@ class Request:
     #: because the two are independent axes: a run can be moved onto another CLI, another
     #: profile, or both, and one string could not say which was meant.
     profile: str = ""
+    #: The gate file an `answer` is for, absolute, as the sender knows it. Also carried
+    #: back in replies so a client can tell *which* wait acknowledged it. Empty for the
+    #: verbs that address the run rather than a gate.
+    path: str = ""
+    #: The operator's prose — the answer text an `answer` delivers. Its own field rather
+    #: than a reuse of `cli`/`profile` because those are routing, and this is payload.
+    body: str = ""
     requested_at: str = ""
 
     @property
@@ -102,6 +121,8 @@ class Request:
                 "at_boundary": self.at_boundary,
                 "cli": self.cli,
                 "profile": self.profile,
+                "path": self.path,
+                "body": self.body,
                 "requested_at": self.requested_at or datetime.now(UTC).isoformat(),
             }
         )
@@ -122,6 +143,8 @@ class Request:
             at_boundary=bool(raw.get("at_boundary", False)),
             cli=str(raw.get("cli", "")),
             profile=str(raw.get("profile", "")),
+            path=str(raw.get("path", "")),
+            body=str(raw.get("body", "")),
             requested_at=str(raw.get("requested_at", "")),
         )
 
@@ -326,11 +349,17 @@ class _Watch:
     `report` is how the process describes itself to a `status` request. A callable rather
     than a dict because the answer must be the run's position *now*, and the point of
     asking is usually that the run has been somewhere for a suspiciously long time.
+
+    `asked` is the same shape for the `questions` verb: what this run is blocked asking
+    an operator, right now. Registered by the waiting site on entry and cleared on exit,
+    and a callable for the same reason `report` is — the gate file is the authoritative
+    copy of the question, so the answer worth giving re-reads it at the moment of asking.
     """
 
     channel: ControlChannel = NULL_CHANNEL
     held: Request | None = None
     report: Callable[[], dict[str, object]] | None = None
+    asked: Callable[[], list[dict[str, object]]] | None = None
 
 
 _watch = _Watch()
@@ -346,11 +375,22 @@ def arm(channel: ControlChannel | None) -> None:
     _watch.held = None
     if channel is None:
         _watch.report = None
+        _watch.asked = None
 
 
 def report_with(describe: Callable[[], dict[str, object]] | None) -> None:
     """Say how this process answers `status`. `None` restores the unattached answer."""
     _watch.report = describe
+
+
+def questions_with(pending: Callable[[], list[dict[str, object]]] | None) -> None:
+    """Say what this run is blocked asking an operator. `None` means: nothing.
+
+    Registered by the operator wait on entry and cleared on exit, so the `questions`
+    verb answers an empty list everywhere else — a run that is working has no pending
+    question, and saying so is the answer, not an error.
+    """
+    _watch.asked = pending
 
 
 def armed() -> ControlChannel:
@@ -366,18 +406,24 @@ def armed() -> ControlChannel:
 def _delivered(channel: ControlChannel) -> Request | None:
     """The next request off `channel` that a consumer has to decide about, or None.
 
-    `status` never gets that far: it is answered here, on the connection it arrived on,
-    and the take is repeated. That is deliberately not a convenience — every consumer in
-    the engine is a *waiting* site with a policy about what may end its wait, and a query
-    that ends a cap wait to be told "still capped" is the wait answering the wrong
-    question. Answering below them means `status` works from every wait there is,
-    including the six-day one, without any of them knowing the verb exists.
+    The query verbs never get that far: `status` and `questions` are answered here, on
+    the connection each arrived on, and the take is repeated. That is deliberately not a
+    convenience — every consumer in the engine is a *waiting* site with a policy about
+    what may end its wait, and a query that ends a cap wait to be told "still capped" is
+    the wait answering the wrong question. Answering below them means both queries work
+    from every wait there is, including the six-day one, without any of them knowing the
+    verbs exist.
     """
     while True:
         request = channel.take()
-        if request is None or request.action != STATUS:
+        if request is None:
+            return None
+        if request.action == STATUS:
+            channel.reply(_described())
+        elif request.action == QUESTIONS:
+            channel.reply(_pending_questions())
+        else:
             return request
-        channel.reply(_described())
 
 
 def _described() -> dict[str, object]:
@@ -398,6 +444,24 @@ def _described() -> dict[str, object]:
     except Exception as exc:  # noqa: BLE001 - a query may not be able to end the run
         logger.warning("control: describing this run failed: %s", exc)
         return {"attached": True, "error": f"{exc.__class__.__name__}: {exc}"}
+
+
+def _pending_questions() -> dict[str, object]:
+    """What this run is blocked asking, with the registered callable's failures contained.
+
+    Same containment as `_described`, for the same reason: this runs inside whatever wait
+    the request landed under, and a query may not be able to end the run. An empty list
+    is the well-formed answer for a run that is not blocked — a poller reads it as "no
+    gate here", which is exactly the reconcile it came for.
+    """
+    asked = _watch.asked
+    if asked is None:
+        return {"ok": True, "questions": []}
+    try:
+        return {"ok": True, "questions": asked()}
+    except Exception as exc:  # noqa: BLE001 - a query may not be able to end the run
+        logger.warning("control: listing this run's questions failed: %s", exc)
+        return {"ok": False, "error": f"{exc.__class__.__name__}: {exc}"}
 
 
 def take() -> Request | None:
@@ -566,7 +630,9 @@ def _read_line(conn: socket.socket) -> str:
 
 
 __all__ = [
+    "ANSWER",
     "NULL_CHANNEL",
+    "QUESTIONS",
     "STATUS",
     "POINTER_FILE",
     "SOCKET_FILE",
@@ -580,6 +646,7 @@ __all__ = [
     "armed",
     "hold",
     "outstanding",
+    "questions_with",
     "report_with",
     "send",
     "take",

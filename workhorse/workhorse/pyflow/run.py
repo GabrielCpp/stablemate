@@ -746,6 +746,9 @@ def _status_report(name: str, writer: ArtifactWriter) -> dict[str, object]:
     report["state"] = checkpoint.state
     report["flow"] = checkpoint.flow or ""
     report["seq"] = checkpoint.seq
+    # The gate an `Await` is parked on, written before the wait began — so a `status`
+    # answers "blocked on an operator, here" from the same record a resume would read.
+    report["waiting_on"] = checkpoint.waiting_on or ""
     return report
 
 

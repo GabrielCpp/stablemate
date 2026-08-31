@@ -223,6 +223,80 @@ def test_status_is_answered_under_every_wait_and_ends_none_of_them() -> None:
     assert sum(clock.slept) == 120.0           # …and slept every second of it
 
 
+def test_questions_is_answered_under_every_wait_and_ends_none_of_them() -> None:
+    """The second query verb, and the discovery half of the socket gate protocol.
+
+    A poller asking "what is this run blocked on" must get its answer from under any
+    wait — including a wait that is not the operator gate — and the asking must never
+    be the thing that ends one.
+    """
+    clock = FakeClock()
+    pending: list[dict[str, object]] = [
+        {"path": "/ws/context.md", "kind": "operator", "since": "t0"}
+    ]
+    control.questions_with(lambda: list(pending))
+    try:
+        channel = FakeChannel(Request(action="questions"))
+        ended = wait_until(None, timeout=120.0, clock=clock, channel=channel, tick=30.0)
+    finally:
+        control.questions_with(None)
+
+    assert ended is None
+    assert channel.replies == [{"ok": True, "questions": pending}]
+    assert sum(clock.slept) == 120.0
+
+
+def test_a_run_blocked_on_nothing_answers_an_empty_list() -> None:
+    # The well-formed "no gate here": a reconciling poller asks every live run, and most
+    # of them are working. Saying so is the answer, not an error.
+    channel = FakeChannel(Request(action="questions"))
+    assert wait_until(None, timeout=1.0, clock=FakeClock(), channel=channel, tick=1.0) is None
+    assert channel.replies == [{"ok": True, "questions": []}]
+
+
+def test_a_questions_listing_that_raises_answers_the_failure() -> None:
+    # Same containment as the status reporter, same reason: the callable runs inside the
+    # deepest wait there is, and a query may not be able to end the run.
+    channel = FakeChannel(Request(action=control.QUESTIONS))
+    control.arm(channel)
+    control.questions_with(lambda: (_ for _ in ()).throw(OSError("gate file vanished")))
+    try:
+        assert control.take() is None
+    finally:
+        control.arm(None)
+
+    assert channel.replies == [{"ok": False, "error": "OSError: gate file vanished"}]
+
+
+def test_disarming_forgets_what_the_last_run_was_asking() -> None:
+    control.arm(FakeChannel())
+    control.questions_with(lambda: [{"path": "/ws/context.md"}])
+    control.arm(None)
+
+    channel = FakeChannel(Request(action="questions"))
+    assert wait_until(None, timeout=1.0, clock=FakeClock(), channel=channel, tick=1.0) is None
+    assert channel.replies == [{"ok": True, "questions": []}]
+
+
+def test_the_answer_fields_survive_the_wire() -> None:
+    # `path` says which gate, `body` carries the operator's prose — both have to arrive
+    # exactly as sent, through to_json and from_raw like every other field.
+    sent = Request(action=control.ANSWER, path="/ws/context.md", body="ship it\nsecond line")
+    received = Request.from_raw(json.loads(sent.to_json()))
+    assert received is not None
+    assert received.action == control.ANSWER
+    assert received.path == "/ws/context.md"
+    assert received.body == "ship it\nsecond line"
+
+
+def test_a_client_that_never_heard_of_the_answer_fields_still_parses() -> None:
+    # The one-directional forgiveness rule, in the new direction: an older CLI's message
+    # has no `path`/`body`, and both default to empty rather than failing the parse.
+    request = Request.from_raw(json.loads('{"action": "reload"}'))
+    assert request is not None
+    assert request.path == "" and request.body == ""
+
+
 def test_a_process_with_no_run_attached_says_so_rather_than_going_quiet() -> None:
     # `status` is answerable by construction, including from a process that is not a run:
     # an unanswered query is indistinguishable from a wedged one, which is the state an
@@ -277,6 +351,12 @@ if __name__ == "__main__":
     test_a_verb_a_run_is_too_old_to_know_is_delivered_not_rejected()
     test_asking_a_run_that_is_not_running_says_so_immediately()
     test_status_is_answered_under_every_wait_and_ends_none_of_them()
+    test_questions_is_answered_under_every_wait_and_ends_none_of_them()
+    test_a_run_blocked_on_nothing_answers_an_empty_list()
+    test_a_questions_listing_that_raises_answers_the_failure()
+    test_disarming_forgets_what_the_last_run_was_asking()
+    test_the_answer_fields_survive_the_wire()
+    test_a_client_that_never_heard_of_the_answer_fields_still_parses()
     test_a_process_with_no_run_attached_says_so_rather_than_going_quiet()
     test_a_describe_that_raises_answers_the_query_instead_of_ending_the_run()
     test_disarming_forgets_how_the_last_run_described_itself()
