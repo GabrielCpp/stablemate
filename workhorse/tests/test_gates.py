@@ -105,6 +105,34 @@ def test_a_question_heading_inside_a_code_fence_does_not_make_the_gate_structure
     )
 
 
+def test_apply_answer_flips_the_status_and_appends_the_prose():
+    """What the run writes when the answer arrives over the socket: the file stays the
+    durable record, prose at the bottom under everything already there."""
+    text = "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\nwhich branch?\n"
+
+    answered = gates.apply_answer(text, "main, not master")
+
+    assert answered == (
+        "STATUS: ANSWERED\n\n## Questions from the agent\n\nwhich branch?\n\n"
+        "main, not master\n"
+    )
+    assert gates.status_of(answered) == "ANSWERED"
+
+
+def test_apply_answer_with_no_prose_only_flips_the_status():
+    text = "STATUS: AWAITING_OPERATOR\n\nwhich branch?\n"
+    assert gates.apply_answer(text, "  \n") == "STATUS: ANSWERED\n\nwhich branch?\n"
+
+
+def test_apply_answer_gives_a_headerless_file_the_header_it_never_had():
+    """An `Await` with no questions can name a file nobody created; answering it creates
+    the record, header and all."""
+    assert gates.apply_answer("", "go ahead") == "STATUS: ANSWERED\n\ngo ahead\n"
+    assert gates.apply_answer("pasted notes\n", "go ahead") == (
+        "STATUS: ANSWERED\n\npasted notes\n\ngo ahead\n"
+    )
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0

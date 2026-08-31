@@ -94,6 +94,23 @@ def format_operator_gate(questions: str) -> str:
     )
 
 
+def apply_answer(text: str, answer: str) -> str:
+    """`text` answered: the first `STATUS:` flips to `ANSWERED`, `answer` lands below.
+
+    This is what the run itself writes when an answer arrives over the control socket
+    rather than through an editor: the file stays the durable record of the exchange —
+    what a crash, a resume or a later re-block reads back — even though it is no longer
+    how the answer travelled. The prose goes at the bottom, under everything already
+    there, for the same reason `append_operator_gate` keeps history: the file is the
+    ledger of the conversation, not its latest message.
+    """
+    answered = set_status(text, "ANSWERED")
+    answer = answer.strip()
+    if not answer:
+        return answered
+    return answered.rstrip() + f"\n\n{answer}\n"
+
+
 def append_operator_gate(existing: str, questions: str) -> str:
     """An operator gate that already exists, re-armed with `questions` appended.
 

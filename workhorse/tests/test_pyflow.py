@@ -29,8 +29,9 @@ from pydantic import BaseModel
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from _fakes import FakeClock, RecordingTelemetry, present  # noqa: E402
-from workhorse import otel  # noqa: E402
+from workhorse import control, gates, otel, reload  # noqa: E402
 from workhorse.artifacts import ArtifactWriter  # noqa: E402
+from workhorse.control import FakeChannel, Request  # noqa: E402
 from workhorse.config_run import RunConfig  # noqa: E402
 from workhorse.manifest import ManifestContext  # noqa: E402
 from workhorse.pyflow import (  # noqa: E402
@@ -51,7 +52,7 @@ from workhorse.pyflow import (  # noqa: E402
 )
 from workhorse.pyflow import engine as pyflow_engine  # noqa: E402
 from workhorse.pyflow import registry as registry_mod  # noqa: E402
-from workhorse.pyflow.driver import Resume, drive, read_resume  # noqa: E402
+from workhorse.pyflow.driver import Resume, drive, read_resume, wait_for_answer  # noqa: E402
 from workhorse.pyflow.engine import RunEnv  # noqa: E402
 from workhorse.pyflow.names import NameIndex  # noqa: E402
 from workhorse.records import NodeGraphCheckpoint  # noqa: E402
@@ -722,6 +723,197 @@ def test_await_ignores_a_save_that_left_the_gate_unanswered():
         assert drive(Blocks(), env) == "STATUS: ANSWERED\n\nmain\n"
         # The draft cost a second wait; under the mtime rule it would have cost one.
         assert clock.slept == [env.config.await_poll_s] * 2, clock.slept
+
+
+def test_an_answer_over_the_socket_lands_in_the_gate_file_and_resumes_the_run():
+    """The socket is the channel; the file stays the record.
+
+    The answer arrives as a control request, but what the resumed state reads — and what
+    a crash right after the ack would resume from — is the gate file the wait itself
+    wrote, `STATUS: ANSWERED` with the operator's prose appended. A request that names
+    no path answers the gate the run is parked on.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        ask = Path(tmp) / "operator.md"
+
+        class Blocks(Workflow):
+            def start(self) -> Transition:
+                return Await(ask, "which branch?", self.resumed)
+
+            def resumed(self) -> Transition:
+                return Done(ask.read_text())
+
+        class ParkedOperator(FakeChannel):
+            """The dashboard, sending its answer only once the run is parked."""
+
+            def take(self) -> Request | None:
+                try:
+                    parked = gates.status_of(ask.read_text()) == "AWAITING_OPERATOR"
+                except OSError:
+                    parked = False
+                return super().take() if parked else None
+
+        channel = ParkedOperator(Request(action=control.ANSWER, body="main, not master"))
+        control.arm(channel)
+        try:
+            result = drive(Blocks(), _env(tmp))
+        finally:
+            control.arm(None)
+
+        assert gates.status_of(result) == "ANSWERED", result
+        assert result.endswith("\n\nmain, not master\n"), result
+        assert channel.replies == [{"ok": True, "path": str(ask)}]
+        assert ask.read_text() == result
+
+
+def test_a_reload_cuts_a_parked_operator_wait():
+    """An operator pushing fixed code must not wait out the human being asked.
+
+    The checkpoint carrying `waiting_on` went to disk before the wait began, so the
+    unwind loses nothing — the re-entered run knows which gate it was parked on.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        ask = Path(tmp) / "operator.md"
+
+        class Blocks(Workflow):
+            def start(self) -> Transition:
+                return Await(ask, "which branch?", self.resumed)
+
+            def resumed(self) -> Transition:  # pragma: no cover - never reached
+                return Done("unreachable")
+
+        class ParkedOperator(FakeChannel):
+            def take(self) -> Request | None:
+                try:
+                    parked = gates.status_of(ask.read_text()) == "AWAITING_OPERATOR"
+                except OSError:
+                    parked = False
+                return super().take() if parked else None
+
+        channel = ParkedOperator(Request(action="reload", core=True))
+        control.arm(channel)
+        try:
+            exc = _raises(reload.ReloadRequested, drive, Blocks(), _env(tmp))
+        finally:
+            control.arm(None)
+
+        assert isinstance(exc, reload.ReloadRequested) and exc.core is True
+        assert channel.replies == [{"ok": True, "cut": True}]
+        # The gate is still armed: the re-entered run re-parks on it, nothing answered.
+        assert gates.status_of(ask.read_text()) == "AWAITING_OPERATOR"
+
+
+def test_an_answer_for_another_gate_is_refused_and_the_wait_goes_on():
+    with tempfile.TemporaryDirectory() as tmp:
+        ask = Path(tmp) / "operator.md"
+        ask.write_text("STATUS: AWAITING_OPERATOR\n\nwhich branch?\n")
+        channel = FakeChannel(
+            Request(action=control.ANSWER, path="/elsewhere/other.md", body="main"),
+            Request(action=control.ANSWER, path=str(ask), body="main"),
+        )
+
+        got = wait_for_answer(ask, interval=15.0, clock=FakeClock(), channel=channel)
+
+        assert got is None
+        assert channel.replies == [
+            {
+                "ok": False,
+                "error": f"this run is waiting on {ask}, not /elsewhere/other.md",
+            },
+            {"ok": True, "path": str(ask)},
+        ]
+        assert ask.read_text() == "STATUS: ANSWERED\n\nwhich branch?\n\nmain\n"
+
+
+def test_a_hand_edit_that_beats_the_socket_answer_wins():
+    """The file is authoritative, so the slower of the two channels is told, not obeyed.
+
+    An operator edits the gate in their editor while a teammate answers from the
+    dashboard: whichever lands first is the answer, and writing the second one over it
+    would silently replace what the run is about to read.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        ask = Path(tmp) / "operator.md"
+        ask.write_text("STATUS: AWAITING_OPERATOR\n\nwhich branch?\n")
+
+        class HandBeatsSocket(FakeChannel):
+            """The hand-edit lands in the instant before the socket answer is read."""
+
+            def take(self) -> Request | None:
+                request = super().take()
+                if request is not None:
+                    ask.write_text("STATUS: ANSWERED\n\nby hand\n")
+                return request
+
+        channel = HandBeatsSocket(Request(action=control.ANSWER, body="over the socket"))
+
+        got = wait_for_answer(ask, interval=15.0, clock=FakeClock(), channel=channel)
+
+        assert got is None
+        assert channel.replies == [{"ok": False, "error": "already answered"}]
+        assert ask.read_text() == "STATUS: ANSWERED\n\nby hand\n"
+
+
+def test_a_machine_wait_refuses_an_operator_answer():
+    """A machine wait's file is a supervisor's wake file; an answer written into it
+    would fabricate the job's end."""
+    with tempfile.TemporaryDirectory() as tmp:
+        wake = Path(tmp) / "wake"
+        channel = FakeChannel(
+            Request(action=control.QUESTIONS),
+            Request(action=control.ANSWER, body="done, surely"),
+        )
+
+        class SupervisorClock(FakeClock):
+            def sleep(self, seconds: float) -> None:
+                wake.write_text("done\n")
+                super().sleep(seconds)
+
+        got = wait_for_answer(
+            wake, interval=15.0, clock=SupervisorClock(), channel=channel, kind="machine"
+        )
+
+        assert got is None
+        assert channel.replies == [
+            # No question listed: a machine wait is a wait, not an ask.
+            {"ok": True, "questions": []},
+            {"ok": False, "error": "this run is not blocked on an operator gate right now"},
+        ]
+        assert wake.read_text() == "done\n"
+
+
+def test_a_parked_wait_lists_its_gate_for_the_questions_verb_and_clears_it_after():
+    with tempfile.TemporaryDirectory() as tmp:
+        ask = Path(tmp) / "operator.md"
+        ask.write_text("STATUS: AWAITING_OPERATOR\n\nwhich branch?\n")
+        channel = FakeChannel(Request(action=control.QUESTIONS))
+
+        class AnsweringClock(FakeClock):
+            def sleep(self, seconds: float) -> None:
+                ask.write_text("STATUS: ANSWERED\n\nmain\n")
+                super().sleep(seconds)
+
+        got = wait_for_answer(ask, interval=15.0, clock=AnsweringClock(), channel=channel)
+
+        assert got is None
+        assert channel.replies == [
+            {
+                "ok": True,
+                "questions": [
+                    {
+                        "path": str(ask),
+                        "question": "STATUS: AWAITING_OPERATOR\n\nwhich branch?\n",
+                        "kind": "operator",
+                        "since": "2026-01-01T12:00:00",
+                    }
+                ],
+            }
+        ]
+        # The wait cleared its registration on the way out: the same query now says the
+        # run is blocked on nothing, rather than replaying the answered gate forever.
+        after = FakeChannel(Request(action=control.QUESTIONS))
+        assert control.wait_until(lambda: False, timeout=1.0, clock=FakeClock(), channel=after) is None
+        assert after.replies == [{"ok": True, "questions": []}]
 
 
 # ---------------------------------------------------------------------- self.handoff

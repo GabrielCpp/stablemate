@@ -204,46 +204,131 @@ def wait_for_answer(
     wait for a human on macOS is not portable — and against a latency budget measured in
     days the two are indistinguishable.
 
+    While parked here, the run is also the party that *answers*: a `questions` query on
+    the channel lists this gate (registered below, cleared on every exit), and an
+    `answer` request is consumed in place — judged, written into the gate file, and
+    acknowledged — rather than returned to the caller, because only this frame knows
+    which gate the run is blocked on. The file write comes before the ack, so the reply
+    never claims an answer the disk does not hold; the wait then ends on the very
+    re-read that has always ended it.
+
     Returns the request that interrupted the wait, or None when the gate was answered.
     """
     log = log or logger
     waited = 0.0
-    while True:
-        if answered(path):
-            log.info("[workhorse] await  → %s answered; resuming", path)
-            return None
-        if deadline is not None and clock.now().timestamp() > deadline:
-            raise WorkflowFailed(
-                f"run exceeded its wall-clock budget while waiting on {path}",
-                failure_class="await-deadline-exceeded",
-                artifacts={"gate": str(path)},
+    operator = kind == "operator"
+    if operator:
+        since = clock.now().isoformat()
+        control.questions_with(lambda: _pending_gate(path, kind, since))
+    try:
+        while True:
+            if answered(path):
+                log.info("[workhorse] await  → %s answered; resuming", path)
+                return None
+            if deadline is not None and clock.now().timestamp() > deadline:
+                raise WorkflowFailed(
+                    f"run exceeded its wall-clock budget while waiting on {path}",
+                    failure_class="await-deadline-exceeded",
+                    artifacts={"gate": str(path)},
+                )
+            request = wait_until(
+                lambda: answered(path),
+                timeout=interval,
+                clock=clock,
+                channel=channel,
+                tick=interval,
             )
-        request = wait_until(
-            lambda: answered(path),
-            timeout=interval,
-            clock=clock,
-            channel=channel,
-            tick=interval,
+            if request is not None:
+                if request.action != control.ANSWER:
+                    return request
+                if operator:
+                    _consume_answer(request, path, channel, log)
+                else:
+                    # A machine wait's file is a supervisor's wake file, not a question;
+                    # writing an operator's prose into it would fabricate the job's end.
+                    channel.reply(
+                        {
+                            "ok": False,
+                            "error": "this run is not blocked on an operator gate "
+                            "right now",
+                        }
+                    )
+                continue
+            waited += interval
+            if waited % HEARTBEAT_S < interval:
+                # Names the condition, not just the file: an operator who edited the
+                # gate without flipping its status is the one case this wait will not
+                # end on its own, and this line is where they find that out. On a
+                # `machine` wait there is no such case and no such person — nobody is
+                # ever going to write STATUS: ANSWERED in a supervisor's wake file — so
+                # asking for one reads as a run begging for input it does not want.
+                condition = (
+                    "STATUS: ANSWERED in" if operator else "the job to finish in"
+                )
+                log.info(
+                    "[workhorse] await  → still waiting for %s %s (%ds)",
+                    condition,
+                    path,
+                    int(waited),
+                )
+    finally:
+        if operator:
+            control.questions_with(None)
+
+
+def _pending_gate(path: Path, kind: str, since: str) -> list[dict[str, object]]:
+    """What this run is blocked on, for the channel's `questions` verb.
+
+    Read live from the gate file on every query, never cached: the file is the
+    authoritative side of the exchange, so what a poller is shown is exactly what an
+    editor would see. An answered or missing-and-questionless gate lists as nothing
+    pending — the wait will notice within a tick and this listing must not outrun it
+    by claiming a question the operator already dealt with.
+    """
+    if answered(path):
+        return []
+    try:
+        question = path.read_text()
+    except OSError:
+        question = ""
+    return [{"path": str(path), "question": question, "kind": kind, "since": since}]
+
+
+def _consume_answer(
+    request: Request, path: Path, channel: ControlChannel, log: logging.Logger
+) -> None:
+    """One `answer` request, judged and — when it is this gate's — written to disk.
+
+    Persist first, acknowledge second: the reply races the process's own survival, and
+    an ack for an answer that never reached the file would be the one lie a resume
+    cannot recover from. The converse order only costs the sender a retry, which the
+    already-answered refusal absorbs. The wait itself is ended by nothing here — the
+    caller's next `answered()` re-read sees the status this wrote, so the socket path
+    and the hand-edit path end the wait through the same door.
+    """
+    asked = str(path)
+    if request.path and request.path != asked:
+        channel.reply(
+            {"ok": False, "error": f"this run is waiting on {asked}, not {request.path}"}
         )
-        if request is not None:
-            return request
-        waited += interval
-        if waited % HEARTBEAT_S < interval:
-            # Names the condition, not just the file: an operator who edited the gate
-            # without flipping its status is the one case this wait will not end on its
-            # own, and this line is where they find that out. On a `machine` wait there
-            # is no such case and no such person — nobody is ever going to write STATUS:
-            # ANSWERED in a supervisor's wake file — so asking for one reads as a run
-            # begging for input it does not want.
-            condition = (
-                "STATUS: ANSWERED in" if kind == "operator" else "the job to finish in"
-            )
-            log.info(
-                "[workhorse] await  → still waiting for %s %s (%ds)",
-                condition,
-                path,
-                int(waited),
-            )
+        return
+    if answered(path):
+        channel.reply({"ok": False, "error": "already answered"})
+        return
+    try:
+        text = path.read_text()
+    except OSError:
+        # An `Await` with no questions can name a file nobody has created yet;
+        # answering it creates it, header and all.
+        text = ""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(gates.apply_answer(text, request.body))
+    except OSError as exc:
+        channel.reply({"ok": False, "error": f"could not write the gate file: {exc}"})
+        return
+    channel.reply({"ok": True, "path": asked})
+    log.info("[workhorse] await  → %s answered over the control socket", path)
 
 
 def _ask(path: Path, questions: str, log: logging.Logger) -> None:
@@ -451,14 +536,36 @@ def drive(
             verb = "blocked on" if outcome.kind == "operator" else "waiting on"
             env.log.info("[workhorse] await  → %s %s", verb, outcome.path)
             with otel.wait(outcome.kind, spec.name):
-                wait_for_answer(
-                    outcome.path,
-                    interval=env.config.await_poll_s,
-                    clock=env.clock,
-                    log=env.log,
-                    deadline=env.deadline,
-                    kind=outcome.kind,
-                )
+                while True:
+                    interrupted = wait_for_answer(
+                        outcome.path,
+                        interval=env.config.await_poll_s,
+                        clock=env.clock,
+                        channel=control.armed(),
+                        log=env.log,
+                        deadline=env.deadline,
+                        kind=outcome.kind,
+                    )
+                    if interrupted is None:
+                        break
+                    # The wait hands back anything it cannot consume itself, and
+                    # `cut_by` is the one policy for those: a profile switch and an
+                    # `--at-boundary` reload are acknowledged and held (the boundary
+                    # after the answer applies them), an unknown verb is declined —
+                    # all of which resume the wait — and a cutting reload unwinds
+                    # right now. The checkpoint above already carries `waiting_on`,
+                    # so the re-entered run knows to park on this same gate.
+                    cut = reload.cut_by(interrupted)
+                    if cut is not None:
+                        env.log.info(
+                            "[workhorse] reload → requested while parked on %s",
+                            outcome.path,
+                        )
+                        raise reload.ReloadRequested(
+                            f"reload requested while parked on {outcome.path}",
+                            core=cut.core,
+                            cli=cut.cli,
+                        )
         state, params = outcome.state, outcome.params
 
     raise WorkflowFailed(

@@ -107,6 +107,24 @@ def test_a_profile_switch_arriving_at_the_boundary_is_not_answered_there_either(
         control.arm(None)
 
 
+def test_an_answer_outside_an_operator_wait_is_refused_not_held() -> None:
+    """Only the wait itself can consume an answer. Held for some later gate, it would
+    answer a question not yet asked; here, the sender is told the run is not blocked."""
+    channel = _armed(
+        Request(action=control.ANSWER, path="/runs/x/operator.md", body="main"),
+        Request(action=control.ANSWER, path="/runs/x/operator.md", body="main"),
+    )
+    try:
+        assert reload.cut_requested() is None
+        assert reload.boundary_requested() is None
+        assert channel.replies == [
+            {"ok": False, "error": "this run is not blocked on an operator gate right now"},
+            {"ok": False, "error": "this run is not blocked on an operator gate right now"},
+        ]
+    finally:
+        control.arm(None)
+
+
 def test_a_run_that_ended_leaves_nothing_armed() -> None:
     """The installed channel is process-wide; a run that left one armed would hand its
     socket to whatever ran next in the same process."""
@@ -124,5 +142,6 @@ if __name__ == "__main__":
     test_a_verb_this_run_does_not_know_is_declined_not_obeyed()
     test_a_profile_switch_never_cuts_a_turn_and_is_left_for_the_boundary()
     test_a_profile_switch_arriving_at_the_boundary_is_not_answered_there_either()
+    test_an_answer_outside_an_operator_wait_is_refused_not_held()
     test_a_run_that_ended_leaves_nothing_armed()
     print("ok")

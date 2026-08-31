@@ -41,6 +41,14 @@ ACTION = "reload"
 #: reach a decision the very next turn makes anyway.
 SWITCH_PROFILE = "switch-profile"
 
+#: The refusal both decision sites give an `answer` when no operator wait holds the
+#: channel — the gate the sender is aiming at either does not exist or is not what
+#: this run is blocked on, and only the wait itself knows how to consume one.
+_NOT_BLOCKED: dict[str, object] = {
+    "ok": False,
+    "error": "this run is not blocked on an operator gate right now",
+}
+
 logger = logging.getLogger(__name__)
 
 
@@ -117,6 +125,12 @@ def cut_by(request: Request | None) -> Request | None:
         )
         control.hold(request)
         return None
+    if request.action == control.ANSWER:
+        # Only an operator wait can consume an answer, and this run is not in one.
+        # Declined rather than held: the operator is at a prompt right now, and an
+        # answer held for some later gate would answer a question not yet asked.
+        control.answer(_NOT_BLOCKED)
+        return None
     if request.action != ACTION:
         control.answer({"error": f"this run does not know the action {request.action!r}"})
         logger.warning("ignoring an unknown control action: %s", request.action)
@@ -143,6 +157,9 @@ def boundary_requested() -> Request | None:
         return None
     if request.action == SWITCH_PROFILE:
         return request
+    if request.action == control.ANSWER:
+        control.answer(_NOT_BLOCKED)
+        return None
     if request.action != ACTION:
         control.answer({"error": f"this run does not know the action {request.action!r}"})
         logger.warning("ignoring an unknown control action: %s", request.action)
