@@ -1194,6 +1194,221 @@ def test_the_served_shell_is_the_stamped_one():
     assert b'src="/assets/dashboard.js?v=' in body
 
 
+# --------------------------------------------------------------------------- #
+# Operator gates over the run's control socket: the socket-first answer path
+# and the questions poll that reconciles rows from the run's own listing.
+# --------------------------------------------------------------------------- #
+class _GateConn(_FakeConn):
+    """A `_FakeConn` whose replies differ per RPC method — the answer flow asks
+    `getQuestions` before `answerGate`, and one canned result can't play both."""
+
+    def __init__(self, container_id: str, by_method: dict) -> None:
+        super().__init__(container_id)
+        self.by_method = by_method
+        self.calls: list = []
+
+    async def rpc(self, method: str, params: dict, *, timeout: float = 0.0):
+        self.calls.append((method, params))
+        result = self.by_method[method]
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+_LISTING = {
+    "ok": True,
+    "questions": [
+        {
+            "path": "/workspace/docs/gate.md",
+            "question": "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\nShip it?\n",
+            "kind": "operator",
+            "since": "t0",
+        }
+    ],
+}
+
+
+def test_answer_goes_over_the_socket_first_and_uses_the_runs_own_path():
+    _reset()
+    wf = WorkflowContainer(container_id="abc123", name="w", state=WorkflowState.BLOCKED, workspace_volume="v")
+    wf.gates["docs/gate.md"] = GateInfo(workflow_id="abc123", file_path="docs/gate.md", question="Ship it?")
+    state.WORKFLOWS["abc123"] = wf
+    conn = _GateConn("abc123", {
+        "getQuestions": _LISTING,
+        "answerGate": {"ok": True, "path": "/workspace/docs/gate.md"},
+    })
+    sidecar_hub.CONNECTIONS["abc123"] = conn
+
+    async def _file_write_must_not_run(*args, **kwargs):
+        raise AssertionError("the file fallback ran on a socket-acknowledged answer")
+
+    with patch.object(groom_app, "answer_gate", _file_write_must_not_run):
+        result = asyncio.run(groom_app._answer(wf, "abc123", "docs/gate.md", "go ahead"))
+
+    assert result.ok is True
+    # Ask-first: the answer carried the path exactly as the run spelled it.
+    answered = next(p for m, p in conn.calls if m == "answerGate")
+    assert answered["path"] == "/workspace/docs/gate.md"
+    assert answered["body"] == "go ahead"
+    # The run persisted the answer itself; groom just settles its row.
+    assert wf.gates == {}
+    assert wf.state == WorkflowState.RUNNING
+
+
+def test_an_already_answered_refusal_is_terminal_with_no_file_fallback():
+    _reset()
+    wf = WorkflowContainer(container_id="abc123", name="w", state=WorkflowState.BLOCKED, workspace_volume="v")
+    wf.gates["docs/gate.md"] = GateInfo(workflow_id="abc123", file_path="docs/gate.md", question="Ship it?")
+    state.WORKFLOWS["abc123"] = wf
+    sidecar_hub.CONNECTIONS["abc123"] = _GateConn("abc123", {
+        "getQuestions": _LISTING,
+        "answerGate": {"ok": False, "error": "already answered"},
+    })
+
+    async def _file_write_must_not_run(*args, **kwargs):
+        raise AssertionError("the file fallback would double-write an answered gate")
+
+    with patch.object(groom_app, "answer_gate", _file_write_must_not_run):
+        result = asyncio.run(groom_app._answer(wf, "abc123", "docs/gate.md", "go ahead"))
+
+    assert result.ok is False
+    assert result.message == "already answered"
+
+
+def test_a_gate_the_run_is_not_waiting_on_falls_back_to_the_file_write():
+    _reset()
+    wf = WorkflowContainer(container_id="abc123", name="w", state=WorkflowState.BLOCKED, workspace_volume="v")
+    wf.gates["docs/other.md"] = GateInfo(workflow_id="abc123", file_path="docs/other.md", question="Q?")
+    state.WORKFLOWS["abc123"] = wf
+    # The run lists a different gate than the row being answered.
+    sidecar_hub.CONNECTIONS["abc123"] = _GateConn("abc123", {"getQuestions": _LISTING})
+
+    called = {}
+
+    async def _fake_answer_gate(cid, fp, ans, *, workspace_volume, native=False, allow_headerless=False):
+        called["file_path"] = fp
+        return AnswerResult(ok=True, message="answered")
+
+    with patch.object(groom_app, "answer_gate", _fake_answer_gate):
+        result = asyncio.run(groom_app._answer(wf, "abc123", "docs/other.md", "go"))
+
+    assert result.ok is True
+    assert called["file_path"] == "docs/other.md"
+
+
+def test_a_dead_socket_falls_back_to_the_file_write():
+    _reset()
+    wf = WorkflowContainer(container_id="abc123", name="w", state=WorkflowState.BLOCKED, workspace_volume="v")
+    wf.gates["docs/gate.md"] = GateInfo(workflow_id="abc123", file_path="docs/gate.md", question="Q?")
+    state.WORKFLOWS["abc123"] = wf  # no sidecar registered at all
+
+    called = {}
+
+    async def _fake_answer_gate(cid, fp, ans, *, workspace_volume, native=False, allow_headerless=False):
+        called["file_path"] = fp
+        return AnswerResult(ok=True, message="answered")
+
+    with patch.object(groom_app, "answer_gate", _fake_answer_gate):
+        result = asyncio.run(groom_app._answer(wf, "abc123", "docs/gate.md", "go"))
+
+    assert result.ok is True
+    assert called["file_path"] == "docs/gate.md"
+
+
+def test_the_questions_poll_blocks_a_running_container_row():
+    _reset()
+    wf = WorkflowContainer(container_id="abc123", name="w", state=WorkflowState.RUNNING, workspace_volume="v")
+    state.WORKFLOWS["abc123"] = wf
+    sidecar_hub.CONNECTIONS["abc123"] = _GateConn("abc123", {"getQuestions": _LISTING})
+
+    notified: list = []
+
+    async def _capture_notify(message):
+        notified.append(message)
+
+    with patch.object(groom_app, "_broadcast_notify", _capture_notify):
+        asyncio.run(groom_app._poll_gates_of("abc123"))
+
+    assert wf.state == WorkflowState.BLOCKED
+    # Keyed workspace-relative, like the sidecar's own gate rows; the question
+    # is the extracted section, not the raw file dump.
+    assert list(wf.gates) == ["docs/gate.md"]
+    assert wf.gates["docs/gate.md"].question == "Ship it?"
+    assert notified and "Ship it?" in notified[0]
+
+
+def test_the_questions_poll_clears_a_row_whose_run_answered():
+    _reset()
+    wf = WorkflowContainer(container_id="abc123", name="w", state=WorkflowState.BLOCKED, workspace_volume="v")
+    wf.gates["docs/gate.md"] = GateInfo(workflow_id="abc123", file_path="docs/gate.md", question="Q?")
+    state.WORKFLOWS["abc123"] = wf
+    sidecar_hub.CONNECTIONS["abc123"] = _GateConn(
+        "abc123", {"getQuestions": {"ok": True, "questions": []}}
+    )
+
+    asyncio.run(groom_app._poll_gates_of("abc123"))
+
+    assert wf.gates == {}
+    assert wf.state == WorkflowState.RUNNING
+
+
+def test_a_socket_miss_leaves_the_row_exactly_as_the_pushes_built_it():
+    _reset()
+    wf = WorkflowContainer(container_id="abc123", name="w", state=WorkflowState.BLOCKED, workspace_volume="v")
+    wf.gates["docs/gate.md"] = GateInfo(workflow_id="abc123", file_path="docs/gate.md", question="Q?")
+    state.WORKFLOWS["abc123"] = wf
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", error=True)
+
+    asyncio.run(groom_app._poll_gates_of("abc123"))
+
+    assert list(wf.gates) == ["docs/gate.md"]
+    assert wf.state == WorkflowState.BLOCKED
+
+
+def test_push_blocked_schedules_an_immediate_reconciling_poll():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="v")
+    polled: list = []
+
+    with patch.object(groom_app, "_poll_gate_soon", polled.append):
+        client = _hermetic_client()
+        try:
+            resp = client.post(
+                "/push/blocked",
+                json={"container_id": "abc123", "file_path": "docs/gate.md", "question": "Q?"},
+            )
+        finally:
+            client.__exit__(None, None, None)
+
+    assert resp.json() == {"ok": True}
+    assert polled == ["abc123"]
+
+
+def test_native_gate_paths_resolve_like_the_checkpoint_arm(tmp_path):
+    """The poll's native projection must key a gate exactly the way
+    `_native_gate` does, or the two arms would double-list one gate."""
+    _reset()
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    wf = WorkflowContainer(
+        container_id="run-9", name="w", run_id="run-9", native=True,
+        workspace_volume=str(workspace),
+    )
+    inside = groom_app._gate_from_question(
+        wf, {"path": str(workspace / "docs" / "gate.md"), "question": "## Questions\n\nGo?\n"}
+    )
+    assert inside is not None
+    assert (inside.file_path, inside.base) == ("docs/gate.md", "")
+
+    outside = groom_app._gate_from_question(
+        wf, {"path": "/elsewhere/gate.md", "question": "Go?"}
+    )
+    assert outside is not None
+    # Outside the exported workspace → anchored at the filesystem root, like
+    # the checkpoint arm's fallback.
+    assert (outside.file_path, outside.base) == ("elsewhere/gate.md", "/")
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0
