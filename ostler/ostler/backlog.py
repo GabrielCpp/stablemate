@@ -1,4 +1,4 @@
-"""`ostler backlog` — the intake list as managed markdown (``docs/backlog.md``).
+"""`ostler backlog` — the intake list as managed markdown (``docs/backlog.md`` by default).
 
 Bullets are ``- [<id>] <text>`` optionally grouped under ``## <section>`` headings. Replaces the
 former bespoke append/prune scripts.
@@ -13,15 +13,18 @@ from ostler.model import Graph
 from ostler.result import Result
 
 
-def _path(graph: Graph, override: str | Path = "") -> Path:
-    if override:
-        candidate = Path(override)
-        return candidate if candidate.is_absolute() else graph.root / candidate
+def _path(graph: Graph) -> Path:
+    """Where this graph keeps its intake list — ``docRoots: backlog:``, and nothing else.
+
+    There is no override. One used to exist, and it let a caller adopt ids into a list
+    ``ostler backlog`` and ``doctor`` do not read — a second record of a location the
+    config already gives, disagreeing with it.
+    """
     return path_mod.backlog_path(graph)
 
 
-def _read(graph: Graph, override: str | Path = "") -> markdown.MarkdownDoc | None:
-    p = _path(graph, override)
+def _read(graph: Graph) -> markdown.MarkdownDoc | None:
+    p = _path(graph)
     return markdown.split(p.read_text(encoding="utf-8")) if p.exists() else None
 
 
@@ -78,14 +81,10 @@ def create(
     )
 
 
-def adopt(
-    graph: Graph,
-    backlog_path: str | Path = "",
-    prefix: str | None = None,
-) -> Result:
+def adopt(graph: Graph, prefix: str | None = None) -> Result:
     """Assign generated ids to every unnamed bullet in an existing backlog."""
-    path = _path(graph, backlog_path)
-    doc = _read(graph, backlog_path)
+    path = _path(graph)
+    doc = _read(graph)
     if doc is None:
         return Result(False, f"no backlog at {path}")
 

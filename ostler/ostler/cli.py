@@ -391,7 +391,6 @@ def _build_parser() -> argparse.ArgumentParser:
     bla.add_argument("text")
     bla.add_argument("--section", default="")
     blad = bls.add_parser("adopt")
-    blad.add_argument("--path", default="")
     blad.add_argument("--prefix")
     bls.add_parser("prune").add_argument("id")
     bls.add_parser("list").add_argument("--json", action="store_true")
@@ -1758,7 +1757,7 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
         if args.op == "add":
             return _result(backlog_mod.add(graph, args.id, args.text, args.section))
         if args.op == "adopt":
-            return _result(backlog_mod.adopt(graph, args.path, args.prefix))
+            return _result(backlog_mod.adopt(graph, args.prefix))
         if args.op == "prune":
             return _result(backlog_mod.prune(graph, ids_mod.resolve(graph, args.id)))
         return _emit(

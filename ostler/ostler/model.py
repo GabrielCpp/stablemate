@@ -610,6 +610,30 @@ def _read_frontmatter(path: Path) -> markdown.MarkdownDoc:
     return markdown.split(path.read_text(encoding="utf-8"))
 
 
+# Every location the graph knows, and its default. A key here is a `docRoots:` key, so a repo
+# that files its planning documents somewhere other than `docs/` says so once and every reader
+# follows — which is the whole reason no caller is allowed to spell a doc path itself.
+#
+# `backlog` and `roadmaps` are the two the graph used to not know about, and they arrived by
+# different failures. The backlog was hardcoded here on the argument that an intake list is
+# "unfiled by definition"; what that actually bought was a workflow parameter naming a second
+# backlog, which the run wrote and `ostler backlog` could not see. `roadmaps` was simply never
+# asked about, so the same parameter grew for it. Both are now the same kind of fact as the
+# epics root.
+#
+# `backlog` names a *file* rather than a directory — the one entry that does, because there is
+# one backlog rather than a tree of them. Callers reach it through `path.backlog_path*`, which
+# is where that asymmetry is stated for readers who don't come through here.
+BUILTIN_DOC_ROOTS: dict[str, str] = {
+    "features": "docs/features",
+    "epics": "docs/epics",
+    "milestones": "docs/milestones",
+    "specs": "docs/specs",
+    "roadmaps": "docs/roadmaps",
+    "backlog": "docs/backlog.md",
+}
+
+
 def doc_roots(root: Path, kinds: Sequence[dynamic_registry.TemplateKind] | None = None,
               config: dict | None = None) -> dict[str, Path]:
     """Where each kind of document lives under *root*, honouring `docRoots:` config.
@@ -624,8 +648,7 @@ def doc_roots(root: Path, kinds: Sequence[dynamic_registry.TemplateKind] | None 
     read either twice.
     """
     cfg = (config if config is not None else _load_config(root)).get("docRoots") or {}
-    roots = {key: root / cfg.get(key, f"docs/{key}")
-             for key in ("features", "epics", "milestones", "specs")}
+    roots = {key: root / cfg.get(key, default) for key, default in BUILTIN_DOC_ROOTS.items()}
     for kind in (dynamic_registry.load_kinds(root) if kinds is None else kinds):
         roots.setdefault(kind.doc_root, root / cfg.get(kind.doc_root, kind.default_path))
     return roots

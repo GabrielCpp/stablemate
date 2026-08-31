@@ -122,9 +122,12 @@ def test_create_backlog_item_and_milestone_parse_generated_id_inputs():
     assert milestone.source_items == "ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC"
 
 
-def test_backlog_adopt_parses_optional_path():
-    args = parse(["backlog", "adopt", "--path", "docs/backload.md"])
-    assert args.op == "adopt" and args.path == "docs/backload.md"
+def test_backlog_adopt_takes_no_path():
+    """The list's location is `docRoots:`' answer, so the CLI has no way to name a second."""
+    args = parse(["backlog", "adopt", "--prefix", "acme"])
+    assert args.op == "adopt" and args.prefix == "acme"
+    with pytest.raises(SystemExit):
+        parse(["backlog", "adopt", "--path", "docs/other.md"])
 
 
 def test_milestone_source_items_parse():

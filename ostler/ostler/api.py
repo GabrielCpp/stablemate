@@ -91,8 +91,10 @@ if TYPE_CHECKING:
 #: The namespace whole-graph snapshots live under, so a snapshot key can never collide with
 #: a document product's under :meth:`IndexStore.content_key`. Bump the number for any change
 #: to what :class:`Snapshot` records or to how it is validated — an older entry validated by
-#: newer rules is exactly the wrong answer this cache may not give.
-SNAPSHOT_NAMESPACE = "graph-snapshot/1"
+#: newer rules is exactly the wrong answer this cache may not give. A snapshot holds the whole
+#: `Graph`, so a new `doc_roots` key is such a change: the stored graph has no entry under it
+#: and every reader that indexes the mapping raises `KeyError` on a repo that did nothing wrong.
+SNAPSHOT_NAMESPACE = "graph-snapshot/2"
 
 #: The doc roots :func:`ostler.model.load` reads. Their recursive `*.md` listing is what tells
 #: a snapshot that a document has been added, removed or renamed since it was taken — the
@@ -526,8 +528,12 @@ class Ostler:
         return path_mod.story_dir(self.graph, epic, slug)
 
     def backlog_file(self) -> Path:
-        """The intake list, ``docs/backlog.md`` — the file :meth:`backlog` reads."""
+        """The intake list — the file :meth:`backlog` reads, wherever ``docRoots:`` puts it."""
         return path_mod.backlog_path(self.graph)
+
+    def roadmaps_dir(self) -> Path:
+        """Where roadmaps live — join a filename onto this rather than spelling the path."""
+        return path_mod.roadmaps_root(self.graph)
 
     def features_dir(self, service: str = "") -> Path:
         """The feature book, scoped to one *service* in a multi-service workspace."""
@@ -701,9 +707,9 @@ class Ostler:
         """Append a backlog item (``ostler backlog add``)."""
         return self._apply(backlog_mod.add(self._fresh(), item_id, text, section))
 
-    def backlog_adopt(self, path: str = "", *, prefix: str | None = None) -> Result:
-        """Assign ids to every unnamed bullet in an existing backlog."""
-        return self._apply(backlog_mod.adopt(self._fresh(), path, prefix))
+    def backlog_adopt(self, *, prefix: str | None = None) -> Result:
+        """Assign ids to every unnamed bullet in this repo's backlog."""
+        return self._apply(backlog_mod.adopt(self._fresh(), prefix))
 
     def backlog_prune(self, item_id: str) -> Result:
         """Remove a backlog item (``ostler backlog prune``) — ``item_id`` may be a short handle."""

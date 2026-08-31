@@ -74,19 +74,32 @@ def specs_root_in(root: Path) -> Path:
     return doc_root_in(root, "specs")
 
 
-def backlog_path_in(root: Path) -> Path:
-    """The intake list, ``docs/backlog.md`` under *root*.
+def roadmaps_root_in(root: Path) -> Path:
+    """Where roadmaps live under *root* — ``docs/roadmaps`` unless ``docRoots:`` says otherwise."""
+    return doc_root_in(root, "roadmaps")
 
-    Not under a doc root: the backlog is unfiled by definition — an item is on it precisely
-    because nobody has decided which epic it belongs to yet — so it has no ``docRoots:``
-    key and sits beside them instead.
+
+def roadmaps_root(graph: Graph) -> Path:
+    """Where roadmaps live in this graph."""
+    return graph.doc_roots["roadmaps"]
+
+
+def backlog_path_in(root: Path) -> Path:
+    """The intake list, ``docs/backlog.md`` under *root* unless ``docRoots:`` says otherwise.
+
+    The one ``docRoots:`` entry naming a file rather than a directory, because there is one
+    backlog and not a tree of them. It is configured there rather than fixed here for the
+    reason every other location is: a run told to keep its own worklist somewhere else used
+    to say so with a parameter, and then wrote a list ``ostler backlog`` and ``doctor`` could
+    not see. An intake list being *unfiled* — nobody has decided which epic an item belongs
+    to — is a fact about the items, not about where the file sits.
     """
-    return root / "docs" / "backlog.md"
+    return doc_root_in(root, "backlog")
 
 
 def backlog_path(graph: Graph) -> Path:
     """The intake list for this graph."""
-    return backlog_path_in(graph.root)
+    return graph.doc_roots["backlog"]
 
 
 def epics_index_in(root: Path) -> Path:
