@@ -126,7 +126,7 @@ def plan_author_step(
         skipped = {
             item.split("/", 1)[1] for item in blocked if item.startswith(f"{epic.name}/")
         }
-        report = okf.next_story_report(epic.name, need="author-current", skip=skipped)
+        report = okf.next_story_report(epic.name, need="author", skip=skipped)
         if report["state"] != "ready":
             for story in dag_order(epic):
                 if story.slug in skipped or _audit_current(story.story_md):

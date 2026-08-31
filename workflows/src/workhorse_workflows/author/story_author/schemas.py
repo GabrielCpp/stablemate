@@ -5,15 +5,15 @@ from workhorse_workflows.author.shared.schemas import AuthorResult
 
 
 class StoryTarget(AuthorResult):
-    """The explicit story after its persisted document has been migrated."""
+    """The explicit story, after its document was given any required section it lacked."""
 
     epic: str = ""
     story: str = ""
     epic_dir: str = ""
     story_dir: str = ""
     story_path: str = ""
-    migrated: bool = False
-    migration_message: str = ""
+    scaffolded: bool = False
+    scaffold_message: str = ""
 
 
 class StoryAuthorDone(AuthorResult):

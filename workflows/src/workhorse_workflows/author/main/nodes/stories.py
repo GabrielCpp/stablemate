@@ -13,7 +13,11 @@ import re
 from pathlib import Path
 
 from ostler import Ostler, backlog as ostler_backlog, markdown, registry
-from ostler.model import required_section_problems, status_bullet, story_section_specs
+from ostler.model import (
+    required_section_problems,
+    section_order_problems,
+    status_bullet,
+)
 from workhorse import worklist as wl
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.main.nodes._blueprint import blueprint
@@ -501,14 +505,14 @@ def validate_story(logger: logging.Logger, story_dir: str = "", repo_dir: str = 
     """The bare-minimum story contract, checked deterministically.
 
     A story separates build outcomes, non-functional invariants, and concise technical evidence
-    because the coder workflow owns implementation depth. This checks every section required by
-    the story's persisted shape, the status bullet, grounded technical pointers, and no open
-    questions shipped to the coder.
+    because the coder workflow owns implementation depth. This checks every section
+    `registry.STORY_SECTIONS` requires — present, filled, and in the table's order — plus the
+    status bullet, grounded technical pointers, and no open questions shipped to the coder.
 
     **The contract is ostler's, not this node's.** Sections are checked with
     `required_section_problems` against ostler's own declaration and the Status field is located with
-    `status_bullet`, so this gate and `ostler doctor`'s `unwritten-story` finding can never
-    disagree. The story is parsed as a standalone file rather than looked up in the graph:
+    `status_bullet`, so this gate and `ostler doctor`'s `unwritten-story` and
+    `story-section-order` findings can never disagree. The story is parsed as a standalone file rather than looked up in the graph:
     this runs right after a story is written, and a `story.md` not yet listed in its epic's
     `## Stories` should still be validated on its own terms.
     """
@@ -531,8 +535,9 @@ def validate_story(logger: logging.Logger, story_dir: str = "", repo_dir: str = 
             f"`## {registry.STORY_STATUS_HEADING}` (coder's selector reads this)"
         )
 
-    for spec, problem in required_section_problems(doc, story_section_specs(doc)):
+    for spec, problem in required_section_problems(doc, registry.STORY_SECTIONS):
         errors.append(f"required section `## {spec.heading}` is {problem}")
+    errors.extend(section_order_problems(doc, registry.STORY_SECTIONS))
 
     technical = doc.find_section("Technical Notes")
     if technical is not None and not technical.is_empty:

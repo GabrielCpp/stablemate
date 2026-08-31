@@ -1,4 +1,4 @@
-"""Resolve and migrate the one story the caller explicitly requested."""
+"""Resolve the one story the caller explicitly requested, and complete its scaffold."""
 from __future__ import annotations
 
 import logging
@@ -24,14 +24,20 @@ def _relative(root: Path, value: str | Path) -> str:
 
 
 @blueprint.node
-def migrate_story(
+def prepare_story(
     logger: logging.Logger,
     epic: str = "",
     story: str = "",
-    epics_dir: str = "",
     repo_dir: str = "",
 ) -> StoryTarget:
-    """Resolve exactly ``epic/story`` and migrate that story to the current shape."""
+    """Resolve exactly ``epic/story`` and give its document every required section it lacks.
+
+    Called unconditionally, on every story, because there is nothing here to branch on. A story
+    written before the contract grew and a story a rework just emptied are missing headings for
+    different reasons and want the same repair, so asking "is this one old?" would only be a way
+    to get the answer wrong. `scaffold_missing_sections` is idempotent and a no-op on a story
+    that already complies.
+    """
     epic = epic.strip()
     story = story.strip()
     if not epic or not story:
@@ -47,9 +53,11 @@ def migrate_story(
     if row is None:
         raise WorkflowFailed(f"story '{story}' was not found in epic '{epic}'")
 
-    result = okf.migrate_story_to_current_shape(story)
+    result = okf.scaffold_missing_sections(story)
     if not result.ok:
-        raise WorkflowFailed(result.message or f"could not migrate story '{story}'")
+        raise WorkflowFailed(
+            result.message or f"could not complete the scaffold for story '{story}'"
+        )
 
     story_path = _relative(root, str(row.get("path", "")))
     if not story_path:
@@ -60,11 +68,6 @@ def migrate_story(
     except (OSError, ValueError, RuntimeError) as exc:
         raise WorkflowFailed(f"could not resolve directory for epic '{epic}': {exc}") from exc
 
-    configured = epics_dir.strip().rstrip("/")
-    if configured and not Path(epic_dir).is_relative_to(Path(configured)):
-        raise WorkflowFailed(
-            f"epic '{epic}' resolved outside configured epics_dir '{configured}': {epic_dir}"
-        )
     logger.info("prepared explicit story '%s' in epic '%s': %s", story, epic, result.message)
     return StoryTarget(
         epic=epic,
@@ -72,8 +75,8 @@ def migrate_story(
         epic_dir=epic_dir,
         story_dir=story_dir,
         story_path=story_path,
-        migrated=True,
-        migration_message=result.message,
+        scaffolded=True,
+        scaffold_message=result.message,
     )
 
 
@@ -97,4 +100,4 @@ def record_story_audit(
     return AuditReceipt(story_digest=digest, path=relative)
 
 
-__all__ = ["migrate_story", "record_story_audit"]
+__all__ = ["prepare_story", "record_story_audit"]

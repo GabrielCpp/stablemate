@@ -22,7 +22,7 @@ from workhorse_workflows.author.shared.schemas import (
     OperatorResolution,
     WriteStoryResult,
 )
-from workhorse_workflows.author.story_author.nodes import migrate_story, record_story_audit
+from workhorse_workflows.author.story_author.nodes import prepare_story, record_story_audit
 from workhorse_workflows.author.story_author.schemas import StoryAuthorDone, StoryTarget
 from workhorse_workflows.kit.telemetry import counter_labels
 
@@ -109,7 +109,7 @@ class StoryAuthor(Workflow):
         )
 
     def start(self) -> Continue:
-        target = self.call(migrate_story, self.epic, self.story, self.ctx.epics_dir)
+        target = self.call(prepare_story, self.epic, self.story)
         gate = self.call(check_mockup_needed, target.story)
         if gate.required:
             return Continue(gate, self.design_mockup, target=target)

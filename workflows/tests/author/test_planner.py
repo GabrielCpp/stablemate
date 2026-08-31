@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from ostler import registry, select
+from ostler import select
 from ostler.model import Epic, Graph, Milestone, SeedItem, Story
 from workhorse_workflows.author.main.nodes import planner
 from workhorse_workflows.author.shared.story_split_receipt import story_split_digest
@@ -20,7 +20,6 @@ def _story(
     *,
     dependencies: list[str] | None = None,
     authored: bool = True,
-    shape: int | str | None = registry.CURRENT_STORY_SHAPE,
 ) -> Story:
     return Story(
         slug=slug,
@@ -29,7 +28,6 @@ def _story(
         seed_items=[slug],
         dependencies=list(dependencies or []),
         story_md=Path(f"/{slug}/story.md"),
-        story_shape=shape,
         unwritten_sections=[] if authored else ["Context"],
         unwritten_detail=[] if authored else ["Context (empty)"],
     )
@@ -73,7 +71,7 @@ def install(
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(f"# {story.title}\n", encoding="utf-8")
                 story.story_md = path
-                if story.authored and story.story_shape == registry.CURRENT_STORY_SHAPE:
+                if story.authored:
                     digest = hashlib.sha256(path.read_bytes()).hexdigest()
                     (path.parent / "audit-receipt.json").write_text(
                         json.dumps({"status": "passed", "storyDigest": digest}),
@@ -186,7 +184,7 @@ def test_story_author_uses_story_dag_order_and_author_current(install: Any) -> N
     step = _plan()
 
     assert (step.kind, step.epic, step.story) == ("story-author", "accounts", "base")
-    assert fake.needs == ["author-current"]
+    assert fake.needs == ["author"]
 
 
 def test_valid_graph_without_semantic_review_routes_to_story_split(install: Any) -> None:
@@ -242,16 +240,6 @@ def test_story_author_uses_milestone_epic_order(install: Any) -> None:
         "first",
         "first-story",
     )
-
-
-def test_legacy_authored_story_routes_to_story_author(install: Any) -> None:
-    legacy = _story("legacy", authored=True, shape=None)
-    install(["accounts"], [_epic("accounts", [legacy])])
-
-    step = _plan()
-
-    assert (step.kind, step.story) == ("story-author", "legacy")
-    assert "not current shape" in step.reason
 
 
 def test_current_authored_graph_finalizes(install: Any) -> None:
