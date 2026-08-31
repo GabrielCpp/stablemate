@@ -226,6 +226,97 @@ def test_cli_query_prints_snapshot_json_and_does_not_watch():
     assert json.loads(buf.getvalue()) == fake
 
 
+# --------------------------------------------------------------------------- #
+# Operator-gate relay RPCs: getQuestions / answerGate → the run's control socket
+# --------------------------------------------------------------------------- #
+def test_get_questions_relays_to_the_named_runs_control_socket():
+    captured = {}
+
+    def _fake_send(run_dir, request, *, timeout=5.0):
+        captured["run_dir"] = run_dir
+        captured["action"] = request.action
+        captured["timeout"] = timeout
+        return {"ok": True, "questions": []}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp)
+        (runs / "coder-20260101-000000").mkdir()
+        with patch.object(sidecar, "RUNS_DIR", runs), \
+             patch.object(sidecar.control, "send", _fake_send):
+            reply = sidecar._rpc_get_questions({"run": "coder-20260101-000000"})
+
+    assert reply == {"ok": True, "questions": []}
+    assert captured["run_dir"] == str(runs / "coder-20260101-000000")
+    assert captured["action"] == "questions"
+    # Bounded below the host's per-RPC deadline, so a run too busy to answer
+    # comes back as the protocol's `{}` rather than a host-side timeout.
+    assert captured["timeout"] == sidecar.CONTROL_TIMEOUT
+
+
+def test_answer_gate_carries_the_gate_path_and_the_answer_text():
+    captured = {}
+
+    def _fake_send(run_dir, request, *, timeout=5.0):
+        captured["request"] = request
+        return {"ok": True, "path": request.path}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp)
+        (runs / "coder-20260101-000000").mkdir()
+        with patch.object(sidecar, "RUNS_DIR", runs), \
+             patch.object(sidecar.control, "send", _fake_send):
+            reply = sidecar._rpc_answer_gate({
+                "run": "coder-20260101-000000",
+                "path": "/workspace/docs/gate.md",
+                "body": "main, not master",
+            })
+
+    assert reply == {"ok": True, "path": "/workspace/docs/gate.md"}
+    assert captured["request"].action == "answer"
+    assert captured["request"].path == "/workspace/docs/gate.md"
+    assert captured["request"].body == "main, not master"
+
+
+def test_gate_relay_reports_no_listener_instead_of_raising():
+    """A finished, crashed, or still-booting run has no control socket bound.
+    For the host that is an ordinary state to poll through, so it must arrive
+    as a result — an exception here would read as a broken sidecar."""
+    def _fake_send(run_dir, request, *, timeout=5.0):
+        raise FileNotFoundError(f"no run is listening on {run_dir}")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp)
+        (runs / "coder-20260101-000000").mkdir()
+        with patch.object(sidecar, "RUNS_DIR", runs), \
+             patch.object(sidecar.control, "send", _fake_send):
+            reply = sidecar._rpc_answer_gate({"run": "coder-20260101-000000", "path": "", "body": "go"})
+
+    assert reply == {"ok": False, "error": "no listener"}
+
+
+def test_gate_relay_resolves_an_empty_run_name_to_the_latest_run():
+    captured = {}
+
+    def _fake_send(run_dir, request, *, timeout=5.0):
+        captured["run_dir"] = run_dir
+        return {"ok": True, "questions": []}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp)
+        (runs / "coder-20260101-000000").mkdir()
+        (runs / "coder-20260102-000000").mkdir()
+        with patch.object(sidecar, "RUNS_DIR", runs), \
+             patch.object(sidecar.control, "send", _fake_send):
+            sidecar._rpc_get_questions({"run": ""})
+
+    assert captured["run_dir"] == str(runs / "coder-20260102-000000")
+
+
+def test_gate_relay_rpcs_are_registered():
+    assert sidecar._RPC_METHODS["getQuestions"] is sidecar._rpc_get_questions
+    assert sidecar._RPC_METHODS["answerGate"] is sidecar._rpc_answer_gate
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0

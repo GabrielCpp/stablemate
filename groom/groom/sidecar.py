@@ -25,7 +25,10 @@ fatal; the sidecar just keeps trying and re-advertises on reconnect.
 The session is **non-authoritative and its state ephemeral**: everything
 re-syncs on (re)connect, so a dropped socket, a groom restart, or a container
 recreate is cheap and safe. The sidecar has zero say in the workflow's own exit
-code or behaviour — it only ever observes and serves reads.
+code or behaviour — it observes and serves reads, plus exactly one write path:
+the ``getQuestions``/``answerGate`` RPCs relay an operator's exchange onto the
+run's own control socket, where workhorse itself decides what (if anything)
+changes.
 
 Runs as its own OS process (``groom-sidecar`` in the container entrypoint's
 supervising loop, ahead of workhorse's own run command), not embedded in
@@ -50,6 +53,8 @@ from pathlib import Path
 from watchfiles import Change, DefaultFilter, awatch
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
+
+from workhorse import control
 
 from groom.checkpoints import parse_position
 from groom.gates import AWAITING, extract_question, status_of
@@ -515,12 +520,59 @@ def _rpc_read_turn_file(params: dict) -> dict:
     }
 
 
+# --------------------------------------------------------------------------- #
+# Operator-gate relay: the host's side of a Q&A rides the run's own control
+# socket (`control.sock` in the run dir — locally reachable here because /runs
+# is this container's mount). These are the sidecar's only write-capable RPCs,
+# and deliberately thin: the sidecar relays verbatim and workhorse's channel
+# decides everything — which gate is live, whether an answer is accepted, what
+# gets persisted. The reply dict is the run's own, carried back untouched, so
+# groom reasons about one protocol whether the run is native or containerised.
+# --------------------------------------------------------------------------- #
+#: How long one relayed exchange waits for the run to reply. Below the host's
+#: per-RPC deadline (sidecar_hub.RPC_TIMEOUT, 5s) on purpose: a run too busy to
+#: answer must come back as `{}` — the protocol's own "did not answer" — and not
+#: as a host-side timeout indistinguishable from a wedged sidecar.
+CONTROL_TIMEOUT = 4.0
+
+
+def _relay_to_control(run: str, request: control.Request) -> dict:
+    """One control-socket exchange with the named (or latest) run.
+
+    A run with no listener — finished, crashed, or still booting — answers
+    ``no listener`` as a result rather than an exception, because for the host
+    that is an ordinary state to poll through, not a broken sidecar.
+    """
+    base = _run_base(run)
+    try:
+        return dict(control.send(str(base), request, timeout=CONTROL_TIMEOUT))
+    except FileNotFoundError:
+        return {"ok": False, "error": "no listener"}
+
+
+def _rpc_get_questions(params: dict) -> dict:
+    return _relay_to_control(
+        str(params.get("run", "")), control.Request(action=control.QUESTIONS)
+    )
+
+
+def _rpc_answer_gate(params: dict) -> dict:
+    request = control.Request(
+        action=control.ANSWER,
+        path=str(params.get("path", "")),
+        body=str(params.get("body", "")),
+    )
+    return _relay_to_control(str(params.get("run", "")), request)
+
+
 _RPC_METHODS = {
     "getTree": _rpc_get_tree,
     "getFile": _rpc_get_file,
     "getDiff": _rpc_get_diff,
     "listTurns": _rpc_list_turns,
     "readTurnFile": _rpc_read_turn_file,
+    "getQuestions": _rpc_get_questions,
+    "answerGate": _rpc_answer_gate,
 }
 
 

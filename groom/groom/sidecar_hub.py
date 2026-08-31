@@ -137,3 +137,42 @@ def get(container_id: str) -> SidecarConnection | None:
 
 def connected_ids() -> list[str]:
     return list(CONNECTIONS)
+
+
+# --------------------------------------------------------------------------- #
+# Operator-gate Q&A over the run's control socket, relayed by the sidecar.
+# Thin wrappers over the same correlation-id RPC the panels use, so timeouts,
+# supersession and fail-fast-on-close all come for free. The returned dict is
+# the run's own control-channel reply (``ok``/``error``/``questions``/``path``,
+# or ``{}`` when the run never answered within the sidecar's window), carried
+# back verbatim — a caller reasons about one protocol whether the run is native
+# or containerised.
+# --------------------------------------------------------------------------- #
+async def _gate_rpc(container_id: str, method: str, params: dict[str, Any]) -> dict[str, Any]:
+    conn = get(container_id)
+    if conn is None:
+        raise SidecarError(f"no sidecar connected for {container_id}")
+    reply = await conn.rpc(method, params)
+    if not isinstance(reply, dict):
+        raise SidecarError(f"{method} returned a non-dict reply: {reply!r}")
+    return reply
+
+
+async def ask_questions(container_id: str, run: str = "") -> dict[str, Any]:
+    """The pending operator questions of one containerised run, asked over its
+    own control socket via the sidecar's ``getQuestions`` relay. ``run`` is the
+    run-dir name under the container's ``/runs`` (empty = the latest run).
+    Raises :class:`SidecarError` when no sidecar is connected or the RPC fails —
+    the caller then falls back to the file-read path, same as the panels do."""
+    return await _gate_rpc(container_id, "getQuestions", {"run": run})
+
+
+async def answer_gate(container_id: str, run: str, path: str, body: str) -> dict[str, Any]:
+    """Deliver one operator answer to a containerised run over its control
+    socket, via the sidecar's ``answerGate`` relay. ``path`` is the gate file as
+    the run knows it (container-absolute), ``body`` the operator's prose. The
+    reply is the run's own — ``ok: true`` only after the run has persisted the
+    answer into the gate file itself — so the caller can tell delivered,
+    refused, and never-answered apart before deciding on the file fallback."""
+    params = {"run": run, "path": path, "body": body}
+    return await _gate_rpc(container_id, "answerGate", params)

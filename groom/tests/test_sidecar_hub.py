@@ -165,6 +165,104 @@ def test_send_reload_emits_reload_frame():
     assert asyncio.run(_scenario()) == [{"type": "reload"}]
 
 
+# --------------------------------------------------------------------------- #
+# Operator-gate wrappers: ask_questions / answer_gate over the registered
+# connection's correlation-id RPC
+# --------------------------------------------------------------------------- #
+def test_ask_questions_rides_the_registered_connections_rpc():
+    _reset()
+
+    async def _scenario():
+        sock = _FakeSocket()
+        conn = SidecarConnection("abc123", sock)
+        sidecar_hub.register(conn)
+
+        async def _reply():
+            while not sock.sent:
+                await asyncio.sleep(0)
+            conn.resolve(sock.sent[0]["id"], ok=True, data={"ok": True, "questions": []})
+
+        reply = asyncio.create_task(_reply())
+        result = await sidecar_hub.ask_questions("abc123", "coder-20260101-000000")
+        await reply
+        return sock.sent[0], result
+
+    frame, result = asyncio.run(_scenario())
+    assert frame["method"] == "getQuestions"
+    assert frame["params"] == {"run": "coder-20260101-000000"}
+    assert result == {"ok": True, "questions": []}
+
+
+def test_answer_gate_carries_run_path_and_body():
+    _reset()
+
+    async def _scenario():
+        sock = _FakeSocket()
+        conn = SidecarConnection("abc123", sock)
+        sidecar_hub.register(conn)
+
+        async def _reply():
+            while not sock.sent:
+                await asyncio.sleep(0)
+            conn.resolve(sock.sent[0]["id"], ok=True, data={"ok": True, "path": "/workspace/gate.md"})
+
+        reply = asyncio.create_task(_reply())
+        result = await sidecar_hub.answer_gate(
+            "abc123", "coder-20260101-000000", "/workspace/gate.md", "main, not master"
+        )
+        await reply
+        return sock.sent[0], result
+
+    frame, result = asyncio.run(_scenario())
+    assert frame["method"] == "answerGate"
+    assert frame["params"] == {
+        "run": "coder-20260101-000000",
+        "path": "/workspace/gate.md",
+        "body": "main, not master",
+    }
+    assert result == {"ok": True, "path": "/workspace/gate.md"}
+
+
+def test_gate_wrappers_raise_when_no_sidecar_is_connected():
+    """The disconnected case is the fallback trigger: the caller must get the
+    same SidecarError the panels get, not None or a hang."""
+    _reset()
+
+    async def _scenario():
+        try:
+            await sidecar_hub.ask_questions("nope")
+        except SidecarError as exc:
+            return str(exc)
+        return None
+
+    assert asyncio.run(_scenario()) == "no sidecar connected for nope"
+
+
+def test_gate_wrappers_refuse_a_non_dict_reply():
+    _reset()
+
+    async def _scenario():
+        sock = _FakeSocket()
+        conn = SidecarConnection("abc123", sock)
+        sidecar_hub.register(conn)
+
+        async def _reply():
+            while not sock.sent:
+                await asyncio.sleep(0)
+            conn.resolve(sock.sent[0]["id"], ok=True, data=["not", "a", "dict"])
+
+        reply = asyncio.create_task(_reply())
+        try:
+            await sidecar_hub.ask_questions("abc123")
+        except SidecarError:
+            await reply
+            return True
+        await reply
+        return False
+
+    assert asyncio.run(_scenario()) is True
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0
