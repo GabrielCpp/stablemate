@@ -64,7 +64,7 @@ from workhorse_workflows.author.main.nodes.stories import prune_bullet
 from workhorse_workflows.author.epic_edit import EpicEdit
 from workhorse_workflows.author.shared.survey import record_slug
 from workhorse_workflows.author.story_edit import StoryEdit
-from workhorse_workflows.author.workflow import Author
+from workhorse_workflows.author.workflow import Author, workflow
 
 BACKLOG = "docs/backlog.md"
 ROADMAP = "docs/roadmaps/account-access.md"
@@ -216,6 +216,17 @@ def _subject(repo: Path) -> str:
 def _commit_count(repo: Path) -> int:
     out = subprocess.run(
         ["git", "rev-list", "--count", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    )
+    return int(out.stdout.strip())
+
+
+def _branch_commit_count(repo: Path) -> int:
+    out = subprocess.run(
+        ["git", "rev-list", "--count", "main..HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
     )
     return int(out.stdout.strip())
 
@@ -458,6 +469,36 @@ class _Agent:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
 
     # -- the epic split ---------------------------------------------------
+
+    def _build_milestone(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """Create the roadmap-owned milestone without crossing into epic splitting."""
+        _milestone(self.repo, source_items=(str(data["roadmap"]),))
+        return {"status": "complete", "notes": "roadmap milestone created"}
+
+    def _split_epics(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """Create only the epic skeletons and attach them to the existing milestone."""
+        self.roadmap_at_decompose = (self.repo / data["roadmap"]).read_text(encoding="utf-8")
+        okf = Ostler(self.repo)
+        if not (self.repo / EPIC_DIR / "epic.md").is_file():
+            okf.create_epic(EPIC, "Account holder accesses their account")
+        epics = [EPIC]
+        if self.two_epics:
+            if not (self.repo / SECOND_EPIC_DIR / "epic.md").is_file():
+                okf.create_epic(SECOND_EPIC, "Account holder updates their profile")
+            epics.append(SECOND_EPIC)
+        _milestone(self.repo, *epics, source_items=(str(data["roadmap"]),))
+        return {"status": "complete", "notes": "ordered epic skeletons created"}
+
+    def _review_epic_split(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        verdict = self.review_epics[min(nth, len(self.review_epics)) - 1]
+        return {"status": verdict, "notes": "" if verdict == "approved" else "one epic is two"}
+
+    def _rework_epic_split(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        return self._split_epics(data, nth)
+
+    def _resolve_epic_split(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        self.review_epics = ["approved"]
+        return {"decision": "escalated", "notes": "operator decision required", "tried": []}
 
     def _decompose_epics(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """Create journey epic shells in one release milestone; `write-epic` records seeds."""
@@ -785,6 +826,17 @@ def _drive_epic_edit(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
 # --------------------------------------------------------------------------- epic mode
 
 
+def test_every_flat_stage_is_directly_registered() -> None:
+    assert {
+        "milestone",
+        "epic-split",
+        "epic-author",
+        "story-split",
+        "story-author",
+        "finalize",
+    }.issubset(workflow.flows)
+
+
 def test_epic_mode_authors_one_roadmap_milestone_and_commits_it(
     backlogged: Path, tmp_path: Path
 ) -> None:
@@ -800,8 +852,9 @@ def test_epic_mode_authors_one_roadmap_milestone_and_commits_it(
     result = _drive(_env(tmp_path), agent, roadmap=ROADMAP)
 
     assert agent.counts() == {
-        "decompose-epics": 1,
-        "review-epics": 1,
+        "build-milestone": 1,
+        "split-epics": 1,
+        "review-epic-split": 1,
         "write-epic": 1,
         "split-stories": 1,
         "design-mockup": 2,
@@ -826,6 +879,7 @@ def test_epic_mode_authors_one_roadmap_milestone_and_commits_it(
 
     # The git tail: committed on the run's own branch, PR skipped for want of a token.
     assert _subject(backlogged) == "author: roadmap account-access"
+    assert _branch_commit_count(backlogged) == 1
     assert result.author_pr == "skipped", result
     assert result.pr_skip_reason == "no GitHub token is configured", result
 
@@ -938,7 +992,7 @@ def test_every_prompt_is_told_the_resolved_paths_not_the_blank_parameters(
     agent = _Agent(backlogged)
     _drive(_env(tmp_path), agent)
 
-    for stem in ("decompose-epics", "review-epics"):
+    for stem in ("split-epics", "review-epic-split"):
         for args in agent.args_for(stem):
             assert args["epics_dir"] == EPICS, (stem, args)
             assert args["roadmap"] == ROADMAP, (stem, args)
@@ -1045,7 +1099,7 @@ def test_a_story_nobody_can_fix_is_parked_and_the_epic_carries_on(
         _drive(_env(tmp_path), agent)
 
     assert any("parking story '01-sign-in'" in r.message for r in caplog.records), caplog.text
-    assert any("leaves 1 story/stories unauthored" in r.message for r in caplog.records)
+    assert any("remains audit-blocked" in r.message for r in caplog.records)
     # The parked story is never re-selected, and the next one is authored normally.
     assert agent.args_for("write-story")[-1]["story_slug"] == "02-reset-password"
     assert _stories(backlogged)["02-reset-password"] is True
@@ -1178,8 +1232,8 @@ def test_coverage_resolver_cycles_share_the_epic_scoped_split_bound(
     assert agent.counts()["resolve-operator"] == 2, agent.counts()
     assert len(seen) == 2, seen
     assert all("the reset flow is unclaimed" in note for note in seen), seen
-    reset_laps = [row for row in labels if row.get("author.split_resolves") == "1"]
-    assert any("author.cov_reworks" not in row for row in reset_laps), labels
+    reset_laps = [row for row in labels if row.get("story_split.split_resolves") == "1"]
+    assert any("story_split.cov_reworks" not in row for row in reset_laps), labels
 
 
 # ------------------------------------------------------------------- the operator gates
@@ -1198,12 +1252,12 @@ def test_an_epic_review_that_will_not_converge_reaches_the_resolver(
     agent = _Agent(backlogged, review_epics=["needs_rework"] * 4)
     _drive(_env(tmp_path), agent)
 
-    assert agent.counts()["rework-epics"] == 3, agent.counts()
-    assert agent.counts()["resolve-operator"] == 1, agent.counts()
+    assert agent.counts()["rework-epic-split"] == 3, agent.counts()
+    assert agent.counts()["resolve-epic-split"] == 1, agent.counts()
     # The resolver's answer sent the run back through the split, not past it.
-    assert agent.counts()["decompose-epics"] == 2, agent.counts()
-    assert agent.counts()["review-epics"] == 5, agent.counts()
-    assert agent.args_for("resolve-operator")[0]["block_stage"] == "epic-split"
+    assert agent.counts()["split-epics"] == 2, agent.counts()
+    assert agent.counts()["review-epic-split"] == 5, agent.counts()
+    assert "one epic is two" in agent.args_for("resolve-epic-split")[0]["block_notes"]
     assert _subject(backlogged) == "author: roadmap account-access"
 
 
@@ -1225,12 +1279,12 @@ def test_operator_mode_human_sends_the_block_straight_to_the_context_file(
     agent = _Agent(backlogged, review_epics=["blocked", "approved"])
     _drive(_env(tmp_path), agent, wait_for_answer=answered, operator_mode="human")
 
-    assert agent.counts()["resolve-operator"] == 0, agent.counts()
-    assert agent.counts()["rework-epics"] == 0, agent.counts()
+    assert agent.counts()["resolve-epic-split"] == 0, agent.counts()
+    assert agent.counts()["rework-epic-split"] == 0, agent.counts()
     assert len(seen) == 1 and "one epic is two" in seen[0], seen
     assert (backlogged / CONTEXT).is_file()
     # The gate looped back into the split, so the run finished on the second review.
-    assert agent.counts()["review-epics"] == 2, agent.counts()
+    assert agent.counts()["review-epic-split"] == 2, agent.counts()
 
 
 def test_an_escalated_story_block_waits_on_the_story_context(
@@ -1513,7 +1567,7 @@ def test_survey_mode_runs_the_surveyor_and_stops_at_discovery(
     assert agent.counts()["plan-units"] == 1, agent.counts()
     assert agent.counts()["assess-unit"] == 1, agent.counts()
     assert agent.counts()["partition-findings"] == 1, agent.counts()
-    assert agent.counts()["decompose-epics"] == 0, agent.counts()
+    assert agent.counts()["build-milestone"] == 0, agent.counts()
 
     # The child's artifacts are on disk, and its bullets are in the parent's backlog.
     assert (backlogged / RULES).is_file()
@@ -1551,8 +1605,10 @@ def test_a_run_killed_mid_story_resumes_on_that_story_alone(
 
     checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
-    assert resume.state == "write_story", resume
-    assert resume.params["story_slug"] == "02-reset-password", resume.params
+    # The parent checkpoints the flat dispatcher; handoff re-adopts StoryAuthor's scoped
+    # `write_story` checkpoint when that dispatcher is resumed.
+    assert resume.state == "next_stage", resume
+    assert resume.params == {"blocked": []}, resume.params
     assert resume.flow == "Author", resume
 
     second = _Agent(backlogged)
@@ -1595,14 +1651,15 @@ def test_the_labels_name_the_story_and_the_epic(backlogged: Path, tmp_path: Path
     assert seen[0] == {}, seen[0]
     stamped = [labels for labels in seen if labels.get("work_id")]
     assert stamped, seen
-    # The epic is the label until a story is picked, and `progress` is absent rather than
-    # blank because the driver drops empty values.
-    assert stamped[0] == {"work_id": EPIC_NAME, "epic": EPIC_NAME}, stamped[0]
-    assert {labels["work_id"] for labels in stamped} == {EPIC_NAME, *SLUGS}, stamped
+    # Flat milestone work is labelled by roadmap before an epic or story target exists.
+    assert stamped[0] == {"work_id": "account-access"}, stamped[0]
+    assert {labels["work_id"] for labels in stamped} == {
+        "account-access", EPIC_NAME, *SLUGS,
+    }, stamped
     # `progress` is the worklist's own count, so a dashboard can read it without knowing
     # anything about authoring.
     assert any(labels.get("progress") for labels in stamped), stamped
-    assert any(labels.get("author.cov_reworks") == "0" for labels in stamped), stamped
-    assert any(labels.get("author.split_resolves") == "0" for labels in stamped), stamped
+    assert any(labels.get("story_split.cov_reworks") == "0" for labels in stamped), stamped
+    assert any(labels.get("story_split.split_resolves") == "0" for labels in stamped), stamped
     # Unprefixed, unlike the YAML engine's `wf.work_id`.
     assert not any(k.startswith("wf.") for labels in seen for k in labels), seen

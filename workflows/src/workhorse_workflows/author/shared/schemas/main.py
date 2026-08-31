@@ -57,6 +57,23 @@ class RunContext(Config):
     author_branch: str = ""
 
 
+class AuthorStep(AuthorResult):
+    """The one artifact-derived unit the flat author planner should run next."""
+
+    kind: Literal[
+        "milestone",
+        "epic-split",
+        "epic-author",
+        "story-split",
+        "story-author",
+        "finalize",
+    ] = "milestone"
+    roadmap: str = ""
+    epic: str = ""
+    story: str = ""
+    reason: str = ""
+
+
 class EpicChoice(AuthorResult):
     """`select_epic` — the next unauthored epic, or that none is left.
 
@@ -188,24 +205,6 @@ class PullRequest(AuthorResult):
 # ── agent replies ───────────────────────────────────────────────────────────
 
 
-class DecomposeResult(AuthorResult):
-    """`main/prompts/decompose-epics.md` and `main/prompts/rework-epics.md` — the backlog split.
-
-    Both prompts return under the YAML's one `decompose_result` key, so both return
-    this: the rework pass is the same product, re-derived against review notes.
-    """
-
-    status: str = ""
-    notes: str = ""
-
-
-class EpicReview(AuthorResult):
-    """`main/prompts/review-epics.md` — the decomposition reviewed before any story lands."""
-
-    status: str = ""
-    notes: str = ""
-
-
 class WriteEpicResult(AuthorResult):
     """`main/prompts/write-epic.md` — one epic's `epic.md` written from its seeds."""
 
@@ -298,14 +297,13 @@ class CoverageReview(AuthorResult):
 __all__ = [
     "AuditFinding",
     "AuditResult",
+    "AuthorStep",
     "Branches",
     "Committed",
     "Config",
     "CoverageReview",
-    "DecomposeResult",
     "Defects",
     "EpicChoice",
-    "EpicReview",
     "Feedback",
     "Ledger",
     "MockupGate",

@@ -15,7 +15,7 @@ import pytest
 import workhorse_workflows
 
 AUTHOR = Path(workhorse_workflows.__file__).parent / "author"
-MAIN_PROMPTS = AUTHOR / "main" / "prompts"
+STORY_PROMPTS = AUTHOR / "story_author" / "prompts"
 
 
 def _copies(name: str) -> list[Path]:
@@ -86,36 +86,37 @@ def test_reworker_makes_in_scope_choices_instead_of_blocking(prompt: Path) -> No
 
 
 @pytest.mark.parametrize(
-    "name",
+    "prompt",
     [
-        "decompose-epics.md",
-        "rework-epics.md",
-        "write-epic.md",
-        "split-stories.md",
-        "write-story.md",
-        "design-mockup.md",
-        "audit-story.md",
-        "rework-story.md",
-        "resolve-integrity.md",
+        AUTHOR / "epic_author/prompts/write-epic.md",
+        AUTHOR / "story_split/prompts/split-stories.md",
+        STORY_PROMPTS / "write-story.md",
+        STORY_PROMPTS / "design-mockup.md",
+        STORY_PROMPTS / "audit-story.md",
+        STORY_PROMPTS / "rework-story.md",
+        AUTHOR / "finalize/prompts/resolve-integrity.md",
+        AUTHOR / "milestone/prompts/build-milestone.md",
+        AUTHOR / "epic_split/prompts/split-epics.md",
+        AUTHOR / "epic_split/prompts/rework-epic-split.md",
     ],
 )
-def test_mutating_turns_leave_validation_and_delivery_to_author(name: str) -> None:
-    text = _prose(MAIN_PROMPTS / name)
+def test_mutating_turns_leave_validation_and_delivery_to_author(prompt: Path) -> None:
+    text = _prose(prompt)
 
     assert "do not install dependencies, run repository-wide checks" in text
     assert "stage, commit, push, or alter branches/remotes" in text
-    assert "Author validates and delivers after all authoring turns finish" in text
+    assert "Author validates and delivers after all authoring" in text
 
 
 def test_epic_review_does_not_inherit_unrelated_planning_debt() -> None:
-    text = _prose(MAIN_PROMPTS / "review-epics.md")
+    text = _prose(AUTHOR / "epic_split/prompts/review-epic-split.md")
 
-    assert "validates the roadmap-owned planning subgraph mechanically" in text
-    assert "Do not run repository-wide checks or inspect unrelated milestones" in text
+    assert "Do not edit artifacts" in text
+    assert "bare skeleton" in text
 
 
 def test_epic_writer_records_the_seed_set_without_per_seed_graph_reloads() -> None:
-    text = _prose(MAIN_PROMPTS / "write-epic.md")
+    text = _prose(AUTHOR / "epic_author/prompts/write-epic.md")
 
     assert "Write or refine the complete seed set in one edit" in text
     assert "do not launch a separate `ostler seed add` process per seed" in text

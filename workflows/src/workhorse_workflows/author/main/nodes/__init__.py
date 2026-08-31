@@ -8,6 +8,7 @@ subjects:
 * `intake` — validate roadmap provenance and retain story-mode bullet adoption
 * `epics` — which epic is next
 * `stories` — one story at a time: seed it, pick it, validate it, ground it
+* `planner` — the next flat artifact-derived authoring unit
 * `coverage` — whether an epic's stories cover it
 * `artifacts` — the whole-run gates, and the git tail that ships what they passed
 
@@ -51,6 +52,7 @@ from workhorse_workflows.author.main.nodes.intake import (
     mark_roadmap_authored,
     validate_roadmap_milestone,
 )
+from workhorse_workflows.author.main.nodes.planner import plan_author_step
 from workhorse_workflows.author.main.nodes.stories import (
     check_mockup_needed,
     check_story_feedback,
@@ -74,6 +76,7 @@ __all__ = [
     "load_config",
     "mark_roadmap_authored",
     "open_author_pr",
+    "plan_author_step",
     "prune_bullet",
     "record_attempt",
     "remove_story",
