@@ -353,7 +353,7 @@ function RunRow({ run, selected }) {
         <${StateDot} state=${run.state} />
         <${TypeBadge} type=${run.type} hue=${run.type_hue} />
         <span class="repo-branch">${run.repo}</span>
-        <span class="wid">#${run.short_id}</span>
+        <span class="wid">#${run.row_id}</span>
         ${run.live_label ? html`<span class="pulse ${run.live}">${run.live_label}</span>` : null}
       </span>
       <span class="line2">
@@ -1079,7 +1079,7 @@ function PaletteResults() {
   });
   return hits.map((run, i) => {
     const hint = run.state === "blocked" ? "gate" : run.live || run.state;
-    const text = [run.repo, "#" + run.short_id, run.doing].filter(Boolean).join(" ");
+    const text = [run.repo, "#" + run.row_id, run.doing].filter(Boolean).join(" ");
     return html`<div
       class=${"presult" + (i === active ? " active" : "")}
       id=${"presult-" + i}

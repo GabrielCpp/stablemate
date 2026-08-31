@@ -100,7 +100,22 @@ def repo_label(wf: WorkflowContainer) -> str:
     return f"{wf.repo_name}@{wf.repo_branch}" if wf.repo_branch else (wf.repo_name or "—")
 
 
-def short_id(wf: WorkflowContainer) -> str:
+def row_id(wf: WorkflowContainer) -> str:
+    """The id a list row shows.
+
+    A native row's id is a **name somebody chose** — ``shape-upgrade-fwdref`` — and
+    the first four characters of a name are not a shorter name, they are a different
+    one. ``shap`` cannot be searched for, pasted into ``--resume-run``, or told apart
+    from a sibling whose name shares its prefix, which is the normal case when a
+    campaign names its runs after what they operate on. So a native row shows it
+    whole, the same reason :func:`handle` gives for the detail pane.
+
+    A docker container id is a 64-hex digest nobody chose, reads or types, and four
+    characters of it disambiguate a fleet exactly as well as sixty-four do. That row
+    keeps its prefix — the truncation is only ever wrong on the ids that are names.
+    """
+    if wf.native:
+        return wf.run_id or wf.container_id
     return wf.container_id[:4] or "----"
 
 
@@ -239,7 +254,7 @@ def run_row(
         "run_id": run_id_of(wf),
         "name": wf.name,
         "repo": repo_label(wf),
-        "short_id": short_id(wf),
+        "row_id": row_id(wf),
         "type": wf.workflow_type,
         "type_hue": type_hue(wf.workflow_type),
         "state": wf.state.value,
@@ -357,12 +372,12 @@ def repo_entries(
 def handle(wf: WorkflowContainer) -> str:
     """The id the detail pane shows — whole, not a fragment.
 
-    A row's ``short_id`` is for scanning a list, where four characters
-    disambiguate. The pane is the thing you *paste*: into a workhorse command,
-    into a groom URL, into a run-directory path. So a native row reports its
-    entire run id, and a docker row the twelve characters docker itself prints
-    and accepts. Truncating the run id saved a few pixels of header and cost
-    every paste that needed it.
+    The pane is the thing you *paste*: into a workhorse command, into a groom
+    URL, into a run-directory path. So a native row reports its entire run id —
+    as its list row already does (:func:`row_id`) — and a docker row the twelve
+    characters docker itself prints and accepts, rather than the four a list
+    needs to tell one digest from another. Truncating the run id saved a few
+    pixels of header and cost every paste that needed it.
     """
     if wf.native:
         return wf.run_id or wf.container_id

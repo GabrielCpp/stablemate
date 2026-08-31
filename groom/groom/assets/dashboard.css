@@ -95,10 +95,15 @@ body {
 .row:hover { background:var(--bg-2); }
 .row.selected { background:var(--bg-3); border-left-color:var(--accent); }
 .row.blocked { border-left-color:var(--blocked); }
-.row .line1 { display:flex; align-items:center; gap:7px; }
+.row .line1 { display:flex; align-items:center; gap:7px; min-width:0; }
 .row .line2 { display:flex; align-items:baseline; gap:8px; min-width:0; }
-.row .repo-branch { font-family:var(--mono); font-size:11.5px; color:var(--text-1); }
-.row .wid { font-family:var(--mono); font-size:11.5px; color:var(--text-2); }
+/* A run id is now a whole name rather than a four-character fragment, so line1
+   needs somewhere to give. The id is the half you paste, so it never shrinks;
+   the repo label ellipsizes instead. */
+.row .repo-branch { font-family:var(--mono); font-size:11.5px; color:var(--text-1);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.row .wid { font-family:var(--mono); font-size:11.5px; color:var(--text-2);
+  white-space:nowrap; flex:none; }
 .row .doing { font-family:var(--mono); font-size:10.5px; color:var(--text-2);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
 .row .mini { margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--text-2); white-space:nowrap; flex:none; }

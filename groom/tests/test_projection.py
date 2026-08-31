@@ -321,9 +321,19 @@ def test_the_head_carries_the_whole_run_id_not_a_fragment():
     # twelve characters docker prints and accepts, not the whole 64-char sha.
     docker = _wf("0123456789abcdef0123456789abcdef")
     assert projection.head(docker)["handle"] == "0123456789ab"
-    # The row keeps its scanning-width fragment — the list and the pane answer
-    # different questions.
-    assert projection.short_id(native) == "code"
+
+
+def test_the_row_id_truncates_a_digest_but_never_a_name():
+    # A native run id is a name somebody chose, and four characters of it is a
+    # different name, not a shorter one: unsearchable, unpasteable, and shared with
+    # every sibling run named after the same thing.
+    a = _wf("author-fwdref", native=True, run_id="author-fwdref")
+    b = _wf("author-fwdname", native=True, run_id="author-fwdname")
+    assert projection.row_id(a) == "author-fwdref"
+    assert projection.row_id(a) != projection.row_id(b)
+    # A docker container id is a digest nobody reads or types; a prefix tells one
+    # from another exactly as well as the whole thing does.
+    assert projection.row_id(_wf("0123456789abcdef0123456789abcdef")) == "0123"
 
 
 def test_exit_hint_only_on_finished_with_a_code():
