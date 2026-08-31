@@ -91,6 +91,12 @@ _TRANSIENT_MARKERS = (
     # (see test_finalize_turn_non_recoverable_names_each_backend) stays non-recoverable.
     "mid-response",
     "response above may be incomplete",
+    # opencode's session store (a shared sqlite) under concurrent writers — several
+    # runs driving opencode at once contend on it and a losing turn exits 1 with
+    # this message. The store is fine a moment later, nothing is wrong with the
+    # prompt, and the same turn re-run completes; five run-generations died on it
+    # in one afternoon before it was classified.
+    "failed to execute statement",
 )
 
 # Substrings (case-insensitive) that mark an exhausted context window — the model

@@ -37,6 +37,9 @@ def test_transient_error_detection():
         "connect ECONNREFUSED 127.0.0.1:443",
         "getaddrinfo ENOTFOUND api.example.com",
         "socket hang up",
+        # opencode's shared session-store sqlite losing a write race under
+        # concurrent runs — exits 1, retries clean.
+        'level=ERROR run=09586c53 message=process error="Failed to execute statement"',
     ]
     
     for msg in transient_messages:
