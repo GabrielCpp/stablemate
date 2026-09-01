@@ -1,6 +1,6 @@
 ---
 name: commit-and-push
-description: "The standing procedure every finished change lands under: one concern per commit, the gate before the commit, staged by explicit path never `-A`, a Conventional Commits subject release-please can read, and a push over HTTPS with `gh` holding the credential rather than the human's SSH key. The scope vocabulary, the gate command and the ticket-id trailer are templated per repo; a repo with a follow-on step adds it through `commit_epilogue`."
+description: "The standing procedure every finished change lands under: one concern per commit, the gate before the commit, staged by explicit path never `-A`, a Conventional Commits subject release-please can read, and a push over HTTPS with `gh` holding the credential rather than the human's SSH key. The scope vocabulary, the gate command and the story-id footer are templated per repo; a repo with a follow-on step adds it through `commit_epilogue`."
 ---
 
 # Commit and push
@@ -57,7 +57,7 @@ someone else's half-finished work and makes it vanish from *their* `git status`.
 
 <optional body, wrapped at 72 columns, explaining why — not what>
 
-{{ template.commit_ticket_trailer | default("Refs: <ticket id>") }}
+{{ template.commit_ticket_trailer | default("Story: <story id>") }}
 ```
 
 | Subject                                           | Effect on the package named by the scope |
@@ -75,16 +75,19 @@ someone else's half-finished work and makes it vanish from *their* `git status`.
   {{ template.commit_extra_scopes | default("`deps`, `release`, `ci`") }}. Omit the parentheses
   entirely for a repo-wide change.
 - Subject ≤ 72 characters, no capital first word, no trailing period.
-- **ticket id**: every commit that answers a tracked piece of work carries its
-  identifier as a trailer at the **end of the body**, spelled exactly as the
-  block above. Not in the subject — those 72 characters belong to the type,
-  the scope and the description release-please reads, and a bracketed ticket
-  eats a fifth of them. A trailer is a key git itself parses
-  (`git log --format=%(trailers)`), so the link survives a rebase, a squash and
-  a changelog render, and the commit can be found from the ticket months later
-  without a full-text search. Do not invent one: a change with no ticket behind
-  it — a drive-by typo fix, a release chore — omits the trailer rather than
-  making an id up, because a wrong id points a reader at somebody else's work.
+- **story id**: every commit that answers a tracked piece of work carries its
+  identifier as a footer at the **end of the message**, spelled exactly as the
+  block above and nowhere else. Not in the subject — those 72 characters belong
+  to the type, the scope and the description release-please reads, and a
+  bracketed id both eats a fifth of them and says the same thing twice. One
+  spelling is the whole point: the footer is a key git itself parses
+  (`git log --format=%(trailers:key=Story)`), it is what tooling joins a commit
+  to its story by, and a second copy in another shape is a second thing to keep
+  in sync. The link then survives a rebase, a squash and a changelog render, and
+  the commit is findable from the story months later without a full-text search.
+  Do not invent one: a change with no story behind it — a drive-by typo fix, a
+  release chore — omits the footer rather than making an id up, because a wrong
+  id points a reader at somebody else's work.
 
 A repaired defect labelled `chore:` ships to nobody, and the omission surfaces
 weeks later as a bug report against a version that never contained the fix.
