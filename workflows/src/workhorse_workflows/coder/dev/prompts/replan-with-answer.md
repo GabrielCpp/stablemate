@@ -42,9 +42,9 @@ to you as the same block.
 
 ## Commit Identity
 
-Every commit subject ends with `[{{ workhorse_var('story_id') }}]`, after its description.
-Every commit also carries `Epic: {{ workhorse_var('epic') }}` and
-`Story: {{ workhorse_var('story_id') }}` as trailers, spelled exactly so — the run record
+Every commit carries `Epic: {{ workhorse_var('epic') }}` and
+`Story: {{ workhorse_var('story_id') }}` as footers, spelled exactly so and nowhere else
+in the message — not bracketed into the subject — the run record
 ties a commit back to its story through them.
 
 ## Machine-Readable Result (required)

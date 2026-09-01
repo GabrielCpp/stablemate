@@ -160,23 +160,24 @@ def test_settlement_prompt_commits_with_the_minted_story_identity() -> None:
         Path(coder.__file__).parent / "main/prompts/settle-worktree.md"
     ).read_text(encoding="utf-8")
 
-    assert "[{{ story_id }}]" in prompt
     assert "`Story: {{ story_id }}`" in prompt
     assert "`Story: {{ story_slug }}`" not in prompt
+    assert "[{{ story_id }}]" not in prompt
 
 
-def test_every_story_commit_prompt_suffixes_the_subject_with_the_minted_id() -> None:
+def test_no_commit_prompt_brackets_the_story_id_into_the_subject() -> None:
+    """The id has exactly one spelling — the `Story:` footer — and this is the guard.
+
+    A second copy in the subject is the same fact in a shape no tool reads: it spends
+    characters release-please wants for the description, and it is a second thing to keep
+    in sync with `commits.subject`, which no longer writes one.
+    """
     prompts = Path(coder.__file__).parent
-    offenders: list[str] = []
-    for path in prompts.rglob("*.md"):
-        text = path.read_text(encoding="utf-8")
-        if "story_id') }}` as trailers" in text:
-            expected = "[{{ workhorse_var('story_id') }}]"
-        elif "`Story: {{ story_id }}` as" in text:
-            expected = "[{{ story_id }}]"
-        else:
-            continue
-        if expected not in text:
-            offenders.append(str(path.relative_to(prompts)))
+    offenders = [
+        str(path.relative_to(prompts))
+        for path in prompts.rglob("*.md")
+        for text in (path.read_text(encoding="utf-8"),)
+        if "[{{ workhorse_var('story_id') }}]" in text or "[{{ story_id }}]" in text
+    ]
 
     assert offenders == []

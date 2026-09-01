@@ -41,9 +41,9 @@ Your only job is to make that gate pass. Nothing else.
    line, and then you say why in the notes. Do not refactor or add features beyond passing.
 4. **Re-run the command and confirm it is clean.** The workflow re-runs it deterministically
    afterwards, so a still-failing tree simply comes back to you.
-5. **Commit what you fixed.** End the Conventional Commit subject with `[{{ story_id }}]`,
-   after its description, and carry `Epic: {{ epic }}` and `Story: {{ story_id }}` as
-   trailers, spelled exactly so. **Do not push or open a PR** — the workflow owns those.
+5. **Commit what you fixed.** Carry `Epic: {{ epic }}` and `Story: {{ story_id }}` as
+   footers, spelled exactly so and nowhere else in the message — not bracketed into
+   the subject. **Do not push or open a PR** — the workflow owns those.
 
 If one finding cannot be fixed without changing intended behaviour, fix everything else and
 explain the one you left in `notes`.

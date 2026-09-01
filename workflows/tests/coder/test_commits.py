@@ -72,27 +72,32 @@ def test_a_description_that_is_all_whitespace_still_yields_a_parseable_subject()
 # --------------------------------------------------------------------------- the body
 
 
-def test_the_story_id_suffixes_the_subject_and_remains_an_exact_trailer() -> None:
-    """Release tooling reads the type first; provenance reads the exact trailer."""
+def test_the_story_id_is_an_exact_footer_and_nothing_else() -> None:
+    """One spelling: `ostler.provenance` and the commit policy both read this key.
+
+    A bracketed copy in the subject would say the same thing in a shape no tool reads,
+    out of the 72 characters release-please wants for the description.
+    """
     message = commits.message(
         "feat", "api-service", "Add guest cart", epic="checkout", story="guest-cart"
     )
 
     assert message.splitlines() == [
-        "feat(api-service): add guest cart [guest-cart]",
+        "feat(api-service): add guest cart",
         "",
         "Epic: checkout",
         "Story: guest-cart",
     ]
 
 
-def test_a_long_story_subject_keeps_its_story_id_suffix() -> None:
+def test_a_long_story_subject_spends_none_of_its_budget_on_the_id() -> None:
     message = commits.message("refactor", "api", "a" * 200, story="PRED-12AB")
 
-    subject = message.splitlines()[0]
+    subject, _, body = message.partition("\n")
     assert len(subject) <= commits.SUBJECT_LIMIT
     assert subject.startswith("refactor(api): ")
-    assert subject.endswith(" [PRED-12AB]")
+    assert "PRED-12AB" not in subject
+    assert "Story: PRED-12AB" in body
 
 
 def test_a_message_with_nothing_to_attribute_is_a_bare_subject() -> None:

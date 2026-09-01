@@ -51,10 +51,9 @@ work, where a guess costs the review that would have caught it.
 
 ## Commit Identity
 
-Commit the completed repair in each repository it changed. Every Conventional Commit subject
-ends with `[{{ workhorse_var('story_id') }}]`, after its description. Every commit also carries
-`Epic: {{ workhorse_var('epic') }}` and `Story: {{ workhorse_var('story_id') }}` as trailers,
-spelled exactly so. Do not push or open a PR; the workflow owns those.
+Commit the completed repair in each repository it changed. Every commit carries
+`Epic: {{ workhorse_var('epic') }}` and `Story: {{ workhorse_var('story_id') }}` as footers,
+spelled exactly so and nowhere else in the message — not bracketed into the subject. Do not push or open a PR; the workflow owns those.
 
 ## Return Format
 

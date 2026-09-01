@@ -21,8 +21,9 @@ typed `docs`/`chore`, which release-please correctly declines to release.
 
 **The scope is the package, not the epic.** In a release-please monorepo config the scope
 selects the component whose version moves; an epic name selects nothing and would be
-noise in every changelog. The epic and story slugs go in the body instead, where a human
-triaging `git log` still finds them.
+noise in every changelog. The epic and story slugs go in the footers instead — `Epic:`
+and `Story:`, the keys `ostler.provenance` and `shared/ci.py` read — where git parses
+them and a human triaging `git log` still finds them.
 """
 from __future__ import annotations
 
@@ -40,7 +41,7 @@ _SCOPE_STRIP = re.compile(r"[^a-z0-9._-]+")
 
 #: Doc templates commonly label the heading with the artifact's own kind — `# Story: Record an
 #: expense`. That label is redundant twice over in a changelog: the reader knows they are
-#: reading a release note, and the subject already carries the epic/story trailers. Left in, it
+#: reading a release note, and the message already carries the epic/story trailers. Left in, it
 #: becomes the description's first word and every entry reads `feat(api): story: …`.
 _HEADING_LABEL = re.compile(r"^(story|epic)\s*[:–—-]\s*", re.IGNORECASE)
 
@@ -76,19 +77,17 @@ def subject(
     package: str,
     description: str,
     marker: str = "",
-    story: str = "",
 ) -> str:
-    """Build a Conventional Commit subject with protected story and status suffixes.
+    """Build a Conventional Commit subject with a protected status suffix.
 
-    The story id and give-up marker are never what gets trimmed. The description gives way
-    instead, and if even a minimal description will not fit beside the suffixes the limit
-    does.
+    The give-up marker is never what gets trimmed. The description gives way instead, and
+    if even a minimal description will not fit beside the marker the limit does.
+
+    The story id is **not** here — it is a footer, and only a footer. See `message`.
     """
     head = f"{kind}({package})" if package else kind
     body = describe(description) or "no description"
-    suffixes = [f"[{story}]" for story in (story,) if story]
-    if marker:
-        suffixes.append(marker)
+    suffixes = [marker] if marker else []
     tail = f" {' '.join(suffixes)}" if suffixes else ""
     budget = SUBJECT_LIMIT - len(f"{head}: {tail}")
     if len(body) > budget:
@@ -104,12 +103,16 @@ def message(
     epic: str = "",
     story: str = "",
 ) -> str:
-    """A story-labelled Conventional Commit plus exact provenance trailers.
+    """A Conventional Commit subject plus the exact provenance trailers.
 
-    The bracketed story id makes changelog entries attributable without graph access. The
-    exact trailer remains the machine-readable authority used by provenance queries.
+    The story id lives in one place — the `Story:` footer — because that is the spelling
+    every reader of it already uses: `ostler.provenance` joins runs to commits by it, the
+    commit policy the agents work under asks for it, and git itself parses it
+    (`git log --format=%(trailers:key=Story)`), so it survives a rebase and a squash. A
+    second copy bracketed into the subject would be the same fact in a shape no tool
+    reads, spending characters release-please wants for the description.
     """
-    lines = [subject(kind, package, description, marker, story)]
+    lines = [subject(kind, package, description, marker)]
     trailers = [f"{label}: {value}" for label, value in (("Epic", epic), ("Story", story)) if value]
     if trailers:
         lines.extend(["", *trailers])

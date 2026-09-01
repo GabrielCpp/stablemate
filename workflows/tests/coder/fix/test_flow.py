@@ -286,7 +286,7 @@ def _assert_agent_story_commit(repo: Path, agent: _Agent) -> None:
     story_id = str(agent.args_for("fix-item")[0]["story_id"])
     subject = _log_of(repo)[0]
     assert subject.startswith("fix(api): ")
-    assert subject.endswith(f" [{story_id}]")
+    assert story_id not in subject
 
 
 def _branch_of(repo: Path) -> str:
@@ -352,7 +352,7 @@ def test_one_item_is_seeded_fixed_checked_pruned_and_committed(
     story_id = str(agent.args_for("fix-item")[0]["story_id"])
     subject = _log_of(workspace["api"])[0]
     assert subject.startswith("fix(api): ")
-    assert subject.endswith(f" [{story_id}]")
+    assert story_id not in subject
     body = subprocess.run(
         ["git", "log", "-1", "--format=%b"],
         cwd=workspace["api"],
