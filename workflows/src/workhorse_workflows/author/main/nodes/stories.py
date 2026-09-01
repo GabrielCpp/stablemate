@@ -12,7 +12,7 @@ import logging
 import re
 from pathlib import Path
 
-from ostler import Ostler, backlog as ostler_backlog, markdown, registry
+from ostler import Ostler, backlog as ostler_backlog, markdown, refs, registry
 from ostler.model import (
     required_section_problems,
     section_order_problems,
@@ -74,7 +74,6 @@ _OPEN_QUESTION_PHRASES = [
 #: does not trip the check, while a bare `TODO decide later` does.
 _OPEN_QUESTION_WORDS = {"tbd", "todo", "fixme"}
 _WORD_CHARS = "_-"
-_CODE_POINTER_RE = re.compile(r"`([^`\n]+)::([^`\n]+)`")
 _NO_PRIOR_IMPLEMENTATION = "No prior implementation reference exists."
 
 
@@ -538,18 +537,26 @@ def validate_story(logger: logging.Logger, story_dir: str = "", repo_dir: str = 
 
     technical = doc.find_section("Technical Notes")
     if technical is not None and not technical.is_empty:
-        pointers = _CODE_POINTER_RE.findall(technical.body)
+        # The pointers are inline-code spans carrying a `::`, read off the parser's tokens
+        # rather than scanned for backticks: a span's content is content, and the fenced
+        # block a story pastes into its notes is not a citation.
+        pointers = [
+            refs.ref_path(span)
+            for span in markdown.all_code_spans(technical.body)
+            if "::" in span
+        ]
         if not pointers and technical.body.strip() != _NO_PRIOR_IMPLEMENTATION:
             errors.append(
                 "required section `## Technical Notes` needs an existing `path::symbol` code "
                 f"pointer or the exact statement `{_NO_PRIOR_IMPLEMENTATION}`"
             )
         root = survey_repo_root(repo_dir)
-        for path, _symbol in pointers:
-            target = (root / path.strip().removeprefix("./")).resolve()
+        for pointer in pointers:
+            target = (root / pointer.strip().removeprefix("./")).resolve()
             if not target.is_relative_to(root) or not target.is_file():
                 errors.append(
-                    f"technical code pointer `{path}::...` names no file under the repository"
+                    f"technical code pointer `{pointer}::...` names no file "
+                    "under the repository"
                 )
 
     errors.extend(_open_questions(doc))
