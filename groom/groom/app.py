@@ -227,11 +227,15 @@ def _active_waiting_on(run_dir: str) -> str:
     return waiting
 
 
-def _native_gate(run: RunTelemetry) -> GateInfo | None:
-    """The exact gate named by a native pyflow checkpoint, if still pending."""
+def _native_gate(run: RunTelemetry, waiting_on: str = "") -> GateInfo | None:
+    """The exact gate named by a native pyflow checkpoint, if still pending.
+
+    `waiting_on` is the already-resolved chain, for a caller that needs to tell
+    "no gate" apart from "the chain named nothing" — see :func:`_sync_native_row`.
+    """
     if not run.run_dir:
         return None
-    waiting_on = _active_waiting_on(run.run_dir)
+    waiting_on = waiting_on or _active_waiting_on(run.run_dir)
     if not waiting_on:
         return None
     path = Path(waiting_on)
@@ -344,10 +348,30 @@ def _sync_native_row(run: RunTelemetry, fired: list[alerts.Alert] | None = None)
         if before
         else None
     )
-    gate = None if run.terminal else _native_gate(run)
+    # Two arms discover a native gate, and they are not equals. `_poll_gates` asks
+    # the run over its control socket — the run's own testimony about what it is
+    # blocked on. This arm reconstructs the same fact by walking the checkpoint
+    # chain, and the walk can come up empty for a shape it cannot name: it descends
+    # `<state>/_flow/`, but a sub-flow's directory is named for the flow class, so a
+    # parent whose state is a generic dispatcher (author's `next_stage` handing off
+    # to `StoryAuthor` → `story_author/`) dead-ends. So an empty walk means "this arm
+    # knows nothing", never "there is no gate" — it must not clear what the socket
+    # found, or the ingest that follows every heartbeat erases the question seconds
+    # after the poll raises it, which is exactly how a 3h operator stall showed as
+    # RUNNING with no question. Only a walk that *did* name a wait speaks to whether
+    # that wait is still pending, and only a terminal run clears unconditionally.
+    waiting_on = "" if run.terminal else _active_waiting_on(run.run_dir)
+    gate = _native_gate(run, waiting_on) if waiting_on else None
+    held = {} if before is None or run.terminal else dict(before.gates)
+    if run.terminal:
+        gates: dict[str, GateInfo] = {}
+    elif waiting_on:
+        gates = {gate.file_path: gate} if gate is not None else {}
+    else:
+        gates = held
     if not projection.is_live(run, time.time()):
         new_state = WorkflowState.FINISHED
-    elif gate is not None:
+    elif gates:
         new_state = WorkflowState.BLOCKED
     else:
         new_state = WorkflowState.RUNNING
@@ -367,12 +391,7 @@ def _sync_native_row(run: RunTelemetry, fired: list[alerts.Alert] | None = None)
         pid=run.pid,
         state=new_state,
     )
-    if run.terminal:
-        wf.gates.clear()
-    elif gate is not None:
-        wf.gates = {gate.file_path: gate}
-    else:
-        wf.gates.clear()
+    wf.gates = gates
     return prev is None or prev != (
         wf.state,
         wf.current_node,

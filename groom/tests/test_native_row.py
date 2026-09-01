@@ -422,6 +422,108 @@ def test_native_gate_ignores_a_finished_siblings_checkpoint(tmp_path):
     assert wf.state == WorkflowState.RUNNING
 
 
+def test_an_ingest_does_not_erase_a_gate_the_run_reported_over_its_socket(tmp_path):
+    """The checkpoint walk descends `<state>/_flow/`, but a sub-flow's directory is
+    named for the flow class — so a parent sitting in a generic dispatcher (author's
+    `next_stage` handing off to `StoryAuthor` → `story_author/`) dead-ends and the
+    walk names nothing. That is "this arm knows nothing", not "there is no gate":
+    clearing on it let every heartbeat's ingest wipe the question `_poll_gates` had
+    just raised, which is how a 3h operator stall showed RUNNING with no question."""
+    _reset()
+    run_dir = tmp_path / "runs" / "author-r4"
+    workspace = tmp_path / "workspace"
+    gate = workspace / "docs" / "story" / "context.md"
+    gate.parent.mkdir(parents=True)
+    gate.write_text("STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\nWhich scope?\n")
+    # The shape the walk cannot follow: the root names `next_stage`, the child lives
+    # under `story_author/`, and neither checkpoint records a `waiting_on`.
+    _checkpoint(run_dir, "", "next_stage", None)
+    _checkpoint(run_dir, "story_author/_flow", "design_mockup", None)
+    assert groom_app._active_waiting_on(str(run_dir)) == ""
+
+    alerts.ingest_metrics(
+        [
+            _metric(
+                "C4", "workhorse.run.heartbeat", 1,
+                run_dir=str(run_dir), workspace=str(workspace), node="next_stage",
+            )
+        ],
+        now=time.time(),
+    )
+    groom_app._sync_native_row(state.RUNS["C4"])
+
+    # What the socket poll would have written on the rules tick.
+    wf = state.WORKFLOWS["C4"]
+    wf.gates = {
+        "docs/story/context.md": GateInfo(
+            workflow_id="C4", file_path="docs/story/context.md", question="Which scope?"
+        )
+    }
+    wf.state = WorkflowState.BLOCKED
+
+    # The next heartbeat's ingest, arriving seconds later.
+    alerts.ingest_metrics(
+        [
+            _metric(
+                "C4", "workhorse.run.heartbeat", 1,
+                run_dir=str(run_dir), workspace=str(workspace), node="next_stage",
+            )
+        ],
+        now=time.time(),
+    )
+    groom_app._sync_native_row(state.RUNS["C4"])
+
+    wf = state.WORKFLOWS["C4"]
+    assert wf.gates["docs/story/context.md"].question == "Which scope?"
+    assert wf.state == WorkflowState.BLOCKED
+
+
+def test_a_walk_that_names_a_resolved_wait_still_clears_the_gate(tmp_path):
+    """Subordinate, not inert. When the chain *does* name a wait, this arm is
+    reading the same file the operator edits, so an answered gate must still drop —
+    otherwise a run whose socket never replies (an old workhorse) would show a
+    question nobody owes an answer to for the rest of the run."""
+    _reset()
+    run_dir = tmp_path / "runs" / "coder-r5"
+    workspace = tmp_path / "workspace"
+    gate = workspace / "docs" / "story" / "context.md"
+    gate.parent.mkdir(parents=True)
+    gate.write_text("STATUS: ANSWERED\n\n## Questions from the agent\nWhich scope?\n")
+    _checkpoint(run_dir, "", "review", None)
+    _checkpoint(run_dir, "review/_flow", "read_operator", str(gate))
+
+    alerts.ingest_metrics(
+        [
+            _metric(
+                "C5", "workhorse.run.heartbeat", 1,
+                run_dir=str(run_dir), workspace=str(workspace), node="review",
+            )
+        ],
+        now=time.time(),
+    )
+    groom_app._sync_native_row(state.RUNS["C5"])
+    state.WORKFLOWS["C5"].gates = {
+        "docs/story/context.md": GateInfo(
+            workflow_id="C5", file_path="docs/story/context.md", question="Which scope?"
+        )
+    }
+
+    alerts.ingest_metrics(
+        [
+            _metric(
+                "C5", "workhorse.run.heartbeat", 1,
+                run_dir=str(run_dir), workspace=str(workspace), node="review",
+            )
+        ],
+        now=time.time(),
+    )
+    groom_app._sync_native_row(state.RUNS["C5"])
+
+    wf = state.WORKFLOWS["C5"]
+    assert wf.gates == {}
+    assert wf.state == WorkflowState.RUNNING
+
+
 def test_active_waiting_on_stops_at_the_depth_bound(tmp_path):
     """A checkpoint whose state names its own scope would otherwise walk forever."""
     run_dir = tmp_path / "loop"
