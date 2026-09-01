@@ -40,6 +40,18 @@ reader has to sniff before parsing.
 - The exported file's first line is the header `who,what,amount_cents,spent_on`, whether or not
   the ledger has entries.
 
+## Non-Functional Acceptance Criteria
+
+(none)
+
+## Technical Notes
+
+- `tally/ledger.py::load` reads the document back and is the only reader; `tally/ledger.py::currency_of`
+  takes the currency from the ledger rather than from the invocation, because `tally` converts nothing.
+- `tally/cli.py::build_parser` is where a subcommand attaches, and `tally/cli.py::main` is where its
+  exceptions become exit codes.
+- `tally/cli.py::commit_or_preview` shows the established stderr/stdout split every command follows.
+
 ## Implementation Status
 
 - **Status**: Not started

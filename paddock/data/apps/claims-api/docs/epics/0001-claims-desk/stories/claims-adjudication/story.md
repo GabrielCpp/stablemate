@@ -42,6 +42,25 @@ neither.
 - The decided claim is still `Approved`, at the version the decision returned, after the service
   restarts.
 
+## Non-Functional Acceptance Criteria
+
+(none)
+
+## Technical Notes
+
+- `app/api/store.go::Store` remains the only reader and writer; a decision table held beside the
+  ledger would answer every same-process read correctly and lose the decision at the restart the
+  criteria check.
+- `app/api/store.go::FindClaim` locates the record to compare-and-swap against, and
+  `app/api/store.go::Claim` carries the `version` field that is the token — there is no separate
+  decision sequence.
+- `app/api/authz.go::Identity.IsAdjuster` is the existing role test, so the `403 Adjusters Only`
+  refusal is the same rule `app/api/reset.go::Server.ResetClaims` already enforces.
+- `app/api/submit.go::validateSubmission` is the shape a per-field `422` takes in this service;
+  the decision's body errors follow it rather than inventing a second error format.
+- `app/api/authz.go::writeProblem` and `app/api/service.go::writeJSON` are the two response
+  writers already in use, which is what keeps the accepted and refused bodies consistent.
+
 ## Implementation Status
 
 - **Status**: Not started

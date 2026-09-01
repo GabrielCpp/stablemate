@@ -40,6 +40,14 @@ in both places from the same read.
 - The page's status line states how many of the showing's seats are free, counting only `free` ones.
 - `GET /healthz` answers `200` with `{"status": "ok"}` without reading the ledger.
 
+## Non-Functional Acceptance Criteria
+
+(none)
+
+## Technical Notes
+
+No prior implementation reference exists.
+
 ## Implementation Status
 
 - **Status**: Not started

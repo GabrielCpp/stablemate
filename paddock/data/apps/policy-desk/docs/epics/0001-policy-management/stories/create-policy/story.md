@@ -41,6 +41,14 @@ written as one required-fields list passes every scenario that only ever posts a
 - A successful creation lands on the new policy's detail screen at `/policies/{id}`, client-side,
   and that URL also works as a deep link into a freshly loaded document.
 
+## Non-Functional Acceptance Criteria
+
+(none)
+
+## Technical Notes
+
+No prior implementation reference exists.
+
 ## Implementation Status
 
 - **Status**: Not started

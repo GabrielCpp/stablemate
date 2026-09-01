@@ -47,6 +47,14 @@ Nothing here is applied. `make -C pulumi plan` is the whole of the observable su
 - The provider the plan is produced by is pinned by the program rather than resolved from
   whatever plugin the machine has installed.
 
+## Non-Functional Acceptance Criteria
+
+(none)
+
+## Technical Notes
+
+No prior implementation reference exists.
+
 ## Implementation Status
 
 - **Status**: Not started

@@ -40,6 +40,24 @@ answer a bug rather than a request.
 - The refusal is decided after the lookup, so the difference between an id that exists and one
   that does not is visible only to a caller entitled to it.
 
+## Non-Functional Acceptance Criteria
+
+(none)
+
+## Technical Notes
+
+- `app/api/store.go::Store` and its `Read` are the one route to the ledger; a register that
+  cached the showing between requests would answer correctly in-process and stale everywhere else.
+- `app/api/authz.go::Identity` is what a verified token becomes, and
+  `app/api/authz.go::Identity.IsAdjuster` is the one role test — scope is read from it rather
+  than from anything the caller can set.
+- `app/api/store.go::FindClaim` is the existing lookup, which is why the entitlement refusal can
+  be decided after the claim is found rather than in place of finding it.
+- `app/api/service.go::apiClaim` maps a stored claim to the contract's shape, so a new read
+  surface inherits the field names instead of restating them.
+- `app/api/authz.go::writeProblem` is the shared refusal writer that gives `403` and `404` the
+  same body shape the first story's refusals already have.
+
 ## Implementation Status
 
 - **Status**: Not started

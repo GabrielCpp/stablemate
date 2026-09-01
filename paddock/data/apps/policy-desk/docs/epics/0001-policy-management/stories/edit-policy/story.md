@@ -37,6 +37,24 @@ sends it nor may change it, and a validator that keeps asking for it refuses eve
   the cancellation form.
 - A refused amendment leaves the detail screen's reading intact rather than blanking it.
 
+## Non-Functional Acceptance Criteria
+
+(none)
+
+## Technical Notes
+
+- `app/api/validate.go::Validate` already takes an `isCreate` flag, which is the seam the
+  policy-number and past-start-date exceptions go through — not a second validator.
+- `app/api/store.go::Policy` carries the `Version` field the compare-and-swap quotes, and
+  `app/api/service.go::indexOf` is the existing lookup the write reads through.
+- `app/api/service.go::Server.Routes` registers the amendment and the cancellation beside the
+  existing routes, and `app/api/service.go::decode` is the one request-body reader.
+- `app/api/service.go::writeError` gives `409 Stale Policy` and `400 Version Required` the body
+  shape every earlier refusal already has.
+- `app/web/src/api.ts::updatePolicy` and `app/web/src/api.ts::cancelPolicy` are the client calls,
+  and `app/web/src/FieldError.tsx::FieldError` is the existing per-field renderer the confirmation
+  message reuses.
+
 ## Implementation Status
 
 - **Status**: Not started

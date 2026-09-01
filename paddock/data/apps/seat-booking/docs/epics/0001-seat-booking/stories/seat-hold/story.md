@@ -41,6 +41,23 @@ seat that changed.
   booking, and no seat appears or disappears from the map.
 - Releasing a seat that is free or booked answers `409 Seat Not Held`.
 
+## Non-Functional Acceptance Criteria
+
+(none)
+
+## Technical Notes
+
+- `app/store.py::Store` is the only reader and the only writer of the ledger; a transition that
+  reaches the disk any other way loses the atomic write the durability criterion rests on.
+- `app/store.py::empty_ledger` defines the showing a missing file completes to, which is why an
+  absent seat reads as free rather than as an error.
+- `app/booking.py::seat_record` is the one place a seat id is resolved to its record, so the
+  `404 No Such Seat` refusal is earned by reusing it rather than by re-deriving the vocabulary.
+- `app/booking.py::Conflict` is the existing refusal carrier that `app/service.py::Handler`
+  already translates to `409`, so a new refusal becomes a status by raising it.
+- `app/booking.py::seat_map` is the read the JSON map and `app/page.py::render` share, which is
+  what makes the narrow-write criterion observable from both surfaces at once.
+
 ## Implementation Status
 
 - **Status**: Not started

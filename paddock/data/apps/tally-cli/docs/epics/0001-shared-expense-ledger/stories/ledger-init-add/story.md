@@ -41,6 +41,14 @@ retrofitted is a flag whose meaning has to be re-established for each command it
   disk byte-for-byte unchanged.
 - Every human-facing line goes to stderr.
 
+## Non-Functional Acceptance Criteria
+
+(none)
+
+## Technical Notes
+
+No prior implementation reference exists.
+
 ## Implementation Status
 
 - **Status**: Not started

@@ -48,6 +48,14 @@ document says so. Nothing in a handler names a path.
 - `GET /healthz` answers `200` with `{"status":"ok"}` without a token, and `DELETE /api/claims`
   empties the ledger for an adjuster and answers `403 Adjusters Only` for anyone else.
 
+## Non-Functional Acceptance Criteria
+
+(none)
+
+## Technical Notes
+
+No prior implementation reference exists.
+
 ## Implementation Status
 
 - **Status**: Not started

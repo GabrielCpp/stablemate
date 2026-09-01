@@ -42,6 +42,21 @@ answered is not a booking.
 - Confirming a seat that was never held answers `409 Seat Not Held`.
 - A confirmed booking is still in the map, with the same name, after the service is restarted.
 
+## Non-Functional Acceptance Criteria
+
+(none)
+
+## Technical Notes
+
+- `app/hold.py::hold` is what mints the version the caller quotes back here; the token is the
+  seat's own `version` field, not a separate hold sequence.
+- `app/hold.py::release` is the other spender of a hold, so both transitions must agree on what
+  clears one — a confirm that leaves the hold in place makes a later release look valid.
+- `app/store.py::Store` remains the single reader and writer, which is what makes the survives-a-restart
+  criterion a property of this code path rather than of the deployment.
+- `app/booking.py::seat_record` resolves the seat and `app/booking.py::Conflict` carries the
+  refusals `app/service.py::Handler` turns into `409`, so the stale-hold case needs no new plumbing.
+
 ## Implementation Status
 
 - **Status**: Not started

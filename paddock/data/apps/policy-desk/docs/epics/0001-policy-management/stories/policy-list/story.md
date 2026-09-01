@@ -34,6 +34,24 @@ staying mounted, which only one of them does.
   reloaded, and the screen shows the policy that was clicked rather than the one visited before it.
 - The navigation region offers the register and the new-policy form from every screen.
 
+## Non-Functional Acceptance Criteria
+
+(none)
+
+## Technical Notes
+
+- `app/api/store.go::Store` and its `Read` are the one route to the ledger; a register served
+  from anything the process kept between requests answers correctly only in that process.
+- `app/api/service.go::Server.Routes` is where a handler becomes a route, so the register is
+  registered beside the existing ones rather than in a second mux.
+- `app/api/service.go::writeJSON` and `app/api/service.go::writeError` are the existing response
+  writers, which is what keeps the register's success and failure bodies the shape the client
+  already parses.
+- `app/web/src/api.ts::listPolicies` and `app/web/src/api.ts::ApiError` are the client's existing
+  fetch seam: the alert-on-failure criterion is met by catching what the seam already throws.
+- `app/web/src/routes.tsx` holds the router the detail screen is already mounted in, so the row
+  link stays a client route instead of reloading the document.
+
 ## Implementation Status
 
 - **Status**: Not started
