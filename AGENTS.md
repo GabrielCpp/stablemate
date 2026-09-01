@@ -206,6 +206,8 @@ someone else's half-finished work and makes it vanish from *their* `git status`.
 <type>(<scope>): <lowercase imperative description>
 
 <optional body, wrapped at 72 columns, explaining why — not what>
+
+Refs: <ticket id>
 ```
 
 | Subject                                           | Effect on the package named by the scope |
@@ -223,6 +225,16 @@ someone else's half-finished work and makes it vanish from *their* `git status`.
   `deps`, `release`, `ci`, `lint`, `hooks`. Omit the parentheses
   entirely for a repo-wide change.
 - Subject ≤ 72 characters, no capital first word, no trailing period.
+- **ticket id**: every commit that answers a tracked piece of work carries its
+  identifier as a trailer at the **end of the body**, spelled exactly as the
+  block above. Not in the subject — those 72 characters belong to the type,
+  the scope and the description release-please reads, and a bracketed ticket
+  eats a fifth of them. A trailer is a key git itself parses
+  (`git log --format=%(trailers)`), so the link survives a rebase, a squash and
+  a changelog render, and the commit can be found from the ticket months later
+  without a full-text search. Do not invent one: a change with no ticket behind
+  it — a drive-by typo fix, a release chore — omits the trailer rather than
+  making an id up, because a wrong id points a reader at somebody else's work.
 
 A repaired defect labelled `chore:` ships to nobody, and the omission surfaces
 weeks later as a bug report against a version that never contained the fix.
